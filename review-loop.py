@@ -182,7 +182,7 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
             cmd += ["-m", spec.model]
         cmd.append(prompt)
     elif spec.tool == "grok":
-        cmd = ["grok"]
+        cmd = ["grok", "--permission-mode", "bypassPermissions"]
         if spec.model:
             cmd += ["-m", spec.model]
         cmd += ["-p", prompt]

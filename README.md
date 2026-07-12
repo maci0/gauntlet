@@ -11,8 +11,10 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 
 | Review | Focus |
 |---|---|
+| `a11y-review` | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
 | `api-review` | API design, consistency, error handling, versioning |
 | `arch-review` | Architecture, module boundaries, dependency direction, layering |
+| `build-review` | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
 | `cli-review` | CLI usability, flags, help text, output design, scripting support |
 | `code-review` | Code quality, duplication, dead code, refactoring, type safety |
 | `concurrency-review` | Race conditions, deadlocks, shared state, async correctness, thread safety |
@@ -23,11 +25,13 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | `doc-review` | Documentation accuracy, coverage, onboarding, architecture docs |
 | `error-review` | Error handling, resilience, retries, timeouts, failure isolation |
 | `functionality-review` | Feature completeness, behavioral correctness, edge cases, contract mismatches |
+| `fuzz-review` | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
 | `i18n-review` | Internationalization, localization, locale handling, RTL, formatting |
 | `infra-review` | CI/CD, containers, IaC, deployment, secret management |
 | `o11y-review` | Observability: logging, metrics, tracing, alerting, health checks |
 | `perf-review` | Performance bottlenecks, memory, I/O, caching, hot paths |
 | `privacy-review` | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
+| `release-review` | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
 | `sdk-review` | SDK developer experience, API surface, types, versioning, testability, docs |
 | `sec-review` | Security vulnerabilities, auth, injection, data exposure, cryptography |
 | `test-review` | Test quality, coverage gaps, flaky tests, mock quality, test design |
