@@ -23,6 +23,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | `deps-review` | Dependency health, unused packages, vulnerabilities, license compliance |
 | `design-review` | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection |
 | `doc-review` | Documentation accuracy, coverage, onboarding, architecture docs |
+| `dst-review` | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
 | `error-review` | Error handling, resilience, retries, timeouts, failure isolation |
 | `functionality-review` | Feature completeness, behavioral correctness, edge cases, contract mismatches |
 | `fuzz-review` | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |

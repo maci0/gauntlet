@@ -87,6 +87,7 @@ Instructions:
 For each finding include:
 - Title
 - Severity: critical / high / medium / low (weight blockers for a whole user group as critical)
+- Category
 - WCAG criterion (number and name) if applicable
 - Affected users (keyboard, screen reader, low vision, color blind, motor, cognitive, vestibular)
 - Location: component/file/element
