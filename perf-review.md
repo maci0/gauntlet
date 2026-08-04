@@ -16,6 +16,7 @@ Review the following:
 - Large allocations that could be streamed or chunked
 - Retained references preventing garbage collection
 - Unnecessary copying of large objects or buffers
+- Cache-hostile data layout: pointer-chasing structures, poor locality, false sharing across threads, array-of-structs where only a few fields are hot (struct-of-arrays would cut loads and cache-line waste)
 - Missing cleanup or disposal of resources
 - Excessive string concatenation in hot paths
 
