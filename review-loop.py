@@ -31,6 +31,7 @@ Operating mode: apply fixes directly to files, autonomously.
 
 Rules:
 - First check if this review makes sense for this codebase. If not, exit immediately without changes.
+- To search code, prefer `ast-grep`/`sg` for structural/syntax-aware queries and `rg` (ripgrep) for text, when they are on PATH. Fall back to grep only if neither exists.
 - Make the smallest reversible diff possible.
 - Fix at most ~10 highest-value issues this pass. Stop after that.
 - Do not delete tests.
