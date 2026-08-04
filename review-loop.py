@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run review prompts via claude/gemini/qwen/codex/grok/agy against current dir."""
+"""Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent against current dir."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy"}
+VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent"}
 
 PROMPT_HEADER = "MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report."
 
@@ -192,6 +192,11 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
         if spec.model:
             raise ValueError(f"agy does not support specifying models: {spec.model}")
         cmd += ["-p", prompt]
+    elif spec.tool == "cursor-agent":
+        cmd = ["cursor-agent", "--print", "-f"]
+        if spec.model:
+            cmd += ["--model", spec.model]
+        cmd.append(prompt)
     else:
         raise ValueError(f"unknown tool: {spec.tool}")
     return cmd
@@ -453,7 +458,7 @@ def setup_log_tee(log_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Run review prompts via claude/gemini/qwen/codex/grok/agy.",
+        description="Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
