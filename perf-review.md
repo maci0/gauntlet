@@ -63,6 +63,10 @@ Review the following:
 - Serialization or deserialization on every request when avoidable
 - Regex compilation or reflection in hot paths
 - Excessive allocations in request handlers
+- Data-parallel numeric/byte loops (math kernels, encode/decode, hashing, search, pixel/audio/tensor ops) left scalar where SIMD/vectorization would apply
+- Code shaped so the compiler cannot auto-vectorize: loop-carried dependencies, aliasing/non-`restrict` pointers, non-contiguous or misaligned access, branches in the loop body
+- Array-of-structs layouts blocking vectorization where struct-of-arrays would enable it
+- Hand-written intrinsics that are unportable, unmaintained, or slower than the autovectorized version; missing runtime feature detection / scalar fallback for the target CPU (AVX/NEON/SVE)
 
 9. Resource management
 - File handles, sockets, or connections not properly closed
