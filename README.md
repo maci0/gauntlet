@@ -4,7 +4,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 
 ## Contents
 
-- `*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
+- `prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
 - `review-loop.py` — runner. Iterates over selected reviews, dispatches each to a randomly chosen tool/model, repeats until stopped.
 
 ### Available reviews
@@ -87,7 +87,7 @@ Run `./review-loop.py --help` for the full option list.
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |
 | `--timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--log FILE` | — | Tee stdout/stderr to FILE. |
-| `--prompt-dir DIR` | script dir | Where `*-review.md` files live. |
+| `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. |
 | `--reviews LIST` | all | Comma-separated subset to run. |
 | `--exclude LIST` | none | Comma-separated reviews to skip. |
 | `--dry-run` | off | Print planned schedule and exit. |
@@ -104,7 +104,7 @@ Run `./review-loop.py --help` for the full option list.
 
 ## Adding a review
 
-Drop a new `<name>-review.md` into the prompt directory. It is auto-discovered — no code changes needed.
+Drop a new `<name>-review.md` into `prompts/`. It is auto-discovered — no code changes needed.
 
 ## Prompt structure
 

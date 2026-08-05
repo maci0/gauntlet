@@ -37,6 +37,8 @@ Rules:
 - Do not delete tests.
 - Do not change public APIs or exported symbols.
 - Skip anything uncertain. Never ask questions.
+- Before fixing an issue, prove it is real: trace the actual code path, read the full function (not just a fragment), and verify callers/config branches don't already handle it. Comments and names can lie; verify against the implementation. If you cannot prove it, skip it.
+- Do not add defensive checks (null/bounds/validation) unless you can name a concrete path where invalid data reaches the code.
 - Never modify files in: node_modules, vendor, dist, build, .next, target, .git, generated/auto-generated files, lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.).
 - If a single fix would change more than 300 lines in one file, skip it.
 - Do not commit anything to git. Do not run git commit, git push, or git tag.
@@ -488,7 +490,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--log", type=Path, default=None, help="tee output to FILE")
     p.add_argument(
         "--prompt-dir", type=Path,
-        default=Path(__file__).resolve().parent,
+        default=Path(__file__).resolve().parent / "prompts",
         help="directory of *-review.md files (default: script directory)",
     )
     p.add_argument("--reviews", default="", help="comma-separated subset to run")
