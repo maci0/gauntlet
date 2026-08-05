@@ -35,6 +35,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | `release-review` | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
 | `sdk-review` | SDK developer experience, API surface, types, versioning, testability, docs |
 | `sec-review` | Security vulnerabilities, auth, injection, data exposure, cryptography |
+| `slop-review` | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | `test-review` | Test quality, coverage gaps, flaky tests, mock quality, test design |
 | `ux-review` | UX, accessibility, interaction design, forms, responsive layout |
 
