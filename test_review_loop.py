@@ -178,11 +178,13 @@ def test_discover_reviews_merges_bundled_and_project():
             "node_modules/junk/evil-review.md": "x",  # inside a skipped dir
             "notes.md": "x",                          # not a review file
         })
-        with _cwd(proj):
+        err = io.StringIO()
+        with _cwd(proj), contextlib.redirect_stderr(err):
             found = rl.discover_reviews(bundled)
 
         assert set(found) == {"code-review", "sec-review", "custom-review"}
         assert found["sec-review"] == proj / "sec-review.md"
+        assert "overrides the bundled one" in err.getvalue()
         assert found["code-review"] == bundled / "code-review.md"
         assert list(found) == sorted(found), "listing must be sorted"
 
