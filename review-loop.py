@@ -26,7 +26,6 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
     ("rg", "text search"),
     ("ast-grep|sg", "structural search and rewrite"),
     ("patchwork", "AST-native find/replace"),
-    ("tsed", "tree-sitter sed"),
     ("semcode", "semantic C/C++/Rust queries"),
     ("tee", "required for --log"),
 )
@@ -76,7 +75,6 @@ Rules:
   - `rg` (ripgrep) for plain-text and literal searches.
   - `ast-grep`/`sg` for syntax-aware structural search and pattern-based rewrite.
   - `patchwork` for AST-native sed: find/replace/delete/insert by structure.
-  - `tsed` for tree-sitter operations modeled after sed.
   - `semcode` (if a `.semcode.db` index exists or `semcode-index` is available) for semantic C/C++/Rust queries: find_function, callers/callees, call chains, type definitions.
 - Make the smallest reversible diff possible.
 - Fix at most ~10 highest-value issues this pass. Stop after that.
