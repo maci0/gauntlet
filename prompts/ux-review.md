@@ -64,7 +64,7 @@ Review the following:
 - Missing keyboard navigation or focus management
 - Focus traps or lost focus after modal, dialog, or dynamic content changes
 - Images, icons, or media without alternative text
-- Touch targets too small for comfortable interaction (under 44x44px)
+- Touch targets too small for comfortable interaction (platform HIGs recommend 44x44px; WCAG 2.2 AA minimum is 24x24px, SC 2.5.8)
 - Missing skip navigation links
 - Screen reader experience that differs significantly from visual experience
 - Motion or animation without reduced-motion support

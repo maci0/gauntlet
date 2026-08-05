@@ -65,7 +65,7 @@ Review the following:
 - Auto-generated alt text that is wrong or unhelpful
 
 9. Native/mobile and platform specifics (if applicable)
-- Missing `contentDescription` / `accessibilityLabel`; touch targets below ~44px
+- Missing `contentDescription` / `accessibilityLabel`; touch targets below the platform HIG's ~44px recommendation (WCAG 2.2 AA minimum: 24x24px, SC 2.5.8)
 - Not respecting Dynamic Type / system font scaling
 - Custom gestures with no accessible alternative
 - Focus/traversal order wrong for the platform's screen reader (TalkBack/VoiceOver)
