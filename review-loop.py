@@ -101,13 +101,30 @@ class Stats:
         return dict(by_review)
 
 
-def discover_reviews(prompt_dir: Path) -> list[str]:
-    """Auto-discover *-review.md files in the prompt directory."""
-    reviews = []
-    for f in sorted(prompt_dir.iterdir()):
-        if f.suffix == ".md" and f.stem.endswith("-review"):
-            name = f.stem
-            reviews.append(name)
+SKIP_DIRS = {
+    "node_modules", "vendor", "dist", "build", ".next", "target", ".git",
+    "__pycache__", ".venv", "venv", ".tox", ".cache",
+}
+
+
+def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
+    """Map review name -> prompt file.
+
+    Bundled prompts from prompt_dir, plus any *-review.md found in the
+    project tree (cwd). A project-local prompt wins on a name clash.
+    """
+    reviews: dict[str, Path] = {}
+    if prompt_dir.is_dir():
+        for f in sorted(prompt_dir.glob("*-review.md")):
+            reviews[f.stem] = f
+    project = Path.cwd().resolve()
+    prompt_dir = prompt_dir.resolve()
+    for f in sorted(project.rglob("*-review.md")):
+        if f.parent.resolve() == prompt_dir:
+            continue
+        if any(part in SKIP_DIRS for part in f.relative_to(project).parts):
+            continue
+        reviews[f.stem] = f
     return reviews
 
 
@@ -223,7 +240,8 @@ class Runner:
         self.script_start = time.monotonic()
 
     def _filter_reviews(self) -> list[str]:
-        available = discover_reviews(self.args.prompt_dir)
+        self.prompt_files = discover_reviews(self.args.prompt_dir)
+        available = list(self.prompt_files)
         if not available:
             sys.exit(f"No *-review.md files found in: {self.args.prompt_dir}")
 
@@ -259,7 +277,7 @@ class Runner:
 
     def run_review(self, review: str) -> None:
         spec = self.pick_tool()
-        prompt_file = self.args.prompt_dir / f"{review}.md"
+        prompt_file = self.prompt_files[review]
         if not prompt_file.is_file():
             log(f"Missing prompt file: {prompt_file} — skipping")
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
@@ -367,13 +385,13 @@ class Runner:
                         print(f"  - {name} ({r.tool.label()}) — {detail}")
 
     def list_reviews(self) -> None:
-        available = discover_reviews(self.args.prompt_dir)
+        available = self.prompt_files
         if not available:
             print(f"No *-review.md files found in: {self.args.prompt_dir}")
             return
         print(f"Available reviews ({len(available)}):")
-        for r in available:
-            prompt_file = self.args.prompt_dir / f"{r}.md"
+        prompt_dir = self.args.prompt_dir.resolve()
+        for r, prompt_file in available.items():
             # Extract the goal line (second non-empty line, usually starts with "Your goal")
             desc = ""
             try:
@@ -385,7 +403,8 @@ class Runner:
             except OSError:
                 pass
             active = "✓" if r in self.reviews else "○"
-            print(f"  {active} {r:<20} {desc}")
+            origin = "" if prompt_file.parent.resolve() == prompt_dir else " [project]"
+            print(f"  {active} {r:<20}{origin} {desc}")
 
     def dry_run(self) -> None:
         print("DRY RUN — planned schedule for one loop:")

@@ -109,6 +109,8 @@ Run `./review-loop.py --help` for the full option list.
 
 Drop a new `<name>-review.md` into `prompts/`. It is auto-discovered — no code changes needed.
 
+Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name. Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped.
+
 ## Prompt structure
 
 All review prompts follow a consistent structure:
