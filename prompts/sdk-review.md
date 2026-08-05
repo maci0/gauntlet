@@ -126,6 +126,7 @@ Review the following:
 - Install or post-install scripts that cause friction or security concerns
 
 Instructions:
+- If available, use: `api-extractor` (TS public-surface report), `cargo public-api` (Rust), `stubtest` (Python stub vs runtime mismatch). Never install tools.
 - Evaluate the SDK from a consumer's perspective: someone integrating it into their application for the first time.
 - Consider the full lifecycle: discovery, installation, first call, error handling, testing, upgrading.
 - Test the API mentally by writing pseudocode for common use cases and checking if the SDK makes them easy.

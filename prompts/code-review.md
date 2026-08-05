@@ -88,7 +88,7 @@ Review the following:
 - Code that works by coincidence rather than by design
 
 Instructions:
-- Purpose-built tools beat manual inspection where available on PATH (never install them): the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` for duplication, `vulture`/`knip`/`ts-prune` for dead code. Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting.
+- If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication), `vulture`/`knip`/`ts-prune` (dead code). Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting. Never install tools.
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.

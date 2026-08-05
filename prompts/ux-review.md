@@ -111,6 +111,7 @@ Review the following:
 - Horizontal scrolling required to view content
 
 Instructions:
+- If available, use Lighthouse on rendered pages (tap targets, viewport, font size, UX audits); deep accessibility scanning belongs to a11y-review. Never install tools.
 - Evaluate from the user's perspective, not the developer's.
 - Consider first-time users, returning users, and power users.
 - Do not flag minor visual preferences unless they cause real confusion or friction.

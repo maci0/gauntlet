@@ -77,7 +77,7 @@ Review the following:
 - Dependencies that constrain the runtime or platform unnecessarily
 
 Instructions:
-- Purpose-built tools beat manual inspection where available on PATH (never install them): `osv-scanner` for vulnerabilities across ecosystems, `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS). Verify each report before acting; unused-dependency detectors miss dynamic imports.
+- If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS). Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
 - Inspect the actual dependency manifest files and lock files.
 - Verify that declared dependencies are actually used in the code.
 - Check import statements across the codebase to find real usage.

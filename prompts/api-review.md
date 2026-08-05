@@ -90,6 +90,7 @@ Review the following:
 - N+1 patterns exposed to clients via API design
 
 Instructions:
+- If available, use: `spectral` (OpenAPI/AsyncAPI lint), `oasdiff` (OpenAPI breaking-change diff), `buf` (protobuf lint and breaking-change checks). Never install tools.
 - Test the API mentally from a client developer's perspective.
 - Verify that documented behavior matches implemented behavior.
 - Check for consistency across all endpoints, not just individual correctness.

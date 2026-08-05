@@ -101,7 +101,7 @@ Review the following:
 - Missing sanitizer builds (ASan, MSan, UBSan, TSan) in fuzz CI
 
 Instructions:
-- Know the native harnesses and check which are wired up: `cargo-fuzz`/libFuzzer (Rust/C/C++), AFL++, `go test -fuzz` (Go), `Atheris` (Python), `Jazzer` (JVM). Prefer extending the ecosystem-native harness over inventing a custom one.
+- If available, use the ecosystem-native harnesses: `cargo-fuzz`/libFuzzer (Rust/C/C++), AFL++, `go test -fuzz` (Go), `Atheris` (Python), `Jazzer` (JVM). Prefer extending an existing harness over inventing one. Never install tools.
 - Inventory all API surfaces before assessing coverage.
 - Treat any API surface accepting untrusted input without fuzz testing as a finding.
 - Prioritize surfaces that handle complex, nested, or variable-length input.

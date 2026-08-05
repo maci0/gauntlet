@@ -90,6 +90,7 @@ Review the following:
 - Missing offline or degraded-mode behavior
 
 Instructions:
+- The strongest evidence is running the CLI itself: `--help` on every subcommand, exit codes, behavior when piped/redirected, `NO_COLOR`/`TERM=dumb`. If available, use `shellcheck` for completion and wrapper scripts. Never install tools.
 - Be strict and pragmatic. Focus on real usability and developer experience issues.
 - Avoid superficial feedback.
 - Test commands mentally from a user's perspective.

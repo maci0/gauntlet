@@ -103,7 +103,7 @@ Review the following:
 - No way to preview the application in different locales during development
 
 Instructions:
-- Where the project uses a message-catalog system, its own tooling beats grepping: extraction/compile checks (`xgettext`/`msgfmt --check`, `i18next-parser`, framework extractors) reveal unextracted strings and malformed catalogs. Use only tools already on PATH; never install.
+- If available, use the project's message-catalog tooling: `xgettext`/`msgfmt --check`, `i18next-parser`, framework extractors — they reveal unextracted strings and malformed catalogs. Never install tools.
 - Consider users in non-English, non-Latin, and RTL locales as primary audiences, not edge cases.
 - Test mentally by imagining the UI in German (long words), Arabic (RTL), Japanese (CJK), and a language with complex plurals (Polish, Arabic).
 - Focus on issues that cause broken UI, incorrect data, or exclusion of users.

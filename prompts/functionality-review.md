@@ -61,6 +61,7 @@ Review the following:
 - User-facing failures with no actionable signal about what went wrong
 
 Instructions:
+- The strongest evidence is running the software: exercise the documented flows and compare actual output against what docs/help/tests claim. Run the existing test suite before and after changes. Never install tools.
 - Be concrete, not generic. Point at specific functions, inputs, and expected vs actual behavior.
 - Where possible, give a minimal reproduction: the input, the call, the wrong result, and the correct result.
 - Distinguish between:

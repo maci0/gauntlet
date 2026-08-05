@@ -111,7 +111,7 @@ Review the following:
 - Missing SSL/TLS for database connections
 
 Instructions:
-- Purpose-built tools beat guessing where available (never install them): `EXPLAIN`/`EXPLAIN ANALYZE` against a local database for query plans, `sqlfluff` for SQL linting. Never run EXPLAIN ANALYZE against anything that looks like a production connection string.
+- If available, use: `EXPLAIN`/`EXPLAIN ANALYZE` on a local database (query plans), `sqlfluff` (SQL lint). Never run EXPLAIN ANALYZE against anything resembling a production connection string; never install tools.
 - Inspect actual schema definitions, migration files, query code, and configuration.
 - Trace query patterns from application code to understand real access patterns.
 - Consider the expected data volume and growth rate when assessing design choices.

@@ -72,7 +72,7 @@ Review the following:
 - Test names that don't say what behavior is checked
 
 Instructions:
-- `jscpd` (if on PATH; never install it) locates copy-paste clusters worth examining; its hits still need the neighbours-and-plausible-reason test before touching anything.
+- If available, use: `jscpd` (copy-paste clusters worth examining). Hits still need the neighbours-and-plausible-reason test before touching anything. Never install tools.
 - Only act where removal or simplification loses no information and changes no behavior. Behavior-preserving cleanups only.
 - Confirm each candidate against its neighbours before changing it: read the whole function and nearby code, not the fragment.
 - Prefer deletion over rewriting; the fix for slop is usually less code.

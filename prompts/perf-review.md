@@ -84,7 +84,7 @@ Review the following:
 - Duplicate dependencies with overlapping functionality
 
 Instructions:
-- Purpose-built tools beat guessing where available on PATH (never install them): `hyperfine` for command benchmarks, `perf`/flamegraphs for CPU profiles, `heaptrack`/`valgrind --tool=massif` for allocations. Measure before and after any change you claim is faster.
+- If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations). Never install tools; measure before and after any change you claim is faster.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - Prioritize hot paths and frequently executed code over cold paths.
 - Consider the expected scale and usage patterns of the application.

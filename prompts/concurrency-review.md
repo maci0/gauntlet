@@ -104,7 +104,7 @@ Review the following:
 - Missing linting or static analysis for concurrency anti-patterns
 
 Instructions:
-- Purpose-built tools beat eyeballing where available (never install them): `go test -race`, ThreadSanitizer (`-fsanitize=thread`), `valgrind --tool=helgrind`. A sanitizer trace is the strongest possible evidence for a race; run the existing test suite under one when the toolchain supports it.
+- If available, use: `go test -race`, ThreadSanitizer (`-fsanitize=thread`), `valgrind --tool=helgrind`. A sanitizer trace is the strongest race evidence; run the existing test suite under one when the toolchain supports it. Never install tools.
 - Trace shared state from declaration to all access points. Check every access for proper synchronization.
 - Consider what happens under high concurrency, not just the single-threaded happy path.
 - Think about timing: if two operations happen "at the same time", what can go wrong?

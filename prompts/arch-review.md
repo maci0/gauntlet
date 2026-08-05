@@ -93,6 +93,7 @@ Review the following:
 - New code following a different structure than existing code without clear migration
 
 Instructions:
+- If available, use dependency-graph tools: `madge` (JS/TS circular deps), `pydeps`/`import-linter` (Python), `go mod graph`, `cargo tree`. A rendered graph beats mentally tracing imports. Never install tools.
 - Map the actual structure before judging it. Understand what exists before recommending changes.
 - Consider the size and maturity of the project when assessing architecture.
 - Do not recommend enterprise patterns for small projects or startup patterns for large ones.

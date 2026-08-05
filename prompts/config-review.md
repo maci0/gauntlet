@@ -99,6 +99,7 @@ Review the following:
 - Missing configuration change audit trail
 
 Instructions:
+- If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files). Never install tools.
 - Inspect actual configuration files, environment setup, and how configuration is consumed in code.
 - Trace configuration values from source to usage to verify correctness.
 - Consider what happens when the application runs with default configuration in production.

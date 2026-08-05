@@ -111,7 +111,7 @@ Review the following:
 - Missing contribution guidelines or development workflow documentation
 
 Instructions:
-- Purpose-built tools beat manual inspection where available on PATH (never install them): `hadolint` for Dockerfiles, `shellcheck` for shell scripts, `actionlint` for GitHub Actions workflows, `tflint` for Terraform.
+- If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform). Never install tools.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.
 - Verify that documented procedures match what the code and configuration actually do.
 - Consider the operational burden of the current setup.

@@ -76,7 +76,7 @@ Review the following:
 - Regressions likely because there is no guard on accessible name/role in tests
 
 Instructions:
-- Purpose-built tools beat manual inspection where available on PATH (never install them): `axe-core` CLI / `pa11y` / Lighthouse for automated WCAG scans of rendered pages, `eslint-plugin-jsx-a11y` for static JSX checks. Automated scans catch at most a third of barriers; treat them as a floor, not the review.
+- If available, use: `axe-core` CLI/`pa11y`/Lighthouse (automated WCAG scans of rendered pages), `eslint-plugin-jsx-a11y` (static JSX checks). Automated scans catch at most a third of barriers — a floor, not the review. Never install tools.
 - Be concrete. Point at the component/element and the specific barrier, and cite the WCAG success criterion (e.g. 2.1.1 Keyboard, 1.4.3 Contrast) where it applies.
 - State who is blocked and how (keyboard user cannot dismiss dialog; screen reader announces button as unlabeled).
 - Prefer native HTML/platform fixes over ARIA; call out ARIA misuse explicitly.
