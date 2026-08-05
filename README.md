@@ -89,7 +89,7 @@ Run `./review-loop.py --help` for the full option list.
 | Flag | Default | Purpose |
 |---|---|---|
 | `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
-| `--agents` (alias `--models`) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
+| `--agents` (`--models` still accepted) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |
@@ -110,7 +110,7 @@ Run `./review-loop.py --help` for the full option list.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
 - The injected prompt header/footer constrains each tool to: apply small fixes only, skip vendored/generated/lockfile paths, never commit, run lint/typecheck/tests if configured, and revert on failure.
 - At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
-- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 130 interrupted (SIGINT/SIGTERM, takes precedence).
+- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 128+signal when interrupted, so 130 for SIGINT and 143 for SIGTERM (takes precedence over 1).
 
 ## Adding a review
 
@@ -127,7 +127,7 @@ All review prompts follow a consistent structure:
 1. **Role and goal** — who the reviewer is and what they evaluate.
 2. **Numbered checklist** (typically 10 sections) — specific items to check, grouped by concern.
 3. **Instructions** — how to approach the review: priorities, distinctions, scope.
-4. **Finding template** — fields for each finding (Title, Severity, Category, Location, Confidence, Why, Evidence, Recommendation, Expected benefit, Estimated effort, plus domain-specific extras).
+4. **Finding template** — fields for each finding. Most prompts share Title, Severity, Category, Location, Confidence, Why, Evidence, Recommendation, Expected benefit and Estimated effort; individual reviews drop fields that do not apply and add domain-specific ones (WCAG criterion, ladder rung, nondeterminism introduced).
 5. **Output format** — structured report sections.
 6. **Important** — constraints and ground rules.
 
@@ -137,9 +137,11 @@ All review prompts follow a consistent structure:
 ./test_review_loop.py        # or: pytest
 ```
 
-Stdlib only, no framework required. Covers duration/agent parsing (including a
-fuzz pass) and prompt discovery: bundled-vs-project precedence, skipped
-directories, symlink rejection, and duplicate handling.
+Stdlib only, no framework required. Covers duration and agent parsing (with a
+fuzz pass), the exact argv built for every agent including its permission-bypass
+flags, prompt discovery (bundled-vs-project precedence, skipped directories,
+symlink rejection, duplicate handling), `sanitize`, and `doctor` output in both
+plain and colored modes.
 
 ## License
 

@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import fcntl
 import os
 import random
@@ -33,6 +34,13 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
     ("patchwork", "AST-native find/replace"),
     ("semcode", "semantic C/C++/Rust queries"),
     ("tee", "required for --log"),
+)
+
+# Bundled reviews with no purpose-built CLI tooling; listed so doctor's review
+# set matches --list instead of silently omitting them.
+REVIEWS_WITHOUT_TOOLS = (
+    "cli-review", "design-review", "dst-review", "error-review",
+    "functionality-review", "o11y-review", "privacy-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -178,7 +186,9 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             if not name.endswith("-review.md"):
                 continue
             f = Path(root) / name
-            if f.is_symlink() or f.parent.resolve() == prompt_dir:
+            # is_file() is False for FIFOs and devices; read_no_follow enforces
+            # this again at open time, where it is not racy.
+            if f.is_symlink() or not f.is_file() or f.parent.resolve() == prompt_dir:
                 continue
             if sanitize(f.stem) != f.stem:
                 continue
@@ -310,9 +320,13 @@ def _wrap_tools(tools: list[tuple[str, bool, bool]], indent: int, width: int) ->
         if row and indent + row_len + sep + len(plain) > width:
             lines.append("  ".join(row))
             row, row_len, sep = [], 0, 0
-        label = name if ok else paint(name, "bold" if rec else "dim")
-        row.append(f"{_mark(ok, 'yellow' if rec else 'dim')} {label}")
-        row_len += sep + len(plain)
+        # The '*' carries the recommended/stack-specific distinction when
+        # color is off; styling only reinforces it.
+        star = "*" if rec else ""
+        label = name + star
+        row.append(f"{_mark(ok, 'yellow' if rec else 'dim')} "
+                   f"{label if ok else paint(label, 'bold' if rec else 'dim')}")
+        row_len += sep + len(plain) + len(star)
     if row:
         lines.append("  ".join(row))
     return lines
@@ -336,12 +350,17 @@ def doctor() -> int:
 
     print()
     print(paint("Per-review helpers", "bold")
-          + paint("  (bold = recommended for any repo, dim = only for that stack)", "dim"))
+          + paint("  (* = worth installing anywhere, rest matter only for that stack)", "dim"))
     # Tallies are over unique binaries: many tools serve more than one review.
     seen_rec: dict[str, bool] = {}
     seen_opt: dict[str, bool] = {}
-    name_col = max(len(r) for r in REVIEW_TOOLS) + 1
-    for review, tools in sorted(REVIEW_TOOLS.items()):
+    all_reviews = sorted(set(REVIEW_TOOLS) | set(REVIEWS_WITHOUT_TOOLS))
+    name_col = max(len(r) for r in all_reviews) + 1
+    for review in all_reviews:
+        tools = REVIEW_TOOLS.get(review, ())
+        if not tools:
+            print(f"  {review.ljust(name_col)} {paint('no external tools', 'dim')}")
+            continue
         entries = []
         for t in tools:
             ok, rec = have(t), t in RECOMMENDED_TOOLS
@@ -360,7 +379,9 @@ def doctor() -> int:
           f"{paint('recommended', 'bold')} {_ratio(sum(seen_rec.values()), len(seen_rec))}   "
           f"{paint('stack-specific', 'bold')} {_ratio(sum(seen_opt.values()), len(seen_opt))}")
     if not found_agents:
-        print(paint("No agent CLI found — install one to run reviews.", "red"), file=sys.stderr)
+        sys.stdout.flush()  # keep the report ahead of the error when piped
+        msg = "No agent CLI found — install one to run reviews."
+        print(f"\033[31m{msg}\033[0m" if sys.stderr.isatty() else msg, file=sys.stderr)
         return 1
     if missing_rec:
         print(paint("Worth installing: ", "dim") + ", ".join(missing_rec))
@@ -382,10 +403,14 @@ def read_no_follow(path: Path) -> str:
 
     Checking is_symlink() and then reading by path is two lookups: the file
     can be swapped in between, which is how out-of-tree content would reach a
-    permission-bypassed agent. Opening with O_NOFOLLOW closes that window.
+    permission-bypassed agent. O_NOFOLLOW closes that window; O_NONBLOCK plus
+    the fstat keep a planted FIFO or device from blocking the open forever.
     """
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, encoding="utf-8") as fh:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(errno.EINVAL, "not a regular file", str(path))
+        os.set_blocking(fd, True)
         return fh.read()
 
 
@@ -621,6 +646,8 @@ class Runner:
 
     def list_reviews(self) -> None:
         print(f"Available reviews ({len(self.prompt_files)}):")
+        width = max(shutil.get_terminal_size((100, 24)).columns, 60)
+        name_col = max(len(r) for r in self.prompt_files) + 1
         for r, prompt_file in self.prompt_files.items():
             # The first "Your goal" line doubles as the description.
             desc = ""
@@ -632,7 +659,16 @@ class Runner:
             except (OSError, UnicodeDecodeError):
                 pass
             active = "✓" if r in self.reviews else "○"
-            print(f"  {active} {r:<20}{self._origin(prompt_file)} {desc or '(no description)'}")
+            # Descriptions are whole paragraphs; one line each keeps the
+            # columns readable, and --dry-run/logs carry the full text.
+            origin = "[project]" if self._origin(prompt_file) else ""
+            prefix = f"  {active} {r.ljust(name_col)}{origin:<10} "
+            desc = desc.removeprefix("Your goal is to ").removeprefix("Your goal is ")
+            room = max(width - len(prefix), 20)
+            desc = desc or "(no description)"
+            if len(desc) > room:
+                desc = desc[:room - 1].rstrip() + "…"
+            print(prefix + desc)
 
     def dry_run(self) -> None:
         print("DRY RUN — planned schedule for one loop:")
@@ -696,13 +732,13 @@ def acquire_lock(path: Path) -> None:
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o644)
         if not stat.S_ISREG(os.fstat(fd).st_mode):  # check the fd, not the path
-            sys.exit(f"Lock path is not a regular file: {path}")
+            usage_error(f"Lock path is not a regular file: {path}")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         print(f"Another review-loop appears to be running (lock: {path})", file=sys.stderr)
         sys.exit(75)  # EX_TEMPFAIL
     except OSError as e:
-        sys.exit(f"Cannot acquire lock file {path}: {e}")
+        usage_error(f"Cannot acquire lock file {path}: {e}")
 
 
 def setup_log_tee(log_path: Path) -> None:
@@ -711,7 +747,7 @@ def setup_log_tee(log_path: Path) -> None:
         with open(log_path, "a"):
             pass
     except OSError as e:
-        sys.exit(f"Cannot write log file {log_path}: {e}")
+        usage_error(f"Cannot write log file {log_path}: {e}")
     # New session so terminal Ctrl+C does not kill tee before the final
     # stats are written through it.
     tee = subprocess.Popen(
