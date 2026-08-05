@@ -84,7 +84,7 @@ Run `./review-loop.py --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--models` | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review). `mixed`/`random`/`all` expands to every supported tool. Default: every tool found in `PATH`. |
+| `--models` | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |
@@ -104,8 +104,7 @@ Run `./review-loop.py --help` for the full option list.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
 - The injected prompt header/footer constrains each tool to: apply small fixes only, skip vendored/generated/lockfile paths, never commit, run lint/typecheck/tests if configured, and revert on failure.
 - At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
-- Exit code: 0 all reviews passed, 1 any review failed or timed out, 130 interrupted.
-- `--models mixed` expands to the supported tools actually installed; explicitly named tools must be in `PATH`.
+- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 130 interrupted (SIGINT/SIGTERM, takes precedence).
 
 ## Adding a review
 

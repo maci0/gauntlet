@@ -48,6 +48,7 @@ Rules:
 - Never modify files in: node_modules, vendor, dist, build, .next, target, .git, generated/auto-generated files. Never hand-edit lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.); they may only change as the output of running the project's package manager (npm/pnpm/yarn/cargo/go/uv).
 - If a single fix would change more than 300 lines in one file, skip it.
 - Do not commit anything to git. Do not run git commit, git push, or git tag.
+- Never modify or delete .review-loop.lock or any *-review.md prompt files.
 - After edits, if the project has a lint, typecheck, or test command configured (package.json scripts, Makefile, justfile, pyproject.toml, etc.), run the relevant one. If it fails due to your changes, revert them.
 - At the end, print a brief 1-line summary per changed file in the form: 'PATH — what was done'. If nothing changed, print 'No changes.'"""
 
@@ -106,7 +107,11 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
     """Map review name -> prompt file.
 
     Bundled prompts from prompt_dir, plus any *-review.md found in the
-    project tree (cwd). A project-local prompt wins on a name clash.
+    project tree (cwd). A project-local prompt wins over a bundled one of
+    the same name; among project duplicates the first found (shallowest,
+    then alphabetical) wins. Symlinks are never followed: prompts must be
+    regular files inside the tree, so a link cannot pull out-of-tree
+    content into a permission-bypassed AI run.
     """
     reviews: dict[str, Path] = {}
     if prompt_dir.is_dir():
@@ -114,19 +119,27 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             reviews[f.stem] = f
     project = Path.cwd().resolve()
     prompt_dir = prompt_dir.resolve()
-    for f in sorted(project.rglob("*-review.md")):
-        if f.parent.resolve() == prompt_dir:
-            continue
-        if any(part in SKIP_DIRS for part in f.relative_to(project).parts):
-            continue
-        prev = reviews.get(f.stem)
-        if prev is not None and prev.parent.resolve() != prompt_dir:
-            print(
-                f"Warning: duplicate project prompt {f.stem!r}: using {f}, ignoring {prev}",
-                file=sys.stderr,
-            )
-        reviews[f.stem] = f
-    return reviews
+    project_seen: set[str] = set()
+    for root, dirs, files in os.walk(project):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        for name in sorted(files):
+            if not name.endswith("-review.md"):
+                continue
+            f = Path(root) / name
+            if f.is_symlink() or f.parent.resolve() == prompt_dir:
+                continue
+            if re.search(r"[\x00-\x1f\x7f]", f.stem):
+                continue
+            if f.stem in project_seen:
+                print(
+                    f"Warning: duplicate project prompt {f.stem!r}: "
+                    f"using {reviews[f.stem]}, ignoring {f}",
+                    file=sys.stderr,
+                )
+                continue
+            project_seen.add(f.stem)
+            reviews[f.stem] = f
+    return dict(sorted(reviews.items()))
 
 
 def parse_duration(s: str) -> int:
@@ -151,14 +164,13 @@ def parse_models(s: str) -> list[ToolSpec]:
         if not entry:
             continue
         if entry.lower() in MIXED_KEYWORDS:
-            installed = [t for t in sorted(VALID_TOOLS) if shutil.which(t)]
+            installed = installed_tools()
             if not installed:
                 raise argparse.ArgumentTypeError(
                     f"'{entry}' matched no installed tools "
                     f"(supported: {', '.join(sorted(VALID_TOOLS))})"
                 )
-            for t in installed:
-                spec = ToolSpec(t)
+            for spec in installed:
                 if spec not in seen:
                     specs.append(spec)
                     seen.add(spec)
@@ -187,16 +199,27 @@ def parse_models(s: str) -> list[ToolSpec]:
 
 def fmt_duration(secs: float) -> str:
     secs = int(secs)
+    if secs >= 3600:
+        return f"{secs // 3600}h{(secs % 3600) // 60:02d}m"
     return f"{secs // 60}m{secs % 60:02d}s"
+
+
+def installed_tools() -> list[ToolSpec]:
+    return [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
 
 
 def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
+def usage_error(msg: str) -> None:
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+
+
 def check_tool(name: str) -> None:
     if shutil.which(name) is None:
-        sys.exit(f"Required tool not found in PATH: {name}")
+        usage_error(f"Required tool not found in PATH: {name}")
 
 
 def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
@@ -221,10 +244,7 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
             cmd += ["-m", spec.model]
         cmd += ["-p", prompt]
     elif spec.tool == "agy":
-        cmd = ["agy", "--dangerously-skip-permissions"]
-        if spec.model:
-            raise ValueError(f"agy does not support specifying models: {spec.model}")
-        cmd += ["-p", prompt]
+        cmd = ["agy", "--dangerously-skip-permissions", "-p", prompt]
     elif spec.tool == "cursor-agent":
         cmd = ["cursor-agent", "--print", "-f"]
         if spec.model:
@@ -264,7 +284,7 @@ class Runner:
             inc = split(self.args.reviews)
             unknown = inc - set(available)
             if unknown:
-                sys.exit(
+                usage_error(
                     f"Unknown review(s): {', '.join(sorted(unknown))}\n"
                     f"Available: {', '.join(available)}"
                 )
@@ -273,13 +293,13 @@ class Runner:
             exc = split(self.args.exclude)
             unknown = exc - set(available)
             if unknown:
-                sys.exit(
+                usage_error(
                     f"Unknown review(s) in --exclude: {', '.join(sorted(unknown))}\n"
                     f"Available: {', '.join(available)}"
                 )
             reviews = [r for r in reviews if r not in exc]
         if not reviews:
-            sys.exit("No reviews remain after filtering.")
+            usage_error("No reviews remain after filtering.")
         return reviews
 
     def pick_tool(self) -> ToolSpec:
@@ -289,7 +309,7 @@ class Runner:
         spec = self.pick_tool()
         prompt_file = self.prompt_files[review]
         try:
-            text = prompt_file.read_text()
+            text = prompt_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
             log(f"Cannot read prompt file {prompt_file} ({e}) — skipping")
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
@@ -304,8 +324,15 @@ class Runner:
         cmd = build_cmd(spec, prompt)
         if self.stopping:
             return
-        proc = subprocess.Popen(cmd, start_new_session=True)
+        try:
+            proc = subprocess.Popen(cmd, start_new_session=True)
+        except OSError as e:
+            log(f"FAILED to launch {spec.label()} for {review}: {e}")
+            self.stats.add(ReviewResult(review, spec, 0.0, "fail"))
+            return
         self.current_proc = proc
+        if self.stopping:  # signal landed between Popen and registration
+            self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
         try:
             rc = proc.wait(timeout=self.timeout_secs)
@@ -314,10 +341,10 @@ class Runner:
             log(f"TIMEOUT: {review} ({spec.label()}) after {fmt_duration(self.timeout_secs)}")
             self._kill_proc(proc, signal.SIGTERM)
             try:
-                rc = proc.wait(timeout=10)
+                proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._kill_proc(proc, signal.SIGKILL)
-                rc = proc.wait()
+                proc.wait()
         finally:
             self.current_proc = None
 
@@ -370,6 +397,9 @@ class Runner:
         print(f"Total reviews run: {self.stats.total_count}")
         print(f"  Passed: {self.stats.ok_count}")
         print(f"  Failed: {self.stats.fail_count}")
+        skipped = sum(1 for r in self.stats.results if r.status == "skipped")
+        if skipped:
+            print(f"  Skipped: {skipped}")
         print(f"Total time: {fmt_duration(total)}")
 
         # Per-tool breakdown
@@ -399,15 +429,15 @@ class Runner:
             # The first "Your goal" line doubles as the description.
             desc = ""
             try:
-                for line in prompt_file.read_text().splitlines():
+                for line in prompt_file.read_text(encoding="utf-8").splitlines():
                     if line.startswith("Your goal"):
                         desc = re.sub(r"[\x00-\x1f\x7f]", "", line)
                         break
-            except OSError:
+            except (OSError, UnicodeDecodeError):
                 pass
             active = "✓" if r in self.reviews else "○"
             origin = "" if prompt_file.parent.resolve() == self.bundled_dir else " [project]"
-            print(f"  {active} {r:<20}{origin} {desc}")
+            print(f"  {active} {r:<20}{origin} {desc or '(no description)'}")
 
     def dry_run(self) -> None:
         print("DRY RUN — planned schedule for one loop:")
@@ -423,12 +453,7 @@ class Runner:
             f"Models: {models_str}  |  timeout: {fmt_duration(self.timeout_secs)}  |  "
             f"prompt-dir: {self.args.prompt_dir}"
         )
-        if self.args.once:
-            limit = "1"
-        elif self.args.max_loops:
-            limit = str(self.args.max_loops)
-        else:
-            limit = "infinite"
+        limit = str(self.args.max_loops) if self.args.max_loops else "infinite"
         print(f"Loop limit: {limit}")
 
     def run(self) -> None:
@@ -461,15 +486,15 @@ class Runner:
                 )
                 print()
 
-                if self.args.once:
-                    break
                 if self.args.max_loops and self.loop_count >= self.args.max_loops:
                     break
         finally:
             self.print_stats()
 
 
-def acquire_lock(path: Path) -> int:
+def acquire_lock(path: Path) -> None:
+    # The fd is deliberately left open (never closed) so the flock is held
+    # for the lifetime of the process.
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644)
     except OSError as e:
@@ -478,7 +503,6 @@ def acquire_lock(path: Path) -> int:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         sys.exit(f"Another review-loop appears to be running (lock: {path})")
-    return fd
 
 
 def setup_log_tee(log_path: Path) -> None:
@@ -488,7 +512,11 @@ def setup_log_tee(log_path: Path) -> None:
             pass
     except OSError as e:
         sys.exit(f"Cannot write log file {log_path}: {e}")
-    tee = subprocess.Popen(["tee", "-a", str(log_path)], stdin=subprocess.PIPE)
+    # New session so terminal Ctrl+C does not kill tee before the final
+    # stats are written through it.
+    tee = subprocess.Popen(
+        ["tee", "-a", str(log_path)], stdin=subprocess.PIPE, start_new_session=True
+    )
     assert tee.stdin is not None
     os.dup2(tee.stdin.fileno(), 1)
     os.dup2(tee.stdin.fileno(), 2)
@@ -517,7 +545,8 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--dir", type=Path, default=None, help="cd into DIR before running")
     p.add_argument("--once", action="store_true", help="run a single loop and exit")
-    p.add_argument("--max-loops", type=int, default=0, help="stop after N loops")
+    p.add_argument("--max-loops", type=int, default=0, help="stop after N loops (0 = unlimited)")
+    p.add_argument("--version", action="version", version="review-loop 1.0")
     p.add_argument(
         "--timeout", default="30m", type=parse_duration,
         help="per-review timeout (default 30m)",
@@ -535,13 +564,15 @@ def parse_args() -> argparse.Namespace:
     args = p.parse_args()
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
+    if args.once:
+        args.max_loops = 1
     return args
 
 
 def autodetect_models() -> list[ToolSpec]:
-    found = [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
+    found = installed_tools()
     if not found:
-        sys.exit(
+        usage_error(
             f"No supported tools found in PATH. Install one of: "
             f"{', '.join(sorted(VALID_TOOLS))}, or pass --models explicitly."
         )
@@ -551,18 +582,21 @@ def autodetect_models() -> list[ToolSpec]:
 def main() -> None:
     args = parse_args()
 
+    # Resolve against the invocation cwd, before any --dir chdir.
+    args.prompt_dir = args.prompt_dir.resolve()
+
     if args.dir:
         try:
             os.chdir(args.dir)
         except OSError as e:
-            sys.exit(f"Cannot cd to {args.dir}: {e}")
+            usage_error(f"Cannot cd to {args.dir}: {e}")
 
     if not args.prompt_dir.is_dir():
-        sys.exit(f"Prompt directory not found: {args.prompt_dir}")
+        usage_error(f"Prompt directory not found: {args.prompt_dir}")
 
     if args.list:
         if args.models is None:
-            args.models = [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
+            args.models = installed_tools()
         Runner(args).run()
         return
 
@@ -570,12 +604,12 @@ def main() -> None:
         args.models = autodetect_models()
         log(f"Auto-detected models: {','.join(s.label() for s in args.models)}")
 
-    for tool in {s.tool for s in args.models}:
-        check_tool(tool)
-
     if args.dry_run:
         Runner(args).run()
         return
+
+    for tool in {s.tool for s in args.models}:
+        check_tool(tool)
 
     acquire_lock(Path.cwd() / ".review-loop.lock")
 
@@ -586,7 +620,7 @@ def main() -> None:
     runner.run()
     if runner.stopping:
         sys.exit(130)
-    if runner.stats.fail_count:
+    if any(r.status in ("fail", "timeout", "skipped") for r in runner.stats.results):
         sys.exit(1)
 
 
