@@ -18,6 +18,12 @@ Review the following:
 - Toolchain not pinned: compiler/interpreter/runtime version left to whatever the host has
 - Network access during build that can pull different content over time
 - Missing or stale lockfiles; lockfile not enforced (install allowed to drift from lock)
+- Embedded timestamps not normalized: `SOURCE_DATE_EPOCH` unsupported or ignored where the toolchain honors it
+- Build paths leaking into artifacts: no `-ffile-prefix-map`/`-fdebug-prefix-map`/`BUILD_PATH_PREFIX_MAP`, so building from a different directory changes the output
+- Archive metadata nondeterminism: tar/zip/jar entries carrying mtimes, uid/gid, permissions, or filesystem-dependent entry order
+- Locale, timezone, or encoding leaking into output (sort order, formatted dates, messages): build not pinned to `LC_ALL=C`/`TZ=UTC`
+- Uncontrolled version stamps: `git describe`, dirty flags, build counters, or hostnames embedded so no two builds agree
+- Output order dependent on readdir order, parallel scheduling, or hash iteration instead of an explicit sort
 
 2. Hermeticity and isolation
 - Builds that depend on undeclared system packages, global tools, or environment state
@@ -56,6 +62,8 @@ Review the following:
 - Missing target platforms the project ships to
 
 8. Supply-chain integrity of the build
+- No recorded build environment (buildinfo-style manifest of toolchain versions and inputs), so a rebuild cannot even be attempted faithfully
+- No independent rebuild-and-compare verification anywhere (CI or docs), so reproducibility claims are untested
 - Unverified downloads (no checksum/signature) pulled into the build
 - Build fetching from mutable sources (a branch, an unpinned URL, a `curl | sh`)
 - Untrusted build plugins or codegen with broad access
@@ -72,7 +80,8 @@ Review the following:
 - No single obvious build command; unclear which of several is canonical
 
 Instructions:
-- If available, use: `diffoscope` (diff two builds of the same source for reproducibility), `shellcheck` (build scripts). Never install tools.
+- If available, use: `diffoscope` (diff two builds of the same source for reproducibility), `shellcheck` (build scripts). The strongest reproducibility evidence is building twice (ideally varying path, time, and locale) and diffing the artifacts. Never install tools.
+- Follow reproducible-builds.org practice for fixes: honor `SOURCE_DATE_EPOCH`, map build paths out, normalize archive metadata, pin locale/timezone, sort explicitly.
 - Be concrete. Point at the specific rule, script line, or config key.
 - Prefer verifiable claims: "this Makefile target lacks `foo.h` as a prerequisite, so editing it does not trigger a rebuild."
 - Distinguish confirmed issues from likely issues from things needing maintainer confirmation.
