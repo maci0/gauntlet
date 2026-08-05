@@ -50,7 +50,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 ## Quick start
 
 ```sh
-# auto-detect installed tools (claude/gemini/qwen/codex/grok/agy)
+# auto-detect installed tools
 ./review-loop.py
 
 # list available reviews
@@ -103,13 +103,17 @@ Run `./review-loop.py --help` for the full option list.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
 - The injected prompt header/footer constrains each tool to: apply small fixes only, skip vendored/generated/lockfile paths, never commit, run lint/typecheck/tests if configured, and revert on failure.
-- At exit, per-tool and per-review statistics are printed.
+- At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
+- Exit code: 0 all reviews passed, 1 any review failed or timed out, 130 interrupted.
+- `--models mixed` expands to the supported tools actually installed; explicitly named tools must be in `PATH`.
 
 ## Adding a review
 
 Drop a new `<name>-review.md` into `prompts/`. It is auto-discovered — no code changes needed.
 
-Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name. Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped.
+Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name. Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped.
+
+**Security note:** the loop runs AI tools with permission prompts disabled against the target codebase, and project-local prompts are fed to them verbatim. Only run it against repositories you trust — a malicious repo could steer the AI tools through crafted file content or bundled prompt files.
 
 ## Prompt structure
 
