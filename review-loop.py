@@ -156,7 +156,7 @@ def parse_duration(s: str) -> int:
 MIXED_KEYWORDS = {"mixed", "random", "all"}
 
 
-def parse_models(s: str) -> list[ToolSpec]:
+def parse_agents(s: str) -> list[ToolSpec]:
     specs: list[ToolSpec] = []
     seen: set[ToolSpec] = set()
     for entry in s.split(","):
@@ -193,7 +193,7 @@ def parse_models(s: str) -> list[ToolSpec]:
             specs.append(spec)
             seen.add(spec)
     if not specs:
-        raise argparse.ArgumentTypeError("no models specified")
+        raise argparse.ArgumentTypeError("no agents specified")
     return specs
 
 
@@ -258,7 +258,7 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
 class Runner:
     def __init__(self, args: argparse.Namespace):
         self.args = args
-        self.tools: list[ToolSpec] = args.models
+        self.tools: list[ToolSpec] = args.agents
         self.reviews: list[str] = self._filter_reviews()
         self.timeout_secs: int = args.timeout
         self.bundled_dir = args.prompt_dir.resolve()
@@ -528,20 +528,20 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  review-loop.py --models claude\n"
-            "  review-loop.py --models mixed                 # all tools, default models\n"
-            "  review-loop.py --models claude,gemini,codex\n"
-            "  review-loop.py --models claude:opus-4-7,codex:gpt-5-codex\n"
-            "  review-loop.py --models mixed,claude:opus-4-7 # all + extra pinned model\n"
+            "  review-loop.py --agents claude\n"
+            "  review-loop.py --agents mixed                 # all installed agents, default models\n"
+            "  review-loop.py --agents claude,gemini,codex\n"
+            "  review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
+            "  review-loop.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
             "  review-loop.py --list                         # show available reviews\n"
         ),
     )
     p.add_argument(
-        "--models", type=parse_models, default=None,
-        help="comma-separated tools, optionally tool:model. "
-             "Use 'mixed' (or 'random'/'all') as shorthand for every supported tool. "
+        "--agents", "--models", dest="agents", type=parse_agents, default=None,
+        help="comma-separated agent CLIs, optionally agent:model. "
+             "Use 'mixed' (or 'random'/'all') as shorthand for every installed agent. "
              "Examples: 'claude', 'mixed', 'claude:opus-4-7,codex:gpt-5-codex'. "
-             "Default: auto-detect installed tools.",
+             "Default: auto-detect installed agents. (--models is a deprecated alias.)",
     )
     p.add_argument("--dir", type=Path, default=None, help="cd into DIR before running")
     p.add_argument("--once", action="store_true", help="run a single loop and exit")
@@ -569,12 +569,12 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def autodetect_models() -> list[ToolSpec]:
+def autodetect_agents() -> list[ToolSpec]:
     found = installed_tools()
     if not found:
         usage_error(
-            f"No supported tools found in PATH. Install one of: "
-            f"{', '.join(sorted(VALID_TOOLS))}, or pass --models explicitly."
+            f"No supported agents found in PATH. Install one of: "
+            f"{', '.join(sorted(VALID_TOOLS))}, or pass --agents explicitly."
         )
     return found
 
@@ -595,20 +595,20 @@ def main() -> None:
         usage_error(f"Prompt directory not found: {args.prompt_dir}")
 
     if args.list:
-        if args.models is None:
-            args.models = installed_tools()
+        if args.agents is None:
+            args.agents = installed_tools()
         Runner(args).run()
         return
 
-    if args.models is None:
-        args.models = autodetect_models()
-        log(f"Auto-detected models: {','.join(s.label() for s in args.models)}")
+    if args.agents is None:
+        args.agents = autodetect_agents()
+        log(f"Auto-detected agents: {','.join(s.label() for s in args.agents)}")
 
     if args.dry_run:
         Runner(args).run()
         return
 
-    for tool in {s.tool for s in args.models}:
+    for tool in {s.tool for s in args.agents}:
         check_tool(tool)
 
     acquire_lock(Path.cwd() / ".review-loop.lock")

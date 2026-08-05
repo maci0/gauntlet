@@ -57,22 +57,22 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 ./review-loop.py --list
 
 # single tool
-./review-loop.py --models claude
+./review-loop.py --agents claude
 
 # all supported tools, default models per tool
-./review-loop.py --models mixed
+./review-loop.py --agents mixed
 
 # pick randomly across an explicit list
-./review-loop.py --models claude,gemini,codex
+./review-loop.py --agents claude,gemini,codex
 
 # pin specific models
-./review-loop.py --models claude:opus-4-7,codex:gpt-5-codex,gemini
+./review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex,gemini
 
 # same tool with multiple models
-./review-loop.py --models claude:opus-4-7,claude:sonnet-4-6
+./review-loop.py --agents claude:opus-4-7,claude:sonnet-4-6
 
 # run only specific reviews
-./review-loop.py --models claude --reviews code-review,sec-review,error-review
+./review-loop.py --agents claude --reviews code-review,sec-review,error-review
 
 # skip reviews that don't apply
 ./review-loop.py --exclude db-review,ux-review
@@ -84,7 +84,7 @@ Run `./review-loop.py --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--models` | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
+| `--agents` (alias `--models`) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |
@@ -98,7 +98,7 @@ Run `./review-loop.py --help` for the full option list.
 
 ## Behavior
 
-- Each loop: reviews are shuffled, each runs once with a random model from `--models`.
+- Each loop: reviews are shuffled, each runs once with a random model from `--agents`.
 - Each review is hard-bounded by `--timeout`; on timeout the process group is `SIGTERM`'d, then `SIGKILL`'d after 10s.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
