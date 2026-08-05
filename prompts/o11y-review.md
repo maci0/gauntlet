@@ -48,6 +48,7 @@ Review the following:
 - Missing sampling configuration leading to excessive trace volume or gaps
 
 5. Error tracking and handling
+(error-review owns error-handling semantics; here cover the instrumentation: capture, reporting, grouping.)
 - Errors caught and silently discarded without logging or reporting
 - Stack traces not captured or stripped before reaching error tracking
 - Duplicate error reports for the same root cause
@@ -126,8 +127,8 @@ For each finding include:
 - Location: file(s), service(s), endpoint(s), or area
 - Confidence: confirmed / likely / potential
 - Why it matters
-- Evidence from the code
 - Incident scenario: what goes wrong without this
+- Evidence from the code
 - Recommendation
 - Expected benefit: debuggability / incident response / alerting / cost / compliance
 - Estimated effort

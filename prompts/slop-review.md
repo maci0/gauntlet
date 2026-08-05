@@ -51,7 +51,7 @@ Review the following:
 - Reinvented standard library: hand-rolled versions of built-ins the platform already provides
 - Config/options plumbing for values that never vary
 - Abstraction layers with exactly one implementation and no second in sight
-(Structural/architectural over-engineering at module scale belongs to arch-review; here target local, obvious machinery.)
+(Necessity proofs and larger deletions belong to minimalism-review; here target local, obvious machinery whose removal needs no deep proof.)
 
 8. Naming that fights convention
 - Overlong narrative identifiers where the file uses terse locals (`temporary_intermediate_result_list` next to `buf`, `tmp`)
@@ -72,6 +72,7 @@ Review the following:
 - Test names that don't say what behavior is checked
 
 Instructions:
+- `jscpd` (if on PATH; never install it) locates copy-paste clusters worth examining; its hits still need the neighbours-and-plausible-reason test before touching anything.
 - Only act where removal or simplification loses no information and changes no behavior. Behavior-preserving cleanups only.
 - Confirm each candidate against its neighbours before changing it: read the whole function and nearby code, not the fragment.
 - Prefer deletion over rewriting; the fix for slop is usually less code.

@@ -19,10 +19,11 @@ Review the following:
 - Repeated validation, parsing, error handling, or data transformation logic
 
 3. Dead or unnecessary code
-- Unused functions, methods, classes, files, variables, constants, imports, flags, config, feature toggles, tests, assets
+- Unused functions, methods, classes, files, variables, constants, imports, flags, config, feature toggles, assets (unused tests: flag, never delete)
 - Code paths that appear unreachable
 - Over-engineered abstractions that provide little value
 - Wrappers/helpers that do not meaningfully simplify anything
+(For large-scale necessity proofs and deletion ledgers, minimalism-review owns the deep pass; here catch the obvious cases.)
 
 4. Opportunities to reduce lines of code
 - Places where logic can be simplified
@@ -58,6 +59,7 @@ Review the following:
 - Patterns that obscure rather than clarify
 
 8. Error handling patterns
+(Deep error-handling/resilience analysis belongs to error-review; here check consistency of the patterns only.)
 - Inconsistent error handling strategies across the codebase
 - Errors silently swallowed or caught and ignored
 - Missing error propagation where callers need to know about failures
@@ -70,7 +72,7 @@ Review the following:
 
 9. Type safety and contracts
 - Functions that accept overly broad types (any, object, interface{}) when specific types exist
-- Missing null or undefined checks on values that can be absent
+- Missing null or undefined checks on values that can be absent (add a check only when a concrete path produces the absent value)
 - Type assertions or casts that could fail at runtime
 - Missing validation at module boundaries or public API entry points
 - Implicit contracts between modules that are not enforced by types or assertions
@@ -81,11 +83,12 @@ Review the following:
 - Suspicious logic or possible bugs
 - Edge cases not handled
 - Implicit behavior that should be explicit
-- Race conditions or shared mutable state
+- Race conditions or shared mutable state (deep analysis belongs to concurrency-review)
 - Assumptions about ordering, uniqueness, or data shape that are not validated
 - Code that works by coincidence rather than by design
 
 Instructions:
+- Purpose-built tools beat manual inspection where available on PATH (never install them): the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` for duplication, `vulture`/`knip`/`ts-prune` for dead code. Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting.
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.

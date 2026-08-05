@@ -38,6 +38,7 @@ Review the following:
 - Inefficient use of async/await patterns
 
 5. Database and storage
+(db-review owns schema, index, and migration changes; here fix only app-side query usage — N+1s, over-fetching, pagination — and report the rest.)
 - Missing indexes for common query patterns
 - Queries that fetch more data than needed
 - Missing pagination on large result sets
@@ -76,12 +77,14 @@ Review the following:
 - Missing rate limiting on resource-intensive operations
 
 10. Build and bundle size
+(deps-review owns dependency removal/replacement; here focus on the size and load-time impact.)
 - Unused dependencies increasing build or load time
 - Missing tree-shaking or dead code elimination opportunities
 - Large assets that could be compressed or lazy-loaded
 - Duplicate dependencies with overlapping functionality
 
 Instructions:
+- Purpose-built tools beat guessing where available on PATH (never install them): `hyperfine` for command benchmarks, `perf`/flamegraphs for CPU profiles, `heaptrack`/`valgrind --tool=massif` for allocations. Measure before and after any change you claim is faster.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - Prioritize hot paths and frequently executed code over cold paths.
 - Consider the expected scale and usage patterns of the application.

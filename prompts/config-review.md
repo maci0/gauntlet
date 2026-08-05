@@ -25,6 +25,7 @@ Review the following:
 
 3. Secrets management
 - Secrets (API keys, database passwords, tokens) hardcoded in source code
+(sec-review owns fixing secret handling; here report secret findings but change only config structure, not the secret storage mechanism.)
 - Secrets stored in plain text configuration files committed to version control
 - Secrets in environment variables without documentation of which are required
 - Missing secrets in example configuration or .env.example files

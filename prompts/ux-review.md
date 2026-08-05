@@ -57,6 +57,7 @@ Review the following:
 - Status indicators that are unclear or missing context
 
 6. Accessibility
+(a11y-review owns deep accessibility work — semantics, ARIA, AT support, WCAG conformance. Here flag only barriers you hit while reviewing the flows; leave the fixes to a11y-review.)
 - Missing or incorrect ARIA labels, roles, or landmarks
 - Insufficient color contrast (text, icons, interactive elements)
 - Information conveyed by color alone without alternative indicators
@@ -190,6 +191,6 @@ Important:
 - If you are not sure whether a pattern is intentional, say so.
 - Prefer the smallest change that meaningfully improves the user experience.
 - Do not recommend redesigns where targeted fixes solve the problem.
-- Accessibility is not optional. Flag WCAG violations as high severity minimum.
+- Accessibility is not optional. Severity of WCAG violations follows a11y-review's scale (blockers for a whole user group are critical).
 - Consider the cost of change fatigue when recommending UI updates.
 - Call out when the UX is already strong in specific areas.

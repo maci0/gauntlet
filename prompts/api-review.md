@@ -34,6 +34,7 @@ Review the following:
 - Missing error codes for programmatic error handling
 
 4. Versioning and compatibility
+(release-review owns semver mechanics, changelogs, and deprecation lifecycle; here judge the API design side of compatibility.)
 - Breaking changes without version bump
 - Missing versioning strategy
 - Deprecated endpoints without migration path

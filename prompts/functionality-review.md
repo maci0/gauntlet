@@ -71,7 +71,7 @@ Instructions:
 - Do not report style, naming, or structural issues — those belong to other reviews.
 - Prefer fewer, high-value findings over many weak ones.
 - Call out when behavior is correct but undocumented, vs documented but incorrect.
-- Where intended behavior is genuinely unknown, ask rather than assert.
+- Where intended behavior is genuinely unknown, record it as an open question rather than asserting an answer.
 
 For each finding include:
 - Title

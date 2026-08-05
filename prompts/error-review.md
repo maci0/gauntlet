@@ -75,6 +75,7 @@ Review the following:
 - Cleanup not performed when an operation is cancelled
 
 9. Error observability
+(o11y-review owns metrics, dashboards, and alerting instrumentation; here cover what the error path itself must record.)
 - Errors not logged or logged at wrong severity level
 - Missing structured error logging (just logging error.message, not the full error)
 - Missing error rate metrics or error count instrumentation
@@ -84,6 +85,7 @@ Review the following:
 - Missing distinction between expected errors (404, validation) and unexpected errors (500, panic)
 
 10. Edge cases and defensive coding
+(Only where a concrete path exists for the bad value to reach the code; do not add speculative guards — slop-review removes them.)
 - Division by zero, nil/null dereference, or index-out-of-bounds not guarded
 - Missing handling for empty collections, zero-length input, or missing optional values
 - Assumptions about data shape or ordering that are not validated

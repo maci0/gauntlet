@@ -104,13 +104,14 @@ Review the following:
 - Missing linting or static analysis for concurrency anti-patterns
 
 Instructions:
+- Purpose-built tools beat eyeballing where available (never install them): `go test -race`, ThreadSanitizer (`-fsanitize=thread`), `valgrind --tool=helgrind`. A sanitizer trace is the strongest possible evidence for a race; run the existing test suite under one when the toolchain supports it.
 - Trace shared state from declaration to all access points. Check every access for proper synchronization.
 - Consider what happens under high concurrency, not just the single-threaded happy path.
 - Think about timing: if two operations happen "at the same time", what can go wrong?
 - Do not flag single-threaded code or code that is clearly only accessed from one thread.
 - Focus on bugs that corrupt data or cause deadlocks, not on theoretical contention that reduces throughput.
 - Consider the deployment context: single-process vs multi-process, single-node vs distributed.
-- Concurrency bugs are hard to reproduce. If the code looks suspicious, flag it even if you cannot construct a definitive exploit.
+- Concurrency bugs are hard to reproduce. Report suspicious code even without a definitive exploit, but only change code where the race is proven (shared state + unsynchronized access + possible interleaving traced); merely-suspicious spots are report-only.
 - Distinguish between:
   - confirmed races (shared mutable state with no synchronization, provable interleaving)
   - likely races (patterns that typically cause races, missing synchronization on suspicious paths)

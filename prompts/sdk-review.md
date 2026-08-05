@@ -53,6 +53,7 @@ Review the following:
 - Deep or confusing type hierarchies that make code completion unhelpful
 
 5. Backward compatibility and versioning
+(release-review owns semver mechanics, changelogs, and deprecation lifecycle; here judge the SDK surface side of compatibility.)
 - Breaking changes in minor or patch releases
 - Missing deprecation annotations or warnings on outgoing features
 - Deprecated methods without documented migration path or replacement

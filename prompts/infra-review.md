@@ -62,6 +62,7 @@ Review the following:
 - Missing deployment audit trail or change log
 
 6. Secret management
+(sec-review owns fixing application secret handling; here cover the CI/CD and infrastructure side only.)
 - Secrets committed to version control (even if later removed)
 - Secrets passed as plain environment variables without a vault or secret manager
 - Shared secrets across environments
@@ -91,6 +92,7 @@ Review the following:
 - Auto-scaling not configured or misconfigured for expected load patterns
 
 9. Build and artifact management
+(build-review owns build reproducibility, hermeticity, and caching internals; here cover artifact storage, versioning, and delivery.)
 - Build artifacts not versioned or tagged consistently
 - Missing artifact registry or insecure artifact storage
 - Build processes that are not reproducible
@@ -109,6 +111,7 @@ Review the following:
 - Missing contribution guidelines or development workflow documentation
 
 Instructions:
+- Purpose-built tools beat manual inspection where available on PATH (never install them): `hadolint` for Dockerfiles, `shellcheck` for shell scripts, `actionlint` for GitHub Actions workflows, `tflint` for Terraform.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.
 - Verify that documented procedures match what the code and configuration actually do.
 - Consider the operational burden of the current setup.
