@@ -17,6 +17,7 @@ Review the following:
 - Overly complex pipelines that are hard to debug or maintain
 
 2. Container configuration
+(pkg-review owns the image as a shipped artifact — contents, layers, labels, USER; here cover how images are built and used in CI/CD and deployment.)
 - Base images that are too large, outdated, or unversioned
 - Missing multi-stage builds where they would reduce image size
 - Running containers as root when unnecessary
