@@ -11,34 +11,34 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 
 | Review | Focus |
 |---|---|
-| `a11y-review` | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
-| `api-review` | API design, consistency, error handling, versioning |
-| `arch-review` | Architecture, module boundaries, dependency direction, layering |
-| `build-review` | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
-| `cli-review` | CLI usability, flags, help text, output design, scripting support |
-| `code-review` | Code quality, duplication, dead code, refactoring, type safety |
-| `concurrency-review` | Race conditions, deadlocks, shared state, async correctness, thread safety |
-| `config-review` | Configuration management, environment separation, secrets, feature flags |
-| `db-review` | Schema design, queries, migrations, data integrity, indexing |
-| `deps-review` | Dependency health, unused packages, vulnerabilities, license compliance |
-| `design-review` | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection |
-| `doc-review` | Documentation accuracy, coverage, onboarding, architecture docs |
-| `dst-review` | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
-| `error-review` | Error handling, resilience, retries, timeouts, failure isolation |
-| `functionality-review` | Feature completeness, behavioral correctness, edge cases, contract mismatches |
-| `fuzz-review` | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
-| `i18n-review` | Internationalization, localization, locale handling, RTL, formatting |
-| `infra-review` | CI/CD, containers, IaC, deployment, secret management |
-| `minimalism-review` | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
-| `o11y-review` | Observability: logging, metrics, tracing, alerting, health checks |
-| `perf-review` | Performance bottlenecks, memory, I/O, caching, hot paths |
-| `privacy-review` | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
-| `release-review` | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
-| `sdk-review` | SDK developer experience, API surface, types, versioning, testability, docs |
-| `sec-review` | Security vulnerabilities, auth, injection, data exposure, cryptography |
-| `slop-review` | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
-| `test-review` | Test quality, coverage gaps, flaky tests, mock quality, test design |
-| `ux-review` | UX, accessibility, interaction design, forms, responsive layout |
+| [`a11y-review`](prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
+| [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
+| [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
+| [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
+| [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
+| [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety |
+| [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
+| [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
+| [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
+| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, license compliance |
+| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection |
+| [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
+| [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
+| [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
+| [`functionality-review`](prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
+| [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
+| [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
+| [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
+| [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
+| [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
+| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths |
+| [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
+| [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
+| [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
+| [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
+| [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
+| [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
+| [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
 
 ## Requirements
 
@@ -113,7 +113,7 @@ Drop a new `<name>-review.md` into `prompts/`. It is auto-discovered — no code
 All review prompts follow a consistent structure:
 
 1. **Role and goal** — who the reviewer is and what they evaluate.
-2. **Numbered checklist** (10 sections) — specific items to check, grouped by concern.
+2. **Numbered checklist** (typically 10 sections) — specific items to check, grouped by concern.
 3. **Instructions** — how to approach the review: priorities, distinctions, scope.
 4. **Finding template** — fields for each finding (Title, Severity, Category, Location, Confidence, Why, Evidence, Recommendation, Expected benefit, Estimated effort, plus domain-specific extras).
 5. **Output format** — structured report sections.
