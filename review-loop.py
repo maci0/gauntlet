@@ -20,6 +20,46 @@ from pathlib import Path
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent"}
 NO_MODEL_TOOLS = {"agy"}
 
+# Search/rewrite tools the injected rules point every review at. "a|b" means
+# either binary satisfies the check.
+CORE_TOOLS: tuple[tuple[str, str], ...] = (
+    ("rg", "text search"),
+    ("ast-grep|sg", "structural search and rewrite"),
+    ("patchwork", "AST-native find/replace"),
+    ("tsed", "tree-sitter sed"),
+    ("semcode", "semantic C/C++/Rust queries"),
+    ("tee", "required for --log"),
+)
+
+# Optional per-review helpers, mirroring the "If available, use:" lines in
+# the prompts. Entries are binaries, so package-only names (Atheris, Jazzer,
+# eslint plugins) and SQL keywords are deliberately absent.
+REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
+    "a11y-review": ("pa11y", "lighthouse", "axe"),
+    "api-review": ("spectral", "oasdiff", "buf"),
+    "arch-review": ("madge", "pydeps", "lint-imports"),
+    "build-review": ("diffoscope", "shellcheck"),
+    "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip"),
+    "concurrency-review": ("valgrind",),
+    "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
+    "db-review": ("sqlfluff",),
+    "deps-review": ("osv-scanner", "pip-audit", "deptry", "cargo-audit", "cargo-udeps", "depcheck"),
+    "doc-review": ("vale", "markdownlint", "lychee"),
+    "fuzz-review": ("cargo-fuzz", "afl-fuzz"),
+    "i18n-review": ("xgettext", "msgfmt"),
+    "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
+    "minimalism-review": ("vulture", "knip", "ts-prune", "tokei", "cloc"),
+    "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
+    "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive",
+                   "desktop-file-validate", "appstream-util"),
+    "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
+    "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
+    "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec"),
+    "slop-review": ("jscpd",),
+    "test-review": ("coverage", "cargo-llvm-cov", "c8", "mutmut", "cargo-mutants", "stryker"),
+    "ux-review": ("lighthouse",),
+}
+
 PROMPT_HEADER = "MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report."
 
 PROMPT_SUFFIX = """
@@ -208,6 +248,52 @@ def fmt_duration(secs: float) -> str:
 
 def installed_tools() -> list[ToolSpec]:
     return [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
+
+
+def have(name: str) -> bool:
+    """True if any alternative in an 'a|b' tool spec is on PATH."""
+    return any(shutil.which(n) for n in name.split("|"))
+
+
+def doctor() -> int:
+    """Report which recommended CLI tools are available. Returns an exit code."""
+    mark = {True: "✓", False: "✗"}
+
+    agents = sorted(VALID_TOOLS)
+    found_agents = [a for a in agents if shutil.which(a)]
+    print("Agent CLIs (at least one required):")
+    for a in agents:
+        print(f"  {mark[a in found_agents]} {a}")
+
+    print()
+    print("Core tools (used by every review):")
+    for name, purpose in CORE_TOOLS:
+        label = name.replace("|", " or ")
+        print(f"  {mark[have(name)]} {label:<24} {purpose}")
+
+    print()
+    print("Per-review helpers (optional):")
+    missing_optional = 0
+    total_optional = 0
+    for review, tools in sorted(REVIEW_TOOLS.items()):
+        marks = []
+        for t in tools:
+            ok = have(t)
+            total_optional += 1
+            missing_optional += not ok
+            marks.append(f"{mark[ok]} {t}")
+        print(f"  {review:<20} {'  '.join(marks)}")
+
+    print()
+    have_optional = total_optional - missing_optional
+    print(f"Agents: {len(found_agents)}/{len(agents)}  |  "
+          f"core: {sum(have(n) for n, _ in CORE_TOOLS)}/{len(CORE_TOOLS)}  |  "
+          f"optional: {have_optional}/{total_optional}")
+    if not found_agents:
+        print("No agent CLI found — install one to run reviews.", file=sys.stderr)
+        return 1
+    print("Missing optional tools only reduce evidence quality; reviews still run.")
+    return 0
 
 
 def sanitize(s: str) -> str:
@@ -555,6 +641,7 @@ def parse_args() -> argparse.Namespace:
             "  review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
             "  review-loop.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
             "  review-loop.py --list                         # show available reviews\n"
+            "  review-loop.py doctor                         # check recommended CLI tools\n"
         ),
     )
     p.add_argument(
@@ -563,6 +650,10 @@ def parse_args() -> argparse.Namespace:
              "Use 'mixed' (or 'random'/'all') as shorthand for every installed agent. "
              "Examples: 'claude', 'mixed', 'claude:opus-4-7,codex:gpt-5-codex'. "
              "Default: auto-detect installed agents. (--models is a deprecated alias.)",
+    )
+    p.add_argument(
+        "command", nargs="?", choices=["doctor"], default=None,
+        help="doctor: report which recommended CLI tools are installed",
     )
     p.add_argument("--dir", type=Path, default=None, help="cd into DIR before running")
     p.add_argument("--once", action="store_true", help="run a single loop and exit")
@@ -604,6 +695,9 @@ def autodetect_agents() -> list[ToolSpec]:
 
 def main() -> None:
     args = parse_args()
+
+    if args.command == "doctor":
+        sys.exit(doctor())
 
     # Resolve against the invocation cwd, before any --dir chdir.
     args.prompt_dir = args.prompt_dir.resolve()

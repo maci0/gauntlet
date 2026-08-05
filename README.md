@@ -56,6 +56,9 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 # list available reviews
 ./review-loop.py --list
 
+# check which recommended CLI tools are installed
+./review-loop.py doctor
+
 # single tool
 ./review-loop.py --agents claude
 
@@ -84,6 +87,7 @@ Run `./review-loop.py --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
+| `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
 | `--agents` (alias `--models`) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
@@ -127,4 +131,4 @@ All review prompts follow a consistent structure:
 
 ## License
 
-No license specified. Treat as all-rights-reserved unless changed.
+GNU Affero General Public License v3.0 or later. See [LICENSE](LICENSE).
