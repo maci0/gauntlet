@@ -93,7 +93,7 @@ class Stats:
     def tool_summary(self) -> dict[str, dict[str, int]]:
         summary: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
         for r in self.results:
-            summary[r.tool.tool][r.status] += 1
+            summary[r.tool.label()][r.status] += 1
         return dict(summary)
 
 
@@ -108,10 +108,10 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
 
     Bundled prompts from prompt_dir, plus any *-review.md found in the
     project tree (cwd). A project-local prompt wins over a bundled one of
-    the same name; among project duplicates the first found (shallowest,
-    then alphabetical) wins. Symlinks are never followed: prompts must be
-    regular files inside the tree, so a link cannot pull out-of-tree
-    content into a permission-bypassed AI run.
+    the same name; among project duplicates the first found in the walk
+    (depth-first, directories and files sorted) wins. Symlinks are never
+    followed: prompts must be regular files inside the tree, so a link
+    cannot pull out-of-tree content into a permission-bypassed AI run.
     """
     reviews: dict[str, Path] = {}
     if prompt_dir.is_dir():
@@ -132,8 +132,10 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
                 continue
             if f.stem in project_seen:
                 print(
-                    f"Warning: duplicate project prompt {f.stem!r}: "
-                    f"using {reviews[f.stem]}, ignoring {f}",
+                    sanitize(
+                        f"Warning: duplicate project prompt {f.stem!r}: "
+                        f"using {reviews[f.stem]}, ignoring {f}"
+                    ),
                     file=sys.stderr,
                 )
                 continue
@@ -208,8 +210,13 @@ def installed_tools() -> list[ToolSpec]:
     return [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
 
 
+def sanitize(s: str) -> str:
+    """Strip terminal control characters from untrusted display text."""
+    return re.sub(r"[\x00-\x1f\x7f]", "", s)
+
+
 def log(msg: str) -> None:
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+    print(f"[{time.strftime('%H:%M:%S')}] {sanitize(msg)}", flush=True)
 
 
 def usage_error(msg: str) -> None:
@@ -273,7 +280,7 @@ class Runner:
         self.prompt_files = discover_reviews(self.args.prompt_dir)
         available = list(self.prompt_files)
         if not available:
-            sys.exit(f"No *-review.md files found in: {self.args.prompt_dir}")
+            usage_error(f"No *-review.md files found in: {self.args.prompt_dir}")
 
         reviews = list(available)
 
@@ -305,9 +312,16 @@ class Runner:
     def pick_tool(self) -> ToolSpec:
         return random.choice(self.tools)
 
+    def _origin(self, prompt_file: Path) -> str:
+        return "" if prompt_file.parent.resolve() == self.bundled_dir else " [project]"
+
     def run_review(self, review: str) -> None:
         spec = self.pick_tool()
         prompt_file = self.prompt_files[review]
+        if prompt_file.is_symlink():  # re-check: swapped since discovery
+            log(f"Prompt file became a symlink: {prompt_file} — skipping")
+            self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
+            return
         try:
             text = prompt_file.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError) as e:
@@ -318,8 +332,7 @@ class Runner:
         prompt = f"{PROMPT_HEADER}\n\n{text}{PROMPT_SUFFIX}"
 
         start = time.monotonic()
-        origin = "" if prompt_file.parent.resolve() == self.bundled_dir else " [project]"
-        log(f"Running {review}{origin} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
+        log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
 
         cmd = build_cmd(spec, prompt)
         if self.stopping:
@@ -335,16 +348,18 @@ class Runner:
             self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
         try:
-            rc = proc.wait(timeout=self.timeout_secs)
+            rc = proc.wait(timeout=10 if self.stopping else self.timeout_secs)
         except subprocess.TimeoutExpired:
-            timed_out = True
-            log(f"TIMEOUT: {review} ({spec.label()}) after {fmt_duration(self.timeout_secs)}")
+            timed_out = not self.stopping
+            if timed_out:
+                log(f"TIMEOUT: {review} ({spec.label()}) after {fmt_duration(self.timeout_secs)}")
             self._kill_proc(proc, signal.SIGTERM)
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._kill_proc(proc, signal.SIGKILL)
                 proc.wait()
+            rc = -signal.SIGTERM
         finally:
             self.current_proc = None
 
@@ -375,19 +390,20 @@ class Runner:
                 pass
 
     def handle_signal(self, signum, frame) -> None:
+        # Async-signal-safe: os.write only; print/log here can raise
+        # "reentrant call" if the signal lands mid-print on the main thread.
         self.interrupt_count += 1
         self.stopping = True
         proc = self.current_proc
-        print()
         if proc and proc.poll() is None:
             if self.interrupt_count == 1:
-                log(f"Signal received — terminating current review (pid {proc.pid}). Ctrl+C again for KILL.")
+                os.write(2, b"\nSignal received - terminating current review. Ctrl+C again for KILL.\n")
                 self._kill_proc(proc, signal.SIGTERM)
             else:
-                log(f"Force-killing pid {proc.pid}...")
+                os.write(2, b"\nForce-killing current review...\n")
                 self._kill_proc(proc, signal.SIGKILL)
         else:
-            log("Signal received — stopping...")
+            os.write(2, b"\nSignal received - stopping...\n")
 
     def print_stats(self) -> None:
         total = time.monotonic() - self.script_start
@@ -397,9 +413,10 @@ class Runner:
         print(f"Total reviews run: {self.stats.total_count}")
         print(f"  Passed: {self.stats.ok_count}")
         print(f"  Failed: {self.stats.fail_count}")
-        skipped = sum(1 for r in self.stats.results if r.status == "skipped")
-        if skipped:
-            print(f"  Skipped: {skipped}")
+        for status, label in (("skipped", "Skipped"), ("interrupted", "Interrupted")):
+            n = sum(1 for r in self.stats.results if r.status == status)
+            if n:
+                print(f"  {label}: {n}")
         print(f"Total time: {fmt_duration(total)}")
 
         # Per-tool breakdown
@@ -410,7 +427,7 @@ class Runner:
             for tool in sorted(tool_summary):
                 counts = tool_summary[tool]
                 parts = [f"{status}={count}" for status, count in sorted(counts.items())]
-                print(f"  {tool:<7} {', '.join(parts)}")
+                print(f"  {tool:<20} {', '.join(parts)}")
 
         failures = sorted(
             (r for r in self.stats.results if r.status in ("fail", "timeout")),
@@ -436,23 +453,24 @@ class Runner:
             except (OSError, UnicodeDecodeError):
                 pass
             active = "✓" if r in self.reviews else "○"
-            origin = "" if prompt_file.parent.resolve() == self.bundled_dir else " [project]"
-            print(f"  {active} {r:<20}{origin} {desc or '(no description)'}")
+            print(f"  {active} {r:<20}{self._origin(prompt_file)} {desc or '(no description)'}")
 
     def dry_run(self) -> None:
         print("DRY RUN — planned schedule for one loop:")
         order = list(self.reviews)
         random.shuffle(order)
         for r in order:
-            origin = "" if self.prompt_files[r].parent.resolve() == self.bundled_dir else " [project]"
-            print(f"  {r:<20}{origin} → {self.pick_tool().label()}")
+            print(f"  {r:<20}{self._origin(self.prompt_files[r])} → {self.pick_tool().label()}")
         print()
         print(f"Reviews per loop: {len(self.reviews)}")
-        models_str = ", ".join(s.label() for s in self.tools)
+        agents_str = ", ".join(s.label() for s in self.tools)
         print(
-            f"Models: {models_str}  |  timeout: {fmt_duration(self.timeout_secs)}  |  "
+            f"Agents: {agents_str}  |  timeout: {fmt_duration(self.timeout_secs)}  |  "
             f"prompt-dir: {self.args.prompt_dir}"
         )
+        missing = sorted(t for t in {s.tool for s in self.tools} if shutil.which(t) is None)
+        if missing:
+            print(f"Warning: not installed, would fail at runtime: {', '.join(missing)}")
         limit = str(self.args.max_loops) if self.args.max_loops else "infinite"
         print(f"Loop limit: {limit}")
 
@@ -494,15 +512,18 @@ class Runner:
 
 def acquire_lock(path: Path) -> None:
     # The fd is deliberately left open (never closed) so the flock is held
-    # for the lifetime of the process.
+    # for the lifetime of the process. O_NOFOLLOW rejects symlinks and
+    # O_NONBLOCK keeps a planted FIFO from blocking the open forever.
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW, 0o644)
-    except OSError as e:
-        sys.exit(f"Cannot create lock file {path}: {e}")
-    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o644)
+        if not os.path.isfile(path):
+            sys.exit(f"Lock path is not a regular file: {path}")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        sys.exit(f"Another review-loop appears to be running (lock: {path})")
+        print(f"Another review-loop appears to be running (lock: {path})", file=sys.stderr)
+        sys.exit(75)  # EX_TEMPFAIL
+    except OSError as e:
+        sys.exit(f"Cannot acquire lock file {path}: {e}")
 
 
 def setup_log_tee(log_path: Path) -> None:
@@ -565,6 +586,8 @@ def parse_args() -> argparse.Namespace:
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
     if args.once:
+        if args.max_loops:
+            p.error("--once conflicts with --max-loops")
         args.max_loops = 1
     return args
 
@@ -617,7 +640,10 @@ def main() -> None:
         setup_log_tee(args.log)
 
     runner = Runner(args)
-    runner.run()
+    try:
+        runner.run()
+    except BrokenPipeError:
+        sys.exit(1)  # tee died; both output fds are gone, nothing to report to
     if runner.stopping:
         sys.exit(130)
     if any(r.status in ("fail", "timeout", "skipped") for r in runner.stats.results):

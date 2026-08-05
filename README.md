@@ -104,7 +104,7 @@ Run `./review-loop.py --help` for the full option list.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
 - The injected prompt header/footer constrains each tool to: apply small fixes only, skip vendored/generated/lockfile paths, never commit, run lint/typecheck/tests if configured, and revert on failure.
 - At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
-- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 130 interrupted (SIGINT/SIGTERM, takes precedence).
+- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 130 interrupted (SIGINT/SIGTERM, takes precedence).
 
 ## Adding a review
 
