@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Marcel W. Wysocki
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Tests for review-loop.py. Run: ./test_review_loop.py (or pytest)."""
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ import importlib.util
 import io
 import os
 import random
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -112,6 +115,58 @@ def test_parse_agents_mixed_expands_to_installed():
         rl.shutil.which = orig
 
 
+def test_build_cmd_exact_argv():
+    """Every agent's argv, including the permission-bypass flag it must carry."""
+    expected = {
+        ("claude", None): ["claude", "--dangerously-skip-permissions", "-p", "P"],
+        ("claude", "opus"): ["claude", "--dangerously-skip-permissions", "--model", "opus", "-p", "P"],
+        ("gemini", None): ["gemini", "-y", "-p", "P"],
+        ("gemini", "g-2"): ["gemini", "-y", "-m", "g-2", "-p", "P"],
+        ("qwen", None): ["qwen", "-y", "-p", "P"],
+        ("qwen", "q-3"): ["qwen", "-y", "-m", "q-3", "-p", "P"],
+        ("codex", None): ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "P"],
+        ("codex", "gpt"): ["codex", "exec", "--dangerously-bypass-approvals-and-sandbox", "-m", "gpt", "P"],
+        ("grok", None): ["grok", "--permission-mode", "bypassPermissions", "-p", "P"],
+        ("grok", "g-4"): ["grok", "--permission-mode", "bypassPermissions", "-m", "g-4", "-p", "P"],
+        ("agy", None): ["agy", "--dangerously-skip-permissions", "-p", "P"],
+        ("cursor-agent", None): ["cursor-agent", "--print", "-f", "P"],
+        ("cursor-agent", "c-1"): ["cursor-agent", "--print", "-f", "--model", "c-1", "P"],
+    }
+    for (tool, model), want in expected.items():
+        got = rl.build_cmd(rl.ToolSpec(tool, model), "P")
+        assert got == want, f"{tool}:{model}\n got {got}\nwant {want}"
+
+    # every supported agent must be covered here and must pass the prompt through
+    assert {t for t, _ in expected} == rl.VALID_TOOLS
+    for (tool, model) in expected:
+        assert "P" in rl.build_cmd(rl.ToolSpec(tool, model), "P")
+
+    raises(lambda: rl.build_cmd(rl.ToolSpec("nope"), "P"), ValueError)
+
+
+def test_build_cmd_prompt_is_never_flag_like():
+    """The prompt is passed as one argv element, so its content cannot inject flags."""
+    hostile = "--dangerously-skip-permissions\n--help"
+    for tool in sorted(rl.VALID_TOOLS):
+        cmd = rl.build_cmd(rl.ToolSpec(tool), hostile)
+        assert cmd.count(hostile) == 1
+        assert cmd[0] == tool
+
+
+def test_discover_reviews_skips_prompt_dir_inside_cwd():
+    """Self-review case: the bundled dir lives under the project being reviewed."""
+    with tempfile.TemporaryDirectory() as td:
+        proj = Path(td).resolve()
+        bundled = proj / "prompts"
+        _tree(bundled, {"code-review.md": "x"})
+        _tree(proj, {"extra-review.md": "x"})
+        with _cwd(proj):
+            found = rl.discover_reviews(bundled)
+        assert found["code-review"] == bundled / "code-review.md"
+        assert found["extra-review"] == proj / "extra-review.md"
+        assert len(found) == 2, "bundled prompts must not be discovered twice"
+
+
 def test_discover_reviews_merges_bundled_and_project():
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve()
@@ -173,6 +228,46 @@ def test_doctor_plain_when_not_a_tty():
     text = out.getvalue()
     assert "\033" not in text, "ANSI escapes must not reach a non-terminal"
     assert "Agent CLIs" in text and "Per-review helpers" in text
+
+
+def test_doctor_colors_and_wraps_when_forced():
+    real_isatty, real_env = sys.stdout.isatty, os.environ.get("TERM")
+    out = io.StringIO()
+    out.isatty = lambda: True  # force the color path
+    os.environ.pop("NO_COLOR", None)
+    os.environ["TERM"] = "xterm"
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            rl.doctor()
+        text = out.getvalue()
+        assert "\033[32m✓\033[0m" in text or "\033[" in text, "expected ANSI styling"
+        # no line of visible text should exceed the terminal width used for wrapping
+        width = max(rl.shutil.get_terminal_size((100, 24)).columns, 60)
+        for line in text.splitlines():
+            visible = re.sub(r"\033\[[0-9;]*m", "", line)
+            assert len(visible) <= width + 1, f"line exceeds width {width}: {visible!r}"
+    finally:
+        sys.stdout.isatty = real_isatty
+        if real_env is None:
+            os.environ.pop("TERM", None)
+        else:
+            os.environ["TERM"] = real_env
+
+
+def test_doctor_counts_unique_binaries():
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+        rl.doctor()
+    m = re.search(r"recommended (\d+)/(\d+)", out.getvalue())
+    assert m, out.getvalue()
+    assert int(m.group(2)) == len(rl.RECOMMENDED_TOOLS), "tools shared by reviews must count once"
+
+
+def test_sanitize_strips_control_and_bidi():
+    assert rl.sanitize("a\x1b[31mb") == "a[31mb"
+    assert rl.sanitize("a\x9bb") == "ab"          # C1 CSI
+    assert rl.sanitize("a‮b") == "ab"        # bidi override
+    assert rl.sanitize("plain text 123") == "plain text 123"
 
 
 def test_doctor_recommended_tools_are_real_entries():

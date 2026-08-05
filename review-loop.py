@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# Copyright (C) 2026 Marcel W. Wysocki
+# SPDX-License-Identifier: AGPL-3.0-or-later
 """Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent against current dir."""
 
 from __future__ import annotations
@@ -10,12 +12,15 @@ import random
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
+
+VERSION = "0.1.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent"}
 NO_MODEL_TOOLS = {"agy"}
@@ -175,8 +180,13 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             f = Path(root) / name
             if f.is_symlink() or f.parent.resolve() == prompt_dir:
                 continue
-            if re.search(r"[\x00-\x1f\x7f]", f.stem):
+            if sanitize(f.stem) != f.stem:
                 continue
+            if f.stem not in project_seen and f.stem in reviews:
+                print(
+                    sanitize(f"Note: project prompt {f} overrides the bundled one"),
+                    file=sys.stderr,
+                )
             if f.stem in project_seen:
                 print(
                     sanitize(
@@ -327,45 +337,56 @@ def doctor() -> int:
     print()
     print(paint("Per-review helpers", "bold")
           + paint("  (bold = recommended for any repo, dim = only for that stack)", "dim"))
-    rec_have = rec_total = opt_have = opt_total = 0
-    missing_rec: set[str] = set()
+    # Tallies are over unique binaries: many tools serve more than one review.
+    seen_rec: dict[str, bool] = {}
+    seen_opt: dict[str, bool] = {}
     name_col = max(len(r) for r in REVIEW_TOOLS) + 1
     for review, tools in sorted(REVIEW_TOOLS.items()):
         entries = []
         for t in tools:
             ok, rec = have(t), t in RECOMMENDED_TOOLS
             entries.append((t, ok, rec))
-            if rec:
-                rec_total += 1
-                rec_have += ok
-                if not ok:
-                    missing_rec.add(t)
-            else:
-                opt_total += 1
-                opt_have += ok
+            (seen_rec if rec else seen_opt)[t] = ok
         n_have = sum(ok for _, ok, _ in entries)
         head = f"  {review.ljust(name_col)} {_ratio(n_have, len(entries))} "
         indent = len(f"  {review.ljust(name_col)} {n_have}/{len(entries)} ")
         for i, line in enumerate(_wrap_tools(entries, indent, width)):
             print(head + line if i == 0 else " " * indent + line)
 
+    missing_rec = sorted(t for t, ok in seen_rec.items() if not ok)
     print()
     print(f"{paint('Agents', 'bold')} {_ratio(len(found_agents), len(agents))}   "
           f"{paint('core', 'bold')} {_ratio(sum(have(n) for n, _ in CORE_TOOLS), len(CORE_TOOLS))}   "
-          f"{paint('recommended', 'bold')} {_ratio(rec_have, rec_total)}   "
-          f"{paint('stack-specific', 'bold')} {_ratio(opt_have, opt_total)}")
+          f"{paint('recommended', 'bold')} {_ratio(sum(seen_rec.values()), len(seen_rec))}   "
+          f"{paint('stack-specific', 'bold')} {_ratio(sum(seen_opt.values()), len(seen_opt))}")
     if not found_agents:
         print(paint("No agent CLI found — install one to run reviews.", "red"), file=sys.stderr)
         return 1
     if missing_rec:
-        print(paint("Worth installing: ", "dim") + ", ".join(sorted(missing_rec)))
+        print(paint("Worth installing: ", "dim") + ", ".join(missing_rec))
     print(paint("Stack-specific tools only matter for the languages you review.", "dim"))
     return 0
 
 
 def sanitize(s: str) -> str:
-    """Strip terminal control characters from untrusted display text."""
-    return re.sub(r"[\x00-\x1f\x7f]", "", s)
+    """Strip control and formatting characters from untrusted display text.
+
+    str.isprintable() is False for C0/C1 controls, DEL, and Unicode Cf (bidi
+    overrides like U+202E), all of which can drive or spoof a terminal.
+    """
+    return "".join(c for c in s if c.isprintable() or c == " ")
+
+
+def read_no_follow(path: Path) -> str:
+    """Read a regular file, refusing symlinks at open time.
+
+    Checking is_symlink() and then reading by path is two lookups: the file
+    can be swapped in between, which is how out-of-tree content would reach a
+    permission-bypassed agent. Opening with O_NOFOLLOW closes that window.
+    """
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(fd, encoding="utf-8") as fh:
+        return fh.read()
 
 
 def log(msg: str) -> None:
@@ -425,6 +446,7 @@ class Runner:
         self.stats = Stats()
         self.loop_count = 0
         self.stopping = False
+        self.stop_signal = signal.SIGINT
         self.interrupt_count = 0
         self.current_proc: subprocess.Popen | None = None
         self.script_start = time.monotonic()
@@ -471,12 +493,8 @@ class Runner:
     def run_review(self, review: str) -> None:
         spec = self.pick_tool()
         prompt_file = self.prompt_files[review]
-        if prompt_file.is_symlink():  # re-check: swapped since discovery
-            log(f"Prompt file became a symlink: {prompt_file} — skipping")
-            self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
-            return
         try:
-            text = prompt_file.read_text(encoding="utf-8")
+            text = read_no_follow(prompt_file)
         except (OSError, UnicodeDecodeError) as e:
             log(f"Cannot read prompt file {prompt_file} ({e}) — skipping")
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
@@ -494,7 +512,7 @@ class Runner:
             proc = subprocess.Popen(cmd, start_new_session=True)
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {review}: {e}")
-            self.stats.add(ReviewResult(review, spec, 0.0, "fail"))
+            self.stats.add(ReviewResult(review, spec, 0.0, "fail", e.errno))
             return
         self.current_proc = proc
         if self.stopping:  # signal landed between Popen and registration
@@ -511,7 +529,12 @@ class Runner:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 self._kill_proc(proc, signal.SIGKILL)
-                proc.wait()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    # Unreapable (uninterruptible I/O): abandon it rather than
+                    # block the loop forever.
+                    log(f"Could not reap pid {proc.pid} after SIGKILL — abandoning it")
             rc = -signal.SIGTERM
         finally:
             self.current_proc = None
@@ -543,6 +566,7 @@ class Runner:
                 pass
 
     def handle_signal(self, signum, frame) -> None:
+        self.stop_signal = signum
         # Async-signal-safe: os.write only; print/log here can raise
         # "reentrant call" if the signal lands mid-print on the main thread.
         self.interrupt_count += 1
@@ -590,7 +614,9 @@ class Runner:
             print()
             print("Failed reviews:")
             for r in failures:
-                detail = "timeout" if r.status == "timeout" else f"exit {r.exit_code}"
+                detail = ("timeout" if r.status == "timeout"
+                          else f"exit {r.exit_code}" if r.exit_code is not None
+                          else "launch failed")
                 print(f"  - {r.review} ({r.tool.label()}) — {detail}")
 
     def list_reviews(self) -> None:
@@ -599,9 +625,9 @@ class Runner:
             # The first "Your goal" line doubles as the description.
             desc = ""
             try:
-                for line in prompt_file.read_text(encoding="utf-8").splitlines():
+                for line in read_no_follow(prompt_file).splitlines():
                     if line.startswith("Your goal"):
-                        desc = re.sub(r"[\x00-\x1f\x7f]", "", line)
+                        desc = sanitize(line)
                         break
             except (OSError, UnicodeDecodeError):
                 pass
@@ -669,7 +695,7 @@ def acquire_lock(path: Path) -> None:
     # O_NONBLOCK keeps a planted FIFO from blocking the open forever.
     try:
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK, 0o644)
-        if not os.path.isfile(path):
+        if not stat.S_ISREG(os.fstat(fd).st_mode):  # check the fd, not the path
             sys.exit(f"Lock path is not a regular file: {path}")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -725,7 +751,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--dir", type=Path, default=None, help="cd into DIR before running")
     p.add_argument("--once", action="store_true", help="run a single loop and exit")
     p.add_argument("--max-loops", type=int, default=0, help="stop after N loops (0 = unlimited)")
-    p.add_argument("--version", action="version", version="review-loop 1.0")
+    p.add_argument("--version", action="version", version=f"review-loop {VERSION}")
     p.add_argument(
         "--timeout", default="30m", type=parse_duration,
         help="per-review timeout (default 30m)",
@@ -806,7 +832,7 @@ def main() -> None:
     except BrokenPipeError:
         sys.exit(1)  # tee died; both output fds are gone, nothing to report to
     if runner.stopping:
-        sys.exit(130)
+        sys.exit(128 + runner.stop_signal)  # 130 for SIGINT, 143 for SIGTERM
     if any(r.status in ("fail", "timeout", "skipped") for r in runner.stats.results):
         sys.exit(1)
 

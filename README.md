@@ -100,6 +100,7 @@ Run `./review-loop.py --help` for the full option list.
 | `--exclude LIST` | none | Comma-separated reviews to skip. |
 | `--dry-run` | off | Print planned schedule and exit. |
 | `--list` | off | List available reviews and exit. |
+| `--version` | — | Print the version and exit. |
 
 ## Behavior
 
@@ -142,4 +143,12 @@ directories, symlink rejection, and duplicate handling.
 
 ## License
 
-GNU Affero General Public License v3.0 or later. See [LICENSE](LICENSE).
+Copyright (C) 2026 Marcel W. Wysocki.
+
+GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`). See
+[LICENSE](LICENSE).
+
+Version numbers are informational: `--version` reports the `VERSION` constant in
+`review-loop.py`, which is bumped by hand. Review names (the `*-review.md` stems
+consumed by `--reviews`) are the user-facing contract; renaming or removing one
+breaks existing invocations.
