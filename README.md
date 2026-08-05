@@ -29,6 +29,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | `fuzz-review` | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
 | `i18n-review` | Internationalization, localization, locale handling, RTL, formatting |
 | `infra-review` | CI/CD, containers, IaC, deployment, secret management |
+| `minimalism-review` | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | `o11y-review` | Observability: logging, metrics, tracing, alerting, health checks |
 | `perf-review` | Performance bottlenecks, memory, I/O, caching, hot paths |
 | `privacy-review` | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
