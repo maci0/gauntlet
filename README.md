@@ -5,6 +5,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 ## Contents
 
 - `prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
+- `test_review_loop.py` — tests for the runner's parsing and discovery logic.
 - `review-loop.py` — runner. Iterates over selected reviews, dispatches each to a randomly chosen tool/model, repeats until stopped.
 
 ### Available reviews
@@ -128,6 +129,16 @@ All review prompts follow a consistent structure:
 4. **Finding template** — fields for each finding (Title, Severity, Category, Location, Confidence, Why, Evidence, Recommendation, Expected benefit, Estimated effort, plus domain-specific extras).
 5. **Output format** — structured report sections.
 6. **Important** — constraints and ground rules.
+
+## Tests
+
+```sh
+./test_review_loop.py        # or: pytest
+```
+
+Stdlib only, no framework required. Covers duration/agent parsing (including a
+fuzz pass) and prompt discovery: bundled-vs-project precedence, skipped
+directories, symlink rejection, and duplicate handling.
 
 ## License
 
