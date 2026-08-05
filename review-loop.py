@@ -30,6 +30,15 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
     ("tee", "required for --log"),
 )
 
+# Worth installing on any machine: language-agnostic and useful in most repos.
+# Everything else in REVIEW_TOOLS is ecosystem-specific — install it only if
+# you review that stack.
+RECOMMENDED_TOOLS = frozenset({
+    "actionlint", "diffoscope", "gitleaks", "hadolint", "hyperfine", "jscpd",
+    "lychee", "markdownlint", "osv-scanner", "semgrep", "shellcheck", "tokei",
+    "yamllint",
+})
+
 # Optional per-review helpers, mirroring the "If available, use:" lines in
 # the prompts. Entries are binaries, so package-only names (Atheris, Jazzer,
 # eslint plugins) and SQL keywords are deliberately absent.
@@ -253,44 +262,104 @@ def have(name: str) -> bool:
     return any(shutil.which(n) for n in name.split("|"))
 
 
+ANSI = {"bold": "1", "dim": "2", "red": "31", "green": "32", "yellow": "33"}
+
+
+def use_color() -> bool:
+    return (
+        sys.stdout.isatty()
+        and not os.environ.get("NO_COLOR")
+        and os.environ.get("TERM") != "dumb"
+    )
+
+
+def paint(text: str, *styles: str) -> str:
+    """Style text for a terminal. Pad before painting: escapes break alignment."""
+    if not styles or not use_color():
+        return text
+    return f"\033[{';'.join(ANSI[s] for s in styles)}m{text}\033[0m"
+
+
+def _mark(ok: bool, missing_style: str = "dim") -> str:
+    return paint("✓", "green") if ok else paint("✗", missing_style)
+
+
+def _ratio(have_n: int, total: int) -> str:
+    style = "green" if have_n == total else "yellow" if have_n else "red"
+    return paint(f"{have_n}/{total}", style)
+
+
+def _wrap_tools(tools: list[tuple[str, bool, bool]], indent: int, width: int) -> list[str]:
+    """Lay out (name, installed, recommended) tokens into painted, wrapped lines."""
+    lines: list[str] = []
+    row: list[str] = []
+    row_len = 0
+    for name, ok, rec in tools:
+        plain = f"✓ {name}"  # mark is always one column wide
+        sep = 2 if row else 0
+        if row and indent + row_len + sep + len(plain) > width:
+            lines.append("  ".join(row))
+            row, row_len, sep = [], 0, 0
+        label = name if ok else paint(name, "bold" if rec else "dim")
+        row.append(f"{_mark(ok, 'yellow' if rec else 'dim')} {label}")
+        row_len += sep + len(plain)
+    if row:
+        lines.append("  ".join(row))
+    return lines
+
+
 def doctor() -> int:
     """Report which recommended CLI tools are available. Returns an exit code."""
-    mark = {True: "✓", False: "✗"}
+    width = max(shutil.get_terminal_size((100, 24)).columns, 60)
 
     agents = sorted(VALID_TOOLS)
     found_agents = [a for a in agents if shutil.which(a)]
-    print("Agent CLIs (at least one required):")
+    print(paint("Agent CLIs", "bold") + paint("  (at least one required)", "dim"))
     for a in agents:
-        print(f"  {mark[a in found_agents]} {a}")
+        print(f"  {_mark(a in found_agents)} {a}")
 
     print()
-    print("Core tools (used by every review):")
+    print(paint("Core tools", "bold") + paint("  (used by every review)", "dim"))
     for name, purpose in CORE_TOOLS:
-        label = name.replace("|", " or ")
-        print(f"  {mark[have(name)]} {label:<24} {purpose}")
+        label = name.replace("|", " or ").ljust(24)
+        print(f"  {_mark(have(name), 'yellow')} {label} {paint(purpose, 'dim')}")
 
     print()
-    print("Per-review helpers (optional):")
-    missing_optional = 0
-    total_optional = 0
+    print(paint("Per-review helpers", "bold")
+          + paint("  (bold = recommended for any repo, dim = only for that stack)", "dim"))
+    rec_have = rec_total = opt_have = opt_total = 0
+    missing_rec: set[str] = set()
+    name_col = max(len(r) for r in REVIEW_TOOLS) + 1
     for review, tools in sorted(REVIEW_TOOLS.items()):
-        marks = []
+        entries = []
         for t in tools:
-            ok = have(t)
-            total_optional += 1
-            missing_optional += not ok
-            marks.append(f"{mark[ok]} {t}")
-        print(f"  {review:<20} {'  '.join(marks)}")
+            ok, rec = have(t), t in RECOMMENDED_TOOLS
+            entries.append((t, ok, rec))
+            if rec:
+                rec_total += 1
+                rec_have += ok
+                if not ok:
+                    missing_rec.add(t)
+            else:
+                opt_total += 1
+                opt_have += ok
+        n_have = sum(ok for _, ok, _ in entries)
+        head = f"  {review.ljust(name_col)} {_ratio(n_have, len(entries))} "
+        indent = len(f"  {review.ljust(name_col)} {n_have}/{len(entries)} ")
+        for i, line in enumerate(_wrap_tools(entries, indent, width)):
+            print(head + line if i == 0 else " " * indent + line)
 
     print()
-    have_optional = total_optional - missing_optional
-    print(f"Agents: {len(found_agents)}/{len(agents)}  |  "
-          f"core: {sum(have(n) for n, _ in CORE_TOOLS)}/{len(CORE_TOOLS)}  |  "
-          f"optional: {have_optional}/{total_optional}")
+    print(f"{paint('Agents', 'bold')} {_ratio(len(found_agents), len(agents))}   "
+          f"{paint('core', 'bold')} {_ratio(sum(have(n) for n, _ in CORE_TOOLS), len(CORE_TOOLS))}   "
+          f"{paint('recommended', 'bold')} {_ratio(rec_have, rec_total)}   "
+          f"{paint('stack-specific', 'bold')} {_ratio(opt_have, opt_total)}")
     if not found_agents:
-        print("No agent CLI found — install one to run reviews.", file=sys.stderr)
+        print(paint("No agent CLI found — install one to run reviews.", "red"), file=sys.stderr)
         return 1
-    print("Missing optional tools only reduce evidence quality; reviews still run.")
+    if missing_rec:
+        print(paint("Worth installing: ", "dim") + ", ".join(sorted(missing_rec)))
+    print(paint("Stack-specific tools only matter for the languages you review.", "dim"))
     return 0
 
 

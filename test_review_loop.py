@@ -166,6 +166,20 @@ def test_discover_reviews_duplicate_project_prompts_warn_first_wins():
         assert "duplicate project prompt" in err.getvalue()
 
 
+def test_doctor_plain_when_not_a_tty():
+    out = io.StringIO()  # StringIO is not a tty, so output must stay unstyled
+    with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+        rl.doctor()
+    text = out.getvalue()
+    assert "\033" not in text, "ANSI escapes must not reach a non-terminal"
+    assert "Agent CLIs" in text and "Per-review helpers" in text
+
+
+def test_doctor_recommended_tools_are_real_entries():
+    listed = {t for tools in rl.REVIEW_TOOLS.values() for t in tools}
+    assert rl.RECOMMENDED_TOOLS <= listed, rl.RECOMMENDED_TOOLS - listed
+
+
 def test_fuzz_parsers_never_crash():
     """Parsers take user input: they may reject, but must not raise anything else."""
     rng = random.Random(20240805)
