@@ -75,6 +75,7 @@ Review the following:
 - Where genuine complexity is required (real concurrency, real edge cases, real performance need), record it as justified and move on
 
 Instructions:
+- Purpose-built tools sharpen the evidence where available on PATH (never install them): `vulture`/`knip`/`ts-prune`/`cargo-udeps` to locate dead code and unused dependencies, `tokei`/`cloc` for before/after line counts. Their reports are leads, not proof; the removability trace below is still mandatory.
 - Prove necessity by evidence: name the caller, the input, the requirement, or the test that fails without the code. Use the call graph and searches, not intuition; read whole functions and their callers, never fragments.
 - Prove removability the same way: before proposing a deletion, trace that nothing observable depends on it — including reflection, serialization, dynamic dispatch, and external consumers of public surface.
 - Behavior preservation is absolute. This review removes and simplifies expression, never features, validation at trust boundaries, security measures, accessibility, error handling that prevents data loss, or documented edge-case handling.

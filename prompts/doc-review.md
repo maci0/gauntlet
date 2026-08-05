@@ -73,6 +73,7 @@ Review the following:
 - Add short summaries for complex modules
 
 Instructions:
+- Purpose-built tools beat manual inspection where available on PATH (never install them): `vale` for prose linting, `markdownlint` for structure, `lychee` for dead links.
 - Verify claims against the code. Do not assume documentation is correct.
 - Prefer concise and precise documentation.
 - Favor explaining "why" and constraints instead of restating "what the code does".

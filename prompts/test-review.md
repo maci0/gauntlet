@@ -87,6 +87,7 @@ Review the following:
 - Inconsistent patterns across the test suite
 
 Instructions:
+- Purpose-built tools beat guessing where available on PATH (never install them): coverage (`coverage.py`, `cargo-llvm-cov`, `c8`/`nyc`) to find untested paths, mutation testing (`mutmut`, `cargo-mutants`, Stryker) to find tests that assert nothing. Coverage numbers are a map of gaps, not a quality score.
 - Read the actual tests, not just the test names.
 - Verify that assertions match the described test intent.
 - Check that mocks and stubs are realistic.

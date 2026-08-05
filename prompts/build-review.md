@@ -72,6 +72,7 @@ Review the following:
 - No single obvious build command; unclear which of several is canonical
 
 Instructions:
+- Purpose-built tools beat manual inspection where available on PATH (never install them): `diffoscope` to diff two builds of the same source for reproducibility, `shellcheck` for build scripts.
 - Be concrete. Point at the specific rule, script line, or config key.
 - Prefer verifiable claims: "this Makefile target lacks `foo.h` as a prerequisite, so editing it does not trigger a rebuild."
 - Distinguish confirmed issues from likely issues from things needing maintainer confirmation.

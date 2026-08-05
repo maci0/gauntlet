@@ -31,7 +31,12 @@ Operating mode: apply fixes directly to files, autonomously.
 
 Rules:
 - First check if this review makes sense for this codebase. If not, exit immediately without changes.
-- To search code, prefer `ast-grep`/`sg` for structural/syntax-aware queries and `rg` (ripgrep) for text, when they are on PATH. Fall back to grep only if neither exists.
+- Use the best available tool for search and rewrite (check PATH; fall back to grep/sed only when none exist):
+  - `rg` (ripgrep) for plain-text and literal searches.
+  - `ast-grep`/`sg` for syntax-aware structural search and pattern-based rewrite.
+  - `patchwork` for AST-native sed: find/replace/delete/insert by structure.
+  - `tsed` for tree-sitter operations modeled after sed.
+  - `semcode` (if a `.semcode.db` index exists or `semcode-index` is available) for semantic C/C++/Rust queries: find_function, callers/callees, call chains, type definitions.
 - Make the smallest reversible diff possible.
 - Fix at most ~10 highest-value issues this pass. Stop after that.
 - Do not delete tests.
@@ -39,7 +44,7 @@ Rules:
 - Skip anything uncertain. Never ask questions.
 - Before fixing an issue, prove it is real: trace the actual code path, read the full function (not just a fragment), and verify callers/config branches don't already handle it. Comments and names can lie; verify against the implementation. If you cannot prove it, skip it.
 - Do not add defensive checks (null/bounds/validation) unless you can name a concrete path where invalid data reaches the code.
-- Never modify files in: node_modules, vendor, dist, build, .next, target, .git, generated/auto-generated files, lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.).
+- Never modify files in: node_modules, vendor, dist, build, .next, target, .git, generated/auto-generated files. Never hand-edit lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.); they may only change as the output of running the project's package manager (npm/pnpm/yarn/cargo/go/uv).
 - If a single fix would change more than 300 lines in one file, skip it.
 - Do not commit anything to git. Do not run git commit, git push, or git tag.
 - After edits, if the project has a lint, typecheck, or test command configured (package.json scripts, Makefile, justfile, pyproject.toml, etc.), run the relevant one. If it fails due to your changes, revert them.

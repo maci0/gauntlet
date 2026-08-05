@@ -84,6 +84,7 @@ Review the following:
 - Missing validation of state transitions
 
 Instructions:
+- Purpose-built tools beat manual inspection where available on PATH (never install them): `semgrep` for pattern-based vulnerability scanning, `gitleaks`/`trufflehog` for committed secrets, `osv-scanner` for known-vulnerable dependencies, `bandit` (Python), `gosec` (Go). Use their output as evidence, then verify each hit before acting.
 - Focus on exploitable vulnerabilities and real risk.
 - Consider the attack surface: what is exposed to untrusted input.
 - Trace data flow from untrusted sources to sensitive sinks.
