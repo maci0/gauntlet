@@ -93,6 +93,7 @@ Review the following:
 - New code following a different structure than existing code without clear migration
 
 Instructions:
+- In auto-fix mode take only the smallest safe wins: correct one wrong-direction import, move one clearly misplaced file, extract one obviously misplaced function. No renames, no tree restructuring, no layer introductions; large moves are design work, not a fix pass.
 - If available, use dependency-graph tools: `madge` (JS/TS circular deps), `pydeps`/`import-linter` (Python), `go mod graph`, `cargo tree`. A rendered graph beats mentally tracing imports. Never install tools.
 - Map the actual structure before judging it. Understand what exists before recommending changes.
 - Consider the size and maturity of the project when assessing architecture.

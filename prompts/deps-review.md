@@ -16,7 +16,7 @@ Review the following:
 - Transitive dependencies that overlap with direct dependencies
 - Forked or vendored copies of packages also installed as dependencies
 - Multiple versions of the same package in the dependency tree
-- Utility libraries used for one function when a simple implementation would suffice
+- Utility libraries used for one function when a simple implementation would suffice (minimalism-review owns the necessity proof and removal; here flag health/weight)
 
 3. Outdated dependencies
 - Dependencies with available major version updates

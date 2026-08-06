@@ -72,6 +72,7 @@ Review the following:
 - Try/except (or catch) wrapped around whole function bodies that logs and continues, added by reflex rather than for a named failure mode
 
 10. Test slop
+(Flag only; never delete tests in fix mode — collapse duplicates into parameterized forms instead, keeping coverage identical.)
 - Tests that assert nothing, or assert only that the mock returned what the mock was told to return
 - Copy-pasted test bodies differing by one value that a parameterized test would collapse
 - Placeholder tests (`assert True`, empty bodies) presented as coverage

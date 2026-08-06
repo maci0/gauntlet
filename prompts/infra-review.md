@@ -96,8 +96,6 @@ Review the following:
 (build-review owns build reproducibility, hermeticity, and caching internals; here cover artifact storage, versioning, and delivery.)
 - Build artifacts not versioned or tagged consistently
 - Missing artifact registry or insecure artifact storage
-- Build processes that are not reproducible
-- Missing build provenance or integrity verification
 - Stale artifacts not cleaned up
 - Build dependencies fetched from the internet on every build instead of cached or vendored
 - Missing separation between build and runtime dependencies

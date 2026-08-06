@@ -37,7 +37,7 @@ Review the following:
 5. Platform conventions
 - Back navigation broken (Android back button/gesture, iOS swipe-back) or diverging from platform expectation
 - One platform's idioms transplanted to the other (iOS-style sheets on Android and vice versa without a reason)
-- System font scaling, dark mode, notches/cutouts/safe areas ignored
+- Dark mode, notches/cutouts/safe areas ignored (font scaling and Dynamic Type belong to a11y-review)
 - Non-standard controls where platform controls exist (custom date pickers, custom share sheets)
 (Deeper accessibility — TalkBack/VoiceOver traversal — belongs to a11y-review.)
 

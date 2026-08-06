@@ -64,13 +64,14 @@ Review the following:
 - Missing keyboard navigation or focus management
 - Focus traps or lost focus after modal, dialog, or dynamic content changes
 - Images, icons, or media without alternative text
-- Touch targets too small for comfortable interaction (platform HIGs recommend 44x44px; WCAG 2.2 AA minimum is 24x24px, SC 2.5.8)
+- Touch targets too small for comfortable interaction (Apple HIG: 44x44pt; Material: 48x48dp; WCAG 2.2 AA minimum: 24x24px, SC 2.5.8)
 - Missing skip navigation links
 - Screen reader experience that differs significantly from visual experience
 - Motion or animation without reduced-motion support
 - Missing visible focus indicators on interactive elements
 
 7. Consistency and design system adherence
+(uislop-review owns genericness and identity of tokens; here judge internal consistency and usability of what exists.)
 - Components used inconsistently across views
 - Custom one-off components where standard components exist
 - Inconsistent button styles, sizes, or placement patterns
@@ -82,6 +83,7 @@ Review the following:
 - Component states (disabled, loading, error) handled differently across instances
 
 8. Content and microcopy
+(uislop-review owns generic AI-voice copy; here judge clarity, correctness, and helpfulness.)
 - Unclear page titles or headings that do not describe the content
 - Button text that does not describe the action ("Submit" vs "Create Account")
 - Inconsistent capitalization, punctuation, or formatting in UI text

@@ -28,7 +28,7 @@ Review the following:
 - API keys, internal URLs, PII, or proprietary data interpolated into prompts and thus shipped to a third-party provider
 - Conversation history accumulating sensitive context and resent on every call
 - Prompts or completions logged verbatim to logs/analytics that have weaker access controls than the source data
-(Data-protection compliance belongs to privacy-review; here flag the flow itself.)
+(privacy-review owns PII-flow findings and compliance; here cover the prompt mechanics: interpolation points, history accumulation, prompt logging.)
 
 5. Cost and token economics
 - No max_tokens caps; unbounded conversation history growth resent each turn
@@ -38,6 +38,7 @@ Review the following:
 - Embeddings recomputed for unchanged content on every run
 
 6. Reliability and degradation
+(Generic timeout/retry/circuit-breaker patterns belong to error-review; here cover the model-specific behavior: 429/overload semantics, midstream streaming recovery, alternate-model fallback.)
 - No timeout, retry-with-backoff, or circuit breaker on provider calls; provider outage becomes app outage
 - No fallback path (alternate model, cached answer, graceful feature-off) when the model is unavailable
 - Streaming handled without midstream-failure recovery

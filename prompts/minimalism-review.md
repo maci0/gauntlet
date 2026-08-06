@@ -75,6 +75,7 @@ Review the following:
 - Where genuine complexity is required (real concurrency, real edge cases, real performance need), record it as justified and move on
 
 Instructions:
+- In auto-fix mode act only on repo-internal symbols; anything exported or public-surface: skip, regardless of how unnecessary it looks.
 - If available, use: `vulture`/`knip`/`ts-prune`/`cargo-udeps` (dead code, unused dependencies), `tokei`/`cloc` (before/after line counts). Reports are leads, not proof; the removability trace below stays mandatory. Never install tools.
 - Prove necessity by evidence: name the caller, the input, the requirement, or the test that fails without the code. Use the call graph and searches, not intuition; read whole functions and their callers, never fragments.
 - Prove removability the same way: before proposing a deletion, trace that nothing observable depends on it — including reflection, serialization, dynamic dispatch, and external consumers of public surface.

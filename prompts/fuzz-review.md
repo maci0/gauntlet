@@ -101,6 +101,7 @@ Review the following:
 - Missing sanitizer builds (ASan, MSan, UBSan, TSan) in fuzz CI
 
 Instructions:
+- In auto-fix mode: add at most 1-2 small ecosystem-native fuzz targets colocated with existing tests, for the highest-risk untrusted-input parser found. CI integration, corpus management, OSS-Fuzz onboarding, and dashboards are infra work: out of scope for a fix pass.
 - If available, use the ecosystem-native harnesses: `cargo-fuzz`/libFuzzer (Rust/C/C++), AFL++, `go test -fuzz` (Go), `Atheris` (Python), `Jazzer` (JVM). Prefer extending an existing harness over inventing one. Never install tools.
 - Inventory all API surfaces before assessing coverage.
 - Treat any API surface accepting untrusted input without fuzz testing as a finding.

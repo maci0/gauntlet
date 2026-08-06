@@ -111,6 +111,7 @@ Review the following:
 - Missing SSL/TLS for database connections
 
 Instructions:
+- Fix order: integrity (constraints, transaction boundaries, lost updates) > SQL injection/parameterization > app-side query fixes (N+1, SELECT *, missing LIMIT/pagination). Add an index migration only when a query in this repo demonstrably filters or joins on the column. Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only concerns, skip them in a fix pass.
 - If available, use: `EXPLAIN`/`EXPLAIN ANALYZE` on a local database (query plans), `sqlfluff` (SQL lint). Never run EXPLAIN ANALYZE against anything resembling a production connection string; never install tools.
 - Inspect actual schema definitions, migration files, query code, and configuration.
 - Trace query patterns from application code to understand real access patterns.

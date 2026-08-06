@@ -18,6 +18,7 @@ Review the following:
 - Comments describing previous implementations rather than current behavior
 
 3. Redundant or low-value comments
+(slop-review owns deleting these; here flag them only where they actively mislead about behavior.)
 - Comments that restate obvious code
 - Comments that simply narrate what each line does
 - Excessively verbose comments that obscure the real logic

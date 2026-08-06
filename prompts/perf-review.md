@@ -84,7 +84,7 @@ Review the following:
 - Duplicate dependencies with overlapping functionality
 
 Instructions:
-- If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations). Never install tools; measure before and after any change you claim is faster.
+- If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations). Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - Prioritize hot paths and frequently executed code over cold paths.
 - Consider the expected scale and usage patterns of the application.

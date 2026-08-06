@@ -111,7 +111,7 @@ Instructions:
 - Do not flag single-threaded code or code that is clearly only accessed from one thread.
 - Focus on bugs that corrupt data or cause deadlocks, not on theoretical contention that reduces throughput.
 - Consider the deployment context: single-process vs multi-process, single-node vs distributed.
-- Concurrency bugs are hard to reproduce. Report suspicious code even without a definitive exploit, but only change code where the race is proven (shared state + unsynchronized access + possible interleaving traced); merely-suspicious spots are report-only.
+- Concurrency bugs are hard to reproduce. Only change code where the race is proven (shared state + unsynchronized access + possible interleaving traced); merely-suspicious spots: skip, mentioning them in the final summary at most.
 - Distinguish between:
   - confirmed races (shared mutable state with no synchronization, provable interleaving)
   - likely races (patterns that typically cause races, missing synchronization on suspicious paths)

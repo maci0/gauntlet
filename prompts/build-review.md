@@ -40,7 +40,7 @@ Review the following:
 4. Correctness of build outputs
 - Stale artifacts: outputs not rebuilt when inputs change (bad incremental rules, missing deps in Makefile)
 - Over-broad clean/rebuild that hides staleness by always rebuilding everything
-- Wrong files shipped: source maps, `.env`, test fixtures, secrets, or dev-only files in the artifact
+- Wrong files shipped: source maps, `.env`, test fixtures, secrets, or dev-only files in the artifact (contents of installable packages — deb/rpm/wheel/npm/APK — belong to pkg-review; here cover raw build outputs)
 - Missing files in the artifact that runtime needs
 - Debug/release confusion: debug symbols or assertions in release, optimizations off unexpectedly
 

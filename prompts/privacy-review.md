@@ -105,6 +105,7 @@ Review the following:
 - Missing data protection authority contact or notification template
 
 Instructions:
+- In auto-fix mode act only on what code can prove and change: PII in logs/error reports/analytics payloads, debug logging of full request/response bodies, personal data in test fixtures, plaintext storage of sensitive fields, over-broad data queries. Consent records, DPAs, retention policy, and breach process are organizational: out of scope for a fix pass.
 - Trace personal data from collection to storage, processing, sharing, and deletion.
 - Consider all categories of data subjects: customers, employees, prospects, partners, anonymous visitors.
 - Do not assume the application only operates in one jurisdiction. Consider GDPR, CCPA/CPRA, and other applicable regulations.

@@ -287,6 +287,29 @@ def test_doctor_tables_cover_every_bundled_prompt():
     assert not set(rl.REVIEW_TOOLS) & set(rl.REVIEWS_WITHOUT_TOOLS)
 
 
+def test_strip_report_sections_on_real_prompt():
+    text = (Path(__file__).parent / "prompts" / "sec-review.md").read_text()
+    stripped = rl.strip_report_sections(text)
+    assert "For each finding include:" not in stripped
+    assert "Output format:" not in stripped
+    assert "## Executive Summary" not in stripped
+    assert "Important:" in stripped, "the Important block must survive"
+    assert "Instructions:" in stripped
+    assert len(stripped) < len(text) * 0.85, "expected a substantial cut"
+    # every bundled prompt must strip cleanly and keep its Important block
+    for f in (Path(__file__).parent / "prompts").glob("*-review.md"):
+        s = rl.strip_report_sections(f.read_text())
+        assert "Output format:" not in s, f.name
+        assert "Important:" in s, f.name
+
+
+def test_prompt_suffix_renders():
+    rendered = rl.PROMPT_SUFFIX.format(timeout="30m00s")
+    assert "30m00s wall clock" in rendered
+    assert "{" not in rendered, "unrendered placeholder or stray brace"
+    assert "RESULT:" in rendered
+
+
 def test_fuzz_parsers_never_crash():
     """Parsers take user input: they may reject, but must not raise anything else."""
     rng = random.Random(20240805)

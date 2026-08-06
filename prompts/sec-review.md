@@ -5,6 +5,7 @@ Your goal is to identify vulnerabilities, insecure patterns, and missing securit
 Review the following:
 
 1. Injection vulnerabilities
+(Model-shaped injection — prompt injection, LLM output executed as code — belongs to llm-review; here cover the classic surfaces.)
 - SQL injection via string concatenation or improper parameterization
 - Command injection via unsanitized input passed to shell execution
 - Code injection via eval, Function constructor, or dynamic code execution
@@ -84,6 +85,7 @@ Review the following:
 - Missing validation of state transitions
 
 Instructions:
+- Fix order: injection and authz bypass > committed secrets > unsafe deserialization/weak crypto > missing security headers and hardening. Prefer low-effort fixes to critical issues over deep refactors.
 - If available, use: `semgrep` (pattern-based vulnerability scan), `gitleaks`/`trufflehog` (committed secrets), `osv-scanner` (known-vulnerable dependencies), `bandit` (Python), `gosec` (Go). Never install tools; verify every hit before acting.
 - Focus on exploitable vulnerabilities and real risk.
 - Consider the attack surface: what is exposed to untrusted input.
