@@ -39,9 +39,8 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # Bundled reviews with no purpose-built CLI tooling; listed so doctor's review
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
-    "cli-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "mobile-review", "o11y-review", "privacy-review",
-    "uislop-review",
+    "design-review", "dst-review", "error-review", "functionality-review",
+    "mobile-review", "o11y-review", "privacy-review", "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -61,21 +60,22 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "api-review": ("spectral", "oasdiff", "buf"),
     "arch-review": ("madge", "pydeps", "lint-imports"),
     "build-review": ("diffoscope", "shellcheck"),
-    "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip"),
+    "cli-review": ("shellcheck",),
+    "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
     "concurrency-review": ("valgrind",),
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
     "db-review": ("sqlfluff",),
-    "deps-review": ("osv-scanner", "pip-audit", "deptry", "cargo-audit", "cargo-udeps", "depcheck",
-                    "syft", "grype", "cosign"),
+    "deps-review": ("osv-scanner", "pip-audit", "deptry", "cargo-audit", "cargo-udeps",
+                    "cargo-deny", "depcheck", "syft", "grype", "cosign"),
     "doc-review": ("vale", "markdownlint", "lychee"),
     "fuzz-review": ("cargo-fuzz", "afl-fuzz"),
-    "i18n-review": ("xgettext", "msgfmt"),
+    "i18n-review": ("xgettext", "msgfmt", "i18next-parser"),
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
     "llm-review": ("promptfoo", "garak"),
     "minimalism-review": ("vulture", "knip", "ts-prune", "tokei", "cloc"),
     "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
-    "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive",
-                   "desktop-file-validate", "appstream-util"),
+    "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive", "shellcheck",
+                   "desktop-file-validate", "appstream-util", "check-wheel-contents"),
     "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
     "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
     "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec"),
@@ -187,6 +187,8 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
         for f in sorted(prompt_dir.glob("*-review.md")):
             if f.is_symlink() or not f.is_file():  # read_no_follow would fail every run
                 continue
+            if sanitize(f.stem) != f.stem:
+                continue
             reviews[f.stem] = f
     project = Path.cwd().resolve()
     prompt_dir = prompt_dir.resolve()
@@ -202,6 +204,11 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             if f.is_symlink() or not f.is_file() or f.parent.resolve() == prompt_dir:
                 continue
             if sanitize(f.stem) != f.stem:
+                print(
+                    f"Warning: ignoring project prompt with control characters in its name: "
+                    f"{sanitize(str(f))}",
+                    file=sys.stderr,
+                )
                 continue
             if f.stem not in project_seen and f.stem in reviews:
                 print(
@@ -361,7 +368,7 @@ def doctor() -> int:
 
     print()
     print(paint("Per-review helpers", "bold")
-          + paint("  (* = worth installing anywhere, rest matter only for that stack)", "dim"))
+          + paint("  (* = worth installing anywhere)", "dim"))
     # Tallies are over unique binaries: many tools serve more than one review.
     seen_rec: dict[str, bool] = {}
     seen_opt: dict[str, bool] = {}
@@ -570,13 +577,12 @@ class Runner:
             return
 
         prompt = compose_prompt(text, self.timeout_secs)
-
-        start = time.monotonic()
-        log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
-
         cmd = build_cmd(spec, prompt)
         if self.stopping:
             return
+
+        start = time.monotonic()
+        log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
         try:
             proc = subprocess.Popen(cmd, start_new_session=True)
         except OSError as e:
@@ -587,8 +593,23 @@ class Runner:
         if self.stopping:  # signal landed between Popen and registration
             self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
+        stop_shortened = self.stopping
+        deadline = time.monotonic() + (10 if self.stopping else self.timeout_secs)
         try:
-            rc = proc.wait(timeout=10 if self.stopping else self.timeout_secs)
+            # Wait in short slices so a signal arriving mid-wait shortens the
+            # deadline to 10s instead of blocking for the full review timeout.
+            while True:
+                if self.stopping and not stop_shortened:
+                    deadline = min(deadline, time.monotonic() + 10)
+                    stop_shortened = True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(cmd, self.timeout_secs)
+                try:
+                    rc = proc.wait(timeout=min(1.0, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
         except subprocess.TimeoutExpired:
             timed_out = not self.stopping
             if timed_out:
@@ -782,7 +803,10 @@ def acquire_lock(path: Path) -> None:
         print(f"Another review-loop appears to be running (lock: {path})", file=sys.stderr)
         sys.exit(75)  # EX_TEMPFAIL
     except OSError as e:
-        usage_error(f"Cannot acquire lock file {path}: {e}")
+        usage_error(
+            f"Cannot acquire lock file {path}: {e} "
+            f"(the lock path must be a creatable regular file)"
+        )
 
 
 def setup_log_tee(log_path: Path) -> None:

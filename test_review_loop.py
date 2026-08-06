@@ -12,6 +12,7 @@ import io
 import os
 import random
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -235,9 +236,9 @@ def test_doctor_plain_when_not_a_tty():
 
 def test_doctor_colors_and_wraps_when_forced():
     real_env = os.environ.get("TERM")
+    real_no_color = os.environ.pop("NO_COLOR", None)
     out = io.StringIO()
     out.isatty = lambda: True  # force the color path
-    os.environ.pop("NO_COLOR", None)
     os.environ["TERM"] = "xterm"
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
@@ -254,6 +255,8 @@ def test_doctor_colors_and_wraps_when_forced():
             os.environ.pop("TERM", None)
         else:
             os.environ["TERM"] = real_env
+        if real_no_color is not None:
+            os.environ["NO_COLOR"] = real_no_color
 
 
 def test_doctor_counts_unique_binaries():
@@ -267,9 +270,56 @@ def test_doctor_counts_unique_binaries():
 
 def test_sanitize_strips_control_and_bidi():
     assert rl.sanitize("a\x1b[31mb") == "a[31mb"
-    assert rl.sanitize("a\x9bb") == "ab"          # C1 CSI
-    assert rl.sanitize("a‮b") == "ab"        # bidi override
+    assert rl.sanitize("a\x9bb") == "ab"           # C1 CSI
+    assert rl.sanitize("a\u202eb") == "ab"         # bidi override
     assert rl.sanitize("plain text 123") == "plain text 123"
+
+
+def test_acquire_lock_rejects_symlink_fifo_and_contention():
+    import fcntl
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        (root / "target").write_text("")
+        (root / "sym.lock").symlink_to(root / "target")
+        raises(lambda: rl.acquire_lock(root / "sym.lock"), SystemExit)
+        os.mkfifo(root / "fifo.lock")
+        raises(lambda: rl.acquire_lock(root / "fifo.lock"), SystemExit)
+        # contention: hold the flock ourselves, expect exit 75
+        held = os.open(root / "busy.lock", os.O_WRONLY | os.O_CREAT, 0o644)
+        try:
+            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            try:
+                rl.acquire_lock(root / "busy.lock")
+                raise AssertionError("expected SystemExit")
+            except SystemExit as e:
+                assert e.code == 75, e.code
+        finally:
+            os.close(held)
+
+
+def test_run_review_status_machine_end_to_end():
+    """Exit-code contract via a stub agent: ok, fail, and timeout paths."""
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
+        bin_dir.mkdir(), proj.mkdir(), prompts.mkdir()
+        _tree(prompts, {"stub-review.md": "You are a reviewer.\n\nYour goal is testing.\n"})
+        stub = bin_dir / "agy"
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+
+        def run(stub_body: str, timeout: str = "30s") -> int:
+            stub.write_text(f"#!/bin/sh\n{stub_body}\n")
+            stub.chmod(0o755)
+            return subprocess.run(
+                [sys.executable, str(script), "--once", "--agents", "agy",
+                 "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", timeout],
+                env=env, capture_output=True, timeout=60, check=False,
+            ).returncode
+
+        assert run("exit 0") == 0, "passing review must exit 0"
+        assert run("exit 3") == 1, "failing review must exit 1"
+        assert run("sleep 30", timeout="1s") == 1, "timed-out review must exit 1"
 
 
 def test_doctor_recommended_tools_are_real_entries():
