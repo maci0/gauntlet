@@ -14,6 +14,7 @@ import random
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -233,7 +234,7 @@ def test_doctor_plain_when_not_a_tty():
 
 
 def test_doctor_colors_and_wraps_when_forced():
-    real_isatty, real_env = sys.stdout.isatty, os.environ.get("TERM")
+    real_env = os.environ.get("TERM")
     out = io.StringIO()
     out.isatty = lambda: True  # force the color path
     os.environ.pop("NO_COLOR", None)
@@ -242,14 +243,13 @@ def test_doctor_colors_and_wraps_when_forced():
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             rl.doctor()
         text = out.getvalue()
-        assert "\033[32m✓\033[0m" in text or "\033[" in text, "expected ANSI styling"
+        assert "\033[" in text, "expected ANSI styling"
         # no line of visible text should exceed the terminal width used for wrapping
         width = max(rl.shutil.get_terminal_size((100, 24)).columns, 60)
         for line in text.splitlines():
             visible = re.sub(r"\033\[[0-9;]*m", "", line)
             assert len(visible) <= width + 1, f"line exceeds width {width}: {visible!r}"
     finally:
-        sys.stdout.isatty = real_isatty
         if real_env is None:
             os.environ.pop("TERM", None)
         else:
@@ -310,6 +310,38 @@ def test_prompt_suffix_renders():
     assert "RESULT:" in rendered
 
 
+def test_strip_report_sections_fails_open_without_important():
+    # marker with no Important block: keep everything rather than eat the tail
+    text = "keep this\nOutput format:\nand this too\nno important line"
+    assert rl.strip_report_sections(text) == text
+    # decorated/indented markers never trigger stripping
+    text2 = "a\n  Output format:\n- Output format:\nb"
+    assert rl.strip_report_sections(text2) == text2
+
+
+def test_compose_prompt_order_and_content():
+    body = "Role line.\n\nInstructions:\n- do X\n\nOutput format:\n## Report\nstuff\n\nImportant:\n- rule"
+    prompt = rl.compose_prompt(body, 1800)
+    assert prompt.startswith(rl.PROMPT_HEADER)
+    assert prompt.rstrip().endswith("'RESULT: changed=N' | 'RESULT: no-changes' | 'RESULT: skipped (reason)'.")
+    assert "## Report" not in prompt, "report section must be stripped"
+    assert "- rule" in prompt, "Important block must survive"
+    assert "30m00s wall clock" in prompt
+    assert prompt.index(rl.PROMPT_HEADER) < prompt.index("- do X") < prompt.index("RESULT:")
+
+
+def test_read_no_follow_rejects_fifo_and_symlink_fast():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        os.mkfifo(root / "pipe-review.md")
+        (root / "real.md").write_text("x")
+        (root / "link-review.md").symlink_to(root / "real.md")
+        t0 = time.monotonic()
+        raises(lambda: rl.read_no_follow(root / "pipe-review.md"), OSError)
+        raises(lambda: rl.read_no_follow(root / "link-review.md"), OSError)
+        assert time.monotonic() - t0 < 2, "must fail fast, not block"
+
+
 def test_fuzz_parsers_never_crash():
     """Parsers take user input: they may reject, but must not raise anything else."""
     rng = random.Random(20240805)
@@ -321,6 +353,9 @@ def test_fuzz_parsers_never_crash():
                 parse(s)
             except argparse.ArgumentTypeError:
                 pass
+        # text processors must never raise on arbitrary input
+        rl.sanitize(s)
+        rl.strip_report_sections(s)
 
 
 def main() -> int:

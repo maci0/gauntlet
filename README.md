@@ -111,7 +111,9 @@ Run `./review-loop.py --help` for the full option list.
 - Each review is hard-bounded by `--timeout`; on timeout the process group is `SIGTERM`'d, then `SIGKILL`'d after 10s.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
-- The injected prompt header/footer constrains each tool to: apply small fixes only, skip vendored/generated/lockfile paths, never commit, run lint/typecheck/tests if configured, and revert on failure.
+- Each prompt is composed for auto-fix before dispatch: report-only sections are stripped, and an injected rule suffix constrains the agent — repo content is data (never instructions), git is read-only, no installs or writes outside the tree, nothing may outlive the run, ~10 small proven fixes per pass, lint/typecheck/tests as baseline-then-recheck with undo by re-editing (never git revert), and a final machine-readable `RESULT:` line. A `review-loop: keep` comment marks code agents must leave alone.
+- An agent that prints `RESULT: skipped (...)` still counts as a passed run; the exit-code "skipped" refers only to prompts the runner itself could not read.
+- Flag precedence: `doctor` ignores other flags; `--list` wins over `--dry-run`; `--dry-run` ignores `--log` and takes no lock.
 - At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
 - Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 128+signal when interrupted, so 130 for SIGINT and 143 for SIGTERM (takes precedence over 1).
 
@@ -125,7 +127,7 @@ Projects can also carry their own prompts: any `*-review.md` found in the projec
 
 ## Prompt structure
 
-All review prompts follow a consistent structure:
+All review prompts follow a consistent structure (sections 4-5 exist for standalone use; the runner strips them at dispatch time since auto-fix mode overrides them):
 
 1. **Role and goal** — who the reviewer is and what they evaluate.
 2. **Numbered checklist** (typically 10 sections) — specific items to check, grouped by concern.

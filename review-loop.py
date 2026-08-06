@@ -185,6 +185,8 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
     reviews: dict[str, Path] = {}
     if prompt_dir.is_dir():
         for f in sorted(prompt_dir.glob("*-review.md")):
+            if f.is_symlink() or not f.is_file():  # read_no_follow would fail every run
+                continue
             reviews[f.stem] = f
     project = Path.cwd().resolve()
     prompt_dir = prompt_dir.resolve()
@@ -294,17 +296,17 @@ def have(name: str) -> bool:
 ANSI = {"bold": "1", "dim": "2", "red": "31", "green": "32", "yellow": "33"}
 
 
-def use_color() -> bool:
+def use_color(stream=None) -> bool:
     return (
-        sys.stdout.isatty()
+        (stream or sys.stdout).isatty()
         and not os.environ.get("NO_COLOR")
         and os.environ.get("TERM") != "dumb"
     )
 
 
-def paint(text: str, *styles: str) -> str:
+def paint(text: str, *styles: str, stream=None) -> str:
     """Style text for a terminal. Pad before painting: escapes break alignment."""
-    if not styles or not use_color():
+    if not styles or not use_color(stream):
         return text
     return f"\033[{';'.join(ANSI[s] for s in styles)}m{text}\033[0m"
 
@@ -324,18 +326,18 @@ def _wrap_tools(tools: list[tuple[str, bool, bool]], indent: int, width: int) ->
     row: list[str] = []
     row_len = 0
     for name, ok, rec in tools:
-        plain = f"✓ {name}"  # mark is always one column wide
+        star = "*" if rec else ""
+        plain = f"✓ {name}{star}"  # mark is always one column wide
         sep = 2 if row else 0
         if row and indent + row_len + sep + len(plain) > width:
             lines.append("  ".join(row))
             row, row_len, sep = [], 0, 0
         # The '*' carries the recommended/stack-specific distinction when
         # color is off; styling only reinforces it.
-        star = "*" if rec else ""
         label = name + star
         row.append(f"{_mark(ok, 'yellow' if rec else 'dim')} "
                    f"{label if ok else paint(label, 'bold' if rec else 'dim')}")
-        row_len += sep + len(plain) + len(star)
+        row_len += sep + len(plain)
     if row:
         lines.append("  ".join(row))
     return lines
@@ -390,7 +392,7 @@ def doctor() -> int:
     if not found_agents:
         sys.stdout.flush()  # keep the report ahead of the error when piped
         msg = "No agent CLI found — install one to run reviews."
-        print(f"\033[31m{msg}\033[0m" if sys.stderr.isatty() else msg, file=sys.stderr)
+        print(paint(msg, "red", stream=sys.stderr), file=sys.stderr)
         return 1
     if missing_rec:
         print(paint("Worth installing: ", "dim") + ", ".join(missing_rec))
@@ -426,7 +428,18 @@ def strip_report_sections(text: str) -> str:
             skipping = False
         if not skipping:
             out.append(line)
+    if skipping:
+        # A report marker with no Important block after it (possible in
+        # arbitrary project prompts) would strip to end-of-file. Losing real
+        # content is worse than carrying report noise: fail open.
+        return text
     return "\n".join(out)
+
+
+def compose_prompt(text: str, timeout_secs: int) -> str:
+    """Header, stripped review body, then the auto-fix suffix, in that order."""
+    suffix = PROMPT_SUFFIX.format(timeout=fmt_duration(timeout_secs))
+    return f"{PROMPT_HEADER}\n\n{strip_report_sections(text)}{suffix}"
 
 
 def read_no_follow(path: Path) -> str:
@@ -556,8 +569,7 @@ class Runner:
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
             return
 
-        suffix = PROMPT_SUFFIX.format(timeout=fmt_duration(self.timeout_secs))
-        prompt = f"{PROMPT_HEADER}\n\n{strip_report_sections(text)}{suffix}"
+        prompt = compose_prompt(text, self.timeout_secs)
 
         start = time.monotonic()
         log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
@@ -569,7 +581,7 @@ class Runner:
             proc = subprocess.Popen(cmd, start_new_session=True)
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {review}: {e}")
-            self.stats.add(ReviewResult(review, spec, 0.0, "fail", e.errno))
+            self.stats.add(ReviewResult(review, spec, 0.0, "fail"))  # exit_code None = launch failure
             return
         self.current_proc = proc
         if self.stopping:  # signal landed between Popen and registration
