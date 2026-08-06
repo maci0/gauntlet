@@ -27,6 +27,19 @@ VERSION = "0.1.0"  # bump with a matching git tag; there is no other source of t
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi"}
 NO_MODEL_TOOLS = {"agy"}
 
+# Flags that resume the agent's most recent session in this directory, used by
+# --continue-sessions after a tool's first run. Tools absent here (codex,
+# cursor-agent) always start fresh: their resume mechanics don't compose with
+# one-shot prompt mode.
+CONTINUE_FLAGS: dict[str, tuple[str, ...]] = {
+    "claude": ("-c",),
+    "qwen": ("-c",),
+    "agy": ("-c",),
+    "kimi": ("-c",),
+    "grok": ("-c",),
+    "gemini": ("--resume", "latest"),
+}
+
 # Search/rewrite tools the injected rules point every review at. "a|b" means
 # either binary satisfies the check.
 CORE_TOOLS: tuple[tuple[str, str], ...] = (
@@ -489,7 +502,7 @@ def check_tool(name: str) -> None:
         usage_error(f"Required tool not found in PATH: {name}")
 
 
-def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
+def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False) -> list[str]:
     if spec.tool == "claude":
         cmd = ["claude", "--dangerously-skip-permissions"]
         if spec.model:
@@ -526,6 +539,8 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
         cmd += ["-p", prompt]
     else:
         raise ValueError(f"unknown tool: {spec.tool}")
+    if continue_session and spec.tool in CONTINUE_FLAGS:
+        cmd[1:1] = CONTINUE_FLAGS[spec.tool]
     return cmd
 
 
@@ -541,6 +556,9 @@ class Runner:
         self.stopping = False
         self.stop_signal = signal.SIGINT
         self.interrupt_count = 0
+        # Tools that already ran once this process: their next run may resume
+        # the session they created (--continue-sessions).
+        self.session_started: set[str] = set()
         self.current_proc: subprocess.Popen | None = None
         self.script_start = time.monotonic()
 
@@ -594,7 +612,10 @@ class Runner:
             return
 
         prompt = compose_prompt(text, self.timeout_secs)
-        cmd = build_cmd(spec, prompt)
+        resume = (
+            self.args.continue_sessions and spec.tool in self.session_started
+        )
+        cmd = build_cmd(spec, prompt, continue_session=resume)
         if self.stopping:
             return
 
@@ -607,6 +628,7 @@ class Runner:
             self.stats.add(ReviewResult(review, spec, 0.0, "fail"))  # exit_code None = launch failure
             return
         self.current_proc = proc
+        self.session_started.add(spec.tool)
         if self.stopping:  # signal landed between Popen and registration
             self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
@@ -890,6 +912,17 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--reviews", default="", help="comma-separated subset to run")
     p.add_argument("--exclude", default="", help="comma-separated reviews to skip")
+    p.add_argument(
+        "--continue-sessions", action="store_true",
+        help="after each agent's first run, resume its session on later runs "
+             "(reuses already-read context; risks context bleed between reviews). "
+             "Agents without session resume in prompt mode always start fresh.",
+    )
+    p.add_argument(
+        "--semcode", action="store_true",
+        help="run semcode-index against the target dir before the loop so "
+             "reviews can answer call-graph/type queries from the index",
+    )
     p.add_argument("--dry-run", action="store_true", help="print planned schedule and exit")
     p.add_argument("--list", action="store_true", help="list available reviews and exit")
     args = p.parse_args()
@@ -951,6 +984,14 @@ def main() -> None:
 
     if args.log:
         setup_log_tee(args.log)
+
+    if args.semcode:
+        check_tool("semcode-index")
+        log("Building semcode index (semcode-index -s .)...")
+        rc = subprocess.run(["semcode-index", "-s", "."], check=False).returncode
+        if rc != 0:
+            usage_error(f"semcode-index failed with exit code {rc}")
+        log("semcode index ready")
 
     runner = Runner(args)
     try:

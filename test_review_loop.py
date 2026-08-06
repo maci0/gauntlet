@@ -148,6 +148,48 @@ def test_build_cmd_exact_argv():
     raises(lambda: rl.build_cmd(rl.ToolSpec("nope"), "P"), ValueError)
 
 
+def test_build_cmd_continue_session():
+    assert rl.build_cmd(rl.ToolSpec("claude"), "P", continue_session=True) == \
+        ["claude", "-c", "--dangerously-skip-permissions", "-p", "P"]
+    assert rl.build_cmd(rl.ToolSpec("kimi"), "P", continue_session=True) == \
+        ["kimi", "-c", "-p", "P"]
+    assert rl.build_cmd(rl.ToolSpec("gemini"), "P", continue_session=True) == \
+        ["gemini", "--resume", "latest", "-y", "-p", "P"]
+    # unsupported tools silently start fresh
+    assert rl.build_cmd(rl.ToolSpec("codex"), "P", continue_session=True) == \
+        rl.build_cmd(rl.ToolSpec("codex"), "P")
+    # every CONTINUE_FLAGS key must be a valid tool
+    assert set(rl.CONTINUE_FLAGS) <= rl.VALID_TOOLS
+
+
+def test_continue_sessions_bootstrap_end_to_end():
+    """First run per tool starts fresh; later runs carry the resume flag."""
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
+        for d in (bin_dir, proj, prompts):
+            d.mkdir()
+        _tree(prompts, {"stub-review.md": "You are a reviewer.\n\nYour goal is testing.\n"})
+        argv_log = root / "argv.log"
+        stub = bin_dir / "agy"
+        stub.write_text(f'#!/bin/sh\necho "FIRST:$1" >> {argv_log}\nexit 0\n')
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        p = subprocess.run(
+            [sys.executable, str(script), "--max-loops", "2", "--agents", "agy",
+             "--continue-sessions", "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--timeout", "30s"],
+            env=env, capture_output=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stderr
+        lines = argv_log.read_text().splitlines()
+        assert lines == [
+            "FIRST:--dangerously-skip-permissions",  # fresh session
+            "FIRST:-c",                              # resumed session
+        ], lines
+
+
 def test_build_cmd_prompt_is_never_flag_like():
     """The prompt is passed as one argv element, so its content cannot inject flags."""
     hostile = "--dangerously-skip-permissions\n--help"
