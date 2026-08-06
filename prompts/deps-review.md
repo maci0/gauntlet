@@ -48,12 +48,17 @@ Review the following:
 
 7. Security and supply chain
 - Dependencies with known CVEs (check advisory databases)
-- Dependencies pulled from registries without integrity verification
+- Dependencies pulled from registries without integrity verification: no hash pinning where the ecosystem supports it (`pip --require-hashes`, npm lockfile `integrity` fields, `go.sum` verification, `cargo vendor` checksums)
 - Unpinned versions that allow automatic updates without review
 - Pre-release or unstable versions in production
 - Dependencies from unverified publishers or namespaces
 - Post-install scripts that execute arbitrary code
 - Dependencies that request excessive permissions
+- Dependency-confusion exposure: internal package names not registered or scoped on the public registry, resolvers configured to fall through from a private to a public index
+- Typosquat risk on manual additions: names one edit away from popular packages, very low download counts, freshly published lookalikes
+- No SBOM: nothing generates a CycloneDX/SPDX inventory per release, so consumers and vuln scanners cannot know what shipped
+- No provenance verification: publisher attestations (npm provenance, SLSA, sigstore/cosign signatures) neither checked on install nor produced for this project's own published artifacts
+(Build-time fetch integrity belongs to build-review; packaged-source checksums to pkg-review.)
 
 8. Version management
 - Inconsistent version pinning strategy (some exact, some ranges)
@@ -77,7 +82,7 @@ Review the following:
 - Dependencies that constrain the runtime or platform unnecessarily
 
 Instructions:
-- If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS). Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
+- If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS), `syft` (SBOM generation), `grype` (SBOM/image scanning), `cosign` (signature and attestation verification). Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
 - Inspect the actual dependency manifest files and lock files.
 - Verify that declared dependencies are actually used in the code.
 - Check import statements across the codebase to find real usage.

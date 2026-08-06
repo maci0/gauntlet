@@ -21,7 +21,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
 | [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
 | [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
-| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, license compliance |
+| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk |
 | [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection |
 | [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
 | [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
