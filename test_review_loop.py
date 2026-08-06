@@ -281,9 +281,14 @@ def test_acquire_lock_rejects_symlink_fifo_and_contention():
         root = Path(td)
         (root / "target").write_text("")
         (root / "sym.lock").symlink_to(root / "target")
-        raises(lambda: rl.acquire_lock(root / "sym.lock"), SystemExit)
-        os.mkfifo(root / "fifo.lock")
-        raises(lambda: rl.acquire_lock(root / "fifo.lock"), SystemExit)
+        for bad in ("sym.lock", "fifo.lock"):
+            if bad == "fifo.lock":
+                os.mkfifo(root / bad)
+            try:
+                rl.acquire_lock(root / bad)
+                raise AssertionError("expected SystemExit")
+            except SystemExit as e:
+                assert e.code == 2, f"{bad}: usage error expected, got {e.code}"
         # contention: hold the flock ourselves, expect exit 75
         held = os.open(root / "busy.lock", os.O_WRONLY | os.O_CREAT, 0o644)
         try:
@@ -298,28 +303,64 @@ def test_acquire_lock_rejects_symlink_fifo_and_contention():
 
 
 def test_run_review_status_machine_end_to_end():
-    """Exit-code contract via a stub agent: ok, fail, and timeout paths."""
+    """Exit codes AND status classification via a stub agent."""
     script = Path(__file__).resolve().parent / "review-loop.py"
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
         bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
-        bin_dir.mkdir(), proj.mkdir(), prompts.mkdir()
+        for d in (bin_dir, proj, prompts):
+            d.mkdir()
         _tree(prompts, {"stub-review.md": "You are a reviewer.\n\nYour goal is testing.\n"})
         stub = bin_dir / "agy"
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
-        def run(stub_body: str, timeout: str = "30s") -> int:
+        def run(stub_body: str, timeout: str = "30s", log: str | None = None):
             stub.write_text(f"#!/bin/sh\n{stub_body}\n")
             stub.chmod(0o755)
-            return subprocess.run(
-                [sys.executable, str(script), "--once", "--agents", "agy",
-                 "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", timeout],
-                env=env, capture_output=True, timeout=60, check=False,
-            ).returncode
+            args = [sys.executable, str(script), "--once", "--agents", "agy",
+                    "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", timeout]
+            if log:
+                args += ["--log", log]
+            p = subprocess.run(args, env=env, capture_output=True, text=True,
+                               timeout=60, check=False)
+            return p.returncode, p.stdout + p.stderr
 
-        assert run("exit 0") == 0, "passing review must exit 0"
-        assert run("exit 3") == 1, "failing review must exit 1"
-        assert run("sleep 30", timeout="1s") == 1, "timed-out review must exit 1"
+        rc, out = run("exit 0")
+        assert rc == 0 and "Done: stub-review" in out, out
+        rc, out = run("exit 3")
+        assert rc == 1 and "FAILED: stub-review" in out, out
+        rc, out = run("sleep 30", timeout="1s")
+        assert rc == 1 and "TIMEOUT: stub-review" in out, "timeout must classify as TIMEOUT, not FAILED"
+
+        # --log tee path: log lines must land in the file
+        log_file = root / "run.log"
+        rc, _ = run("exit 0", log=str(log_file))
+        assert rc == 0 and "Done: stub-review" in log_file.read_text()
+
+
+def test_run_review_interrupt_exits_130():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    import signal as _signal
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
+        for d in (bin_dir, proj, prompts):
+            d.mkdir()
+        _tree(prompts, {"stub-review.md": "You are a reviewer.\n\nYour goal is testing.\n"})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nsleep 30\n")
+        stub.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        p = subprocess.Popen(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s"],
+            env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        time.sleep(3)  # let it launch the stub
+        p.send_signal(_signal.SIGINT)
+        out, _ = p.communicate(timeout=30)
+        assert p.returncode == 130, (p.returncode, out)
+        assert "Interrupted: stub-review" in out, out
 
 
 def test_doctor_recommended_tools_are_real_entries():

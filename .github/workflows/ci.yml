@@ -29,7 +29,8 @@ jobs:
           python review-loop.py --version
           python review-loop.py --list
           # doctor must exit 1 here specifically because no agent CLI exists,
-          # not because it crashed: require the report plus the explicit error.
-          out=$(python review-loop.py doctor 2>&1) && exit 1 || true
+          # not because it crashed: require exit code 1 exactly plus the report.
+          rc=0; out=$(python review-loop.py doctor 2>&1) || rc=$?
+          test "$rc" -eq 1
           echo "$out" | grep -q "Per-review helpers"
           echo "$out" | grep -q "No agent CLI found"

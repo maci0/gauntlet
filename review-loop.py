@@ -16,6 +16,7 @@ import signal
 import stat
 import subprocess
 import sys
+import textwrap
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -66,13 +67,13 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
     "db-review": ("sqlfluff",),
     "deps-review": ("osv-scanner", "pip-audit", "deptry", "cargo-audit", "cargo-udeps",
-                    "cargo-deny", "depcheck", "syft", "grype", "cosign"),
+                    "cargo-deny", "depcheck", "knip", "syft", "grype", "cosign"),
     "doc-review": ("vale", "markdownlint", "lychee"),
     "fuzz-review": ("cargo-fuzz", "afl-fuzz"),
     "i18n-review": ("xgettext", "msgfmt", "i18next-parser"),
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
     "llm-review": ("promptfoo", "garak"),
-    "minimalism-review": ("vulture", "knip", "ts-prune", "tokei", "cloc"),
+    "minimalism-review": ("vulture", "knip", "ts-prune", "cargo-udeps", "tokei", "cloc"),
     "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
     "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive", "shellcheck",
                    "desktop-file-validate", "appstream-util", "check-wheel-contents"),
@@ -80,7 +81,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
     "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec"),
     "slop-review": ("jscpd",),
-    "test-review": ("coverage", "cargo-llvm-cov", "c8", "mutmut", "cargo-mutants", "stryker"),
+    "test-review": ("coverage", "cargo-llvm-cov", "c8", "nyc", "mutmut", "cargo-mutants", "stryker"),
     "ux-review": ("lighthouse",),
 }
 
@@ -188,6 +189,11 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             if f.is_symlink() or not f.is_file():  # read_no_follow would fail every run
                 continue
             if sanitize(f.stem) != f.stem:
+                print(
+                    f"Warning: ignoring prompt with control characters in its name: "
+                    f"{sanitize(str(f))}",
+                    file=sys.stderr,
+                )
                 continue
             reviews[f.stem] = f
     project = Path.cwd().resolve()
@@ -402,7 +408,11 @@ def doctor() -> int:
         print(paint(msg, "red", stream=sys.stderr), file=sys.stderr)
         return 1
     if missing_rec:
-        print(paint("Worth installing: ", "dim") + ", ".join(missing_rec))
+        body = textwrap.fill(
+            ", ".join(missing_rec), width=width,
+            initial_indent="Worth installing: ", subsequent_indent="  ",
+        ).removeprefix("Worth installing: ")
+        print(paint("Worth installing: ", "dim") + body)
     print(paint("Stack-specific tools only matter for the languages you review.", "dim"))
     return 0
 
@@ -593,17 +603,17 @@ class Runner:
         if self.stopping:  # signal landed between Popen and registration
             self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
-        stop_shortened = self.stopping
-        deadline = time.monotonic() + (10 if self.stopping else self.timeout_secs)
+        deadline = time.monotonic() + self.timeout_secs
         try:
             # Wait in short slices so a signal arriving mid-wait shortens the
             # deadline to 10s instead of blocking for the full review timeout.
+            # min() is sticky: once clamped, later now+10 values only grow.
             while True:
-                if self.stopping and not stop_shortened:
+                if self.stopping:
                     deadline = min(deadline, time.monotonic() + 10)
-                    stop_shortened = True
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    timed_out = not self.stopping  # latch before the kill dance
                     raise subprocess.TimeoutExpired(cmd, self.timeout_secs)
                 try:
                     rc = proc.wait(timeout=min(1.0, remaining))
@@ -611,10 +621,11 @@ class Runner:
                 except subprocess.TimeoutExpired:
                     continue
         except subprocess.TimeoutExpired:
-            timed_out = not self.stopping
+            # Kill before logging: if tee died, log() raises BrokenPipeError
+            # and the child must not be left running.
+            self._kill_proc(proc, signal.SIGTERM)
             if timed_out:
                 log(f"TIMEOUT: {review} ({spec.label()}) after {fmt_duration(self.timeout_secs)}")
-            self._kill_proc(proc, signal.SIGTERM)
             try:
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
@@ -663,12 +674,13 @@ class Runner:
         self.stopping = True
         proc = self.current_proc
         if proc and proc.poll() is None:
+            # Kill before writing: a dead-tee BrokenPipe must not skip the kill.
             if self.interrupt_count == 1:
-                os.write(2, b"\nSignal received - terminating current review. Ctrl+C again for KILL.\n")
                 self._kill_proc(proc, signal.SIGTERM)
+                os.write(2, b"\nSignal received - terminating current review. Ctrl+C again for KILL.\n")
             else:
-                os.write(2, b"\nForce-killing current review...\n")
                 self._kill_proc(proc, signal.SIGKILL)
+                os.write(2, b"\nForce-killing current review...\n")
         else:
             os.write(2, b"\nSignal received - stopping...\n")
 
@@ -818,9 +830,12 @@ def setup_log_tee(log_path: Path) -> None:
         usage_error(f"Cannot write log file {log_path}: {e}")
     # New session so terminal Ctrl+C does not kill tee before the final
     # stats are written through it.
-    tee = subprocess.Popen(
-        ["tee", "-a", str(log_path)], stdin=subprocess.PIPE, start_new_session=True
-    )
+    try:
+        tee = subprocess.Popen(
+            ["tee", "-a", str(log_path)], stdin=subprocess.PIPE, start_new_session=True
+        )
+    except OSError as e:
+        usage_error(f"Cannot start tee for --log: {e}")
     assert tee.stdin is not None
     os.dup2(tee.stdin.fileno(), 1)
     os.dup2(tee.stdin.fileno(), 2)
