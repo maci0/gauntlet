@@ -40,6 +40,7 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
+| [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
 | [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
 
 ## Requirements

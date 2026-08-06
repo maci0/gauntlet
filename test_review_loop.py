@@ -277,6 +277,16 @@ def test_doctor_recommended_tools_are_real_entries():
     assert rl.RECOMMENDED_TOOLS <= listed, rl.RECOMMENDED_TOOLS - listed
 
 
+def test_doctor_tables_cover_every_bundled_prompt():
+    """Adding a prompt without registering it in doctor's tables is drift."""
+    bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
+    covered = set(rl.REVIEW_TOOLS) | set(rl.REVIEWS_WITHOUT_TOOLS)
+    assert bundled == covered, (
+        f"unregistered: {bundled - covered}, stale: {covered - bundled}"
+    )
+    assert not set(rl.REVIEW_TOOLS) & set(rl.REVIEWS_WITHOUT_TOOLS)
+
+
 def test_fuzz_parsers_never_crash():
     """Parsers take user input: they may reject, but must not raise anything else."""
     rng = random.Random(20240805)

@@ -40,7 +40,7 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
     "cli-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "o11y-review", "privacy-review",
+    "functionality-review", "o11y-review", "privacy-review", "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
