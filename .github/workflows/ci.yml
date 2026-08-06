@@ -1,0 +1,25 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run tests
+        run: python test_review_loop.py
+      - name: Smoke-test the CLI (no agent CLIs installed here)
+        run: |
+          python review-loop.py --version
+          python review-loop.py --list
+          python review-loop.py doctor || test $? -eq 1

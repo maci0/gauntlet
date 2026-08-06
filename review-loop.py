@@ -40,7 +40,8 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
     "cli-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "o11y-review", "privacy-review", "uislop-review",
+    "functionality-review", "mobile-review", "o11y-review", "privacy-review",
+    "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -69,6 +70,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "fuzz-review": ("cargo-fuzz", "afl-fuzz"),
     "i18n-review": ("xgettext", "msgfmt"),
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
+    "llm-review": ("promptfoo", "garak"),
     "minimalism-review": ("vulture", "knip", "ts-prune", "tokei", "cloc"),
     "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
     "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive",

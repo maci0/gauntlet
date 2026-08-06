@@ -30,7 +30,9 @@ Auto-fix review loop for codebases. Runs a set of review prompts (security, perf
 | [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
 | [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
 | [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
+| [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
+| [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
 | [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
 | [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
