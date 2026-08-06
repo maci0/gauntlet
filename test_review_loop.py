@@ -133,8 +133,8 @@ def test_build_cmd_exact_argv():
         ("agy", None): ["agy", "--dangerously-skip-permissions", "-p", "P"],
         ("cursor-agent", None): ["cursor-agent", "--print", "-f", "P"],
         ("cursor-agent", "c-1"): ["cursor-agent", "--print", "-f", "--model", "c-1", "P"],
-        ("kimi", None): ["kimi", "--auto", "-p", "P"],
-        ("kimi", "k2"): ["kimi", "--auto", "-m", "k2", "-p", "P"],
+        ("kimi", None): ["kimi", "-p", "P"],
+        ("kimi", "k2"): ["kimi", "-m", "k2", "-p", "P"],
     }
     for (tool, model), want in expected.items():
         got = rl.build_cmd(rl.ToolSpec(tool, model), "P")

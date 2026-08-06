@@ -518,8 +518,9 @@ def build_cmd(spec: ToolSpec, prompt: str) -> list[str]:
             cmd += ["--model", spec.model]
         cmd.append(prompt)
     elif spec.tool == "kimi":
-        # --auto: fully autonomous (no questions); -p: non-interactive prompt mode
-        cmd = ["kimi", "--auto"]
+        # -p refuses --auto/--yolo; prompt mode is already non-interactive
+        # and auto-approves tool calls (verified: writes files with -p alone).
+        cmd = ["kimi"]
         if spec.model:
             cmd += ["-m", spec.model]
         cmd += ["-p", prompt]
