@@ -621,8 +621,9 @@ class Runner:
 
         start = time.monotonic()
         log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
+        sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
-            proc = subprocess.Popen(cmd, start_new_session=True)
+            proc = subprocess.Popen(cmd, start_new_session=True, stdout=sink, stderr=sink)
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {review}: {e}")
             self.stats.add(ReviewResult(review, spec, 0.0, "fail"))  # exit_code None = launch failure
@@ -912,6 +913,11 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--reviews", default="", help="comma-separated subset to run")
     p.add_argument("--exclude", default="", help="comma-separated reviews to skip")
+    p.add_argument(
+        "--quiet-agents", action="store_true",
+        help="discard agent stdout/stderr; only the runner's own log lines "
+             "remain (some agents narrate every step)",
+    )
     p.add_argument(
         "--continue-sessions", action="store_true",
         help="after each agent's first run, resume its session on later runs "

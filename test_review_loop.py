@@ -358,19 +358,25 @@ def test_run_review_status_machine_end_to_end():
         stub = bin_dir / "agy"
         env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
 
-        def run(stub_body: str, timeout: str = "30s", log: str | None = None):
+        def run(stub_body: str, timeout: str = "30s", log: str | None = None,
+                extra: list[str] | None = None):
             stub.write_text(f"#!/bin/sh\n{stub_body}\n")
             stub.chmod(0o755)
             args = [sys.executable, str(script), "--once", "--agents", "agy",
                     "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", timeout]
             if log:
                 args += ["--log", log]
+            args += extra or []
             p = subprocess.run(args, env=env, capture_output=True, text=True,
                                timeout=60, check=False)
             return p.returncode, p.stdout + p.stderr
 
         rc, out = run("exit 0")
         assert rc == 0 and "Done: stub-review" in out, out
+        rc, out = run("echo AGENT-NOISE; exit 0")
+        assert "AGENT-NOISE" in out, "agent output is inherited by default"
+        rc, out = run("echo AGENT-NOISE; exit 0", extra=["--quiet-agents"])
+        assert rc == 0 and "AGENT-NOISE" not in out and "Done: stub-review" in out, out
         rc, out = run("exit 3")
         assert rc == 1 and "FAILED: stub-review" in out, out
         rc, out = run("sleep 30", timeout="1s")
