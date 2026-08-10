@@ -1,7 +1,7 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 32 specialized review prompts (security,
-performance, accessibility, supply chain, LLM integration, ...) dispatched to
+An auto-fix review loop for codebases: 36 specialized review prompts (security,
+performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`), which apply small, proven fixes
 directly to the working tree instead of writing reports. Different agents catch
