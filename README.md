@@ -3,7 +3,7 @@
 An auto-fix review loop for codebases: 36 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
-`codex`, `grok`, `agy`, `cursor-agent`, `kimi`), which apply small, proven fixes
+`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`), which apply small, proven fixes
 directly to the working tree instead of writing reports. Different agents catch
 different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
@@ -90,7 +90,7 @@ with a custom `--prompt-dir`.
 ## Requirements
 
 - Python 3.10+
-- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi` in `PATH`
+- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode` in `PATH`
 - `tee` (only if `--log` is used)
 
 ## Quick start

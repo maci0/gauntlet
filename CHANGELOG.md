@@ -4,6 +4,13 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Added
+
+- opencode as a supported agent (`opencode run --auto`, with `-c` session
+  resume placed after the subcommand).
+
 ## 0.2.0
 
 ### Added

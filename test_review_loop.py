@@ -133,6 +133,8 @@ def test_build_cmd_exact_argv():
         ("agy", None): ["agy", "--dangerously-skip-permissions", "-p", "P"],
         ("cursor-agent", None): ["cursor-agent", "--print", "-f", "P"],
         ("cursor-agent", "c-1"): ["cursor-agent", "--print", "-f", "--model", "c-1", "P"],
+        ("opencode", None): ["opencode", "run", "--auto", "P"],
+        ("opencode", "anthropic/claude"): ["opencode", "run", "--auto", "-m", "anthropic/claude", "P"],
         ("kimi", None): ["kimi", "-p", "P"],
         ("kimi", "k2"): ["kimi", "-m", "k2", "-p", "P"],
     }
@@ -155,9 +157,15 @@ def test_build_cmd_continue_session():
         ["kimi", "-c", "-p", "P"]
     assert rl.build_cmd(rl.ToolSpec("gemini"), "P", continue_session=True) == \
         ["gemini", "--resume", "latest", "-y", "-p", "P"]
+    # subcommand tools take the flag after the subcommand, not next to the binary
+    assert rl.build_cmd(rl.ToolSpec("opencode"), "P", continue_session=True) == \
+        ["opencode", "run", "-c", "--auto", "P"]
     # unsupported tools silently start fresh
     assert rl.build_cmd(rl.ToolSpec("codex"), "P", continue_session=True) == \
         rl.build_cmd(rl.ToolSpec("codex"), "P")
+    # every subcommand tool really does put its subcommand at index 1
+    for tool, sub in rl.SUBCOMMAND_TOOLS.items():
+        assert rl.build_cmd(rl.ToolSpec(tool), "P")[1] == sub
     # every CONTINUE_FLAGS key must be a valid tool
     assert set(rl.CONTINUE_FLAGS) <= rl.VALID_TOOLS
 
