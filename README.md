@@ -66,6 +66,25 @@ How a single pass works:
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
 | [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
 
+### Review sets
+
+`--reviews` and `--exclude` accept these shorthands alongside plain review
+names, and `--list` prints their current members:
+
+| Set | Members |
+|---|---|
+| `all` | every discovered review, including project-local ones |
+| `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
+| `standard` | `quick` plus perf, deps, doc, arch, concurrency, minimalism, slop |
+| `security` | sec, deps, privacy, config, fuzz, llm |
+| `frontend` | ux, a11y, uislop, i18n, perf |
+| `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
+| `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |
+| `shipping` | release, pkg, build, deps, doc, cli |
+
+Members missing from the prompt directory are skipped, so a set stays usable
+with a custom `--prompt-dir`.
+
 ## Requirements
 
 - Python 3.10+
@@ -99,6 +118,11 @@ How a single pass works:
 # only some reviews, or everything except reviews that don't apply
 ./review-loop.py --reviews code-review,sec-review,error-review
 ./review-loop.py --exclude db-review,ux-review
+
+# named sets work anywhere a review name does, and compose with them
+./review-loop.py --reviews quick             # cheap pass that fits any repo
+./review-loop.py --reviews backend,llm-review
+./review-loop.py --exclude frontend          # everything but the UI reviews
 ```
 
 Run `./review-loop.py --help` for the full option list.
@@ -115,8 +139,8 @@ Run `./review-loop.py --help` for the full option list.
 | `--timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--log FILE` | — | Tee stdout/stderr to FILE. |
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. |
-| `--reviews LIST` | all | Comma-separated subset to run. |
-| `--exclude LIST` | none | Comma-separated reviews to skip. |
+| `--reviews LIST` | all | Comma-separated review names and/or set names to run. |
+| `--exclude LIST` | none | Comma-separated review names and/or set names to skip. |
 | `--quiet-agents` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
 | `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |

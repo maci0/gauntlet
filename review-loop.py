@@ -100,6 +100,45 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "ux-review": ("lighthouse",),
 }
 
+# Shorthands usable anywhere a review name is: --reviews quick,
+# --exclude frontend, --reviews backend,llm-review. Names that are missing
+# from the prompt dir are dropped silently so a set stays usable when a
+# --prompt-dir carries only some of them. "all" is every discovered review,
+# including project-local ones.
+REVIEW_SETS: dict[str, tuple[str, ...]] = {
+    # Applies to essentially any codebase, cheapest useful pass.
+    "quick": (
+        "code-review", "sec-review", "error-review", "functionality-review",
+        "test-review",
+    ),
+    # Quick plus the broadly-applicable quality and hygiene reviews.
+    "standard": (
+        "code-review", "sec-review", "error-review", "functionality-review",
+        "test-review", "perf-review", "deps-review", "doc-review",
+        "arch-review", "concurrency-review", "minimalism-review", "slop-review",
+    ),
+    "security": (
+        "sec-review", "deps-review", "privacy-review", "config-review",
+        "fuzz-review", "llm-review",
+    ),
+    "frontend": (
+        "ux-review", "a11y-review", "uislop-review", "i18n-review",
+        "perf-review",
+    ),
+    "backend": (
+        "api-review", "db-review", "error-review", "concurrency-review",
+        "idempotency-review", "o11y-review", "perf-review", "dst-review",
+    ),
+    # Repos that ship instructions for AI agents.
+    "agents": (
+        "prompt-review", "skills-review", "agentrules-review", "llm-review",
+    ),
+    "shipping": (
+        "release-review", "pkg-review", "build-review", "deps-review",
+        "doc-review", "cli-review",
+    ),
+}
+
 PROMPT_HEADER = "MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report."
 
 PROMPT_SUFFIX = """
@@ -579,26 +618,35 @@ class Runner:
 
         reviews = list(available)
 
-        def split(arg: str) -> set[str]:
-            return {x.strip() for x in arg.split(",") if x.strip()}
+        def split(arg: str, flag: str) -> set[str]:
+            """Expand set shorthands and validate the rest against what exists."""
+            out: set[str] = set()
+            unknown: set[str] = set()
+            for raw in arg.split(","):
+                name = raw.strip()
+                if not name:
+                    continue
+                if name == "all":
+                    out.update(available)
+                elif name in REVIEW_SETS:
+                    out.update(r for r in REVIEW_SETS[name] if r in available)
+                elif name in available:
+                    out.add(name)
+                else:
+                    unknown.add(name)
+            if unknown:
+                usage_error(
+                    f"Unknown review(s) in {flag}: {', '.join(sorted(unknown))}\n"
+                    f"Sets: all, {', '.join(sorted(REVIEW_SETS))}\n"
+                    f"Reviews: {', '.join(available)}"
+                )
+            return out
 
         if self.args.reviews:
-            inc = split(self.args.reviews)
-            unknown = inc - set(available)
-            if unknown:
-                usage_error(
-                    f"Unknown review(s): {', '.join(sorted(unknown))}\n"
-                    f"Available: {', '.join(available)}"
-                )
+            inc = split(self.args.reviews, "--reviews")
             reviews = [r for r in reviews if r in inc]
         if self.args.exclude:
-            exc = split(self.args.exclude)
-            unknown = exc - set(available)
-            if unknown:
-                usage_error(
-                    f"Unknown review(s) in --exclude: {', '.join(sorted(unknown))}\n"
-                    f"Available: {', '.join(available)}"
-                )
+            exc = split(self.args.exclude, "--exclude")
             reviews = [r for r in reviews if r not in exc]
         if not reviews:
             usage_error("No reviews remain after filtering.")
@@ -786,6 +834,19 @@ class Runner:
                 desc = desc[:room - 1].rstrip() + "…"
             print(prefix + desc)
 
+        print()
+        print(f"Sets usable with --reviews/--exclude ({len(REVIEW_SETS) + 1}):")
+        set_col = max(len(s) for s in REVIEW_SETS) + 1
+        print(f"  {'all'.ljust(set_col)} every review above")
+        for name, members in REVIEW_SETS.items():
+            present = [r for r in members if r in self.prompt_files]
+            body = ", ".join(r.removesuffix("-review") for r in present)
+            head = f"  {name.ljust(set_col)} "
+            print(textwrap.fill(
+                body, width=width, initial_indent=head,
+                subsequent_indent=" " * len(head),
+            ))
+
     def dry_run(self) -> None:
         print("DRY RUN — planned schedule for one loop:")
         order = list(self.reviews)
@@ -920,8 +981,15 @@ def parse_args() -> argparse.Namespace:
         default=Path(__file__).resolve().parent / "prompts",
         help="directory of *-review.md files (default: prompts/ next to this script)",
     )
-    p.add_argument("--reviews", default="", help="comma-separated subset to run")
-    p.add_argument("--exclude", default="", help="comma-separated reviews to skip")
+    p.add_argument(
+        "--reviews", default="",
+        help="comma-separated reviews and/or set names to run "
+             f"(sets: all, {', '.join(sorted(REVIEW_SETS))}); see --list",
+    )
+    p.add_argument(
+        "--exclude", default="",
+        help="comma-separated reviews and/or set names to skip",
+    )
     p.add_argument(
         "--quiet-agents", action="store_true",
         help="discard agent stdout/stderr; only the runner's own log lines "

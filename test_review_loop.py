@@ -418,6 +418,45 @@ def test_doctor_recommended_tools_are_real_entries():
     assert rl.RECOMMENDED_TOOLS <= listed, rl.RECOMMENDED_TOOLS - listed
 
 
+def test_review_sets_reference_real_prompts():
+    """A renamed or removed prompt must not linger in a set."""
+    bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
+    for name, members in rl.REVIEW_SETS.items():
+        assert members, f"{name} is empty"
+        assert len(set(members)) == len(members), f"{name} has duplicates"
+        missing = set(members) - bundled
+        assert not missing, f"{name} references missing prompts: {missing}"
+    assert "all" not in rl.REVIEW_SETS, "'all' is reserved for every discovered review"
+
+
+def test_reviews_flag_expands_sets():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+
+    def scheduled(spec: str, flag: str = "--reviews") -> set[str]:
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "claude", flag, spec],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stderr
+        return {ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln}
+
+    assert scheduled("quick") == set(rl.REVIEW_SETS["quick"])
+    # sets compose with plain names, and duplicates collapse
+    assert scheduled("quick,llm-review,code-review") == \
+        set(rl.REVIEW_SETS["quick"]) | {"llm-review"}
+    # excluding a set removes exactly its members
+    every = scheduled("all")
+    assert scheduled("all", "--reviews") == every
+    assert scheduled("frontend", "--exclude") == every - set(rl.REVIEW_SETS["frontend"])
+
+    bad = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--agents", "claude",
+         "--reviews", "nosuchset"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert bad.returncode == 2 and "Sets:" in bad.stderr, bad.stderr
+
+
 def test_doctor_tables_cover_every_bundled_prompt():
     """Adding a prompt without registering it in doctor's tables is drift."""
     bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
