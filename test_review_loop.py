@@ -426,7 +426,38 @@ def test_review_sets_reference_real_prompts():
         assert len(set(members)) == len(members), f"{name} has duplicates"
         missing = set(members) - bundled
         assert not missing, f"{name} references missing prompts: {missing}"
-    assert "all" not in rl.REVIEW_SETS, "'all' is reserved for every discovered review"
+    assert not set(rl.REVIEW_SETS) & set(rl.DYNAMIC_SETS), "dynamic names are reserved"
+    assert not bundled & set(rl.REVIEW_SETS), "a set must not shadow a review name"
+    assert not bundled & set(rl.DYNAMIC_SETS)
+
+
+def test_project_set_selects_only_project_prompts():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        bundled, proj = root / "prompts", root / "proj"
+        _tree(bundled, {"code-review.md": "x", "sec-review.md": "x"})
+        _tree(proj, {"house-review.md": "x", "docs/legacy-review.md": "x"})
+
+        def scheduled(spec: str) -> set[str]:
+            p = subprocess.run(
+                [sys.executable, str(script), "--dry-run", "--agents", "claude",
+                 "--prompt-dir", str(bundled), "--dir", str(proj), "--reviews", spec],
+                capture_output=True, text=True, timeout=60, check=False,
+            )
+            assert p.returncode == 0, p.stderr
+            return {ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln}
+
+        assert scheduled("project") == {"house-review", "legacy-review"}
+        assert scheduled("all") == {"code-review", "sec-review", "house-review", "legacy-review"}
+
+        # a set that matches nothing fails clearly instead of running everything
+        empty = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "claude",
+             "--prompt-dir", str(bundled), "--dir", str(bundled), "--reviews", "project"],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert empty.returncode == 2 and "matched no available reviews" in empty.stderr
 
 
 def test_reviews_flag_expands_sets():

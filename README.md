@@ -74,6 +74,7 @@ names, and `--list` prints their current members:
 | Set | Members |
 |---|---|
 | `all` | every discovered review, including project-local ones |
+| `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
 | `standard` | `quick` plus perf, deps, doc, arch, concurrency, minimalism, slop |
 | `security` | sec, deps, privacy, config, fuzz, llm |
@@ -123,6 +124,8 @@ with a custom `--prompt-dir`.
 ./review-loop.py --reviews quick             # cheap pass that fits any repo
 ./review-loop.py --reviews backend,llm-review
 ./review-loop.py --exclude frontend          # everything but the UI reviews
+./review-loop.py --reviews project           # only the target repo's own prompts
+./review-loop.py --exclude project           # only the bundled ones
 ```
 
 Run `./review-loop.py --help` for the full option list.

@@ -100,11 +100,16 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "ux-review": ("lighthouse",),
 }
 
+# Sets computed from what discovery found rather than listed by name.
+DYNAMIC_SETS = {
+    "all": "every discovered review",
+    "project": "only reviews found in the target tree, not the bundled set",
+}
+
 # Shorthands usable anywhere a review name is: --reviews quick,
 # --exclude frontend, --reviews backend,llm-review. Names that are missing
 # from the prompt dir are dropped silently so a set stays usable when a
-# --prompt-dir carries only some of them. "all" is every discovered review,
-# including project-local ones.
+# --prompt-dir carries only some of them.
 REVIEW_SETS: dict[str, tuple[str, ...]] = {
     # Applies to essentially any codebase, cheapest useful pass.
     "quick": (
@@ -596,9 +601,9 @@ class Runner:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.tools: list[ToolSpec] = args.agents
+        self.bundled_dir = args.prompt_dir.resolve()  # _filter_reviews needs it
         self.reviews: list[str] = self._filter_reviews()
         self.timeout_secs: int = args.timeout
-        self.bundled_dir = args.prompt_dir.resolve()
         self.stats = Stats()
         self.loop_count = 0
         self.stopping = False
@@ -622,14 +627,21 @@ class Runner:
             """Expand set shorthands and validate the rest against what exists."""
             out: set[str] = set()
             unknown: set[str] = set()
+            empty_sets: list[str] = []
             for raw in arg.split(","):
                 name = raw.strip()
                 if not name:
                     continue
-                if name == "all":
-                    out.update(available)
-                elif name in REVIEW_SETS:
-                    out.update(r for r in REVIEW_SETS[name] if r in available)
+                if name in DYNAMIC_SETS or name in REVIEW_SETS:
+                    if name == "all":
+                        members = list(available)
+                    elif name == "project":
+                        members = [r for r in available if self._origin(self.prompt_files[r])]
+                    else:
+                        members = [r for r in REVIEW_SETS[name] if r in available]
+                    if not members:
+                        empty_sets.append(name)
+                    out.update(members)
                 elif name in available:
                     out.add(name)
                 else:
@@ -637,8 +649,14 @@ class Runner:
             if unknown:
                 usage_error(
                     f"Unknown review(s) in {flag}: {', '.join(sorted(unknown))}\n"
-                    f"Sets: all, {', '.join(sorted(REVIEW_SETS))}\n"
+                    f"Sets: {', '.join(sorted(DYNAMIC_SETS))}, "
+                    f"{', '.join(sorted(REVIEW_SETS))}\n"
                     f"Reviews: {', '.join(available)}"
+                )
+            if empty_sets and not out:
+                usage_error(
+                    f"Set(s) in {flag} matched no available reviews: "
+                    f"{', '.join(empty_sets)}"
                 )
             return out
 
@@ -835,9 +853,13 @@ class Runner:
             print(prefix + desc)
 
         print()
-        print(f"Sets usable with --reviews/--exclude ({len(REVIEW_SETS) + 1}):")
-        set_col = max(len(s) for s in REVIEW_SETS) + 1
-        print(f"  {'all'.ljust(set_col)} every review above")
+        n_sets = len(REVIEW_SETS) + len(DYNAMIC_SETS)
+        print(f"Sets usable with --reviews/--exclude ({n_sets}):")
+        set_col = max(len(s) for s in (*REVIEW_SETS, *DYNAMIC_SETS)) + 1
+        for name, desc in DYNAMIC_SETS.items():
+            count = (len(self.prompt_files) if name == "all"
+                     else sum(1 for f in self.prompt_files.values() if self._origin(f)))
+            print(f"  {name.ljust(set_col)} {desc} ({count})")
         for name, members in REVIEW_SETS.items():
             present = [r for r in members if r in self.prompt_files]
             body = ", ".join(r.removesuffix("-review") for r in present)
@@ -983,8 +1005,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--reviews", default="",
-        help="comma-separated reviews and/or set names to run "
-             f"(sets: all, {', '.join(sorted(REVIEW_SETS))}); see --list",
+        help="comma-separated reviews and/or set names to run (sets: "
+             f"{', '.join(sorted(DYNAMIC_SETS))}, {', '.join(sorted(REVIEW_SETS))}); "
+             "see --list",
     )
     p.add_argument(
         "--exclude", default="",
