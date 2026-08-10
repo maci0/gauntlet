@@ -47,6 +47,7 @@ How a single pass works:
 | [`functionality-review`](prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
 | [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
 | [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
+| [`idempotency-review`](prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
 | [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
 | [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |

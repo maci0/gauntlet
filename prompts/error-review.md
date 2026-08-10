@@ -52,7 +52,7 @@ Review the following:
 - Missing retry logic for transient failures (network, database, external service)
 - Retry logic without exponential backoff or jitter
 - Unlimited retries that can loop forever
-- Retries on non-idempotent operations that could cause duplicate effects
+- Retries on non-idempotent operations that could cause duplicate effects (never add a retry without confirming the target survives re-execution; idempotency-review owns that property)
 - Missing circuit breaker or fallback for persistent failures
 - Recovery paths that silently use stale or default data without logging
 - Missing dead letter queue or poison message handling for async processing

@@ -85,6 +85,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "doc-review": ("vale", "markdownlint", "lychee"),
     "fuzz-review": ("cargo-fuzz", "afl-fuzz"),
     "i18n-review": ("xgettext", "msgfmt", "i18next-parser"),
+    "idempotency-review": ("semgrep",),
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
     "llm-review": ("promptfoo", "garak"),
     "minimalism-review": ("vulture", "knip", "ts-prune", "cargo-udeps", "tokei", "cloc"),

@@ -58,6 +58,7 @@ Review the following:
 - Inconsistent handling of null vs missing vs empty
 
 7. Idempotency and safety
+(idempotency-review owns re-execution safety of the implementation; here judge the API contract: verb semantics, key acceptance, documented guarantees.)
 - Non-idempotent operations on PUT or DELETE
 - Missing idempotency keys on operations that need them
 - GET requests that modify state
