@@ -53,8 +53,9 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # Bundled reviews with no purpose-built CLI tooling; listed so doctor's review
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
-    "design-review", "dst-review", "error-review", "functionality-review",
-    "mobile-review", "o11y-review", "privacy-review", "uislop-review",
+    "agentrules-review", "design-review", "dst-review", "error-review",
+    "functionality-review", "mobile-review", "o11y-review", "privacy-review",
+    "prompt-review", "skills-review", "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -466,9 +467,16 @@ def strip_report_sections(text: str) -> str:
     return "\n".join(out)
 
 
-def compose_prompt(text: str, timeout_secs: int) -> str:
+def compose_prompt(text: str, timeout_secs: int, review: str | None = None) -> str:
     """Header, stripped review body, then the auto-fix suffix, in that order."""
     suffix = PROMPT_SUFFIX.format(timeout=fmt_duration(timeout_secs))
+    if review == "prompt-review":
+        # Its entire job is fixing prompt files; creation/deletion stays banned
+        # so a hostile prompt still cannot persist new instructions.
+        suffix += (
+            "\n- Exception for this review only: you may MODIFY existing "
+            "*-review.md files. Creating or deleting them remains forbidden."
+        )
     return f"{PROMPT_HEADER}\n\n{strip_report_sections(text)}{suffix}"
 
 
@@ -611,7 +619,7 @@ class Runner:
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
             return
 
-        prompt = compose_prompt(text, self.timeout_secs)
+        prompt = compose_prompt(text, self.timeout_secs, review)
         resume = (
             self.args.continue_sessions and spec.tool in self.session_started
         )

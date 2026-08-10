@@ -460,6 +460,15 @@ def test_strip_report_sections_fails_open_without_important():
     assert rl.strip_report_sections(text2) == text2
 
 
+def test_compose_prompt_prompt_review_exception():
+    body = "Role.\n\nInstructions:\n- x\n"
+    normal = rl.compose_prompt(body, 60, "sec-review")
+    meta = rl.compose_prompt(body, 60, "prompt-review")
+    assert "Exception for this review only" not in normal
+    assert "you may MODIFY existing" in meta
+    assert "Creating or deleting them remains forbidden" in meta
+
+
 def test_compose_prompt_order_and_content():
     body = "Role line.\n\nInstructions:\n- do X\n\nOutput format:\n## Report\nstuff\n\nImportant:\n- rule"
     prompt = rl.compose_prompt(body, 1800)

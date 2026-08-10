@@ -30,6 +30,7 @@ How a single pass works:
 | Review | Focus |
 |---|---|
 | [`a11y-review`](prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
+| [`agentrules-review`](prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
 | [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
 | [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
 | [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
@@ -54,9 +55,11 @@ How a single pass works:
 | [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
 | [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
+| [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
 | [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
 | [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
 | [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
+| [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
