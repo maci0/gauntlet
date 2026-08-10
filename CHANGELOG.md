@@ -4,12 +4,18 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
-## Unreleased
+## 0.3.0
 
 ### Added
 
-- opencode as a supported agent (`opencode run --auto`, with `-c` session
-  resume placed after the subcommand).
+- opencode as a supported agent (`opencode run --auto`), bringing the total to
+  nine: claude, gemini, qwen, codex, grok, agy, cursor-agent, kimi, opencode.
+
+### Fixed
+
+- `--continue-sessions` placed its resume flag next to the binary, which is
+  wrong for agents invoked as `binary subcommand ...`; the flag now follows the
+  subcommand. No shipped agent was affected, but opencode would have been.
 
 ## 0.2.0
 
