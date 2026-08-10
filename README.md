@@ -24,6 +24,7 @@ How a single pass works:
 - `prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
 - `review-loop.py` — the runner. Also provides `doctor` (tool inventory) and the composition/containment logic.
 - `test_review_loop.py` — tests for parsing, discovery, composition, and the exit-code contract.
+- `CHANGELOG.md` — notable changes per release.
 
 ### Available reviews
 
@@ -228,6 +229,7 @@ GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`). See
 [LICENSE](LICENSE).
 
 Version numbers are informational: `--version` reports the `VERSION` constant in
-`review-loop.py`, which is bumped by hand. Review names (the `*-review.md` stems
+`review-loop.py`, bumped by hand alongside a matching git tag and a
+[CHANGELOG](CHANGELOG.md) entry. Review names (the `*-review.md` stems
 consumed by `--reviews`) are the user-facing contract; renaming or removing one
 breaks existing invocations.
