@@ -664,6 +664,13 @@ def test_yolo_relaxes_caution_but_not_containment():
     assert "Do not delete tests" in normal
     assert "Do not delete tests to make anything pass" in yolo
 
+    # yolo must actually remove deference, not just the size caps
+    for pushed in ("Never defer a change for sign-off", "Nobody is watching this run",
+                   "are superseded here", "is in scope even when it has nothing to do",
+                   "Doing nothing is the failure mode"):
+        assert pushed in yolo, pushed
+        assert pushed not in normal, pushed
+
 
 def test_strip_report_sections_fails_open_without_important():
     # marker with no Important block: keep everything rather than eat the tail
