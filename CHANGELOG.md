@@ -11,7 +11,8 @@ breaking change.
 - clanker as a supported agent (`clanker run <prompt>`). Its model and
   permissions come from its own config, and resuming requires an explicit
   session id, so it takes no `tool:model` form and is not eligible for
-  `--continue-sessions`.
+  `--continue-sessions`. It loads config from the working directory only, so
+  it can review just the repository holding that config.
 
 ## 0.3.0
 

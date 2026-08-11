@@ -592,7 +592,9 @@ def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False) -> li
         cmd.append(prompt)
     elif spec.tool == "clanker":
         # Model and permissions come from clanker's own config; resuming needs
-        # an explicit session id, so it stays out of CONTINUE_FLAGS.
+        # an explicit session id, so it stays out of CONTINUE_FLAGS. Note that
+        # clanker loads config.json/config.local.json from the working
+        # directory only, so it can review just the repo holding its config.
         cmd = ["clanker", "run", prompt]
     elif spec.tool == "opencode":
         # 'run' is the headless subcommand; --auto auto-approves permissions
