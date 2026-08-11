@@ -15,6 +15,14 @@ breaking change.
   it can review just the repository holding that config, and is therefore
   opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
 
+### Fixed
+
+- Ctrl+C could stop working entirely during a review. Agents inherited the
+  runner's stdin, and an agent that puts the terminal in raw mode with ISIG
+  disabled (clanker does this for line editing) suppresses signal generation
+  for itself and for the runner. Agents now run with stdin closed, and the
+  runner restores terminal settings after every review.
+
 ## 0.3.0
 
 ### Added

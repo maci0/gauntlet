@@ -406,6 +406,42 @@ def test_run_review_status_machine_end_to_end():
         assert rc == 0 and "Done: stub-review" in log_file.read_text()
 
 
+def test_agents_never_inherit_stdin():
+    """An agent with the terminal can disable ISIG and break Ctrl+C for everyone."""
+    with tempfile.TemporaryDirectory() as td:
+        prompts = Path(td) / "prompts"
+        _tree(prompts, {"stub-review.md": "Role.\n\nYour goal is testing.\n"})
+        args = argparse.Namespace(
+            agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="", exclude="",
+            timeout=30, quiet_agents=False, continue_sessions=False,
+        )
+        runner = rl.Runner(args)
+        captured = {}
+
+        class FakeProc:
+            pid = 4242
+            returncode = 0
+
+            def wait(self, timeout=None):
+                return 0
+
+            def poll(self):
+                return 0
+
+        def fake_popen(cmd, **kwargs):
+            captured.update(kwargs)
+            return FakeProc()
+
+        real_popen = rl.subprocess.Popen
+        rl.subprocess.Popen = fake_popen
+        try:
+            runner.run_review("stub-review")
+        finally:
+            rl.subprocess.Popen = real_popen
+        assert captured.get("stdin") is rl.subprocess.DEVNULL, captured
+        assert captured.get("start_new_session") is True
+
+
 def test_run_review_interrupt_exits_130():
     script = Path(__file__).resolve().parent / "review-loop.py"
     import signal as _signal

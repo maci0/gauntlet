@@ -16,6 +16,7 @@ import signal
 import stat
 import subprocess
 import sys
+import termios
 import textwrap
 import time
 from collections import defaultdict
@@ -497,6 +498,23 @@ def doctor() -> int:
     return 0
 
 
+def tty_state():
+    """Terminal settings to restore if an agent leaves them modified."""
+    try:
+        return termios.tcgetattr(sys.stdin.fileno())
+    except (termios.error, OSError, ValueError):
+        return None
+
+
+def restore_tty(state) -> None:
+    if state is None:
+        return
+    try:
+        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, state)
+    except (termios.error, OSError, ValueError):
+        pass
+
+
 def sanitize(s: str) -> str:
     """Strip control and formatting characters from untrusted display text.
 
@@ -647,6 +665,7 @@ class Runner:
         # the session they created (--continue-sessions).
         self.session_started: set[str] = set()
         self.current_proc: subprocess.Popen | None = None
+        self.tty = tty_state()
         self.script_start = time.monotonic()
 
     def _filter_reviews(self) -> list[str]:
@@ -732,7 +751,14 @@ class Runner:
         log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.timeout_secs)})")
         sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
-            proc = subprocess.Popen(cmd, start_new_session=True, stdout=sink, stderr=sink)
+            # stdin=DEVNULL: agents run headless and must never read the
+            # terminal. An agent that grabs it can put the shared tty in raw
+            # mode (clanker disables ISIG for line editing), which stops Ctrl+C
+            # from generating a signal for the agent or for this runner.
+            proc = subprocess.Popen(
+                cmd, start_new_session=True,
+                stdin=subprocess.DEVNULL, stdout=sink, stderr=sink,
+            )
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {review}: {e}")
             self.stats.add(ReviewResult(review, spec, 0.0, "fail"))  # exit_code None = launch failure
@@ -778,6 +804,7 @@ class Runner:
             rc = -signal.SIGTERM
         finally:
             self.current_proc = None
+            restore_tty(self.tty)  # an agent may have left the terminal raw
 
         elapsed = time.monotonic() - start
         self.interrupt_count = 0
@@ -955,6 +982,7 @@ class Runner:
                 if self.args.max_loops and self.loop_count >= self.args.max_loops:
                     break
         finally:
+            restore_tty(self.tty)
             self.print_stats()
 
 
