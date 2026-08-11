@@ -12,7 +12,8 @@ breaking change.
   permissions come from its own config, and resuming requires an explicit
   session id, so it takes no `tool:model` form and is not eligible for
   `--continue-sessions`. It loads config from the working directory only, so
-  it can review just the repository holding that config.
+  it can review just the repository holding that config, and is therefore
+  opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
 
 ## 0.3.0
 

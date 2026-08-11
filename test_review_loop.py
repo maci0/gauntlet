@@ -102,11 +102,20 @@ def test_parse_agents_mixed_expands_to_installed():
     orig = rl.shutil.which
     try:
         rl.shutil.which = lambda name: f"/usr/bin/{name}"
+        auto = sorted(rl.VALID_TOOLS - rl.OPT_IN_TOOLS)
         specs = rl.parse_agents("mixed")
-        assert [s.tool for s in specs] == sorted(rl.VALID_TOOLS)
+        assert [s.tool for s in specs] == auto, "opt-in agents must not be auto-scheduled"
         assert all(s.model is None for s in specs)
         # a pinned model alongside 'mixed' is an additional distinct entry
-        assert len(rl.parse_agents("mixed,claude:opus-4-7")) == len(rl.VALID_TOOLS) + 1
+        assert len(rl.parse_agents("mixed,claude:opus-4-7")) == len(auto) + 1
+        # opt-in agents still work when named explicitly
+        for tool in sorted(rl.OPT_IN_TOOLS):
+            assert rl.parse_agents(tool) == [rl.ToolSpec(tool)]
+        assert rl.OPT_IN_TOOLS < rl.VALID_TOOLS
+        # with only opt-in agents installed, auto-detection must refuse
+        rl.shutil.which = lambda name: f"/usr/bin/{name}" if name in rl.OPT_IN_TOOLS else None
+        assert rl.installed_tools() == []
+        raises(lambda: rl.parse_agents("mixed"))
 
         rl.shutil.which = lambda name: "/usr/bin/claude" if name == "claude" else None
         assert rl.parse_agents("all") == [rl.ToolSpec("claude")]

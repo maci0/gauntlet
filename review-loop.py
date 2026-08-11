@@ -29,6 +29,12 @@ VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent
 # Agents that pick their model from their own config, not the command line.
 NO_MODEL_TOOLS = {"agy", "clanker"}
 
+# Agents auto-detection and 'mixed' skip: usable, but only under conditions the
+# runner cannot check, so scheduling them by default would fail reviews. Name
+# them explicitly to use them. clanker loads its config from the working
+# directory, so it can only review the repository holding that config.
+OPT_IN_TOOLS = {"clanker"}
+
 # Tools invoked as "binary subcommand ...": session flags belong after the
 # subcommand, not next to the binary.
 SUBCOMMAND_TOOLS = {"codex": "exec", "opencode": "run", "clanker": "run"}
@@ -364,7 +370,8 @@ def fmt_duration(secs: float) -> str:
 
 
 def installed_tools() -> list[ToolSpec]:
-    return [ToolSpec(t) for t in sorted(VALID_TOOLS) if shutil.which(t)]
+    """Agents eligible for auto-detection and 'mixed', in name order."""
+    return [ToolSpec(t) for t in sorted(VALID_TOOLS - OPT_IN_TOOLS) if shutil.which(t)]
 
 
 def have(name: str) -> bool:
@@ -427,10 +434,12 @@ def doctor() -> int:
     width = max(shutil.get_terminal_size((100, 24)).columns, 60)
 
     agents = sorted(VALID_TOOLS)
-    found_agents = [a for a in agents if shutil.which(a)]
+    installed = {a for a in agents if shutil.which(a)}
+    found_agents = [s.tool for s in installed_tools()]  # auto-detectable only
     print(paint("Agent CLIs", "bold") + paint("  (at least one required)", "dim"))
     for a in agents:
-        print(f"  {_mark(a in found_agents)} {a}")
+        note = paint("  opt-in: name it with --agents", "dim") if a in OPT_IN_TOOLS else ""
+        print(f"  {_mark(a in installed)} {a}{note}")
 
     print()
     print(paint("Core tools", "bold") + paint("  (used by every review)", "dim"))
@@ -464,13 +473,18 @@ def doctor() -> int:
 
     missing_rec = sorted(t for t, ok in seen_rec.items() if not ok)
     print()
-    print(f"{paint('Agents', 'bold')} {_ratio(len(found_agents), len(agents))}   "
+    print(f"{paint('Agents', 'bold')} {_ratio(len(installed), len(agents))}   "
           f"{paint('core', 'bold')} {_ratio(sum(have(n) for n, _ in CORE_TOOLS), len(CORE_TOOLS))}   "
           f"{paint('recommended', 'bold')} {_ratio(sum(seen_rec.values()), len(seen_rec))}   "
           f"{paint('stack-specific', 'bold')} {_ratio(sum(seen_opt.values()), len(seen_opt))}")
     if not found_agents:
         sys.stdout.flush()  # keep the report ahead of the error when piped
-        msg = "No agent CLI found — install one to run reviews."
+        msg = (
+            "No auto-detectable agent CLI found — install one, or name an "
+            "opt-in agent with --agents."
+            if installed else
+            "No agent CLI found — install one to run reviews."
+        )
         print(paint(msg, "red", stream=sys.stderr), file=sys.stderr)
         return 1
     if missing_rec:
@@ -1065,8 +1079,10 @@ def autodetect_agents() -> list[ToolSpec]:
     found = installed_tools()
     if not found:
         usage_error(
-            f"No supported agents found in PATH. Install one of: "
-            f"{', '.join(sorted(VALID_TOOLS))}, or pass --agents explicitly."
+            f"No auto-detectable agents found in PATH. Install one of: "
+            f"{', '.join(sorted(VALID_TOOLS - OPT_IN_TOOLS))}, or name an agent "
+            f"explicitly with --agents (including opt-in: "
+            f"{', '.join(sorted(OPT_IN_TOOLS))})."
         )
     return found
 

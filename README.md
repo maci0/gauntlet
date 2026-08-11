@@ -91,10 +91,10 @@ with a custom `--prompt-dir`.
 
 - Python 3.10+
 - At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker` in `PATH`
-- `clanker` reads its config from the working directory, so it can only review
-  the repository that holds its `config.local.json`; in other repositories its
-  reviews fail immediately. Name it explicitly rather than relying on
-  auto-detect unless you are reviewing that repository.
+- `clanker` is opt-in: it reads its config from the working directory, so it
+  can only review the repository that holds its `config.local.json`. Auto-detect
+  and `mixed` skip it; name it explicitly (`--agents clanker`) from that
+  repository to use it.
 - `tee` (only if `--log` is used)
 
 ## Quick start
