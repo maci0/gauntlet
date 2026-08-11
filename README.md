@@ -54,7 +54,7 @@ How a single pass works:
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
 | [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
-| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths |
+| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, web delivery and first paint |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
 | [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
 | [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |

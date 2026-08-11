@@ -103,7 +103,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
     "llm-review": ("promptfoo", "garak"),
     "minimalism-review": ("vulture", "knip", "ts-prune", "cargo-udeps", "tokei", "cloc"),
-    "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
+    "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind", "lighthouse"),
     "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive", "shellcheck",
                    "desktop-file-validate", "appstream-util", "check-wheel-contents"),
     "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
