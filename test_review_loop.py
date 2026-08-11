@@ -133,6 +133,7 @@ def test_build_cmd_exact_argv():
         ("agy", None): ["agy", "--dangerously-skip-permissions", "-p", "P"],
         ("cursor-agent", None): ["cursor-agent", "--print", "-f", "P"],
         ("cursor-agent", "c-1"): ["cursor-agent", "--print", "-f", "--model", "c-1", "P"],
+        ("clanker", None): ["clanker", "run", "P"],
         ("opencode", None): ["opencode", "run", "--auto", "P"],
         ("opencode", "anthropic/claude"): ["opencode", "run", "--auto", "-m", "anthropic/claude", "P"],
         ("kimi", None): ["kimi", "-p", "P"],

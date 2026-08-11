@@ -3,7 +3,7 @@
 An auto-fix review loop for codebases: 36 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
-`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`), which apply small, proven fixes
+`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`), which apply small, proven fixes
 directly to the working tree instead of writing reports. Different agents catch
 different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
@@ -90,7 +90,7 @@ with a custom `--prompt-dir`.
 ## Requirements
 
 - Python 3.10+
-- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode` in `PATH`
+- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker` in `PATH`
 - `tee` (only if `--log` is used)
 
 ## Quick start
@@ -136,7 +136,7 @@ Run `./review-loop.py --help` for the full option list.
 | Flag | Default | Purpose |
 |---|---|---|
 | `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
-| `--agents` (`--models` still accepted) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` takes no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
+| `--agents` (`--models` still accepted) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |

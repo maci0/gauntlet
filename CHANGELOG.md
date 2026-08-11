@@ -4,6 +4,15 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Added
+
+- clanker as a supported agent (`clanker run <prompt>`). Its model and
+  permissions come from its own config, and resuming requires an explicit
+  session id, so it takes no `tool:model` form and is not eligible for
+  `--continue-sessions`.
+
 ## 0.3.0
 
 ### Added

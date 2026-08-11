@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Marcel W. Wysocki
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode against current dir."""
+"""Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker against current dir."""
 
 from __future__ import annotations
 
@@ -25,12 +25,13 @@ from pathlib import Path
 VERSION = "0.3.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
-               "opencode"}
-NO_MODEL_TOOLS = {"agy"}
+               "opencode", "clanker"}
+# Agents that pick their model from their own config, not the command line.
+NO_MODEL_TOOLS = {"agy", "clanker"}
 
 # Tools invoked as "binary subcommand ...": session flags belong after the
 # subcommand, not next to the binary.
-SUBCOMMAND_TOOLS = {"codex": "exec", "opencode": "run"}
+SUBCOMMAND_TOOLS = {"codex": "exec", "opencode": "run", "clanker": "run"}
 
 # Flags that resume the agent's most recent session in this directory, used by
 # --continue-sessions after a tool's first run. Tools absent here (codex,
@@ -589,6 +590,10 @@ def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False) -> li
         if spec.model:
             cmd += ["--model", spec.model]
         cmd.append(prompt)
+    elif spec.tool == "clanker":
+        # Model and permissions come from clanker's own config; resuming needs
+        # an explicit session id, so it stays out of CONTINUE_FLAGS.
+        cmd = ["clanker", "run", prompt]
     elif spec.tool == "opencode":
         # 'run' is the headless subcommand; --auto auto-approves permissions
         cmd = ["opencode", "run", "--auto"]
@@ -978,7 +983,7 @@ def setup_log_tee(log_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode.",
+        description="Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
