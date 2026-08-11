@@ -4,7 +4,7 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
-## Unreleased
+## 0.4.0
 
 ### Added
 
@@ -14,7 +14,6 @@ breaking change.
   `--continue-sessions`. It loads config from the working directory only, so
   it can review just the repository holding that config, and is therefore
   opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
-
 - `webperf-review` covers web delivery and first paint: compression
   negotiation and effort matched to cacheability, the critical path and the
   initial congestion window, loading strategy and split-chunk failure, caching
@@ -27,6 +26,9 @@ breaking change.
   agent should build missing groundwork rather than decline the work.
   Containment, the ban on touching your uncommitted changes, the
   `review-loop: keep` marker, and the baseline-then-verify step are unchanged.
+  It also removes deference: no waiting for sign-off, report-only instructions
+  in a review body are superseded, and a broken build or plain bug is in scope
+  even when unrelated to the review's topic.
 - `--bin TOOL=PATH` runs an agent from a chosen executable instead of `PATH`,
   for wrappers and alternate builds. Repeatable, one per agent, with `~` and
   `$VAR` expanded because shells leave them alone after `=`.
