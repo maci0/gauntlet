@@ -133,6 +133,9 @@ with a custom `--prompt-dir`.
 ./review-loop.py --reviews backend,llm-review
 ./review-loop.py --exclude frontend          # everything but the UI reviews
 ./review-loop.py --reviews project           # only the target repo's own prompts
+
+# let agents attempt big changes instead of declining them
+./review-loop.py --agents claude --reviews arch-review --yolo
 ./review-loop.py --exclude project           # only the bundled ones
 ```
 
@@ -153,6 +156,7 @@ Run `./review-loop.py --help` for the full option list.
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. |
 | `--reviews LIST` | all | Comma-separated review names and/or set names to run. |
 | `--exclude LIST` | none | Comma-separated review names and/or set names to skip. |
+| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. |
 | `--quiet-agents` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
 | `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |

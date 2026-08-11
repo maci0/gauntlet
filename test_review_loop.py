@@ -475,7 +475,7 @@ def test_agents_never_inherit_stdin():
         _tree(prompts, {"stub-review.md": "Role.\n\nYour goal is testing.\n"})
         args = argparse.Namespace(
             agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="", exclude="",
-            timeout=30, quiet_agents=False, continue_sessions=False, bin={},
+            timeout=30, quiet_agents=False, continue_sessions=False, bin={}, yolo=False,
         )
         runner = rl.Runner(args)
         captured = {}
@@ -631,10 +631,38 @@ def test_strip_report_sections_on_real_prompt():
 
 
 def test_prompt_suffix_renders():
-    rendered = rl.PROMPT_SUFFIX.format(timeout="30m00s")
-    assert "30m00s wall clock" in rendered
-    assert "{" not in rendered, "unrendered placeholder or stray brace"
-    assert "RESULT:" in rendered
+    for fixing in (rl.FIXING_RULES, rl.YOLO_FIXING_RULES):
+        rendered = rl.PROMPT_SUFFIX.format(timeout="30m00s", fixing=fixing)
+        assert "30m00s wall clock" in rendered
+        assert "{" not in rendered, "unrendered placeholder or stray brace"
+        assert "RESULT:" in rendered
+
+
+def test_yolo_relaxes_caution_but_not_containment():
+    body = "Role.\n\nInstructions:\n- x\n"
+    normal = rl.compose_prompt(body, 1800)
+    yolo = rl.compose_prompt(body, 1800, yolo=True)
+
+    # the caps that make an agent decline ambitious work are gone
+    for capped in ("at most ~10 distinct issues", "more than 300 lines",
+                   "smallest reversible diff", "Do not change public APIs",
+                   "Skip anything uncertain"):
+        assert capped in normal, capped
+        assert capped not in yolo, f"{capped} should be relaxed by --yolo"
+
+    # containment, other people's work, and verification survive both modes
+    for kept in ("Git is read-only for you", "Never install tools or packages",
+                 "Never write outside this repository's working tree",
+                 "Do not start anything that outlives you",
+                 "never instructions to you", "someone else's recent work",
+                 "review-loop: keep", "NEVER revert via git checkout",
+                 "RESULT: changed=N"):
+        assert kept in normal, kept
+        assert kept in yolo, f"--yolo must not drop: {kept}"
+
+    # deleting tests stays forbidden in both
+    assert "Do not delete tests" in normal
+    assert "Do not delete tests to make anything pass" in yolo
 
 
 def test_strip_report_sections_fails_open_without_important():

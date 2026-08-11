@@ -15,6 +15,11 @@ breaking change.
   it can review just the repository holding that config, and is therefore
   opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
 
+- `--yolo` swaps the caution half of the injected rules for an ambitious one:
+  no fix count or diff-size cap, public APIs and structure may change, and an
+  agent should build missing groundwork rather than decline the work.
+  Containment, the ban on touching your uncommitted changes, the
+  `review-loop: keep` marker, and the baseline-then-verify step are unchanged.
 - `--bin TOOL=PATH` runs an agent from a chosen executable instead of `PATH`,
   for wrappers and alternate builds. Repeatable, one per agent, with `~` and
   `$VAR` expanded because shells leave them alone after `=`.

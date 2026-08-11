@@ -160,6 +160,30 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
 
 PROMPT_HEADER = "MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report."
 
+# The caution half of the rules. --yolo swaps this block; everything outside it
+# (containment, other people's work, verification) applies either way.
+FIXING_RULES = """Fixing:
+- Search and rewrite with the best tool on PATH (fall back to grep/sed only when none exist): `rg` for text, `ast-grep`/`sg` for structural search and rewrite, `patchwork` for AST-native sed, `semcode` for semantic C/C++/Rust queries (callers/callees, types) when an index exists.
+- Before fixing an issue, prove it is real: trace the actual code path, read the full function (not just a fragment), and verify callers/config branches don't already handle it. Comments and names can lie; verify against the implementation. If you cannot prove it, skip it.
+- Do not add defensive checks (null/bounds/validation) unless you can name a concrete path where invalid data reaches the code.
+- Fix at most ~10 distinct issues this pass, highest value first, then stop. One issue may span files; a mechanical sweep of one defect across the repo counts as one issue. If a single fix would change more than 300 lines in one file, skip it.
+- Make the smallest reversible diff possible. Do not delete tests. Do not change public APIs or exported symbols.
+- Skip anything uncertain. Never ask questions.
+- Uncommitted changes already present when you start are someone else's recent work. Do not revert, restyle, or improve them unless they are provably broken.
+- A comment containing 'review-loop: keep' marks code as reviewed and intentional: never change that line or block. Never add this marker yourself.
+"""
+
+YOLO_FIXING_RULES = """Fixing (ambitious mode):
+- Search and rewrite with the best tool on PATH (fall back to grep/sed only when none exist): `rg` for text, `ast-grep`/`sg` for structural search and rewrite, `patchwork` for AST-native sed, `semcode` for semantic C/C++/Rust queries (callers/callees, types) when an index exists.
+- Take on the work that matters even when it is large: refactors, new wiring, moved boundaries, changed public APIs and exported symbols, added tests and infrastructure. There is no fix count or diff size limit this pass.
+- Doing nothing is the failure mode here. If the best candidate needs groundwork (a missing helper, a shared entry point, a test to verify against), build the groundwork and then make the change.
+- Understand before you change: read the real code path and callers rather than guessing. Where you cannot prove correctness, make the change verifiable instead of skipping it, by adding a test that pins the behavior you are preserving.
+- Prefer a coherent finished change over several half-finished ones. Leave the tree building and passing its tests.
+- Do not delete tests to make anything pass; change or add them so they still assert the behavior.
+- Uncommitted changes already present when you start are someone else's recent work. Do not revert, restyle, or improve them unless they are provably broken.
+- A comment containing 'review-loop: keep' marks code as reviewed and intentional: never change that line or block. Never add this marker yourself.
+"""
+
 PROMPT_SUFFIX = """
 
 ---
@@ -181,16 +205,7 @@ Containment:
 - Never create, modify, or delete *-review.md files or .review-loop.lock.
 - Never modify files in: node_modules, vendor, dist, build, .next, target, .git, or generated files (signals: a 'generated'/'do not edit' header, linguist-generated in .gitattributes, names like *.pb.go, *_pb2.py, *.gen.*, *.min.js). Never hand-edit lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.); they may only change as the output of the project's package manager.
 
-Fixing:
-- Search and rewrite with the best tool on PATH (fall back to grep/sed only when none exist): `rg` for text, `ast-grep`/`sg` for structural search and rewrite, `patchwork` for AST-native sed, `semcode` for semantic C/C++/Rust queries (callers/callees, types) when an index exists.
-- Before fixing an issue, prove it is real: trace the actual code path, read the full function (not just a fragment), and verify callers/config branches don't already handle it. Comments and names can lie; verify against the implementation. If you cannot prove it, skip it.
-- Do not add defensive checks (null/bounds/validation) unless you can name a concrete path where invalid data reaches the code.
-- Fix at most ~10 distinct issues this pass, highest value first, then stop. One issue may span files; a mechanical sweep of one defect across the repo counts as one issue. If a single fix would change more than 300 lines in one file, skip it.
-- Make the smallest reversible diff possible. Do not delete tests. Do not change public APIs or exported symbols.
-- Skip anything uncertain. Never ask questions.
-- Uncommitted changes already present when you start are someone else's recent work. Do not revert, restyle, or improve them unless they are provably broken.
-- A comment containing 'review-loop: keep' marks code as reviewed and intentional: never change that line or block. Never add this marker yourself.
-
+{fixing}
 Verification:
 - Before editing, note `git status` and, if the project has a lint/typecheck/test command (package.json scripts, Makefile, justfile, pyproject.toml, etc.), run it once to record the baseline. After edits, run it again; if it shows a NEW failure caused by your edits, undo them by re-editing your own hunks back. NEVER revert via git checkout/restore/reset/stash/clean: the tree may hold uncommitted work that is not yours.
 - At the end print one line per changed file: 'PATH: what was done'. Then, as the very last line, exactly one of: 'RESULT: changed=N' | 'RESULT: no-changes' | 'RESULT: skipped (reason)'."""
@@ -562,9 +577,13 @@ def strip_report_sections(text: str) -> str:
     return "\n".join(out)
 
 
-def compose_prompt(text: str, timeout_secs: int, review: str | None = None) -> str:
+def compose_prompt(text: str, timeout_secs: int, review: str | None = None,
+                   yolo: bool = False) -> str:
     """Header, stripped review body, then the auto-fix suffix, in that order."""
-    suffix = PROMPT_SUFFIX.format(timeout=fmt_duration(timeout_secs))
+    suffix = PROMPT_SUFFIX.format(
+        timeout=fmt_duration(timeout_secs),
+        fixing=YOLO_FIXING_RULES if yolo else FIXING_RULES,
+    )
     if review == "prompt-review":
         # Its entire job is fixing prompt files; creation/deletion stays banned
         # so a hostile prompt still cannot persist new instructions.
@@ -696,9 +715,12 @@ class Runner:
         self.stopping = False
         self.stop_signal = signal.SIGINT
         self.interrupt_count = 0
-        # Tools that already ran once this process: their next run may resume
-        # the session they created (--continue-sessions).
-        self.session_started: set[str] = set()
+        # Tool:model pairs that already ran once this process: their next run
+        # may resume the session they created (--continue-sessions). Keyed on
+        # the full ToolSpec, not just the tool name, so pinning two models of
+        # the same CLI (e.g. claude:opus-4-7,claude:sonnet-4-7) can't resume
+        # one model's session under the other.
+        self.session_started: set[ToolSpec] = set()
         self.current_proc: subprocess.Popen | None = None
         self.tty = tty_state()
         self.script_start = time.monotonic()
@@ -774,9 +796,9 @@ class Runner:
             self.stats.add(ReviewResult(review, spec, 0.0, "skipped"))
             return
 
-        prompt = compose_prompt(text, self.timeout_secs, review)
+        prompt = compose_prompt(text, self.timeout_secs, review, yolo=self.args.yolo)
         resume = (
-            self.args.continue_sessions and spec.tool in self.session_started
+            self.args.continue_sessions and spec in self.session_started
         )
         cmd = build_cmd(spec, prompt, continue_session=resume,
                         binary=self.args.bin.get(spec.tool))
@@ -800,7 +822,7 @@ class Runner:
             self.stats.add(ReviewResult(review, spec, 0.0, "fail"))  # exit_code None = launch failure
             return
         self.current_proc = proc
-        self.session_started.add(spec.tool)
+        self.session_started.add(spec)
         if self.stopping:  # signal landed between Popen and registration
             self._kill_proc(proc, signal.SIGTERM)
         timed_out = False
@@ -1116,6 +1138,14 @@ def parse_args() -> argparse.Namespace:
         help="run an agent from a specific executable instead of PATH, e.g. "
              "--bin claude=/opt/claude/bin/claude. Repeatable, one per agent. "
              "Discovery stays PATH-based, so name such an agent with --agents.",
+    )
+    p.add_argument(
+        "--yolo", action="store_true",
+        help="drop the caution rules: no fix count or diff size limit, public "
+             "APIs and structure may change, and groundwork may be built rather "
+             "than skipped. Containment (git read-only, no installs, no writes "
+             "outside the tree), your uncommitted work, and the verification "
+             "step are unaffected. Expect large diffs; review them.",
     )
     p.add_argument(
         "--quiet-agents", action="store_true",
