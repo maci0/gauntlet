@@ -12,6 +12,7 @@ import io
 import os
 import random
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -206,6 +207,67 @@ def test_continue_sessions_bootstrap_end_to_end():
             "FIRST:--dangerously-skip-permissions",  # fresh session
             "FIRST:-c",                              # resumed session
         ], lines
+
+
+def test_bin_override():
+    with tempfile.TemporaryDirectory() as td:
+        fake = Path(td) / "my-claude"
+        fake.write_text("#!/bin/sh\nexit 0\n")
+        fake.chmod(0o755)
+
+        tool, resolved = rl.parse_bin(f"claude={fake}")
+        assert (tool, resolved) == ("claude", str(fake))
+        # only the executable changes; every other argument stays put
+        assert rl.build_cmd(rl.ToolSpec("claude", "opus"), "P", binary=resolved) == \
+            [str(fake), "--dangerously-skip-permissions", "--model", "opus", "-p", "P"]
+        # overrides survive subcommand agents and session flags
+        assert rl.build_cmd(rl.ToolSpec("opencode"), "P", continue_session=True,
+                            binary=resolved)[:3] == [str(fake), "run", "-c"]
+        # a bare name is looked up on PATH
+        assert rl.parse_bin("claude=sh")[1] == shutil.which("sh")
+        # shells leave ~ and $VAR unexpanded after '=', so the parser expands
+        home_rel = os.path.relpath(fake, Path.home())
+        if not home_rel.startswith(".."):
+            assert rl.parse_bin(f"claude=~/{home_rel}")[1] == str(fake)
+        os.environ["RL_TEST_BIN"] = str(fake.parent)
+        try:
+            assert rl.parse_bin(f"claude=$RL_TEST_BIN/{fake.name}")[1] == str(fake)
+        finally:
+            del os.environ["RL_TEST_BIN"]
+
+    raises(lambda: rl.parse_bin("claude"))                    # no '='
+    raises(lambda: rl.parse_bin("=/bin/sh"))                  # no tool
+    raises(lambda: rl.parse_bin("claude="))                   # no path
+    raises(lambda: rl.parse_bin("nosuchagent=/bin/sh"))       # unknown agent
+    raises(lambda: rl.parse_bin("claude=/nonexistent/nope"))  # not executable
+
+
+def test_bin_override_end_to_end():
+    """A named agent runs from --bin even though PATH holds a different one."""
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
+        for d in (bin_dir, proj, prompts):
+            d.mkdir()
+        _tree(prompts, {"stub-review.md": "Role.\n\nYour goal is testing.\n"})
+        marker = root / "ran.txt"
+        # PATH copy fails; the override succeeds, so only the override can pass
+        (bin_dir / "agy").write_text("#!/bin/sh\nexit 9\n")
+        (bin_dir / "agy").chmod(0o755)
+        custom = root / "agy-custom"
+        custom.write_text(f'#!/bin/sh\necho ran > {marker}\nexit 0\n')
+        custom.chmod(0o755)
+
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--bin", f"agy={custom}", "--prompt-dir", str(prompts),
+             "--dir", str(proj), "--timeout", "30s"],
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert marker.exists(), "the --bin executable should have run"
 
 
 def test_build_cmd_prompt_is_never_flag_like():
@@ -413,7 +475,7 @@ def test_agents_never_inherit_stdin():
         _tree(prompts, {"stub-review.md": "Role.\n\nYour goal is testing.\n"})
         args = argparse.Namespace(
             agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="", exclude="",
-            timeout=30, quiet_agents=False, continue_sessions=False,
+            timeout=30, quiet_agents=False, continue_sessions=False, bin={},
         )
         runner = rl.Runner(args)
         captured = {}

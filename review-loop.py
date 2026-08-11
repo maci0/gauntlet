@@ -371,7 +371,12 @@ def fmt_duration(secs: float) -> str:
 
 
 def installed_tools() -> list[ToolSpec]:
-    """Agents eligible for auto-detection and 'mixed', in name order."""
+    """Agents eligible for auto-detection and 'mixed', in name order.
+
+    Discovery is PATH-based. --bin changes how a named agent is launched, not
+    which agents are found, so an agent whose binary is not on PATH under its
+    own name must be named explicitly.
+    """
     return [ToolSpec(t) for t in sorted(VALID_TOOLS - OPT_IN_TOOLS) if shutil.which(t)]
 
 
@@ -430,17 +435,23 @@ def _wrap_tools(tools: list[tuple[str, bool, bool]], indent: int, width: int) ->
     return lines
 
 
-def doctor() -> int:
+def doctor(overrides: dict[str, str] | None = None) -> int:
     """Report which recommended CLI tools are available. Returns an exit code."""
     width = max(shutil.get_terminal_size((100, 24)).columns, 60)
 
     agents = sorted(VALID_TOOLS)
+    overrides = overrides or {}
     installed = {a for a in agents if shutil.which(a)}
     found_agents = [s.tool for s in installed_tools()]  # auto-detectable only
     print(paint("Agent CLIs", "bold") + paint("  (at least one required)", "dim"))
     for a in agents:
-        note = paint("  opt-in: name it with --agents", "dim") if a in OPT_IN_TOOLS else ""
-        print(f"  {_mark(a in installed)} {a}{note}")
+        if a in overrides:
+            note = paint(f"  --bin {overrides[a]}", "dim")
+        elif a in OPT_IN_TOOLS:
+            note = paint("  opt-in: name it with --agents", "dim")
+        else:
+            note = ""
+        print(f"  {_mark(a in installed or a in overrides)} {a}{note}")
 
     print()
     print(paint("Core tools", "bold") + paint("  (used by every review)", "dim"))
@@ -594,7 +605,29 @@ def check_tool(name: str) -> None:
         usage_error(f"Required tool not found in PATH: {name}")
 
 
-def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False) -> list[str]:
+def parse_bin(s: str) -> tuple[str, str]:
+    """Parse a TOOL=PATH override into (tool, resolved executable)."""
+    tool, sep, path = (part.strip() for part in s.partition("="))
+    if not sep or not tool or not path:
+        raise argparse.ArgumentTypeError(f"expected TOOL=PATH, got: {s!r}")
+    if tool not in VALID_TOOLS:
+        raise argparse.ArgumentTypeError(
+            f"unknown agent: {tool!r} (valid: {', '.join(sorted(VALID_TOOLS))})"
+        )
+    # Shells do not expand ~ or $VAR after '=' unless configured to, so the
+    # literal text arrives here.
+    expanded = os.path.expanduser(os.path.expandvars(path))
+    resolved = shutil.which(expanded)  # a path, or a name to look up on PATH
+    if resolved is None:
+        raise argparse.ArgumentTypeError(
+            f"not an executable: {path}"
+            + (f" (expanded to {expanded})" if expanded != path else "")
+        )
+    return tool, resolved
+
+
+def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False,
+              binary: str | None = None) -> list[str]:
     if spec.tool == "claude":
         cmd = ["claude", "--dangerously-skip-permissions"]
         if spec.model:
@@ -646,6 +679,8 @@ def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False) -> li
     if continue_session and spec.tool in CONTINUE_FLAGS:
         at = 2 if spec.tool in SUBCOMMAND_TOOLS else 1
         cmd[at:at] = CONTINUE_FLAGS[spec.tool]
+    if binary:  # --bin: same argv, different executable
+        cmd[0] = binary
     return cmd
 
 
@@ -743,7 +778,8 @@ class Runner:
         resume = (
             self.args.continue_sessions and spec.tool in self.session_started
         )
-        cmd = build_cmd(spec, prompt, continue_session=resume)
+        cmd = build_cmd(spec, prompt, continue_session=resume,
+                        binary=self.args.bin.get(spec.tool))
         if self.stopping:
             return
 
@@ -1076,6 +1112,12 @@ def parse_args() -> argparse.Namespace:
         help="comma-separated reviews and/or set names to skip",
     )
     p.add_argument(
+        "--bin", action="append", type=parse_bin, default=[], metavar="TOOL=PATH",
+        help="run an agent from a specific executable instead of PATH, e.g. "
+             "--bin claude=/opt/claude/bin/claude. Repeatable, one per agent. "
+             "Discovery stays PATH-based, so name such an agent with --agents.",
+    )
+    p.add_argument(
         "--quiet-agents", action="store_true",
         help="discard agent stdout/stderr; only the runner's own log lines "
              "remain (some agents narrate every step)",
@@ -1100,6 +1142,12 @@ def parse_args() -> argparse.Namespace:
         if args.max_loops:
             p.error("--once conflicts with --max-loops")
         args.max_loops = 1
+    seen: dict[str, str] = {}
+    for tool, path in args.bin:
+        if tool in seen and seen[tool] != path:
+            p.error(f"--bin given twice for {tool}: {seen[tool]} and {path}")
+        seen[tool] = path
+    args.bin = seen
     return args
 
 
@@ -1119,7 +1167,7 @@ def main() -> None:
     args = parse_args()
 
     if args.command == "doctor":
-        sys.exit(doctor())
+        sys.exit(doctor(args.bin))
 
     # Resolve against the invocation cwd, before any --dir chdir.
     args.prompt_dir = args.prompt_dir.resolve()
@@ -1147,8 +1195,8 @@ def main() -> None:
         Runner(args).run()
         return
 
-    for tool in {s.tool for s in args.agents}:
-        check_tool(tool)
+    for tool in {s.tool for s in args.agents} - set(args.bin):
+        check_tool(tool)  # --bin paths were validated during parsing
 
     acquire_lock(Path.cwd() / ".review-loop.lock")
 

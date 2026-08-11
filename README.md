@@ -121,6 +121,9 @@ with a custom `--prompt-dir`.
 ./review-loop.py --agents mixed
 ./review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex,gemini
 
+# same agent, different executable (wrappers, alternate builds, vertex/bedrock)
+./review-loop.py --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
+
 # only some reviews, or everything except reviews that don't apply
 ./review-loop.py --reviews code-review,sec-review,error-review
 ./review-loop.py --exclude db-review,ux-review
@@ -141,6 +144,7 @@ Run `./review-loop.py --help` for the full option list.
 |---|---|---|
 | `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
 | `--agents` (`--models` still accepted) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Default: every tool found in `PATH`. |
+| `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
 | `--dir` | cwd | `cd` here before running. |
 | `--once` | off | Run a single loop and exit. |
 | `--max-loops N` | 0 (infinite) | Stop after N loops. |

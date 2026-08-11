@@ -15,6 +15,10 @@ breaking change.
   it can review just the repository holding that config, and is therefore
   opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
 
+- `--bin TOOL=PATH` runs an agent from a chosen executable instead of `PATH`,
+  for wrappers and alternate builds. Repeatable, one per agent, with `~` and
+  `$VAR` expanded because shells leave them alone after `=`.
+
 ### Fixed
 
 - Ctrl+C could stop working entirely during a review. Agents inherited the
