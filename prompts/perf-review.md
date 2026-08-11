@@ -1,6 +1,6 @@
 You are a senior software engineer specializing in performance engineering. Your task is to perform a deep performance audit of this codebase.
 
-Your goal is to identify performance bottlenecks, inefficiencies, and missed optimization opportunities. Focus on real, measurable impact rather than micro-optimizations.
+Your goal is to identify performance bottlenecks, inefficiencies, and missed optimization opportunities in the software itself: algorithms, memory, concurrency, I/O, storage, and startup. Focus on real, measurable impact rather than micro-optimizations. Browser-side delivery and rendering (compression negotiation, critical path, caching headers, bundle loading, first paint) belong to webperf-review.
 
 Review the following:
 
@@ -77,28 +77,14 @@ Review the following:
 - Missing rate limiting on resource-intensive operations
 
 10. Build and bundle size
-(deps-review owns dependency removal/replacement; here focus on the size and load-time impact.)
+(deps-review owns dependency removal/replacement; webperf-review owns everything the browser downloads, caches, and renders. Here cover build-time and server-side artifact weight.)
 - Unused dependencies increasing build or load time
 - Missing tree-shaking or dead code elimination opportunities
 - Large assets that could be compressed or lazy-loaded
 - Duplicate dependencies with overlapping functionality
 
-11. Delivery and first paint (web UIs)
-- No content negotiation over the encodings clients actually accept (zstd, brotli, gzip), or a single encoding assumed
-- One compression level used everywhere: a level that pays off for a response compressed once and cached is wasteful per-request, and a cheap level wastes bytes on something served thousands of times. Match effort to how often the bytes are produced versus sent
-- Compressing what is already compressed (images, video, fonts, archives), or compressing responses too small to benefit
-- Static assets compressed on every request instead of precompressed at build time and served directly
-- The critical path larger than it needs to be: the first response should carry enough to paint something useful, ideally within the initial congestion window (roughly 14 KB), with everything else fetched after
-- Render-blocking resources in the head that are not needed for the first frame; missing `defer`/`async`; missing `preload`/`preconnect` for resources that genuinely are on the critical path
-- Heavy libraries (syntax highlighters, charting, editors, date/locale data) loaded up front when they are needed only on interaction
-- Revalidation missing where it is cheap: no `ETag` or `Last-Modified` on expensive endpoints, so unchanged data is re-sent in full instead of a 304
-- `Cache-Control` that does not match the resource: `no-store` on content that revalidates fine, or long `max-age` on unhashed assets that must change; content-hashed assets not served `immutable`
-- Deferred or split code with no failure path: when a chunk fails to load, the UI silently loses functionality instead of saying so and disabling what depends on it
-- No usable experience without JavaScript where the content is fundamentally static, when a server-rendered fallback is cheap
-- Payload shape ignored: endpoints returning fields or rows the view never uses, images shipped larger than they render, fonts unsubsetted or without `font-display`
-
 Instructions:
-- If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations), `lighthouse` (page-load metrics), `curl -H 'Accept-Encoding: ...' -w '%{size_download} %{time_starttransfer}'` (what a client actually receives and how fast). Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
+- If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations). Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - Prioritize hot paths and frequently executed code over cold paths.
 - Consider the expected scale and usage patterns of the application.
@@ -120,7 +106,7 @@ For each finding include:
 - Why it matters
 - Evidence from the code
 - Recommendation
-- Expected benefit: latency / throughput / memory / startup / bundle size / first paint
+- Expected benefit: latency / throughput / memory / startup / bundle size
 - Estimated effort
 
 Output format:

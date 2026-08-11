@@ -1,6 +1,6 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 36 specialized review prompts (security,
+An auto-fix review loop for codebases: 37 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`), which apply small, proven fixes
@@ -54,7 +54,7 @@ How a single pass works:
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
 | [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
-| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, web delivery and first paint |
+| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths (server and runtime) |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
 | [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
 | [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
@@ -65,6 +65,7 @@ How a single pass works:
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
+| [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
 | [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
 
 ### Review sets
@@ -79,7 +80,7 @@ names, and `--list` prints their current members:
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
 | `standard` | `quick` plus perf, deps, doc, arch, concurrency, minimalism, slop |
 | `security` | sec, deps, privacy, config, fuzz, llm |
-| `frontend` | ux, a11y, uislop, i18n, perf |
+| `frontend` | ux, a11y, uislop, i18n, webperf |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
 | `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |
 | `shipping` | release, pkg, build, deps, doc, cli |

@@ -71,7 +71,7 @@ Review the following:
 - Missing visible focus indicators on interactive elements
 
 7. Consistency and design system adherence
-(uislop-review owns genericness and identity of tokens; here judge internal consistency and usability of what exists.)
+(uislop-review owns genericness and identity of tokens; webperf-review owns load speed and rendering cost; here judge internal consistency and usability of what exists.)
 - Components used inconsistently across views
 - Custom one-off components where standard components exist
 - Inconsistent button styles, sizes, or placement patterns

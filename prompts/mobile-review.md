@@ -42,6 +42,7 @@ Review the following:
 (Deeper accessibility — TalkBack/VoiceOver traversal — belongs to a11y-review.)
 
 6. App size and startup
+(webperf-review owns web delivery; here cover native app artifacts and cold start.)
 - Unstripped assets: uncompressed images, all-density resources shipped to every device, unused fonts
 - Missing app-bundle/split-APK or on-demand delivery for large optional content
 - Heavy dependencies pulled in for one call site (mobile-specific weight: every MB is user-visible)

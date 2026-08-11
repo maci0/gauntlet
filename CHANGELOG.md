@@ -15,6 +15,13 @@ breaking change.
   it can review just the repository holding that config, and is therefore
   opt-in: auto-detect and `mixed` skip it, and it must be named explicitly.
 
+- `webperf-review` covers web delivery and first paint: compression
+  negotiation and effort matched to cacheability, the critical path and the
+  initial congestion window, loading strategy and split-chunk failure, caching
+  and revalidation headers, payload shape, main-thread responsiveness,
+  third-party weight, protocol-era workarounds, measurement, and budgets in
+  CI. perf-review keeps server and runtime performance and now defers browser
+  delivery to it; the `frontend` set swaps perf for webperf.
 - `--yolo` swaps the caution half of the injected rules for an ambitious one:
   no fix count or diff-size cap, public APIs and structure may change, and an
   agent should build missing groundwork rather than decline the work.
