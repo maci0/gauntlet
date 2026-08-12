@@ -4,6 +4,15 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Added
+
+- `--reviews` treats repetition as weight: naming a review or a set more than
+  once schedules it that many times per loop, so `all,sec-review,sec-review`
+  runs everything once and security three times. `--list` shows weighted
+  reviews as `×N` and `--exclude` still removes a name outright.
+
 ## 0.4.0
 
 ### Added

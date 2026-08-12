@@ -736,11 +736,13 @@ class Runner:
         if not available:
             usage_error(f"No *-review.md files found in: {self.args.prompt_dir}")
 
-        reviews = list(available)
+        def expand(arg: str, flag: str) -> list[str]:
+            """Expand names and set shorthands, keeping order and repeats.
 
-        def split(arg: str, flag: str) -> set[str]:
-            """Expand set shorthands and validate the rest against what exists."""
-            out: set[str] = set()
+            Repeats are weight: naming a review or a set twice schedules its
+            reviews twice per loop.
+            """
+            out: list[str] = []
             unknown: set[str] = set()
             empty_sets: list[str] = []
             for raw in arg.split(","):
@@ -756,9 +758,9 @@ class Runner:
                         members = [r for r in REVIEW_SETS[name] if r in available]
                     if not members:
                         empty_sets.append(name)
-                    out.update(members)
+                    out += members
                 elif name in available:
-                    out.add(name)
+                    out.append(name)
                 else:
                     unknown.add(name)
             if unknown:
@@ -775,11 +777,9 @@ class Runner:
                 )
             return out
 
-        if self.args.reviews:
-            inc = split(self.args.reviews, "--reviews")
-            reviews = [r for r in reviews if r in inc]
+        reviews = expand(self.args.reviews, "--reviews") if self.args.reviews else list(available)
         if self.args.exclude:
-            exc = split(self.args.exclude, "--exclude")
+            exc = set(expand(self.args.exclude, "--exclude"))  # excluding is all-or-nothing
             reviews = [r for r in reviews if r not in exc]
         if not reviews:
             usage_error("No reviews remain after filtering.")
@@ -964,11 +964,12 @@ class Runner:
                         break
             except (OSError, UnicodeDecodeError):
                 pass
-            active = "✓" if r in self.reviews else "○"
+            weight = self.reviews.count(r)
+            active = f"×{weight}" if weight > 1 else ("✓" if weight else "○")
             # Descriptions are whole paragraphs; one line each keeps the
             # columns readable, and --dry-run/logs carry the full text.
             origin = "[project]" if self._origin(prompt_file) else ""
-            prefix = f"  {active} {r.ljust(name_col)}{origin:<10} "
+            prefix = f"  {active:<2} {r.ljust(name_col)}{origin:<10} "
             desc = desc.removeprefix("Your goal is to ").removeprefix("Your goal is ")
             room = max(width - len(prefix), 20)
             desc = desc or "(no description)"
@@ -1000,7 +1001,9 @@ class Runner:
         for r in order:
             print(f"  {r:<20}{self._origin(self.prompt_files[r])} → {self.pick_tool().label()}")
         print()
-        print(f"Reviews per loop: {len(self.reviews)}")
+        weighted = len(self.reviews) - len(set(self.reviews))
+        extra = f" ({weighted} extra from repeats)" if weighted else ""
+        print(f"Reviews per loop: {len(self.reviews)}{extra}")
         agents_str = ", ".join(s.label() for s in self.tools)
         print(
             f"Agents: {agents_str}  |  timeout: {fmt_duration(self.timeout_secs)}  |  "
@@ -1131,8 +1134,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--reviews", default="",
         help="comma-separated reviews and/or set names to run (sets: "
-             f"{', '.join(sorted(DYNAMIC_SETS))}, {', '.join(sorted(REVIEW_SETS))}); "
-             "see --list",
+             f"{', '.join(sorted(DYNAMIC_SETS))}, {', '.join(sorted(REVIEW_SETS))}). "
+             "Naming one more than once runs it that many times per loop, e.g. "
+             "'all,sec-review' weights security double. See --list",
     )
     p.add_argument(
         "--exclude", default="",

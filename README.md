@@ -88,6 +88,12 @@ names, and `--list` prints their current members:
 Members missing from the prompt directory are skipped, so a set stays usable
 with a custom `--prompt-dir`.
 
+Repeats are weight. `--reviews all,sec-review,sec-review` schedules every review
+once and `sec-review` three times per loop; `--reviews quick,quick` runs each of
+quick's members twice. Since each loop is shuffled, the extra slots spread out
+rather than running back to back. `--list` shows a weighted review as `×N`, and
+`--exclude` removes a name entirely no matter how much weight it was given.
+
 ## Requirements
 
 - Python 3.10+
@@ -135,6 +141,9 @@ with a custom `--prompt-dir`.
 ./review-loop.py --exclude frontend          # everything but the UI reviews
 ./review-loop.py --reviews project           # only the target repo's own prompts
 
+# weight by repetition: sec-review runs three times per loop, everything once
+./review-loop.py --reviews all,sec-review,sec-review
+
 # let agents attempt big changes instead of declining them
 ./review-loop.py --agents claude --reviews arch-review --yolo
 ./review-loop.py --exclude project           # only the bundled ones
@@ -155,7 +164,7 @@ Run `./review-loop.py --help` for the full option list.
 | `--timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--log FILE` | — | Tee stdout/stderr to FILE. |
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. |
-| `--reviews LIST` | all | Comma-separated review names and/or set names to run. |
+| `--reviews LIST` | all | Comma-separated review names and/or set names to run. Naming one more than once gives it that many slots per loop. |
 | `--exclude LIST` | none | Comma-separated review names and/or set names to skip. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. |
 | `--quiet-agents` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |

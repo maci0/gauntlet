@@ -17,6 +17,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 from pathlib import Path
 
 
@@ -579,16 +580,19 @@ def test_project_set_selects_only_project_prompts():
 def test_reviews_flag_expands_sets():
     script = Path(__file__).resolve().parent / "review-loop.py"
 
-    def scheduled(spec: str, flag: str = "--reviews") -> set[str]:
+    def scheduled_list(spec: str, flag: str = "--reviews") -> list[str]:
         p = subprocess.run(
             [sys.executable, str(script), "--dry-run", "--agents", "claude", flag, spec],
             capture_output=True, text=True, timeout=60, check=False,
         )
         assert p.returncode == 0, p.stderr
-        return {ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln}
+        return [ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln]
+
+    def scheduled(spec: str, flag: str = "--reviews") -> set[str]:
+        return set(scheduled_list(spec, flag))
 
     assert scheduled("quick") == set(rl.REVIEW_SETS["quick"])
-    # sets compose with plain names, and duplicates collapse
+    # sets compose with plain names
     assert scheduled("quick,llm-review,code-review") == \
         set(rl.REVIEW_SETS["quick"]) | {"llm-review"}
     # excluding a set removes exactly its members
@@ -602,6 +606,24 @@ def test_reviews_flag_expands_sets():
         capture_output=True, text=True, timeout=60, check=False,
     )
     assert bad.returncode == 2 and "Sets:" in bad.stderr, bad.stderr
+
+    # repeats are weight: a name or set given twice runs twice per loop
+    assert Counter(scheduled_list("sec-review,sec-review,code-review")) == \
+        Counter({"sec-review": 2, "code-review": 1})
+    counts = Counter(scheduled_list("quick,quick"))
+    assert set(counts) == set(rl.REVIEW_SETS["quick"])
+    assert set(counts.values()) == {2}, counts
+    # a set plus one of its members weights that member
+    counts = Counter(scheduled_list("quick,code-review"))
+    assert counts["code-review"] == 2 and counts["sec-review"] == 1, counts
+    # excluding is all-or-nothing regardless of weight
+    p = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--agents", "claude",
+         "--reviews", "sec-review,sec-review,code-review", "--exclude", "sec-review"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 0
+    assert [ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln] == ["code-review"]
 
 
 def test_doctor_tables_cover_every_bundled_prompt():
