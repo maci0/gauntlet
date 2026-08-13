@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import errno
 import fcntl
 import os
@@ -365,8 +366,10 @@ def parse_agents(s: str) -> list[ToolSpec]:
         tool = tool.strip()
         model = model.strip() or None
         if tool not in VALID_TOOLS:
+            close = difflib.get_close_matches(tool, VALID_TOOLS, n=1)
+            hint = f" — did you mean {close[0]!r}?" if close else ""
             raise argparse.ArgumentTypeError(
-                f"unknown tool: {tool!r} "
+                f"unknown tool: {tool!r}{hint} "
                 f"(valid: {', '.join(sorted(VALID_TOOLS))}, "
                 f"or {'/'.join(sorted(MIXED_KEYWORDS))} for all)"
             )
@@ -761,11 +764,23 @@ class Runner:
                     out += members
                 elif name in available:
                     out.append(name)
+                elif f"{name}-review" in available:
+                    out.append(f"{name}-review")
                 else:
                     unknown.add(name)
             if unknown:
+                # Suggestions match sets, full names, and suffixless stems,
+                # since all three are accepted input.
+                known = [*available, *(r.removesuffix("-review") for r in available),
+                         *DYNAMIC_SETS, *REVIEW_SETS]
+
+                def describe(name: str) -> str:
+                    close = difflib.get_close_matches(name, known, n=1)
+                    return f"{name} (did you mean {close[0]!r}?)" if close else name
+
                 usage_error(
-                    f"Unknown review(s) in {flag}: {', '.join(sorted(unknown))}\n"
+                    f"Unknown review(s) in {flag}: "
+                    f"{', '.join(describe(n) for n in sorted(unknown))}\n"
                     f"Sets: {', '.join(sorted(DYNAMIC_SETS))}, "
                     f"{', '.join(sorted(REVIEW_SETS))}\n"
                     f"Reviews: {', '.join(available)}"
@@ -1099,56 +1114,86 @@ def parse_args() -> argparse.Namespace:
             "Examples:\n"
             "  review-loop.py --agents claude\n"
             "  review-loop.py --agents mixed                 # all installed agents, default models\n"
-            "  review-loop.py --agents claude,gemini,codex\n"
             "  review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
             "  review-loop.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
-            "  review-loop.py --list                         # show available reviews\n"
+            "  review-loop.py --reviews quick --exclude test-review\n"
+            "  review-loop.py -a claude -r sec,deps -t 1h    # short flags, suffixless names\n"
+            "  review-loop.py --list                         # show available reviews and sets\n"
             "  review-loop.py doctor                         # check recommended CLI tools\n"
+            "\n"
+            "Exit codes:\n"
+            "  0  all reviews ran and passed\n"
+            "  1  a review failed, timed out, or could not be read\n"
+            "  2  usage error\n"
+            "  75 another instance holds the lock\n"
+            "  128+signal when interrupted (130 SIGINT, 143 SIGTERM)\n"
         ),
-    )
-    p.add_argument(
-        "--agents", "--models", dest="agents", type=parse_agents, default=None,
-        help="comma-separated agent CLIs, optionally agent:model. "
-             "Use 'mixed' (or 'random'/'all') as shorthand for every installed agent. "
-             "Examples: 'claude', 'mixed', 'claude:opus-4-7,codex:gpt-5-codex'. "
-             "Default: auto-detect installed agents. (--models is a deprecated alias.)",
     )
     p.add_argument(
         "command", nargs="?", choices=["doctor"], default=None,
         help="doctor: report which recommended CLI tools are installed",
     )
-    p.add_argument("--dir", type=Path, default=None, help="cd into DIR before running")
-    p.add_argument("--once", action="store_true", help="run a single loop and exit")
-    p.add_argument("--max-loops", type=int, default=0, help="stop after N loops (0 = unlimited)")
     p.add_argument("--version", action="version", version=f"review-loop {VERSION}")
-    p.add_argument(
-        "--timeout", default="30m", type=parse_duration,
-        help="per-review timeout (default 30m)",
+
+    mode = p.add_argument_group("modes (default: run the review loop)")
+    mode.add_argument("-l", "--list", action="store_true",
+                      help="list available reviews and sets, then exit")
+    mode.add_argument("--dry-run", action="store_true",
+                      help="print the planned schedule for one loop, then exit")
+
+    sel = p.add_argument_group("review selection")
+    sel.add_argument(
+        "-r", "--reviews", action="append", default=None, metavar="LIST",
+        help="comma-separated reviews and/or set names to run (sets: "
+             f"{', '.join(sorted(DYNAMIC_SETS))}, {', '.join(sorted(REVIEW_SETS))}). "
+             "The -review suffix may be omitted: 'sec' means sec-review. "
+             "Naming one more than once runs it that many times per loop, e.g. "
+             "'all,sec-review' weights security double. Repeatable. See --list",
     )
-    p.add_argument("--log", type=Path, default=None, help="tee output to FILE")
-    p.add_argument(
-        "--prompt-dir", type=Path,
+    sel.add_argument(
+        "-x", "--exclude", action="append", default=None, metavar="LIST",
+        help="comma-separated reviews and/or set names to skip. Repeatable",
+    )
+    sel.add_argument(
+        "--prompt-dir", type=Path, metavar="DIR",
         default=Path(__file__).resolve().parent / "prompts",
         help="directory of *-review.md files (default: prompts/ next to this script)",
     )
-    p.add_argument(
-        "--reviews", default="",
-        help="comma-separated reviews and/or set names to run (sets: "
-             f"{', '.join(sorted(DYNAMIC_SETS))}, {', '.join(sorted(REVIEW_SETS))}). "
-             "Naming one more than once runs it that many times per loop, e.g. "
-             "'all,sec-review' weights security double. See --list",
+
+    ag = p.add_argument_group("agent selection")
+    ag.add_argument(
+        "-a", "--agents", "--models", dest="agents", action="append", type=parse_agents,
+        default=None, metavar="LIST",
+        help="comma-separated agent CLIs, optionally agent:model. "
+             "Use 'mixed' (or 'random'/'all') as shorthand for every installed agent. "
+             "Examples: 'claude', 'mixed', 'claude:opus-4-7,codex:gpt-5-codex'. "
+             "Repeatable. Default: auto-detect installed agents. "
+             "(--models is a deprecated alias.)",
     )
-    p.add_argument(
-        "--exclude", default="",
-        help="comma-separated reviews and/or set names to skip",
-    )
-    p.add_argument(
+    ag.add_argument(
         "--bin", action="append", type=parse_bin, default=[], metavar="TOOL=PATH",
         help="run an agent from a specific executable instead of PATH, e.g. "
              "--bin claude=/opt/claude/bin/claude. Repeatable, one per agent. "
              "Discovery stays PATH-based, so name such an agent with --agents.",
     )
-    p.add_argument(
+
+    ex = p.add_argument_group("execution")
+    ex.add_argument("-C", "--dir", type=Path, default=None, metavar="DIR",
+                    help="review the project in DIR (cd there before running)")
+    ex.add_argument(
+        "-t", "--timeout", default="30m", type=parse_duration, metavar="DURATION",
+        help="per-review timeout, e.g. 90s, 30m, 1h (default 30m)",
+    )
+    ex.add_argument("--once", action="store_true", help="run a single loop and exit")
+    ex.add_argument("-n", "--max-loops", type=int, default=0, metavar="N",
+                    help="stop after N loops (0 = unlimited)")
+    ex.add_argument(
+        "--continue-sessions", action="store_true",
+        help="after each agent's first run, resume its session on later runs "
+             "(reuses already-read context; risks context bleed between reviews). "
+             "Agents without session resume in prompt mode always start fresh.",
+    )
+    ex.add_argument(
         "--yolo", action="store_true",
         help="drop the caution rules: no fix count or diff size limit, public "
              "APIs and structure may change, and groundwork may be built rather "
@@ -1156,31 +1201,42 @@ def parse_args() -> argparse.Namespace:
              "outside the tree), your uncommitted work, and the verification "
              "step are unaffected. Expect large diffs; review them.",
     )
-    p.add_argument(
-        "--quiet-agents", action="store_true",
-        help="discard agent stdout/stderr; only the runner's own log lines "
-             "remain (some agents narrate every step)",
-    )
-    p.add_argument(
-        "--continue-sessions", action="store_true",
-        help="after each agent's first run, resume its session on later runs "
-             "(reuses already-read context; risks context bleed between reviews). "
-             "Agents without session resume in prompt mode always start fresh.",
-    )
-    p.add_argument(
+    ex.add_argument(
         "--semcode", action="store_true",
         help="run semcode-index against the target dir before the loop so "
              "reviews can answer call-graph/type queries from the index",
     )
-    p.add_argument("--dry-run", action="store_true", help="print planned schedule and exit")
-    p.add_argument("--list", action="store_true", help="list available reviews and exit")
+
+    out = p.add_argument_group("output")
+    out.add_argument("--log", type=Path, default=None, metavar="FILE",
+                     help="tee output to FILE, in every mode; a relative FILE "
+                          "is resolved against the invocation dir, not --dir")
+    out.add_argument(
+        "-q", "--quiet-agents", action="store_true",
+        help="discard agent stdout/stderr; only the runner's own log lines "
+             "remain (some agents narrate every step)",
+    )
+
     args = p.parse_args()
+    modes = [m for m, on in (("doctor", args.command == "doctor"),
+                             ("--list", args.list), ("--dry-run", args.dry_run)) if on]
+    if len(modes) > 1:
+        p.error(f"{' and '.join(modes)} are mutually exclusive")
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
     if args.once:
         if args.max_loops:
             p.error("--once conflicts with --max-loops")
         args.max_loops = 1
+    if args.agents is not None:
+        # Repeated --agents flags merge in order, deduped like a single list.
+        merged: list[ToolSpec] = []
+        for spec in (s for group in args.agents for s in group):
+            if spec not in merged:
+                merged.append(spec)
+        args.agents = merged
+    args.reviews = ",".join(args.reviews or [])
+    args.exclude = ",".join(args.exclude or [])
     seen: dict[str, str] = {}
     for tool, path in args.bin:
         if tool in seen and seen[tool] != path:
@@ -1204,6 +1260,11 @@ def autodetect_agents() -> list[ToolSpec]:
 
 def main() -> None:
     args = parse_args()
+
+    # Set up before any mode dispatch or --dir chdir: --log works the same in
+    # every mode, and a relative FILE is resolved against the invocation cwd.
+    if args.log:
+        setup_log_tee(args.log.absolute())
 
     if args.command == "doctor":
         sys.exit(doctor(args.bin))
@@ -1238,9 +1299,6 @@ def main() -> None:
         check_tool(tool)  # --bin paths were validated during parsing
 
     acquire_lock(Path.cwd() / ".review-loop.lock")
-
-    if args.log:
-        setup_log_tee(args.log)
 
     if args.semcode:
         check_tool("semcode-index")

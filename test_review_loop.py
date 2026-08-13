@@ -626,6 +626,93 @@ def test_reviews_flag_expands_sets():
     assert [ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln] == ["code-review"]
 
 
+def test_cli_modes_are_mutually_exclusive():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    for combo in (["--list", "--dry-run"], ["doctor", "--list"], ["doctor", "--dry-run"]):
+        p = subprocess.run(
+            [sys.executable, str(script), *combo],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 2 and "mutually exclusive" in p.stderr, (combo, p.stderr)
+
+
+def test_selection_flags_are_repeatable():
+    """Repeated --reviews/--exclude/--agents flags merge like one comma list."""
+    script = Path(__file__).resolve().parent / "review-loop.py"
+
+    def dry_run(*extra: str) -> str:
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", *extra],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stderr
+        return p.stdout
+
+    out = dry_run("--agents", "claude", "--reviews", "sec-review",
+                  "--reviews", "code-review", "--exclude", "sec-review")
+    names = [ln.split()[0] for ln in out.splitlines() if "→" in ln]
+    assert names == ["code-review"], names
+    # repeated --agents merge and dedupe; models stay distinct
+    out = dry_run("--agents", "claude", "--agents", "claude,claude:opus-4-7",
+                  "--reviews", "code-review")
+    assert re.search(r"Agents: claude, claude:opus-4-7\b", out), out
+
+
+def test_review_suffix_optional_and_short_flags():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    p = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "-a", "claude",
+         "-r", "sec,code-review,quick", "-x", "test", "-t", "1h", "-n", "2"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 0, p.stderr
+    names = {ln.split()[0] for ln in p.stdout.splitlines() if "→" in ln}
+    assert names == set(rl.REVIEW_SETS["quick"]) - {"test-review"}, names
+    assert "timeout: 1h00m" in p.stdout and "Loop limit: 2" in p.stdout, p.stdout
+
+
+def test_log_works_in_every_mode_relative_to_invocation_dir():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        proj = root / "proj"
+        proj.mkdir()
+        for mode, marker in (("--list", "Available reviews"),
+                             ("--dry-run", "DRY RUN"),
+                             ("doctor", "Agent CLIs")):
+            log = root / f"{mode.lstrip('-')}.log"
+            p = subprocess.run(
+                [sys.executable, str(script), mode, "--agents", "claude",
+                 "--dir", str(proj), "--log", str(log)],
+                capture_output=True, text=True, timeout=60, check=False,
+            )
+            assert marker in log.read_text(), (mode, p.stderr)
+        # relative FILE lands in the invocation dir, not the --dir target
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "claude",
+             "--dir", str(proj), "--log", "rel.log"],
+            capture_output=True, text=True, timeout=60, check=False, cwd=root,
+        )
+        assert p.returncode == 0, p.stderr
+        assert (root / "rel.log").exists() and not (proj / "rel.log").exists()
+
+
+def test_unknown_names_suggest_close_matches():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    p = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--agents", "claude",
+         "--reviews", "sec-reviw"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 2 and "did you mean 'sec-review'?" in p.stderr, p.stderr
+    try:
+        rl.parse_agents("claud")
+    except argparse.ArgumentTypeError as e:
+        assert "did you mean 'claude'?" in str(e), e
+    else:
+        raise AssertionError("expected ArgumentTypeError")
+
+
 def test_doctor_tables_cover_every_bundled_prompt():
     """Adding a prompt without registering it in doctor's tables is drift."""
     bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}

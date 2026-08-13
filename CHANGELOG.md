@@ -4,6 +4,32 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Added
+
+- Short flags for the common options: `-a` (`--agents`), `-r` (`--reviews`),
+  `-x` (`--exclude`), `-t` (`--timeout`), `-n` (`--max-loops`), `-C` (`--dir`),
+  `-q` (`--quiet-agents`), `-l` (`--list`).
+- The `-review` suffix may be omitted in `--reviews`/`--exclude`: `sec` means
+  `sec-review`. Sets and exact names take precedence over the expansion.
+- Unknown review, set, and agent names now come with a "did you mean" hint.
+
+### Changed
+
+- `--agents`, `--reviews`, and `--exclude` are repeatable, matching `--bin`:
+  `--reviews sec-review --reviews code-review` merges like one comma list
+  (repeats still count as weight for `--reviews`).
+- `--help` groups the options (modes, review selection, agent selection,
+  execution, output) and uses descriptive metavars (`DURATION`, `N`, `FILE`,
+  `LIST`).
+- `doctor`, `--list`, and `--dry-run` now reject being combined instead of
+  silently picking one.
+- `--log` works in every mode; it was silently ignored with `doctor`,
+  `--list`, and `--dry-run`. A relative FILE is now resolved against the
+  invocation directory (like `--prompt-dir`), not the `--dir` target.
+- `--help` documents the exit codes.
+
 ## 0.5.0
 
 ### Changed
