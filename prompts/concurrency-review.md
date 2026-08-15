@@ -41,7 +41,7 @@ Review the following:
 - Missing await on async calls (fire-and-forget without error handling)
 - Async void or detached tasks that swallow exceptions
 - Captured context issues (synchronization context, thread pool exhaustion)
-- Missing cancellation token propagation through async chains
+- Missing cancellation token propagation through async chains (note only; error-review owns cancellation and timeout propagation)
 - Async methods that are not truly async (just wrapping sync code in Task.Run)
 - Mixed sync and async code creating implicit thread pool dependencies
 - Async lambdas or closures capturing mutable state from the enclosing scope
@@ -101,8 +101,8 @@ Review the following:
 - Tests that pass by accident due to timing (sleep-based synchronization)
 - Missing use of race detectors, thread sanitizers, or concurrency checkers
 - Tests that only exercise the single-threaded path
-- Missing property-based or fuzz testing for concurrent data structures
-- Flaky tests that indicate underlying concurrency bugs
+- Missing property-based or fuzz testing for concurrent data structures (note only; fuzz-review owns harnesses)
+- Flaky tests that indicate underlying concurrency bugs (treat as a lead; fix the race here, leave the test to test-review)
 - Missing documentation of thread safety guarantees on public APIs
 - Missing linting or static analysis for concurrency anti-patterns
 

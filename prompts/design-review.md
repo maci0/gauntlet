@@ -82,7 +82,7 @@ Instructions:
 - Respect that some decisions were right for constraints you may not see — flag assumptions you are making.
 - Do not report folder structure, module layout, or layering — those belong to arch-review.
 - Do not report code style, duplication, or refactors — those belong to code-review.
-- Do not edit ADR/PRD/RFC structure, status, or wording (specs-review owns those documents). Evaluate the decision as implemented in the code.
+- Do not edit ADR/PRD/RFC structure, status, or wording (specs-review owns those documents). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Evaluate the decision as implemented in the code.
 - Prefer fewer, high-leverage findings over many small ones.
 - Favor the simplest design that satisfies the requirements; call out when the current design is appropriately simple and should stay.
 

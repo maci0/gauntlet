@@ -67,14 +67,14 @@ Review the following:
 - The same code path cannot run in both production and simulated mode
 
 10. Coverage, longevity, and CI integration
-- Simulation not run in CI, or run with too few seeds/iterations to find rare interleavings
+- Simulation not run in CI, or run with too few seeds/iterations to find rare interleavings (note only; infra-review owns pipeline wiring)
 - No long-running / large-seed-count "soak" simulation surfacing tail bugs
 - Seeds that previously failed not captured as regression seeds
 - No measure of simulated state-space or scenario coverage
 
 Instructions:
 - Fix order: hardcoded sources of nondeterminism on the critical path (real clock, OS random, raw I/O) > missing injection seams that prevent any simulation > simulation harness gaps (missing fault injection, incomplete seed coverage) > CI integration and regression seeds.
-- In auto-fix mode replace a concrete wall-clock or unseeded RNG call with an existing injectable seam; do not introduce a simulation harness, rewrite I/O, or add a new clock/RNG abstraction in one pass.
+- In auto-fix mode replace a concrete wall-clock or unseeded RNG call with an existing injectable seam; do not introduce a simulation harness, rewrite I/O, or add a new clock/RNG abstraction in one pass. Do not add CI jobs or soak pipelines (infra-review).
 - Be concrete: name the call site (`time.Now()` in scheduler.go), the missing seam, or the un-injected dependency.
 - Frame findings as "this blocks deterministic simulation because ..." with the specific nondeterminism it introduces.
 - Distinguish confirmed determinism leaks from likely ones. If deciding requires maintainer intent, skip.

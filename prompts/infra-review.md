@@ -33,7 +33,7 @@ Review the following:
 
 3. Infrastructure as code
 - Resources defined manually or via console instead of code
-- Drift between declared infrastructure and actual state
+- Drift between declared infrastructure and actual state (only when both sides are in the tree; do not query live state)
 - Missing state management or remote state backend
 - Hardcoded resource identifiers, regions, or account IDs
 - Missing or inconsistent tagging and naming conventions
@@ -73,7 +73,7 @@ Review the following:
 - Missing secret rotation policy or automation
 - Secrets with overly broad scope or access
 - Missing documentation of what secrets are needed and where they come from
-- Application code that reads secrets from insecure locations
+- Application code that reads secrets from insecure locations (note only; sec-review owns the application-side fix)
 - Missing encryption of secrets at rest in CI/CD systems
 
 7. Networking and service communication
@@ -82,7 +82,7 @@ Review the following:
 - Hardcoded service addresses instead of service discovery or DNS
 - Missing network policies or firewall rules between services
 - Load balancer misconfiguration or missing health checks
-- Missing retry, timeout, or circuit breaker configuration on service calls
+- Missing retry, timeout, or circuit breaker configuration on service calls (mesh/ingress/IaC only; application-level retries belong to error-review)
 - DNS configuration managed manually instead of through code
 
 8. Reliability and disaster recovery
@@ -110,11 +110,12 @@ Review the following:
 - Missing make targets, task runners, or documented commands for common workflows
 - No way to run the full stack locally
 - Excessive setup time for new contributors
-- Missing contribution guidelines or development workflow documentation
+- Missing contribution guidelines or development workflow documentation (note only; doc-review owns the prose)
 
 Instructions:
 - Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation.
 - Do not create a CI pipeline, IaC stack, or compose file from scratch; fix what exists.
+- Review the tree only: do not query live cloud APIs, remote Terraform/Pulumi state, or cluster endpoints. Drift against actual state that you cannot see in the repo: skip.
 - If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform). Never install tools.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.
 - Verify that documented procedures match what the code and configuration actually do.

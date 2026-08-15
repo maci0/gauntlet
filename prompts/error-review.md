@@ -30,7 +30,7 @@ Review the following:
 - Inconsistent error message format or tone across the codebase
 - Error messages that are identical for different failure modes
 - Missing structured data in errors (operation, entity, field, constraint)
-- Errors without timestamps or correlation IDs in systems that need them
+- Errors without timestamps or correlation IDs in systems that need them (note only; o11y-review owns correlation IDs and log timestamps)
 
 4. Input validation and boundary errors
 (config-review owns config schema, precedence, and required-key validation. api-review owns which fields a network endpoint accepts and the status code for a bad request. Here own whether validation happens before side effects, how the failure is signaled inside the process, and module-boundary checks on non-HTTP entry points.)
@@ -78,10 +78,9 @@ Review the following:
 
 9. Error observability
 (o11y-review owns metrics, dashboards, and alerting instrumentation; here cover what the error path itself must record.)
-- Errors not logged or logged at wrong severity level
-- Missing structured error logging (just logging error.message, not the full error)
+- Errors not logged at all on the failure path (wrong severity or missing structured fields: note only; o11y-review owns levels and structure)
+- Errors logged without the operation, input, or cause needed to debug
 - Missing error rate metrics or error count instrumentation (note only; o11y-review owns the fix)
-- Errors logged without the request or operation context needed to debug
 - Missing alerting thresholds on error rates (note only; o11y-review owns the fix)
 - Error tracking that does not deduplicate or group related errors
 - Missing distinction between expected errors (404, validation) and unexpected errors (500, panic)
@@ -92,13 +91,14 @@ Review the following:
 - Missing handling for empty collections, zero-length input, or missing optional values
 - Assumptions about data shape or ordering that are not validated
 - Integer overflow or underflow in arithmetic operations
-- Unicode, encoding, or locale edge cases not handled
+- Unicode or encoding edge cases not handled (locale-dependent formatting belongs to i18n-review)
 - Time zone, daylight saving, or clock skew assumptions
-- Missing handling for concurrent modification or stale data
+- Missing handling for concurrent modification or stale data (note only; concurrency-review owns the race)
 
 Instructions:
 - Fix order: silent failures (errors discarded causing data loss or incorrect behavior) > missing resource cleanup on error paths > missing timeouts on external calls > error context and message quality. Hardening and consistency last.
 - Do not change documented feature behavior to match a guessed contract (functionality-review owns intended-vs-actual). Here own how failures are signaled, cleaned up, retried, and isolated.
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
 - LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry/circuit-breaker on the HTTP call. If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review).
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.

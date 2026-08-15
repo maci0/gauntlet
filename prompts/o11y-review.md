@@ -13,7 +13,7 @@ Review the following:
 - Unstructured log output that is hard to parse or search
 - Sensitive data logged (credentials, PII, tokens, session data) (note only; privacy-review owns PII redaction, sec-review owns credentials)
 - Missing logging at critical decision points or state transitions
-- Excessive logging that creates noise and increases cost
+- Excessive logging that creates noise and increases cost (volume and level; a proven hot-path throughput hit belongs to perf-review)
 - Log messages that are not actionable or useful for debugging
 - Inconsistent log format across services or modules
 - Missing correlation IDs for tracing requests across components
@@ -113,7 +113,7 @@ Review the following:
 Instructions:
 - Fix order: blind spots on critical request paths (no logging, no tracing, no metrics) > missing error tracking and alerting on failure modes > noisy or misleading observability (wrong levels, missing context, alert fatigue) > structural and consistency improvements.
 - In auto-fix mode act only on what code can change: missing or wrong log levels, missing structured fields, missing correlation IDs, dead instrumentation. Dashboards, runbooks, escalation paths, and compliance logging policies are organizational: out of scope for a fix pass. LLM token counts, cost attribution, and model-version logging belong to llm-review; here own generic request/error/latency instrumentation even on those call sites.
-- If available, use: the project's own log/metrics/tracing libraries to verify instrumentation is wired, `promtool check rules` (Prometheus alerting rules), `otel-cli` (trace inspection). Never install tools.
+- If available, use: the project's own log/metrics/tracing libraries to verify instrumentation is wired, `promtool check rules` (Prometheus alerting rules), `otel-cli` (trace inspection). Do not send traces or metrics to a remote collector. Never install tools.
 - Evaluate whether the current observability would let you debug a production incident at 3 AM.
 - Consider the full request lifecycle from ingress to response.
 - Do not recommend adding observability that creates more noise than signal.

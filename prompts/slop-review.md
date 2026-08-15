@@ -86,7 +86,7 @@ Instructions:
 - Do not touch anything where the "slop" might be deliberate (marked intentional, explained in a comment or commit, or matching a documented convention).
 - Cap the pass: fix the most concrete, least arguable instances first. Volume of weak edits is worse than leaving mild slop.
 - Do not report or fix correctness, security, or performance issues here — those belong to other reviews.
-- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review).
 
 For each finding include:
 - Title

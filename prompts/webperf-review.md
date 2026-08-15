@@ -69,7 +69,7 @@ Review the following:
 - No budget: nothing states how large the critical path or a bundle is allowed to get
 
 10. Regression prevention
-- Bundle size or Lighthouse checks absent from CI, so weight accretes silently
+- Bundle size or Lighthouse checks absent from CI, so weight accretes silently (note only; infra-review owns pipeline wiring)
 - No record of what the numbers were, so nobody can tell whether the page got slower
 - Performance work described in docs that the code no longer does
 - Fixes that traded away correctness or accessibility for speed, or that a later change silently undid

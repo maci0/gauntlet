@@ -85,7 +85,7 @@ Instructions:
 - A simplification that makes code shorter but harder to follow is not a finding; elegant means the reader wins too.
 - When complexity is justified, say so explicitly; a justified-complexity list is as valuable as the deletions.
 - Do not report style, naming, comment noise, unused parameters, or always-true guards (slop-review), module-boundary restructuring (arch-review), or unused imports in a file already open (code-review).
-- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review).
 
 For each finding include:
 - Title
@@ -122,6 +122,6 @@ Grouped by category, using the finding template above.
 Important:
 - Deletion is the riskiest edit there is: wrong removal is a broken feature. When proof of removability is incomplete, downgrade to potential and do not remove.
 - Public API surface may have external consumers you cannot see; flag, never delete, without maintainer confirmation.
-- Run the project's tests after every removal; any failure means revert, not patch-around.
+- Run the project's tests after every removal; any failure means undo that deletion by re-editing your own hunks, not patch-around, and never via git checkout/restore.
 - Prefer many small proven deletions over one heroic rewrite.
 - The metric is lines removed with behavior intact, and the reader's comprehension improved.

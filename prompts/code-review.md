@@ -82,6 +82,7 @@ Instructions:
 - Fix order: type-safety gaps and missing null checks with a concrete path > duplication causing drift > inconsistent patterns. Cosmetic cleanups last.
 - If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication). `vulture`/`knip`/`ts-prune` may confirm an unused import in a file you already have open; do not treat their project-wide reports as a deletion list (minimalism-review). Never install tools.
 - Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Do not rewrite tests (test-review).
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.

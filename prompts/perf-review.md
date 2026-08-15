@@ -61,7 +61,7 @@ Review the following:
 
 8. Hot paths and critical sections
 - Expensive operations inside tight loops
-- Logging, tracing, or metrics collection that degrades throughput
+- Logging, tracing, or metrics collection that degrades throughput (only unbounded per-request payload dumps on a proven hot path; do not strip or downgrade structured logs/metrics; o11y-review owns those)
 - Serialization or deserialization on every request when avoidable
 - Regex compilation or reflection in hot paths
 - Excessive allocations in request handlers
