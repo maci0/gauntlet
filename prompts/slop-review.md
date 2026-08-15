@@ -38,7 +38,7 @@ Review the following:
 - Re-validation of data validated at the boundary it just crossed
 
 5. Dead additions
-- New symbols (functions, constants, enum values, fields, imports) nothing references
+(minimalism-review owns project-wide unused-symbol deletion; code-review owns unused imports and dead locals in a file already open. Here own unused parameters, always-true/false guards, and commented-out blocks.)
 - Guards that are always true or always false
 - Parameters accepted and never used; return values never consumed
 - Commented-out code and disabled blocks with no explanation
@@ -72,14 +72,12 @@ Review the following:
 - Try/except (or catch) wrapped around whole function bodies that logs and continues, added by reflex rather than for a named failure mode
 
 10. Test slop
-(Flag only; never delete tests in fix mode — collapse duplicates into parameterized forms instead, keeping coverage identical.)
-- Tests that assert nothing, or assert only that the mock returned what the mock was told to return
+(test-review owns assertion quality, false-confidence, flakes, coverage, and placeholder/empty tests. Flag only; never delete tests. Here only copy-paste and naming noise: collapse duplicates into parameterized forms, keeping coverage identical.)
 - Copy-pasted test bodies differing by one value that a parameterized test would collapse
-- Placeholder tests (`assert True`, empty bodies) presented as coverage
 - Test names that don't say what behavior is checked
 
 Instructions:
-- Fix order: dead additions (unreferenced symbols, always-true guards, unused parameters) > copy-paste duplication actively drifting between copies > verbose constructs replaceable by idiomatic one-liners > redundant comments and prose noise. Cosmetic naming last.
+- Fix order: dead additions (always-true guards, unused parameters, commented-out blocks) > copy-paste duplication actively drifting between copies > verbose constructs replaceable by idiomatic one-liners > redundant comments and prose noise. Cosmetic naming last.
 - If available, use: `jscpd` (copy-paste clusters worth examining). Hits still need the neighbours-and-plausible-reason test before touching anything. Never install tools.
 - Only act where removal or simplification loses no information and changes no behavior. Behavior-preserving cleanups only.
 - Confirm each candidate against its neighbours before changing it: read the whole function and nearby code, not the fragment.
@@ -88,6 +86,7 @@ Instructions:
 - Do not touch anything where the "slop" might be deliberate (marked intentional, explained in a comment or commit, or matching a documented convention).
 - Cap the pass: fix the most concrete, least arguable instances first. Volume of weak edits is worse than leaving mild slop.
 - Do not report or fix correctness, security, or performance issues here — those belong to other reviews.
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
 
 For each finding include:
 - Title

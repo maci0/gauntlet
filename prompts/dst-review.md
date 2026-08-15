@@ -10,7 +10,7 @@ Establish the current state. Look for:
 - A single seeded RNG source vs scattered `rand`/`random`/`Math.random`/`uuid` calls
 - An I/O/network abstraction (interface/trait/port) vs direct syscalls, sockets, and disk access
 - How concurrency is expressed (real threads/goroutines vs a cooperative/single-threaded event loop that a simulator could drive)
-When the intended testing strategy is undocumented, say so.
+When the intended testing strategy is undocumented, skip strategy-level items and review only concrete nondeterminism at call sites.
 
 Review the following:
 
@@ -77,7 +77,7 @@ Instructions:
 - In auto-fix mode replace a concrete wall-clock or unseeded RNG call with an existing injectable seam; do not introduce a simulation harness, rewrite I/O, or add a new clock/RNG abstraction in one pass.
 - Be concrete: name the call site (`time.Now()` in scheduler.go), the missing seam, or the un-injected dependency.
 - Frame findings as "this blocks deterministic simulation because ..." with the specific nondeterminism it introduces.
-- Distinguish confirmed determinism leaks from likely ones from those needing a maintainer to confirm intent.
+- Distinguish confirmed determinism leaks from likely ones. If deciding requires maintainer intent, skip.
 - Separate "not simulable yet" (architectural gap) from "simulable but not simulated" (missing harness/CI).
 - Do not report generic test-coverage, input-fuzzing, or race-detection concerns — those belong to test-, fuzz-, and concurrency-review.
 - Prefer fewer high-value findings; the biggest wins are usually the central clock, the single seeded RNG, and the I/O seam.

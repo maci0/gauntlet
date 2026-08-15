@@ -106,6 +106,7 @@ Review the following:
 
 Instructions:
 - Fix order: broken output in supported locales (garbled, truncated, crashes) > hardcoded user-facing strings not externalized > locale-dependent formatting using hardcoded patterns (dates, numbers, currency) > layout and RTL issues > translation workflow and tooling gaps.
+- In auto-fix mode act only next to existing i18n usage: a hardcoded user-facing string beside catalog lookups, a date/number using a hardcoded pattern where the project already has a locale-aware formatter, a CSS `left`/`right` beside logical properties. Do not introduce an i18n library, create a catalog, or add translation workflow. Process, CI locale matrices, and "should we localize this" are organizational: out of scope for a fix pass. Do not change general layout or interaction (ux-review); here only overflow or missing RTL mirroring caused by translated or bidirectional text.
 - If available, use the project's message-catalog tooling: `xgettext`/`msgfmt --check`, `i18next-parser`, framework extractors — they reveal unextracted strings and malformed catalogs. Never install tools.
 - Consider users in non-English, non-Latin, and RTL locales as primary audiences, not edge cases.
 - Test mentally by imagining the UI in German (long words), Arabic (RTL), Japanese (CJK), and a language with complex plurals (Polish, Arabic).

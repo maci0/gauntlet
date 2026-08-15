@@ -28,7 +28,8 @@ Review the following:
 - Waterfalls: resources discovered only after a parent finishes, where they could have been requested in parallel
 
 4. Caching and revalidation
-- No `ETag` or `Last-Modified` on expensive endpoints, so unchanged data is re-sent in full instead of answered with a 304
+(api-review owns ETag/Cache-Control as an API contract on JSON/RPC responses; here own what the browser caches: pages, assets, and document responses.)
+- No `ETag` or `Last-Modified` on expensive document or asset responses, so unchanged data is re-sent in full instead of answered with a 304
 - `Cache-Control` that does not match the resource: `no-store` on content that revalidates fine, or long `max-age` on URLs whose content can change
 - Content-hashed assets not served `immutable`, so browsers revalidate what can never change
 - Cache keys ignoring the negotiated encoding, so a client can receive a body it cannot decode; missing `Vary`
@@ -75,11 +76,11 @@ Review the following:
 
 Instructions:
 - Fix order: render-blocking resources on the critical path (scripts, stylesheets, fonts that delay first paint) > missing compression or caching on large assets > unnecessary bytes loaded eagerly that could be deferred > runtime jank and long tasks after load.
-- If available, use: `lighthouse` (page-load metrics and diagnostics), `curl -w '%{size_download} %{time_starttransfer}\\n' -H 'Accept-Encoding: ...'` (what a client actually receives, and how soon), the project's bundler analyzer when one exists. Never install tools.
+- If available, use: `lighthouse` (page-load metrics and diagnostics), `curl -w '%{size_download} %{time_starttransfer}\\n' -H 'Accept-Encoding: ...'` (what a client actually receives, and how soon), the project's bundler analyzer when one exists. Run `lighthouse`/`curl` only against static files or an already-listening local URL; never start a server to obtain one, and never hit a remote host. Never install tools.
 - Measure what you claim: state the transferred size, the request count, or the timing before and after. Where you cannot measure, fix only categorically safe wins (an unused field, a missing `defer`, a heavy library loaded up front) and skip anything whose benefit needs numbers.
 - Judge against the audience: an internal dashboard on a LAN and a public page on mobile networks do not have the same budget. Say which you assumed.
 - Never trade away accessibility, correctness, or content for speed. Deferring something means it still arrives and still works, with a visible state while it is missing.
-- Do not report server-side or algorithmic performance (perf-review), interaction design (ux-review), or dependency health (deps-review).
+- Do not report server-side or algorithmic performance (perf-review), interaction design (ux-review), dependency health (deps-review), or API cache-contract design on JSON/RPC responses (api-review). Here own what the browser downloads.
 - Prefer fewer high-value findings; call out what is already fast and well-engineered so later passes leave it alone.
 
 For each finding include:

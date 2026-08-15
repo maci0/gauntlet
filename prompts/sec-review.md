@@ -32,7 +32,7 @@ Review the following:
 - XML external entity (XXE) processing
 
 4. Data exposure
-(privacy-review owns PII redaction in logs and analytics; here cover secrets, credentials, tokens, and security-sensitive debug output.)
+(privacy-review owns PII redaction in logs and analytics; infra-review owns secrets in CI, container images, and IaC; config-review owns config structure and example placeholders; mobile-review owns backup exclusion, Keychain/Keystore accessibility, and lock-screen visibility. Here cover secrets, credentials, tokens, and security-sensitive debug output in application source: redact or relocate the secret itself.)
 - Sensitive data in logs, error messages, or stack traces
 - Secrets or credentials committed to version control
 - PII or sensitive data transmitted without encryption
@@ -57,21 +57,20 @@ Review the following:
 - Missing CORS configuration or overly permissive CORS
 
 7. Dependency and supply chain
-- Known vulnerable dependencies (CVEs)
-- Dependencies pulled without integrity verification
-- Unpinned dependency versions allowing supply chain attacks
-- Unused dependencies increasing attack surface
-- Dependencies from untrusted or unmaintained sources
+(deps-review owns the inventory: CVEs, pinning, unused, provenance. Here only a dependency that is the exploit path for a vulnerability in this code.)
+- Known-vulnerable library actually invoked on untrusted input (the sink, not the manifest entry)
 
 8. Configuration and deployment
+(config-review owns config structure, precedence, and validation. Here own debug-on-in-production, default credentials, and missing security headers as security defects.)
 - Debug mode or development settings in production configuration
 - Default credentials or configurations
 - Missing security headers (CSP, HSTS, X-Frame-Options, etc.)
 - Exposed internal endpoints, metrics, or admin panels
 - Insecure default permissions on files or resources
-- Missing environment-based configuration separation
+- Missing environment-based configuration separation (note only; config-review owns the structure)
 
 9. Error handling and logging
+(o11y-review owns log structure, levels, and correlation; here own leaks, log injection, and whether security-relevant events are recorded at all.)
 - Stack traces or internal details leaked to users
 - Missing audit logging for security-relevant events
 - Log injection via unsanitized user input in log messages
@@ -79,15 +78,16 @@ Review the following:
 - Error messages that reveal system internals or valid usernames
 
 10. Business logic
-- Race conditions that could be exploited (TOCTOU)
-- Missing idempotency on sensitive operations
-- Abuse potential via missing rate limiting or quotas
+(concurrency-review owns the race fix, including exploitable TOCTOU; idempotency-review owns missing idempotency. api-review owns general API quota headers. Auth-endpoint rate limits are in section 2. Here own payment/verification/approval bypass and payment-endpoint rate limits.)
 - Logic flaws that allow bypassing payment, verification, or approval flows
+- Abuse potential via missing rate limiting or quotas on payment
 - Missing validation of state transitions
+- Race conditions that could be exploited (TOCTOU) (note only; concurrency-review owns the fix)
+- Missing idempotency on sensitive operations (note only; idempotency-review owns the fix)
 
 Instructions:
 - Fix order: injection and authz bypass > committed secrets > unsafe deserialization/weak crypto > missing security headers and hardening. Prefer low-effort fixes to critical issues over deep refactors.
-- If available, use: `semgrep` (pattern-based vulnerability scan), `gitleaks`/`trufflehog` (committed secrets), `osv-scanner` (known-vulnerable dependencies), `bandit` (Python), `gosec` (Go), `shellcheck` (quoting and injection hazards in shell scripts). Never install tools; verify every hit before acting.
+- If available, use: `semgrep` (pattern-based vulnerability scan), `gitleaks`/`trufflehog` (committed secrets), `bandit` (Python), `gosec` (Go), `shellcheck` (quoting and injection hazards in shell scripts). Do not run a project-wide CVE inventory (`osv-scanner` belongs to deps-review); only treat a dependency as in-scope when this code invokes it on untrusted input. Never install tools; verify every hit before acting.
 - Focus on exploitable vulnerabilities and real risk.
 - Consider the attack surface: what is exposed to untrusted input.
 - Trace data flow from untrusted sources to sensitive sinks.
@@ -131,7 +131,7 @@ Issues that require specific conditions to exploit or have limited impact.
 Defense in depth improvements and minor issues.
 
 ## Dependency Vulnerabilities
-Known CVEs and supply chain concerns.
+Known-vulnerable libraries actually invoked on untrusted input (not the manifest inventory).
 
 ## Missing Security Controls
 Expected security mechanisms that are absent.
@@ -158,7 +158,7 @@ Small, low-risk fixes with high security payoff.
 
 Important:
 - Base findings on the actual code, not assumptions.
-- If you are not sure about exploitability, say so.
+- If you are not sure about exploitability, skip it.
 - Prefer the simplest fix that eliminates the vulnerability.
 - Do not recommend security theater that adds complexity without real protection.
 - Consider the principle of least privilege in all recommendations.

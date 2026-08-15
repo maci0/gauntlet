@@ -74,7 +74,7 @@ Instructions:
 - The unit of finding is the cluster, not the single choice. Inter alone is fine; Inter + indigo gradient + glass cards + rocket emoji is the finding. One default is a choice, five defaults are the absence of one.
 - Judge against the product's own intent and audience. An internal admin tool is allowed to be plain; plain is not slop. Slop is unconsidered, not minimal.
 - If a design system or brand guide exists, enforce it: drift from the documented tokens is the concrete, fixable version of this review.
-- Fixes must be small and token-level: replace a palette, set a type scale, remove decoration, rewrite microcopy. Never redesign whole pages in one pass; propose direction, change tokens and the worst instances.
+- Fixes must be small and token-level: replace a palette, set a type scale, remove decoration, rewrite microcopy. Never redesign whole pages in one pass; change tokens and the worst instances only.
 - Never trade away accessibility: any color or type change keeps or improves contrast and readability.
 - Fabricated content (fake testimonials, placeholder stats presented as real) is the one medium-severity item: remove or clearly mark it.
 - Do not report usability, interaction design, or a11y findings — those belong to ux-review and a11y-review.

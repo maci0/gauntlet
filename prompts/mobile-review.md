@@ -49,7 +49,8 @@ Review the following:
 - Startup blocked on synchronous I/O, remote config, or SDK initialization that could defer
 
 7. Data on device
-- Sensitive data in plaintext prefs/UserDefaults instead of Keychain/Keystore/encrypted storage
+(sec-review owns generic secret storage and encryption. Here own the mobile-specific consequence: backup exclusion, Keychain/Keystore accessibility attributes, lock-screen visibility.)
+- Sensitive data in plaintext prefs/UserDefaults instead of Keychain/Keystore/encrypted storage (note the location; sec-review owns relocating the secret)
 - Databases and files not excluded from cloud backups where the data shouldn't leave the device
 - No migration story for local schema changes: update wipes or crashes on old data
 - Tokens with no refresh path forcing re-login on expiry
@@ -57,7 +58,7 @@ Review the following:
 8. Push notifications and background work
 - Notification permission requested before demonstrating value
 - Background tasks assuming they always run (OS defers/kills them; work must be resumable and idempotent)
-- Push payloads trusted without validation, or carrying sensitive data visible on lock screens
+- Push payloads carrying sensitive data visible on lock screens (payload validation belongs to sec-review)
 - No channel/category structure so users can only opt out of everything
 
 9. Crash and update hygiene

@@ -9,7 +9,7 @@ First, establish what the software is supposed to do. Derive intended behavior f
 - Comments, docstrings, and TODO/FIXME markers
 - Configuration options and flags that imply features
 - Commit messages and changelog entries if available
-When intent is ambiguous or undocumented, say so explicitly and treat it as an open question rather than assuming.
+When intent is ambiguous or undocumented, skip that item rather than assuming.
 
 Review the following:
 
@@ -55,6 +55,7 @@ Review the following:
 - Backward-incompatible behavior changes without a documented reason
 
 6. Functional gaps in error and failure behavior
+(error-review owns error types, propagation, retries, timeouts, and cleanup. Here only when the documented or tested contract says the operation fails or succeeds a certain way and the implementation does not.)
 - Failures that are swallowed so the operation appears to succeed
 - Validation that is documented or expected but missing
 - Recovery paths that do not actually recover
@@ -62,7 +63,7 @@ Review the following:
 
 Instructions:
 - Fix order: confirmed behavioral defects (wrong output for valid input) > broken end-to-end flows > edge cases that crash or corrupt > incomplete features with partial implementations.
-- The strongest evidence is running the software: exercise the documented flows and compare actual output against what docs/help/tests claim. Run the existing test suite before and after changes. Never install tools.
+- The strongest evidence is existing tests and one-shot commands (CLI invocations, scripts that exit). Compare actual output against what docs/help/tests claim. Never start a server, dev process, or container to exercise a flow. Never install tools.
 - If intended behavior cannot be derived from docs, types, tests, or comments, skip that item. Do not invent requirements.
 - Be concrete, not generic. Point at specific functions, inputs, and expected vs actual behavior.
 - Where possible, give a minimal reproduction: the input, the call, the wrong result, and the correct result.
@@ -71,10 +72,12 @@ Instructions:
   - likely defects (probable, needs a quick check)
   - potential defects that need verification or maintainer input
 - Separate "missing feature" from "broken feature" from "undocumented behavior".
-- Do not report style, naming, or structural issues — those belong to other reviews.
+- Do not report style, naming, or structural issues: those belong to code-review, slop-review, and arch-review.
+- Do not restyle working code or chase local logic style (code-review). Here own a documented or tested contract the implementation violates.
+- Do not change error types, propagation, retries, timeouts, or cleanup (error-review). Here own the documented contract: the feature appears to succeed, or match the docs, but does not.
 - Prefer fewer, high-value findings over many weak ones.
 - Call out when behavior is correct but undocumented, vs documented but incorrect.
-- Where intended behavior is genuinely unknown, record it as an open question rather than asserting an answer.
+- Where intended behavior is genuinely unknown, skip it rather than asserting an answer.
 
 For each finding include:
 - Title
@@ -113,7 +116,7 @@ Grouped by category, using the finding template above.
 
 Important:
 - Base findings on the actual code and documented intent, not assumptions.
-- If you cannot determine what the correct behavior should be, say so.
+- If you cannot determine what the correct behavior should be, skip it.
 - If the repository is large, prioritize core flows, public entrypoints, and the most-used features.
 - Optimize for actionable feedback a team could turn into bug tickets immediately.
 - Call out when functionality is complete and correct and should not be changed.

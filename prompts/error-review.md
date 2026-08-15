@@ -1,6 +1,6 @@
 You are a senior software engineer specializing in reliability and error handling. Your task is to perform a deep error handling and resilience audit of this codebase.
 
-Your goal is to evaluate how the codebase handles errors, failures, edge cases, and degraded conditions. Focus on issues that cause silent data loss, misleading behavior, poor debuggability, or cascading failures. CLI exit codes, stdout/stderr routing, and --help text belong to cli-review; here own application error types, propagation, cleanup, and timeouts.
+Your goal is to evaluate how the codebase handles errors, failures, edge cases, and degraded conditions. Focus on issues that cause silent data loss, misleading behavior, poor debuggability, or cascading failures. CLI exit codes, stdout/stderr routing, and --help text belong to cli-review; error types an SDK exposes to its consumers belong to sdk-review; here own application error types, propagation, cleanup, and timeouts.
 
 Review the following:
 
@@ -23,20 +23,22 @@ Review the following:
 - Status codes or error codes that do not match the actual failure
 
 3. Error messages and context
+(sec-review owns leaks that reveal internals, file paths, or stack traces to untrusted users; here own missing operator context.)
 - Error messages that lack context: what operation failed, what input caused it, what was expected
 - Error messages that are too technical for the intended audience
-- Error messages that leak internal implementation details, file paths, or stack internals
+- Error messages that leak internal implementation details, file paths, or stack internals (note only; sec-review owns the redaction)
 - Inconsistent error message format or tone across the codebase
 - Error messages that are identical for different failure modes
 - Missing structured data in errors (operation, entity, field, constraint)
 - Errors without timestamps or correlation IDs in systems that need them
 
 4. Input validation and boundary errors
-- Missing validation at public API or module boundaries
+(config-review owns config schema, precedence, and required-key validation. api-review owns which fields a network endpoint accepts and the status code for a bad request. Here own whether validation happens before side effects, how the failure is signaled inside the process, and module-boundary checks on non-HTTP entry points.)
+- Missing validation at module boundaries or non-HTTP entry points
 - Validation errors that do not specify which field or constraint failed
 - Inconsistent validation logic for the same data type across entry points
 - Validation that happens too late (after side effects)
-- Missing validation of environment variables, configuration, or external input
+- Missing validation of external or user input (environment/config required-keys belong to config-review; network request fields to api-review)
 - Partial validation that catches some invalid inputs but misses others
 - Type coercion or default substitution that masks invalid input
 
@@ -78,9 +80,9 @@ Review the following:
 (o11y-review owns metrics, dashboards, and alerting instrumentation; here cover what the error path itself must record.)
 - Errors not logged or logged at wrong severity level
 - Missing structured error logging (just logging error.message, not the full error)
-- Missing error rate metrics or error count instrumentation
+- Missing error rate metrics or error count instrumentation (note only; o11y-review owns the fix)
 - Errors logged without the request or operation context needed to debug
-- Missing alerting thresholds on error rates
+- Missing alerting thresholds on error rates (note only; o11y-review owns the fix)
 - Error tracking that does not deduplicate or group related errors
 - Missing distinction between expected errors (404, validation) and unexpected errors (500, panic)
 
@@ -96,9 +98,11 @@ Review the following:
 
 Instructions:
 - Fix order: silent failures (errors discarded causing data loss or incorrect behavior) > missing resource cleanup on error paths > missing timeouts on external calls > error context and message quality. Hardening and consistency last.
+- Do not change documented feature behavior to match a guessed contract (functionality-review owns intended-vs-actual). Here own how failures are signaled, cleaned up, retried, and isolated.
+- LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry/circuit-breaker on the HTTP call. If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review).
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.
-- Consider what happens when every external call fails. Does the system handle it gracefully?
+- Trace one request path with every external call failed; a crash or silent data loss is the finding.
 - Do not flag every missing try/catch. Focus on errors that would cause real damage if unhandled.
 - Prefer error handling that is explicit and visible over clever or implicit patterns.
 - Consider the operational burden of errors: can an on-call engineer understand and fix the issue from the error output alone?
@@ -168,7 +172,7 @@ Small changes that significantly improve error handling quality.
 
 Important:
 - Base findings on actual error handling code, catch blocks, and error paths.
-- If you are not sure whether an error is intentionally discarded, say so.
+- If you are not sure whether an error is intentionally discarded, skip it.
 - Prefer the simplest fix that prevents the failure. Do not over-engineer error handling.
 - Consider that some errors are expected and should be handled differently from unexpected ones.
 - A visible error is always better than a silent failure.

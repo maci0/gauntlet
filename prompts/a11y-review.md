@@ -1,6 +1,6 @@
 You are a senior accessibility engineer. Your task is to perform a deep accessibility (a11y) review of this codebase's user-facing interfaces.
 
-Your goal is to evaluate whether the software is usable by people with disabilities: keyboard-only users, screen-reader users, low-vision and color-blind users, users of magnification and zoom, motor-impaired users, and people sensitive to motion. Anchor findings to WCAG 2.2 AA where applicable. Focus on accessibility specifically; general interaction, visual design, and form usability belong to ux-review; form accessibility (labels, error association, fieldset/legend) stays here. Locale, string externalization, and formatting belong to i18n-review; `lang` on the page and on passages in another language stay here (WCAG 3.1.1 / 3.1.2). This review should go deeper on assistive-technology support than ux-review does.
+Your goal is to evaluate whether the software is usable by people with disabilities: keyboard-only users, screen-reader users, low-vision and color-blind users, users of magnification and zoom, motor-impaired users, and people sensitive to motion. Anchor findings to WCAG 2.2 AA where applicable. Focus on accessibility specifically; general interaction, visual design, and form usability belong to ux-review; form accessibility (labels, error association, fieldset/legend), focus order, visible focus, text resize, and touch-target size stay here. Locale, string externalization, and formatting belong to i18n-review; `lang` on the page and on passages in another language stay here (WCAG 3.1.1 / 3.1.2). This review should go deeper on assistive-technology support than ux-review does.
 
 First decide if this review applies. It needs a user-facing interface: web markup/components, native app views, or a TUI. A library, headless service, or non-interactive CLI: print the skip result and stop.
 
@@ -27,6 +27,7 @@ Review the following:
 - Positive/managed `tabindex` misuse; non-interactive elements in the tab order
 - No visible focus indicator, or one removed via `outline: none` with no replacement
 - Illogical focus order that doesn't match visual/reading order
+- Click/touch targets below 24x24 CSS pixels (WCAG 2.2 AA SC 2.5.8)
 
 3. Screen-reader support (name, role, value)
 - Missing or wrong `lang` on `<html>` or on a passage in another language (WCAG 3.1.1 / 3.1.2); the screen reader uses the wrong voice
@@ -74,13 +75,15 @@ Review the following:
 - Focus/traversal order wrong for the platform's screen reader (TalkBack/VoiceOver)
 
 10. Process and regression safety
+(Note only. Do not add CI pipelines, design-system contracts, or screen-reader test infrastructure.)
 - No automated a11y checks in lint/CI; no keyboard or screen-reader test path
 - Design-system components with undocumented or unmet a11y contracts consumed unsafely
 - Regressions likely because there is no guard on accessible name/role in tests
 
 Instructions:
 - Fix order: keyboard traps and missing focus management (users stuck) > missing accessible names on interactive elements (controls invisible to AT) > contrast and text-alternative gaps > ARIA misuse and semantic issues > missing live regions and status announcements.
-- If available, use: `axe` (axe-core CLI)/`pa11y`/`lighthouse` (automated WCAG scans of rendered pages), `vnu` (offline W3C validation: invalid markup breaks assistive-tech parsing), `eslint-plugin-jsx-a11y` (static JSX checks). Automated scans catch at most a third of barriers — a floor, not the review. Never install tools.
+- In auto-fix mode fix markup, names, labels, contrast tokens, and keyboard/focus handlers in the UI you can see. Section 10 is note-only.
+- If available, use: `axe` (axe-core CLI)/`pa11y`/`lighthouse` (WCAG scans), `vnu` (offline W3C validation: invalid markup breaks assistive-tech parsing). Run scanners only against static HTML or an already-listening local URL; never start a server to obtain one, and never hit a remote host. `eslint-plugin-jsx-a11y` is an ESLint plugin, not a binary: use it only if the project already runs it. Automated scans catch at most a third of barriers — a floor, not the review. Never install tools.
 - Be concrete. Point at the component/element and the specific barrier, and cite the WCAG success criterion (e.g. 2.1.1 Keyboard, 1.4.3 Contrast) where it applies.
 - State who is blocked and how (keyboard user cannot dismiss dialog; screen reader announces button as unlabeled).
 - Prefer native HTML/platform fixes over ARIA; call out ARIA misuse explicitly.

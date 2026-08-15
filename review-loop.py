@@ -112,7 +112,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
                    "desktop-file-validate", "appstream-util", "check-wheel-contents"),
     "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
     "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
-    "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec",
+    "sec-review": ("semgrep", "gitleaks", "trufflehog", "bandit", "gosec",
                    "shellcheck"),
     "slop-review": ("jscpd",),
     "test-review": ("coverage", "cargo-llvm-cov", "c8", "nyc", "mutmut", "cargo-mutants", "stryker"),

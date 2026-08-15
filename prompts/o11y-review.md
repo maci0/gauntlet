@@ -11,7 +11,7 @@ Review the following:
 - Log messages that lack context (missing request IDs, user IDs, or operation identifiers)
 - Inconsistent log levels (errors logged as info, debug noise in production)
 - Unstructured log output that is hard to parse or search
-- Sensitive data logged (credentials, PII, tokens, session data)
+- Sensitive data logged (credentials, PII, tokens, session data) (note only; privacy-review owns PII redaction, sec-review owns credentials)
 - Missing logging at critical decision points or state transitions
 - Excessive logging that creates noise and increases cost
 - Log messages that are not actionable or useful for debugging
@@ -92,6 +92,7 @@ Review the following:
 - Dashboards that have drifted from the actual system architecture
 
 9. Audit and compliance logging
+(sec-review owns whether security events are recorded and log injection; here own audit-log structure and retention wiring if present. Policies and rehearsals are organizational.)
 - Security-relevant events not logged (authentication, authorization, data access)
 - Missing audit trail for data modifications
 - Audit logs that can be tampered with or deleted
@@ -111,7 +112,7 @@ Review the following:
 
 Instructions:
 - Fix order: blind spots on critical request paths (no logging, no tracing, no metrics) > missing error tracking and alerting on failure modes > noisy or misleading observability (wrong levels, missing context, alert fatigue) > structural and consistency improvements.
-- In auto-fix mode act only on what code can change: missing or wrong log levels, missing structured fields, missing correlation IDs, dead instrumentation. Dashboards, runbooks, escalation paths, and compliance logging policies are organizational: out of scope for a fix pass.
+- In auto-fix mode act only on what code can change: missing or wrong log levels, missing structured fields, missing correlation IDs, dead instrumentation. Dashboards, runbooks, escalation paths, and compliance logging policies are organizational: out of scope for a fix pass. LLM token counts, cost attribution, and model-version logging belong to llm-review; here own generic request/error/latency instrumentation even on those call sites.
 - If available, use: the project's own log/metrics/tracing libraries to verify instrumentation is wired, `promtool check rules` (Prometheus alerting rules), `otel-cli` (trace inspection). Never install tools.
 - Evaluate whether the current observability would let you debug a production incident at 3 AM.
 - Consider the full request lifecycle from ingress to response.
@@ -191,7 +192,7 @@ Small changes that significantly improve debuggability or incident response.
 
 Important:
 - Base findings on actual logging calls, metric definitions, trace instrumentation, and alert rules in the code.
-- If you are not sure whether an observability gap matters for this system, say so.
+- If you are not sure whether an observability gap matters for this system, skip it.
 - Prefer adding targeted, high-value observability over comprehensive but noisy instrumentation.
 - Do not recommend enterprise observability platforms for simple services.
 - Consider the performance and cost overhead of every recommendation.

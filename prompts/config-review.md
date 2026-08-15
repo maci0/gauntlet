@@ -7,8 +7,9 @@ First decide if this review applies. It needs runtime configuration: environment
 Review the following:
 
 1. Configuration sources and loading
+(cli-review owns flag naming, --help, and whether a CLI flag overrides its matching env var. Here own the application's config schema and precedence among env, file, and defaults.)
 - Missing centralized configuration loading (config scattered across files and modules)
-- Configuration read from multiple sources without clear precedence (env vars vs config files vs flags vs defaults)
+- Configuration read from multiple sources without clear precedence (env vars vs config files vs defaults; CLI flag-vs-env pairs belong to cli-review)
 - Missing validation of configuration values at startup
 - Configuration loaded lazily in unexpected places instead of at initialization
 - Missing documentation of all configuration options and their valid values
@@ -26,16 +27,16 @@ Review the following:
 - Development defaults that are unsafe for production (debug mode, verbose logging, permissive CORS)
 
 3. Secrets management
-- Secrets (API keys, database passwords, tokens) hardcoded in source code
-(sec-review owns fixing secret handling; here report secret findings but change only config structure, not the secret storage mechanism.)
-- Secrets stored in plain text configuration files committed to version control
+(sec-review owns redaction, relocation, and the storage mechanism. Here only the config-structure side: a secret key that has no documented name, no example placeholder, or is passed as a CLI argument. Do not delete, move, or rewrite a secret value.)
+- Secrets (API keys, database passwords, tokens) hardcoded in source code (note location only)
+- Secrets stored in plain text configuration files committed to version control (note location only)
 - Secrets in environment variables without documentation of which are required
-- Missing secrets in example configuration or .env.example files
-- Secrets logged or included in error messages
+- Missing secrets in example configuration or .env.example files (placeholder values only, never real secrets)
+- Secrets logged or included in error messages (note only; sec-review owns the redaction)
 - Secrets passed as command-line arguments (visible in process listings)
-- Missing integration with a secret manager (Vault, AWS Secrets Manager, etc.)
-- Shared secrets across environments
-- Missing secret rotation support or documentation
+- Missing integration with a secret manager (Vault, AWS Secrets Manager, etc.) (organizational: note only)
+- Shared secrets across environments (note only)
+- Missing secret rotation support or documentation (note only)
 
 4. Default values and fallbacks
 - Missing defaults for optional configuration, requiring explicit setup for every deployment
@@ -101,7 +102,7 @@ Review the following:
 - Missing configuration change audit trail
 
 Instructions:
-- Fix order: secrets in config files or version control > dangerous defaults in production > missing validation of required values > inconsistent config patterns.
+- Fix order: dangerous defaults in production (debug on, open CORS) > missing validation of required values > inconsistent config patterns. Committed or hardcoded secrets: note the location; do not delete, move, or rewrite the value (sec-review owns that).
 - If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files). Never install tools.
 - Inspect actual configuration files, environment setup, and how configuration is consumed in code.
 - Trace configuration values from source to usage to verify correctness.
@@ -171,7 +172,7 @@ Small changes with high configuration safety or clarity payoff.
 
 Important:
 - Base findings on actual configuration files, environment setup, and code that reads configuration.
-- If you are not sure whether a configuration choice is intentional, say so.
+- If you are not sure whether a configuration choice is intentional, skip it.
 - Prefer fail-fast validation at startup over runtime errors from bad configuration.
 - Do not recommend a configuration framework for a project with three environment variables.
 - Consider the cost of migration when recommending configuration changes.

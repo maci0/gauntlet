@@ -17,6 +17,7 @@ Review the following:
 
 2. False confidence
 - Tests that pass but do not assert anything meaningful
+- Placeholder tests (`assert True`, empty bodies) presented as coverage
 - Assertions that are too loose or check the wrong thing
 - Tests that verify implementation details instead of behavior
 - Tests that mock so heavily they test nothing real
@@ -55,7 +56,7 @@ Review the following:
 - Missing contract tests for API boundaries
 - No performance or load tests for latency-sensitive paths
 - Missing regression tests for previously fixed bugs
-- No property-based or fuzz tests where applicable
+- No property-based or fuzz tests where applicable (note only; fuzz-review owns harnesses)
 - Missing negative tests (verifying rejection of bad input)
 
 7. Test infrastructure and performance
@@ -90,7 +91,7 @@ Review the following:
 
 Instructions:
 - Fix order: false-confidence tests (assert nothing, assert mock returns mock) > flaky tests (shared state, timing, ordering) > critical-path coverage gaps > test design and maintainability.
-- Do not add, rewrite, or grade fuzz harnesses (fuzz-review) or simulation/seed-replay tests (dst-review). Here own unit/integration/e2e test quality: assertions, flakes, and coverage of the existing suite.
+- Do not add, rewrite, or grade fuzz harnesses (fuzz-review) or simulation/seed-replay tests (dst-review). Do not rewrite tests for comment, naming, or copy-paste noise (slop-review). Here own assertion quality, flakes, and coverage of the existing suite.
 - If available, use: `coverage` (coverage.py), `cargo-llvm-cov`, `c8`/`nyc` to find untested paths, mutation testing (`mutmut`, `cargo-mutants`, Stryker) to find tests that assert nothing. Coverage is a map of gaps, not a quality score. Never install tools.
 - Read the actual tests, not just the test names.
 - Verify that assertions match the described test intent.
@@ -161,7 +162,7 @@ Specific tests that should be added, ordered by risk coverage.
 
 Important:
 - Base findings on the actual test code.
-- If a test looks suspicious but you are not certain, say so.
+- If a test looks suspicious but you are not certain, skip it.
 - Prefer improving existing tests over adding new ones when possible.
 - Do not recommend 100% coverage as a goal.
 - Focus on risk-based testing: cover what is most likely to break or most costly if broken.

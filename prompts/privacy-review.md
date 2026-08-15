@@ -67,8 +67,9 @@ Review the following:
 - Sub-processors not documented or approved in data processing agreements
 
 7. Data security for privacy
-- Personal data stored without encryption at rest
-- PII transmitted without encryption in transit (internal services included)
+(db-review owns database encryption-at-rest, TLS to the database, and RLS; sec-review owns secrets and transport security generally. Here own application-level stores of personal data: files, caches, fixtures, client storage.)
+- Personal data stored without encryption at rest (files, caches, fixtures, client storage; database encryption-at-rest belongs to db-review)
+- PII transmitted without encryption in transit (note only; sec-review owns transport security)
 - Missing access controls on personal data (any authenticated user can access any user's data)
 - Personal data accessible via overly broad database queries or API endpoints
 - Missing audit logging for access to sensitive personal data
@@ -108,7 +109,7 @@ Review the following:
 
 Instructions:
 - Fix order: PII leaking into logs, error reports, or analytics payloads > personal data in test fixtures or committed config > plaintext storage of sensitive fields > over-broad queries returning more personal data than needed > missing anonymization where aggregates would suffice.
-- In auto-fix mode act only on what code can prove and change: PII in logs/error reports/analytics payloads, debug logging of full request/response bodies, personal data in test fixtures, plaintext storage of sensitive fields, over-broad data queries. Consent records, DPAs, retention policy, and breach process are organizational: out of scope for a fix pass. Do not change log levels, structure, or correlation IDs (o11y-review owns instrumentation); here redact or drop personal data from those payloads. Do not redact or relocate secrets, credentials, or tokens (sec-review owns those); here handle personal data only.
+- In auto-fix mode act only on what code can prove and change: PII in logs/error reports/analytics payloads, debug logging of full request/response bodies, personal data in test fixtures, plaintext storage of sensitive fields, over-broad data queries. Consent records, DPAs, retention policy, and breach process are organizational: out of scope for a fix pass. Do not change log levels, structure, or correlation IDs (o11y-review owns instrumentation); here redact or drop personal data from those payloads. Do not redact or relocate secrets, credentials, or tokens (sec-review owns those); here handle personal data only. PII interpolated into LLM prompts: llm-review owns the interpolation mechanics; here own that a third-party provider received personal data only when you can name the field and the send site.
 - Trace personal data from collection to storage, processing, sharing, and deletion.
 - Consider all categories of data subjects: customers, employees, prospects, partners, anonymous visitors.
 - Do not assume the application only operates in one jurisdiction. Consider GDPR, CCPA/CPRA, and other applicable regulations.
@@ -188,7 +189,7 @@ Small changes that significantly reduce privacy risk.
 
 Important:
 - Base findings on actual data handling code, database schemas, API payloads, and configuration.
-- If you are not sure whether certain data qualifies as personal data, err on the side of caution and flag it.
+- If you cannot name the field and the path by which it identifies or relates to a person, skip it. Do not redact on suspicion.
 - Prefer data minimization over adding controls to justify collection.
 - Do not recommend compliance frameworks without considering the project's actual regulatory obligations.
 - Consider the cost and user experience impact of privacy controls.

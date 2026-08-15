@@ -39,7 +39,7 @@ Review the following:
 
 6. Reliability and degradation
 (Generic timeout/retry/circuit-breaker patterns belong to error-review; here cover the model-specific behavior: 429/overload semantics, midstream streaming recovery, alternate-model fallback.)
-- No timeout, retry-with-backoff, or circuit breaker on provider calls; provider outage becomes app outage
+- Missing timeout, retry, or circuit breaker on the provider HTTP call (note only; error-review owns the generic pattern)
 - No fallback path (alternate model, cached answer, graceful feature-off) when the model is unavailable
 - Streaming handled without midstream-failure recovery
 - Rate-limit (429) and overload responses retried blindly or surfaced raw to users

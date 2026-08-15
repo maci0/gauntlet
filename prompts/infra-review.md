@@ -23,7 +23,7 @@ Review the following:
 - Base images that are too large, outdated, or unversioned
 - Missing multi-stage builds where they would reduce image size
 - Running containers as root when unnecessary
-- Secrets baked into images or passed via environment variables insecurely
+- Secrets baked into images or passed via environment variables insecurely (here own CI, image, and IaC locations; application-source secrets belong to sec-review)
 - Missing health checks in container definitions
 - Unnecessary packages or tools installed in production images
 - Missing .dockerignore leading to bloated build contexts
@@ -40,7 +40,7 @@ Review the following:
 - Resources without lifecycle policies or expiration
 - Missing modularization of repeated infrastructure patterns
 - Overly permissive IAM policies or security groups
-- Missing encryption at rest or in transit configuration
+- Missing encryption at rest or in transit configuration (disk/volume/object-store in IaC; database encryption-at-rest and TLS to the database belong to db-review)
 - No separation between environments in IaC structure
 
 4. Environment management
@@ -188,7 +188,7 @@ Areas where infrastructure monitoring is missing or insufficient.
 
 Important:
 - Base findings on actual configuration files, scripts, and pipeline definitions.
-- If you are not sure whether a configuration is intentional, say so.
+- If you are not sure whether a configuration is intentional, skip it.
 - Prefer simple, reliable solutions over sophisticated ones.
 - Consider the team size and operational maturity when making recommendations.
 - Do not recommend Kubernetes for a project that runs on a single server.

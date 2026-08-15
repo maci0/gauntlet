@@ -5,41 +5,38 @@ Your goal is to produce a practical, high-signal review focused on maintainabili
 Review the following:
 
 1. Inconsistencies
+(network API consistency belongs to api-review; published library surface to sdk-review; here own in-module naming and pattern consistency.)
 - Naming inconsistencies
-- API/design inconsistencies
+- API/design inconsistencies inside a module
 - Style inconsistencies
 - Different patterns used for the same problem
 - Mismatches between similar modules/components
 
 2. Duplication
+(slop-review owns near-verbatim copy-paste and cosmetic duplication; here own duplicated logic that has drifted: copies that now disagree.)
 - Duplicated code
 - Near-duplicated logic
 - Repeated patterns that should be abstracted
-- Copy-paste code with minor variations
+- Copy-paste code with minor variations that has since diverged
 - Repeated validation, parsing, error handling, or data transformation logic
 
 3. Dead or unnecessary code
-- Unused functions, methods, classes, files, variables, constants, imports, flags, config, feature toggles, assets (unused tests: flag, never delete)
-- Code paths that appear unreachable
+(slop-review owns unused parameters, always-true guards, and commented-out blocks; minimalism-review owns project-wide unused-symbol deletion. Here only unused imports and obviously dead locals in a file you already have open. Unused tests: flag, never delete.)
+- Unused imports and dead locals in a file already open
+- Code paths that appear unreachable in that same file
 - Over-engineered abstractions that provide little value
 - Wrappers/helpers that do not meaningfully simplify anything
-(For large-scale necessity proofs and deletion ledgers, minimalism-review owns the deep pass; here catch the obvious cases.)
 
 4. Opportunities to reduce lines of code
+(slop-review owns local verbose constructs and wrappers; minimalism-review owns project-wide necessity proofs. Here only simplify logic in a function you already have open because it is hard to follow.)
 - Places where logic can be simplified
 - Boilerplate that can be removed
 - Repeated branches that can be merged
 - Verbose code that can be replaced with clearer, smaller constructs
 - Unnecessary indirection
 
-5. Documentation and comments issues
-(doc-review owns accuracy of comments, docstrings, and docs; slop-review owns redundant/obvious comments. Do not edit those here.)
-- Comments that are outdated, misleading, redundant, or state the obvious
-- Docstrings that do not match behavior
-- README or developer docs that appear inaccurate based on the code
-- Missing comments only where the code is genuinely hard to understand
-
-6. Refactoring opportunities
+5. Refactoring opportunities
+(arch-review owns module-scale separation of concerns. Here own function-scale structure inside one file.)
 - Functions that are too long or do too many things
 - Poor separation of concerns
 - Confusing control flow
@@ -50,7 +47,7 @@ Review the following:
 - Interfaces that could be made clearer or smaller
 - Opportunities to improve expressiveness and readability without changing behavior
 
-7. Code clarity and expressiveness
+6. Code clarity and expressiveness
 - Places where intent is unclear
 - Magic values
 - Unclear ownership or lifecycle
@@ -59,39 +56,32 @@ Review the following:
 - Unhelpful abstractions
 - Patterns that obscure rather than clarify
 
-8. Error handling patterns
-(Deep error-handling/resilience analysis belongs to error-review. Do not change error types, propagation, or cleanup; here only make inconsistent patterns match an existing one in the same module.)
-- Inconsistent error handling strategies across the codebase
-- Errors silently swallowed or caught and ignored
-- Missing error propagation where callers need to know about failures
-- Generic catch-all handlers that hide specific errors
-- Error messages that lack context (what operation, what input, what was expected)
-- Inconsistent use of error types, error codes, or result types
-- Missing distinction between recoverable and unrecoverable errors
-- Retry logic without backoff, limits, or jitter
-- Error paths that leak resources (unclosed handles, dangling state)
+7. Error handling patterns
+(Deep error-handling/resilience analysis belongs to error-review. Do not change error types, propagation, retries, or cleanup; here only make inconsistent patterns match an existing one in the same module.)
+- Inconsistent error handling strategies in the same module (throw vs return vs ignored)
+- Inconsistent use of error types, error codes, or result types in the same module
 
-9. Type safety and contracts
+8. Type safety and contracts
+(error-review owns validation of external or user input at boundaries; api-review owns request validation on network endpoints. Here own type-level contracts: overly broad types, unsafe casts, optional-as-present.)
 - Functions that accept overly broad types (any, object, interface{}) when specific types exist
 - Missing null or undefined checks on values that can be absent (add a check only when a concrete path produces the absent value)
 - Type assertions or casts that could fail at runtime
-- Missing validation at module boundaries or public API entry points
 - Implicit contracts between modules that are not enforced by types or assertions
 - Optional values treated as always present
 - Inconsistent use of type narrowing or discriminated unions
 
-10. Risky areas
-- Suspicious logic or possible bugs
-- Edge cases not handled
+9. Risky areas
+(functionality-review owns intended-vs-actual and documented edge cases. Here only a local logic error you can prove from the function body without consulting docs: inverted condition, swapped arguments, off-by-one.)
+- Suspicious logic or possible bugs visible in the function body
 - Implicit behavior that should be explicit
-- Race conditions or shared mutable state (deep analysis belongs to concurrency-review)
+- Race conditions or shared mutable state (note only; concurrency-review owns the fix)
 - Assumptions about ordering, uniqueness, or data shape that are not validated
 - Code that works by coincidence rather than by design
 
 Instructions:
-- Fix order: dead code and unused imports > duplication causing drift > type-safety gaps and missing null checks with a concrete path > inconsistent patterns. Cosmetic cleanups last.
-- If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication), `vulture`/`knip`/`ts-prune` (dead code). Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting. Never install tools.
-- Do not hunt comment noise, copy-paste style, or visual genericness (slop-review, uislop-review).
+- Fix order: type-safety gaps and missing null checks with a concrete path > duplication causing drift > inconsistent patterns. Cosmetic cleanups last.
+- If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication). `vulture`/`knip`/`ts-prune` may confirm an unused import in a file you already have open; do not treat their project-wide reports as a deletion list (minimalism-review). Never install tools.
+- Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.
@@ -147,7 +137,7 @@ Grouped by category, using the finding template above.
 
 Important:
 - Base findings on the actual code, not assumptions.
-- If you are not sure, say so.
+- If you are not sure, skip it.
 - If the repository is large, prioritize the parts with the most duplication, complexity, inconsistency, or churn.
 - Identify patterns, not just isolated issues.
 - Optimize for actionable feedback that a team could turn into tickets immediately.

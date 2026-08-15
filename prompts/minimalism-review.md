@@ -84,7 +84,8 @@ Instructions:
 - Measure findings in deleted lines. State the before/after line counts for each proposal.
 - A simplification that makes code shorter but harder to follow is not a finding; elegant means the reader wins too.
 - When complexity is justified, say so explicitly; a justified-complexity list is as valuable as the deletions.
-- Do not report style, naming, or comment noise (slop-review) or module-boundary restructuring (arch-review).
+- Do not report style, naming, comment noise, unused parameters, or always-true guards (slop-review), module-boundary restructuring (arch-review), or unused imports in a file already open (code-review).
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
 
 For each finding include:
 - Title

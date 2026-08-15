@@ -37,7 +37,7 @@ Review the following:
 - Complex queries that could be simplified with better schema or indexes
 - Queries that scan full tables when index-based lookup is possible
 - Subqueries that could be rewritten as joins or CTEs for clarity or performance
-- Missing query parameterization (string concatenation for query building)
+- Query strings built by concatenation (note only; sec-review owns the injection fix)
 - Queries that perform application-level logic that could be done in the database
 - Unnecessary DISTINCT or ORDER BY on large result sets
 - Missing LIMIT on queries used for existence checks
@@ -58,8 +58,9 @@ Review the following:
 - Missing constraints that could lead to orphaned records
 - Cascade deletes that could cause unintended data loss
 - Missing transaction boundaries around multi-step operations
-- Race conditions in read-modify-write patterns without proper locking
-- Missing optimistic concurrency control (version columns, ETags)
+(concurrency-review owns the race fix, including database read-modify-write. Here own the schema that makes lost updates unrepresentable.)
+- Race conditions in read-modify-write patterns without proper locking (note only; concurrency-review owns the race)
+- Missing optimistic concurrency control columns (version, ETag) in the schema
 - Soft delete implementation that leaks deleted records into queries
 - Inconsistent handling of NULL semantics across the codebase
 
@@ -84,6 +85,7 @@ Review the following:
 - Missing bulk insert or upsert for batch operations
 
 8. Data modeling
+(design-review owns whether the domain model is the right shape. Here own the relational or document mapping, constraints, and physical schema.)
 - Entity relationships that do not match the domain model
 - Missing junction tables for many-to-many relationships
 - Polymorphic associations without clear type discrimination
@@ -193,7 +195,7 @@ Small changes with high integrity or performance payoff.
 
 Important:
 - Base findings on actual schema files, migrations, queries, and configuration.
-- If you are not sure whether a design choice is intentional, say so.
+- If you are not sure whether a design choice is intentional, skip it.
 - Prefer adding constraints and indexes over restructuring tables.
 - Consider the risk of data migrations when recommending schema changes.
 - Do not recommend normalization for its own sake. Denormalization is sometimes correct.
