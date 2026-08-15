@@ -99,6 +99,7 @@ Review the following:
 
 Instructions:
 - Fix order: broken contracts (behavior differs from docs/spec) > missing input validation on public endpoints > inconsistent patterns across endpoints > missing documentation and design improvements.
+- In auto-fix mode align one endpoint with an existing sibling (status code, error envelope, validation) or add a missing field check. Do not introduce API versioning, pagination, or a new error format in one pass.
 - If available, use: `spectral` (OpenAPI/AsyncAPI lint), `oasdiff` (OpenAPI breaking-change diff), `buf` (protobuf lint and breaking-change checks). Never install tools.
 - Walk each public endpoint from the handler (or schema) to the response the client sees.
 - Verify that documented behavior matches implemented behavior.

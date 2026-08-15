@@ -94,6 +94,7 @@ Review the following:
 
 Instructions:
 - Fix order: wrong exit codes or broken piping (scripts consuming this CLI break silently) > incorrect or missing help text > inconsistent flag and argument patterns across subcommands > missing completions and ergonomic improvements.
+- In auto-fix mode fix an exit code, a stdout/stderr mix-up, or a --help string. Do not add a completion script or rewrite the parser.
 - The strongest evidence is running the CLI itself: `--help` on every subcommand, exit codes, behavior when piped/redirected, `NO_COLOR`/`TERM=dumb`. Do not invoke a subcommand that starts a server or waits for connections. If available, use `shellcheck` for completion and wrapper scripts. Never install tools.
 - Be strict and pragmatic. Focus on real usability and developer experience issues.
 - Check for consistency across all commands, not just individual correctness.

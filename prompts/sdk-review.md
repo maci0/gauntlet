@@ -130,10 +130,9 @@ Review the following:
 
 Instructions:
 - Fix order: SDK behavior that does not match the underlying API (wrong results, missing methods) > error handling that prevents consumers from recovering programmatically > type safety gaps (missing types, overly broad types) > inconsistencies across the API surface > documentation and example gaps.
+- In auto-fix mode fix a type stub, an example, or an error that is not programmatically recoverable. Do not rename, remove, or change the signature of a published symbol.
 - If available, use: `api-extractor` (TS public-surface report), `cargo public-api` (Rust), `stubtest` (Python stub vs runtime mismatch). Never install tools.
-- Evaluate the SDK from a consumer's perspective: someone integrating it into their application for the first time.
-- Consider the full lifecycle: discovery, installation, first call, error handling, testing, upgrading.
-- Test the API mentally by writing pseudocode for common use cases and checking if the SDK makes them easy.
+- Walk one documented getting-started snippet against the actual exported symbols; a call the snippet shows that the package does not export is the finding.
 - Compare patterns across all resources, methods, and modules for consistency.
 - Do not recommend abstraction for its own sake. SDK APIs should be obvious, not clever.
 - Consider both new users (discoverability, onboarding) and experienced users (power features, escape hatches).

@@ -68,7 +68,7 @@ Review the following:
 - Error in one request or job affecting other concurrent requests or jobs
 
 8. Timeout and cancellation
-- Missing timeouts on external calls (HTTP, database, file system, DNS)
+- Missing timeouts on external calls (HTTP, database, file system, DNS). Database client pool and statement timeout knobs belong to db-review; here own a timeout wrapping the application call when the client has none.
 - Operations that can hang indefinitely without timeout
 - Inconsistent timeout configuration across similar operations
 - Missing cancellation propagation (context, abort controller, cancellation token)
@@ -97,9 +97,10 @@ Review the following:
 
 Instructions:
 - Fix order: silent failures (errors discarded causing data loss or incorrect behavior) > missing resource cleanup on error paths > missing timeouts on external calls > error context and message quality. Hardening and consistency last.
+- In auto-fix mode stop swallowing a traced error, add cleanup on an existing error path, or add a timeout on an existing external call. Do not introduce a circuit-breaker library, dead-letter queue, or bulkhead framework in one pass.
 - Do not change documented feature behavior to match a guessed contract (functionality-review owns intended-vs-actual). Here own how failures are signaled, cleaned up, retried, and isolated.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
-- LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry/circuit-breaker on the HTTP call. If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review).
+- LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry on the HTTP call (a simple retry loop, not a circuit-breaker library). If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review).
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.
 - Trace one request path with every external call failed; a crash or silent data loss is the finding.

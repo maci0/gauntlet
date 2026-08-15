@@ -76,6 +76,7 @@ Review the following:
 
 Instructions:
 - Fix order: data loss from lifecycle mishandling (state not saved on background/kill) > crashes from missing permission or OS-version guards > offline paths that corrupt or lose data > store-readiness blockers (metadata mismatches, debug leaks in release builds) > battery and data budget issues.
+- In auto-fix mode persist state in an existing lifecycle callback or add a permission/OS-version guard next to a crash path. Do not add an offline-sync framework.
 - The device is hostile: the OS kills the process, the network vanishes mid-write, permissions get revoked, storage fills. Review each flow as if all of that happens, because it does.
 - Be concrete: name the screen, the manifest key, the lifecycle callback, the call site.
 - Test claims against both platforms when the app is cross-platform; parity gaps are findings.

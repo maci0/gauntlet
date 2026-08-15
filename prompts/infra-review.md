@@ -19,15 +19,15 @@ Review the following:
 - Overly complex pipelines that are hard to debug or maintain
 
 2. Container configuration
-(pkg-review owns the image as a shipped artifact — contents, layers, labels, USER; here cover how images are built and used in CI/CD and deployment.)
-- Base images that are too large, outdated, or unversioned
-- Missing multi-stage builds where they would reduce image size
-- Running containers as root when unnecessary
+(pkg-review owns the image as a shipped artifact: contents, layers, labels, USER, FROM pin, multi-stage, image HEALTHCHECK; here cover how images are used in CI/CD, compose, and orchestration.)
+- Base image tag or digest unpinned in compose/CI/Helm when the file pulls an image (Dockerfile FROM belongs to pkg-review)
+- Missing multi-stage builds or bloated image layers (note only; pkg-review)
+- Running containers as root in compose/k8s/CI (`user:`, `securityContext`, `runAsNonRoot`) when the image already defines a non-root USER (Dockerfile USER belongs to pkg-review)
 - Secrets baked into images or passed via environment variables insecurely (here own CI, image, and IaC locations; application-source secrets belong to sec-review)
-- Missing health checks in container definitions
-- Unnecessary packages or tools installed in production images
+- Missing health checks in compose/k8s/orchestrator probes (image HEALTHCHECK belongs to pkg-review)
+- Unnecessary packages or tools installed in production images (note only; pkg-review)
 - Missing .dockerignore leading to bloated build contexts
-- Layer ordering that defeats caching (dependencies after source code)
+- Layer ordering that defeats caching (note only; pkg-review)
 - Missing resource limits (memory, CPU) in orchestration configs
 - Containers that depend on host-specific paths or configuration
 
@@ -100,7 +100,7 @@ Review the following:
 - Build artifacts not versioned or tagged consistently
 - Missing artifact registry or insecure artifact storage
 - Stale artifacts not cleaned up
-- Build dependencies fetched from the internet on every build instead of cached or vendored
+- Build dependencies fetched from the internet on every build instead of cached or vendored (note only; build-review owns cache and hermeticity)
 - Missing separation between build and runtime dependencies
 
 10. Local development and onboarding
@@ -114,7 +114,7 @@ Review the following:
 
 Instructions:
 - Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation.
-- Do not create a CI pipeline, IaC stack, or compose file from scratch; fix what exists.
+- Do not create a CI pipeline, IaC stack, or compose file from scratch; fix what exists. Do not add new pipeline jobs, stages, or required checks; fix what existing stages already do (a secret in a step, an unpinned action, a missing `cache:` key, a test job that never invokes the test command).
 - Review the tree only: do not query live cloud APIs, remote Terraform/Pulumi state, or cluster endpoints. Drift against actual state that you cannot see in the repo: skip.
 - If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform). Never install tools.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.

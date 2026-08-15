@@ -95,7 +95,7 @@ Review the following:
 - Feature flags or API URLs hardcoded during build without override capability
 
 10. Configuration observability and debugging
-- No way to inspect the active configuration at runtime (debug endpoint, startup log)
+- No way to inspect the active configuration at runtime (startup log with secrets redacted; do not add an unauthenticated debug endpoint)
 - Missing startup logging of configuration values (with secrets redacted)
 - Configuration errors that produce confusing downstream failures instead of clear messages
 - Missing documentation of how to verify configuration is correct

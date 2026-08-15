@@ -43,7 +43,7 @@ Review the following:
 6. Sandbox permissions (least privilege)
 - Flatpak `finish-args` broader than needed: `--filesystem=home` or `host` where a portal or subpath suffices; unneeded device/socket/dbus access
 - Snap plugs/slots requesting more than the app uses
-- Container images running as root without need; missing `USER`; unnecessary capabilities documented as required
+- Container images running as root without need; missing `USER`; unnecessary capabilities documented as required (compose/k8s `user`/`runAsNonRoot` belongs to infra-review)
 - Sandbox escapes baked in as convenience (talk-name on session bus wildcards, `--device=all`)
 
 7. Container image as shipped artifact
@@ -74,7 +74,7 @@ Review the following:
 Instructions:
 - Fix order: packages that break on install or upgrade (missing deps, broken scriptlets, wrong permissions) > security issues (files owned by root writable by others, setuid without reason, secrets in package) > policy violations the target format enforces > hygiene (stray files, bloat, metadata gaps).
 - If available, use: `lintian` (deb), `rpmlint` (rpm), `namcap` (PKGBUILD), `hadolint`/`dive` (container images), `desktop-file-validate`/`appstream-util validate` (desktop integration), `shellcheck` (maintainer scripts), `check-wheel-contents`/`npm pack --dry-run` (language packages). Never install tools.
-- The strongest evidence is building the package and inspecting its contents (`dpkg -c`, `rpm -qlp`, `makepkg`, `flatpak-builder`, `docker build` + `dive`); do this only when it is cheap and sandboxed, never against production registries.
+- The strongest evidence is building the package and inspecting its contents (`dpkg -c`, `rpm -qlp`, `makepkg`, `flatpak-builder`, `docker build` + `dive`); do this only when it is cheap and sandboxed (skip if a single build already takes more than 2 minutes), never against production registries, and never `docker run` or start the built image.
 - Be concrete: name the spec field, the manifest line, the scriptlet, the layer.
 - Distinguish policy violations (format rules) from packaging bugs (breaks install/upgrade) from hygiene (bloat, stray files).
 - Least privilege is the default judgment for all permissions; every broad grant needs a named reason.

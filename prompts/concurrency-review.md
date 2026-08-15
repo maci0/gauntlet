@@ -108,6 +108,7 @@ Review the following:
 
 Instructions:
 - Fix order: data races causing corruption (shared mutable state with no synchronization) > deadlocks and livelocks > resource leaks on concurrent error paths > atomicity and ordering violations. Design-level issues last.
+- In auto-fix mode add a lock or atomic at one proven site; do not introduce a concurrency framework or rewrite a module to message-passing.
 - If available, use: `go test -race`, ThreadSanitizer (`-fsanitize=thread`), `valgrind --tool=helgrind`. A sanitizer trace is the strongest race evidence; run the existing test suite under one when the toolchain supports it. Never install tools.
 - Trace shared state from declaration to all access points. Check every access for proper synchronization.
 - Consider what happens under high concurrency, not just the single-threaded happy path.

@@ -86,7 +86,7 @@ Review the following:
 - Missing idempotency on sensitive operations (note only; idempotency-review owns the fix)
 
 Instructions:
-- Fix order: injection and authz bypass > committed secrets > unsafe deserialization/weak crypto > missing security headers and hardening. Prefer low-effort fixes to critical issues over deep refactors.
+- Fix order: injection and authz bypass > committed secrets > unsafe deserialization/weak crypto > missing security headers and hardening. Prefer low-effort fixes to critical issues over deep refactors. In auto-fix mode parameterize a query, add a missing authz check, or relocate a committed secret. Do not rewrite an authentication system or introduce a new crypto library.
 - If available, use: `semgrep` (pattern-based vulnerability scan; never `--config auto`, it sends the project URL off-host), `gitleaks`/`trufflehog --no-verification` (committed secrets; never verify live, verification sends the secret off-host), `bandit` (Python), `gosec` (Go), `shellcheck` (quoting and injection hazards in shell scripts). Do not run a project-wide CVE inventory (`osv-scanner` belongs to deps-review); only treat a dependency as in-scope when this code invokes it on untrusted input. Never install tools; confirm every hit in the code before acting.
 - Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Here fix the point vulnerability in application code.
 - Focus on exploitable vulnerabilities and real risk.

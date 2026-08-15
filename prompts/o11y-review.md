@@ -114,12 +114,11 @@ Instructions:
 - Fix order: blind spots on critical request paths (no logging, no tracing, no metrics) > missing error tracking and alerting on failure modes > noisy or misleading observability (wrong levels, missing context, alert fatigue) > structural and consistency improvements.
 - In auto-fix mode act only on what code can change: missing or wrong log levels, missing structured fields, missing correlation IDs, dead instrumentation. Dashboards, runbooks, escalation paths, and compliance logging policies are organizational: out of scope for a fix pass. LLM token counts, cost attribution, and model-version logging belong to llm-review; here own generic request/error/latency instrumentation even on those call sites.
 - If available, use: the project's own log/metrics/tracing libraries to verify instrumentation is wired, `promtool check rules` (Prometheus alerting rules), `otel-cli` (trace inspection). Do not send traces or metrics to a remote collector. Never install tools.
-- Evaluate whether the current observability would let you debug a production incident at 3 AM.
-- Consider the full request lifecycle from ingress to response.
+- Walk one critical request path and name the log line, metric, or span that answers: did it succeed, how long did it take, which dependency failed. A path with none of those is the finding.
+- Trace that path from ingress to response; do not inventory every process.
 - Do not recommend adding observability that creates more noise than signal.
 - Focus on gaps that would leave operators blind during incidents.
 - Consider the cost of observability (storage, performance overhead, alert fatigue).
-- Think about what questions an oncall engineer would ask and whether the system answers them.
 - Distinguish between:
   - blind spots (no visibility into critical paths)
   - noise (excessive or low-value observability that obscures real issues)

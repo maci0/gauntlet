@@ -91,6 +91,7 @@ Review the following:
 
 Instructions:
 - Fix order: false-confidence tests (assert nothing, assert mock returns mock) > flaky tests (shared state, timing, ordering) > critical-path coverage gaps > test design and maintainability.
+- In auto-fix mode fix or tighten an existing test; add a new test only for a critical path that has none and whose expected behavior is already specified (assertion in a skipped test, docstring, or adjacent sibling). Do not add an e2e, load, or contract suite from scratch.
 - Do not add, rewrite, or grade fuzz harnesses (fuzz-review) or simulation/seed-replay tests (dst-review). Do not rewrite tests for comment, naming, or copy-paste noise (slop-review). Do not change production code to match a bad or missing test (functionality-review owns implementation behavior). Do not add or edit CI pipeline files (infra-review). Here own assertion quality, flakes, and coverage of the existing suite.
 - If available, use: `coverage` (coverage.py), `cargo-llvm-cov`, `c8`/`nyc` to find untested paths, mutation testing (`mutmut`, `cargo-mutants`, Stryker) to find tests that assert nothing. Coverage is a map of gaps, not a quality score. Never install tools.
 - Read the actual tests, not just the test names.

@@ -108,6 +108,7 @@ Review the following:
 
 Instructions:
 - Fix order: broken flows (users cannot complete a task) > confusing interactions (users make errors or get stuck) > inconsistent patterns across views > missing feedback and affordances > polish and visual consistency.
+- In auto-fix mode fix a broken flow, a missing label or feedback, or a consistency miss against a pattern the app already uses. Do not restyle the product or introduce a design system.
 - If available, use: `lighthouse` (tap targets, viewport, font size, UX audits), `vnu` (offline W3C HTML/CSS validation; invalid markup causes real rendering differences), `htmlhint`/`stylelint` (static HTML/CSS lint). Run `lighthouse` only against static HTML or an already-listening local URL; never start a server to obtain one, and never hit a remote host. Deep accessibility scanning belongs to a11y-review. Never install tools.
 - Evaluate from the user's perspective, not the developer's.
 - Consider first-time users, returning users, and power users.

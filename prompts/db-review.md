@@ -16,7 +16,7 @@ Review the following:
 - Missing default values where sensible defaults exist
 - Enum or status columns without CHECK constraints or validation
 - Wide tables that mix unrelated concerns
-- Missing created_at, updated_at, or soft delete columns where expected by the application
+- Missing created_at, updated_at, or soft delete columns the application already reads or writes (do not add columns the code never names)
 
 2. Indexing
 - Missing indexes on columns used in WHERE, JOIN, ORDER BY, or GROUP BY clauses
@@ -71,16 +71,16 @@ Review the following:
 - Transactions held open longer than necessary
 - Missing statement timeouts that could allow runaway queries
 - Connection pool size not tuned for the workload
-- Missing retry logic for transient connection failures
-- Connection strings or credentials hardcoded in application code
+- Missing retry logic for transient connection failures (note only; error-review owns retry/backoff)
+- Connection strings or credentials hardcoded in application code (note only; sec-review owns the secret)
 
 7. Data access patterns
 - ORM usage that generates inefficient queries
 - Missing eager loading for known access patterns (lazy loading N+1)
 - Raw SQL mixed with ORM queries inconsistently
-- Missing repository or data access layer abstraction
-- Database-specific syntax used throughout the codebase instead of abstracted
-- Missing read replica routing for read-heavy workloads
+- Missing repository or data access layer abstraction (note only; arch-review owns layering. Do not introduce a repository layer)
+- Database-specific syntax used throughout the codebase instead of abstracted (note only; do not introduce an abstraction layer)
+- Missing read replica routing for read-heavy workloads (note only; do not add replica routing in a fix pass)
 - Write operations in read-only transaction contexts
 - Missing bulk insert or upsert for batch operations
 
@@ -112,12 +112,12 @@ Review the following:
 - Missing row-level security where multi-tenant data isolation is required
 - Sensitive data stored without encryption at rest
 - Missing audit logging for access to sensitive data
-- SQL injection vectors from unsanitized input
+- SQL injection vectors from unsanitized input (note only; sec-review owns the injection fix)
 - Database ports exposed to public networks
 - Missing SSL/TLS for database connections
 
 Instructions:
-- Fix order: integrity (constraints, transaction boundaries, lost updates) > missing indexes on columns this repo's queries demonstrably filter or join on > reversible migration hygiene. Do not rewrite application query call sites (perf-review) or hunt injection independently (sec-review). Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only, skip them in a fix pass.
+- Fix order: integrity (constraints, transaction boundaries, lost updates) > missing indexes on columns this repo's queries demonstrably filter or join on > reversible migration hygiene. Do not rewrite application query call sites (perf-review) or hunt injection independently (sec-review). Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only, skip them in a fix pass. In auto-fix mode add a constraint or an index only when this repo's queries demonstrably use the column; do not write a data-backfill, drop a column, or introduce a new table.
 - If available, use: `EXPLAIN`/`EXPLAIN ANALYZE` on a local database (query plans), `sqlfluff` (SQL lint). Never run EXPLAIN ANALYZE against anything resembling a production connection string; never install tools.
 - Inspect actual schema definitions, migration files, query code, and configuration.
 - Trace query patterns from application code to understand real access patterns.

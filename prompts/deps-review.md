@@ -85,7 +85,7 @@ Review the following:
 
 Instructions:
 - Fix order: known-vulnerable dependencies (CVEs) > unpinned or unverified dependencies > unused dependencies increasing attack surface > version constraints and consolidation.
-- If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS), `syft` (SBOM generation), `grype` (SBOM/image scanning), `cosign` (signature and attestation verification). Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
+- If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS), `syft` (SBOM generation), `grype` (SBOM/image scanning), `cosign` (signature and attestation verification). Advisory scanners (`osv-scanner`, `npm audit`, `pip-audit`, `cargo-audit`, `grype`) and `cosign verify` send the package list off-host by default; run them only when already configured for offline/local-DB use (`osv-scanner --offline` without `--download-offline-databases`). Otherwise read the lockfile in-tree. Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
 - Inspect the actual dependency manifest files and lock files.
 - Verify that declared dependencies are actually used in the code.
 - Check import statements across the codebase to find real usage.
