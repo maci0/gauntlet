@@ -8,7 +8,7 @@ codes. Renaming or removing a review or set name is a breaking change.
 While the project is 0.x, other behavior changes may land in a minor;
 they are listed under Changed.
 
-## Unreleased
+## 0.9.0
 
 ### Added
 
