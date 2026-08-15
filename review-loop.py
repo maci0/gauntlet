@@ -24,7 +24,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "0.6.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.7.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker"}
