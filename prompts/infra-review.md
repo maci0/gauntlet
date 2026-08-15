@@ -9,7 +9,7 @@ Review the following:
 1. CI/CD pipelines
 - Pipelines that are slow due to missing caching, unnecessary steps, or serial execution
 - Flaky pipeline steps that fail intermittently
-- Missing or incomplete pipeline stages (lint, test, build, deploy, smoke test)
+- Missing or incomplete pipeline stages (lint, test, build, deploy, smoke test); what the analysis stage enforces and how strictly belongs to lint-review
 - Hardcoded values that should be variables or secrets
 - Missing matrix builds or parallel execution where beneficial
 - Pipeline logic duplicated across multiple files or workflows

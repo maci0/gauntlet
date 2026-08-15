@@ -2,6 +2,16 @@
 
 Notable changes per release.
 
+## Unreleased
+
+### Added
+
+- `lint-review` owns the static-analysis posture: tool coverage per
+  language, configuration strictness, suppression hygiene (stale and
+  unjustified ignores), typing coverage, and blocking CI enforcement. The
+  analyzers' findings stay with their owning reviews (code-review, sec-review);
+  this one reviews the analyzers themselves. Joins `standard`.
+
 The consumer contract is review names (`*-review.md` stems consumed by
 `--reviews`), set names (`quick`, `standard`, ...), CLI flags, and exit
 codes. Renaming or removing a review or set name is a breaking change.

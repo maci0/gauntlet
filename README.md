@@ -1,6 +1,6 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 39 specialized review prompts (security,
+An auto-fix review loop for codebases: 40 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
@@ -50,6 +50,7 @@ How a single pass works:
 | [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
 | [`idempotency-review`](prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
 | [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
+| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement |
 | [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
@@ -80,7 +81,7 @@ names, and `--list` prints their current members:
 | `all` | every discovered review, including project-local ones |
 | `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
-| `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop |
+| `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop, lint |
 | `security` | sec, deps, privacy, config, fuzz, llm, threat |
 | `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |

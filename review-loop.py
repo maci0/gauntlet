@@ -70,7 +70,7 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
     "agentrules-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "mobile-review", "privacy-review",
+    "functionality-review", "lint-review", "mobile-review", "privacy-review",
     "prompt-review", "skills-review", "specs-review", "threat-review",
     "uislop-review",
 )
@@ -176,7 +176,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
         "code-review", "sec-review", "error-review", "functionality-review",
         "test-review", "perf-review", "deps-review", "doc-review",
         "arch-review", "design-review", "specs-review", "concurrency-review",
-        "minimalism-review", "slop-review",
+        "minimalism-review", "slop-review", "lint-review",
     ),
     "security": (
         "sec-review", "deps-review", "privacy-review", "config-review",
