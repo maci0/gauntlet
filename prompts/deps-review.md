@@ -60,12 +60,12 @@ Review the following:
 - Typosquat risk on manual additions: names one edit away from popular packages, very low download counts, freshly published lookalikes
 - No SBOM: nothing generates a CycloneDX/SPDX inventory per release, so consumers and vuln scanners cannot know what shipped
 - No provenance verification: publisher attestations (npm provenance, SLSA, sigstore/cosign signatures) neither checked on install nor produced for this project's own published artifacts
-(Build-time fetch integrity belongs to build-review; packaged-source checksums to pkg-review. Exploit-path use of a vulnerable library (unsanitized input reaching a library sink) belongs to sec-review; here own the inventory.)
+(Build-time fetch integrity belongs to build-review; packaged-source checksums and package-format Depends/Requires to pkg-review. Exploit-path use of a vulnerable library (unsanitized input reaching a library sink) belongs to sec-review; here own the inventory.)
 
 8. Version management
 - Inconsistent version pinning strategy (some exact, some ranges)
 - Overly broad version ranges that could introduce breaking changes
-- Missing lock file or lock file not committed
+- Missing lock file or lock file not committed (whether the build honors the lock belongs to build-review; here own presence and contents)
 - Direct dependencies missing from the manifest (installed but undeclared)
 - Inconsistent dependency versions across monorepo packages
 

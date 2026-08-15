@@ -106,7 +106,7 @@ Review the following:
 - Missing capacity planning or growth projections
 
 10. Security
-(sec-review owns injection as a vulnerability class and secret handling; here own database privileges, RLS, encryption-at-rest, and TLS to the database.)
+(sec-review owns injection as a vulnerability class and secret handling; privacy-review owns PII classification, retention policy, and data-subject deletion. Here own database privileges, RLS, encryption-at-rest, and TLS to the database.)
 - Overly permissive database user privileges
 - Application using a superuser or admin account for routine operations
 - Missing row-level security where multi-tenant data isolation is required

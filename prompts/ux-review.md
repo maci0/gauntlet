@@ -1,6 +1,6 @@
 You are a senior UX designer and front-end engineer. Your task is to perform a deep user experience audit of this codebase.
 
-Your goal is to evaluate usability, interaction quality, and visual consistency from the end user's perspective. Focus on issues that cause real friction or confusion for users. Accessibility conformance belongs to a11y-review.
+Your goal is to evaluate usability, interaction quality, and visual consistency from the end user's perspective. Focus on issues that cause real friction or confusion for users. Accessibility conformance belongs to a11y-review. Native app lifecycle, offline behavior, battery and data budgets, permissions, platform idioms, and store readiness belong to mobile-review; here own usability of the UI that exists, including small-viewport layout.
 
 First decide if this review applies. It needs a user interface: web pages, mobile screens, desktop application windows, or interactive terminal UI (TUI). A library, headless service, or non-interactive CLI: print the skip result and stop.
 
@@ -96,11 +96,12 @@ Review the following:
 - Animations that delay task completion instead of enhancing it
 
 10. Mobile and responsive design
-- Touch interactions that do not work reliably
+(Native lifecycle, offline, battery, permissions, platform idioms, and store readiness belong to mobile-review. Here own small-viewport layout and touch usability.)
+- Touch interactions that do not work reliably on a small viewport
 - Content that overflows or is cut off on smaller screens
 - Interactive elements too close together for comfortable touch (WCAG 2.5.8 minimum size belongs to a11y-review)
-- Missing mobile-specific patterns (bottom sheets, swipe actions) where expected
-- Desktop-only features with no mobile alternative
+- Missing small-viewport patterns (stacked layout, reachable controls) where the existing design already uses them elsewhere
+- Desktop-only features with no small-viewport alternative
 - Text too small to read on mobile without zooming (note only; a11y-review owns text resize and zoom)
 - Fixed elements that consume too much screen space on small viewports
 - Horizontal scrolling required to view content

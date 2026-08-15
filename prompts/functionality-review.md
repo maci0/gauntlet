@@ -5,7 +5,7 @@ Your goal is to evaluate whether the software actually does what it is supposed 
 First, establish what the software is supposed to do. Derive intended behavior from:
 - README, docs, help text, and usage examples
 - Public API signatures, types, and contracts
-- Tests (what they assert the system should do)
+- Tests (what they assert the system should do; do not edit them: test-review)
 - Comments, docstrings, and TODO/FIXME markers
 - Configuration options and flags that imply features
 - Commit messages and changelog entries if available
@@ -74,6 +74,7 @@ Instructions:
 - Separate "missing feature" from "broken feature" from "undocumented behavior".
 - Do not report style, naming, or structural issues: those belong to code-review, slop-review, and arch-review.
 - Do not restyle working code or chase local logic style (code-review). Here own a documented or tested contract the implementation violates.
+- Do not add, rewrite, or delete tests (test-review). Fix the implementation to match documented or tested intent; if the test is the thing that is wrong, note it and leave the test.
 - Do not change error types, propagation, retries, timeouts, or cleanup (error-review). Here own the documented contract: the feature appears to succeed, or match the docs, but does not.
 - Prefer fewer, high-value findings over many weak ones.
 - Call out when behavior is correct but undocumented, vs documented but incorrect.
