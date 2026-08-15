@@ -80,6 +80,7 @@ Review the following:
 - No single obvious build command; unclear which of several is canonical
 
 Instructions:
+- Fix order: builds that produce wrong output (missing files, wrong contents, contamination) > non-reproducible builds (timestamps, paths, ordering leaking into artifacts) > unpinned or unverified toolchains > build speed and caching issues.
 - If available, use: `diffoscope` (diff two builds of the same source for reproducibility), `shellcheck` (build scripts). The strongest reproducibility evidence is building twice (ideally varying path, time, and locale) and diffing the artifacts. Never install tools.
 - Follow reproducible-builds.org practice for fixes: honor `SOURCE_DATE_EPOCH`, map build paths out, normalize archive metadata, pin locale/timezone, sort explicitly.
 - Be concrete. Point at the specific rule, script line, or config key.

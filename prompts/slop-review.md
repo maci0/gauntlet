@@ -79,6 +79,7 @@ Review the following:
 - Test names that don't say what behavior is checked
 
 Instructions:
+- Fix order: dead additions (unreferenced symbols, always-true guards, unused parameters) > copy-paste duplication actively drifting between copies > verbose constructs replaceable by idiomatic one-liners > redundant comments and prose noise. Cosmetic naming last.
 - If available, use: `jscpd` (copy-paste clusters worth examining). Hits still need the neighbours-and-plausible-reason test before touching anything. Never install tools.
 - Only act where removal or simplification loses no information and changes no behavior. Behavior-preserving cleanups only.
 - Confirm each candidate against its neighbours before changing it: read the whole function and nearby code, not the fragment.

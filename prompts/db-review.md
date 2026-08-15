@@ -30,6 +30,7 @@ Review the following:
 - Index column order that does not match query patterns
 
 3. Query patterns
+(perf-review owns app-side query usage: N+1s, over-fetching, pagination in application code; here note them only when they imply a missing index or schema change.)
 - N+1 query patterns loading related data in loops
 - SELECT * used where only specific columns are needed
 - Missing pagination on queries that return unbounded result sets
@@ -103,6 +104,7 @@ Review the following:
 - Missing capacity planning or growth projections
 
 10. Security
+(sec-review owns injection as a vulnerability class and secret handling; here own database privileges, RLS, encryption-at-rest, and TLS to the database.)
 - Overly permissive database user privileges
 - Application using a superuser or admin account for routine operations
 - Missing row-level security where multi-tenant data isolation is required
@@ -113,7 +115,7 @@ Review the following:
 - Missing SSL/TLS for database connections
 
 Instructions:
-- Fix order: integrity (constraints, transaction boundaries, lost updates) > SQL injection/parameterization > app-side query fixes (N+1, SELECT *, missing LIMIT/pagination). Add an index migration only when a query in this repo demonstrably filters or joins on the column. Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only concerns, skip them in a fix pass.
+- Fix order: integrity (constraints, transaction boundaries, lost updates) > missing indexes on columns this repo's queries demonstrably filter or join on > reversible migration hygiene. Do not rewrite application query call sites (perf-review) or hunt injection independently (sec-review). Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only, skip them in a fix pass.
 - If available, use: `EXPLAIN`/`EXPLAIN ANALYZE` on a local database (query plans), `sqlfluff` (SQL lint). Never run EXPLAIN ANALYZE against anything resembling a production connection string; never install tools.
 - Inspect actual schema definitions, migration files, query code, and configuration.
 - Trace query patterns from application code to understand real access patterns.

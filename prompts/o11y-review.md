@@ -7,6 +7,7 @@ First decide if this review applies. It needs a deployed service, application, o
 Review the following:
 
 1. Logging quality
+(privacy-review owns PII redaction in logs; sec-review owns credentials/tokens in logs; here do not add redaction. Cover log structure, levels, and correlation.)
 - Log messages that lack context (missing request IDs, user IDs, or operation identifiers)
 - Inconsistent log levels (errors logged as info, debug noise in production)
 - Unstructured log output that is hard to parse or search
@@ -109,6 +110,9 @@ Review the following:
 - Missing post-incident review process or follow-up tracking
 
 Instructions:
+- Fix order: blind spots on critical request paths (no logging, no tracing, no metrics) > missing error tracking and alerting on failure modes > noisy or misleading observability (wrong levels, missing context, alert fatigue) > structural and consistency improvements.
+- In auto-fix mode act only on what code can change: missing or wrong log levels, missing structured fields, missing correlation IDs, dead instrumentation. Dashboards, runbooks, escalation paths, and compliance logging policies are organizational: out of scope for a fix pass.
+- If available, use: the project's own log/metrics/tracing libraries to verify instrumentation is wired, `promtool check rules` (Prometheus alerting rules), `otel-cli` (trace inspection). Never install tools.
 - Evaluate whether the current observability would let you debug a production incident at 3 AM.
 - Consider the full request lifecycle from ingress to response.
 - Do not recommend adding observability that creates more noise than signal.

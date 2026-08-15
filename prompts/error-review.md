@@ -1,6 +1,6 @@
 You are a senior software engineer specializing in reliability and error handling. Your task is to perform a deep error handling and resilience audit of this codebase.
 
-Your goal is to evaluate how the codebase handles errors, failures, edge cases, and degraded conditions. Focus on issues that cause silent data loss, misleading behavior, poor debuggability, or cascading failures.
+Your goal is to evaluate how the codebase handles errors, failures, edge cases, and degraded conditions. Focus on issues that cause silent data loss, misleading behavior, poor debuggability, or cascading failures. CLI exit codes, stdout/stderr routing, and --help text belong to cli-review; here own application error types, propagation, cleanup, and timeouts.
 
 Review the following:
 

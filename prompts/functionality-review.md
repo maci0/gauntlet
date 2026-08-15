@@ -26,7 +26,7 @@ Review the following:
 - Off-by-one errors, inverted conditions, wrong operators, swapped arguments
 - Incorrect handling of defaults, empty values, or absent optional inputs
 - State transitions that can leave the system in an invalid or inconsistent state
-- Operations that are not idempotent where callers assume they are
+- Operations that are not idempotent where callers assume they are (idempotency-review owns the re-execution analysis; here fix only when the documented contract is already "safe to retry" and the implementation is not)
 - Ordering assumptions (sort, sequence, dependency) that are not guaranteed
 - Output that does not match documented format, schema, or examples
 
@@ -63,6 +63,7 @@ Review the following:
 Instructions:
 - Fix order: confirmed behavioral defects (wrong output for valid input) > broken end-to-end flows > edge cases that crash or corrupt > incomplete features with partial implementations.
 - The strongest evidence is running the software: exercise the documented flows and compare actual output against what docs/help/tests claim. Run the existing test suite before and after changes. Never install tools.
+- If intended behavior cannot be derived from docs, types, tests, or comments, skip that item. Do not invent requirements.
 - Be concrete, not generic. Point at specific functions, inputs, and expected vs actual behavior.
 - Where possible, give a minimal reproduction: the input, the call, the wrong result, and the correct result.
 - Distinguish between:

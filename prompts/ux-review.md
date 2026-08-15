@@ -59,7 +59,7 @@ Review the following:
 - Status indicators that are unclear or missing context
 
 6. Accessibility
-(a11y-review owns deep accessibility work — semantics, ARIA, AT support, WCAG conformance. Here flag only barriers you hit while reviewing the flows; leave the fixes to a11y-review.)
+(a11y-review owns deep accessibility work — semantics, ARIA, AT support, WCAG conformance. Do not edit those; here only note a barrier if it blocks a flow you are already reviewing.)
 - Missing or incorrect ARIA labels, roles, or landmarks
 - Insufficient color contrast (text, icons, interactive elements)
 - Information conveyed by color alone without alternative indicators
@@ -85,7 +85,7 @@ Review the following:
 - Component states (disabled, loading, error) handled differently across instances
 
 8. Content and microcopy
-(uislop-review owns generic AI-voice copy; here judge clarity, correctness, and helpfulness.)
+(uislop-review owns generic AI-voice copy; i18n-review owns locale-aware date/number/currency formatting and string externalization; here judge clarity, correctness, and helpfulness.)
 - Unclear page titles or headings that do not describe the content
 - Button text that does not describe the action ("Submit" vs "Create Account")
 - Inconsistent capitalization, punctuation, or formatting in UI text
@@ -115,7 +115,8 @@ Review the following:
 - Horizontal scrolling required to view content
 
 Instructions:
-- If available, use Lighthouse on rendered pages (tap targets, viewport, font size, UX audits); deep accessibility scanning belongs to a11y-review. Never install tools.
+- Fix order: broken flows (users cannot complete a task) > confusing interactions (users make errors or get stuck) > inconsistent patterns across views > missing feedback and affordances > polish and visual consistency.
+- If available, use: `lighthouse` on rendered pages (tap targets, viewport, font size, UX audits), `vnu` (offline W3C HTML/CSS validation; invalid markup causes real rendering differences), `htmlhint`/`stylelint` (static HTML/CSS lint). Deep accessibility scanning belongs to a11y-review. Never install tools.
 - Evaluate from the user's perspective, not the developer's.
 - Consider first-time users, returning users, and power users.
 - Do not flag minor visual preferences unless they cause real confusion or friction.

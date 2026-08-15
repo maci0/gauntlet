@@ -73,6 +73,7 @@ Review the following:
 - Interfaces silent on their duplicate semantics, forcing every caller to guess
 
 Instructions:
+- Fix order: duplicate execution causing money movement, billing, or payment errors > duplicate notifications to users (email, SMS, push) > data corruption from repeated writes (double inserts, double increments) > migrations and scripts that fail on rerun > jobs and batch work without dedup.
 - If available, use: `semgrep` (pattern-based scan for non-idempotent operations inside retry loops, inserts without unique constraints). Never install tools.
 - Work from entry points inward: for each handler, consumer, job, script, and migration, ask what a second execution changes, then trace to the side effect.
 - Rank by blast radius: duplicated money, messages to users, and data corruption outrank duplicated logs or wasted work.

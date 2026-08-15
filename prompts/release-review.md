@@ -75,6 +75,7 @@ Review the following:
 - Rollback story for a bad release absent
 
 Instructions:
+- Fix order: undeclared breaking changes already shipped or staged > version numbers that do not match actual compatibility > missing or wrong changelog entries > deprecation and migration gaps.
 - If available, use: `cargo-semver-checks` (Rust semver violations), `api-extractor` (TS public-surface diff), `oasdiff` (OpenAPI breaking changes), `git-cliff` or the project's changelog tooling (notes vs actual diff). Never install tools.
 - Be concrete. Name the symbol, the version, the changelog line, or the manifest field.
 - For compatibility claims, state the before and after and why it breaks a consumer.

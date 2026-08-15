@@ -5,7 +5,7 @@ Your goal is to identify vulnerabilities, insecure patterns, and missing securit
 Review the following:
 
 1. Injection vulnerabilities
-(Model-shaped injection — prompt injection, LLM output executed as code — belongs to llm-review; here cover the classic surfaces.)
+(Model-shaped injection — prompt injection, LLM output executed as code — belongs to llm-review; here cover the classic surfaces. fuzz-review owns adding harnesses, not the fix. db-review owns privileges, RLS, encryption-at-rest, and TLS to the database; here own the injection.)
 - SQL injection via string concatenation or improper parameterization
 - Command injection via unsanitized input passed to shell execution
 - Code injection via eval, Function constructor, or dynamic code execution
@@ -32,6 +32,7 @@ Review the following:
 - XML external entity (XXE) processing
 
 4. Data exposure
+(privacy-review owns PII redaction in logs and analytics; here cover secrets, credentials, tokens, and security-sensitive debug output.)
 - Sensitive data in logs, error messages, or stack traces
 - Secrets or credentials committed to version control
 - PII or sensitive data transmitted without encryption
@@ -86,7 +87,7 @@ Review the following:
 
 Instructions:
 - Fix order: injection and authz bypass > committed secrets > unsafe deserialization/weak crypto > missing security headers and hardening. Prefer low-effort fixes to critical issues over deep refactors.
-- If available, use: `semgrep` (pattern-based vulnerability scan), `gitleaks`/`trufflehog` (committed secrets), `osv-scanner` (known-vulnerable dependencies), `bandit` (Python), `gosec` (Go). Never install tools; verify every hit before acting.
+- If available, use: `semgrep` (pattern-based vulnerability scan), `gitleaks`/`trufflehog` (committed secrets), `osv-scanner` (known-vulnerable dependencies), `bandit` (Python), `gosec` (Go), `shellcheck` (quoting and injection hazards in shell scripts). Never install tools; verify every hit before acting.
 - Focus on exploitable vulnerabilities and real risk.
 - Consider the attack surface: what is exposed to untrusted input.
 - Trace data flow from untrusted sources to sensitive sinks.

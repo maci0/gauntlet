@@ -52,7 +52,7 @@ Review the following:
 
 8. Architecture and design documentation
 - Missing high-level architecture documentation (system diagram, component overview)
-- Design decisions not recorded (no ADRs, no decision log)
+- Design decisions not recorded (no ADRs, no decision log); the quality and currency of existing PRDs/ADRs/RFCs belongs to specs-review
 - Missing explanation of key abstractions, patterns, or conventions used
 - Missing data flow or sequence documentation for complex interactions
 - Architecture documentation that has drifted from the actual system
@@ -74,6 +74,8 @@ Review the following:
 - Add short summaries for complex modules
 
 Instructions:
+- Fix order: documentation that contradicts the code (actively misleads) > outdated references to removed features or APIs > missing documentation on public APIs with non-obvious behavior > low-value comments and consistency issues.
+- Do not refactor or restyle the code a comment sits on (code-review). Here own comments, docstrings, and human-facing docs.
 - If available, use: `vale` (prose lint), `markdownlint` (structure), `lychee` (dead links). Never install tools.
 - Verify claims against the code. Do not assume documentation is correct.
 - Prefer concise and precise documentation.

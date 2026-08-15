@@ -33,6 +33,7 @@ Review the following:
 - Unnecessary indirection
 
 5. Documentation and comments issues
+(doc-review owns accuracy of comments, docstrings, and docs; slop-review owns redundant/obvious comments. Do not edit those here.)
 - Comments that are outdated, misleading, redundant, or state the obvious
 - Docstrings that do not match behavior
 - README or developer docs that appear inaccurate based on the code
@@ -59,7 +60,7 @@ Review the following:
 - Patterns that obscure rather than clarify
 
 8. Error handling patterns
-(Deep error-handling/resilience analysis belongs to error-review; here check consistency of the patterns only.)
+(Deep error-handling/resilience analysis belongs to error-review. Do not change error types, propagation, or cleanup; here only make inconsistent patterns match an existing one in the same module.)
 - Inconsistent error handling strategies across the codebase
 - Errors silently swallowed or caught and ignored
 - Missing error propagation where callers need to know about failures
@@ -90,6 +91,7 @@ Review the following:
 Instructions:
 - Fix order: dead code and unused imports > duplication causing drift > type-safety gaps and missing null checks with a concrete path > inconsistent patterns. Cosmetic cleanups last.
 - If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication), `vulture`/`knip`/`ts-prune` (dead code). Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting. Never install tools.
+- Do not hunt comment noise, copy-paste style, or visual genericness (slop-review, uislop-review).
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.

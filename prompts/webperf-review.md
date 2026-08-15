@@ -74,6 +74,7 @@ Review the following:
 - Fixes that traded away correctness or accessibility for speed, or that a later change silently undid
 
 Instructions:
+- Fix order: render-blocking resources on the critical path (scripts, stylesheets, fonts that delay first paint) > missing compression or caching on large assets > unnecessary bytes loaded eagerly that could be deferred > runtime jank and long tasks after load.
 - If available, use: `lighthouse` (page-load metrics and diagnostics), `curl -w '%{size_download} %{time_starttransfer}\\n' -H 'Accept-Encoding: ...'` (what a client actually receives, and how soon), the project's bundler analyzer when one exists. Never install tools.
 - Measure what you claim: state the transferred size, the request count, or the timing before and after. Where you cannot measure, fix only categorically safe wins (an unused field, a missing `defer`, a heavy library loaded up front) and skip anything whose benefit needs numbers.
 - Judge against the audience: an internal dashboard on a LAN and a public page on mobile networks do not have the same budget. Say which you assumed.

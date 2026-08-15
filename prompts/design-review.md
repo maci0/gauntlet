@@ -66,6 +66,8 @@ Review the following:
 - Whether the design makes the common change easy and the rare change possible
 
 Instructions:
+- Fix order: design decisions causing active bugs or data loss > designs that block needed changes now > questionable tradeoffs worth documenting > improvement opportunities.
+- In auto-fix mode act only on the narrowest provable wins: a default that is demonstrably wrong, an enum missing a variant the code already switches on. Tradeoff evaluations, technology swaps, data-model redesigns, and "document this decision" items are design work, not a fix pass.
 - Be concrete. Name the decision, the current approach, the alternative, and the tradeoff.
 - Frame findings as design tradeoffs, not as defects, unless the design is clearly wrong.
 - Distinguish between:
@@ -75,6 +77,7 @@ Instructions:
 - Respect that some decisions were right for constraints you may not see — flag assumptions you are making.
 - Do not report folder structure, module layout, or layering — those belong to arch-review.
 - Do not report code style, duplication, or refactors — those belong to code-review.
+- Do not edit ADR/PRD/RFC structure, status, or wording (specs-review owns those documents). Evaluate the decision as implemented in the code.
 - Prefer fewer, high-leverage findings over many small ones.
 - Favor the simplest design that satisfies the requirements; call out when the current design is appropriately simple and should stay.
 

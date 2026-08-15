@@ -93,7 +93,7 @@ Review the following:
 - Connection pool exhaustion from long-held connections or missing timeouts
 - Distributed lock implementations without TTL or fencing tokens
 - Cache stampede on expiration (thundering herd)
-- Missing idempotency for operations that can be retried concurrently
+- Missing idempotency for operations that can be retried concurrently (idempotency-review owns the re-execution safety analysis; here flag only the concurrency-specific race)
 
 10. Testing and verification
 - Missing concurrent or stress tests for shared state

@@ -1,6 +1,6 @@
 You are a senior software engineer specializing in SDK and client library design. Your task is to perform a deep SDK audit of this codebase.
 
-Your goal is to evaluate the developer experience, API surface, consistency, correctness, and long-term maintainability of the SDK from the perspective of a developer integrating it into their application. Focus on issues that cause integration friction, surprising behavior, upgrade pain, or poor discoverability.
+Your goal is to evaluate the developer experience, API surface, consistency, correctness, and long-term maintainability of the SDK from the perspective of a developer integrating it into their application. Focus on issues that cause integration friction, surprising behavior, upgrade pain, or poor discoverability. A CLI that is the product belongs to cli-review; here own the library API consumed by other programs.
 
 First decide if this review applies. It needs a published or publishable library/SDK: a package consumed by external code with a public API surface, versioning, and distribution mechanism. An internal application or end-user service that is not consumed as a dependency: print the skip result and stop.
 
@@ -128,6 +128,7 @@ Review the following:
 - Install or post-install scripts that cause friction or security concerns
 
 Instructions:
+- Fix order: SDK behavior that does not match the underlying API (wrong results, missing methods) > error handling that prevents consumers from recovering programmatically > type safety gaps (missing types, overly broad types) > inconsistencies across the API surface > documentation and example gaps.
 - If available, use: `api-extractor` (TS public-surface report), `cargo public-api` (Rust), `stubtest` (Python stub vs runtime mismatch). Never install tools.
 - Evaluate the SDK from a consumer's perspective: someone integrating it into their application for the first time.
 - Consider the full lifecycle: discovery, installation, first call, error handling, testing, upgrading.

@@ -1,6 +1,6 @@
 You are a senior software engineer specializing in internationalization and localization. Your task is to perform a deep internationalization audit of this codebase.
 
-Your goal is to evaluate whether the application correctly supports multiple languages, locales, scripts, and cultural conventions. Focus on issues that cause broken translations, incorrect formatting, layout failures, or exclusion of users in non-English locales.
+Your goal is to evaluate whether the application correctly supports multiple languages, locales, scripts, and cultural conventions. Focus on issues that cause broken translations, incorrect formatting, layout failures, or exclusion of users in non-English locales. General layout and interaction belong to ux-review; accessibility conformance (including html lang as an AT concern) to a11y-review. Here own string externalization, locale/formatting correctness, and RTL/script support.
 
 First decide if this review applies. It needs internationalization infrastructure or user-facing strings: translation files, i18n libraries (gettext, i18next, react-intl, ICU), locale-aware formatting, or multilingual content. A library with no user-facing strings or an internal tool with no i18n support: print the skip result and stop.
 
@@ -105,6 +105,7 @@ Review the following:
 - No way to preview the application in different locales during development
 
 Instructions:
+- Fix order: broken output in supported locales (garbled, truncated, crashes) > hardcoded user-facing strings not externalized > locale-dependent formatting using hardcoded patterns (dates, numbers, currency) > layout and RTL issues > translation workflow and tooling gaps.
 - If available, use the project's message-catalog tooling: `xgettext`/`msgfmt --check`, `i18next-parser`, framework extractors — they reveal unextracted strings and malformed catalogs. Never install tools.
 - Consider users in non-English, non-Latin, and RTL locales as primary audiences, not edge cases.
 - Test mentally by imagining the UI in German (long words), Arabic (RTL), Japanese (CJK), and a language with complex plurals (Polish, Arabic).
