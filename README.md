@@ -91,10 +91,13 @@ with a custom `--prompt-dir`.
 `--reviews suggest` (the keyword alone, not composable) asks one agent from
 `--agents` to inspect the repo against the review catalog (names and
 descriptions only, never the prompt bodies, and with an explicit
-classification-only rule so nothing gets fixed during triage), lists the
-relevant reviews with a one-line reason each, asks for confirmation on a
-terminal (non-interactive runs and `--yolo` proceed without asking), then
-loops over exactly those. `--exclude` still applies afterwards.
+classification-only rule so nothing gets fixed during triage). Descriptions
+are treated as untrusted data, and triage is capped at five minutes even
+when `--timeout` is longer. If that agent fails, the next one in `--agents`
+is tried. It then lists the relevant reviews with a one-line reason each,
+asks for confirmation on a terminal (non-interactive runs, `--yes`, and
+`--yolo` proceed without asking), then loops over exactly those. `--exclude`
+still applies afterwards.
 
 Repeats are weight. `--reviews all,sec-review,sec-review` schedules every review
 once and `sec-review` three times per loop; `--reviews quick,quick` runs each of
@@ -158,6 +161,7 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
 # have an agent inspect the repo and propose the relevant reviews
 # (lists them with reasons, asks for confirmation, then loops over those)
 ./review-loop.py --reviews suggest
+./review-loop.py --reviews suggest --yes   # skip the confirmation prompt
 
 # let agents attempt big changes instead of declining them
 ./review-loop.py --agents claude --reviews arch-review --yolo
@@ -171,19 +175,20 @@ Run `./review-loop.py --help` for the full option list.
 | Flag | Default | Purpose |
 |---|---|---|
 | `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
-| `-a, --agents` (`--models` still accepted) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
+| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
 | `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
-| `-C, --dir` | cwd | `cd` here before running. |
+| `-C, --dir` | cwd | `cd` here before running. `~` and `$VAR` are expanded. |
 | `--once` | off | Run a single loop and exit. |
 | `-n, --max-loops N` | 0 (infinite) | Stop after N loops. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
-| `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. |
-| `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. |
+| `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
+| `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
 | `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
-| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. |
-| `-q, --quiet-agents` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
-| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. |
+| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. Also skips the `--reviews suggest` confirmation. |
+| `-y, --yes` | off | Skip the `--reviews suggest` confirmation without enabling `--yolo`. Implied when stdin is not a terminal. |
+| `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
+| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |
 | `--dry-run` | off | Print planned schedule and exit. |
 | `-l, --list` | off | List available reviews and exit. |
@@ -192,6 +197,8 @@ Run `./review-loop.py --help` for the full option list.
 ## Behavior
 
 - Each loop: reviews are shuffled, each runs once with a random agent from `--agents`.
+  If that agent fails to launch or exits non-zero, the same review is retried
+  on another agent from the pool when one remains. Timeouts are not retried.
 - Each review is hard-bounded by `--timeout`; on timeout the process group is `SIGTERM`'d, then `SIGKILL`'d after 10s.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
@@ -265,8 +272,10 @@ Copyright (C) 2026 Marcel W. Wysocki.
 GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`). See
 [LICENSE](LICENSE).
 
-Version numbers are informational: `--version` reports the `VERSION` constant in
-`review-loop.py`, bumped by hand alongside a matching git tag and a
-[CHANGELOG](CHANGELOG.md) entry. Review names (the `*-review.md` stems
-consumed by `--reviews`) are the user-facing contract; renaming or removing one
-breaks existing invocations.
+`--version` prints the `VERSION` constant in `review-loop.py` (the only
+source of truth), bumped by hand with a matching git tag and
+[CHANGELOG](CHANGELOG.md) heading. The project is 0.x, so a minor may
+change behavior; such changes are listed under Changed. The consumer
+contract is review names (`*-review.md` stems used with `--reviews`), set
+names (`quick`, `standard`, ...), CLI flags, and exit codes. Renaming or
+removing a review or set name is a breaking change.

@@ -1,8 +1,65 @@
 # Changelog
 
-Notable changes per release. Review names (the `*-review.md` stems consumed by
-`--reviews`) are the user-facing contract: renaming or removing one is a
-breaking change.
+Notable changes per release.
+
+The consumer contract is review names (`*-review.md` stems consumed by
+`--reviews`), set names (`quick`, `standard`, ...), CLI flags, and exit
+codes. Renaming or removing a review or set name is a breaking change.
+While the project is 0.x, other behavior changes may land in a minor;
+they are listed under Changed.
+
+## Unreleased
+
+### Added
+
+- `-y, --yes` skips the `--reviews suggest` confirmation without enabling
+  `--yolo`. Implied when stdin is not a terminal.
+- `--quiet` is an explicit alias of `--quiet-agents`.
+
+### Deprecated
+
+- `--models` now warns on stderr; use `--agents`. The alias still works.
+
+### Fixed
+
+- `--reviews suggest` interpolated project review descriptions through
+  `str.format`, so a `{placeholder}` in a "Your goal" line crashed triage
+  (or, with a matching name, rewrote the template). Descriptions are now
+  spliced in as data, fenced, truncated, and stripped of `RELEVANT:` markers.
+- `--continue-sessions` resumed via `-c` / `--resume latest` even when two
+  models of the same CLI were in the pool, mixing their sessions. Resume
+  now requires that CLI to appear only once.
+- A typo in `--reviews`/`--exclude` on a real run was reported as "another
+  instance is running" (exit 75) when a lock was held, because names were
+  validated after lock acquisition.
+- `--reviews ''` (and `--reviews "$UNSET"`) ran every review. An explicit
+  empty list is now a usage error.
+- `--dir`, `--prompt-dir`, and `--log` now expand `~` and `$VAR`, matching
+  `--bin`. A `--prompt-dir` that exists but is not a directory says so.
+- `--bin` unknown-agent errors now include a "did you mean" hint.
+- Agent names in `--agents`/`--bin` are case-insensitive (`CLAUDE` = `claude`).
+- OSError messages no longer leak `[Errno N]`.
+- `--semcode` without `semcode-index` is now a usage error before the lock
+  is taken, so a held lock reports the missing tool (exit 2) instead of
+  "another instance is running" (75). `--dry-run --semcode` warns when the
+  indexer is missing.
+- `--yolo` is printed on `--dry-run` and logged at the start of a real run.
+- SIGTERM during `--reviews suggest` or `--semcode` no longer orphans the
+  `start_new_session` child (a permission-bypassed agent, or an indexer
+  still writing `.semcode.db` after the lock is released). Both paths now
+  kill the process group and reap with a timeout, matching the review loop.
+
+### Changed
+
+- Long-option prefixes are no longer accepted (`--dry` is not `--dry-run`).
+  Spell the flag in full; short forms (`-q`, `-l`, ...) are unchanged.
+- Review bodies are wrapped in `BEGIN/END REVIEW` markers so a project-local
+  prompt cannot blend into the containment suffix.
+- Suggest triage is capped at 5 minutes (`SUGGEST_TIMEOUT_CAP`) and falls
+  back to the next `--agents` entry if the first launch or run fails.
+- A review that fails (launch or non-zero exit, not timeout) is retried on
+  another agent from `--agents` when one remains, so a single provider
+  outage does not burn the slot.
 
 ## 0.8.0
 
