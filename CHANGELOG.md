@@ -4,6 +4,14 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Changed
+
+- Review sets now cover every bundled prompt (enforced by a test):
+  `design-review` joins `standard`, `mobile-review` joins `frontend`, and
+  `sdk-review` and `infra-review` join `shipping`.
+
 ## 0.6.0
 
 ### Added

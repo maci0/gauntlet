@@ -78,12 +78,12 @@ names, and `--list` prints their current members:
 | `all` | every discovered review, including project-local ones |
 | `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
-| `standard` | `quick` plus perf, deps, doc, arch, concurrency, minimalism, slop |
+| `standard` | `quick` plus perf, deps, doc, arch, design, concurrency, minimalism, slop |
 | `security` | sec, deps, privacy, config, fuzz, llm |
-| `frontend` | ux, a11y, uislop, i18n, webperf |
+| `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
 | `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |
-| `shipping` | release, pkg, build, deps, doc, cli |
+| `shipping` | release, pkg, build, deps, doc, cli, sdk, infra |
 
 Members missing from the prompt directory are skipped, so a set stays usable
 with a custom `--prompt-dir`.

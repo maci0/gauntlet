@@ -136,7 +136,8 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     "standard": (
         "code-review", "sec-review", "error-review", "functionality-review",
         "test-review", "perf-review", "deps-review", "doc-review",
-        "arch-review", "concurrency-review", "minimalism-review", "slop-review",
+        "arch-review", "design-review", "concurrency-review",
+        "minimalism-review", "slop-review",
     ),
     "security": (
         "sec-review", "deps-review", "privacy-review", "config-review",
@@ -144,7 +145,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     ),
     "frontend": (
         "ux-review", "a11y-review", "uislop-review", "i18n-review",
-        "webperf-review",
+        "webperf-review", "mobile-review",
     ),
     "backend": (
         "api-review", "db-review", "error-review", "concurrency-review",
@@ -156,7 +157,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     ),
     "shipping": (
         "release-review", "pkg-review", "build-review", "deps-review",
-        "doc-review", "cli-review",
+        "doc-review", "cli-review", "sdk-review", "infra-review",
     ),
 }
 

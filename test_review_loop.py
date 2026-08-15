@@ -543,6 +543,10 @@ def test_review_sets_reference_real_prompts():
         assert len(set(members)) == len(members), f"{name} has duplicates"
         missing = set(members) - bundled
         assert not missing, f"{name} references missing prompts: {missing}"
+    in_sets = {r for members in rl.REVIEW_SETS.values() for r in members}
+    assert bundled <= in_sets, (
+        f"bundled prompts missing from every set: {bundled - in_sets}"
+    )
     assert not set(rl.REVIEW_SETS) & set(rl.DYNAMIC_SETS), "dynamic names are reserved"
     assert not bundled & set(rl.REVIEW_SETS), "a set must not shadow a review name"
     assert not bundled & set(rl.DYNAMIC_SETS)
