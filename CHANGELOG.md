@@ -4,6 +4,13 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
+## Unreleased
+
+### Changed
+
+- `--reviews suggest` with `--yolo` skips the confirmation prompt; the picked
+  reviews and their reasons are still printed.
+
 ## 0.7.0
 
 ### Added

@@ -900,7 +900,9 @@ class Runner:
         name_col = max(len(r) for r in picked) + 1
         for name, reason in picked.items():
             print(f"  {name.ljust(name_col)} {reason or '(no reason given)'}")
-        if sys.stdin.isatty():
+        if self.args.yolo:
+            log("--yolo: proceeding without confirmation")
+        elif sys.stdin.isatty():
             try:
                 answer = input(f"\nRun these {len(picked)} reviews? [Y/n] ")
             except (EOFError, KeyboardInterrupt):

@@ -755,6 +755,18 @@ def test_reviews_suggest_end_to_end():
         assert "Ignoring unknown suggestions: bogus" in out, out
         assert "proceeding without confirmation" in out, out
         assert "Running stub-review" in out and "Running other-review" not in out, out
+        # --yolo skips confirmation but still prints the picks and reasons
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--reviews", "suggest", "--yolo", "--prompt-dir", str(prompts),
+             "--dir", str(proj), "--timeout", "30s"],
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "found stub material here" in out, out
+        assert "--yolo: proceeding without confirmation" in out, out
         # the suggestion call got names + descriptions, never prompt bodies
         suggest_prompt = prompt_log.read_text().split("===CALL===")[0]
         assert "stub-review: stub things" in suggest_prompt

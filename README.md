@@ -93,8 +93,8 @@ with a custom `--prompt-dir`.
 descriptions only, never the prompt bodies, and with an explicit
 classification-only rule so nothing gets fixed during triage), lists the
 relevant reviews with a one-line reason each, asks for confirmation on a
-terminal (non-interactive runs proceed), then loops over exactly those.
-`--exclude` still applies afterwards.
+terminal (non-interactive runs and `--yolo` proceed without asking), then
+loops over exactly those. `--exclude` still applies afterwards.
 
 Repeats are weight. `--reviews all,sec-review,sec-review` schedules every review
 once and `sec-review` three times per loop; `--reviews quick,quick` runs each of
