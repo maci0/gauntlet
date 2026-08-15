@@ -83,8 +83,15 @@ def test_parse_duration_units():
     assert rl.parse_duration("25d") == 25 * 86400
 
 
+def test_parse_duration_case_insensitive():
+    assert rl.parse_duration("30M") == 1800
+    assert rl.parse_duration("1H") == 3600
+    assert rl.parse_duration("2D") == 172800
+    assert rl.parse_duration("90S") == 90
+
+
 def test_parse_duration_rejects_bad_input():
-    for bad in ("0", "0s", "0m", "", "1.5h", "5x", "-5", "m", "10 m", "1,2", "30M", " 30m",
+    for bad in ("0", "0s", "0m", "", "1.5h", "5x", "-5", "m", "10 m", "1,2", " 30m",
                 "9" * 5000 + "d", "1" + "0" * 400 + "s"):
         raises(lambda b=bad: rl.parse_duration(b))
 
@@ -153,6 +160,15 @@ def test_parse_agents_mixed_expands_to_installed():
 
 def test_build_cmd_exact_argv():
     """Every agent's argv, including the permission-bypass flag it must carry."""
+    orig = rl.resolve_tool
+    rl.resolve_tool = lambda name: f"/usr/bin/{name}"  # dsh argv depends on PATH
+    try:
+        _assert_exact_argv()
+    finally:
+        rl.resolve_tool = orig
+
+
+def _assert_exact_argv():
     expected = {
         ("claude", None): ["claude", "--dangerously-skip-permissions", "-p", "P"],
         ("claude", "opus"): ["claude", "--dangerously-skip-permissions", "--model", "opus", "-p", "P"],
@@ -172,6 +188,7 @@ def test_build_cmd_exact_argv():
         ("opencode", "anthropic/claude"): ["opencode", "run", "--auto", "-m", "anthropic/claude", "P"],
         ("kimi", None): ["kimi", "-p", "P"],
         ("kimi", "k2"): ["kimi", "-m", "k2", "-p", "P"],
+        ("dsh", None): ["dsh", "--profile", "headless", "P"],
     }
     for (tool, model), want in expected.items():
         got = rl.build_cmd(rl.ToolSpec(tool, model), "P")
@@ -183,6 +200,76 @@ def test_build_cmd_exact_argv():
         assert "P" in rl.build_cmd(rl.ToolSpec(tool, model), "P")
 
     raises(lambda: rl.build_cmd(rl.ToolSpec("nope"), "P"), ValueError)
+
+
+def test_build_cmd_dsh_model_patch():
+    """dsh:model pins provider and model through a generated --patch overlay.
+
+    The overlay REPLACES the plugin's config object, so it must always carry
+    the provider: bare dsh:<model> reuses the probed profile provider, and
+    dsh:<provider>/<model> states it explicitly.
+    """
+    orig_resolve, orig_cache = rl.resolve_tool, rl._DSH_PROVIDER_CACHE[:]
+    rl.resolve_tool = lambda name: f"/usr/bin/{name}"
+    rl._DSH_PROVIDER_CACHE[:] = ["deepseek-official"]  # pretend the probe ran
+    try:
+        cmd = rl.build_cmd(rl.ToolSpec("dsh", "deepseek-v4-pro"), "P")
+        assert cmd[:4] == ["dsh", "--profile", "headless", "--patch"] and cmd[-1] == "P"
+        patch = Path(cmd[4]).read_text()
+        assert "id: agent-default-model" in patch
+        assert "provider: 'deepseek-official'" in patch, "provider is required"
+        assert "model: 'deepseek-v4-pro'" in patch
+        # explicit provider wins over the probed one
+        cmd2 = rl.build_cmd(rl.ToolSpec("dsh", "other-prov/deepseek-v4-pro"), "P")
+        assert "provider: 'other-prov'" in Path(cmd2[4]).read_text()
+        # one file per provider/model pair, reused across runs
+        assert rl.build_cmd(rl.ToolSpec("dsh", "deepseek-v4-pro"), "P")[4] == cmd[4]
+        assert rl.build_cmd(rl.ToolSpec("dsh", "deepseek-v4-flash"), "P")[4] != cmd[4]
+        # no probed provider and none given: explicit error, not a broken run
+        rl._DSH_PROVIDER_CACHE[:] = [None]
+        raises(lambda: rl.build_cmd(rl.ToolSpec("dsh", "deepseek-v4-pro"), "P"), ValueError)
+        assert "provider: 'x'" in Path(
+            rl.build_cmd(rl.ToolSpec("dsh", "x/y"), "P")[4]).read_text()
+        # a model name that could escape the YAML scalar is rejected at parse time
+        for bad in ("a'b", "a b", "a\nb", "a{b"):
+            raises(lambda b=bad: rl.parse_agents(f"dsh:{b}"))
+        assert rl.parse_agents("dsh:deepseek-v4-pro") == \
+            [rl.ToolSpec("dsh", "deepseek-v4-pro")]
+    finally:
+        rl.resolve_tool = orig_resolve
+        rl._DSH_PROVIDER_CACHE[:] = orig_cache
+
+
+def test_parse_dsh_provider():
+    dump = (
+        "- id: agent\n"
+        "  name: '@deepseek-ai/dsh-agent'\n"
+        "- id: agent-default-model\n"
+        "  name: '@deepseek-ai/dsh-agent-default-model'\n"
+        "  config:\n"
+        "    provider: deepseek-official\n"
+        "    model: deepseek-v4-flash\n"
+        "- id: other\n"
+        "  config:\n"
+        "    provider: wrong-entry\n"
+    )
+    assert rl.parse_dsh_provider(dump) == "deepseek-official"
+    assert rl.parse_dsh_provider("- id: other\n  config:\n    provider: x\n") is None
+    assert rl.parse_dsh_provider("") is None
+
+
+def test_build_cmd_dsh_bunx_fallback():
+    orig = rl.resolve_tool
+    try:
+        # dsh missing, bunx present: launch through bunx with the resolved path
+        rl.resolve_tool = lambda name: "/usr/bin/bunx" if name == "bunx" else None
+        assert rl.build_cmd(rl.ToolSpec("dsh"), "P") == \
+            ["/usr/bin/bunx", "@deepseek-ai/dsh", "--profile", "headless", "P"]
+        # --bin (or a runner-resolved path) forces the plain dsh argv shape
+        assert rl.build_cmd(rl.ToolSpec("dsh"), "P", binary="/opt/dsh") == \
+            ["/opt/dsh", "--profile", "headless", "P"]
+    finally:
+        rl.resolve_tool = orig
 
 
 def test_build_cmd_continue_session():
@@ -347,10 +434,15 @@ def test_relative_bin_is_resolved_before_dir_chdir():
 def test_build_cmd_prompt_is_never_flag_like():
     """The prompt is passed as one argv element, so its content cannot inject flags."""
     hostile = "--dangerously-skip-permissions\n--help"
-    for tool in sorted(rl.VALID_TOOLS):
-        cmd = rl.build_cmd(rl.ToolSpec(tool), hostile)
-        assert cmd.count(hostile) == 1
-        assert cmd[0] == tool
+    orig = rl.resolve_tool
+    rl.resolve_tool = lambda name: f"/usr/bin/{name}"  # dsh argv depends on PATH
+    try:
+        for tool in sorted(rl.VALID_TOOLS):
+            cmd = rl.build_cmd(rl.ToolSpec(tool), hostile)
+            assert cmd.count(hostile) == 1
+            assert cmd[0] == tool
+    finally:
+        rl.resolve_tool = orig
 
 
 def test_discover_reviews_skips_prompt_dir_inside_cwd():

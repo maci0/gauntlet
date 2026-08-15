@@ -1,9 +1,9 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 37 specialized review prompts (security,
+An auto-fix review loop for codebases: 38 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
-`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`), which apply small, proven fixes
+`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
 directly to the working tree instead of writing reports. Different agents catch
 different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
@@ -63,6 +63,7 @@ How a single pass works:
 | [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
 | [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
+| [`specs-review`](prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
 | [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
@@ -78,7 +79,7 @@ names, and `--list` prints their current members:
 | `all` | every discovered review, including project-local ones |
 | `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
-| `standard` | `quick` plus perf, deps, doc, arch, design, concurrency, minimalism, slop |
+| `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop |
 | `security` | sec, deps, privacy, config, fuzz, llm |
 | `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
@@ -108,7 +109,17 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
 ## Requirements
 
 - Python 3.10+
-- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker` in `PATH`
+- At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh` in `PATH`
+- `dsh` (DeepSeek Harness) runs as `dsh --profile headless`; permissions
+  come from that profile's config, and its config default model is used
+  unless `dsh:<model>` pins one (e.g. `dsh:deepseek-v4-pro`), which the
+  runner applies through a generated `--patch` overlay. The overlay must
+  also name the provider: bare `dsh:<model>` reuses the provider read once
+  from `dsh --profile headless --dump-config`, and `dsh:<provider>/<model>`
+  states it explicitly. If the launcher is not in `PATH` but `bunx` is, it
+  falls back to `bunx @deepseek-ai/dsh`, which fetches the package on first
+  use; the fallback therefore only applies when `dsh` is named explicitly,
+  never through auto-detect or `mixed`.
 - `clanker` is opt-in: it reads its config from the working directory, so it
   can only review the repository that holds its `config.local.json`. Auto-detect
   and `mixed` skip it; name it explicitly (`--agents clanker`) from that

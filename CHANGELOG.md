@@ -12,6 +12,24 @@ they are listed under Changed.
 
 ### Added
 
+- `specs-review` covers PRDs, ADRs, RFCs, and design docs as documents:
+  drift against the implementation, ADR structure and lifecycle,
+  requirement testability, traceability, and redundancy across documents
+  (duplicates consolidate to one canonical copy). Decision substance stays
+  with design-review, general doc prose with doc-review. Joins `standard`.
+- `dsh` (DeepSeek Harness) as a supported agent, run as
+  `dsh --profile headless <prompt>`. Permissions and the default model come
+  from the profile's config; `dsh:<model>` pins a configured model through
+  a generated `--patch` overlay (the profile's provider is probed once from
+  `--dump-config`; `dsh:<provider>/<model>` sets both explicitly, since the
+  overlay replaces the plugin config and the provider is required). One-shot
+  mode has no resume, so
+  `--continue-sessions` starts it fresh. When the launcher is not in `PATH`
+  but `bunx` is, a named `--agents dsh` falls back to `bunx @deepseek-ai/dsh`
+  (auto-detect and `mixed` stay PATH-based because the fallback fetches the
+  package on first use).
+- `vnu` (offline W3C HTML/CSS validation) as a suggested tool for
+  `ux-review` and `a11y-review`; `htmlhint` and `stylelint` for `ux-review`.
 - `-y, --yes` skips the `--reviews suggest` confirmation without enabling
   `--yolo`. Implied when stdin is not a terminal.
 - `--quiet` is an explicit alias of `--quiet-agents`.

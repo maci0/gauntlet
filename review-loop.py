@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Marcel W. Wysocki
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker against current dir."""
+"""Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker/dsh against current dir."""
 
 from __future__ import annotations
 
 import argparse
+import atexit
 import difflib
 import errno
 import fcntl
@@ -17,6 +18,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import termios
 import textwrap
 import time
@@ -26,7 +28,7 @@ from pathlib import Path
 VERSION = "0.8.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
-               "opencode", "clanker"}
+               "opencode", "clanker", "dsh"}
 # Agents that pick their model from their own config, not the command line.
 NO_MODEL_TOOLS = {"agy", "clanker"}
 
@@ -42,7 +44,7 @@ SUBCOMMAND_TOOLS = {"codex": "exec", "opencode": "run", "clanker": "run"}
 
 # Flags that resume the agent's most recent session in this directory, used by
 # --continue-sessions after a tool's first run. Tools absent here (codex,
-# cursor-agent, clanker) always start fresh: their resume mechanics don't
+# cursor-agent, clanker, dsh) always start fresh: their resume mechanics don't
 # compose with one-shot prompt mode.
 CONTINUE_FLAGS: dict[str, tuple[str, ...]] = {
     "claude": ("-c",),
@@ -68,8 +70,8 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
     "agentrules-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "mobile-review", "o11y-review", "privacy-review",
-    "prompt-review", "skills-review", "uislop-review",
+    "functionality-review", "mobile-review", "privacy-review",
+    "prompt-review", "skills-review", "specs-review", "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -85,7 +87,7 @@ RECOMMENDED_TOOLS = frozenset({
 # the prompts. Entries are binaries, so package-only names (Atheris, Jazzer,
 # eslint plugins) and SQL keywords are deliberately absent.
 REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
-    "a11y-review": ("pa11y", "lighthouse", "axe"),
+    "a11y-review": ("pa11y", "lighthouse", "axe", "vnu"),
     "api-review": ("spectral", "oasdiff", "buf"),
     "arch-review": ("madge", "pydeps", "lint-imports"),
     "build-review": ("diffoscope", "shellcheck"),
@@ -103,16 +105,18 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "infra-review": ("hadolint", "shellcheck", "actionlint", "tflint"),
     "llm-review": ("promptfoo", "garak"),
     "minimalism-review": ("vulture", "knip", "ts-prune", "cargo-udeps", "tokei", "cloc"),
+    "o11y-review": ("promtool", "otel-cli"),
     "perf-review": ("hyperfine", "perf", "heaptrack", "valgrind"),
     "webperf-review": ("lighthouse",),
     "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive", "shellcheck",
                    "desktop-file-validate", "appstream-util", "check-wheel-contents"),
     "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
     "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
-    "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec"),
+    "sec-review": ("semgrep", "gitleaks", "trufflehog", "osv-scanner", "bandit", "gosec",
+                   "shellcheck"),
     "slop-review": ("jscpd",),
     "test-review": ("coverage", "cargo-llvm-cov", "c8", "nyc", "mutmut", "cargo-mutants", "stryker"),
-    "ux-review": ("lighthouse",),
+    "ux-review": ("lighthouse", "vnu", "htmlhint", "stylelint"),
 }
 
 # Sets computed from what discovery found rather than listed by name.
@@ -170,7 +174,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     "standard": (
         "code-review", "sec-review", "error-review", "functionality-review",
         "test-review", "perf-review", "deps-review", "doc-review",
-        "arch-review", "design-review", "concurrency-review",
+        "arch-review", "design-review", "specs-review", "concurrency-review",
         "minimalism-review", "slop-review",
     ),
     "security": (
@@ -366,14 +370,14 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
 
 
 def parse_duration(s: str) -> int:
-    m = re.fullmatch(r"(\d+)([smhd]?)", s)
+    m = re.fullmatch(r"(\d+)([smhdSMHD]?)", s)
     if not m:
         raise argparse.ArgumentTypeError(f"invalid duration: {s} (e.g. 90s, 30m, 1h, 2d)")
     try:
         # int() raises ValueError on 4300+ digits (3.11+); float() raises
         # OverflowError on values that cannot be a subprocess timeout.
         n = int(m.group(1))
-        secs = n * {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2)]
+        secs = n * {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[m.group(2).lower()]
         float(secs)
     except (ValueError, OverflowError):
         raise argparse.ArgumentTypeError(f"invalid duration: {s} (e.g. 90s, 30m, 1h, 2d)") from None
@@ -421,6 +425,12 @@ def parse_agents(s: str) -> list[ToolSpec]:
         if tool in NO_MODEL_TOOLS and model:
             raise argparse.ArgumentTypeError(
                 f"{tool} does not support specifying a model: {entry!r}"
+            )
+        # The dsh model is spliced into a generated YAML overlay; keep the
+        # charset too narrow to escape the quoted scalar.
+        if tool == "dsh" and model and not re.fullmatch(r"[A-Za-z0-9._/:-]+", model):
+            raise argparse.ArgumentTypeError(
+                f"invalid dsh model name: {model!r} (letters, digits, . _ / : -)"
             )
         spec = ToolSpec(tool, model)
         if spec not in seen:
@@ -539,13 +549,17 @@ def doctor(overrides: dict[str, str] | None = None) -> int:
 
     print(paint("Agent CLIs", "bold") + paint("  (at least one required)", "dim"))
     for a in agents:
+        ok = a in installed or a in overrides
         if a in overrides:
             note = paint(f"  --bin {overrides[a]}", "dim")
         elif a in OPT_IN_TOOLS:
             note = paint("  opt-in: name it with --agents", "dim")
+        elif a == "dsh" and not ok and resolve_tool("bunx"):
+            ok = True  # launchable, but only when named: bunx fetches on first use
+            note = paint("  via bunx (@deepseek-ai/dsh); name it with --agents", "dim")
         else:
             note = ""
-        print(f"  {_mark(a in installed or a in overrides)} {a}{note}")
+        print(f"  {_mark(ok)} {a}{note}")
 
     print()
     print(paint("Core tools", "bold") + paint("  (used by every review)", "dim"))
@@ -802,6 +816,62 @@ def parse_path(s: str) -> Path:
     return Path(expanded)
 
 
+# dsh has no model flag: the headless profile's agent-default-model plugin
+# decides. A --patch overlay overrides that plugin's config per run, and the
+# override REPLACES the config object, so it must carry the required provider
+# alongside the model. dsh:provider/model states both; bare dsh:model reuses
+# the provider probed once from --dump-config. One generated overlay file per
+# provider/model pair, removed at exit.
+_DSH_MODEL_PATCHES: dict[str, str] = {}
+_DSH_PROVIDER_CACHE: list[str | None] = []
+
+
+def parse_dsh_provider(dump: str) -> str | None:
+    """provider of the agent-default-model entry in a --dump-config listing."""
+    in_entry = False
+    for line in dump.splitlines():
+        if line.lstrip().startswith("- id:"):
+            in_entry = line.split(":", 1)[1].strip() == "agent-default-model"
+            continue
+        if in_entry:
+            m = re.match(r"\s+provider:\s*['\"]?([\w.-]+)['\"]?\s*$", line)
+            if m:
+                return m.group(1)
+    return None
+
+
+def dsh_default_provider(base: list[str]) -> str | None:
+    """The headless profile's configured provider, probed once per process."""
+    if not _DSH_PROVIDER_CACHE:
+        provider = None
+        try:
+            out = subprocess.run(
+                [*base, "--profile", "headless", "--dump-config"],
+                stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                timeout=120, check=False,
+            )
+            if out.returncode == 0:
+                provider = parse_dsh_provider(out.stdout)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        _DSH_PROVIDER_CACHE.append(provider)
+    return _DSH_PROVIDER_CACHE[0]
+
+
+def dsh_model_patch(provider: str, model: str) -> str:
+    key = f"{provider}/{model}"
+    if key not in _DSH_MODEL_PATCHES:
+        fd, path = tempfile.mkstemp(prefix="review-loop-dsh-", suffix=".yml")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("- id: agent-default-model\n"
+                     "  config:\n"
+                     f"    provider: '{provider}'\n"
+                     f"    model: '{model}'\n")
+        atexit.register(os.unlink, path)
+        _DSH_MODEL_PATCHES[key] = path
+    return _DSH_MODEL_PATCHES[key]
+
+
 def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False,
               binary: str | None = None) -> list[str]:
     if spec.tool == "claude":
@@ -830,6 +900,28 @@ def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False,
         cmd = ["cursor-agent", "--print", "-f"]
         if spec.model:
             cmd += ["--model", spec.model]
+        cmd.append(prompt)
+    elif spec.tool == "dsh":
+        # DeepSeek Harness. Permissions come from the headless profile's
+        # config; dsh:model pins the model via a generated --patch overlay
+        # (see dsh_model_patch); one-shot mode has no resume flag. When the
+        # launcher is not on PATH, fall back to bunx, which fetches
+        # @deepseek-ai/dsh on first use; that network fetch is why PATH-based
+        # auto-detection ignores the fallback and dsh must be named to use it.
+        if binary or resolve_tool("dsh"):
+            base = ["dsh"]
+        else:
+            base = [resolve_tool("bunx") or "bunx", "@deepseek-ai/dsh"]
+        cmd = [*base, "--profile", "headless"]
+        if spec.model:
+            provider, _, model = spec.model.rpartition("/")
+            provider = provider or dsh_default_provider(base)
+            if provider is None:
+                raise ValueError(
+                    f"cannot determine the dsh provider for model {spec.model!r}; "
+                    f"use dsh:<provider>/<model>"
+                )
+            cmd += ["--patch", dsh_model_patch(provider, model)]
         cmd.append(prompt)
     elif spec.tool == "clanker":
         # Model and permissions come from clanker's own config; resuming needs
@@ -873,6 +965,16 @@ class Runner:
                 resolved = resolve_tool(spec.tool)
                 if resolved:
                     self.bin[spec.tool] = resolved
+        # A bare dsh:<model> needs the profile's provider; probe it up front
+        # so a misconfigured harness is a usage error, not a mid-loop crash.
+        if any(s.tool == "dsh" and s.model and "/" not in s.model for s in self.tools):
+            base = ([self.bin["dsh"]] if "dsh" in self.bin
+                    else [resolve_tool("bunx") or "bunx", "@deepseek-ai/dsh"])
+            if dsh_default_provider(base) is None:
+                usage_error(
+                    "Cannot read the dsh provider from 'dsh --profile headless "
+                    "--dump-config'; pin it explicitly with dsh:<provider>/<model>"
+                )
         self.bundled_dir = args.prompt_dir.resolve()  # _filter_reviews needs it
         self.tty = tty_state()  # before _filter_reviews: suggest runs an agent
         # Signal state must exist before _filter_reviews: --reviews suggest
@@ -1326,7 +1428,8 @@ class Runner:
             f"prompt-dir: {self.args.prompt_dir}"
             + ("  |  YOLO" if self.args.yolo else "")
         )
-        missing = sorted({s.tool for s in self.tools} - self.bin.keys())
+        missing = sorted(t for t in {s.tool for s in self.tools} - self.bin.keys()
+                         if not (t == "dsh" and resolve_tool("bunx")))
         if self.args.semcode and resolve_tool("semcode-index") is None:
             missing.append("semcode-index")
         if missing:
@@ -1487,7 +1590,7 @@ def setup_log_tee(log_path: Path) -> None:
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker.",
+        description="Run review prompts via claude/gemini/qwen/codex/grok/agy/cursor-agent/kimi/opencode/clanker/dsh.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         allow_abbrev=False,
         epilog=(
@@ -1708,6 +1811,8 @@ def main() -> None:
         return
 
     for tool in {s.tool for s in args.agents} - set(args.bin):
+        if tool == "dsh" and resolve_tool("dsh") is None and resolve_tool("bunx"):
+            continue  # build_cmd falls back to bunx @deepseek-ai/dsh
         if resolve_tool(tool) is None:  # --bin paths were validated during parsing
             usage_error(f"Required tool not found in PATH: {tool}")
     # Same reason as review-name validation: a missing helper must be exit 2,
