@@ -1,4 +1,4 @@
-You are a senior software engineer. Your task is to perform a deep dependency audit of this codebase.
+You are a senior software engineer specializing in dependency management and supply chain security. Your task is to perform a deep dependency audit of this codebase.
 
 Your goal is to evaluate the health, necessity, and risk of all external dependencies. Focus on practical risk: security, maintenance burden, bloat, and supply chain exposure.
 
@@ -82,6 +82,7 @@ Review the following:
 - Dependencies that constrain the runtime or platform unnecessarily
 
 Instructions:
+- Fix order: known-vulnerable dependencies (CVEs) > unpinned or unverified dependencies > unused dependencies increasing attack surface > version constraints and consolidation.
 - If available, use: `osv-scanner` (vulnerabilities, all ecosystems), `pip-audit`/`deptry` (Python), `cargo-audit`/`cargo-udeps`/`cargo-deny` (Rust), `npm audit`/`depcheck`/`knip` (JS/TS), `syft` (SBOM generation), `grype` (SBOM/image scanning), `cosign` (signature and attestation verification). Never install tools; unused-dependency detectors miss dynamic imports, verify before acting.
 - Inspect the actual dependency manifest files and lock files.
 - Verify that declared dependencies are actually used in the code.

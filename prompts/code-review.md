@@ -88,6 +88,7 @@ Review the following:
 - Code that works by coincidence rather than by design
 
 Instructions:
+- Fix order: dead code and unused imports > duplication causing drift > type-safety gaps and missing null checks with a concrete path > inconsistent patterns. Cosmetic cleanups last.
 - If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication), `vulture`/`knip`/`ts-prune` (dead code). Verify dead-code reports against dynamic uses (reflection, string dispatch, exports) before deleting. Never install tools.
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.

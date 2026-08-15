@@ -110,6 +110,7 @@ Review the following:
 - Missing contribution guidelines or development workflow documentation
 
 Instructions:
+- Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation.
 - If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform). Never install tools.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.
 - Verify that documented procedures match what the code and configuration actually do.

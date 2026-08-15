@@ -87,6 +87,7 @@ Review the following:
 - Inconsistent patterns across the test suite
 
 Instructions:
+- Fix order: false-confidence tests (assert nothing, assert mock returns mock) > flaky tests (shared state, timing, ordering) > critical-path coverage gaps > test design and maintainability.
 - If available, use: coverage (`coverage.py`, `cargo-llvm-cov`, `c8`/`nyc`) to find untested paths, mutation testing (`mutmut`, `cargo-mutants`, Stryker) to find tests that assert nothing. Coverage is a map of gaps, not a quality score. Never install tools.
 - Read the actual tests, not just the test names.
 - Verify that assertions match the described test intent.

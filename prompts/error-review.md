@@ -95,6 +95,7 @@ Review the following:
 - Missing handling for concurrent modification or stale data
 
 Instructions:
+- Fix order: silent failures (errors discarded causing data loss or incorrect behavior) > missing resource cleanup on error paths > missing timeouts on external calls > error context and message quality. Hardening and consistency last.
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.
 - Consider what happens when every external call fails. Does the system handle it gracefully?

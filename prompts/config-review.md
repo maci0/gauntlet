@@ -99,6 +99,7 @@ Review the following:
 - Missing configuration change audit trail
 
 Instructions:
+- Fix order: secrets in config files or version control > dangerous defaults in production > missing validation of required values > inconsistent config patterns.
 - If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files). Never install tools.
 - Inspect actual configuration files, environment setup, and how configuration is consumed in code.
 - Trace configuration values from source to usage to verify correctness.
