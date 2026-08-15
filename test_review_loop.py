@@ -548,6 +548,7 @@ def test_review_sets_reference_real_prompts():
         f"bundled prompts missing from every set: {bundled - in_sets}"
     )
     assert not set(rl.REVIEW_SETS) & set(rl.DYNAMIC_SETS), "dynamic names are reserved"
+    assert rl.SUGGEST not in rl.REVIEW_SETS and rl.SUGGEST not in rl.DYNAMIC_SETS
     assert not bundled & set(rl.REVIEW_SETS), "a set must not shadow a review name"
     assert not bundled & set(rl.DYNAMIC_SETS)
 
@@ -715,6 +716,64 @@ def test_unknown_names_suggest_close_matches():
         assert "did you mean 'claude'?" in str(e), e
     else:
         raise AssertionError("expected ArgumentTypeError")
+
+
+def test_reviews_suggest_end_to_end():
+    """suggest: agent sees descriptions only, reasons are shown, and the
+    loop runs exactly the usable suggestions."""
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = root / "bin", root / "proj", root / "prompts"
+        for d in (bin_dir, proj, prompts):
+            d.mkdir()
+        _tree(prompts, {
+            "stub-review.md": "Role.\n\nYour goal is stub things.\n\nBODY-MARKER\n",
+            "other-review.md": "Role.\n\nYour goal is other things.\n",
+        })
+        prompt_log = root / "prompts-received.txt"
+        stub = bin_dir / "agy"
+        stub.write_text(
+            "#!/bin/sh\n"
+            f'printf "%s\\n===CALL===\\n" "$3" >> {prompt_log}\n'
+            'echo "narration to ignore"\n'
+            'echo "RELEVANT: stub: found stub material here"\n'
+            'echo "RELEVANT: bogus: does not exist"\n'
+        )
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--reviews", "suggest", "--prompt-dir", str(prompts),
+             "--dir", str(proj), "--timeout", "30s"],
+            env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        # suffixless 'stub' resolved, bogus dropped, reason displayed
+        assert "found stub material here" in out, out
+        assert "Ignoring unknown suggestions: bogus" in out, out
+        assert "proceeding without confirmation" in out, out
+        assert "Running stub-review" in out and "Running other-review" not in out, out
+        # the suggestion call got names + descriptions, never prompt bodies
+        suggest_prompt = prompt_log.read_text().split("===CALL===")[0]
+        assert "stub-review: stub things" in suggest_prompt
+        assert "other-review: other things" in suggest_prompt
+        assert "BODY-MARKER" not in suggest_prompt, "suggest must not see prompt bodies"
+        assert "do NOT carry out any of the reviews" in suggest_prompt
+
+
+def test_reviews_suggest_guards():
+    script = Path(__file__).resolve().parent / "review-loop.py"
+    for argv in (["--reviews", "suggest,sec-review"],
+                 ["--dry-run", "--reviews", "suggest"],
+                 ["--list", "--reviews", "suggest"],
+                 ["--exclude", "suggest"]):
+        p = subprocess.run(
+            [sys.executable, str(script), "--agents", "claude", *argv],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 2, (argv, p.stderr)
 
 
 def test_doctor_tables_cover_every_bundled_prompt():

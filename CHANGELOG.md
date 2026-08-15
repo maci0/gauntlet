@@ -6,6 +6,15 @@ breaking change.
 
 ## Unreleased
 
+### Added
+
+- `--reviews suggest`: one agent from `--agents` inspects the repo against
+  the review catalog (names and descriptions only, never prompt bodies, under
+  a classification-only rule), lists the relevant reviews with a reason each,
+  asks for confirmation on a terminal (non-interactive runs proceed), then
+  the loop runs exactly those. Composable with `--exclude`, not with other
+  `--reviews` values or `--list`/`--dry-run`.
+
 ### Changed
 
 - Review sets now cover every bundled prompt (enforced by a test):

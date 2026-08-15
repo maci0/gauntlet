@@ -88,6 +88,14 @@ names, and `--list` prints their current members:
 Members missing from the prompt directory are skipped, so a set stays usable
 with a custom `--prompt-dir`.
 
+`--reviews suggest` (the keyword alone, not composable) asks one agent from
+`--agents` to inspect the repo against the review catalog (names and
+descriptions only, never the prompt bodies, and with an explicit
+classification-only rule so nothing gets fixed during triage), lists the
+relevant reviews with a one-line reason each, asks for confirmation on a
+terminal (non-interactive runs proceed), then loops over exactly those.
+`--exclude` still applies afterwards.
+
 Repeats are weight. `--reviews all,sec-review,sec-review` schedules every review
 once and `sec-review` three times per loop; `--reviews quick,quick` runs each of
 quick's members twice. Since each loop is shuffled, the extra slots spread out
@@ -146,6 +154,10 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
 
 # short flags; the -review suffix is optional in -r/-x
 ./review-loop.py -a claude -r sec,deps -x fuzz -t 1h
+
+# have an agent inspect the repo and propose the relevant reviews
+# (lists them with reasons, asks for confirmation, then loops over those)
+./review-loop.py --reviews suggest
 
 # let agents attempt big changes instead of declining them
 ./review-loop.py --agents claude --reviews arch-review --yolo
