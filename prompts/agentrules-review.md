@@ -21,6 +21,7 @@ Review the following:
 3. Token economy
 - Length disproportionate to the project: rules files are loaded whole, every session
 - Narrative prose where a terse rule or table instructs equally well
+- Phrasing longer than needed: where fewer words carry the same meaning, the shorter version replaces the longer
 - Repetition within the file or across coexisting rule files
 - Verbose boilerplate headers, banners, or emphasis that add tokens without behavior
 

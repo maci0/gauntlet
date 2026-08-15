@@ -21,6 +21,7 @@ Review the following:
 3. Token economy and progressive disclosure
 - Everything inlined in SKILL.md instead of split into referenced files loaded on demand
 - Long prose where a table or list carries the same instruction
+- Phrasing longer than needed: where fewer words carry the same meaning, the shorter version replaces the longer
 - Duplicated content between the skill body and its reference files
 - Boilerplate sections that add tokens without changing agent behavior
 

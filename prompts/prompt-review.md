@@ -44,6 +44,7 @@ Review the following:
 
 7. Redundancy and length
 - The same instruction repeated in multiple sections, diluting all copies
+- Phrasing longer than needed: where fewer words carry the same meaning, the shorter version replaces the longer
 - Boilerplate sections that add tokens without changing behavior
 - Critical rules buried mid-file where long-context attention is weakest; the load-bearing constraints belong early or late
 - Dead sections the execution environment strips or overrides anyway, kept without a stated reason
