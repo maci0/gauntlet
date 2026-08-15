@@ -12,6 +12,13 @@ they are listed under Changed.
 
 ### Added
 
+- `threat-review` builds and maintains a living threat model in the repo
+  (`docs/THREAT_MODEL.md` plus `SECURITY.md` accuracy): attack-surface
+  inventory, trust boundaries, assets, STRIDE-style threats per boundary,
+  mitigations mapped to code, and abuse cases with code-level evidence. It
+  writes security documentation only: vulnerabilities are recorded and
+  handed to sec-review, never fixed or demonstrated here. Joins `security`.
+
 - `specs-review` covers PRDs, ADRs, RFCs, and design docs as documents:
   drift against the implementation, ADR structure and lifecycle,
   requirement testability, traceability, and redundancy across documents

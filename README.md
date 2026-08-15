@@ -1,6 +1,6 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 38 specialized review prompts (security,
+An auto-fix review loop for codebases: 39 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
@@ -65,6 +65,7 @@ How a single pass works:
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | [`specs-review`](prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
+| [`threat-review`](prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
 | [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
 | [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
@@ -80,7 +81,7 @@ names, and `--list` prints their current members:
 | `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
 | `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop |
-| `security` | sec, deps, privacy, config, fuzz, llm |
+| `security` | sec, deps, privacy, config, fuzz, llm, threat |
 | `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
 | `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |

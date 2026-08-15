@@ -71,7 +71,8 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 REVIEWS_WITHOUT_TOOLS = (
     "agentrules-review", "design-review", "dst-review", "error-review",
     "functionality-review", "mobile-review", "privacy-review",
-    "prompt-review", "skills-review", "specs-review", "uislop-review",
+    "prompt-review", "skills-review", "specs-review", "threat-review",
+    "uislop-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -179,7 +180,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     ),
     "security": (
         "sec-review", "deps-review", "privacy-review", "config-review",
-        "fuzz-review", "llm-review",
+        "fuzz-review", "llm-review", "threat-review",
     ),
     "frontend": (
         "ux-review", "a11y-review", "uislop-review", "i18n-review",
