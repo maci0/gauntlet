@@ -4,7 +4,7 @@ Notable changes per release. Review names (the `*-review.md` stems consumed by
 `--reviews`) are the user-facing contract: renaming or removing one is a
 breaking change.
 
-## Unreleased
+## 0.8.0
 
 ### Changed
 
