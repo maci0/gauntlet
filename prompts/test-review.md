@@ -11,6 +11,7 @@ Review the following:
 - Critical business logic paths not exercised by tests
 - Error handling and edge cases not covered
 - Boundary conditions not tested
+- Tests that only feed valid data. Missing invalid inputs, and the transition where valid data becomes invalid. Exhaustive means both spaces, and the boundary
 - State transitions not verified
 - Integration points tested only with mocks
 - Configuration variations not tested
@@ -24,6 +25,7 @@ Review the following:
 - Tests that always pass regardless of code changes
 - Snapshot tests that are auto-updated without review
 - Tests with commented-out or skipped assertions
+- Suite treated as proof that bugs are absent. A test or fuzzer can prove presence, not absence. Missing assertions that encode the expected properties (production assertions belong to code-review; here the test does not encode them)
 
 3. Flaky and unreliable tests
 - Tests that depend on timing, ordering, or external state
@@ -39,6 +41,7 @@ Review the following:
 - Duplicated test setup across multiple test files
 - Missing or inconsistent use of test helpers and fixtures
 - Tests that are hard to understand without reading implementation
+- A non-trivial test file with no goal or methodology at the top, so a reader must reverse-engineer the approach from the cases
 - Poor test naming that does not describe the scenario or expectation
 - Deeply nested test structures that obscure intent
 - Excessive mocking that makes tests brittle to refactoring

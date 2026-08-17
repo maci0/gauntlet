@@ -41,6 +41,8 @@ Review the following:
 
 4. Fuzz harness quality
 - Harnesses that catch crashes but miss logic bugs (no assertions on output validity)
+- Harness that relies on the fuzzer alone, with no assertions encoding invariants. A fuzzer proves presence of bugs, not absence. Assertions convert correctness bugs into liveness bugs the fuzzer can see
+- Missing pair assertions across a trust or persistence boundary the harness crosses (assert before write and after read)
 - Harnesses that do not exercise error handling paths
 - Missing differential fuzzing where multiple implementations exist
 - Fuzz targets that are too narrow (single field) or too broad (entire request)

@@ -60,6 +60,8 @@ Review the following:
 - No always-checkable invariants/assertions the simulator can verify after each simulated step
 - Missing model/oracle to compare simulated behavior against expected (linearizability, consistency, conservation)
 - Correctness checked only via coarse end-to-end assertions, not per-step state validation
+- Simulator treated as a substitute for understanding rather than the last line of defense. Build the mental model first, encode it as paired assertions, write comments that justify the model to a reviewer, then use the simulator to find holes in that model
+- A property asserted on only one side of a simulated boundary (before write but not after read; on send but not on receive). Pair them. (code-review owns production assertion density; here own what the simulator can check each step)
 
 9. Architecture and separation for simulability
 - Deterministic core logic not separated from nondeterministic edges (time, I/O, randomness at the boundary; pure decisions inside)

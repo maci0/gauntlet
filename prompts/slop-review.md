@@ -56,7 +56,8 @@ Review the following:
 (Necessity proofs and larger deletions belong to minimalism-review; here target local, obvious machinery whose removal needs no deep proof.)
 
 8. Naming that fights convention
-- Overlong narrative identifiers where the file uses terse locals (`temporary_intermediate_result_list` next to `buf`, `tmp`)
+(code-review owns units-last, equal-length related names, unabbreviated names, and caller-prefixed helpers. Do not shorten those back to match terse neighbors.)
+- Overlong narrative identifiers that add no information (`temporary_intermediate_result_list` for a list of results)
 - Names inconsistent with the codebase's casing/prefix conventions
 - Generic filler names (`data2`, `newHelper`, `processStuff`, `myVar`) where a precise name is easy
 - Symbols whose name contradicts what they do

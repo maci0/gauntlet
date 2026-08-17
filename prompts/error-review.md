@@ -10,11 +10,13 @@ Review the following:
 - Inconsistent error propagation strategies across modules (throw vs return vs callback vs result type)
 - Errors swallowed inside catch-all handlers
 - Functions that can fail but do not signal failure to callers
+- Signaled non-fatal errors with no handler on any path. Incorrect handling of explicitly signaled errors is how most catastrophic production failures start
 - Missing error propagation in async chains, promises, or goroutines
 - Error handling that differs between similar code paths without justification
 
 2. Error types and classification
 - No distinction between recoverable and unrecoverable errors
+- Programmer errors (broken invariants, impossible states) handled as recoverable operating errors, or the reverse: expected operating errors crashed via assert. Assertions crash on corrupt code; operating errors are handled. (code-review owns adding the assertions; here own the mishandling)
 - Missing error codes or error types for programmatic handling
 - Generic error types used where specific types would aid handling (e.g., "Error" instead of "NotFoundError", "ValidationError")
 - Inconsistent error class hierarchy or error code scheme

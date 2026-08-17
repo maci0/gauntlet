@@ -14,6 +14,8 @@ Review the following:
 - Inconsistent file naming conventions across the project
 - Missing or misleading directory names
 - Entrypoints that are hard to find or ambiguously named
+- File order that buries the entry point: `main` or the public constructor not near the top. A file is read top-down on first pass
+- Type files that mix methods before fields, or nest a complex type that should be top-level. Prefer fields, then nested types, then methods
 - Configuration files scattered instead of centralized (note only; config-review owns config layout)
 - No clear convention for where new code should go
 

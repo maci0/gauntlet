@@ -7,6 +7,12 @@ Review the following:
 1. Inconsistencies
 (network API consistency belongs to api-review; published library surface to sdk-review; here own in-module naming and pattern consistency.)
 - Naming inconsistencies
+- Units or qualifiers first (`max_latency_ms`) or missing. Put units last, most-significant word first (`latency_ms_max`, `latency_ms_min`) so related names group and sort
+- Related names of unequal length (`src`/`dest`) where equal length would line up in copies and slices (`source`/`target`)
+- Abbreviated names (`buf`, `ctx`, `req`, `idx`) except a primitive integer in a sort or matrix. Spell the word
+- Generic names that hide role (`allocator` where `gpa`/`arena` would tell the reader whether to free)
+- Overloaded names that mean different things in different modules
+- Helper or callback not prefixed with its caller (`read_sector_callback` vs a free-standing `on_done`)
 - API/design inconsistencies inside a module
 - Style inconsistencies
 - Different patterns used for the same problem
@@ -38,6 +44,11 @@ Review the following:
 5. Refactoring opportunities
 (arch-review owns module-scale separation of concerns. Here own function-scale structure inside one file.)
 - Functions that are too long or do too many things
+- Functions longer than ~70 lines (the scroll discontinuity). Split so the parent owns all branching and mutable state, and helpers are non-branchy and preferably pure
+- Recursion where a bounded loop would make the bound obvious. Recursion hides whether execution is bounded
+- Control flow scattered across helpers. Push `if`s up and `for`s down: one function owns switches and cases; leaves should not care about control flow
+- Compound boolean conditions and `else if` chains that hide cases. Split into nested `if`/`else` trees so every branch is visible, and consider whether each `if` needs a matching `else` that handles or asserts the negative space
+- Invariants stated as negations (`index >= length`) where the positive form (`index < length`) is the natural loop condition
 - Poor separation of concerns
 - Confusing control flow
 - Weak naming
@@ -55,6 +66,13 @@ Review the following:
 - Excessive nesting
 - Unhelpful abstractions
 - Patterns that obscure rather than clarify
+- Library calls that rely on defaulted options (`fn(x)` or `fn(x, .{})`) instead of passing options explicitly at the call site. Defaults can change under you
+- Two same-typed arguments (two integers, two strings, two paths) that can be swapped at the call site without a compile error. Name them (options struct, kwargs)
+- Aliases or extra copies of a variable that can drift from the original
+- Variables introduced far from their first use, or left in scope after their last use (place-of-check far from place-of-use)
+- Variables declared wider than their use, or more names in scope than the function needs. Smallest possible scope, fewest variables
+- Allocation and the matching `defer`/`finally`/`using` not grouped together, so leaks are hard to spot
+- Function signatures that add viral dimensionality at the call site. Prefer simpler returns: `void` over `bool`, `bool` over an integer, an integer over optional, optional over a throwing/error union, unless the extra case is real
 
 7. Error handling patterns
 (Deep error-handling/resilience analysis belongs to error-review. Do not change error types, propagation, retries, or cleanup; here only make inconsistent patterns match an existing one in the same module.)
@@ -69,6 +87,11 @@ Review the following:
 - Implicit contracts between modules that are not enforced by types or assertions
 - Optional values treated as always present
 - Inconsistent use of type narrowing or discriminated unions
+- Architecture-sized integers (`usize`, `size_t`, `int`, `long`, `number`). Use explicitly-sized types (`u32`, `uint32_t`, `i64`) for everything; width is part of the contract
+- `index`, `count`, and `size` treated as interchangeable. They are distinct: index is 0-based, count is 1-based (index to count adds one), size is count times the unit. Put the qualifier in the name
+- Division whose rounding mode is implicit (`/` or `//` when exact, floor, and ceil all mean different things). Name the intent
+- Large values (more than ~16 bytes) passed by value when the callee must not copy them. Pass a const pointer or const reference
+- Large structs returned then moved into place when they can be constructed in-place via an out-pointer. In-place init is viral: if one field is, the container should be too
 
 9. Risky areas
 (functionality-review owns intended-vs-actual and documented edge cases. Here only a local logic error you can prove from the function body without consulting docs: inverted condition, swapped arguments, off-by-one.)
@@ -77,9 +100,25 @@ Review the following:
 - Race conditions or shared mutable state (note only; concurrency-review owns the fix)
 - Assumptions about ordering, uniqueness, or data shape that are not validated
 - Code that works by coincidence rather than by design
+- Loops or queues with no fixed upper bound and no assertion that they cannot terminate (or that they must). Everything has a limit; violations should fail fast
+- Buffer not fully used, with padding or unused tail left uninitialized (buffer bleed). When the unread tail can leak secrets or prior contents, note only; sec-review owns the disclosure
+- Function that asserts preconditions then suspends or yields, so those assertions may be false after resume (note only; concurrency-review owns the suspend)
+
+10. Assertions and programmer errors
+(error-review owns operating errors that must be handled. test-review owns test assertions. fuzz-review owns harness assertions. slop-review removes speculative guards. Here own production assertions that encode the author's mental model. Add an assertion only for a property the function already requires or a concrete path can violate.)
+- Missing assertions on arguments, return values, preconditions, postconditions, or invariants. A function must not operate blindly on data it has not checked
+- Assertion density well below two per non-trivial function
+- A property enforced on only one side of a boundary (assert before write but not after read; assert on send but not on receive). Pair assertions
+- Compound `assert(a && b)` instead of `assert(a); assert(b);`. Split asserts are easier to read and fail more precisely
+- Single-line implication not written as `if (a) assert(b)`
+- Missing compile-time checks on constants, type sizes, or design invariants the compiler could reject before run
+- Only the valid/happy space asserted; the invalid space never asserted. Bugs live on the valid/invalid boundary
+- Programmer errors (broken invariants, impossible states) handled as recoverable operating errors, or the reverse: expected operating errors crashed via assert. Assertions crash; operating errors are handled
+- A surprising, load-bearing condition explained only in a comment where a blatantly-true assertion would enforce it
 
 Instructions:
-- Fix order: type-safety gaps and missing null checks with a concrete path > duplication causing drift > inconsistent patterns. Cosmetic cleanups last.
+- Fix order: unbounded loops/queues and missing invariant assertions > type-safety gaps and missing null checks with a concrete path > index/count/size mixups and implicit division rounding > duplication causing drift > inconsistent patterns. Cosmetic cleanups last.
+- Do not add speculative assertions "for safety". An assertion needs a property the function already requires or a concrete path that can violate it.
 - If available, use: the project's own linter first (`ruff`, `clippy`, `eslint`), `jscpd` (duplication). `vulture`/`knip`/`ts-prune` may confirm an unused import in a file you already have open; do not treat their project-wide reports as a deletion list (minimalism-review). The linter's own config, strictness, and suppressions belong to lint-review. Never install tools.
 - Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Do not rewrite tests (test-review).

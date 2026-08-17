@@ -76,6 +76,7 @@ Review the following:
 - Output that mixes data and status messages on stdout
 - Missing idempotent or --dry-run modes for write operations
 - Commands that behave differently when stdout is not a TTY
+- Scripts and non-interactive invocations using short flags (`-f`) instead of long form (`--force`). Short flags are for humans at a TTY; scripts should spell the flag out
 
 9. Consistency across the project
 - Terminology consistency across all commands and documentation

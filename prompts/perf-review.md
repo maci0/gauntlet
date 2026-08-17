@@ -19,15 +19,18 @@ Review the following:
 - Cache-hostile data layout: pointer-chasing structures, poor locality, false sharing across threads, array-of-structs where only a few fields are hot (struct-of-arrays would cut loads and cache-line waste)
 - Missing cleanup or disposal of resources
 - Excessive string concatenation in hot paths
+- Dynamic allocation (or free-and-realloc) after startup on a latency-sensitive path. Prefer memory reserved at init (arena, pool, static buffers) so latency and use-after-free stay predictable. (design-review owns whether the system was designed for static allocation)
 
 3. I/O and network
 - Sequential I/O that could be parallelized or batched
 - Missing connection pooling or reuse
 - Unbatched database queries or N+1 query patterns
+- Network, disk, memory, or CPU costs not amortized: one syscall, query, or allocation per item where a batch would collapse them
 - Large payloads transferred when subsets would suffice
 - Missing or incorrect caching of remote data
 - Repeated file reads that could be cached
 - Missing timeouts or retry budgets on external calls (note only; error-review owns timeouts and retries)
+- Work driven by reacting to each external event instead of running at the program's own pace and batching. Event-sized pieces force context switches and destroy bounds on work per period. (design-review owns the pacing architecture)
 
 4. Concurrency and parallelism
 - Blocking operations on critical paths
@@ -65,6 +68,9 @@ Review the following:
 - Serialization or deserialization on every request when avoidable
 - Regex compilation or reflection in hot paths
 - Excessive allocations in request handlers
+- Hot loop left as a method on a fat object (`self.field` in the inner loop) so the compiler must prove field-stability. Extract to a stand-alone function with primitive arguments, no `self`
+- Control-plane work (validation, assertions, metadata) mixed into the data plane so checks cannot be amortized by batching
+- Optimization aimed at CPU when the bounding resource is network, disk, or memory (after compensating for how often each is used). Order: network, then disk, then memory, then CPU
 - Data-parallel numeric/byte loops (math kernels, encode/decode, hashing, search, pixel/audio/tensor ops) left scalar where SIMD/vectorization would apply
 - Code shaped so the compiler cannot auto-vectorize: loop-carried dependencies, aliasing/non-`restrict` pointers, non-contiguous or misaligned access, branches in the loop body
 - Array-of-structs layouts blocking vectorization where struct-of-arrays would enable it
@@ -87,6 +93,7 @@ Instructions:
 - Fix order: unbounded growth (no pagination, no limit, accumulating without bound) > N+1 queries and repeated redundant work > hot-path allocations and compilation in loops > cold-path and at-scale-only issues.
 - If available, use: `hyperfine` (command benchmarks), `perf`/flamegraphs (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations). Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
+- When proposing a design-level performance change, sketch the four resources (network, disk, memory, CPU) times bandwidth and latency, and name which one the change buys. Sketches beat profiles in the design phase, which is when the 1000x wins are available.
 - Prioritize hot paths and frequently executed code over cold paths.
 - Consider the expected scale and usage patterns of the application.
 - Distinguish between issues that matter now and issues that will matter at scale.

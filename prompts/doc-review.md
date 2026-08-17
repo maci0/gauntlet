@@ -31,6 +31,8 @@ Review the following:
 - Implicit assumptions not documented
 - Invariants not documented
 - Important side effects not documented
+- Missing "why" on a non-obvious decision: the rationale, not the mechanism. Code alone is not documentation
+- A surprising, load-bearing invariant or compile-time constraint mentioned nowhere, so a reviewer cannot check the author's model. (code-review owns adding the assertion; here own the missing rationale)
 
 5. Misleading naming or documentation
 - Names that conflict with documented behavior
@@ -43,6 +45,7 @@ Review the following:
 - Mixed terminology for the same concept
 - Inconsistent parameter descriptions
 - Inconsistent formatting for examples or code blocks
+- Block comments that are not sentences (no capital, no stop) in files that otherwise write prose comments. End-of-line comments may stay phrases
 
 7. Clarity and readability
 - Unclear or vague language

@@ -13,6 +13,9 @@ Review the following:
 
 2. Strictness and configuration quality
 - Strict modes off with no recorded reason: mypy/pyright non-strict, tsconfig without `strict`, compiler warnings not raised to errors where the codebase is clean enough to allow it
+- Compiler or typechecker not at the strictest setting the tree can already pass. Appreciate every warning; promote them to errors once the tree is clean
+- No hard line-length cap, or a cap above 100 columns. Hard-limit every line to 100 so two copies of the code fit side-by-side. Use it up. Never go beyond
+- Multi-line `if`/`else` without braces (the goto-fail class). A formatter or lint rule should require braces unless the statement fits on one line
 - Valuable rule groups disabled wholesale (bug-prone, correctness, security categories) while style-only rules run
 - Severity downgrades that turn real defects into ignorable noise (errors mapped to warnings nobody reads)
 - Config that contradicts the code's actual conventions, forcing suppressions to accumulate

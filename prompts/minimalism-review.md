@@ -26,6 +26,7 @@ Review the following:
 - Generic/parameterized code invoked with exactly one type or value everywhere
 - Layers that only forward calls downward unchanged
 - "Manager", "Provider", "Strategy" machinery serving a single fixed case
+- Abstractions added as if they were free. Every abstraction has a cost and a leak risk. Prefer a minimum of excellent abstractions that earn their keep on this domain, not a stack of thin ones
 
 3. Reinvented wheels
 - Hand-rolled implementations of stdlib functions (parsing, formatting, collections, retries, path handling, date math)

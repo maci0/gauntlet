@@ -45,6 +45,7 @@ Review the following:
 - Async methods that are not truly async (just wrapping sync code in Task.Run)
 - Mixed sync and async code creating implicit thread pool dependencies
 - Async lambdas or closures capturing mutable state from the enclosing scope
+- Function that asserts preconditions then awaits or yields, so those assertions may be false after resume. Keep the function running to completion, or re-check after each suspend. (code-review owns the assertion; here own the suspend)
 
 5. Thread and task lifecycle
 - Threads or goroutines spawned without tracking or cleanup

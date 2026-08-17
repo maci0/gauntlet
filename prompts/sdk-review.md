@@ -15,6 +15,9 @@ Review the following:
 - Methods that expose internal implementation details to consumers
 - Missing builder, options, or fluent patterns for complex configuration
 - Unclear distinction between required and optional parameters
+- Two same-typed parameters that can be swapped at the call site. Use named arguments or an options struct. A function taking two `u64`/`int`/`string` of different meaning must name them
+- A nullable argument whose `null` at the call site has no name, so the meaning of null is unclear
+- Callbacks or completion handlers not last in the parameter list. They are invoked last; the signature should mirror control flow
 - Overloaded methods that create ambiguity
 - Missing or inconsistent support for async and sync variants
 

@@ -22,6 +22,9 @@ Review the following:
 - Over-design: complexity, indirection, or flexibility the problem does not justify
 - Decisions made implicitly that should have been deliberate
 - Reversible vs irreversible decisions, and whether risky irreversible ones were justified
+- Safety, performance, and developer experience traded in the wrong order. Those are the design goals, in that order; elegance bought by giving up safety is the wrong trade
+- Known showstoppers deferred as technical debt (unbounded structures, exponential algorithms, memcpy on a latency path). Solve them in design; a problem found in production is many times more expensive
+- "Simple" as the first attempt rather than a revision that actually satisfies safety and performance together. Simplicity is the hardest pass, not the first sketch
 
 2. Alternatives not taken
 - Simpler approaches that would meet the same requirements
@@ -61,6 +64,9 @@ Review the following:
 - Caching and derived-data strategy: invalidation, staleness, coherence
 - Lifecycle and ownership of resources, connections, and long-lived state
 - Failure and recovery design at the system level (what happens when a component is down)
+- Control flow driven by reacting to each external event instead of the program running at its own pace and batching. External-event-driven control flow is harder to bound and to keep safe. (perf-review owns missing batching at a call site)
+- No control-plane / data-plane split where batching would let assertions stay dense without losing throughput
+- Memory usage not designed up front: the system allocates and frees after init as a matter of course, so latency and use-after-free stay unmodeled. (perf-review owns a post-init alloc on a proven hot path)
 
 7. Scalability and evolution
 (perf-review owns implementation bottlenecks. Here own bottlenecks baked into the chosen approach.)

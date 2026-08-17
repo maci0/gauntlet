@@ -36,12 +36,12 @@ How a single pass works:
 | [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
 | [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
 | [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
-| [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety |
+| [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
 | [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
 | [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
 | [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
-| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk |
-| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection |
+| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
+| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
 | [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
 | [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
 | [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
@@ -50,12 +50,12 @@ How a single pass works:
 | [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
 | [`idempotency-review`](prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
 | [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
-| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement |
+| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement, line measure |
 | [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
 | [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
-| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths (server and runtime) |
+| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
 | [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
 | [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |

@@ -57,6 +57,8 @@ Review the following:
 - Fragile parsing, unquoted variables, platform-specific commands with no fallback
 - Logic embedded in CI YAML that should be a checked-in, testable script
 - Duplicated build logic across local scripts and CI that can diverge
+- Glue scripts in a second language (Bash or one-liner Python) where the project's primary language would give types and portability. The right tool is often the one already in use
+- A specialized tool introduced for a job the existing toolchain already does. Tools have a higher cost than people budget; a small standardized toolbox beats an array of specialized ones
 
 7. Cross-platform and environment coverage
 - Assumes one OS/arch; breaks on others the project claims to support

@@ -39,6 +39,7 @@ Review the following:
 - Excessive data returned in API responses
 - Missing redaction in debug or diagnostic output
 - Sensitive data stored in plaintext
+- Buffer bleed: a buffer not fully used, padding or unused tail left uninitialized, leaking adjacent memory or prior contents (Heartbleed-class underflow). (code-review owns uninitialized padding that cannot leak; here own the disclosure)
 
 5. Cryptography
 - Use of weak or deprecated algorithms (MD5, SHA1 for security, DES, RC4)

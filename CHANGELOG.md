@@ -2,6 +2,20 @@
 
 Notable changes per release.
 
+## 0.11.0
+
+### Changed
+
+- Review checklists absorb TigerBeetle Tiger Style
+  (https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md),
+  distributed into the reviews that already own each concern:
+  assertion density and pairing, bounds on loops and queues,
+  explicitly-sized types, ~70-line functions, push-ifs-up,
+  batching and resource-order sketches, static allocation,
+  programmer-vs-operating errors, exhaustive valid/invalid tests,
+  zero-dependency default, strict compiler warnings and ~100-column
+  measure, named arguments, and why-comments. No new review name.
+
 ## 0.10.0
 
 ### Added
