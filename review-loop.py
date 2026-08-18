@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "0.12.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.13.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -96,6 +96,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
     "concurrency-review": ("valgrind",),
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
+    "container-review": ("hadolint", "kube-score", "kubesec", "trivy"),
     "db-review": ("sqlfluff",),
     "deps-review": ("osv-scanner", "pip-audit", "deptry", "cargo-audit", "cargo-udeps",
                     "cargo-deny", "depcheck", "knip", "syft", "grype", "cosign"),
@@ -197,6 +198,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     "shipping": (
         "release-review", "pkg-review", "build-review", "deps-review",
         "doc-review", "cli-review", "sdk-review", "infra-review",
+        "container-review",
     ),
 }
 
@@ -293,6 +295,10 @@ class ReviewResult:
     tool: ToolSpec
     status: str  # "ok", "fail", "timeout", "interrupted", "skipped"
     exit_code: int | None = None
+    # None when git is unavailable/not a repo; otherwise lines this review
+    # added/removed in the working tree, measured via git diff --shortstat.
+    insertions: int | None = None
+    deletions: int | None = None
 
 
 @dataclass
@@ -313,6 +319,14 @@ class Stats:
     @property
     def total_count(self) -> int:
         return len(self.results)
+
+    @property
+    def total_insertions(self) -> int:
+        return sum(r.insertions for r in self.results if r.insertions is not None)
+
+    @property
+    def total_deletions(self) -> int:
+        return sum(r.deletions for r in self.results if r.deletions is not None)
 
     def tool_summary(self) -> dict[str, dict[str, int]]:
         summary: dict[str, dict[str, int]] = {}
@@ -358,7 +372,7 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
     prompt_dir = prompt_dir.resolve()
     project_seen: set[str] = set()
     for root, dirs, files in os.walk(project):
-        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
         for name in sorted(n for n in files if n.endswith("-review.md")):
             f = Path(root) / name
             # is_file() is False for FIFOs and devices; read_no_follow enforces
@@ -1017,6 +1031,36 @@ class Runner:
         # once in the pool.
         self.session_started: set[ToolSpec] = set()
         self.script_start = time.monotonic()
+        # Fixed commit to diff against for the lines-changed stats. None
+        # (no repo, or git missing) just turns those stats off everywhere.
+        self.git_baseline = self._git_head()
+
+    def _git_head(self) -> str | None:
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return result.stdout.strip() if result.returncode == 0 else None
+
+    def _diff_totals(self) -> tuple[int, int] | None:
+        """Cumulative (insertions, deletions) in the worktree since git_baseline."""
+        if self.git_baseline is None:
+            return None
+        try:
+            result = subprocess.run(
+                ["git", "diff", "--shortstat", self.git_baseline],
+                capture_output=True, text=True, timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if result.returncode != 0:
+            return None
+        ins = int(m.group(1)) if (m := re.search(r"(\d+) insertion", result.stdout)) else 0
+        dele = int(m.group(1)) if (m := re.search(r"(\d+) deletion", result.stdout)) else 0
+        return ins, dele
 
     def _filter_reviews(self) -> list[str]:
         self.prompt_files = discover_reviews(self.args.prompt_dir)
@@ -1264,6 +1308,7 @@ class Runner:
             return
 
         start = time.monotonic()
+        before_diff = self._diff_totals()
         log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.args.timeout)})")
         sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
@@ -1327,21 +1372,28 @@ class Runner:
         elapsed = time.monotonic() - start
         self.interrupt_count = 0
 
+        after_diff = self._diff_totals()
+        ins = dele = None
+        if before_diff is not None and after_diff is not None:
+            ins = max(0, after_diff[0] - before_diff[0])
+            dele = max(0, after_diff[1] - before_diff[1])
+        lines_note = f", +{ins}/-{dele} lines" if ins or dele else ""
+
         if timed_out:
-            self.stats.add(ReviewResult(review, spec, "timeout"))
+            self.stats.add(ReviewResult(review, spec, "timeout", insertions=ins, deletions=dele))
             return
 
         if self.stopping and (rc < 0 or rc in (130, 143)):
-            log(f"Interrupted: {review} ({spec.label()}) after {fmt_duration(elapsed)}")
-            self.stats.add(ReviewResult(review, spec, "interrupted", rc))
+            log(f"Interrupted: {review} ({spec.label()}) after {fmt_duration(elapsed)}{lines_note}")
+            self.stats.add(ReviewResult(review, spec, "interrupted", rc, insertions=ins, deletions=dele))
         elif rc != 0:
-            log(f"FAILED: {review} ({spec.label()}) after {fmt_duration(elapsed)} — exit code {rc}")
+            log(f"FAILED: {review} ({spec.label()}) after {fmt_duration(elapsed)} — exit code {rc}{lines_note}")
             if self._retry_review(review, spec, exclude):
                 return
-            self.stats.add(ReviewResult(review, spec, "fail", rc))
+            self.stats.add(ReviewResult(review, spec, "fail", rc, insertions=ins, deletions=dele))
         else:
-            log(f"Done: {review} ({spec.label()}) in {fmt_duration(elapsed)}")
-            self.stats.add(ReviewResult(review, spec, "ok", 0))
+            log(f"Done: {review} ({spec.label()}) in {fmt_duration(elapsed)}{lines_note}")
+            self.stats.add(ReviewResult(review, spec, "ok", 0, insertions=ins, deletions=dele))
 
     def handle_signal(self, signum, frame) -> None:
         self.stop_signal = signum
@@ -1374,6 +1426,8 @@ class Runner:
             if n:
                 print(f"  {label}: {n}")
         print(f"Total time: {fmt_duration(total)}")
+        if any(r.insertions is not None for r in self.stats.results):
+            print(f"Lines changed: +{self.stats.total_insertions} -{self.stats.total_deletions}")
 
         # Per-tool breakdown
         tool_summary = self.stats.tool_summary()
@@ -1559,6 +1613,7 @@ class Runner:
                 order = list(self.reviews)
                 random.shuffle(order)
                 loop_start = time.monotonic()
+                loop_before = self._diff_totals()
                 for r in order:
                     if self.stopping:
                         return
@@ -1567,10 +1622,15 @@ class Runner:
                         self.run_commit()
                 self.loop_count += 1
                 loop_elapsed = time.monotonic() - loop_start
+                loop_after = self._diff_totals()
+                loop_lines = ""
+                if loop_before is not None and loop_after is not None:
+                    loop_lines = (f", +{max(0, loop_after[0] - loop_before[0])}"
+                                  f"/-{max(0, loop_after[1] - loop_before[1])} lines")
                 print()
                 log(
                     f"=== Loop {self.loop_count} complete in {fmt_duration(loop_elapsed)} "
-                    f"({self.stats.total_count} reviews, {self.stats.fail_count} failures) ==="
+                    f"({self.stats.total_count} reviews, {self.stats.fail_count} failures{loop_lines}) ==="
                 )
                 print()
 
@@ -1849,6 +1909,9 @@ def parse_args() -> argparse.Namespace:
         args.commit = False
     if not hasattr(args, "push"):
         args.push = False
+    if args.commit and args.push:
+        print("warning: --commit is redundant with --push (--push implies commit)",
+              file=sys.stderr)
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
     if args.once:

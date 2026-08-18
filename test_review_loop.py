@@ -517,6 +517,61 @@ def test_discover_reviews_duplicate_project_prompts_warn_first_wins():
         assert "duplicate project prompt" in err.getvalue()
 
 
+def test_discover_reviews_skips_hidden_dirs():
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        bundled, proj = root / "prompts", root / "proj"
+        bundled.mkdir(parents=True)
+        _tree(proj, {
+            "a/real-review.md": "real",
+            ".worktree/real-review.md": "shadow",
+            ".worktree/hidden-only-review.md": "hidden",
+        })
+
+        err = io.StringIO()
+        with _cwd(proj), contextlib.redirect_stderr(err):
+            found = rl.discover_reviews(bundled)
+
+        assert found["real-review"] == proj / "a" / "real-review.md"
+        assert "hidden-only-review" not in found
+        assert "duplicate project prompt" not in err.getvalue()
+
+
+def test_lines_changed_stats_reported():
+    """A review that edits a tracked file shows up in per-review, per-loop,
+    and final lines-changed stats, all measured via git diff --shortstat."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        _tree(proj, {"file.txt": "one\ntwo\nthree\n"})
+        subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+        subprocess.run(["git", "config", "user.email", "t@t"], cwd=proj, check=True)
+        subprocess.run(["git", "config", "user.name", "t"], cwd=proj, check=True)
+        subprocess.run(["git", "add", "."], cwd=proj, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=proj, check=True)
+
+        stub = bin_dir / "agy"
+        stub.write_text(
+            "#!/bin/sh\n"
+            "printf 'one\\ntwo\\nthree\\nfour\\n' > file.txt\n"
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "+1/-0 lines" in p.stdout, p.stdout      # per-review
+        assert "1 reviews, 0 failures, +1/-0 lines" in p.stdout, p.stdout  # per-loop
+        assert "Lines changed: +1 -0" in p.stdout, p.stdout  # final summary
+
+
 def test_doctor_plain_when_not_a_tty():
     out = io.StringIO()  # StringIO is not a tty, so output must stay unstyled
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
@@ -669,6 +724,7 @@ def test_agents_never_inherit_stdin():
             timeout=30, quiet_agents=False, continue_sessions=False, bin={}, yolo=False,
         )
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         captured = {}
 
         class FakeProc:
@@ -820,6 +876,24 @@ def test_models_alias_warns_and_still_works():
     )
     assert p.returncode == 0, p.stderr
     assert "deprecated" not in p.stderr, p.stderr
+
+
+def test_commit_and_push_together_warns_redundant():
+    script = SCRIPT
+    p = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--commit", "--push",
+         "--reviews", "code-review"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 0, p.stderr
+    assert "warning: --commit is redundant with --push" in p.stderr, p.stderr
+    p = subprocess.run(
+        [sys.executable, str(script), "--dry-run", "--push",
+         "--reviews", "code-review"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 0, p.stderr
+    assert "redundant" not in p.stderr, p.stderr
 
 
 def test_project_set_selects_only_project_prompts():
@@ -1301,6 +1375,7 @@ def test_run_review_retries_another_agent_on_fail():
             yolo=False,
         )
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         launches: list[str] = []
 
         class FakeProc:
@@ -1373,6 +1448,7 @@ def test_run_review_all_agents_fail_records_one_fail():
             yolo=False,
         )
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         launches: list[str] = []
 
         class FakeProc:
@@ -1419,6 +1495,7 @@ def test_run_review_retries_on_launch_failure():
             yolo=False,
         )
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         launches: list[str] = []
 
         class FakeProc:
@@ -1465,6 +1542,7 @@ def test_continue_sessions_skipped_when_two_models_share_a_cli():
             yolo=False,
         )
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         runner.session_started.update(args.agents)
         captured = {}
 
@@ -1493,6 +1571,7 @@ def test_continue_sessions_skipped_when_two_models_share_a_cli():
         # a single pinned model of that CLI still resumes
         args.agents = [rl.ToolSpec("claude", "opus")]
         runner = rl.Runner(args)
+        runner.git_baseline = None  # unit test: no git plumbing here
         runner.session_started.add(args.agents[0])
         captured.clear()
         rl.subprocess.Popen = fake_popen

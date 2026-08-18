@@ -39,6 +39,7 @@ How a single pass works:
 | [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
 | [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
 | [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
+| [`container-review`](prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
 | [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
 | [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
 | [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
@@ -86,7 +87,7 @@ names, and `--list` prints their current members:
 | `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
 | `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
 | `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |
-| `shipping` | release, pkg, build, deps, doc, cli, sdk, infra |
+| `shipping` | release, pkg, build, deps, doc, cli, sdk, infra, container |
 
 Members missing from the prompt directory are skipped, so a set stays usable
 with a custom `--prompt-dir`.
@@ -203,6 +204,8 @@ Run `./review-loop.py --help` for the full option list.
 | `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
 | `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |
+| `--commit` | off | After each review, an agent inspects the diff, writes a human-style commit message (no AI attribution), and commits any changes. Skipped when the working tree is clean. |
+| `--push` | off | Like `--commit` but also pushes after committing. Both flags may be combined; the effect is the same as `--push` alone (a warning is printed when both are given). When combined with `--yolo`, the agent also rebases and retries on a rejected push. |
 | `--dry-run` | off | Print planned schedule and exit. |
 | `-l, --list` | off | List available reviews and exit. |
 | `--version` | — | Print the version and exit. |
@@ -216,7 +219,9 @@ Run `./review-loop.py --help` for the full option list.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
 - A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
 - `doctor`, `--list`, and `--dry-run` are mutually exclusive; `--list` and `--dry-run` take no lock. `--log` works in every mode.
-- At exit, summary statistics are printed: totals, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
+- In a git repository, each review, each completed loop, and the final exit summary report lines changed (`+insertions/-deletions`), measured via `git diff --shortstat` against the commit that was `HEAD` when the run started. Outside a git repo this is silently omitted.
+- Project-local prompt discovery skips hidden directories (`.git`, `.venv`, worktrees, etc.) so stray copies under them never produce duplicate-prompt warnings.
+- At exit, summary statistics are printed: totals, lines changed, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
 - Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 128+signal when interrupted, so 130 for SIGINT and 143 for SIGTERM (takes precedence over 1).
 
 ### Rules injected into every prompt

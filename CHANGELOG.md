@@ -2,6 +2,29 @@
 
 Notable changes per release.
 
+## 0.13.0
+
+### Added
+
+- Lines-changed stats: in a git repository, each review, each completed
+  loop, and the final exit summary now report `+insertions/-deletions`,
+  measured via `git diff --shortstat` against the commit that was `HEAD`
+  when the run started. Silently omitted outside a git repo.
+
+### Changed
+
+- A warning is now printed when `--commit` and `--push` are both given,
+  since `--push` already implies `--commit`.
+- Project-local prompt discovery now skips hidden directories (`.git`,
+  `.venv`, worktrees, etc.), so stray prompt copies under them (e.g. a
+  `.clanker-worktrees` snapshot) no longer trigger duplicate-prompt
+  warnings.
+
+### Fixed
+
+- `container-review` (added in 0.12.0) was missing from `doctor`'s tool
+  table and from the `shipping` review set; both are corrected.
+
 ## 0.12.0
 
 ### Added
