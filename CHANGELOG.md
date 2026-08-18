@@ -2,6 +2,36 @@
 
 Notable changes per release.
 
+## 0.12.0
+
+### Added
+
+- `container-review` audits container-native readiness of Kubernetes
+  workloads declared in Deployment/StatefulSet/DaemonSet manifests, Helm
+  charts, and Kustomize overlays. Covers health probes (liveness, readiness,
+  startup — including dependency checks in the readiness probe), graceful
+  shutdown (SIGTERM handling, shell-form CMD, preStop hook,
+  terminationGracePeriodSeconds), observability wiring (ServiceMonitor/
+  PodMonitor presence, stdout log delivery, OTel annotation injection),
+  security context (non-root, capabilities drop, seccomp, read-only root
+  filesystem, fsGroup), configuration management (externalized config,
+  no inline secrets), image hygiene (digest pinning, .dockerignore,
+  multi-stage), resource requests/limits, resilience (PDB, anti-affinity,
+  rolling update strategy, retry over init-container polling), networking
+  (NetworkPolicy deny-all baseline, no hostNetwork/hostPort), and Kubernetes
+  object hygiene (standard labels, dedicated ServiceAccount, RBAC scoping).
+  Scoped to k8s-manifest-side concerns; infra-review owns CI/CD and
+  compose wiring, o11y-review owns application instrumentation depth.
+
+- `--commit` flag: after each review, an agent inspects the diff, writes a
+  human-style commit message (no AI attribution), and commits any changes.
+  Skipped when the working tree is clean.
+
+- `--push` flag: like `--commit` but also pushes after committing. Both flags
+  may be combined; the effect is the same as `--push` alone. When `--push`
+  is combined with `--yolo`, the agent is also instructed to rebase and retry
+  if the push is rejected due to a diverged remote.
+
 ## 0.11.0
 
 ### Changed

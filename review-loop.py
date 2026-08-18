@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "0.11.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.12.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -199,6 +199,27 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
         "doc-review", "cli-review", "sdk-review", "infra-review",
     ),
 }
+
+COMMIT_TIMEOUT_SECS = 300  # cap for commit+push step; review --timeout may be longer
+
+COMMIT_PROMPT = """\
+You are a git commit assistant. Your only job is to commit (and optionally push) the \
+current changes in this repository.
+
+Steps:
+1. Run `git status` and `git diff` to see what changed.
+2. If the working tree is clean and there is nothing staged, \
+print 'COMMIT: nothing to commit' and stop.
+3. Run `git log --oneline -10` to read the repo's existing commit message style.
+4. Write a commit message that matches that style. Rules:
+   - Subject line under 72 characters.
+   - Short body only when the changes need explanation beyond the subject.
+   - Describe what changed and why — not what tool produced the change.
+   - Never mention AI, Claude, GPT, Copilot, Gemini, Codex, or any AI tool.
+   - Never add Co-Authored-By, Generated-by, or any AI attribution line.
+5. Stage all modified tracked files: `git add -u`
+6. Commit: `git commit -m "<your message>"`{push_step}{merge_step}
+Print 'COMMIT: done' on success."""
 
 PROMPT_HEADER = "MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report."
 
@@ -1437,6 +1458,89 @@ class Runner:
             print(f"Warning: not installed, would fail at runtime: {', '.join(missing)}")
         limit = str(self.args.max_loops) if self.args.max_loops else "infinite"
         print(f"Loop limit: {limit}")
+        if self.args.commit or self.args.push:
+            action = "commit+push" if self.args.push else "commit"
+            print(f"After each review: {action} step (agent writes message, no AI attribution)")
+
+    def run_commit(self) -> None:
+        """After a review, send a commit (and optionally push) prompt to an agent."""
+        try:
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if not result.stdout.strip():
+                return  # nothing to commit
+        except (OSError, subprocess.TimeoutExpired):
+            log("Warning: could not check git status before commit step")
+
+        do_push = getattr(self.args, "push", False)
+        do_yolo = getattr(self.args, "yolo", False)
+        push_step = "\n7. Push to the remote: `git push`" if do_push else ""
+        merge_step = (
+            "\n   If `git push` is rejected because the remote has diverged, "
+            "run `git pull --rebase` to integrate the remote changes, "
+            "resolve any conflicts, and push again."
+            if (do_push and do_yolo) else ""
+        )
+        prompt = COMMIT_PROMPT.format(push_step=push_step, merge_step=merge_step)
+        spec = self.pick_tool()
+        cmd = build_cmd(spec, prompt, binary=self.bin.get(spec.tool))
+        if self.stopping:
+            return
+
+        action = "commit+push" if do_push else "commit"
+        log(f"Running {action} step with {spec.label()}")
+        timeout = min(self.args.timeout, COMMIT_TIMEOUT_SECS)
+        sink = subprocess.DEVNULL if self.args.quiet_agents else None
+        try:
+            proc = subprocess.Popen(
+                cmd, start_new_session=True,
+                stdin=subprocess.DEVNULL, stdout=sink, stderr=sink,
+            )
+        except OSError as e:
+            log(f"FAILED to launch {spec.label()} for {action} step: {e}")
+            return
+
+        self.current_proc = proc
+        if self.stopping:
+            _kill_pg(proc, signal.SIGTERM)
+        timed_out = False
+        deadline = time.monotonic() + timeout
+        try:
+            while True:
+                if self.stopping:
+                    deadline = min(deadline, time.monotonic() + 10)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    timed_out = not self.stopping
+                    raise subprocess.TimeoutExpired(cmd, timeout)
+                try:
+                    proc.wait(timeout=min(1.0, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    continue
+        except subprocess.TimeoutExpired:
+            _kill_pg(proc, signal.SIGTERM)
+            if timed_out:
+                log(f"TIMEOUT: {action} step ({spec.label()}) after {fmt_duration(timeout)}")
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                _kill_pg(proc, signal.SIGKILL)
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    log(f"Could not reap pid {proc.pid} after SIGKILL — abandoning it")
+        finally:
+            self.current_proc = None
+            restore_tty(self.tty)
+
+        if not timed_out:
+            if proc.returncode == 0:
+                log(f"{action} step done ({spec.label()})")
+            else:
+                log(f"{action} step FAILED ({spec.label()}) — exit {proc.returncode}")
 
     def run(self) -> None:
         signal.signal(signal.SIGINT, self.handle_signal)
@@ -1459,6 +1563,8 @@ class Runner:
                     if self.stopping:
                         return
                     self.run_review(r)
+                    if not self.stopping and (self.args.commit or self.args.push):
+                        self.run_commit()
                 self.loop_count += 1
                 loop_elapsed = time.monotonic() - loop_start
                 print()
@@ -1707,6 +1813,17 @@ def parse_args() -> argparse.Namespace:
         help="run semcode-index against the target dir before the loop so "
              "reviews can answer call-graph/type queries from the index",
     )
+    ex.add_argument(
+        "--commit", action="store_true",
+        help="after each review, have an agent summarize the diff and commit "
+             "any changes to git. The agent writes a human-style commit message "
+             "with no AI attribution. Skipped when the working tree is clean.",
+    )
+    ex.add_argument(
+        "--push", action="store_true",
+        help="like --commit but also pushes after committing. "
+             "--commit and --push may both be given; the effect is the same as --push alone.",
+    )
 
     out = p.add_argument_group("output")
     out.add_argument("--log", type=parse_path, default=None, metavar="FILE",
@@ -1726,6 +1843,12 @@ def parse_args() -> argparse.Namespace:
                              ("--list", args.list), ("--dry-run", args.dry_run)) if on]
     if len(modes) > 1:
         p.error(f"{' and '.join(modes)} are mutually exclusive")
+    if (args.commit or args.push) and args.list:
+        p.error("--commit/--push cannot be used with --list")
+    if not hasattr(args, "commit"):
+        args.commit = False
+    if not hasattr(args, "push"):
+        args.push = False
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
     if args.once:
