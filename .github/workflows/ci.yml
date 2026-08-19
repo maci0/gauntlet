@@ -30,6 +30,9 @@ jobs:
       - name: Lint
         if: matrix.python == '3.10'
         run: pipx run ruff==0.16.1 check src/gauntlet/cli.py tests/test_gauntlet.py
+      - name: Type-check
+        if: matrix.python == '3.10'
+        run: pipx run mypy==1.19.0 src/gauntlet/cli.py
       - name: Run tests
         run: python tests/test_gauntlet.py
       - name: Smoke-test the CLI (no agent CLIs installed here)

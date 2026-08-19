@@ -23,6 +23,7 @@ import termios
 import textwrap
 import time
 from dataclasses import dataclass, field
+from typing import NoReturn
 from pathlib import Path
 
 VERSION = "0.17.0"  # bump with a matching git tag; there is no other source of truth
@@ -434,8 +435,8 @@ MIXED_KEYWORDS = {"mixed", "random", "all"}
 def parse_agents(s: str) -> list[ToolSpec]:
     specs: list[ToolSpec] = []
     seen: set[ToolSpec] = set()
-    for entry in s.split(","):
-        entry = entry.strip()
+    for raw_entry in s.split(","):
+        entry = raw_entry.strip()
         if not entry:
             continue
         if entry.lower() in MIXED_KEYWORDS:
@@ -450,9 +451,9 @@ def parse_agents(s: str) -> list[ToolSpec]:
                     specs.append(spec)
                     seen.add(spec)
             continue
-        tool, _, model = entry.partition(":")
+        tool, _, model_part = entry.partition(":")
         tool = tool.strip()
-        model = model.strip() or None
+        model = model_part.strip() or None
         # Tool names are canonical lowercase; models keep the given spelling.
         key = tool.lower()
         if key not in VALID_TOOLS:
@@ -798,7 +799,7 @@ def log(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {sanitize(msg)}", flush=True)
 
 
-def usage_error(msg: str) -> None:
+def usage_error(msg: str) -> NoReturn:
     print(msg, file=sys.stderr)
     sys.exit(2)
 
@@ -833,10 +834,7 @@ def parse_bin(s: str) -> tuple[str, str]:
     # directory component is used as-is. Either way the result is made
     # absolute here, before --dir chdir, so a relative --bin cannot retarget
     # into the review tree.
-    if os.path.dirname(expanded):
-        resolved = shutil.which(expanded)
-    else:
-        resolved = resolve_tool(expanded)
+    resolved = shutil.which(expanded) if os.path.dirname(expanded) else resolve_tool(expanded)
     if resolved is None:
         raise argparse.ArgumentTypeError(
             f"not an executable: {path}"
@@ -956,8 +954,8 @@ def build_cmd(spec: ToolSpec, prompt: str, continue_session: bool = False,
             base = [resolve_tool("bunx") or "bunx", "@deepseek-ai/dsh"]
         cmd = [*base, "--profile", "headless"]
         if spec.model:
-            provider, _, model = spec.model.rpartition("/")
-            provider = provider or dsh_default_provider(base)
+            provider_part, _, model = spec.model.rpartition("/")
+            provider = provider_part or dsh_default_provider(base)
             if provider is None:
                 raise ValueError(
                     f"cannot determine the dsh provider for model {spec.model!r}; "
@@ -1465,7 +1463,7 @@ class Runner:
         for r, prompt_file in self.prompt_files.items():
             desc = review_desc(prompt_file)
             weight = self.reviews.count(r)
-            active = f"×{weight}" if weight > 1 else ("✓" if weight else "○")
+            active = f"×{weight}" if weight > 1 else ("✓" if weight else "○")  # noqa: RUF001 (deliberate glyph)
             # Descriptions are whole paragraphs; one line each keeps the
             # columns readable, and --dry-run/logs carry the full text.
             origin = "[project]" if self._origin(prompt_file) else ""

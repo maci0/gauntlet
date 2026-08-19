@@ -784,7 +784,7 @@ def test_run_review_interrupt_exits_130():
 
 def test_doctor_recommended_tools_are_real_entries():
     listed = {t for tools in rl.REVIEW_TOOLS.values() for t in tools}
-    assert rl.RECOMMENDED_TOOLS <= listed, rl.RECOMMENDED_TOOLS - listed
+    assert listed >= rl.RECOMMENDED_TOOLS, rl.RECOMMENDED_TOOLS - listed
 
 
 def test_review_sets_reference_real_prompts():
@@ -841,7 +841,7 @@ def test_version_matches_changelog_and_cli():
     changelog = (Path(__file__).parent.parent / "CHANGELOG.md").read_text()
     versions = re.findall(r"^## (\d+\.\d+\.\d+)\s*$", changelog, re.MULTILINE)
     assert versions, "CHANGELOG.md has no version headings"
-    assert rl.VERSION == versions[0], (
+    assert versions[0] == rl.VERSION, (
         f"VERSION {rl.VERSION!r} != latest changelog heading {versions[0]!r}"
     )
     script = SCRIPT
@@ -2116,7 +2116,7 @@ def main() -> int:
         try:
             fn()
             print(f"ok   {name}")
-        except Exception as e:  # noqa: BLE001 - test runner reports everything
+        except Exception as e:
             failed += 1
             print(f"FAIL {name}: {e!r}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")

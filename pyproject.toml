@@ -28,4 +28,24 @@ pattern = 'VERSION = "(?P<version>[^"]+)"'
 packages = ["src/gauntlet"]
 
 [dependency-groups]
-dev = ["pytest", "ruff==0.16.1"]
+dev = ["pytest", "ruff==0.16.1", "mypy==1.19.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "B", "UP", "SIM", "RUF", "PLE", "PLW"]
+ignore = [
+  "E501",   # prompt-template prose is deliberately one bullet per line; ratchet later
+  "SIM105", # explicit try/except-pass in signal/terminal paths beats a suppress import
+]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src/gauntlet/cli.py"]
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+strict_equality = true
