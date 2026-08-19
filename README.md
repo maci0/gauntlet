@@ -1,4 +1,12 @@
+<div align="center">
+
 # gauntlet
+
+**Run your codebase through the gauntlet.**
+
+An auto-fix review loop: 50 specialized review prompts, dispatched to the AI
+coding agents you already have, applying small proven fixes directly to the
+working tree instead of writing reports.
 
 [![ci](https://github.com/maci0/gauntlet/actions/workflows/ci.yml/badge.svg)](https://github.com/maci0/gauntlet/actions/workflows/ci.yml)
 [![release](https://img.shields.io/github/v/tag/maci0/gauntlet?label=release&color=2ea44f)](https://github.com/maci0/gauntlet/tags)
@@ -6,11 +14,14 @@
 ![python](https://img.shields.io/badge/python-3.10%2B-3776ab)
 ![deps](https://img.shields.io/badge/dependencies-none-success)
 
-Run your codebase through the gauntlet: an auto-fix review loop of **50 specialized review prompts** (security,
-performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
-whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
-`codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
-directly to the working tree instead of writing reports. Different agents catch
+[Install](#install) · [Quick start](#quick-start) · [Reviews](#available-reviews) · [Options](#options) · [Trust model](#trust-model)
+
+</div>
+
+Fifty review prompts cover security, performance, accessibility, supply chain,
+LLM integration, agent instructions, and more. Each pass dispatches one to a
+randomly sampled agent (`claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`,
+`cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`). Different agents catch
 different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
 
@@ -36,6 +47,28 @@ flowchart LR
 4. You review the accumulated diff with `git diff` whenever you like; review
    agents never commit. With `--commit`/`--push` a separate commit step runs
    after each review to commit (and push) what changed.
+
+A loop looks like this (lines-changed stats come from `git diff --shortstat`
+against the commit that was `HEAD` at start):
+
+```text
+[12:02:53] Running sec-review with claude (timeout 30m00s)
+[12:02:54] Done: sec-review (claude) in 0m01s, +1/-0 lines
+[12:02:54] Running error-review with claude (timeout 30m00s)
+[12:02:55] Done: error-review (claude) in 0m01s
+[12:02:55] Running code-review with claude (timeout 30m00s)
+[12:02:56] Done: code-review (claude) in 0m01s
+
+[12:02:56] === Loop 1 complete in 0m03s (3 reviews, 0 failures, +1/-0 lines) ===
+
+=== Review loop stopped ===
+Completed loops: 1
+Total reviews run: 3
+  Passed: 3
+  Failed: 0
+Total time: 0m03s
+Lines changed: +1 -0
+```
 
 ## Contents
 
@@ -215,8 +248,13 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
 
 ## Requirements
 
-- Python 3.10+
+- Python 3.10+ (standard library only)
 - At least one of: `claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh` in `PATH`
+- `tee` (only if `--log` is used)
+
+<details>
+<summary><b>Agent-specific notes</b> (dsh, clanker)</summary>
+
 - `dsh` (DeepSeek Harness) runs as `dsh --profile headless`; permissions
   come from that profile's config, and its config default model is used
   unless `dsh:<model>` pins one (e.g. `dsh:deepseek-v4-pro`), which the
@@ -231,22 +269,29 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
   can only review the repository that holds its `config.local.json`. Auto-detect
   and `mixed` skip it; name it explicitly (`--agents clanker`) from that
   repository to use it.
-- `tee` (only if `--log` is used)
+
+</details>
 
 ## Install
 
 No dependencies beyond the Python standard library; nothing to build.
 
 ```sh
+# clone + symlink: git pull in the clone is the whole upgrade
 git clone https://github.com/maci0/gauntlet.git
 ln -s "$PWD/gauntlet/src/gauntlet/cli.py" ~/.local/bin/gauntlet   # any dir on your PATH
+
+# or as a uv/pipx tool
+uv tool install git+https://github.com/maci0/gauntlet
+
 gauntlet doctor    # verify agents and helper tools are visible
 ```
 
-Or skip the symlink and run it in place (`gauntlet`), or from a
+Or skip installing and run it in place (`./src/gauntlet/cli.py`,
+`python -m gauntlet`), or from a
 [release tarball](https://github.com/maci0/gauntlet/releases/latest). The
 prompts are discovered relative to the real script location, so the symlink
-form works from any repository; `git pull` in the clone is the whole upgrade.
+form works from any repository.
 
 ## Quick start
 
@@ -305,29 +350,46 @@ Run `gauntlet --help` for the full option list.
 
 ## Options
 
+**Choosing reviews**
+
 | Flag | Default | Purpose |
 |---|---|---|
-| `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
+| `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
+| `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
+| `--suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
+| `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
+
+**Choosing agents**
+
+| Flag | Default | Purpose |
+|---|---|---|
 | `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
 | `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
+| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
+
+**Execution**
+
+| Flag | Default | Purpose |
+|---|---|---|
 | `-C, --dir` | cwd | `cd` here before running. `~` and `$VAR` are expanded. |
 | `--once` | off | Run a single loop and exit. |
 | `-n, --max-loops N` | 0 (infinite) | Stop after N loops. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
-| `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
-| `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
-| `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
-| `--suggest` | off | Shorthand for `--reviews suggest`. |
-| `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. Also skips the `--reviews suggest` confirmation. |
 | `-y, --yes` | off | Skip the `--reviews suggest` confirmation without enabling `--yolo`. Implied when stdin is not a terminal. |
-| `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
-| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |
 | `--commit` | off | After each review, an agent inspects the diff, writes a human-style commit message (no AI attribution), and commits any changes. Skipped when the working tree is clean. |
 | `--push` | off | Like `--commit` but also pushes after committing. Both flags may be combined; the effect is the same as `--push` alone (a warning is printed when both are given). When combined with `--yolo`, the agent also rebases and retries on a rejected push. |
-| `--dry-run` | off | Print planned schedule and exit. |
+
+**Modes and output**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
 | `-l, --list` | off | List available reviews and exit. |
+| `--dry-run` | off | Print planned schedule and exit. |
+| `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
+| `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
 | `--version` | — | Print the version and exit. |
 
 ## Behavior
@@ -342,7 +404,15 @@ Run `gauntlet --help` for the full option list.
 - In a git repository, each review, each completed loop, and the final exit summary report lines changed (`+insertions/-deletions`), measured via `git diff --shortstat` against the commit that was `HEAD` when the run started. Outside a git repo this is silently omitted.
 - Project-local prompt discovery skips hidden directories (`.git`, `.venv`, worktrees, etc.) so stray copies under them never produce duplicate-prompt warnings.
 - At exit, summary statistics are printed: totals, lines changed, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
-- Exit code: 0 all reviews ran and passed; 1 any review failed, timed out, or was skipped; 2 usage error; 75 another instance holds the lock; 128+signal when interrupted, so 130 for SIGINT and 143 for SIGTERM (takes precedence over 1).
+- Exit codes:
+
+  | Code | Meaning |
+  |---|---|
+  | 0 | all reviews ran and passed |
+  | 1 | any review failed, timed out, or was skipped |
+  | 2 | usage error |
+  | 75 | another instance holds the lock |
+  | 128+signal | interrupted: 130 for SIGINT, 143 for SIGTERM (takes precedence over 1) |
 
 ### Rules injected into every prompt
 
@@ -364,18 +434,37 @@ are stripped, and a rule suffix is appended that constrains the agent:
 
 ## Adding a review
 
-Drop a new `<name>-review.md` into `src/gauntlet/prompts/`. It is auto-discovered — no code changes needed.
+Drop a new `<name>-review.md` into `src/gauntlet/prompts/`. It is auto-discovered — no code changes needed. The minimal shape (see [Prompt structure](#prompt-structure) for the full one):
+
+```markdown
+You are a senior <domain> engineer. Your task is to review this codebase for <subject>.
+
+Your goal is <what good looks like>. <Fencing: which neighboring review owns what.>
+
+First decide if this review applies. It needs <precondition>; otherwise print the skip result and stop.
+
+Review the following:
+
+1. <Concern group>
+- <specific check>
+...
+
+Instructions:
+- Fix order: <what to fix first>.
+- In auto-fix mode <the narrow, verifiable moves allowed in one pass>.
+```
 
 Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped, and symlinked or oddly-named prompt files are ignored.
 
 ## Trust model
 
-The loop runs AI agents with permission prompts disabled against the target
-codebase, and project-local prompts are fed to them verbatim. The injected
-rules constrain well-behaved agents; they are guardrails, not a sandbox.
-**Only run the loop against repositories you trust**: a malicious repo could
-steer the agents through crafted file content or planted prompt files. For
-untrusted code, run the whole loop inside a container or VM.
+> [!WARNING]
+> The loop runs AI agents with permission prompts disabled against the target
+> codebase, and project-local prompts are fed to them verbatim. The injected
+> rules constrain well-behaved agents; they are guardrails, not a sandbox.
+> **Only run the loop against repositories you trust**: a malicious repo could
+> steer the agents through crafted file content or planted prompt files. For
+> untrusted code, run the whole loop inside a container or VM.
 
 ## Prompt structure
 
