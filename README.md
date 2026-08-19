@@ -1,6 +1,9 @@
 <div align="center">
 
-# gauntlet
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+  <img src="assets/logo-light.svg" alt="gauntlet" width="380">
+</picture>
 
 **Run your codebase through the gauntlet.**
 
