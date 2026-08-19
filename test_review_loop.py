@@ -1268,6 +1268,20 @@ def test_catalog_line_treats_description_as_data():
     assert rl.catalog_line("x", "  ") == "- x: (no description)"
 
 
+def test_suggest_flag_is_reviews_suggest_shorthand():
+    script = SCRIPT
+    # guards from --reviews suggest apply to the flag form too
+    for extra, msg in ((["--list"], "not usable with --list"),
+                       (["--dry-run"], "not usable with --list"),
+                       (["--reviews", "sec"], "conflicts with --reviews")):
+        p = subprocess.run(
+            [sys.executable, str(script), "--suggest", *extra],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 2, (extra, p.stderr)
+        assert msg in p.stderr, (extra, p.stderr)
+
+
 def test_suggest_prompt_does_not_format_catalog():
     """A {placeholder} in a description must stay literal, not hit str.format."""
     catalog = rl.catalog_line("brace-review", "evaluate {user} and {reviews}")

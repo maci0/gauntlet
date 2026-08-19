@@ -207,6 +207,7 @@ Run `./review-loop.py --help` for the full option list.
 | `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
 | `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
+| `--suggest` | off | Shorthand for `--reviews suggest`. |
 | `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. Also skips the `--reviews suggest` confirmation. |
 | `-y, --yes` | off | Skip the `--reviews suggest` confirmation without enabling `--yolo`. Implied when stdin is not a terminal. |

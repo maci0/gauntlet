@@ -1815,6 +1815,10 @@ def parse_args() -> argparse.Namespace:
              "(skip with --yes / --yolo / a non-terminal stdin)",
     )
     sel.add_argument(
+        "--suggest", action="store_true",
+        help="shorthand for --reviews suggest",
+    )
+    sel.add_argument(
         "-x", "--exclude", action="append", default=None, metavar="LIST",
         help="comma-separated reviews and/or set names to skip. Repeatable",
     )
@@ -1931,6 +1935,10 @@ def parse_args() -> argparse.Namespace:
             if spec not in merged:
                 merged.append(spec)
         args.agents = merged
+    if args.suggest:
+        if args.reviews is not None:
+            p.error("--suggest conflicts with --reviews")
+        args.reviews = [SUGGEST]
     # None = flag omitted (run all). A present-but-empty value is explicit
     # and must not collapse into the default; see _filter_reviews.
     args.reviews_explicit = args.reviews is not None
