@@ -2,6 +2,25 @@
 
 Notable changes per release.
 
+## 0.17.0
+
+### Added
+
+- Standard Python project layout: `src/gauntlet/` package with `cli.py`
+  and the prompts as package data, `tests/`, and a PEP 621 `pyproject.toml`
+  (hatchling). `uv tool install` / `pipx install` yield a `gauntlet`
+  command; `python -m gauntlet` and running `src/gauntlet/cli.py` directly
+  keep working, with zero runtime dependencies. The PyPI-style project
+  name is `gauntlet-review` (bare `gauntlet` is taken); the command stays
+  `gauntlet`. `VERSION` in `cli.py` remains the single source of truth
+  (hatchling reads it from there).
+- `## Install` section in the README: clone + symlink onto `PATH`,
+  run-in-place, or release tarball.
+- Release workflow: pushing a `v*` tag now auto-creates the GitHub
+  release with that version's CHANGELOG section as notes. Releases had
+  stalled at v0.11.0 while tags kept moving; v0.12.0 through v0.16.0 were
+  backfilled by hand.
+
 ## 0.16.0
 
 ### Changed
