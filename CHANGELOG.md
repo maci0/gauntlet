@@ -2,6 +2,23 @@
 
 Notable changes per release.
 
+## 0.15.0
+
+### Added
+
+- `--suggest` flag as shorthand for `--reviews suggest`; conflicts with
+  `--reviews` and inherits the suggest-mode guards (`--list`/`--dry-run`
+  rejected).
+- `code-review` now flags shell scripts that embed another language via
+  heredocs or `-c` one-liners (`python -c`, `node -e`, inline awk/perl):
+  the embedded code escapes syntax checking, linting, and editor tooling.
+  One language per file; call a proper script instead.
+
+### Changed
+
+- README intro updated to the current 50-review count and to describe the
+  `--commit`/`--push` commit step alongside "review agents never commit".
+
 ## 0.14.0
 
 ### Added

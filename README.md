@@ -1,6 +1,6 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 40 specialized review prompts (security,
+An auto-fix review loop for codebases: 50 specialized review prompts (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
@@ -16,8 +16,9 @@ How a single pass works:
    [Behavior](#behavior)).
 3. The agent runs against the target directory with permission prompts
    disabled, hard-bounded by `--timeout`, and applies at most ~10 small fixes.
-4. You review the accumulated diff with `git diff` whenever you like; the
-   agents themselves never commit.
+4. You review the accumulated diff with `git diff` whenever you like; review
+   agents never commit. With `--commit`/`--push` a separate commit step runs
+   after each review to commit (and push) what changed.
 
 ## Contents
 
