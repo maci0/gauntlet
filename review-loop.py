@@ -1045,7 +1045,7 @@ class Runner:
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
@@ -1058,7 +1058,7 @@ class Runner:
         try:
             result = subprocess.run(
                 ["git", "diff", "--shortstat", self.git_baseline],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
             return None
@@ -1527,7 +1527,7 @@ class Runner:
         try:
             result = subprocess.run(
                 ["git", "status", "--porcelain"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, text=True, timeout=10, check=False,
             )
             if not result.stdout.strip():
                 return  # nothing to commit

@@ -880,16 +880,17 @@ def test_models_alias_warns_and_still_works():
 
 def test_commit_and_push_together_warns_redundant():
     script = SCRIPT
+    # --agents pins a name so the test does not depend on agent CLIs in PATH
     p = subprocess.run(
         [sys.executable, str(script), "--dry-run", "--commit", "--push",
-         "--reviews", "code-review"],
+         "--agents", "claude", "--reviews", "code-review"],
         capture_output=True, text=True, timeout=60, check=False,
     )
     assert p.returncode == 0, p.stderr
     assert "warning: --commit is redundant with --push" in p.stderr, p.stderr
     p = subprocess.run(
         [sys.executable, str(script), "--dry-run", "--push",
-         "--reviews", "code-review"],
+         "--agents", "claude", "--reviews", "code-review"],
         capture_output=True, text=True, timeout=60, check=False,
     )
     assert p.returncode == 0, p.stderr
