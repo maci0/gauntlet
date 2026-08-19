@@ -68,6 +68,7 @@ Review the following:
 - Patterns that obscure rather than clarify
 - Library calls that rely on defaulted options (`fn(x)` or `fn(x, .{})`) instead of passing options explicitly at the call site. Defaults can change under you
 - Two same-typed arguments (two integers, two strings, two paths) that can be swapped at the call site without a compile error. Name them (options struct, kwargs)
+- Shell scripts embedding another language via heredocs or `-c` one-liners (`python -c`, `node -e`, inline awk/perl programs). The embedded code escapes syntax checking, linting, and editor tooling, and lives in escaping hell; one language per file, call a proper script instead
 - Aliases or extra copies of a variable that can drift from the original
 - Variables introduced far from their first use, or left in scope after their last use (place-of-check far from place-of-use)
 - Variables declared wider than their use, or more names in scope than the function needs. Smallest possible scope, fewest variables
