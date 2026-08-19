@@ -2,6 +2,27 @@
 
 Notable changes per release.
 
+## 0.16.0
+
+### Changed
+
+- Project renamed to **gauntlet** (repo `maci0/gauntlet`; old
+  `review-prompts` URLs redirect). `review-loop.py` is now `gauntlet.py`,
+  the test file `test_gauntlet.py`, the lockfile `.gauntlet.lock`, and
+  `--version` reports `gauntlet`. The `review-loop: keep` code marker is
+  deliberately unchanged: it already lives in target repos' code, and
+  renaming it would silently invalidate existing markers.
+- README: the 50 reviews are grouped into ten collapsible domain
+  categories; badges (CI, release, license, Python, zero dependencies)
+  and a mermaid diagram of the review pass added.
+
+### Fixed
+
+- CI: the `--commit`/`--push` warning test no longer depends on agent
+  CLIs being installed on the runner, and the three git `subprocess.run`
+  calls pass an explicit `check=False` (ruff PLW1510). First green CI
+  since 0.13.0.
+
 ## 0.15.0
 
 ### Added
