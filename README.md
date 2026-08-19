@@ -39,9 +39,9 @@ flowchart LR
 
 ## Contents
 
-- `prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
-- `gauntlet.py` — the runner. Also provides `doctor` (tool inventory) and the composition/containment logic.
-- `test_gauntlet.py` — tests for parsing, discovery, composition, and the exit-code contract.
+- `src/gauntlet/prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
+- `src/gauntlet/cli.py` — the runner. Also provides `doctor` (tool inventory) and the composition/containment logic.
+- `tests/test_gauntlet.py` — tests for parsing, discovery, composition, and the exit-code contract.
 - `CHANGELOG.md` — notable changes per release.
 
 ### Available reviews
@@ -51,14 +51,14 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
-| [`functionality-review`](prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
-| [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
-| [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
-| [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
-| [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
-| [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
-| [`idempotency-review`](prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
+| [`code-review`](src/gauntlet/prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
+| [`functionality-review`](src/gauntlet/prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
+| [`error-review`](src/gauntlet/prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
+| [`test-review`](src/gauntlet/prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
+| [`concurrency-review`](src/gauntlet/prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
+| [`dst-review`](src/gauntlet/prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
+| [`fuzz-review`](src/gauntlet/prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
+| [`idempotency-review`](src/gauntlet/prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
 
 </details>
 
@@ -67,12 +67,12 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`cache-review`](prompts/cache-review.md) | Caching correctness: invalidation, key design, stampedes, coherence, bounds |
-| [`compat-review`](prompts/compat-review.md) | Cross-platform portability: paths, shell, line endings, endianness, libc variants, claim vs CI |
-| [`numerics-review`](prompts/numerics-review.md) | Numeric correctness: money in floats, overflow, truncation, rounding, units, NaN |
-| [`resource-review`](prompts/resource-review.md) | Resource lifecycle: fd/socket/process/task leaks, unbounded growth, missing release paths |
-| [`time-review`](prompts/time-review.md) | Time correctness: timezones, DST, clock choice, epoch units, calendar arithmetic, expiry |
-| [`unicode-review`](prompts/unicode-review.md) | Text encoding: encoding boundaries, normalization, grapheme vs byte, case folding, round-trips |
+| [`cache-review`](src/gauntlet/prompts/cache-review.md) | Caching correctness: invalidation, key design, stampedes, coherence, bounds |
+| [`compat-review`](src/gauntlet/prompts/compat-review.md) | Cross-platform portability: paths, shell, line endings, endianness, libc variants, claim vs CI |
+| [`numerics-review`](src/gauntlet/prompts/numerics-review.md) | Numeric correctness: money in floats, overflow, truncation, rounding, units, NaN |
+| [`resource-review`](src/gauntlet/prompts/resource-review.md) | Resource lifecycle: fd/socket/process/task leaks, unbounded growth, missing release paths |
+| [`time-review`](src/gauntlet/prompts/time-review.md) | Time correctness: timezones, DST, clock choice, epoch units, calendar arithmetic, expiry |
+| [`unicode-review`](src/gauntlet/prompts/unicode-review.md) | Text encoding: encoding boundaries, normalization, grapheme vs byte, case folding, round-trips |
 
 </details>
 
@@ -81,12 +81,12 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
-| [`authz-review`](prompts/authz-review.md) | Authorization matrix: IDOR, tenant isolation, privilege escalation, enforcement consistency |
-| [`threat-review`](prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
-| [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
-| [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
-| [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
+| [`sec-review`](src/gauntlet/prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
+| [`authz-review`](src/gauntlet/prompts/authz-review.md) | Authorization matrix: IDOR, tenant isolation, privilege escalation, enforcement consistency |
+| [`threat-review`](src/gauntlet/prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
+| [`privacy-review`](src/gauntlet/prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
+| [`llm-review`](src/gauntlet/prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
+| [`config-review`](src/gauntlet/prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
 
 </details>
 
@@ -95,8 +95,8 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
-| [`dr-review`](prompts/dr-review.md) | Durability and disaster recovery: backup coverage, restore reality, failure domains, RPO/RTO |
+| [`db-review`](src/gauntlet/prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
+| [`dr-review`](src/gauntlet/prompts/dr-review.md) | Durability and disaster recovery: backup coverage, restore reality, failure domains, RPO/RTO |
 
 </details>
 
@@ -105,8 +105,8 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
-| [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
+| [`perf-review`](src/gauntlet/prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
+| [`webperf-review`](src/gauntlet/prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
 
 </details>
 
@@ -115,11 +115,11 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
-| [`a11y-review`](prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
-| [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
-| [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
-| [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
+| [`ux-review`](src/gauntlet/prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
+| [`a11y-review`](src/gauntlet/prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
+| [`i18n-review`](src/gauntlet/prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
+| [`mobile-review`](src/gauntlet/prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
+| [`uislop-review`](src/gauntlet/prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
 
 </details>
 
@@ -128,14 +128,14 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
-| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
-| [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
-| [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
-| [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
-| [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
-| [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
-| [`specs-review`](prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
+| [`arch-review`](src/gauntlet/prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
+| [`design-review`](src/gauntlet/prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
+| [`api-review`](src/gauntlet/prompts/api-review.md) | API design, consistency, error handling, versioning |
+| [`sdk-review`](src/gauntlet/prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
+| [`cli-review`](src/gauntlet/prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
+| [`minimalism-review`](src/gauntlet/prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
+| [`slop-review`](src/gauntlet/prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
+| [`specs-review`](src/gauntlet/prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
 
 </details>
 
@@ -144,14 +144,14 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
-| [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
-| [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
-| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
-| [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
-| [`container-review`](prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
-| [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
-| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement, line measure |
+| [`build-review`](src/gauntlet/prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
+| [`pkg-review`](src/gauntlet/prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
+| [`release-review`](src/gauntlet/prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
+| [`deps-review`](src/gauntlet/prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
+| [`infra-review`](src/gauntlet/prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
+| [`container-review`](src/gauntlet/prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
+| [`o11y-review`](src/gauntlet/prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
+| [`lint-review`](src/gauntlet/prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement, line measure |
 
 </details>
 
@@ -160,8 +160,8 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
-| [`dx-review`](prompts/dx-review.md) | Contributor experience: clone-to-green-test path, edit-test loop, local/CI parity |
+| [`doc-review`](src/gauntlet/prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
+| [`dx-review`](src/gauntlet/prompts/dx-review.md) | Contributor experience: clone-to-green-test path, edit-test loop, local/CI parity |
 
 </details>
 
@@ -170,9 +170,9 @@ flowchart LR
 
 | Review | Focus |
 |---|---|
-| [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
-| [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
-| [`agentrules-review`](prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
+| [`prompt-review`](src/gauntlet/prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
+| [`skills-review`](src/gauntlet/prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
+| [`agentrules-review`](src/gauntlet/prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
 
 </details>
 
@@ -239,11 +239,11 @@ No dependencies beyond the Python standard library; nothing to build.
 
 ```sh
 git clone https://github.com/maci0/gauntlet.git
-ln -s "$PWD/gauntlet/gauntlet.py" ~/.local/bin/gauntlet   # any dir on your PATH
+ln -s "$PWD/gauntlet/src/gauntlet/cli.py" ~/.local/bin/gauntlet   # any dir on your PATH
 gauntlet doctor    # verify agents and helper tools are visible
 ```
 
-Or skip the symlink and run it in place (`./gauntlet.py`), or from a
+Or skip the symlink and run it in place (`gauntlet`), or from a
 [release tarball](https://github.com/maci0/gauntlet/releases/latest). The
 prompts are discovered relative to the real script location, so the symlink
 form works from any repository; `git pull` in the clone is the whole upgrade.
@@ -252,56 +252,56 @@ form works from any repository; `git pull` in the clone is the whole upgrade.
 
 ```sh
 # see what would run, without running anything
-./gauntlet.py --list
-./gauntlet.py --dry-run
+gauntlet --list
+gauntlet --dry-run
 
 # check which agent CLIs and recommended helper tools are installed
-./gauntlet.py doctor
+gauntlet doctor
 
 # one full pass over all reviews with auto-detected agents, then stop
-./gauntlet.py --once
+gauntlet --once
 
 # run forever (Ctrl+C stops cleanly after the current review)
-./gauntlet.py
+gauntlet
 
 # a single agent, or an explicit set to sample from
-./gauntlet.py --agents claude
-./gauntlet.py --agents claude,gemini,codex
+gauntlet --agents claude
+gauntlet --agents claude,gemini,codex
 
 # every installed agent ('mixed'), optionally with extra pinned models
-./gauntlet.py --agents mixed
-./gauntlet.py --agents claude:opus-4-7,codex:gpt-5-codex,gemini
+gauntlet --agents mixed
+gauntlet --agents claude:opus-4-7,codex:gpt-5-codex,gemini
 
 # same agent, different executable (wrappers, alternate builds, vertex/bedrock)
-./gauntlet.py --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
+gauntlet --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
 
 # only some reviews, or everything except reviews that don't apply
-./gauntlet.py --reviews code-review,sec-review,error-review
-./gauntlet.py --exclude db-review,ux-review
+gauntlet --reviews code-review,sec-review,error-review
+gauntlet --exclude db-review,ux-review
 
 # named sets work anywhere a review name does, and compose with them
-./gauntlet.py --reviews quick             # cheap pass that fits any repo
-./gauntlet.py --reviews backend,llm-review
-./gauntlet.py --exclude frontend          # everything but the UI reviews
-./gauntlet.py --reviews project           # only the target repo's own prompts
+gauntlet --reviews quick             # cheap pass that fits any repo
+gauntlet --reviews backend,llm-review
+gauntlet --exclude frontend          # everything but the UI reviews
+gauntlet --reviews project           # only the target repo's own prompts
 
 # weight by repetition: sec-review runs three times per loop, everything once
-./gauntlet.py --reviews all,sec-review,sec-review
+gauntlet --reviews all,sec-review,sec-review
 
 # short flags; the -review suffix is optional in -r/-x
-./gauntlet.py -a claude -r sec,deps -x fuzz -t 1h
+gauntlet -a claude -r sec,deps -x fuzz -t 1h
 
 # have an agent inspect the repo and propose the relevant reviews
 # (lists them with reasons, asks for confirmation, then loops over those)
-./gauntlet.py --reviews suggest
-./gauntlet.py --reviews suggest --yes   # skip the confirmation prompt
+gauntlet --reviews suggest
+gauntlet --reviews suggest --yes   # skip the confirmation prompt
 
 # let agents attempt big changes instead of declining them
-./gauntlet.py --agents claude --reviews arch-review --yolo
-./gauntlet.py --exclude project           # only the bundled ones
+gauntlet --agents claude --reviews arch-review --yolo
+gauntlet --exclude project           # only the bundled ones
 ```
 
-Run `./gauntlet.py --help` for the full option list.
+Run `gauntlet --help` for the full option list.
 
 ## Options
 
@@ -364,7 +364,7 @@ are stripped, and a rule suffix is appended that constrains the agent:
 
 ## Adding a review
 
-Drop a new `<name>-review.md` into `prompts/`. It is auto-discovered — no code changes needed.
+Drop a new `<name>-review.md` into `src/gauntlet/prompts/`. It is auto-discovered — no code changes needed.
 
 Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped, and symlinked or oddly-named prompt files are ignored.
 
@@ -391,7 +391,7 @@ All review prompts follow a consistent structure (sections 4-5 exist for standal
 ## Tests
 
 ```sh
-./test_gauntlet.py        # or: pytest
+./tests/test_gauntlet.py        # or: pytest
 ```
 
 Stdlib only, no framework required. Covers duration and agent parsing (with a
@@ -410,7 +410,7 @@ Copyright (C) 2026 Marcel W. Wysocki.
 GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`). See
 [LICENSE](LICENSE).
 
-`--version` prints the `VERSION` constant in `gauntlet.py` (the only
+`--version` prints the `VERSION` constant in `src/gauntlet/cli.py` (the only
 source of truth), bumped by hand with a matching git tag and
 [CHANGELOG](CHANGELOG.md) heading. The project is 0.x, so a minor may
 change behavior; such changes are listed under Changed. The consumer

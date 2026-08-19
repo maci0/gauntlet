@@ -1,0 +1,31 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gauntlet-review"
+description = "Run your codebase through the gauntlet: an auto-fix review loop of 50 specialized review prompts dispatched to installed AI coding agents."
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Marcel W. Wysocki" }]
+dynamic = ["version"]
+
+[project.urls]
+Repository = "https://github.com/maci0/gauntlet"
+Changelog = "https://github.com/maci0/gauntlet/blob/main/CHANGELOG.md"
+
+[project.scripts]
+gauntlet = "gauntlet.cli:main"
+
+# VERSION in cli.py stays the single source of truth (bumped with the git tag).
+[tool.hatch.version]
+path = "src/gauntlet/cli.py"
+pattern = 'VERSION = "(?P<version>[^"]+)"'
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gauntlet"]
+
+[dependency-groups]
+dev = ["pytest", "ruff==0.16.1"]

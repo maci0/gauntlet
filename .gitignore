@@ -1,7 +1,10 @@
-.review-loop.lock
+.gauntlet.lock
 __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
 .venv/
 venv/
+dist/
+*.egg-info/
+uv.lock

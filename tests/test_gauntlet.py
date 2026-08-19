@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Marcel W. Wysocki
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for gauntlet.py. Run: ./test_gauntlet.py (or pytest)."""
+"""Tests for gauntlet. Run: ./tests/test_gauntlet.py (or pytest)."""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from pathlib import Path
 
 
 def _load_runner():
-    path = Path(__file__).resolve().parent / "gauntlet.py"
+    path = Path(__file__).resolve().parent.parent / "src" / "gauntlet" / "cli.py"
     spec = importlib.util.spec_from_file_location("gauntlet", path)
     mod = importlib.util.module_from_spec(spec)
     sys.modules["gauntlet"] = mod  # dataclasses resolve types via sys.modules
@@ -49,7 +49,7 @@ def _tree(root: Path, files: dict[str, str]) -> None:
         p.write_text(text)
 
 
-SCRIPT = Path(__file__).resolve().parent / "gauntlet.py"
+SCRIPT = Path(__file__).resolve().parent.parent / "src" / "gauntlet" / "cli.py"
 STUB_PROMPT = "Role.\n\nYour goal is testing.\n"
 
 
@@ -789,7 +789,7 @@ def test_doctor_recommended_tools_are_real_entries():
 
 def test_review_sets_reference_real_prompts():
     """A renamed or removed prompt must not linger in a set."""
-    bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
+    bundled = {f.stem for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md")}
     for name, members in rl.REVIEW_SETS.items():
         assert members, f"{name} is empty"
         assert len(set(members)) == len(members), f"{name} has duplicates"
@@ -827,7 +827,7 @@ RELEASED_SET_NAMES = frozenset({
 
 def test_released_names_still_exist():
     """Renaming or removing a shipped review or set name is a breaking change."""
-    bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
+    bundled = {f.stem for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md")}
     missing = RELEASED_REVIEW_NAMES - bundled
     assert not missing, f"removed or renamed reviews (breaking): {sorted(missing)}"
     known_sets = set(rl.REVIEW_SETS) | set(rl.DYNAMIC_SETS)
@@ -838,7 +838,7 @@ def test_released_names_still_exist():
 
 def test_version_matches_changelog_and_cli():
     """VERSION, the latest changelog heading, and --version must agree."""
-    changelog = (Path(__file__).parent / "CHANGELOG.md").read_text()
+    changelog = (Path(__file__).parent.parent / "CHANGELOG.md").read_text()
     versions = re.findall(r"^## (\d+\.\d+\.\d+)\s*$", changelog, re.MULTILINE)
     assert versions, "CHANGELOG.md has no version headings"
     assert rl.VERSION == versions[0], (
@@ -1729,7 +1729,7 @@ def test_reviews_suggest_rejects_empty_relevant_lines():
 
 def test_doctor_tables_cover_every_bundled_prompt():
     """Adding a prompt without registering it in doctor's tables is drift."""
-    bundled = {f.stem for f in (Path(__file__).parent / "prompts").glob("*-review.md")}
+    bundled = {f.stem for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md")}
     covered = set(rl.REVIEW_TOOLS) | set(rl.REVIEWS_WITHOUT_TOOLS)
     assert bundled == covered, (
         f"unregistered: {bundled - covered}, stale: {covered - bundled}"
@@ -1738,7 +1738,7 @@ def test_doctor_tables_cover_every_bundled_prompt():
 
 
 def test_strip_report_sections_on_real_prompt():
-    text = (Path(__file__).parent / "prompts" / "sec-review.md").read_text()
+    text = (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts" / "sec-review.md").read_text()
     stripped = rl.strip_report_sections(text)
     assert "For each finding include:" not in stripped
     assert "Output format:" not in stripped
@@ -1747,7 +1747,7 @@ def test_strip_report_sections_on_real_prompt():
     assert "Instructions:" in stripped
     assert len(stripped) < len(text) * 0.85, "expected a substantial cut"
     # every bundled prompt must strip cleanly and keep its Important block
-    for f in (Path(__file__).parent / "prompts").glob("*-review.md"):
+    for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md"):
         s = rl.strip_report_sections(f.read_text())
         assert "Output format:" not in s, f.name
         assert "Important:" in s, f.name
