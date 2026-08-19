@@ -10,6 +10,7 @@ import atexit
 import difflib
 import errno
 import fcntl
+import filecmp
 import os
 import random
 import re
@@ -352,13 +353,36 @@ SKIP_DIRS = {
 }
 
 
+def _git_ignored(project: Path, paths: list[Path]) -> set[Path]:
+    """The subset of paths that git ignores; empty when git or a repo is absent.
+
+    Prompt copies inside ignored trees (build output, state snapshots) are
+    never legitimate project prompts, and their duplicate warnings are noise.
+    """
+    if not paths:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(project), "check-ignore", "--stdin", "-z"],
+            input="\0".join(str(p) for p in paths),
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    # 0: some ignored; 1: none ignored; anything else: not a repo / error.
+    if result.returncode not in (0, 1):
+        return set()
+    return {Path(p) for p in result.stdout.split("\0") if p}
+
+
 def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
     """Map review name -> prompt file.
 
     Bundled prompts from prompt_dir, plus any *-review.md found in the
-    project tree (cwd). A project-local prompt wins over a bundled one of
-    the same name; among project duplicates the first found in the walk
-    (depth-first, directories and files sorted) wins. Symlinks are never
+    project tree (cwd), except files git ignores. A project-local prompt
+    wins over a bundled one of the same name; among project duplicates the
+    first found in the walk (depth-first, directories and files sorted)
+    wins, silently when the copies are byte-identical. Symlinks are never
     followed: prompts must be regular files inside the tree, so a link
     cannot pull out-of-tree content into a permission-bypassed AI run.
     """
@@ -377,7 +401,7 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             reviews[f.stem] = f
     project = Path.cwd().resolve()
     prompt_dir = prompt_dir.resolve()
-    project_seen: set[str] = set()
+    candidates: list[Path] = []
     for root, dirs, files in os.walk(project):
         dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
         for name in sorted(n for n in files if n.endswith("-review.md")):
@@ -386,29 +410,43 @@ def discover_reviews(prompt_dir: Path) -> dict[str, Path]:
             # this again at open time, where it is not racy.
             if f.is_symlink() or not f.is_file() or f.parent.resolve() == prompt_dir:
                 continue
-            if sanitize(f.stem) != f.stem:
-                print(
-                    f"Warning: ignoring project prompt with control characters in its name: "
-                    f"{sanitize(str(f))}",
-                    file=sys.stderr,
-                )
-                continue
-            if f.stem not in project_seen and f.stem in reviews:
-                print(
-                    sanitize(f"Note: project prompt {f} overrides the bundled one"),
-                    file=sys.stderr,
-                )
-            if f.stem in project_seen:
+            candidates.append(f)
+    ignored = _git_ignored(project, candidates)
+    project_seen: set[str] = set()
+    for f in candidates:
+        if f in ignored:
+            continue
+        if sanitize(f.stem) != f.stem:
+            print(
+                f"Warning: ignoring project prompt with control characters in its name: "
+                f"{sanitize(str(f))}",
+                file=sys.stderr,
+            )
+            continue
+        if f.stem not in project_seen and f.stem in reviews:
+            print(
+                sanitize(f"Note: project prompt {f} overrides the bundled one"),
+                file=sys.stderr,
+            )
+        if f.stem in project_seen:
+            # Byte-identical copies (vendored snapshots, staging dirs) are
+            # harmless: first-wins silently. Warn only when the ignored
+            # file disagrees with the one in use (or cannot be compared).
+            try:
+                identical = filecmp.cmp(reviews[f.stem], f, shallow=False)
+            except OSError:
+                identical = False
+            if not identical:
                 print(
                     sanitize(
-                        f"Warning: duplicate project prompt {f.stem!r}: "
+                        f"Warning: conflicting duplicate project prompt {f.stem!r}: "
                         f"using {reviews[f.stem]}, ignoring {f}"
                     ),
                     file=sys.stderr,
                 )
-                continue
-            project_seen.add(f.stem)
-            reviews[f.stem] = f
+            continue
+        project_seen.add(f.stem)
+        reviews[f.stem] = f
     return dict(sorted(reviews.items()))
 
 

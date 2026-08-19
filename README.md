@@ -320,6 +320,15 @@ gauntlet --agents claude,gemini,codex
 gauntlet --agents mixed
 gauntlet --agents claude:opus-4-7,codex:gpt-5-codex,gemini
 
+# the model id after ':' is passed to the agent CLI verbatim, so use the
+# exact spelling that CLI accepts (aliases where the CLI defines them):
+gauntlet --agents claude:opus                  # claude accepts alias or full id
+gauntlet --agents claude:claude-opus-5
+gauntlet --agents gemini:gemini-3.2-pro
+gauntlet --agents kimi:nvidia/z-ai/glm-5.2     # kimi: provider/model key from its config.toml
+gauntlet --agents dsh:deepseek/deepseek-v4-pro # dsh: provider/model (bare model reuses profile provider)
+# a misspelled id (e.g. claude:opus-5) fails at run time with that CLI's own error
+
 # same agent, different executable (wrappers, alternate builds, vertex/bedrock)
 gauntlet --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
 
@@ -366,7 +375,7 @@ Run `gauntlet --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
+| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). The model id is passed to the agent CLI verbatim: use the exact spelling that CLI accepts (`claude:opus`, `claude:claude-opus-5`, `kimi:nvidia/z-ai/glm-5.2`). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
 | `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
 | `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 

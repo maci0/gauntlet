@@ -503,18 +503,47 @@ def test_discover_reviews_ignores_symlinks_and_control_chars():
 
 
 def test_discover_reviews_duplicate_project_prompts_warn_first_wins():
+    """Conflicting duplicates warn; byte-identical copies are silent."""
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve()
         bundled, proj = root / "prompts", root / "proj"
         bundled.mkdir(parents=True)
-        _tree(proj, {"a/dup-review.md": "first", "b/dup-review.md": "second"})
+        _tree(proj, {
+            "a/dup-review.md": "first", "b/dup-review.md": "second",
+            "a/same-review.md": "snapshot", "b/same-review.md": "snapshot",
+        })
 
         err = io.StringIO()
         with _cwd(proj), contextlib.redirect_stderr(err):
             found = rl.discover_reviews(bundled)
 
         assert found["dup-review"] == proj / "a" / "dup-review.md"
-        assert "duplicate project prompt" in err.getvalue()
+        assert found["same-review"] == proj / "a" / "same-review.md"
+        assert "conflicting duplicate project prompt 'dup-review'" in err.getvalue()
+        assert "same-review" not in err.getvalue()
+
+
+def test_discover_reviews_skips_git_ignored_prompts():
+    """Prompt copies in git-ignored trees are not discovered and never warn."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        bundled, proj = root / "prompts", root / "proj"
+        bundled.mkdir(parents=True)
+        _tree(proj, {
+            "docs/real-review.md": "current",
+            "state/snap/real-review.md": "old snapshot",
+            "state/snap/ignored-only-review.md": "never seen",
+            ".gitignore": "state/\n",
+        })
+        subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+
+        err = io.StringIO()
+        with _cwd(proj), contextlib.redirect_stderr(err):
+            found = rl.discover_reviews(bundled)
+
+        assert found["real-review"] == proj / "docs" / "real-review.md"
+        assert "ignored-only-review" not in found
+        assert "duplicate" not in err.getvalue(), err.getvalue()
 
 
 def test_discover_reviews_skips_hidden_dirs():
