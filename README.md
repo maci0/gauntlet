@@ -1,6 +1,12 @@
 # review-prompts
 
-An auto-fix review loop for codebases: 50 specialized review prompts (security,
+[![ci](https://github.com/maci0/review-prompts/actions/workflows/ci.yml/badge.svg)](https://github.com/maci0/review-prompts/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/tag/maci0/review-prompts?label=release&color=2ea44f)](https://github.com/maci0/review-prompts/tags)
+[![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
+![python](https://img.shields.io/badge/python-3.10%2B-3776ab)
+![deps](https://img.shields.io/badge/dependencies-none-success)
+
+An auto-fix review loop for codebases: **50 specialized review prompts** (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
@@ -9,6 +15,17 @@ different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
 
 How a single pass works:
+
+```mermaid
+flowchart LR
+    A["pick next review +<br>random agent"] --> B["compose prompt:<br>strip report sections,<br>append containment rules"]
+    B --> C["agent applies up to<br>~10 small fixes<br>(hard timeout)"]
+    C --> D{"--commit /<br>--push?"}
+    D -- yes --> E["commit step:<br>agent writes message,<br>commits, pushes"]
+    D -- no --> F["diff accumulates<br>in worktree"]
+    E --> A
+    F --> A
+```
 
 1. The runner picks the next review and a random agent from `--agents`.
 2. The prompt is composed for auto-fix: report-only sections are stripped and a
@@ -29,58 +46,135 @@ How a single pass works:
 
 ### Available reviews
 
+<details>
+<summary><b>Correctness</b> (8)</summary>
+
 | Review | Focus |
 |---|---|
-| [`a11y-review`](prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
-| [`agentrules-review`](prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
-| [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
-| [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
-| [`authz-review`](prompts/authz-review.md) | Authorization matrix: IDOR, tenant isolation, privilege escalation, enforcement consistency |
-| [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
-| [`cache-review`](prompts/cache-review.md) | Caching correctness: invalidation, key design, stampedes, coherence, bounds |
-| [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
 | [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
-| [`compat-review`](prompts/compat-review.md) | Cross-platform portability: paths, shell, line endings, endianness, libc variants, claim vs CI |
-| [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
-| [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
-| [`container-review`](prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
-| [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
-| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
-| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
-| [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
-| [`dr-review`](prompts/dr-review.md) | Durability and disaster recovery: backup coverage, restore reality, failure domains, RPO/RTO |
-| [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
-| [`dx-review`](prompts/dx-review.md) | Contributor experience: clone-to-green-test path, edit-test loop, local/CI parity |
-| [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
 | [`functionality-review`](prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
+| [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
+| [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
+| [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
+| [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
 | [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
-| [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
 | [`idempotency-review`](prompts/idempotency-review.md) | Re-execution safety: retries, at-least-once delivery, dedup keys, reruns, crash recovery |
-| [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
-| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement, line measure |
-| [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
-| [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
-| [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
+
+</details>
+
+<details>
+<summary><b>Precision</b> (6)</summary>
+
+| Review | Focus |
+|---|---|
+| [`cache-review`](prompts/cache-review.md) | Caching correctness: invalidation, key design, stampedes, coherence, bounds |
+| [`compat-review`](prompts/compat-review.md) | Cross-platform portability: paths, shell, line endings, endianness, libc variants, claim vs CI |
 | [`numerics-review`](prompts/numerics-review.md) | Numeric correctness: money in floats, overflow, truncation, rounding, units, NaN |
-| [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
-| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
-| [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
-| [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
-| [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
-| [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
 | [`resource-review`](prompts/resource-review.md) | Resource lifecycle: fd/socket/process/task leaks, unbounded growth, missing release paths |
-| [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
+| [`time-review`](prompts/time-review.md) | Time correctness: timezones, DST, clock choice, epoch units, calendar arithmetic, expiry |
+| [`unicode-review`](prompts/unicode-review.md) | Text encoding: encoding boundaries, normalization, grapheme vs byte, case folding, round-trips |
+
+</details>
+
+<details>
+<summary><b>Security</b> (6)</summary>
+
+| Review | Focus |
+|---|---|
 | [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
-| [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
+| [`authz-review`](prompts/authz-review.md) | Authorization matrix: IDOR, tenant isolation, privilege escalation, enforcement consistency |
+| [`threat-review`](prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
+| [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
+| [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
+| [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
+
+</details>
+
+<details>
+<summary><b>Data & recovery</b> (2)</summary>
+
+| Review | Focus |
+|---|---|
+| [`db-review`](prompts/db-review.md) | Schema design, queries, migrations, data integrity, indexing |
+| [`dr-review`](prompts/dr-review.md) | Durability and disaster recovery: backup coverage, restore reality, failure domains, RPO/RTO |
+
+</details>
+
+<details>
+<summary><b>Performance</b> (2)</summary>
+
+| Review | Focus |
+|---|---|
+| [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
+| [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
+
+</details>
+
+<details>
+<summary><b>Frontend & UX</b> (5)</summary>
+
+| Review | Focus |
+|---|---|
+| [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
+| [`a11y-review`](prompts/a11y-review.md) | Accessibility, WCAG 2.2 AA, keyboard, screen readers, contrast, motion |
+| [`i18n-review`](prompts/i18n-review.md) | Internationalization, localization, locale handling, RTL, formatting |
+| [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
+| [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
+
+</details>
+
+<details>
+<summary><b>Design & surface</b> (8)</summary>
+
+| Review | Focus |
+|---|---|
+| [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
+| [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
+| [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
+| [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
+| [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
+| [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`slop-review`](prompts/slop-review.md) | Noise removal: redundant comments, copy-paste, dead code, churn, over-engineering |
 | [`specs-review`](prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
-| [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
-| [`threat-review`](prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
-| [`time-review`](prompts/time-review.md) | Time correctness: timezones, DST, clock choice, epoch units, calendar arithmetic, expiry |
-| [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
-| [`unicode-review`](prompts/unicode-review.md) | Text encoding: encoding boundaries, normalization, grapheme vs byte, case folding, round-trips |
-| [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
-| [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
+
+</details>
+
+<details>
+<summary><b>Shipping & operations</b> (8)</summary>
+
+| Review | Focus |
+|---|---|
+| [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
+| [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
+| [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
+| [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
+| [`infra-review`](prompts/infra-review.md) | CI/CD, containers, IaC, deployment, secret management |
+| [`container-review`](prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
+| [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
+| [`lint-review`](prompts/lint-review.md) | Static-analysis posture: tool coverage, strictness, suppression hygiene, typing coverage, blocking CI enforcement, line measure |
+
+</details>
+
+<details>
+<summary><b>Docs & DX</b> (2)</summary>
+
+| Review | Focus |
+|---|---|
+| [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
+| [`dx-review`](prompts/dx-review.md) | Contributor experience: clone-to-green-test path, edit-test loop, local/CI parity |
+
+</details>
+
+<details>
+<summary><b>Agent instructions</b> (3)</summary>
+
+| Review | Focus |
+|---|---|
+| [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
+| [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
+| [`agentrules-review`](prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
+
+</details>
 
 ### Review sets
 
