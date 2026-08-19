@@ -72,6 +72,7 @@ Review the following:
 - emptyDir volumes without sizeLimit: runaway temp file growth consumes node ephemeral storage and triggers eviction of unrelated pods
 
 8. Resilience and availability
+- Process state that breaks horizontal scaling: sessions, caches-as-truth, or job progress held in process memory or on the pod's local disk, so a second replica gives wrong answers and a reschedule loses data. Statelessness is what makes replicas, drains, and rolling updates safe; externalize the state to an attached backing service (dr-review owns the durability of that store; cache-review owns cache semantics)
 - No PodDisruptionBudget on a multi-replica Deployment: a node drain during a cluster upgrade terminates all replicas simultaneously; service is fully unavailable for the duration of pod rescheduling
 - PDB minAvailable set equal to replica count: blocks all voluntary disruptions including node drains and cluster upgrades, preventing maintenance
 - All replicas scheduled on the same node (no podAntiAffinity or topologySpreadConstraints): a single node failure or drain takes out the entire service even with multiple replicas
