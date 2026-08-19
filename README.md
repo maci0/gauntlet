@@ -233,6 +233,21 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
   repository to use it.
 - `tee` (only if `--log` is used)
 
+## Install
+
+No dependencies beyond the Python standard library; nothing to build.
+
+```sh
+git clone https://github.com/maci0/gauntlet.git
+ln -s "$PWD/gauntlet/gauntlet.py" ~/.local/bin/gauntlet   # any dir on your PATH
+gauntlet doctor    # verify agents and helper tools are visible
+```
+
+Or skip the symlink and run it in place (`./gauntlet.py`), or from a
+[release tarball](https://github.com/maci0/gauntlet/releases/latest). The
+prompts are discovered relative to the real script location, so the symlink
+form works from any repository; `git pull` in the clone is the whole upgrade.
+
 ## Quick start
 
 ```sh
