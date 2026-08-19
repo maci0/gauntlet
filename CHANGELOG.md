@@ -2,6 +2,33 @@
 
 Notable changes per release.
 
+## 0.18.0
+
+### Added
+
+- Logo: two facing rows of chevrons with the code's path arrowing
+  through the corridor (running the gauntlet, literally). SVG mark plus
+  light/dark wordmark variants in `assets/`, shown in the README via a
+  theme-aware `picture` element.
+- Static-analysis posture: ruff and mypy configured in `pyproject.toml`
+  and enforced in CI (pinned `ruff==0.16.1`, `mypy==1.19.0`). Ruff runs
+  E/W/F/B/UP/SIM/RUF/PLE/PLW at line-length 100 with E501 and SIM105
+  deferred with written reasons; mypy checks `cli.py` with strict
+  equality and untyped-def checking. Fixes the tools surfaced:
+  `NoReturn` on `usage_error`, two Optional-narrowing defects, a
+  shadowed loop variable, and assorted cleanups.
+- `container-review` now flags process state that breaks horizontal
+  scaling (sessions, caches-as-truth, job progress in process memory or
+  on pod-local disk), the twelve-factor stateless-process property.
+
+### Changed
+
+- README: centered hero with the logo and nav links, a real
+  sample-session transcript, agent notes folded into a details block,
+  `uv tool install` documented, the options table split into four
+  task-oriented groups, exit codes as a table, and the trust model as a
+  warning callout.
+
 ## 0.17.0
 
 ### Added

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import NoReturn
 from pathlib import Path
 
-VERSION = "0.17.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.18.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
