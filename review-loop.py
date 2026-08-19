@@ -25,7 +25,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-VERSION = "0.13.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.14.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -69,10 +69,11 @@ CORE_TOOLS: tuple[tuple[str, str], ...] = (
 # Bundled reviews with no purpose-built CLI tooling; listed so doctor's review
 # set matches --list instead of silently omitting them.
 REVIEWS_WITHOUT_TOOLS = (
-    "agentrules-review", "design-review", "dst-review", "error-review",
-    "functionality-review", "lint-review", "mobile-review", "privacy-review",
+    "agentrules-review", "cache-review", "design-review", "dr-review",
+    "dst-review", "dx-review", "error-review", "functionality-review",
+    "lint-review", "mobile-review", "numerics-review", "privacy-review",
     "prompt-review", "skills-review", "specs-review", "threat-review",
-    "uislop-review",
+    "time-review", "uislop-review", "unicode-review",
 )
 
 # Worth installing on any machine: language-agnostic and useful in most repos.
@@ -91,9 +92,11 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "a11y-review": ("pa11y", "lighthouse", "axe", "vnu"),
     "api-review": ("spectral", "oasdiff", "buf"),
     "arch-review": ("madge", "pydeps", "lint-imports"),
+    "authz-review": ("semgrep",),
     "build-review": ("diffoscope", "shellcheck"),
     "cli-review": ("shellcheck",),
     "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
+    "compat-review": ("shellcheck",),
     "concurrency-review": ("valgrind",),
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
     "container-review": ("hadolint", "kube-score", "kubesec", "trivy"),
@@ -113,6 +116,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "pkg-review": ("lintian", "rpmlint", "namcap", "hadolint", "dive", "shellcheck",
                    "desktop-file-validate", "appstream-util", "check-wheel-contents"),
     "release-review": ("cargo-semver-checks", "api-extractor", "oasdiff", "git-cliff"),
+    "resource-review": ("valgrind", "heaptrack"),
     "sdk-review": ("api-extractor", "cargo-public-api", "stubtest"),
     "sec-review": ("semgrep", "gitleaks", "trufflehog", "bandit", "gosec",
                    "shellcheck"),
@@ -177,19 +181,21 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
         "code-review", "sec-review", "error-review", "functionality-review",
         "test-review", "perf-review", "deps-review", "doc-review",
         "arch-review", "design-review", "specs-review", "concurrency-review",
-        "minimalism-review", "slop-review", "lint-review",
+        "minimalism-review", "slop-review", "lint-review", "compat-review",
+        "time-review", "numerics-review", "resource-review",
     ),
     "security": (
         "sec-review", "deps-review", "privacy-review", "config-review",
-        "fuzz-review", "llm-review", "threat-review",
+        "fuzz-review", "llm-review", "threat-review", "authz-review",
     ),
     "frontend": (
         "ux-review", "a11y-review", "uislop-review", "i18n-review",
-        "webperf-review", "mobile-review",
+        "webperf-review", "mobile-review", "unicode-review",
     ),
     "backend": (
         "api-review", "db-review", "error-review", "concurrency-review",
         "idempotency-review", "o11y-review", "perf-review", "dst-review",
+        "authz-review", "cache-review", "dr-review",
     ),
     # Repos that ship instructions for AI agents.
     "agents": (
@@ -198,7 +204,7 @@ REVIEW_SETS: dict[str, tuple[str, ...]] = {
     "shipping": (
         "release-review", "pkg-review", "build-review", "deps-review",
         "doc-review", "cli-review", "sdk-review", "infra-review",
-        "container-review",
+        "container-review", "dx-review",
     ),
 }
 

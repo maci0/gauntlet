@@ -34,9 +34,12 @@ How a single pass works:
 | [`agentrules-review`](prompts/agentrules-review.md) | CLAUDE.md/AGENTS.md/.cursorrules: accuracy vs repo, token cost, command safety, coherence |
 | [`api-review`](prompts/api-review.md) | API design, consistency, error handling, versioning |
 | [`arch-review`](prompts/arch-review.md) | Architecture, module boundaries, dependency direction, layering |
+| [`authz-review`](prompts/authz-review.md) | Authorization matrix: IDOR, tenant isolation, privilege escalation, enforcement consistency |
 | [`build-review`](prompts/build-review.md) | Build reproducibility, hermeticity, toolchain pinning, artifact correctness |
+| [`cache-review`](prompts/cache-review.md) | Caching correctness: invalidation, key design, stampedes, coherence, bounds |
 | [`cli-review`](prompts/cli-review.md) | CLI usability, flags, help text, output design, scripting support |
 | [`code-review`](prompts/code-review.md) | Code quality, duplication, dead code, refactoring, type safety, assertions, bounds |
+| [`compat-review`](prompts/compat-review.md) | Cross-platform portability: paths, shell, line endings, endianness, libc variants, claim vs CI |
 | [`concurrency-review`](prompts/concurrency-review.md) | Race conditions, deadlocks, shared state, async correctness, thread safety |
 | [`config-review`](prompts/config-review.md) | Configuration management, environment separation, secrets, feature flags |
 | [`container-review`](prompts/container-review.md) | Container-native readiness: K8s manifests, Helm/Kustomize, probes, graceful shutdown, security context, resource limits |
@@ -44,7 +47,9 @@ How a single pass works:
 | [`deps-review`](prompts/deps-review.md) | Dependency health, unused packages, vulnerabilities, licenses, SBOM, provenance, registry risk, zero-dep default |
 | [`design-review`](prompts/design-review.md) | Technical design decisions, tradeoffs, alternatives, data modeling, tech selection, tech-debt posture |
 | [`doc-review`](prompts/doc-review.md) | Documentation accuracy, coverage, onboarding, architecture docs |
+| [`dr-review`](prompts/dr-review.md) | Durability and disaster recovery: backup coverage, restore reality, failure domains, RPO/RTO |
 | [`dst-review`](prompts/dst-review.md) | Deterministic simulation testing: injected clock/RNG/IO, fault injection, seed replay |
+| [`dx-review`](prompts/dx-review.md) | Contributor experience: clone-to-green-test path, edit-test loop, local/CI parity |
 | [`error-review`](prompts/error-review.md) | Error handling, resilience, retries, timeouts, failure isolation |
 | [`functionality-review`](prompts/functionality-review.md) | Feature completeness, behavioral correctness, edge cases, contract mismatches |
 | [`fuzz-review`](prompts/fuzz-review.md) | Fuzz testing coverage across API surfaces, untrusted input, crash/hang robustness |
@@ -55,12 +60,14 @@ How a single pass works:
 | [`llm-review`](prompts/llm-review.md) | LLM integrations: prompt injection, untrusted output, agent loops, cost, evals, drift |
 | [`minimalism-review`](prompts/minimalism-review.md) | Necessity proof per line, YAGNI, simpler/stdlib alternatives, deletion ledger |
 | [`mobile-review`](prompts/mobile-review.md) | Mobile citizenship: lifecycle, offline, battery/data budgets, permissions, store readiness |
+| [`numerics-review`](prompts/numerics-review.md) | Numeric correctness: money in floats, overflow, truncation, rounding, units, NaN |
 | [`o11y-review`](prompts/o11y-review.md) | Observability: logging, metrics, tracing, alerting, health checks |
 | [`perf-review`](prompts/perf-review.md) | Performance bottlenecks, memory, I/O, caching, hot paths, batching, resource-order sketches |
 | [`pkg-review`](prompts/pkg-review.md) | Packaging: deb/rpm/PKGBUILD, Flatpak/Snap, container images, install/upgrade lifecycle |
 | [`privacy-review`](prompts/privacy-review.md) | Data privacy, GDPR/CCPA compliance, PII handling, consent, data subject rights |
 | [`prompt-review`](prompts/prompt-review.md) | Review prompts as agent instructions: fencing, actionability, safety, consistency |
 | [`release-review`](prompts/release-review.md) | Versioning/semver, breaking-change gating, changelog, deprecation, migration |
+| [`resource-review`](prompts/resource-review.md) | Resource lifecycle: fd/socket/process/task leaks, unbounded growth, missing release paths |
 | [`sdk-review`](prompts/sdk-review.md) | SDK developer experience, API surface, types, versioning, testability, docs |
 | [`sec-review`](prompts/sec-review.md) | Security vulnerabilities, auth, injection, data exposure, cryptography |
 | [`skills-review`](prompts/skills-review.md) | Shipped agent skills: trigger descriptions, token economy, staleness, script safety |
@@ -68,7 +75,9 @@ How a single pass works:
 | [`specs-review`](prompts/specs-review.md) | PRDs, ADRs, RFCs as documents: drift vs code, lifecycle, testability, traceability, cross-doc redundancy |
 | [`test-review`](prompts/test-review.md) | Test quality, coverage gaps, flaky tests, mock quality, test design |
 | [`threat-review`](prompts/threat-review.md) | Threat model as a living document: attack surface, trust boundaries, mitigations mapping, abuse cases, SECURITY.md accuracy |
+| [`time-review`](prompts/time-review.md) | Time correctness: timezones, DST, clock choice, epoch units, calendar arithmetic, expiry |
 | [`uislop-review`](prompts/uislop-review.md) | Generic AI visual design: template sameness, default tokens, microcopy slop, identity absence |
+| [`unicode-review`](prompts/unicode-review.md) | Text encoding: encoding boundaries, normalization, grapheme vs byte, case folding, round-trips |
 | [`webperf-review`](prompts/webperf-review.md) | Web delivery: compression, critical path, caching headers, bundle loading, first paint |
 | [`ux-review`](prompts/ux-review.md) | UX, accessibility, interaction design, forms, responsive layout |
 
@@ -82,12 +91,12 @@ names, and `--list` prints their current members:
 | `all` | every discovered review, including project-local ones |
 | `project` | only prompts found in the target tree (the `[project]` ones), never the bundled set |
 | `quick` | code, sec, error, functionality, test — applies to any repo, cheapest useful pass |
-| `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop, lint |
-| `security` | sec, deps, privacy, config, fuzz, llm, threat |
-| `frontend` | ux, a11y, uislop, i18n, webperf, mobile |
-| `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst |
+| `standard` | `quick` plus perf, deps, doc, arch, design, specs, concurrency, minimalism, slop, lint, compat, time, numerics, resource |
+| `security` | sec, deps, privacy, config, fuzz, llm, threat, authz |
+| `frontend` | ux, a11y, uislop, i18n, webperf, mobile, unicode |
+| `backend` | api, db, error, concurrency, idempotency, o11y, perf, dst, authz, cache, dr |
 | `agents` | prompt, skills, agentrules, llm — for repos shipping AI agent instructions |
-| `shipping` | release, pkg, build, deps, doc, cli, sdk, infra, container |
+| `shipping` | release, pkg, build, deps, doc, cli, sdk, infra, container, dx |
 
 Members missing from the prompt directory are skipped, so a set stays usable
 with a custom `--prompt-dir`.

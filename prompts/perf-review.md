@@ -50,9 +50,9 @@ Review the following:
 - Missing connection pool tuning
 
 6. Caching
+(cache-review owns caching correctness: invalidation, coherence, stampedes, key collisions. Here own whether caching exists where it should and pays for its memory.)
 - Missing caches for expensive or frequently accessed data
-- Caches without eviction policies or TTLs
-- Cache invalidation gaps that could serve stale data
+- Caches without eviction policies or TTLs (note only; cache-review owns the fix)
 - Over-caching that wastes memory without measurable benefit
 - Cache key design that causes low hit rates
 
@@ -77,9 +77,10 @@ Review the following:
 - Hand-written intrinsics that are unportable, unmaintained, or slower than the autovectorized version; missing runtime feature detection / scalar fallback for the target CPU (AVX/NEON/SVE)
 
 9. Resource management
-- File handles, sockets, or connections not properly closed (note only; error-review owns cleanup)
-- Missing pool size limits
-- Unbounded worker or thread creation
+(resource-review owns leaks and lifecycle: acquisition without release, unbounded growth. Here own the throughput/tuning side of what is held.)
+- File handles, sockets, or connections not properly closed (note only; resource-review owns the leak)
+- Missing pool size limits (tuning here; the missing bound as a leak belongs to resource-review)
+- Unbounded worker or thread creation (note only; resource-review owns the bound)
 - Missing rate limiting on resource-intensive operations
 
 10. Build and bundle size

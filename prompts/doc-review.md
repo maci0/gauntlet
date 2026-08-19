@@ -62,6 +62,7 @@ Review the following:
 - Missing documentation of non-obvious constraints or trade-offs
 
 9. Onboarding and getting started
+(dx-review owns the runnable contributor path: whether the documented commands actually work in order on a clean machine. Here own the prose: that the instructions exist, are complete, and are accurate as text.)
 - Missing or incomplete setup instructions for new contributors
 - Prerequisites or system dependencies not documented
 - Missing quickstart or hello-world example

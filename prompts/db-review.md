@@ -96,6 +96,7 @@ Review the following:
 - Missing archival strategy for growing tables
 
 9. Operational readiness
+(dr-review owns the durability and recovery posture in depth: backup coverage, restore reality, failure domains. Here note database-side gaps in passing; leave the recoverability audit to it.)
 - Missing database backup configuration or verification
 - No point-in-time recovery capability
 - Missing monitoring for connection pool exhaustion, slow queries, or replication lag

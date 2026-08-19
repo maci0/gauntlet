@@ -45,6 +45,7 @@ Review the following:
 - Type coercion or default substitution that masks invalid input
 
 5. Resource cleanup on error
+(resource-review owns the full acquire/release lifecycle and bounds; here own the error-path slice: cleanup skipped specifically when a failure interrupts the flow.)
 - Resources not released on error paths (file handles, connections, locks, temp files)
 - Missing try/finally, defer, using, or equivalent cleanup patterns
 - Partial operations that leave state inconsistent when an error occurs midway

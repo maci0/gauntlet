@@ -2,6 +2,66 @@
 
 Notable changes per release.
 
+## 0.14.0
+
+### Added
+
+- Nine new bundled reviews, each with an applicability gate and single-owner
+  fencing against its neighbors:
+  - `compat-review`: cross-platform portability. Paths and filesystem
+    assumptions, bashisms and GNU-vs-BSD tool drift, line endings,
+    endianness and word-size assumptions, glibc/musl variants, and drift
+    between the claimed support matrix (README, CI, packaging) and what CI
+    actually tests.
+  - `time-review`: time correctness. Naive vs aware datetimes, DST and
+    calendar arithmetic ("+24h means tomorrow"), wall vs monotonic clock
+    choice, mixed epoch units, ambiguous parsing, cron timezones, and
+    range/expiry boundary defects.
+  - `numerics-review`: numeric correctness. Money in binary floats,
+    rounding-mode and allocation errors, silent overflow and truncating
+    casts, division and negative-modulo surprises, unit mismatches, and
+    precision loss across serialization boundaries (2^53 IDs in JS).
+  - `authz-review`: the authorization matrix in depth. Object-level misses
+    (IDOR), function-level gaps, tenant isolation, privilege-escalation
+    paths, enforcement consistency across duplicate API surfaces, indirect
+    access via search/export/webhooks, and deny-side test coverage.
+    sec-review keeps authn and point vulnerabilities.
+  - `cache-review`: caching correctness. Invalidation completeness at
+    write paths, key design (collisions, missing tenant/locale dimensions),
+    staleness policy, stampede/dogpile behavior, cross-layer coherence,
+    bounds, and sensitive data in shared caches. perf-review keeps
+    whether to cache.
+  - `resource-review`: resource lifecycle. Descriptor/socket/connection
+    leaks, pool drains, zombie processes, leaked goroutines/tasks,
+    listener and timer accumulation, unbounded in-memory growth, and
+    lock/lease release paths. error-review keeps the error-path slice.
+  - `dr-review`: durability and disaster recovery. State inventory vs
+    backup coverage, restore reality (tested, loadable, orderable),
+    ack-before-durable write windows, failure-domain concentration
+    (backups deletable by the same credential), rollback of bad deploys,
+    and RPO/RTO plus runbook existence. Takes over db-review's
+    operational edges.
+  - `unicode-review`: text encoding correctness. Encoding boundaries,
+    NFC/NFD normalization policy, byte/code-point/grapheme length and
+    truncation defects, case folding, confusables and invisible characters
+    in identifiers, and lossy round-trips. i18n-review keeps locale,
+    translation, and RTL.
+  - `dx-review`: contributor experience. Clone-to-green-test bootstrap,
+    edit-test loop speed and single-test paths, command discoverability,
+    local/CI parity, contribution mechanics, and dev-path error messages.
+    doc-review keeps prose accuracy; this owns the runnable path.
+- Set updates: `standard` gains compat, time, numerics, resource;
+  `security` gains authz; `backend` gains authz, cache, dr; `frontend`
+  gains unicode; `shipping` gains dx.
+
+### Changed
+
+- Reciprocal fencing lines added to sec-review (authz depth), perf-review
+  (cache correctness, resource lifecycle), error-review (resource
+  lifecycle), i18n-review (encoding mechanics), db-review (recovery
+  posture), and doc-review (runnable onboarding path), keeping every
+  concern single-owner.
+
 ## 0.13.0
 
 ### Added

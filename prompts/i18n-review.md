@@ -53,7 +53,7 @@ Review the following:
 - Line breaking and word wrapping that fails for CJK or scripts without spaces
 - Hyphenation rules hardcoded for English
 - Text direction (LTR/RTL) not handled dynamically based on content language
-- Unicode normalization not applied consistently (NFC vs NFD)
+- Unicode normalization not applied consistently (NFC vs NFD) (note only; unicode-review owns encoding and normalization mechanics)
 
 6. Sorting, searching, and comparison
 - String sorting using byte-order instead of locale-aware collation
