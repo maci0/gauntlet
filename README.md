@@ -1,12 +1,12 @@
-# review-prompts
+# gauntlet
 
-[![ci](https://github.com/maci0/review-prompts/actions/workflows/ci.yml/badge.svg)](https://github.com/maci0/review-prompts/actions/workflows/ci.yml)
-[![release](https://img.shields.io/github/v/tag/maci0/review-prompts?label=release&color=2ea44f)](https://github.com/maci0/review-prompts/tags)
+[![ci](https://github.com/maci0/gauntlet/actions/workflows/ci.yml/badge.svg)](https://github.com/maci0/gauntlet/actions/workflows/ci.yml)
+[![release](https://img.shields.io/github/v/tag/maci0/gauntlet?label=release&color=2ea44f)](https://github.com/maci0/gauntlet/tags)
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue)](LICENSE)
 ![python](https://img.shields.io/badge/python-3.10%2B-3776ab)
 ![deps](https://img.shields.io/badge/dependencies-none-success)
 
-An auto-fix review loop for codebases: **50 specialized review prompts** (security,
+Run your codebase through the gauntlet: an auto-fix review loop of **50 specialized review prompts** (security,
 performance, accessibility, supply chain, LLM integration, agent instructions, ...) dispatched to
 whatever AI coding agents you have installed (`claude`, `gemini`, `qwen`,
 `codex`, `grok`, `agy`, `cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`), which apply small, proven fixes
@@ -40,8 +40,8 @@ flowchart LR
 ## Contents
 
 - `prompts/*-review.md` — review prompts, one per concern. Auto-discovered by the runner.
-- `review-loop.py` — the runner. Also provides `doctor` (tool inventory) and the composition/containment logic.
-- `test_review_loop.py` — tests for parsing, discovery, composition, and the exit-code contract.
+- `gauntlet.py` — the runner. Also provides `doctor` (tool inventory) and the composition/containment logic.
+- `test_gauntlet.py` — tests for parsing, discovery, composition, and the exit-code contract.
 - `CHANGELOG.md` — notable changes per release.
 
 ### Available reviews
@@ -237,56 +237,56 @@ rather than running back to back. `--list` shows a weighted review as `×N`, and
 
 ```sh
 # see what would run, without running anything
-./review-loop.py --list
-./review-loop.py --dry-run
+./gauntlet.py --list
+./gauntlet.py --dry-run
 
 # check which agent CLIs and recommended helper tools are installed
-./review-loop.py doctor
+./gauntlet.py doctor
 
 # one full pass over all reviews with auto-detected agents, then stop
-./review-loop.py --once
+./gauntlet.py --once
 
 # run forever (Ctrl+C stops cleanly after the current review)
-./review-loop.py
+./gauntlet.py
 
 # a single agent, or an explicit set to sample from
-./review-loop.py --agents claude
-./review-loop.py --agents claude,gemini,codex
+./gauntlet.py --agents claude
+./gauntlet.py --agents claude,gemini,codex
 
 # every installed agent ('mixed'), optionally with extra pinned models
-./review-loop.py --agents mixed
-./review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex,gemini
+./gauntlet.py --agents mixed
+./gauntlet.py --agents claude:opus-4-7,codex:gpt-5-codex,gemini
 
 # same agent, different executable (wrappers, alternate builds, vertex/bedrock)
-./review-loop.py --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
+./gauntlet.py --agents claude --bin claude=~/.local/bin/claude-vertex-sonnet
 
 # only some reviews, or everything except reviews that don't apply
-./review-loop.py --reviews code-review,sec-review,error-review
-./review-loop.py --exclude db-review,ux-review
+./gauntlet.py --reviews code-review,sec-review,error-review
+./gauntlet.py --exclude db-review,ux-review
 
 # named sets work anywhere a review name does, and compose with them
-./review-loop.py --reviews quick             # cheap pass that fits any repo
-./review-loop.py --reviews backend,llm-review
-./review-loop.py --exclude frontend          # everything but the UI reviews
-./review-loop.py --reviews project           # only the target repo's own prompts
+./gauntlet.py --reviews quick             # cheap pass that fits any repo
+./gauntlet.py --reviews backend,llm-review
+./gauntlet.py --exclude frontend          # everything but the UI reviews
+./gauntlet.py --reviews project           # only the target repo's own prompts
 
 # weight by repetition: sec-review runs three times per loop, everything once
-./review-loop.py --reviews all,sec-review,sec-review
+./gauntlet.py --reviews all,sec-review,sec-review
 
 # short flags; the -review suffix is optional in -r/-x
-./review-loop.py -a claude -r sec,deps -x fuzz -t 1h
+./gauntlet.py -a claude -r sec,deps -x fuzz -t 1h
 
 # have an agent inspect the repo and propose the relevant reviews
 # (lists them with reasons, asks for confirmation, then loops over those)
-./review-loop.py --reviews suggest
-./review-loop.py --reviews suggest --yes   # skip the confirmation prompt
+./gauntlet.py --reviews suggest
+./gauntlet.py --reviews suggest --yes   # skip the confirmation prompt
 
 # let agents attempt big changes instead of declining them
-./review-loop.py --agents claude --reviews arch-review --yolo
-./review-loop.py --exclude project           # only the bundled ones
+./gauntlet.py --agents claude --reviews arch-review --yolo
+./gauntlet.py --exclude project           # only the bundled ones
 ```
 
-Run `./review-loop.py --help` for the full option list.
+Run `./gauntlet.py --help` for the full option list.
 
 ## Options
 
@@ -322,7 +322,7 @@ Run `./review-loop.py --help` for the full option list.
   on another agent from the pool when one remains. Timeouts are not retried.
 - Each review is hard-bounded by `--timeout`; on timeout the process group is `SIGTERM`'d, then `SIGKILL`'d after 10s.
 - `Ctrl+C` once: terminates the active review and stops cleanly. Twice: force-kills.
-- A `flock`-based lockfile (`.review-loop.lock`) prevents concurrent runs in the same directory.
+- A `flock`-based lockfile (`.gauntlet.lock`) prevents concurrent runs in the same directory.
 - `doctor`, `--list`, and `--dry-run` are mutually exclusive; `--list` and `--dry-run` take no lock. `--log` works in every mode.
 - In a git repository, each review, each completed loop, and the final exit summary report lines changed (`+insertions/-deletions`), measured via `git diff --shortstat` against the commit that was `HEAD` when the run started. Outside a git repo this is silently omitted.
 - Project-local prompt discovery skips hidden directories (`.git`, `.venv`, worktrees, etc.) so stray copies under them never produce duplicate-prompt warnings.
@@ -376,7 +376,7 @@ All review prompts follow a consistent structure (sections 4-5 exist for standal
 ## Tests
 
 ```sh
-./test_review_loop.py        # or: pytest
+./test_gauntlet.py        # or: pytest
 ```
 
 Stdlib only, no framework required. Covers duration and agent parsing (with a
@@ -395,7 +395,7 @@ Copyright (C) 2026 Marcel W. Wysocki.
 GNU Affero General Public License v3.0 or later (`AGPL-3.0-or-later`). See
 [LICENSE](LICENSE).
 
-`--version` prints the `VERSION` constant in `review-loop.py` (the only
+`--version` prints the `VERSION` constant in `gauntlet.py` (the only
 source of truth), bumped by hand with a matching git tag and
 [CHANGELOG](CHANGELOG.md) heading. The project is 0.x, so a minor may
 change behavior; such changes are listed under Changed. The consumer

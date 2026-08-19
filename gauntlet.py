@@ -277,7 +277,7 @@ Containment:
 - Never install tools or packages onto the machine, fetch-and-execute remote content, or send code or environment values off-host. The project's package manager may only install the project's already-declared dependencies when running the project's own commands requires it.
 - Never write outside this repository's working tree: no $HOME, dotfiles, /etc, crontab, or global config of any tool. Scratch files go under the system temp dir and are deleted before you finish.
 - Do not start anything that outlives you: no servers, daemons, watchers, containers, or detached/background jobs. Do not invoke AI agent CLIs (claude, codex, gemini, etc.). Every process you start must exit before you finish.
-- Never create, modify, or delete *-review.md files or .review-loop.lock.
+- Never create, modify, or delete *-review.md files or .gauntlet.lock.
 - Never modify files in: node_modules, vendor, dist, build, .next, target, .git, or generated files (signals: a 'generated'/'do not edit' header, linguist-generated in .gitattributes, names like *.pb.go, *_pb2.py, *.gen.*, *.min.js). Never hand-edit lockfiles (package-lock.json, yarn.lock, pnpm-lock.yaml, Cargo.lock, go.sum, etc.); they may only change as the output of the project's package manager.
 
 {fixing}
@@ -903,7 +903,7 @@ def dsh_default_provider(base: list[str]) -> str | None:
 def dsh_model_patch(provider: str, model: str) -> str:
     key = f"{provider}/{model}"
     if key not in _DSH_MODEL_PATCHES:
-        fd, path = tempfile.mkstemp(prefix="review-loop-dsh-", suffix=".yml")
+        fd, path = tempfile.mkstemp(prefix="gauntlet-dsh-", suffix=".yml")
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write("- id: agent-default-model\n"
                      "  config:\n"
@@ -1721,7 +1721,7 @@ def acquire_lock(path: Path) -> None:
             usage_error(f"Lock path is not a regular file: {path}")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        print(f"Another review-loop appears to be running (lock: {path})", file=sys.stderr)
+        print(f"Another gauntlet appears to be running (lock: {path})", file=sys.stderr)
         sys.exit(75)  # EX_TEMPFAIL
     except OSError as e:
         usage_error(
@@ -1768,15 +1768,15 @@ def parse_args() -> argparse.Namespace:
         allow_abbrev=False,
         epilog=(
             "Examples:\n"
-            "  review-loop.py --agents claude\n"
-            "  review-loop.py --agents mixed                 # all installed agents, default models\n"
-            "  review-loop.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
-            "  review-loop.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
-            "  review-loop.py --reviews quick --exclude test-review\n"
-            "  review-loop.py -a claude -r sec,deps -t 1h    # short flags, suffixless names\n"
-            "  review-loop.py --reviews suggest --yes        # agent-picked reviews, no prompt\n"
-            "  review-loop.py --list                         # show available reviews and sets\n"
-            "  review-loop.py doctor                         # check recommended CLI tools\n"
+            "  gauntlet.py --agents claude\n"
+            "  gauntlet.py --agents mixed                 # all installed agents, default models\n"
+            "  gauntlet.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
+            "  gauntlet.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
+            "  gauntlet.py --reviews quick --exclude test-review\n"
+            "  gauntlet.py -a claude -r sec,deps -t 1h    # short flags, suffixless names\n"
+            "  gauntlet.py --reviews suggest --yes        # agent-picked reviews, no prompt\n"
+            "  gauntlet.py --list                         # show available reviews and sets\n"
+            "  gauntlet.py doctor                         # check recommended CLI tools\n"
             "\n"
             "Exit codes:\n"
             "  0  all reviews ran and passed\n"
@@ -1794,7 +1794,7 @@ def parse_args() -> argparse.Namespace:
         "command", nargs="?", choices=["doctor"], default=None,
         help="doctor: report which recommended CLI tools are installed",
     )
-    p.add_argument("--version", action="version", version=f"review-loop {VERSION}")
+    p.add_argument("--version", action="version", version=f"gauntlet {VERSION}")
 
     mode = p.add_argument_group("modes (default: run the review loop)")
     mode.add_argument("-l", "--list", action="store_true",
@@ -2031,7 +2031,7 @@ def main() -> None:
     if args.reviews.strip() != SUGGEST:
         runner = Runner(args)
 
-    acquire_lock(Path.cwd() / ".review-loop.lock")
+    acquire_lock(Path.cwd() / ".gauntlet.lock")
 
     if semcode_idx:
         log("Building semcode index (semcode-index -s .)...")

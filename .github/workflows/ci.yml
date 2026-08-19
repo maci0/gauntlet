@@ -29,16 +29,16 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Lint
         if: matrix.python == '3.10'
-        run: pipx run ruff==0.16.1 check review-loop.py test_review_loop.py
+        run: pipx run ruff==0.16.1 check gauntlet.py test_gauntlet.py
       - name: Run tests
-        run: python test_review_loop.py
+        run: python test_gauntlet.py
       - name: Smoke-test the CLI (no agent CLIs installed here)
         run: |
-          python review-loop.py --version
-          python review-loop.py --list
+          python gauntlet.py --version
+          python gauntlet.py --list
           # doctor must exit 1 here specifically because no agent CLI exists,
           # not because it crashed: require exit code 1 exactly plus the report.
-          rc=0; out=$(python review-loop.py doctor 2>&1) || rc=$?
+          rc=0; out=$(python gauntlet.py doctor 2>&1) || rc=$?
           test "$rc" -eq 1
           echo "$out" | grep -q "Per-review helpers"
           echo "$out" | grep -q "No agent CLI found"

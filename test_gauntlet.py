@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Marcel W. Wysocki
 # SPDX-License-Identifier: AGPL-3.0-or-later
-"""Tests for review-loop.py. Run: ./test_review_loop.py (or pytest)."""
+"""Tests for gauntlet.py. Run: ./test_gauntlet.py (or pytest)."""
 
 from __future__ import annotations
 
@@ -23,10 +23,10 @@ from pathlib import Path
 
 
 def _load_runner():
-    path = Path(__file__).resolve().parent / "review-loop.py"
-    spec = importlib.util.spec_from_file_location("review_loop", path)
+    path = Path(__file__).resolve().parent / "gauntlet.py"
+    spec = importlib.util.spec_from_file_location("gauntlet", path)
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["review_loop"] = mod  # dataclasses resolve types via sys.modules
+    sys.modules["gauntlet"] = mod  # dataclasses resolve types via sys.modules
     spec.loader.exec_module(mod)
     return mod
 
@@ -49,7 +49,7 @@ def _tree(root: Path, files: dict[str, str]) -> None:
         p.write_text(text)
 
 
-SCRIPT = Path(__file__).resolve().parent / "review-loop.py"
+SCRIPT = Path(__file__).resolve().parent / "gauntlet.py"
 STUB_PROMPT = "Role.\n\nYour goal is testing.\n"
 
 
@@ -850,7 +850,7 @@ def test_version_matches_changelog_and_cli():
         capture_output=True, text=True, timeout=30, check=False,
     )
     assert p.returncode == 0, p.stderr
-    assert p.stdout.strip() == f"review-loop {rl.VERSION}", p.stdout
+    assert p.stdout.strip() == f"gauntlet {rl.VERSION}", p.stdout
 
 
 def test_models_alias_warns_and_still_works():
@@ -1154,11 +1154,11 @@ def test_cli_flag_hygiene():
     assert empty_dir.returncode == 2 and "path must not be empty" in empty_dir.stderr
 
     # ~ expands; OSError text has no [Errno N]
-    missing = run("--list", "--dir", "~/definitely-missing-review-loop-xyz")
+    missing = run("--list", "--dir", "~/definitely-missing-gauntlet-xyz")
     assert missing.returncode == 2, missing.stderr
     assert "[Errno" not in missing.stderr
     assert "No such file or directory" in missing.stderr
-    assert str(Path.home() / "definitely-missing-review-loop-xyz") in missing.stderr
+    assert str(Path.home() / "definitely-missing-gauntlet-xyz") in missing.stderr
 
     with tempfile.NamedTemporaryFile() as fh:
         not_dir = run("--list", "--prompt-dir", fh.name)
@@ -1174,7 +1174,7 @@ def test_cli_flag_hygiene():
         stub = bin_dir / "agy"
         stub.write_text("#!/bin/sh\nexit 0\n")
         stub.chmod(0o755)
-        lock = proj / ".review-loop.lock"
+        lock = proj / ".gauntlet.lock"
         fd = os.open(lock, os.O_WRONLY | os.O_CREAT, 0o644)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1916,7 +1916,7 @@ def test_semcode_missing_is_usage_error_even_when_locked():
         stub.write_text("#!/bin/sh\nexit 0\n")
         stub.chmod(0o755)
         env = {**os.environ, "PATH": str(bin_dir)}
-        lock = proj / ".review-loop.lock"
+        lock = proj / ".gauntlet.lock"
         fd = os.open(lock, os.O_WRONLY | os.O_CREAT, 0o644)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
