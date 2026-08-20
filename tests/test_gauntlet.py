@@ -1560,6 +1560,17 @@ def test_log_file_not_counted_as_review_insertions():
         assert "Lines changed: +0 -0" in p.stdout, p.stdout
 
 
+def test_porcelain_path_parsing():
+    """Extract the worktree path, following rename arrows only on R/C lines."""
+    assert rl._porcelain_path("?? .gauntlet.lock") == ".gauntlet.lock"
+    assert rl._porcelain_path(" M data.gauntlet.lock") == "data.gauntlet.lock"
+    assert rl._porcelain_path("R  old.txt -> new.txt") == "new.txt"
+    assert rl._porcelain_path("RM x -> y") == "y"          # renamed + modified
+    assert rl._porcelain_path("C  a -> b") == "b"
+    assert rl._porcelain_path("?? a -> b.txt") == "a -> b.txt"  # literal name
+    assert rl._porcelain_path('?? "weird name.txt"') == "weird name.txt"
+
+
 def test_lock_named_file_is_a_real_change():
     """A repo file literally named *.gauntlet.lock must not be filtered by the
     lock exclusion; the commit step and stats must see it."""

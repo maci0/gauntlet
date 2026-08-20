@@ -1922,7 +1922,9 @@ def _porcelain_path(line: str) -> str:
     """The worktree path from a `git status --porcelain` line (XY <path>,
     or the destination of a `orig -> dest` rename)."""
     entry = line[3:] if len(line) > 3 else ""
-    if " -> " in entry:
+    # The ` -> ` arrow is a rename/copy marker, carried by the index-side
+    # status (R or C); an untracked file may legitimately have it in its name.
+    if line[:1] in ("R", "C") and " -> " in entry:
         entry = entry.split(" -> ", 1)[1]
     # Porcelain double-quotes paths with special characters; our own
     # artifacts never need quoting, so an unquoted compare is enough.
