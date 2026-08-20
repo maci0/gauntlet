@@ -1349,6 +1349,44 @@ def test_reviews_suggest_respects_exclude_up_front():
         assert "Ignoring unknown suggestions: banned" in out, out
 
 
+def test_show_prompt_prints_composed_prompt():
+    """--show-prompt REVIEW prints the exact composed prompt and exits 0;
+    a suffixless name resolves; an unknown one is a usage error."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        _, _, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md":
+                        "Role.\n\nYour goal is testing.\n\nFor each finding include:\n"
+                        "- Title\n\nImportant:\n- keep it\n"})
+        p = subprocess.run(
+            [sys.executable, str(script), "--show-prompt", "stub",  # suffixless
+             "--prompt-dir", str(prompts)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "MODE: AUTO_FIX" in p.stdout, p.stdout
+        assert "--- BEGIN REVIEW ---" in p.stdout and "--- END REVIEW ---" in p.stdout
+        assert "Your goal is testing." in p.stdout
+        # report section stripped, Important kept, Containment suffix present
+        assert "For each finding include:" not in p.stdout, p.stdout
+        assert "Important:" in p.stdout
+        assert "Containment:" in p.stdout
+        # --yolo swaps the fixing block
+        y = subprocess.run(
+            [sys.executable, str(script), "--show-prompt", "stub-review", "--yolo",
+             "--prompt-dir", str(prompts)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert "ambitious mode" in y.stdout, y.stdout
+        bad = subprocess.run(
+            [sys.executable, str(script), "--show-prompt", "nope",
+             "--prompt-dir", str(prompts)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert bad.returncode == 2 and "Unknown review: nope" in bad.stderr, bad.stderr
+
+
 def test_exclude_empty_set_is_a_noop():
     """--exclude project (a README example) must not error in a repo with no
     project prompts; --reviews with an all-empty set still errors."""
@@ -2329,8 +2367,9 @@ def test_semcode_missing_is_usage_error_even_when_locked():
         assert "appears to be running" not in p.stderr
 
 
-def test_semcode_nonzero_exit_is_usage_error():
-    """A crashing indexer must not proceed into the review loop."""
+def test_semcode_nonzero_exit_is_runtime_failure():
+    """A crashing indexer must not proceed into the review loop; it is a
+    runtime failure after the lock (exit 1), not a usage error (exit 2)."""
     script = SCRIPT
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -2348,7 +2387,7 @@ def test_semcode_nonzero_exit_is_usage_error():
             capture_output=True, text=True, timeout=60, check=False,
         )
         out = p.stdout + p.stderr
-        assert p.returncode == 2, out
+        assert p.returncode == 1, out
         assert "semcode-index failed" in out and "7" in out, out
         assert "Running stub-review" not in out
         assert "Done: stub-review" not in out

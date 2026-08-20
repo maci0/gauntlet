@@ -343,6 +343,7 @@ gauntlet --reviews quick             # cheap pass that fits any repo
 gauntlet --reviews backend,llm-review
 gauntlet --exclude frontend          # everything but the UI reviews
 gauntlet --reviews project           # only the target repo's own prompts
+gauntlet --exclude project           # only the bundled ones
 
 # weight by repetition: sec-review runs three times per loop, everything once
 gauntlet --reviews all,sec-review,sec-review
@@ -357,7 +358,6 @@ gauntlet --reviews suggest --yes   # skip the confirmation prompt
 
 # let agents attempt big changes instead of declining them
 gauntlet --agents claude --reviews arch-review --yolo
-gauntlet --exclude project           # only the bundled ones
 ```
 
 Run `gauntlet --help` for the full option list.
@@ -377,9 +377,9 @@ Run `gauntlet --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). The model id is passed to the agent CLI verbatim: use the exact spelling that CLI accepts (`claude:opus`, `claude:claude-opus-5`, `kimi:nvidia/z-ai/glm-5.2`). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: every tool found in `PATH`. |
+| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). The model id is passed to the agent CLI verbatim: use the exact spelling that CLI accepts (`claude:opus`, `claude:claude-opus-5`, `kimi:nvidia/z-ai/glm-5.2`). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: auto-detect, which finds every supported tool on `PATH` except opt-in agents (`clanker`, and `dsh` via bunx) — name those explicitly. |
 | `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
-| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent) always start fresh. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
+| `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent, clanker, dsh) always start fresh, as does the review after a `--commit`/`--push` step. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 
 **Execution**
 
@@ -402,9 +402,10 @@ Run `gauntlet --help` for the full option list.
 | `doctor` | — | Subcommand: report which agent CLIs and recommended review tools are installed. Exits 1 if no agent CLI is found. |
 | `-l, --list` | off | List available reviews and exit. |
 | `--dry-run` | off | Print planned schedule and exit. |
+| `--show-prompt REVIEW` | — | Print the exact composed prompt an agent would receive for REVIEW (stripping + auto-fix suffix; honors `--yolo`/`--timeout`), then exit. |
 | `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
 | `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
-| `--version` | — | Print the version and exit. |
+| `-V, --version` | — | Print the version and exit. |
 
 ## Behavior
 
@@ -426,7 +427,10 @@ Run `gauntlet --help` for the full option list.
   | 1 | any review failed, timed out, or was skipped; suggest found no usable agent; a commit step failed |
   | 2 | usage error |
   | 75 | another instance holds the lock |
+  | 0 | also: declining the interactive suggest confirmation |
   | 128+signal | interrupted: 130 for SIGINT, 143 for SIGTERM (takes precedence over 1) |
+
+  `doctor` exits 1 when no agent CLI is found; a broken `--log` tee exits 1.
 
 ### Rules injected into every prompt
 
@@ -448,7 +452,7 @@ are stripped, and a rule suffix is appended that constrains the agent:
 
 ## Adding a review
 
-Drop a new `<name>-review.md` into `src/gauntlet/prompts/`. It is auto-discovered — no code changes needed. The minimal shape (see [Prompt structure](#prompt-structure) for the full one):
+Drop a new `<name>-review.md` into `src/gauntlet/prompts/`. It is auto-discovered at runtime; the test suite additionally requires a bundled review to be registered in `doctor`'s tool table and placed in at least one review set (a project-local prompt, below, needs neither). The minimal shape (see [Prompt structure](#prompt-structure) for the full one):
 
 ```markdown
 You are a senior <domain> engineer. Your task is to review this codebase for <subject>.
@@ -468,7 +472,7 @@ Instructions:
 - In auto-fix mode <the narrow, verifiable moves allowed in one pass>.
 ```
 
-Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...) are skipped, and symlinked or oddly-named prompt files are ignored.
+Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...), hidden directories, and anything git ignores are skipped, as are symlinked, hardlinked, or oddly-named prompt files.
 
 ## Trust model
 

@@ -2,6 +2,51 @@
 
 Notable changes per release.
 
+## Unreleased
+
+### Security
+
+- A hostile target repo can no longer execute code in the runner process.
+  Its `.git/config` could set `core.fsmonitor` (or other config-as-command
+  keys) to any program, which git ran during the runner's ordinary
+  read-only calls — during discovery (so even `--list`/`--dry-run`), in the
+  lines-changed stats before the first agent, and in the commit step. Every
+  git call now forces those keys empty and resolves the git binary on a
+  cwd-independent PATH.
+- `*-review.md` prompt reads are bounded and refuse hardlinks: a hardlink
+  to an out-of-tree inode (which `O_NOFOLLOW` does not catch) no longer
+  feeds out-of-tree bytes into a permission-bypassed agent, a multi-GB
+  prompt no longer OOMs the runner (1 MiB cap; a single argv over ~128 KiB
+  fails at exec anyway), and a planted symlink-to-FIFO no longer hangs the
+  lines-changed stat unkillably.
+
+### Added
+
+- `--show-prompt REVIEW` prints the exact composed prompt an agent would
+  receive (after stripping and the auto-fix suffix; honors `--yolo` and
+  `--timeout`), then exits — for debugging project-local prompts.
+- `-V` as a short alias for `--version`.
+- Lines-changed stats now count new (untracked) files and attribute a
+  review that reverts another's lines as deletions, so the final summary
+  cannot contradict the worktree.
+- `--exclude` is applied before `--reviews suggest`: excluded reviews never
+  reach the triage agent or the confirmation list. A set that matches
+  nothing under `--exclude` (e.g. `--exclude project` in a repo with no
+  project prompts) is a valid no-op.
+- Commit-step outcomes are counted in the exit summary; a failed
+  `--commit`/`--push` step now exits 1 (changes are stranded), and suggest
+  falls back to the next agent when one exits 0 with no usable output.
+
+### Changed
+
+- `code-review`'s doctor tools gain `cargo-clippy`.
+- A crashing `semcode-index` now exits 1 (a runtime failure after the lock),
+  not 2 (usage error).
+- Project-prompt discovery skips hidden directories and anything git ignores,
+  and duplicate-prompt warnings fire only when the copies actually differ.
+- Numerous doc corrections (the `--agents`/`--continue-sessions` option
+  rows, exit-code table, "adding a review" registration requirements).
+
 ## 0.18.0
 
 ### Added

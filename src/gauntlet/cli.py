@@ -97,7 +97,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "authz-review": ("semgrep",),
     "build-review": ("diffoscope", "shellcheck"),
     "cli-review": ("shellcheck",),
-    "code-review": ("ruff", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
+    "code-review": ("ruff", "cargo-clippy", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
     "compat-review": ("shellcheck",),
     "concurrency-review": ("valgrind",),
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),
@@ -1954,15 +1954,15 @@ def parse_args() -> argparse.Namespace:
         allow_abbrev=False,
         epilog=(
             "Examples:\n"
-            "  gauntlet.py --agents claude\n"
-            "  gauntlet.py --agents mixed                 # all installed agents, default models\n"
-            "  gauntlet.py --agents claude:opus-4-7,codex:gpt-5-codex\n"
-            "  gauntlet.py --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
-            "  gauntlet.py --reviews quick --exclude test-review\n"
-            "  gauntlet.py -a claude -r sec,deps -t 1h    # short flags, suffixless names\n"
-            "  gauntlet.py --reviews suggest --yes        # agent-picked reviews, no prompt\n"
-            "  gauntlet.py --list                         # show available reviews and sets\n"
-            "  gauntlet.py doctor                         # check recommended CLI tools\n"
+            "  gauntlet --agents claude\n"
+            "  gauntlet --agents mixed                 # all installed agents, default models\n"
+            "  gauntlet --agents claude:opus-4-7,codex:gpt-5-codex\n"
+            "  gauntlet --agents mixed,claude:opus-4-7 # all + extra pinned model\n"
+            "  gauntlet --reviews quick --exclude test-review\n"
+            "  gauntlet -a claude -r sec,deps -t 1h    # short flags, suffixless names\n"
+            "  gauntlet --reviews suggest --yes        # agent-picked reviews, no prompt\n"
+            "  gauntlet --list                         # show available reviews and sets\n"
+            "  gauntlet doctor                         # check recommended CLI tools\n"
             "\n"
             "Exit codes:\n"
             "  0  all reviews ran and passed\n"
@@ -1981,13 +1981,18 @@ def parse_args() -> argparse.Namespace:
         "command", nargs="?", choices=["doctor"], default=None,
         help="doctor: report which recommended CLI tools are installed",
     )
-    p.add_argument("--version", action="version", version=f"gauntlet {VERSION}")
+    p.add_argument("-V", "--version", action="version", version=f"gauntlet {VERSION}")
 
     mode = p.add_argument_group("modes (default: run the review loop)")
     mode.add_argument("-l", "--list", action="store_true",
                       help="list available reviews and sets, then exit")
     mode.add_argument("--dry-run", action="store_true",
                       help="print the planned schedule for one loop, then exit")
+    mode.add_argument("--show-prompt", metavar="REVIEW", default=None,
+                      help="print the exact composed prompt an agent would "
+                           "receive for REVIEW (after stripping and the "
+                           "auto-fix suffix), then exit. Honors --yolo and "
+                           "--timeout")
 
     sel = p.add_argument_group("review selection")
     sel.add_argument(
@@ -2097,7 +2102,8 @@ def parse_args() -> argparse.Namespace:
     if any(a == "--models" or a.startswith("--models=") for a in sys.argv[1:]):
         print("warning: --models is deprecated; use --agents", file=sys.stderr)
     modes = [m for m, on in (("doctor", args.command == "doctor"),
-                             ("--list", args.list), ("--dry-run", args.dry_run)) if on]
+                             ("--list", args.list), ("--dry-run", args.dry_run),
+                             ("--show-prompt", args.show_prompt is not None)) if on]
     if len(modes) > 1:
         p.error(f"{' and '.join(modes)} are mutually exclusive")
     if (args.commit or args.push) and args.list:
@@ -2185,6 +2191,21 @@ def main() -> None:
         why = "is not a directory" if args.prompt_dir.exists() else "not found"
         usage_error(f"Prompt directory {why}: {args.prompt_dir}")
 
+    if args.show_prompt is not None:
+        reviews = discover_reviews(args.prompt_dir)
+        name = args.show_prompt
+        if name not in reviews and f"{name}-review" in reviews:
+            name = f"{name}-review"
+        if name not in reviews:
+            usage_error(f"Unknown review: {args.show_prompt}\n"
+                        f"Reviews: {', '.join(reviews)}")
+        try:
+            text = read_no_follow(reviews[name])
+        except (OSError, UnicodeDecodeError) as e:
+            usage_error(f"Cannot read prompt file {reviews[name]}: {e}")
+        print(compose_prompt(text, args.timeout, name, yolo=args.yolo))
+        return
+
     if args.list:
         if args.agents is None:
             args.agents = installed_tools()
@@ -2225,7 +2246,10 @@ def main() -> None:
         log("Building semcode index (semcode-index -s .)...")
         rc = _run_session([semcode_idx, "-s", "."])
         if rc != 0:
-            usage_error(f"semcode-index failed with exit code {rc}")
+            # A crashing indexer is a runtime failure after the lock, not a
+            # usage error: exit 1, matching a failed review.
+            print(f"semcode-index failed with exit code {rc}", file=sys.stderr)
+            sys.exit(1)
         log("semcode index ready")
 
     if runner is None:
