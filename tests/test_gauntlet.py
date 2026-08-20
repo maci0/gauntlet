@@ -1407,6 +1407,60 @@ def test_reviews_suggest_falls_back_on_unusable_output():
         assert "Running stub-review" in out, out
 
 
+def test_read_no_follow_refuses_hardlink_and_oversized():
+    """A hardlink (out-of-tree inode O_NOFOLLOW can't catch) and a prompt over
+    the size cap are both refused, keeping the in-tree/bounded invariant."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        outside = root / "secret.txt"
+        outside.write_text("SECRET OUT OF TREE\n")
+        tree = root / "tree"
+        tree.mkdir()
+        hard = tree / "pwned-review.md"
+        os.link(outside, hard)  # hardlink across the boundary
+        raises(lambda: rl.read_no_follow(hard), OSError)
+
+        big = tree / "big-review.md"
+        big.write_bytes(b"x\n" * (rl.MAX_PROMPT_BYTES // 2 + 10))
+        raises(lambda: rl.read_no_follow(big), OSError)
+
+        ok = tree / "ok-review.md"
+        ok.write_text("Your goal is fine.\n")
+        assert rl.read_no_follow(ok) == "Your goal is fine.\n"
+
+
+def test_diff_totals_caps_untracked_file_reads():
+    """A huge untracked file must not make the stat read unbounded bytes."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        proj = root / "proj"
+        proj.mkdir()
+        _git(["init", "-q"], proj)
+        _git(["config", "user.email", "t@t"], proj)
+        _git(["config", "user.name", "t"], proj)
+        (proj / "f.txt").write_text("x\n")
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
+        # 2-byte lines; total far exceeds what the cap allows counting
+        big = proj / "big.txt"
+        total_lines = (rl._UNTRACKED_LINE_CAP // 2) + 1_000_000
+        with big.open("wb") as fh:
+            fh.write(b"a\n" * total_lines)
+        prompts = root / "prompts"
+        prompts.mkdir()
+        (prompts / "stub-review.md").write_text(STUB_PROMPT)
+        args = argparse.Namespace(
+            agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="",
+            exclude="", timeout=30, quiet_agents=False,
+            continue_sessions=False, bin={}, yolo=False,
+        )
+        with _cwd(proj):
+            runner = rl.Runner(args)
+            ins, _ = runner._diff_totals()
+        # stopped well before the whole file, but did count up to the cap
+        assert rl._UNTRACKED_LINE_CAP // 2 <= ins < total_lines, ins
+
+
 def test_hostile_git_config_does_not_execute_in_runner():
     """A target repo's .git/config core.fsmonitor (arbitrary-command config)
     must not run in the runner process during any git call, in any mode."""

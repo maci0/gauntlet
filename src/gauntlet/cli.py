@@ -820,20 +820,40 @@ def compose_prompt(text: str, timeout_secs: int, review: str | None = None,
     )
 
 
+# A single argv string over ~128 KB (Linux MAX_ARG_STRLEN) already fails at
+# exec with E2BIG, so no real prompt approaches this; the cap only stops a
+# hostile multi-GB *-review.md from being buffered into RAM before that.
+MAX_PROMPT_BYTES = 1 << 20
+
+# Per-file ceiling for the untracked-lines stat (best-effort, re-run every
+# loop): stop counting a file past this rather than re-reading gigabytes.
+_UNTRACKED_LINE_CAP = 8 << 20
+
+
 def read_no_follow(path: Path) -> str:
-    """Read a regular file, refusing symlinks at open time.
+    """Read a regular file, refusing symlinks and hardlinks at open time.
 
     Checking is_symlink() and then reading by path is two lookups: the file
     can be swapped in between, which is how out-of-tree content would reach a
     permission-bypassed agent. O_NOFOLLOW closes that window; O_NONBLOCK plus
     the fstat keep a planted FIFO or device from blocking the open forever.
+    A link count above one means the inode is reachable from outside the tree
+    (a hardlink O_NOFOLLOW does not catch), so refuse it too. The size cap
+    bounds a hostile oversized prompt.
     """
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, encoding="utf-8") as fh:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
+        st = os.fstat(fd)
+        if not stat.S_ISREG(st.st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
+        if st.st_nlink > 1:
+            raise OSError(errno.EMLINK, "refusing hardlinked file", str(path))
         os.set_blocking(fd, True)
-        return fh.read()
+        data = fh.read(MAX_PROMPT_BYTES + 1)
+        if len(data) > MAX_PROMPT_BYTES:
+            raise OSError(errno.EFBIG,
+                          f"prompt exceeds {MAX_PROMPT_BYTES} bytes", str(path))
+        return data
 
 
 def review_desc(prompt_file: Path) -> str:
@@ -1165,8 +1185,13 @@ class Runner:
                     if b"\0" in head:  # binary: no line count to speak of
                         continue
                     ins += head.count(b"\n")
-                    while chunk := fh.read(1 << 20):
+                    # Cap per file: this best-effort stat runs up to four times
+                    # per loop forever, so a huge untracked file must not make
+                    # every loop re-read gigabytes.
+                    read = len(head)
+                    while read < _UNTRACKED_LINE_CAP and (chunk := fh.read(1 << 20)):
                         ins += chunk.count(b"\n")
+                        read += len(chunk)
             except OSError:
                 continue
             finally:
