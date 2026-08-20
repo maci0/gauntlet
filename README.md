@@ -479,6 +479,11 @@ Projects can also carry their own prompts: any `*-review.md` found in the projec
 > **Only run the loop against repositories you trust**: a malicious repo could
 > steer the agents through crafted file content or planted prompt files. For
 > untrusted code, run the whole loop inside a container or VM.
+>
+> The runner itself is hardened against a hostile tree (it never follows
+> symlinks out of the tree, never runs a planted binary, and neutralizes
+> git config that would execute code), but that hardening protects the
+> runner process, not the agents it launches.
 
 ## Prompt structure
 

@@ -373,7 +373,7 @@ def _git_ignored(project: Path, paths: list[Path]) -> set[Path]:
         return set()
     try:
         result = subprocess.run(
-            ["git", "-C", str(project), "check-ignore", "--stdin", "-z"],
+            git_argv("-C", str(project), "check-ignore", "--stdin", "-z"),
             input="\0".join(str(p) for p in encodable),
             capture_output=True, text=True, timeout=10, check=False,
         )
@@ -554,6 +554,24 @@ def resolve_tool(name: str) -> str | None:
     """Absolute path of an executable found on a cwd-independent PATH."""
     found = shutil.which(name, path=_path_excl_cwd())
     return os.path.abspath(found) if found else None
+
+
+# Config values git will execute as programs during ordinary read-only
+# commands: a hostile target repo's .git/config (an unpacked archive can carry
+# one) would otherwise run arbitrary code in THIS process, with the user's
+# privileges, before any agent — even under --list/--dry-run. Force them empty.
+# Resolve git on a cwd-independent PATH so a planted ./git cannot run either.
+_GIT_SAFE_CONFIG = (
+    "-c", "core.fsmonitor=",
+    "-c", "core.hooksPath=/dev/null",
+    "-c", "core.pager=cat",
+    "-c", "diff.external=",
+)
+
+
+def git_argv(*args: str) -> list[str]:
+    """A git command line hardened against config-driven code execution."""
+    return [resolve_tool("git") or "git", *_GIT_SAFE_CONFIG, *args]
 
 
 def installed_tools() -> list[ToolSpec]:
@@ -1097,7 +1115,7 @@ class Runner:
     def _git_head(self) -> str | None:
         try:
             result = subprocess.run(
-                ["git", "rev-parse", "HEAD"],
+                git_argv("rev-parse", "HEAD"),
                 capture_output=True, text=True, timeout=10, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
@@ -1115,11 +1133,11 @@ class Runner:
             return None
         try:
             result = subprocess.run(
-                ["git", "diff", "--shortstat", self.git_baseline],
+                git_argv("diff", "--shortstat", self.git_baseline),
                 capture_output=True, text=True, timeout=10, check=False,
             )
             untracked = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                git_argv("ls-files", "--others", "--exclude-standard", "-z"),
                 capture_output=True, timeout=10, check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
@@ -1640,7 +1658,7 @@ class Runner:
         """After a review, send a commit (and optionally push) prompt to an agent."""
         try:
             result = subprocess.run(
-                ["git", "status", "--porcelain"],
+                git_argv("status", "--porcelain"),
                 capture_output=True, text=True, timeout=10, check=False,
             )
             # The runner's own lock file is not a change worth committing.

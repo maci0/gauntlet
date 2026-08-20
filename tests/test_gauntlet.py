@@ -1407,6 +1407,37 @@ def test_reviews_suggest_falls_back_on_unusable_output():
         assert "Running stub-review" in out, out
 
 
+def test_hostile_git_config_does_not_execute_in_runner():
+    """A target repo's .git/config core.fsmonitor (arbitrary-command config)
+    must not run in the runner process during any git call, in any mode."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        pwned = root / "PWNED"
+        _git(["init", "-q"], proj)
+        # set via file, not `git config`, so LC/hooks isolation is irrelevant
+        (proj / ".git" / "config").write_text(
+            (proj / ".git" / "config").read_text()
+            + f'[core]\n\tfsmonitor = "touch {pwned}; false"\n'
+        )
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        for mode in (["--list"], ["--dry-run", "--agents", "agy"],
+                     ["--once", "--agents", "agy", "--commit"]):
+            if pwned.exists():
+                pwned.unlink()
+            subprocess.run(
+                [sys.executable, str(script), *mode, "--prompt-dir", str(prompts),
+                 "--dir", str(proj), "--timeout", "30s"],
+                env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+                check=False,
+            )
+            assert not pwned.exists(), f"fsmonitor executed in mode {mode}"
+
+
 def test_diff_totals_survives_planted_symlink_to_fifo():
     """An untracked symlink to a writer-less FIFO must not hang the stats
     pass (open() on it blocks unkillably) or be followed at all."""
