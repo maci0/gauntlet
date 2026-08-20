@@ -241,7 +241,8 @@ when `--timeout` is longer. If that agent fails, the next one in `--agents`
 is tried. It then lists the relevant reviews with a one-line reason each,
 asks for confirmation on a terminal (non-interactive runs, `--yes`, and
 `--yolo` proceed without asking), then loops over exactly those. `--exclude`
-still applies afterwards.
+is applied up front: excluded reviews never appear in the agent's catalog or
+the confirmation list.
 
 Repeats are weight. `--reviews all,sec-review,sec-review` schedules every review
 once and `sec-review` three times per loop; `--reviews quick,quick` runs each of
@@ -415,7 +416,7 @@ Run `gauntlet --help` for the full option list.
 - `doctor`, `--list`, and `--dry-run` are mutually exclusive; `--list` and `--dry-run` take no lock. `--log` works in every mode.
 - In a git repository, each review, each completed loop, and the final exit summary report lines changed (`+insertions/-deletions`), measured via `git diff --shortstat` against the commit that was `HEAD` when the run started. Outside a git repo this is silently omitted.
 - Project-local prompt discovery skips hidden directories (`.git`, `.venv`, worktrees, etc.) so stray copies under them never produce duplicate-prompt warnings.
-- At exit, summary statistics are printed: totals, lines changed, per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
+- At exit, summary statistics are printed: totals, lines changed, commit-step outcomes (with `--commit`/`--push`), per-tool breakdown (when multiple tools/models ran), and a list of failed or timed-out reviews.
 - Exit codes:
 
   | Code | Meaning |

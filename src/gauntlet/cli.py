@@ -1073,6 +1073,10 @@ class Runner:
         # once in the pool.
         self.session_started: set[ToolSpec] = set()
         self.script_start = time.monotonic()
+        # Commit-step outcomes for the final summary; a failed commit leaves
+        # changes uncommitted, which must not scroll away as one log line.
+        self.commit_runs = 0
+        self.commit_fails = 0
         # Fixed commit to diff against for the lines-changed stats. None
         # (no repo, or git missing) just turns those stats off everywhere.
         self.git_baseline = self._git_head()
@@ -1167,8 +1171,17 @@ class Runner:
                 )
             return out
 
+        # Expand --exclude first: an exclusion typo should fail before an
+        # agent call, and suggest must never offer reviews the user excluded
+        # (confirming a list that then silently shrinks is a lie).
+        excluded: set[str] = set()
+        if self.args.exclude:
+            excluded = set(expand(self.args.exclude, "--exclude"))  # excluding is all-or-nothing
         if self.args.reviews.strip() == SUGGEST:
-            reviews = self._suggest_reviews(available)
+            pool = [r for r in available if r not in excluded]
+            if not pool:
+                usage_error("No reviews remain after filtering.")
+            reviews = self._suggest_reviews(pool)
         elif self.args.reviews or getattr(self.args, "reviews_explicit", False):
             # An omitted --reviews means all. An explicit empty value
             # (--reviews '' or --reviews "$UNSET") must not silently expand
@@ -1176,9 +1189,7 @@ class Runner:
             reviews = expand(self.args.reviews, "--reviews")
         else:
             reviews = list(available)
-        if self.args.exclude:
-            exc = set(expand(self.args.exclude, "--exclude"))  # excluding is all-or-nothing
-            reviews = [r for r in reviews if r not in exc]
+        reviews = [r for r in reviews if r not in excluded]
         if not reviews:
             usage_error("No reviews remain after filtering.")
         return reviews
@@ -1211,6 +1222,7 @@ class Runner:
                 proc = subprocess.Popen(
                     cmd, start_new_session=True, text=True,
                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL if self.args.quiet_agents else None,
                 )
             except OSError as e:
                 signal.signal(signal.SIGINT, prev_int)
@@ -1470,6 +1482,10 @@ class Runner:
         print(f"Total time: {fmt_duration(total)}")
         if any(r.insertions is not None for r in self.stats.results):
             print(f"Lines changed: +{self.stats.total_insertions} -{self.stats.total_deletions}")
+        if self.commit_runs:
+            note = f", {self.commit_fails} failed (changes may be uncommitted)" \
+                if self.commit_fails else ""
+            print(f"Commit steps: {self.commit_runs}{note}")
 
         # Per-tool breakdown
         tool_summary = self.stats.tool_summary()
@@ -1587,6 +1603,7 @@ class Runner:
 
         action = "commit+push" if do_push else "commit"
         log(f"Running {action} step with {spec.label()}")
+        self.commit_runs += 1
         timeout = min(self.args.timeout, COMMIT_TIMEOUT_SECS)
         sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
@@ -1596,6 +1613,7 @@ class Runner:
             )
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {action} step: {e}")
+            self.commit_fails += 1
             return
 
         self.current_proc = proc
@@ -1632,9 +1650,13 @@ class Runner:
             self.current_proc = None
             restore_tty(self.tty)
 
+        if timed_out or proc.returncode != 0:
+            self.commit_fails += 1
         if not timed_out:
             if proc.returncode == 0:
                 log(f"{action} step done ({spec.label()})")
+            elif proc.returncode is None:
+                log(f"{action} step FAILED ({spec.label()}) — did not exit")
             else:
                 log(f"{action} step FAILED ({spec.label()}) — exit {proc.returncode}")
 
@@ -1951,10 +1973,6 @@ def parse_args() -> argparse.Namespace:
         p.error(f"{' and '.join(modes)} are mutually exclusive")
     if (args.commit or args.push) and args.list:
         p.error("--commit/--push cannot be used with --list")
-    if not hasattr(args, "commit"):
-        args.commit = False
-    if not hasattr(args, "push"):
-        args.push = False
     if args.commit and args.push:
         print("warning: --commit is redundant with --push (--push implies commit)",
               file=sys.stderr)
