@@ -30,6 +30,7 @@ Review the following:
 - Deserialization of untrusted data
 - Missing Content-Type validation on file uploads
 - XML external entity (XXE) processing
+- Confusable/homoglyph or bidi-control characters in identity-bearing input (usernames, domains, paths) enabling spoofing or filter bypass (unicode-review owns the encoding/normalization mechanics; here own the impersonation or bypass)
 
 4. Data exposure
 (privacy-review owns PII redaction in logs and analytics; infra-review owns secrets in CI, container images, and IaC; config-review owns config structure and example placeholders; mobile-review owns backup exclusion, Keychain/Keystore accessibility, and lock-screen visibility. Here cover secrets, credentials, tokens, and security-sensitive debug output in application source: redact or relocate the secret itself.)
@@ -48,6 +49,7 @@ Review the following:
 - Custom cryptographic implementations instead of standard libraries
 - Insufficient key length or insecure key derivation
 - Missing integrity checks on encrypted data
+- Insecure randomness for security-sensitive values (tokens, keys, nonces, salts): a non-cryptographic PRNG, a predictable seed, or modulo bias where unpredictability is required (numerics-review owns non-security numeric randomness)
 
 6. Access control
 (authz-review owns the systematic sweep: the full per-endpoint authorization matrix, tenant isolation, and escalation-path mapping. Here fix access-control misses found in passing; leave the matrix audit to it.)

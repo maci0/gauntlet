@@ -89,13 +89,13 @@ Review the following:
 - Missing distinction between expected errors (404, validation) and unexpected errors (500, panic)
 
 10. Edge cases and defensive coding
-(Only where a concrete path exists for the bad value to reach the code; do not add speculative guards — slop-review removes them.)
+(Only where a concrete path exists for the bad value to reach the code; do not add speculative guards — slop-review removes them. numerics-review owns arithmetic correctness, time-review owns time correctness, and unicode-review owns encoding correctness; here own only the missing guard on the error path, not the computation itself.)
 - Division by zero, nil/null dereference, or index-out-of-bounds not guarded
 - Missing handling for empty collections, zero-length input, or missing optional values
 - Assumptions about data shape or ordering that are not validated
-- Integer overflow or underflow in arithmetic operations
-- Unicode or encoding edge cases not handled (locale-dependent formatting belongs to i18n-review)
-- Time zone, daylight saving, or clock skew assumptions
+- Integer overflow or underflow reaching an unguarded path (note only; numerics-review owns the arithmetic fix)
+- Unicode or encoding edge cases not handled (locale-dependent formatting belongs to i18n-review; encoding/normalization mechanics to unicode-review)
+- Time zone, daylight saving, or clock skew assumptions (note only; time-review owns time correctness)
 - Missing handling for concurrent modification or stale data (note only; concurrency-review owns the race)
 
 Instructions:

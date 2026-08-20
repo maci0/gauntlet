@@ -40,7 +40,7 @@ Review the following:
 - Session or sticky-routing assumptions hiding incoherence until routing changes
 
 6. Bounds and resource behavior
-- In-process maps used as caches with no eviction policy and no size bound (resource-review owns generic unbounded growth; here own it when the map is a cache)
+- In-process maps used as caches with no eviction policy and no size bound (resource-review owns non-cache unbounded growth; a map used as a cache is owned here entirely, both its bound and its eviction)
 - Eviction policy mismatched to access pattern where it causes correctness-adjacent trouble (hot keys evicted, scans flushing the working set)
 - Serialized entries far larger than intended (whole objects cached where a field was needed), or value sizes exceeding the cache's item limit and silently never caching
 - Per-entry memory cost unmeasured while the bound is entry-count, so the real bound is the heap

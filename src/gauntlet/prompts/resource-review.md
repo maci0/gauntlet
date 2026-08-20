@@ -7,6 +7,7 @@ First decide if this review applies. It needs code that acquires releasable reso
 Review the following:
 
 1. File descriptors and OS handles
+(error-review owns the error-path slice — cleanup skipped specifically when a failure interrupts the flow; here own the whole lifecycle and the bound.)
 - Files, pipes, and directory handles opened without a guaranteed close (missing defer/with/using/finally, early returns and exceptions skipping the close)
 - Close paths that exist but are conditional: only on success, only in one branch, or in a callback that can be skipped
 - Descriptors inherited by child processes unintentionally (close-on-exec unset), keeping files and ports alive past their owner
@@ -39,7 +40,7 @@ Review the following:
 - Long-lived objects holding references to short-lived ones through callback registration, defeating garbage collection at scale
 
 6. Unbounded in-memory growth
-- Maps, lists, and queues that only ever grow: dedup sets, request registries, per-key state with no expiry or removal path (if it is a cache, cache-review owns eviction; here own that a bound exists at all)
+- Maps, lists, and queues that only ever grow: dedup sets, request registries, per-key state with no expiry or removal path (a map used as a cache belongs entirely to cache-review, bound and eviction both; here own the non-cache growth)
 - Producer/consumer queues without a capacity bound or backpressure, converting slow consumers into OOM
 - Per-connection or per-user state retained after disconnect
 - Metrics, label sets, and log buffers with unbounded cardinality inside the process
