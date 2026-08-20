@@ -13,12 +13,12 @@ Notable changes per release.
   lines-changed stats before the first agent, and in the commit step. Every
   git call now forces those keys empty and resolves the git binary on a
   cwd-independent PATH.
-- `*-review.md` prompt reads are bounded and refuse hardlinks: a hardlink
-  to an out-of-tree inode (which `O_NOFOLLOW` does not catch) no longer
-  feeds out-of-tree bytes into a permission-bypassed agent, a multi-GB
-  prompt no longer OOMs the runner (1 MiB cap; a single argv over ~128 KiB
-  fails at exec anyway), and a planted symlink-to-FIFO no longer hangs the
-  lines-changed stat unkillably.
+- `*-review.md` prompt reads are bounded: a multi-GB prompt no longer OOMs
+  the runner (1 MiB cap; a single argv over ~128 KiB fails at exec anyway),
+  and a planted symlink-to-FIFO no longer hangs the lines-changed stat
+  unkillably. (Hardlinks are read normally: a package manager legitimately
+  hardlinks the bundled prompts, and an out-of-tree hardlink in an
+  untrusted repo is the trust model's container case.)
 
 ### Added
 

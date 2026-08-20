@@ -831,23 +831,23 @@ _UNTRACKED_LINE_CAP = 8 << 20
 
 
 def read_no_follow(path: Path) -> str:
-    """Read a regular file, refusing symlinks and hardlinks at open time.
+    """Read a regular file, refusing symlinks at open time.
 
     Checking is_symlink() and then reading by path is two lookups: the file
     can be swapped in between, which is how out-of-tree content would reach a
     permission-bypassed agent. O_NOFOLLOW closes that window; O_NONBLOCK plus
     the fstat keep a planted FIFO or device from blocking the open forever.
-    A link count above one means the inode is reachable from outside the tree
-    (a hardlink O_NOFOLLOW does not catch), so refuse it too. The size cap
-    bounds a hostile oversized prompt.
+    The size cap bounds a hostile oversized prompt.
+
+    Hardlinks are NOT refused: a package manager (uv, pip) legitimately
+    hardlinks the bundled prompts from its cache, so a link count above one
+    is normal. A hardlink to out-of-tree content in an untrusted target repo
+    is the trust model's "run it in a container" case, not defensible here.
     """
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, encoding="utf-8") as fh:
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode):
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise OSError(errno.EINVAL, "not a regular file", str(path))
-        if st.st_nlink > 1:
-            raise OSError(errno.EMLINK, "refusing hardlinked file", str(path))
         os.set_blocking(fd, True)
         data = fh.read(MAX_PROMPT_BYTES + 1)
         if len(data) > MAX_PROMPT_BYTES:
@@ -1899,7 +1899,11 @@ def _run_session(cmd: list[str]) -> int:
         try:
             proc = subprocess.Popen(cmd, start_new_session=True)
         except OSError as e:
-            usage_error(f"Cannot launch {cmd[0]}: {os_detail(e)}")
+            # Runs after the lock (the semcode indexer): a launch failure is
+            # a runtime failure (exit 1), matching a nonzero indexer exit, not
+            # a usage error (exit 2).
+            print(f"Cannot launch {cmd[0]}: {os_detail(e)}", file=sys.stderr)
+            sys.exit(1)
         assert proc is not None
         if stop_sig:
             _kill_pg(proc, signal.SIGTERM)

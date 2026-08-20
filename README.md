@@ -472,7 +472,7 @@ Instructions:
 - In auto-fix mode <the narrow, verifiable moves allowed in one pass>.
 ```
 
-Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...), hidden directories, and anything git ignores are skipped, as are symlinked, hardlinked, or oddly-named prompt files.
+Projects can also carry their own prompts: any `*-review.md` found in the project tree (the directory the loop runs against) is discovered too, shown as `[project]` in `--list`, `--dry-run`, and run logs, and usable with `--reviews`. A project-local prompt overrides a bundled one with the same name (a note is printed when it does). Vendored/build directories (`node_modules`, `vendor`, `dist`, `target`, `.git`, ...), hidden directories, and anything git ignores are skipped, as are symlinked or oddly-named prompt files.
 
 ## Trust model
 

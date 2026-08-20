@@ -1449,26 +1449,21 @@ def test_reviews_suggest_falls_back_on_unusable_output():
         assert "Running stub-review" in out, out
 
 
-def test_read_no_follow_refuses_hardlink_and_oversized():
-    """A hardlink (out-of-tree inode O_NOFOLLOW can't catch) and a prompt over
-    the size cap are both refused, keeping the in-tree/bounded invariant."""
+def test_read_no_follow_caps_size_but_allows_hardlinks():
+    """A prompt over the size cap is refused; a hardlink is NOT refused (a
+    package manager legitimately hardlinks the bundled prompts)."""
     with tempfile.TemporaryDirectory() as td:
         root = Path(td).resolve()
-        outside = root / "secret.txt"
-        outside.write_text("SECRET OUT OF TREE\n")
-        tree = root / "tree"
-        tree.mkdir()
-        hard = tree / "pwned-review.md"
-        os.link(outside, hard)  # hardlink across the boundary
-        raises(lambda: rl.read_no_follow(hard), OSError)
+        src = root / "src.md"
+        src.write_text("Your goal is fine.\n")
+        hard = root / "hard-review.md"
+        os.link(src, hard)  # link count 2, like a uv install
+        assert hard.stat().st_nlink > 1
+        assert rl.read_no_follow(hard) == "Your goal is fine.\n"
 
-        big = tree / "big-review.md"
+        big = root / "big-review.md"
         big.write_bytes(b"x\n" * (rl.MAX_PROMPT_BYTES // 2 + 10))
         raises(lambda: rl.read_no_follow(big), OSError)
-
-        ok = tree / "ok-review.md"
-        ok.write_text("Your goal is fine.\n")
-        assert rl.read_no_follow(ok) == "Your goal is fine.\n"
 
 
 def test_diff_totals_caps_untracked_file_reads():
