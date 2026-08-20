@@ -37,6 +37,20 @@ gets many perspectives over time.
 | **📦 Zero dependencies** | One standard-library Python file. Clone-and-symlink, `uv tool install`, or a release tarball. |
 | **🤖 Bring your own agents** | Works with whatever coding CLIs are on your `PATH`; no keys or config of its own. |
 
+### TL;DR
+
+```sh
+# install (clone + symlink onto your PATH)
+git clone https://github.com/maci0/gauntlet.git
+ln -s "$PWD/gauntlet/src/gauntlet/cli.py" ~/.local/bin/gauntlet
+
+cd your-project/
+gauntlet doctor    # check which agents and tools are visible
+gauntlet --once    # one full pass over the repo, then review the diff
+```
+
+More ways to install and run: [Install](#install) · [Quick start](#quick-start).
+
 How a single pass works:
 
 ```mermaid
