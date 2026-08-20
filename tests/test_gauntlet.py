@@ -1530,6 +1530,91 @@ def test_hostile_git_config_does_not_execute_in_runner():
             assert not pwned.exists(), f"fsmonitor executed in mode {mode}"
 
 
+def test_log_file_not_counted_as_review_insertions():
+    """A --log file inside the reviewed repo is the runner's own output, not a
+    review change: it must not be counted in the lines-changed stats."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"noop-review.md": "Role.\n\nYour goal is noop.\n"})
+        _tree(proj, {"f.txt": "x\n"})
+        _git(["init", "-q"], proj)
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\ni=0\nwhile [ $i -lt 500 ]; do echo x; i=$((i+1)); done\nexit 0\n")
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy", "-r", "noop",
+             "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--log", str(proj / "gauntlet.log"), "--timeout", "30s"],
+            env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+            check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "Lines changed: +0 -0" in p.stdout, p.stdout
+
+
+def test_lock_named_file_is_a_real_change():
+    """A repo file literally named *.gauntlet.lock must not be filtered by the
+    lock exclusion; the commit step and stats must see it."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"edit-review.md": "Role.\n\nYour goal is edit.\n"})
+        _tree(proj, {"data.gauntlet.lock": "one\n"})
+        _git(["init", "-q"], proj)
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
+        stub = bin_dir / "agy"
+        stub.write_text(
+            "#!/bin/sh\n"
+            'case "$*" in *"commit assistant"*) exit 3 ;; esac\n'
+            "echo more >> data.gauntlet.lock\nexit 0\n"
+        )
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy", "-r", "edit",
+             "--commit", "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--timeout", "30s"],
+            env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+            check=False,
+        )
+        out = p.stdout + p.stderr
+        # the tracked change is real: the commit step must run (and here fail)
+        assert "Running commit step" in out, out
+        assert "Commit steps: 1" in out, out
+
+
+def test_untracked_no_trailing_newline_counts_like_git():
+    """An untracked file with no final newline counts its last line, matching
+    git's own insertion count."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        proj = root / "proj"
+        proj.mkdir()
+        _git(["init", "-q"], proj)
+        _git(["config", "user.email", "t@t"], proj)
+        _git(["config", "user.name", "t"], proj)
+        (proj / "f.txt").write_text("x\n")
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
+        (proj / "new.txt").write_bytes(b"a\nb\nc")  # 3 lines, no trailing \n
+        prompts = root / "prompts"
+        prompts.mkdir()
+        (prompts / "stub-review.md").write_text(STUB_PROMPT)
+        args = argparse.Namespace(
+            agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="",
+            exclude="", timeout=30, quiet_agents=False,
+            continue_sessions=False, bin={}, yolo=False,
+        )
+        with _cwd(proj):
+            runner = rl.Runner(args)
+            assert runner._diff_totals() == (3, 0)
+
+
 def test_diff_totals_survives_planted_symlink_to_fifo():
     """An untracked symlink to a writer-less FIFO must not hang the stats
     pass (open() on it blocks unkillably) or be followed at all."""

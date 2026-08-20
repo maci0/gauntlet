@@ -1128,9 +1128,24 @@ class Runner:
         # changes uncommitted, which must not scroll away as one log line.
         self.commit_runs = 0
         self.commit_fails = 0
+        # The runner's own artifacts in the tree (its lock, and the --log
+        # file when it lives inside the reviewed repo) are not review changes:
+        # exclude them from the lines-changed stats and the commit-step
+        # clean-tree check by real path, so a repo file merely NAMED
+        # *.gauntlet.lock is not swallowed too.
+        self._own_artifacts = {os.path.realpath(".gauntlet.lock")}
+        log_real = getattr(self.args, "log_realpath", None)
+        if log_real:
+            self._own_artifacts.add(log_real)
         # Fixed commit to diff against for the lines-changed stats. None
         # (no repo, or git missing) just turns those stats off everywhere.
         self.git_baseline = self._git_head()
+
+    def _is_own_artifact(self, path: str) -> bool:
+        try:
+            return os.path.realpath(path) in self._own_artifacts
+        except (OSError, ValueError):
+            return False
 
     def _git_head(self) -> str | None:
         try:
@@ -1167,7 +1182,7 @@ class Runner:
         ins = int(m.group(1)) if (m := re.search(r"(\d+) insertion", result.stdout)) else 0
         dele = int(m.group(1)) if (m := re.search(r"(\d+) deletion", result.stdout)) else 0
         for name in untracked.stdout.split(b"\0"):
-            if not name or name.endswith(b".gauntlet.lock"):
+            if not name or self._is_own_artifact(os.fsdecode(name)):
                 continue
             # Same discipline as read_no_follow: a planted symlink (to a FIFO,
             # device, or out-of-tree file) must not block or be followed —
@@ -1184,14 +1199,28 @@ class Runner:
                     head = fh.read(65536)
                     if b"\0" in head:  # binary: no line count to speak of
                         continue
-                    ins += head.count(b"\n")
+                    n = head.count(b"\n")
+                    read = len(head)
+                    last = head[-1:]
                     # Cap per file: this best-effort stat runs up to four times
                     # per loop forever, so a huge untracked file must not make
                     # every loop re-read gigabytes.
-                    read = len(head)
-                    while read < _UNTRACKED_LINE_CAP and (chunk := fh.read(1 << 20)):
-                        ins += chunk.count(b"\n")
+                    truncated = False
+                    while True:
+                        if read >= _UNTRACKED_LINE_CAP:
+                            truncated = True
+                            break
+                        chunk = fh.read(1 << 20)
+                        if not chunk:
+                            break
+                        n += chunk.count(b"\n")
                         read += len(chunk)
+                        last = chunk[-1:]
+                    # Count like git: a final line with no trailing newline
+                    # still counts (unless we stopped early at the cap).
+                    if not truncated and last and last != b"\n":
+                        n += 1
+                    ins += n
             except OSError:
                 continue
             finally:
@@ -1686,9 +1715,12 @@ class Runner:
                 git_argv("status", "--porcelain"),
                 capture_output=True, text=True, timeout=10, check=False,
             )
-            # The runner's own lock file is not a change worth committing.
+            # The runner's own artifacts (lock, --log file) are not changes
+            # worth committing; match them by real path, not name suffix, so a
+            # repo file named *.gauntlet.lock is still seen as a real change.
             dirty = [line for line in result.stdout.splitlines()
-                     if line.strip() and not line.endswith(".gauntlet.lock")]
+                     if line.strip()
+                     and not self._is_own_artifact(_porcelain_path(line))]
             if not dirty:
                 return  # nothing to commit
         except (OSError, subprocess.TimeoutExpired):
@@ -1884,6 +1916,17 @@ def _run_session(cmd: list[str]) -> int:
     if stop_sig:
         sys.exit(128 + stop_sig)
     return rc
+
+
+def _porcelain_path(line: str) -> str:
+    """The worktree path from a `git status --porcelain` line (XY <path>,
+    or the destination of a `orig -> dest` rename)."""
+    entry = line[3:] if len(line) > 3 else ""
+    if " -> " in entry:
+        entry = entry.split(" -> ", 1)[1]
+    # Porcelain double-quotes paths with special characters; our own
+    # artifacts never need quoting, so an unquoted compare is enough.
+    return entry.strip().strip('"')
 
 
 def _unlink_quiet(path: Path) -> None:
@@ -2170,8 +2213,13 @@ def main() -> None:
 
     # Set up before any mode dispatch or --dir chdir: --log works the same in
     # every mode, and a relative FILE is resolved against the invocation cwd.
+    args.log_realpath = None
     if args.log:
-        setup_log_tee(args.log.absolute())
+        log_abs = args.log.absolute()
+        setup_log_tee(log_abs)
+        # Resolve against the invocation cwd (before chdir) so the stats can
+        # recognize a --log file that lives inside the reviewed tree.
+        args.log_realpath = os.path.realpath(log_abs)
 
     # Resolve against the invocation cwd, before any --dir chdir.
     args.prompt_dir = args.prompt_dir.resolve()
