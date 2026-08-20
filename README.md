@@ -28,6 +28,15 @@ randomly sampled agent (`claude`, `gemini`, `qwen`, `codex`, `grok`, `agy`,
 different things; the loop shuffles reviews and samples agents so a codebase
 gets many perspectives over time.
 
+|  |  |
+|---|---|
+| **🔧 Fixes, not reports** | Agents edit the working tree directly, capped at ~10 small proven fixes per pass. You review the diff. |
+| **🧭 50 expert lenses** | One prompt per concern — security, perf, a11y, concurrency, dependencies, packaging — each fenced to a single owner. |
+| **🎲 Many minds** | Shuffled reviews sampled across every agent you have installed, so blind spots differ every pass. |
+| **🔒 Contained by design** | Git read-only, no installs, no writes outside the tree, hard per-review timeout — and the runner itself is hardened against a hostile repo. |
+| **📦 Zero dependencies** | One standard-library Python file. Clone-and-symlink, `uv tool install`, or a release tarball. |
+| **🤖 Bring your own agents** | Works with whatever coding CLIs are on your `PATH`; no keys or config of its own. |
+
 How a single pass works:
 
 ```mermaid
