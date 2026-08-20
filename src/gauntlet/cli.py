@@ -1131,8 +1131,18 @@ class Runner:
         for name in untracked.stdout.split(b"\0"):
             if not name or name.endswith(b".gauntlet.lock"):
                 continue
+            # Same discipline as read_no_follow: a planted symlink (to a FIFO,
+            # device, or out-of-tree file) must not block or be followed —
+            # open() on a writer-less FIFO hangs unkillably (EINTR restart).
             try:
-                with open(name, "rb") as fh:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except OSError:
+                continue
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    continue
+                os.set_blocking(fd, True)
+                with os.fdopen(fd, "rb", closefd=False) as fh:
                     head = fh.read(65536)
                     if b"\0" in head:  # binary: no line count to speak of
                         continue
@@ -1141,6 +1151,8 @@ class Runner:
                         ins += chunk.count(b"\n")
             except OSError:
                 continue
+            finally:
+                os.close(fd)
         return ins, dele
 
     def _filter_reviews(self) -> list[str]:

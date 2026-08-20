@@ -1407,6 +1407,37 @@ def test_reviews_suggest_falls_back_on_unusable_output():
         assert "Running stub-review" in out, out
 
 
+def test_diff_totals_survives_planted_symlink_to_fifo():
+    """An untracked symlink to a writer-less FIFO must not hang the stats
+    pass (open() on it blocks unkillably) or be followed at all."""
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td).resolve()
+        proj = root / "proj"
+        proj.mkdir()
+        _git(["init", "-q"], proj)
+        _git(["config", "user.email", "t@t"], proj)
+        _git(["config", "user.name", "t"], proj)
+        (proj / "f.txt").write_text("x\n")
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
+        os.mkfifo(root / "out-of-tree.fifo")
+        (proj / "planted-link").symlink_to("../out-of-tree.fifo")
+        (proj / "new.txt").write_text("a\nb\n")
+
+        prompts = root / "prompts"
+        prompts.mkdir()
+        (prompts / "stub-review.md").write_text(STUB_PROMPT)
+        args = argparse.Namespace(
+            agents=[rl.ToolSpec("claude")], prompt_dir=prompts, reviews="",
+            exclude="", timeout=30, quiet_agents=False,
+            continue_sessions=False, bin={}, yolo=False,
+        )
+        with _cwd(proj):
+            runner = rl.Runner(args)
+            totals = runner._diff_totals()
+        assert totals == (2, 0), totals  # new.txt counted, link skipped, no hang
+
+
 def test_lock_file_removed_at_exit():
     """The runner cleans up .gauntlet.lock so reviewed repos are not littered
     (and a clean tree stays clean for the --commit skip)."""
