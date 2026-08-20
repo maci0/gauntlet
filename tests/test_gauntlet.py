@@ -70,7 +70,11 @@ def _env(bin_dir: Path) -> dict[str, str]:
 
 
 _GIT_ENV = {**os.environ,
-            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+            # A baked identity so `git commit` works without per-repo config
+            # even where the global config (blocked above) held the only one.
+            "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
 
 
 def _git(args: list[str], cwd: Path) -> None:
