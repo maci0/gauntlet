@@ -359,12 +359,22 @@ def _git_ignored(project: Path, paths: list[Path]) -> set[Path]:
     Prompt copies inside ignored trees (build output, state snapshots) are
     never legitimate project prompts, and their duplicate warnings are noise.
     """
-    if not paths:
+    # os.walk surrogate-escapes non-UTF-8 filenames; the text-mode pipe would
+    # raise UnicodeEncodeError on them. Leave such paths unchecked: discovery
+    # rejects their unprintable names right after this anyway.
+    encodable = []
+    for p in paths:
+        try:
+            str(p).encode()
+            encodable.append(p)
+        except UnicodeEncodeError:
+            pass
+    if not encodable:
         return set()
     try:
         result = subprocess.run(
             ["git", "-C", str(project), "check-ignore", "--stdin", "-z"],
-            input="\0".join(str(p) for p in paths),
+            input="\0".join(str(p) for p in encodable),
             capture_output=True, text=True, timeout=10, check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -619,8 +629,11 @@ def doctor(overrides: dict[str, str] | None = None) -> int:
     agents = sorted(VALID_TOOLS)
     overrides = overrides or {}
     installed = {a for a in agents if resolve_tool(a)}
-    # Same membership as installed_tools(), without a second PATH walk.
+    # Same membership as installed_tools(), without a second PATH walk. A
+    # --bin override counts: the loop is runnable with it (--agents X --bin
+    # X=...), so doctor must not claim no agent exists.
     found_agents = [a for a in sorted(VALID_TOOLS - OPT_IN_TOOLS) if a in installed]
+    found_agents += [a for a in overrides if a not in found_agents]
     have_cache: dict[str, bool] = {}
 
     def have_cached(name: str) -> bool:
@@ -1092,7 +1105,12 @@ class Runner:
         return result.stdout.strip() if result.returncode == 0 else None
 
     def _diff_totals(self) -> tuple[int, int] | None:
-        """Cumulative (insertions, deletions) in the worktree since git_baseline."""
+        """Cumulative (insertions, deletions) in the worktree since git_baseline.
+
+        `git diff` never sees untracked files, but reviews are told to add
+        tests (new files); count their lines as insertions so typical review
+        output is not invisible in the stats.
+        """
         if self.git_baseline is None:
             return None
         try:
@@ -1100,12 +1118,29 @@ class Runner:
                 ["git", "diff", "--shortstat", self.git_baseline],
                 capture_output=True, text=True, timeout=10, check=False,
             )
+            untracked = subprocess.run(
+                ["git", "ls-files", "--others", "--exclude-standard", "-z"],
+                capture_output=True, timeout=10, check=False,
+            )
         except (OSError, subprocess.TimeoutExpired):
             return None
-        if result.returncode != 0:
+        if result.returncode != 0 or untracked.returncode != 0:
             return None
         ins = int(m.group(1)) if (m := re.search(r"(\d+) insertion", result.stdout)) else 0
         dele = int(m.group(1)) if (m := re.search(r"(\d+) deletion", result.stdout)) else 0
+        for name in untracked.stdout.split(b"\0"):
+            if not name or name.endswith(b".gauntlet.lock"):
+                continue
+            try:
+                with open(name, "rb") as fh:
+                    head = fh.read(65536)
+                    if b"\0" in head:  # binary: no line count to speak of
+                        continue
+                    ins += head.count(b"\n")
+                    while chunk := fh.read(1 << 20):
+                        ins += chunk.count(b"\n")
+            except OSError:
+                continue
         return ins, dele
 
     def _filter_reviews(self) -> list[str]:
@@ -1114,7 +1149,7 @@ class Runner:
         if not available:
             usage_error(f"No *-review.md files found in: {self.args.prompt_dir}")
 
-        def expand(arg: str, flag: str) -> list[str]:
+        def expand(arg: str, flag: str, empty_ok: bool = False) -> list[str]:
             """Expand names and set shorthands, keeping order and repeats.
 
             Repeats are weight: naming a review or a set twice schedules its
@@ -1164,7 +1199,7 @@ class Runner:
                     f"{', '.join(sorted(REVIEW_SETS))}\n"
                     f"Reviews: {', '.join(available)}"
                 )
-            if empty_sets and not out:
+            if empty_sets and not out and not empty_ok:
                 usage_error(
                     f"Set(s) in {flag} matched no available reviews: "
                     f"{', '.join(empty_sets)}"
@@ -1174,9 +1209,12 @@ class Runner:
         # Expand --exclude first: an exclusion typo should fail before an
         # agent call, and suggest must never offer reviews the user excluded
         # (confirming a list that then silently shrinks is a lie).
+        # Excluding is all-or-nothing per name; a set that happens to match
+        # nothing here (--exclude project in a repo with no project prompts)
+        # is a valid no-op, not a typo.
         excluded: set[str] = set()
         if self.args.exclude:
-            excluded = set(expand(self.args.exclude, "--exclude"))  # excluding is all-or-nothing
+            excluded = set(expand(self.args.exclude, "--exclude", empty_ok=True))
         if self.args.reviews.strip() == SUGGEST:
             pool = [r for r in available if r not in excluded]
             if not pool:
@@ -1280,28 +1318,34 @@ class Runner:
                             f"(exit {proc.returncode})")
                 log(last_err)
                 continue
+            picked: dict[str, str] = {}  # name -> reason, first mention wins
+            unknown: list[str] = []
+            for line in out.splitlines():
+                m = _SUGGEST_LINE_RE.match(line)
+                if not m:
+                    continue
+                name, reason = m.group(1), sanitize(m.group(2)).strip()
+                if name not in available and f"{name}-review" in available:
+                    name = f"{name}-review"
+                if name in available:
+                    picked.setdefault(name, reason)
+                else:
+                    unknown.append(name)
+            if unknown:
+                log(f"Ignoring unknown suggestions: {', '.join(sorted(set(unknown)))}")
+            if not picked:
+                # Exit 0 with unusable output is as much a failure as exit 1:
+                # fall through to the next agent rather than giving up.
+                last_err = (f"{spec.label()} printed no usable 'RELEVANT:' "
+                            f"lines; pick reviews with --reviews if no agent "
+                            f"manages")
+                log(last_err)
+                continue
             break
         else:
-            usage_error(last_err or "no agent could suggest reviews")
-
-        picked: dict[str, str] = {}  # name -> reason, first mention wins
-        unknown: list[str] = []
-        for line in out.splitlines():
-            m = _SUGGEST_LINE_RE.match(line)
-            if not m:
-                continue
-            name, reason = m.group(1), sanitize(m.group(2)).strip()
-            if name not in available and f"{name}-review" in available:
-                name = f"{name}-review"
-            if name in available:
-                picked.setdefault(name, reason)
-            else:
-                unknown.append(name)
-        if unknown:
-            log(f"Ignoring unknown suggestions: {', '.join(sorted(set(unknown)))}")
-        if not picked:
-            usage_error(f"{spec.label()} printed no usable 'RELEVANT:' lines; "
-                        f"run again or pick reviews with --reviews")
+            # Runtime agent failures, not usage errors: exit 1 per the contract.
+            print(last_err or "no agent could suggest reviews", file=sys.stderr)
+            sys.exit(1)
 
         print(f"\n{spec.label()} suggests {len(picked)} of "
               f"{len(available)} reviews:")
@@ -1429,8 +1473,13 @@ class Runner:
         after_diff = self._diff_totals()
         ins = dele = None
         if before_diff is not None and after_diff is not None:
-            ins = max(0, after_diff[0] - before_diff[0])
-            dele = max(0, after_diff[1] - before_diff[1])
+            # Deltas are of cumulative worktree-vs-baseline stats, so removing
+            # lines a previous review added shows as negative insertions: that
+            # is this review deleting them (and vice versa for restorations).
+            d_ins = after_diff[0] - before_diff[0]
+            d_del = after_diff[1] - before_diff[1]
+            ins = max(d_ins, 0) + max(-d_del, 0)
+            dele = max(d_del, 0) + max(-d_ins, 0)
         lines_note = f", +{ins}/-{dele} lines" if ins or dele else ""
 
         if timed_out:
@@ -1538,7 +1587,8 @@ class Runner:
             print(f"  {name.ljust(set_col)} {desc} ({count})")
         for name, members in REVIEW_SETS.items():
             present = [r for r in members if r in self.prompt_files]
-            body = ", ".join(r.removesuffix("-review") for r in present)
+            body = (", ".join(r.removesuffix("-review") for r in present)
+                    or "(no members in this prompt dir)")
             head = f"  {name.ljust(set_col)} "
             print(textwrap.fill(
                 body, width=width, initial_indent=head,
@@ -1581,7 +1631,10 @@ class Runner:
                 ["git", "status", "--porcelain"],
                 capture_output=True, text=True, timeout=10, check=False,
             )
-            if not result.stdout.strip():
+            # The runner's own lock file is not a change worth committing.
+            dirty = [line for line in result.stdout.splitlines()
+                     if line.strip() and not line.endswith(".gauntlet.lock")]
+            if not dirty:
                 return  # nothing to commit
         except (OSError, subprocess.TimeoutExpired):
             log("Warning: could not check git status before commit step")
@@ -1604,6 +1657,11 @@ class Runner:
         action = "commit+push" if do_push else "commit"
         log(f"Running {action} step with {spec.label()}")
         self.commit_runs += 1
+        # This launch becomes the CLI's most recent session in this directory,
+        # which is what the resume flags target. Resuming it from the next
+        # review would continue the commit conversation, so start that review
+        # fresh instead.
+        self.session_started.discard(spec)
         timeout = min(self.args.timeout, COMMIT_TIMEOUT_SECS)
         sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
@@ -1684,13 +1742,17 @@ class Runner:
                     self.run_review(r)
                     if not self.stopping and (self.args.commit or self.args.push):
                         self.run_commit()
+                if self.stopping:
+                    return  # the loop's last review was interrupted: not a completed loop
                 self.loop_count += 1
                 loop_elapsed = time.monotonic() - loop_start
                 loop_after = self._diff_totals()
                 loop_lines = ""
                 if loop_before is not None and loop_after is not None:
-                    loop_lines = (f", +{max(0, loop_after[0] - loop_before[0])}"
-                                  f"/-{max(0, loop_after[1] - loop_before[1])} lines")
+                    d_ins = loop_after[0] - loop_before[0]
+                    d_del = loop_after[1] - loop_before[1]
+                    loop_lines = (f", +{max(d_ins, 0) + max(-d_del, 0)}"
+                                  f"/-{max(d_del, 0) + max(-d_ins, 0)} lines")
                 print()
                 log(
                     f"=== Loop {self.loop_count} complete in {fmt_duration(loop_elapsed)} "
@@ -1769,6 +1831,13 @@ def _run_session(cmd: list[str]) -> int:
     return rc
 
 
+def _unlink_quiet(path: Path) -> None:
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def acquire_lock(path: Path) -> None:
     # The fd is deliberately left open (never closed) so the flock is held
     # for the lifetime of the process. O_NOFOLLOW rejects symlinks and
@@ -1778,6 +1847,10 @@ def acquire_lock(path: Path) -> None:
         if not stat.S_ISREG(os.fstat(fd).st_mode):  # check the fd, not the path
             usage_error(f"Lock path is not a regular file: {path}")
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Remove the file on exit so reviewed repos are not littered with
+        # stray locks. The unlink-vs-open race this reopens is a moments-wide
+        # window at process exit, when the loop has already finished.
+        atexit.register(_unlink_quiet, path)
     except BlockingIOError:
         print(f"Another gauntlet appears to be running (lock: {path})", file=sys.stderr)
         sys.exit(75)  # EX_TEMPFAIL
@@ -1838,7 +1911,8 @@ def parse_args() -> argparse.Namespace:
             "\n"
             "Exit codes:\n"
             "  0  all reviews ran and passed\n"
-            "  1  a review failed, timed out, or could not be read\n"
+            "  1  a review failed, timed out, or could not be read; no agent\n"
+            "     produced a usable suggestion; or a commit step failed\n"
             "  2  usage error\n"
             "  75 another instance holds the lock\n"
             "  128+signal when interrupted (130 SIGINT, 143 SIGTERM)\n"
@@ -2004,6 +2078,9 @@ def parse_args() -> argparse.Namespace:
             p.error(f"'{SUGGEST}' must be the only --reviews value")
         if args.list or args.dry_run:
             p.error(f"'{SUGGEST}' runs an agent; not usable with --list/--dry-run")
+        # Canonicalize so later dispatch string-compares agree with this
+        # tokenized check ('suggest,' and 'suggest' are the same request).
+        args.reviews = SUGGEST
     if SUGGEST in args.exclude.split(","):
         p.error(f"'{SUGGEST}' is not a review name; it cannot be excluded")
     seen: dict[str, str] = {}
@@ -2035,17 +2112,19 @@ def main() -> None:
     if args.log:
         setup_log_tee(args.log.absolute())
 
-    if args.command == "doctor":
-        sys.exit(doctor(args.bin))
-
     # Resolve against the invocation cwd, before any --dir chdir.
     args.prompt_dir = args.prompt_dir.resolve()
 
+    # Before doctor too: an invalid --dir is a usage error in every mode,
+    # not something doctor silently accepts and ignores.
     if args.dir:
         try:
             os.chdir(args.dir)
         except OSError as e:
             usage_error(f"Cannot cd to {args.dir}: {os_detail(e)}")
+
+    if args.command == "doctor":
+        sys.exit(doctor(args.bin))
 
     if not args.prompt_dir.is_dir():
         why = "is not a directory" if args.prompt_dir.exists() else "not found"
@@ -2104,6 +2183,8 @@ def main() -> None:
         sys.exit(128 + runner.stop_signal)  # 130 for SIGINT, 143 for SIGTERM
     if any(r.status in ("fail", "timeout", "skipped") for r in runner.stats.results):
         sys.exit(1)
+    if runner.commit_fails:
+        sys.exit(1)  # --commit/--push was the point; the changes are stranded
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.26"]  # PEP 639 license metadata needs 1.26+
 build-backend = "hatchling.build"
 
 [project]
@@ -27,6 +27,11 @@ pattern = 'VERSION = "(?P<version>[^"]+)"'
 [tool.hatch.build.targets.wheel]
 packages = ["src/gauntlet"]
 
+# Explicit sdist scope: hatchling's default includes untracked working-tree
+# files (local editor/tool state), which must never ship in a distribution.
+[tool.hatch.build.targets.sdist]
+only-include = ["src/gauntlet", "tests", "README.md", "CHANGELOG.md", "LICENSE"]
+
 [dependency-groups]
 dev = ["pytest", "ruff==0.16.1", "mypy==1.19.0"]
 
@@ -43,7 +48,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src/gauntlet/cli.py"]
+files = ["src/gauntlet"]
 warn_redundant_casts = true
 warn_unused_ignores = true
 no_implicit_optional = true

@@ -3,4 +3,4 @@
 from gauntlet.cli import VERSION, main
 
 __version__ = VERSION
-__all__ = ["main", "__version__"]
+__all__ = ["__version__", "main"]

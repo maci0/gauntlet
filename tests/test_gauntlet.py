@@ -61,7 +61,20 @@ def _dirs(root: Path) -> tuple[Path, Path, Path]:
 
 
 def _env(bin_dir: Path) -> dict[str, str]:
-    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    # LC_ALL=C: assertions match C-library strings (strerror) that localize.
+    # GIT_CONFIG_*: the developer's global git config (gpgsign, hooksPath,
+    # templates) must not leak into the temp repos these tests create.
+    return {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+            "LC_ALL": "C",
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+
+
+_GIT_ENV = {**os.environ,
+            "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null"}
+
+
+def _git(args: list[str], cwd: Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, env=_GIT_ENV)
 
 
 @contextlib.contextmanager
@@ -535,7 +548,7 @@ def test_discover_reviews_skips_git_ignored_prompts():
             "state/snap/ignored-only-review.md": "never seen",
             ".gitignore": "state/\n",
         })
-        subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+        _git(["init", "-q"], proj)
 
         err = io.StringIO()
         with _cwd(proj), contextlib.redirect_stderr(err):
@@ -575,11 +588,11 @@ def test_lines_changed_stats_reported():
         bin_dir, proj, prompts = _dirs(root)
         _tree(prompts, {"stub-review.md": STUB_PROMPT})
         _tree(proj, {"file.txt": "one\ntwo\nthree\n"})
-        subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
-        subprocess.run(["git", "config", "user.email", "t@t"], cwd=proj, check=True)
-        subprocess.run(["git", "config", "user.name", "t"], cwd=proj, check=True)
-        subprocess.run(["git", "add", "."], cwd=proj, check=True)
-        subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=proj, check=True)
+        _git(["init", "-q"], proj)
+        _git(["config", "user.email", "t@t"], proj)
+        _git(["config", "user.name", "t"], proj)
+        _git(["add", "."], proj)
+        _git(["commit", "-q", "-m", "init"], proj)
 
         stub = bin_dir / "agy"
         stub.write_text(
@@ -838,16 +851,27 @@ def test_review_sets_reference_real_prompts():
 # review or set is a feature; append it here when it ships so it stays gated.
 RELEASED_REVIEW_NAMES = frozenset({
     "a11y-review", "agentrules-review", "api-review", "arch-review",
-    "build-review", "cli-review", "code-review", "concurrency-review",
-    "config-review", "db-review", "deps-review", "design-review",
-    "doc-review", "dst-review", "error-review", "functionality-review",
-    "fuzz-review", "i18n-review", "idempotency-review", "infra-review",
-    "llm-review", "minimalism-review", "mobile-review", "o11y-review",
+    "authz-review", "build-review", "cache-review", "cli-review",
+    "code-review", "compat-review", "concurrency-review", "config-review",
+    "container-review", "db-review", "deps-review", "design-review",
+    "doc-review", "dr-review", "dst-review", "dx-review", "error-review",
+    "functionality-review", "fuzz-review", "i18n-review",
+    "idempotency-review", "infra-review", "lint-review", "llm-review",
+    "minimalism-review", "mobile-review", "numerics-review", "o11y-review",
     "perf-review", "pkg-review", "privacy-review", "prompt-review",
-    "release-review", "sdk-review", "sec-review", "skills-review",
-    "slop-review", "test-review", "uislop-review", "ux-review",
-    "webperf-review",
+    "release-review", "resource-review", "sdk-review", "sec-review",
+    "skills-review", "slop-review", "specs-review", "test-review",
+    "threat-review", "time-review", "uislop-review", "unicode-review",
+    "ux-review", "webperf-review",
 })
+
+
+def test_released_names_gate_is_not_stale():
+    """Every shipped (bundled) review must be in the released-names gate;
+    the append-when-it-ships convention rots silently otherwise."""
+    bundled = {f.stem for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md")}
+    unlisted = bundled - RELEASED_REVIEW_NAMES
+    assert not unlisted, f"shipped but not gated against renames: {sorted(unlisted)}"
 RELEASED_SET_NAMES = frozenset({
     "all", "project", "quick", "standard", "security",
     "frontend", "backend", "agents", "shipping",
@@ -1160,9 +1184,12 @@ def test_cli_flag_hygiene():
     script = SCRIPT
 
     def run(*argv: str) -> subprocess.CompletedProcess:
+        # LC_ALL=C: an assertion below matches the C-library strerror text,
+        # which the libc localizes under other locales.
         return subprocess.run(
             [sys.executable, str(script), *argv],
             capture_output=True, text=True, timeout=60, check=False,
+            env={**os.environ, "LC_ALL": "C"},
         )
 
     # abbreviations of long options are no longer accepted
@@ -1322,6 +1349,161 @@ def test_reviews_suggest_respects_exclude_up_front():
         assert "Ignoring unknown suggestions: banned" in out, out
 
 
+def test_exclude_empty_set_is_a_noop():
+    """--exclude project (a README example) must not error in a repo with no
+    project prompts; --reviews with an all-empty set still errors."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        _, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "claude",
+             "--exclude", "project", "--prompt-dir", str(prompts),
+             "--dir", str(proj)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "stub-review" in p.stdout, p.stdout
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "claude",
+             "--reviews", "project", "--prompt-dir", str(prompts),
+             "--dir", str(proj)],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 2, p.stdout + p.stderr
+        assert "matched no available reviews" in p.stderr, p.stderr
+
+
+def test_reviews_suggest_falls_back_on_unusable_output():
+    """An agent that exits 0 with no usable RELEVANT: lines counts as failed:
+    the next agent is tried."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        # Suggest shuffles the agent order, so a shared counter makes the
+        # first-asked agent (whichever it is) produce garbage and the second
+        # produce a usable line: the fallback must bridge them.
+        calls = root / "calls.txt"
+        body = ("#!/bin/sh\n"
+                f"echo x >> {calls}\n"
+                f'if [ "$(wc -l < {calls})" = "1" ]; then echo garbage; exit 0; fi\n'
+                "echo 'RELEVANT: stub-review: yes'\n")
+        for name in ("claude", "agy"):
+            (bin_dir / name).write_text(body)
+            (bin_dir / name).chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "claude,agy",
+             "--suggest", "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--timeout", "30s"],
+            env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+            check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "no usable 'RELEVANT:' lines" in out, out
+        assert "Running stub-review" in out, out
+
+
+def test_lock_file_removed_at_exit():
+    """The runner cleans up .gauntlet.lock so reviewed repos are not littered
+    (and a clean tree stays clean for the --commit skip)."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--timeout", "30s"],
+            env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+            check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert not (proj / ".gauntlet.lock").exists(), \
+            "lock file littered the reviewed directory"
+
+
+def test_doctor_exits_zero_when_an_agent_is_installed():
+    """Doctor's healthy verdict (exit 0) must hold with a PATH agent and,
+    separately, with only a --bin override supplying the agent."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        bin_dir = Path(td) / "bin"
+        bin_dir.mkdir()
+        agent = bin_dir / "claude"
+        agent.write_text("#!/bin/sh\nexit 0\n")
+        agent.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "doctor"],
+            env=_env(bin_dir), capture_output=True, text=True, timeout=60,
+            check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        # --bin only, nothing on PATH: still a runnable configuration
+        p = subprocess.run(
+            [sys.executable, str(script), "doctor", "--bin", f"claude={agent}"],
+            env={**os.environ, "PATH": "/usr/bin", "LC_ALL": "C"},
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stdout + p.stderr
+        assert "No agent CLI found" not in p.stdout + p.stderr
+
+
+def test_push_prompt_contains_push_instruction():
+    """--push must put the push step into the commit prompt; --commit must not."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        _tree(proj, {"f.txt": "x\n"})
+        _git(["init", "-q"], proj)
+        prompt_log = root / "prompts.txt"
+        stub = bin_dir / "agy"
+        stub.write_text(
+            "#!/bin/sh\n"
+            f'printf "%s\\n===CALL===\\n" "$3" >> {prompt_log}\n'
+            "echo dirty > f.txt\n"
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+        for flag, expect_push in (("--push", True), ("--commit", False)):
+            prompt_log.write_text("")
+            p = subprocess.run(
+                [sys.executable, str(script), "--once", "--agents", "agy", flag,
+                 "--prompt-dir", str(prompts), "--dir", str(proj),
+                 "--timeout", "30s"],
+                env=_env(bin_dir),
+                capture_output=True, text=True, timeout=60, check=False,
+            )
+            assert p.returncode == 0, (flag, p.stdout + p.stderr)
+            calls = prompt_log.read_text().split("===CALL===")
+            commit_prompts = [c for c in calls if "git commit assistant" in c]
+            assert commit_prompts, (flag, calls)
+            has_push = "git push" in commit_prompts[0]
+            assert has_push == expect_push, (flag, commit_prompts[0])
+
+
+def test_ci_tool_pins_match_dev_group():
+    """ruff/mypy versions are pinned in pyproject's dev group and again in
+    ci.yml; the two must not drift."""
+    root = Path(__file__).parent.parent
+    pyproject = (root / "pyproject.toml").read_text()
+    ci = (root / ".github" / "workflows" / "ci.yml").read_text()
+    for tool in ("ruff", "mypy"):
+        m = re.search(rf'"{tool}==([0-9.]+)"', pyproject)
+        assert m, f"{tool} not pinned in pyproject dev group"
+        assert f"{tool}=={m.group(1)}" in ci, \
+            f"{tool} pin in ci.yml differs from pyproject ({m.group(1)})"
+
+
 def test_commit_step_summary_counts_failures():
     """A failing commit agent shows up in the final summary, not just a log line."""
     script = SCRIPT
@@ -1330,7 +1512,7 @@ def test_commit_step_summary_counts_failures():
         bin_dir, proj, prompts = _dirs(root)
         _tree(prompts, {"stub-review.md": STUB_PROMPT})
         _tree(proj, {"f.txt": "x\n"})
-        subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+        _git(["init", "-q"], proj)
         marker = root / "calls.txt"
         stub = bin_dir / "agy"
         # First call is the review (dirty the tree); later calls are the
@@ -1349,7 +1531,7 @@ def test_commit_step_summary_counts_failures():
             capture_output=True, text=True, timeout=60, check=False,
         )
         out = p.stdout + p.stderr
-        assert p.returncode == 0, out  # reviews passed; commit failure is reported, not fatal
+        assert p.returncode == 1, out  # a failed commit step strands changes: exit 1
         assert "commit step FAILED" in out, out
         assert "Commit steps: 1, 1 failed (changes may be uncommitted)" in out, out
 
@@ -1802,7 +1984,8 @@ def test_reviews_suggest_guards():
 
 
 def test_reviews_suggest_rejects_empty_relevant_lines():
-    """Narration without a usable RELEVANT: line is a usage error, not a run."""
+    """Narration without a usable RELEVANT: line is an agent failure (exit 1,
+    not usage error), and no reviews run."""
     script = SCRIPT
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -1819,7 +2002,7 @@ def test_reviews_suggest_rejects_empty_relevant_lines():
             capture_output=True, text=True, timeout=60, check=False,
         )
         out = p.stdout + p.stderr
-        assert p.returncode == 2, out
+        assert p.returncode == 1, out
         assert "no usable 'RELEVANT:' lines" in out, out
         assert "Running stub-review" not in out
 
@@ -2210,10 +2393,12 @@ def main() -> int:
              if n.startswith("test_") and callable(f)]
     failed = 0
     for name, fn in tests:
+        # SystemExit must be caught too: an unexpected sys.exit(0) in a tested
+        # path would otherwise abort this runner with a green exit code.
         try:
             fn()
             print(f"ok   {name}")
-        except Exception as e:
+        except (Exception, SystemExit) as e:
             failed += 1
             print(f"FAIL {name}: {e!r}")
     print(f"\n{len(tests) - failed}/{len(tests)} passed")

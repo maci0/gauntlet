@@ -237,8 +237,9 @@ with a custom `--prompt-dir`.
 descriptions only, never the prompt bodies, and with an explicit
 classification-only rule so nothing gets fixed during triage). Descriptions
 are treated as untrusted data, and triage is capped at five minutes even
-when `--timeout` is longer. If that agent fails, the next one in `--agents`
-is tried. It then lists the relevant reviews with a one-line reason each,
+when `--timeout` is longer. If that agent fails, times out, or prints no
+usable `RELEVANT:` lines, the next one in `--agents` is tried (all failing
+exits 1). It then lists the relevant reviews with a one-line reason each,
 asks for confirmation on a terminal (non-interactive runs, `--yes`, and
 `--yolo` proceed without asking), then loops over exactly those. `--exclude`
 is applied up front: excluded reviews never appear in the agent's catalog or
@@ -291,11 +292,11 @@ uv tool install git+https://github.com/maci0/gauntlet
 gauntlet doctor    # verify agents and helper tools are visible
 ```
 
-Or skip installing and run it in place (`./src/gauntlet/cli.py`,
-`python -m gauntlet`), or from a
-[release tarball](https://github.com/maci0/gauntlet/releases/latest). The
-prompts are discovered relative to the real script location, so the symlink
-form works from any repository.
+Or skip installing and run it in place (`./src/gauntlet/cli.py`), or from a
+[release tarball](https://github.com/maci0/gauntlet/releases/latest);
+`python -m gauntlet` works once installed. The prompts are discovered
+relative to the real script location, so the symlink form works from any
+repository.
 
 ## Quick start
 
@@ -422,7 +423,7 @@ Run `gauntlet --help` for the full option list.
   | Code | Meaning |
   |---|---|
   | 0 | all reviews ran and passed |
-  | 1 | any review failed, timed out, or was skipped |
+  | 1 | any review failed, timed out, or was skipped; suggest found no usable agent; a commit step failed |
   | 2 | usage error |
   | 75 | another instance holds the lock |
   | 128+signal | interrupted: 130 for SIGINT, 143 for SIGTERM (takes precedence over 1) |
