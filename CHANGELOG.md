@@ -2,7 +2,7 @@
 
 Notable changes per release.
 
-## Unreleased
+## 0.19.0
 
 ### Security
 
@@ -46,6 +46,10 @@ Notable changes per release.
   and duplicate-prompt warnings fire only when the copies actually differ.
 - Numerous doc corrections (the `--agents`/`--continue-sessions` option
   rows, exit-code table, "adding a review" registration requirements).
+- Prompt fencing tightened: `error-review` hands off overflow/time/encoding
+  to numerics/time/unicode-review; the map-used-as-cache is owned entirely
+  by `cache-review`; `sec-review` gains the homoglyph and insecure-randomness
+  items that unicode/numerics-review fence to it.
 
 ## 0.18.0
 
