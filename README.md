@@ -41,13 +41,15 @@ How a single pass works:
 
 ```mermaid
 flowchart LR
-    A["pick next review +<br>random agent"] --> B["compose prompt:<br>strip report sections,<br>append containment rules"]
-    B --> C["agent applies up to<br>~10 small fixes<br>(hard timeout)"]
-    C --> D{"--commit /<br>--push?"}
-    D -- yes --> E["commit step:<br>agent writes message,<br>commits, pushes"]
-    D -- no --> F["diff accumulates<br>in worktree"]
-    E --> A
-    F --> A
+    A(["🎲 pick review + agent"]) --> B(["📝 compose prompt"]) --> C(["🔧 apply ≤10 fixes"]) --> D{"commit?"}
+    D -->|"--commit / --push"| E(["✅ commit &amp; push"])
+    D -->|default| F(["📄 diff in worktree"])
+    E -.->|next| A
+    F -.->|next| A
+    classDef step fill:#0e96a8,stroke:#0b6c78,color:#ffffff;
+    classDef dec fill:#eef6f7,stroke:#0e96a8,color:#12303a;
+    class A,B,C,E,F step
+    class D dec
 ```
 
 1. The runner picks the next review and a random agent from `--agents`.
