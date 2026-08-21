@@ -42,6 +42,7 @@ Review the following:
 - Guards that are always true or always false
 - Parameters accepted and never used; return values never consumed
 - Commented-out code and disabled blocks with no explanation
+- Scratch and debug residue shipped as source: `foo-copy.ts`, `route.new.py`, `.bak`, a `temp/` or `scratch/` directory, a `v2` sibling living beside the original it was meant to replace
 
 6. Cosmetic churn
 - Reformatting, renames, or code motion mixed into unrelated logic with no stated reason

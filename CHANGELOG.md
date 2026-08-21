@@ -2,6 +2,20 @@
 
 Notable changes per release.
 
+## 0.21.0
+
+### Changed
+
+- Five review prompts sharpened with checks ported from oxlint-standards:
+  `db-review` flags DELETE/UPDATE with no predicate (a builder chain whose
+  `where` is optional and absent rewrites the whole table); `error-review`
+  names the concrete shapes of a fallback standing in for a failure the
+  caller should have seen; `code-review` flags branch bodies that are
+  identical; `slop-review` flags scratch and debug residue shipped as
+  source; `lint-review` distinguishes rule categories never enabled from
+  ones deliberately disabled, and prefers analyzer builtins over custom
+  rules.
+
 ## 0.20.0
 
 ### Changed

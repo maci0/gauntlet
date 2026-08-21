@@ -57,6 +57,7 @@ Review the following:
 - Business rules enforced only in application code, not at the database level
 - Missing constraints that could lead to orphaned records
 - Cascade deletes that could cause unintended data loss
+- DELETE or UPDATE with no predicate, in application code or a migration (a builder chain where the `where` is optional and absent, a raw statement with no WHERE). One run rewrites the whole table
 - Missing transaction boundaries around multi-step operations
 (concurrency-review owns the race fix, including database read-modify-write. Here own the schema that makes lost updates unrepresentable.)
 - Race conditions in read-modify-write patterns without proper locking (note only; concurrency-review owns the race)

@@ -38,6 +38,7 @@ Review the following:
 - Places where logic can be simplified
 - Boilerplate that can be removed
 - Repeated branches that can be merged
+- Branches whose bodies are identical (if/else arms, switch cases, ternary sides). Either a condition that was meant to differentiate and does not, or a branch that should not exist
 - Verbose code that can be replaced with clearer, smaller constructs
 - Unnecessary indirection
 

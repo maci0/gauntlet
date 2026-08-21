@@ -17,6 +17,7 @@ Review the following:
 - No hard line-length cap, or a cap above 100 columns. Hard-limit every line to 100 so two copies of the code fit side-by-side. Use it up. Never go beyond
 - Multi-line `if`/`else` without braces (the goto-fail class). A formatter or lint rule should require braces unless the statement fits on one line
 - Valuable rule groups disabled wholesale (bug-prone, correctness, security categories) while style-only rules run
+- Rule categories never enabled at all, not merely disabled: the analyzer's default set running alone while its suspicious, pedantic, performance, and restriction groups stay off. Enable every category the tree can pass, and prefer the analyzer's builtins over custom rules
 - Severity downgrades that turn real defects into ignorable noise (errors mapped to warnings nobody reads)
 - Config that contradicts the code's actual conventions, forcing suppressions to accumulate
 

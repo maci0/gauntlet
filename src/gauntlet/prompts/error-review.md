@@ -43,6 +43,7 @@ Review the following:
 - Missing validation of external or user input (environment/config required-keys belong to config-review; network request fields to api-review)
 - Partial validation that catches some invalid inputs but misses others
 - Type coercion or default substitution that masks invalid input
+- A fallback standing in for a failure the caller should have seen: `catch` returning an empty collection or a zero value, a parse wrapped in a try whose except yields `{}`, `?? {}` / `|| default` applied to a parse or fetch result, a capability shim chosen at the call site instead of at startup
 
 5. Resource cleanup on error
 (resource-review owns the full acquire/release lifecycle and bounds; here own the error-path slice: cleanup skipped specifically when a failure interrupts the flow.)
