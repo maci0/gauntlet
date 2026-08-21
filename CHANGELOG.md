@@ -2,6 +2,20 @@
 
 Notable changes per release.
 
+## 0.20.0
+
+### Changed
+
+- `code-review` now flags fabricated or discarded type evidence — code that
+  makes a value look safer to the compiler than it is (a frequent tell of
+  machine-generated code): chained/widen-then assertions, `unknown`/`any`/
+  `object` concealing a real contract, ad-hoc `typeof` narrowing instead of
+  boundary parsing, reflection over typed access, and unjustified casts.
+  Fenced to error-review (boundary validation) and test-review (module
+  mocking vs dependency seams); `oxlint` added to its tool list.
+- README polish: install/run TL;DR near the top, a feature-highlights grid,
+  and a cleaner pipeline diagram.
+
 ## 0.19.0
 
 ### Security
