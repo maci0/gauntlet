@@ -97,7 +97,7 @@ REVIEW_TOOLS: dict[str, tuple[str, ...]] = {
     "authz-review": ("semgrep",),
     "build-review": ("diffoscope", "shellcheck"),
     "cli-review": ("shellcheck",),
-    "code-review": ("ruff", "cargo-clippy", "eslint", "jscpd", "vulture", "knip", "ts-prune"),
+    "code-review": ("ruff", "cargo-clippy", "eslint", "oxlint", "jscpd", "vulture", "knip", "ts-prune"),
     "compat-review": ("shellcheck",),
     "concurrency-review": ("valgrind",),
     "config-review": ("check-jsonschema", "yamllint", "taplo", "dotenv-linter"),

@@ -93,6 +93,14 @@ Review the following:
 - Division whose rounding mode is implicit (`/` or `//` when exact, floor, and ceil all mean different things). Name the intent
 - Large values (more than ~16 bytes) passed by value when the callee must not copy them. Pass a const pointer or const reference
 - Large structs returned then moved into place when they can be constructed in-place via an out-pointer. In-place init is viral: if one field is, the container should be too
+- Fabricated or discarded type evidence: code that makes a value look safer to the compiler than it is (a frequent tell of machine-generated code). Each of these erodes the guarantee the type system exists to give:
+  - Chained assertions that manufacture evidence (`x as unknown as T`, `as any as T`): they defeat the checker rather than prove the type. Parse or narrow to reach `T` instead
+  - Widen-then-assert: broadening a value whose type is already known and then asserting it back (`(x as object) as T`, `JSON.parse` of something you constructed). The round trip discards real evidence
+  - `unknown`, `any`, `object`, or `{}` in a signature (parameter, return, dictionary value, type alias) where a real contract exists and is being concealed. `unknown` is defensible only at a true boundary, immediately narrowed
+  - Ad-hoc `typeof`/`instanceof` narrowing scattered through business logic instead of validating/parsing once at the boundary (error-review owns the boundary validation; here own the type-level smell)
+  - Reflection (`Reflect.get`/`apply`, `getattr`, `[]`-string access) standing in for direct typed access on a shape that is actually known
+  - Type assertions with no stated reason: a non-`const` cast that the reader cannot verify. Require a one-line justification next to it, or replace it with a check
+  (Where the stack has a tool for this — `oxlint`/`eslint` with a strict type-safety ruleset — flag what it would; test doubles via module mocking instead of a dependency seam belong to test-review.)
 
 9. Risky areas
 (functionality-review owns intended-vs-actual and documented edge cases. Here only a local logic error you can prove from the function body without consulting docs: inverted condition, swapped arguments, off-by-one.)
