@@ -45,6 +45,9 @@ Review the following:
 - Wrong files shipped: source maps, `.env`, test fixtures, secrets, or dev-only files in the artifact (contents of installable packages — deb/rpm/wheel/npm/APK — belong to pkg-review; here cover raw build outputs)
 - Missing files in the artifact that runtime needs
 - Debug/release confusion: debug symbols or assertions in release, optimizations off unexpectedly
+- Binary hardening flags missing for compiled artifacts: stack canaries (`-fstack-protector-strong`), position-independent executables (`-pie`/`-fPIE`), full RELRO (`-Wl,-z,relro,-z,now`), FORTIFY_SOURCE (`-D_FORTIFY_SOURCE=2`), non-executable stack (`-Wl,-z,noexecstack`). Check CMakeLists, Makefiles, Cargo profiles, meson options, and CI build scripts
+- Control-flow integrity (CFI, `-fsanitize=cfi`; shadow stack / CET where the toolchain supports it) not enabled for security-sensitive binaries
+- Address/undefined-behavior sanitizers (`-fsanitize=address,undefined`) not wired into the CI test build, or wired in but with findings suppressed wholesale instead of triaged
 
 5. Build performance and caching
 - No incremental build; full rebuild every time

@@ -50,6 +50,9 @@ Review the following:
 - Insufficient key length or insecure key derivation
 - Missing integrity checks on encrypted data
 - Insecure randomness for security-sensitive values (tokens, keys, nonces, salts): a non-cryptographic PRNG, a predictable seed, or modulo bias where unpredictability is required (numerics-review owns non-security numeric randomness)
+- Classical-only asymmetric crypto (RSA, ECDSA, ECDH, DH) protecting secrets with a long confidentiality horizon: data at rest, archival encryption, signed firmware, certificate chains. These are harvest-now-decrypt-later targets; flag when no PQ or hybrid scheme is planned
+- Algorithm identifiers hardcoded (string literals, hardwired OIDs, pinned cipher suites) with no abstraction or config point that would let the caller swap to a post-quantum or hybrid replacement without a code change (crypto agility)
+- TLS or key-exchange configuration that does not negotiate post-quantum hybrid key exchange (ML-KEM/X25519) when the underlying library already supports it
 
 6. Access control
 (authz-review owns the systematic sweep: the full per-endpoint authorization matrix, tenant isolation, and escalation-path mapping. Here fix access-control misses found in passing; leave the matrix audit to it.)

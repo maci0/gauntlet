@@ -2,6 +2,18 @@
 
 Notable changes per release.
 
+## 0.23.0
+
+### Changed
+
+- `sec-review` gains post-quantum cryptography checks: harvest-now-
+  decrypt-later risk on classical-only asymmetric crypto, crypto agility
+  (hardcoded algorithm identifiers with no swap path), and PQ hybrid key
+  exchange not negotiated when the library supports it.
+- `build-review` gains binary hardening checks: stack canaries, PIE,
+  RELRO, FORTIFY_SOURCE, non-executable stack, CFI/shadow stack, and
+  sanitizers (ASan/UBSan) not wired into the CI test build.
+
 ## 0.22.0
 
 ### Added

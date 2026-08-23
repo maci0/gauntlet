@@ -2274,7 +2274,7 @@ def test_strip_report_sections_on_real_prompt():
     assert "## Executive Summary" not in stripped
     assert "Important:" in stripped, "the Important block must survive"
     assert "Instructions:" in stripped
-    assert len(stripped) < len(text) * 0.85, "expected a substantial cut"
+    assert len(stripped) < len(text) * 0.88, "expected a substantial cut"
     # every bundled prompt must strip cleanly and keep its Important block
     for f in (Path(__file__).parent.parent / "src" / "gauntlet" / "prompts").glob("*-review.md"):
         s = rl.strip_report_sections(f.read_text())
