@@ -40,9 +40,9 @@ gets many perspectives over time.
 ### TL;DR
 
 ```sh
-# install (clone + symlink onto your PATH)
-git clone https://github.com/maci0/gauntlet.git
-ln -s "$PWD/gauntlet/src/gauntlet/cli.py" ~/.local/bin/gauntlet
+# install (pick one)
+uv tool install git+https://github.com/maci0/gauntlet
+# or: git clone … && ln -s "$PWD/gauntlet/src/gauntlet/cli.py" ~/.local/bin/gauntlet
 
 cd your-project/
 gauntlet doctor    # check which agents and tools are visible
