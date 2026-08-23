@@ -12,9 +12,11 @@ Review the following:
 - Requirements marked as shipped that are absent or half-implemented
 - Constraints ("must not exceed", "must support") the implementation measurably breaks
 
-2. ADR structure and lifecycle
-- Records missing the load-bearing parts: context, the decision itself, consequences
-- No status field (proposed / accepted / superseded / rejected), or a status that is plainly wrong
+2. Decision records and proposals (ADR/RFC) structure and lifecycle
+- ADRs missing the load-bearing parts: context, the decision itself, consequences
+- No status field (accepted / superseded / deprecated), or a status that is plainly wrong
+- A "proposed ADR": a record of a decision that has not been made yet. The industry-standard roles are PRD (product requirements: what and why), RFC (request for comments: the proposal for comment — options + recommendation, before the decision), ADR (the decision that has been made). An unmade decision is an RFC, never a proposed ADR
+- RFCs that are not proposals: no decision-to-make framing, no options considered, no recommendation or open questions — or an RFC left "decided" with no ADR recording the choice
 - Superseding decisions that do not link the record they replace; superseded records not marked
 - Multiple unrelated decisions packed into one record
 
@@ -24,6 +26,7 @@ Review the following:
 - Dead decisions: accepted records about components that no longer exist
 
 4. Requirement quality
+- PRDs that are not requirements: no problem statement, goals, or acceptance criteria — or a PRD doing design work (a mandated how) that belongs in an RFC/ADR
 - Ambiguous or untestable requirements ("fast", "user-friendly", "robust") with no measurable criterion
 - Missing acceptance criteria where the requirement is otherwise concrete
 - Vague quantities ("some", "many", "large") where the implementation needed a threshold and picked one silently

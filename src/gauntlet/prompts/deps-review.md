@@ -47,6 +47,8 @@ Review the following:
 - Copyleft licenses in projects that require permissive licensing
 - License changes in dependency updates that could affect compliance
 - Dependencies with license restrictions on commercial use
+- Bundled or vendored third-party code with no NOTICE/ATTRIBUTION file or license header, so downstream consumers cannot trace the grant back to its origin
+- Apache-2.0 dependencies in a project that needs to avoid patent-grant clauses, or the reverse: a project relying on the patent grant without realizing a transitive dependency replaced Apache-2.0 with MIT
 
 7. Security and supply chain
 - Dependencies with known CVEs (check advisory databases)

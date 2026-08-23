@@ -2,6 +2,24 @@
 
 Notable changes per release.
 
+## 0.24.0
+
+### Changed
+
+- `specs-review` and `agentrules-review` enforce industry-standard
+  PRD/RFC/ADR taxonomy: a PRD is product requirements (what and why), an
+  RFC is a proposal for comment (before the decision), an ADR records a
+  decision that has been made. A "proposed ADR" or a "decided RFC" is now
+  a finding.
+- `deps-review` gains license-attribution checks: bundled third-party
+  code without NOTICE/ATTRIBUTION, and patent-grant clause awareness
+  across transitive dependencies.
+
+### Added
+
+- `AGENTS.md` documents project conventions for agents working on this
+  repo.
+
 ## 0.23.0
 
 ### Changed
