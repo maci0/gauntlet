@@ -22,12 +22,13 @@ import sys
 import tempfile
 import termios
 import textwrap
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import NoReturn
 from pathlib import Path
 
-VERSION = "0.21.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.22.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -307,6 +308,13 @@ class ReviewResult:
     # added/removed in the working tree, measured via git diff --shortstat.
     insertions: int | None = None
     deletions: int | None = None
+    # Wall-clock seconds the agent ran; None only for launches that never
+    # started (unreadable prompt) or never got a clock reading.
+    elapsed: float | None = None
+    # Token usage parsed best-effort from the agent's output tail (see
+    # parse_token_usage). None when the tool printed nothing recognizable.
+    output_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 @dataclass
@@ -336,6 +344,23 @@ class Stats:
     def total_deletions(self) -> int:
         return sum(r.deletions for r in self.results if r.deletions is not None)
 
+    @property
+    def total_elapsed(self) -> float:
+        return sum(r.elapsed for r in self.results if r.elapsed is not None)
+
+    @property
+    def timed_count(self) -> int:
+        return sum(1 for r in self.results if r.elapsed is not None and r.elapsed > 0)
+
+    @property
+    def token_results(self) -> list[ReviewResult]:
+        return [r for r in self.results
+                if r.output_tokens is not None or r.total_tokens is not None]
+
+    def tokens_of(self, r: ReviewResult) -> int:
+        """Output tokens when the tool reports them, else the session total."""
+        return r.output_tokens if r.output_tokens is not None else (r.total_tokens or 0)
+
     def tool_summary(self) -> dict[str, dict[str, int]]:
         summary: dict[str, dict[str, int]] = {}
         for r in self.results:
@@ -351,6 +376,78 @@ SKIP_DIRS = {
     ".eggs", "htmlcov", "bower_components", ".turbo", ".parcel-cache",
     ".gradle", "Pods", ".terraform",
 }
+
+
+# Usage lines sit at the end of a run; keeping only this tail bounds memory
+# for chatty agents without losing what we parse.
+OUTPUT_TAIL_BYTES = 64 << 10
+
+# Best-effort counters for headless agent output. Each family is tried in
+# order and every match is collected; the max wins because cumulative
+# per-turn prints only ever grow within one run.
+_OUTPUT_TOKEN_RES = (
+    re.compile(r'"(?:output_tokens|completion_tokens|outputTokens|completionTokens)"'
+               r'\s*:\s*(\d[\d,_]*)'),
+    re.compile(r'^Output tokens?:\s*(\d[\d,_]*)', re.IGNORECASE | re.MULTILINE),
+)
+_TOTAL_TOKEN_RES = (
+    re.compile(r'"(?:total_tokens|totalTokens|totalTokenCount)"\s*:\s*(\d[\d,_]*)'),
+    # codex exec's end-of-run summary ("tokens used: 12,345", session total).
+    re.compile(r'\btokens used\b[^\d\n]{0,20}(\d[\d,_]*)', re.IGNORECASE),
+    re.compile(r'^Total tokens?:\s*(\d[\d,_]*)', re.IGNORECASE | re.MULTILINE),
+)
+
+
+def _max_token_match(patterns: tuple[re.Pattern[str], ...], tail: str) -> int | None:
+    best: int | None = None
+    for pat in patterns:
+        for m in pat.finditer(tail):
+            try:
+                n = int(m.group(1).replace(",", "").replace("_", ""))
+            except ValueError:
+                continue
+            if best is None or n > best:
+                best = n
+    return best
+
+
+def parse_token_usage(tail: bytes) -> tuple[int | None, int | None]:
+    """(output_tokens, total_tokens) found in an agent's output tail.
+
+    Heuristic by design: headless CLIs print usage in a dozen shapes or not
+    at all. A miss leaves both None; a hit that misreads a label only skews
+    a display-only stat, never the loop itself.
+    """
+    text = tail.decode("utf-8", errors="replace")
+    return _max_token_match(_OUTPUT_TOKEN_RES, text), _max_token_match(_TOTAL_TOKEN_RES, text)
+
+
+def _pump_stream(src, tail: bytearray, echo: bool) -> None:
+    """Drain one child stream into the bounded tail, optionally echoing.
+
+    Runs as a daemon thread so a grandchild holding the pipe open can never
+    block the runner past its join timeout. Echoing goes through
+    sys.stdout.buffer (flushed around every write) instead of a raw fd so
+    chunk order stays consistent with this process's own prints.
+    """
+    try:
+        while True:
+            chunk = src.read(8192)
+            if not chunk:
+                break
+            tail.extend(chunk)
+            del tail[:-OUTPUT_TAIL_BYTES]
+            if echo:
+                sys.stdout.flush()
+                sys.stdout.buffer.write(chunk)
+                sys.stdout.buffer.flush()
+    except OSError:
+        pass  # dead tee / broken pipe: stop echoing, keep draining
+    finally:
+        try:
+            src.close()
+        except OSError:
+            pass
 
 
 def _git_ignored(project: Path, paths: list[Path]) -> set[Path]:
@@ -1492,15 +1589,16 @@ class Runner:
         start = time.monotonic()
         before_diff = self._diff_totals()
         log(f"Running {review}{self._origin(prompt_file)} with {spec.label()} (timeout {fmt_duration(self.args.timeout)})")
-        sink = subprocess.DEVNULL if self.args.quiet_agents else None
         try:
             # stdin=DEVNULL: agents run headless and must never read the
             # terminal. An agent that grabs it can put the shared tty in raw
             # mode (clanker disables ISIG for line editing), which stops Ctrl+C
             # from generating a signal for the agent or for this runner.
+            # stdout/stderr are pipes rather than inherited fds so the output
+            # can also be parsed for token usage; _pump_stream relays it live.
             proc = subprocess.Popen(
                 cmd, start_new_session=True,
-                stdin=subprocess.DEVNULL, stdout=sink, stderr=sink,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             )
         except OSError as e:
             log(f"FAILED to launch {spec.label()} for {review}: {e}")
@@ -1512,6 +1610,17 @@ class Runner:
         self.session_started.add(spec)
         if self.stopping:  # signal landed between Popen and registration
             _kill_pg(proc, signal.SIGTERM)
+        out_tail = bytearray()
+        err_tail = bytearray()
+        readers = []
+        for stream, tail_buf in ((getattr(proc, "stdout", None), out_tail),
+                                 (getattr(proc, "stderr", None), err_tail)):
+            if stream is not None:
+                t = threading.Thread(
+                    target=_pump_stream, args=(stream, tail_buf, not self.args.quiet_agents),
+                    daemon=True)
+                t.start()
+                readers.append(t)
         timed_out = False
         deadline = time.monotonic() + self.args.timeout
         try:
@@ -1554,6 +1663,12 @@ class Runner:
         elapsed = time.monotonic() - start
         self.interrupt_count = 0
 
+        # EOF follows the child (and, via _kill_pg, its group); a grandchild
+        # that somehow holds a pipe open only costs the join timeout.
+        for t in readers:
+            t.join(timeout=5)
+        out_tokens, total_tokens = parse_token_usage(bytes(out_tail) + bytes(err_tail))
+
         after_diff = self._diff_totals()
         ins = dele = None
         if before_diff is not None and after_diff is not None:
@@ -1567,20 +1682,28 @@ class Runner:
         lines_note = f", +{ins}/-{dele} lines" if ins or dele else ""
 
         if timed_out:
-            self.stats.add(ReviewResult(review, spec, "timeout", insertions=ins, deletions=dele))
+            self.stats.add(ReviewResult(review, spec, "timeout", insertions=ins, deletions=dele,
+                                        elapsed=elapsed, output_tokens=out_tokens,
+                                        total_tokens=total_tokens))
             return
 
         if self.stopping and (rc < 0 or rc in (130, 143)):
             log(f"Interrupted: {review} ({spec.label()}) after {fmt_duration(elapsed)}{lines_note}")
-            self.stats.add(ReviewResult(review, spec, "interrupted", rc, insertions=ins, deletions=dele))
+            self.stats.add(ReviewResult(review, spec, "interrupted", rc, insertions=ins,
+                                        deletions=dele, elapsed=elapsed,
+                                        output_tokens=out_tokens, total_tokens=total_tokens))
         elif rc != 0:
             log(f"FAILED: {review} ({spec.label()}) after {fmt_duration(elapsed)} — exit code {rc}{lines_note}")
             if self._retry_review(review, spec, exclude):
                 return
-            self.stats.add(ReviewResult(review, spec, "fail", rc, insertions=ins, deletions=dele))
+            self.stats.add(ReviewResult(review, spec, "fail", rc, insertions=ins, deletions=dele,
+                                        elapsed=elapsed, output_tokens=out_tokens,
+                                        total_tokens=total_tokens))
         else:
             log(f"Done: {review} ({spec.label()}) in {fmt_duration(elapsed)}{lines_note}")
-            self.stats.add(ReviewResult(review, spec, "ok", 0, insertions=ins, deletions=dele))
+            self.stats.add(ReviewResult(review, spec, "ok", 0, insertions=ins, deletions=dele,
+                                        elapsed=elapsed, output_tokens=out_tokens,
+                                        total_tokens=total_tokens))
 
     def handle_signal(self, signum, frame) -> None:
         self.stop_signal = signum
@@ -1600,6 +1723,16 @@ class Runner:
         else:
             os.write(2, b"\nSignal received - stopping...\n")
 
+    def _rate_note(self, results: list[ReviewResult]) -> str:
+        """A ', ~N tok/s' note over results with parsed usage and timing."""
+        counted = [r for r in results
+                   if r.elapsed is not None and r.elapsed > 0
+                   and self.stats.tokens_of(r) > 0]
+        secs = sum(r.elapsed for r in counted if r.elapsed is not None)
+        if not counted or secs < 1:
+            return ""  # sub-second runs make any rate noise
+        return f", ~{sum(self.stats.tokens_of(r) for r in counted) / secs:,.0f} tok/s"
+
     def print_stats(self) -> None:
         total = time.monotonic() - self.script_start
         print()
@@ -1613,6 +1746,20 @@ class Runner:
             if n:
                 print(f"  {label}: {n}")
         print(f"Total time: {fmt_duration(total)}")
+        timed = self.stats.timed_count
+        if timed:
+            avg = self.stats.total_elapsed / timed
+            print(f"Agent time: {fmt_duration(self.stats.total_elapsed)} "
+                  f"across {timed} reviews (avg {fmt_duration(avg)})")
+        tokened = self.stats.token_results
+        if tokened:
+            # Output tokens where a tool reports them, session totals where it
+            # does not (e.g. codex); the mix keeps tok/s approximate.
+            kind = ("output" if all(r.output_tokens is not None for r in tokened)
+                    else "reported")
+            toks = sum(self.stats.tokens_of(r) for r in tokened)
+            print(f"Tokens: {toks:,} {kind} from {len(tokened)}/{self.stats.total_count}"
+                  f" reviews{self._rate_note(tokened)}")
         if any(r.insertions is not None for r in self.stats.results):
             print(f"Lines changed: +{self.stats.total_insertions} -{self.stats.total_deletions}")
         if self.commit_runs:
@@ -1628,7 +1775,8 @@ class Runner:
             for tool in sorted(tool_summary):
                 counts = tool_summary[tool]
                 parts = [f"{status}={count}" for status, count in sorted(counts.items())]
-                print(f"  {tool:<20} {', '.join(parts)}")
+                per_tool = [r for r in self.stats.results if r.tool.label() == tool]
+                print(f"  {tool:<20} {', '.join(parts)}{self._rate_note(per_tool)}")
 
         failures = sorted(
             (r for r in self.stats.results if r.status in ("fail", "timeout")),

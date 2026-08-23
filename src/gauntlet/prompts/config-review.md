@@ -43,6 +43,7 @@ Review the following:
 - Unsafe defaults (permissive security settings, debug enabled, open CORS)
 - Default values that differ from documented values
 - Fallback chains that silently use incorrect values
+- A malformed or missing config file silently replaced by built-in defaults so the application starts with wrong behavior instead of failing at startup
 - Magic numbers or strings used as defaults without documentation
 - Defaults that make sense for development but are dangerous in production
 - Missing distinction between "not set" and "set to empty"

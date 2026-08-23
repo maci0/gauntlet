@@ -167,5 +167,6 @@ Important:
 - Prefer the simplest fix that eliminates the vulnerability.
 - Do not recommend security theater that adds complexity without real protection.
 - Consider the principle of least privilege in all recommendations.
+- A declared capability, scope, or permission grant wider than what the code actually exercises is a finding even if not exploitable today: the next change inherits the wide grant silently. Check OAuth scopes, IAM policies, file permissions, container capabilities, and Android/iOS entitlements.
 - Flag any finding where the fix could break existing functionality.
 - Call out when security controls are already well-implemented in specific areas.

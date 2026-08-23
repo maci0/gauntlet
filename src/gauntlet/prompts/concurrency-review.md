@@ -15,6 +15,7 @@ Review the following:
 - Caches or memoization shared across threads without proper synchronization
 - Counters, flags, or status fields updated without atomic operations
 - Struct or object fields partially updated (torn reads/writes)
+- File writes that overwrite in place instead of write-to-temp, fsync, rename: a crash mid-write leaves a half-written file with no rollback path
 
 2. Race conditions
 - Read-modify-write sequences without atomics or locks (counter++, balance += amount)

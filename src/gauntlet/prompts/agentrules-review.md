@@ -34,6 +34,7 @@ Review the following:
 5. Safety of instructed commands
 - Rules instructing destructive commands (resets, force pushes, deletions) without guards or preconditions
 - Rules that tell agents to bypass safety mechanisms (skip hooks, disable sandboxes, auto-approve) without cause
+- Rules that let an optimization or self-improvement agent weaken, remove, or redefine a quality gate instead of fixing the code that fails it (the shortest path to passing a gate is sometimes lowering the bar)
 - Credentials, tokens, internal URLs, or secrets embedded in rule files
 - Rules directing agents to fetch and execute remote content
 

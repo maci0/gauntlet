@@ -2512,6 +2512,7 @@ def test_stats_dataclass():
     """Stats methods are only exercised indirectly via print_stats; cover them directly."""
     s = rl.Stats()
     assert s.ok_count == 0 and s.fail_count == 0 and s.total_count == 0
+    assert s.total_elapsed == 0 and s.timed_count == 0 and s.token_results == []
     s.add(rl.ReviewResult("a", rl.ToolSpec("claude"), "ok", 0))
     s.add(rl.ReviewResult("b", rl.ToolSpec("claude", "opus"), "fail", 1))
     s.add(rl.ReviewResult("c", rl.ToolSpec("agy"), "timeout"))
@@ -2527,6 +2528,140 @@ def test_stats_dataclass():
     assert summary["claude:opus"]["fail"] == 1
     assert summary["agy"]["timeout"] == 1
     assert len(summary) == 3
+
+
+def test_stats_time_and_token_totals():
+    """Elapsed/token aggregation: output tokens win over session totals."""
+    s = rl.Stats()
+    s.add(rl.ReviewResult("a", rl.ToolSpec("codex"), "ok", 0,
+                          elapsed=10.0, total_tokens=500))
+    s.add(rl.ReviewResult("b", rl.ToolSpec("claude"), "ok", 0,
+                          elapsed=2.5, output_tokens=100, total_tokens=900))
+    s.add(rl.ReviewResult("c", rl.ToolSpec("agy"), "fail", 3))  # launch failure: nothing
+    assert s.total_elapsed == 12.5
+    assert s.timed_count == 2
+    assert [r.review for r in s.token_results] == ["a", "b"]
+    assert s.tokens_of(s.token_results[0]) == 500   # session-total-only tool
+    assert s.tokens_of(s.token_results[1]) == 100   # explicit output count wins
+    assert s.tokens_of(s.results[2]) == 0
+
+
+def test_parse_token_usage_shapes():
+    """The regex families cover the common headless usage prints."""
+    # codex exec end-of-run summary (session total, comma grouped)
+    out, tot = rl.parse_token_usage(b"...done\ntokens used: 12,345\n")
+    assert out is None and tot == 12345
+    # JSON result objects (snake_case, camelCase, OpenAI-style)
+    out, tot = rl.parse_token_usage(b'usage: {"output_tokens": 842}\n')
+    assert out == 842 and tot is None
+    out, tot = rl.parse_token_usage(b'{"completionTokens": 37}')
+    assert out == 37 and tot is None
+    out, tot = rl.parse_token_usage(b'"completion_tokens": 55,')
+    assert out == 55 and tot is None
+    # Plain-text labels
+    out, tot = rl.parse_token_usage(b"Output tokens: 210\nTotal tokens: 4,000\n")
+    assert out == 210 and tot == 4000
+    # Cumulative per-turn prints: the max wins
+    out, tot = rl.parse_token_usage(b"tokens used: 100\ntokens used: 250\n")
+    assert out is None and tot == 250
+    # Underscore grouping tolerated
+    out, tot = rl.parse_token_usage(b'"output_tokens": 1_024')
+    assert out == 1024
+    # No recognizable usage at all
+    assert rl.parse_token_usage(b"just prose, no numbers that matter") == (None, None)
+    assert rl.parse_token_usage(b"") == (None, None)
+
+
+def test_pump_stream_tails_and_echo():
+    """Pump keeps a bounded tail, echoes when asked, survives broken echoes."""
+    src = io.BytesIO(b"x" * (rl.OUTPUT_TAIL_BYTES + 10))
+    tail = bytearray()
+    echo_buf = io.BytesIO()
+    wrapper = io.TextIOWrapper(echo_buf)
+    real_stdout = sys.stdout
+    sys.stdout = wrapper
+    try:
+        rl._pump_stream(src, tail, echo=True)
+    finally:
+        sys.stdout = real_stdout
+        wrapper.detach()  # keep echo_buf open for inspection
+    assert bytes(tail) == b"x" * rl.OUTPUT_TAIL_BYTES, "tail keeps only the last N bytes"
+    assert echo_buf.getvalue() == b"x" * (rl.OUTPUT_TAIL_BYTES + 10), "echo is lossless"
+
+    src = io.BytesIO(b"quiet")
+    tail = bytearray()
+    rl._pump_stream(src, tail, echo=False)
+    assert tail == bytearray(b"quiet")
+
+
+def test_pump_stream_survives_broken_echo():
+    """A dead tee (broken pipe on stdout) stops echoing but still drains."""
+    def boom(_chunk):
+        raise BrokenPipeError(32, "Broken pipe")
+
+    class BrokenBuffer:
+        write = staticmethod(boom)
+
+        @staticmethod
+        def flush():
+            pass
+
+    class BrokenOut:
+        buffer = BrokenBuffer()
+
+        def flush(self):
+            pass
+
+    src = io.BytesIO(b"data")
+    tail = bytearray()
+    real_stdout = sys.stdout
+    sys.stdout = BrokenOut()
+    try:
+        rl._pump_stream(src, tail, echo=True)  # must not raise
+    finally:
+        sys.stdout = real_stdout
+    assert tail == bytearray(b"data"), "drain continues after the echo fails"
+
+
+def test_run_review_reports_time_and_token_stats_end_to_end():
+    """Elapsed time lands in stats; token usage is parsed from agent output."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text(
+            "#!/bin/sh\n"
+            'echo \'{"output_tokens": 842}\'\n'
+            "sleep 1.2\n"
+            "exit 0\n"
+        )
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "Tokens: 842 output from 1/1 reviews" in out, out
+        assert "~" in out and "tok/s" in out, "rate shown once the run exceeds 1s"
+
+        # --quiet-agents suppresses the echo but must still parse usage.
+        stub.write_text("#!/bin/sh\necho AGENT-NOISE\necho 'tokens used: 7,500'\n")
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s",
+             "--quiet-agents"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "AGENT-NOISE" not in out, out
+        assert "Tokens: 7,500 reported from 1/1 reviews" in out, out
 
 
 def test_path_excl_cwd_filters_relative_and_dot():

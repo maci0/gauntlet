@@ -2,6 +2,31 @@
 
 Notable changes per release.
 
+## 0.22.0
+
+### Added
+
+- End-of-run summary now reports agent wall-clock time (total and average)
+  and token usage (output tokens where the agent reports them, session
+  totals otherwise) with an approximate tok/s rate. Per-tool breakdown
+  includes the rate when multiple agents ran. Token counters are parsed
+  best-effort from agent output tails (Claude, Gemini, Codex, and any
+  tool printing a JSON or text usage summary).
+
+### Changed
+
+- Seven more review prompts sharpened with checks sourced from project
+  review files and the ct-recomp decomp playbook:
+  `concurrency-review` flags file writes that overwrite in place instead
+  of write-to-temp/fsync/rename; `o11y-review` names the MELT framework
+  and checks that the four signals connect into one investigative path;
+  `config-review` flags a malformed config silently falling back to
+  defaults; `sec-review` flags declared capabilities wider than what the
+  code exercises; `api-review` flags schema-vs-implementation field
+  drift; `agentrules-review` flags agents that can weaken their own
+  quality gates; `fuzz-review` flags round-trip harnesses that only
+  exercise synthetic inputs.
+
 ## 0.21.0
 
 ### Changed

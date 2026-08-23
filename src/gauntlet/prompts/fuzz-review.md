@@ -32,6 +32,7 @@ Review the following:
 - API surfaces with no fuzz testing at all
 - Endpoints that accept complex or nested input structures without fuzzing
 - Parsers (JSON, XML, YAML, CSV, protobuf, custom formats) without fuzz targets
+- Round-trip harnesses that only exercise synthetic or zero-filled inputs; real-world samples (captured payloads, production excerpts, known-bad corpus entries) needed to cover the shapes parsers actually encounter
 - Deserialization entry points not covered by fuzz tests
 - Authentication and authorization flows not fuzzed
 - File upload handlers without format fuzzing

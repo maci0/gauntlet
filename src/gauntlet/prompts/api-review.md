@@ -91,6 +91,7 @@ Review the following:
 10. Performance and efficiency
 (webperf-review owns Cache-Control and compression for browser-delivered pages and assets; here own cache/revalidation as an API contract on JSON/RPC responses, plus payload shape.)
 - Missing support for partial responses or field selection
+- A field declared in the schema or type that the implementation never reads or populates (misleads the caller into sending data that vanishes), and a field the implementation reads or returns that the schema does not declare (invisible to the caller, breaks codegen clients)
 - No bulk or batch endpoints for common multi-item operations
 - Missing compression support
 - Excessive round trips required for common workflows
