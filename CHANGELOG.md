@@ -2,6 +2,31 @@
 
 Notable changes per release.
 
+## 0.26.0
+
+### Added
+
+- `--runtime DUR`: wall-clock budget for the entire run (e.g. `8h`, `30m`,
+  `2d`). When the budget is reached, the current review and its commit/push
+  step finish before stopping. 0 (default) means unlimited.
+- `--target-dirs DIR [DIR ...]`: run a parallel review loop per directory,
+  each with its own lock, git baseline, and stats. Output is prefixed with
+  the directory name. Shell globs are expanded (quoted or not). Conflicts
+  with `--dir`.
+- `--tui`: experimental curses dashboard with live review status, stats
+  gauges, and scrollable agent output. No dependencies (stdlib curses).
+- Short flags: `-c` (commit), `-p` (push), `-s` (suggest), `-1` (once).
+- `--raw`: echo agent output verbatim. Default is now normalized: ANSI
+  escapes stripped, spinner frames dropped, repeated progress lines
+  collapsed. Different agents (claude, gemini, kimi, codex, etc.) have
+  wildly different verbosity; normalization gives a consistent signal.
+
+### Changed
+
+- `--push` now silently implies `--commit` (no warning when both given).
+- Removed deprecated `--models` alias (use `--agents`).
+- `--quiet-agents` long form removed; use `-q` or `--quiet`.
+
 ## 0.25.0
 
 ### Added

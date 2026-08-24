@@ -722,7 +722,7 @@ def test_run_review_status_machine_end_to_end():
         assert rc == 0 and "Done: stub-review" in out, out
         rc, out = run("echo AGENT-NOISE; exit 0")
         assert "AGENT-NOISE" in out, "agent output is inherited by default"
-        rc, out = run("echo AGENT-NOISE; exit 0", extra=["--quiet-agents"])
+        rc, out = run("echo AGENT-NOISE; exit 0", extra=["--quiet"])
         assert rc == 0 and "AGENT-NOISE" not in out and "Done: stub-review" in out, out
         rc, out = run("exit 3")
         assert rc == 1 and "FAILED: stub-review" in out, out
@@ -910,48 +910,29 @@ def test_version_matches_changelog_and_cli():
     assert p.stdout.strip() == f"gauntlet {rl.VERSION}", p.stdout
 
 
-def test_models_alias_warns_and_still_works():
+def test_models_alias_removed():
+    """--models was removed; it should be an unrecognized argument."""
     script = SCRIPT
     p = subprocess.run(
         [sys.executable, str(script), "--dry-run", "--models", "claude",
          "--reviews", "code-review"],
         capture_output=True, text=True, timeout=60, check=False,
     )
-    assert p.returncode == 0, p.stderr
-    assert "warning: --models is deprecated; use --agents" in p.stderr, p.stderr
-    p = subprocess.run(
-        [sys.executable, str(script), "--dry-run", "--models=claude",
-         "--reviews", "code-review"],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-    assert p.returncode == 0, p.stderr
-    assert "warning: --models is deprecated; use --agents" in p.stderr, p.stderr
-    p = subprocess.run(
-        [sys.executable, str(script), "--dry-run", "--agents", "claude",
-         "--reviews", "code-review"],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-    assert p.returncode == 0, p.stderr
-    assert "deprecated" not in p.stderr, p.stderr
+    assert p.returncode == 2, p.stderr
 
 
-def test_commit_and_push_together_warns_redundant():
+def test_push_implies_commit_silently():
+    """--push implies --commit with no warning."""
     script = SCRIPT
-    # --agents pins a name so the test does not depend on agent CLIs in PATH
-    p = subprocess.run(
-        [sys.executable, str(script), "--dry-run", "--commit", "--push",
-         "--agents", "claude", "--reviews", "code-review"],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-    assert p.returncode == 0, p.stderr
-    assert "warning: --commit is redundant with --push" in p.stderr, p.stderr
-    p = subprocess.run(
-        [sys.executable, str(script), "--dry-run", "--push",
-         "--agents", "claude", "--reviews", "code-review"],
-        capture_output=True, text=True, timeout=60, check=False,
-    )
-    assert p.returncode == 0, p.stderr
-    assert "redundant" not in p.stderr, p.stderr
+    for flags in [["--commit", "--push"], ["--push"]]:
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", *flags,
+             "--agents", "claude", "--reviews", "code-review"],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, p.stderr
+        assert "redundant" not in p.stderr, p.stderr
+        assert "commit+push" in (p.stdout + p.stderr), p.stdout
 
 
 def test_project_set_selects_only_project_prompts():
@@ -1201,7 +1182,7 @@ def test_cli_flag_hygiene():
                        "--reviews", "code-review")
     assert quiet_prefix.returncode == 2 and "unrecognized" in quiet_prefix.stderr
 
-    # --quiet is an explicit alias of --quiet-agents
+    # --quiet is an explicit alias of --quiet
     quiet = run("--quiet", "--dry-run", "--agents", "claude",
                 "--reviews", "code-review")
     assert quiet.returncode == 0, quiet.stderr
@@ -2659,12 +2640,12 @@ def test_run_review_reports_time_and_token_stats_end_to_end():
         assert "Tokens: 842 output from 1/1 reviews" in out, out
         assert "~" in out and "tok/s" in out, "rate shown once the run exceeds 1s"
 
-        # --quiet-agents suppresses the echo but must still parse usage.
+        # --quiet suppresses the echo but must still parse usage.
         stub.write_text("#!/bin/sh\necho AGENT-NOISE\necho 'tokens used: 7,500'\n")
         p = subprocess.run(
             [sys.executable, str(script), "--once", "--agents", "agy",
              "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s",
-             "--quiet-agents"],
+             "--quiet"],
             env=_env(bin_dir),
             capture_output=True, text=True, timeout=60, check=False,
         )
@@ -2781,6 +2762,131 @@ def test_yolo_is_logged_on_a_real_run():
         out = p.stdout + p.stderr
         assert p.returncode == 0, out
         assert "caution rules dropped" in out, out
+
+
+def test_runtime_budget_stops_loop():
+    """--runtime stops the loop when the budget is exhausted."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"a-review.md": STUB_PROMPT, "b-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nsleep 1; exit 0\n")
+        stub.chmod(0o755)
+        _git(["init"], proj)
+        _git(["commit", "--allow-empty", "-m", "init"], proj)
+        p = subprocess.run(
+            [sys.executable, str(script), "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--timeout", "30s", "--runtime", "1s"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "Runtime budget exhausted" in out, out
+
+
+def test_runtime_budget_shown_in_dry_run():
+    """--runtime value appears in --dry-run output."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--dry-run", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj),
+             "--runtime", "8h"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "Runtime budget: 8h00m" in out, out
+
+
+def test_target_dirs_runs_parallel():
+    """--target-dirs spawns per-directory loops with prefixed output."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir = root / "bin"
+        bin_dir.mkdir()
+        proj_a, proj_b = root / "alpha", root / "beta"
+        prompts = root / "prompts"
+        for d in (proj_a, proj_b, prompts):
+            d.mkdir()
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nexit 0\n")
+        stub.chmod(0o755)
+        for proj in (proj_a, proj_b):
+            _git(["init"], proj)
+            _git(["commit", "--allow-empty", "-m", "init"], proj)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts),
+             "--target-dirs", str(proj_a), str(proj_b),
+             "--timeout", "30s"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        out = p.stdout + p.stderr
+        assert p.returncode == 0, out
+        assert "[alpha]" in out, out
+        assert "[beta]" in out, out
+        assert "Target-dirs summary" in out, out
+
+
+def test_target_dirs_conflicts_with_dir():
+    """--target-dirs and --dir cannot be combined."""
+    script = SCRIPT
+    p = subprocess.run(
+        [sys.executable, str(script), "--target-dirs", "/tmp",
+         "--dir", "/tmp"],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    assert p.returncode == 2, p.stderr
+    assert "conflicts" in p.stderr.lower(), p.stderr
+
+
+def test_normalize_line_filters_noise():
+    """_normalize_line strips ANSI, spinners, and collapses repeated progress."""
+    _normalize_line = rl._normalize_line
+    prev: list[str] = []
+    assert _normalize_line("\x1b[32mhello\x1b[0m\n", prev) == "hello\n"
+    assert _normalize_line("⠋⠙⠹\n", prev) is None
+    assert _normalize_line("  \n", prev) is None
+    assert _normalize_line("Reading file src/main.py\n", prev) == "Reading file src/main.py\n"
+    assert _normalize_line("Reading another file\n", prev) is None  # collapsed
+    prev.clear()
+    assert _normalize_line("Writing output\n", prev) == "Writing output\n"
+    assert _normalize_line("found a bug here\n", prev) == "found a bug here\n"
+
+
+def test_raw_flag_passes_output_verbatim():
+    """--raw disables output normalization."""
+    script = SCRIPT
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        bin_dir, proj, prompts = _dirs(root)
+        _tree(prompts, {"stub-review.md": STUB_PROMPT})
+        stub = bin_dir / "agy"
+        stub.write_text("#!/bin/sh\nprintf '\\033[32mcolored\\033[0m\\n'\n")
+        stub.chmod(0o755)
+        p = subprocess.run(
+            [sys.executable, str(script), "--once", "--agents", "agy",
+             "--prompt-dir", str(prompts), "--dir", str(proj), "--timeout", "30s",
+             "--raw"],
+            env=_env(bin_dir),
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert "\x1b[32m" in p.stdout, "raw mode should preserve ANSI escapes"
 
 
 def main() -> int:

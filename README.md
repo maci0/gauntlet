@@ -395,7 +395,7 @@ Run `gauntlet --help` for the full option list.
 |---|---|---|
 | `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
-| `--suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
+| `-s, --suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
 | `--suggest-agent AGENT` | from `--agents` | Agent (`tool` or `tool:model`) to run the suggest step. Only this agent is tried for triage; `--agents` governs the reviews themselves. |
 | `--suggest-timeout DUR` | `30m` | Timeout for the suggest step, independent of `--timeout`. |
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
@@ -404,7 +404,7 @@ Run `gauntlet --help` for the full option list.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents` (`--models` is a deprecated alias) | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). The model id is passed to the agent CLI verbatim: use the exact spelling that CLI accepts (`claude:opus`, `claude:claude-opus-5`, `kimi:nvidia/z-ai/glm-5.2`). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: auto-detect, which finds every supported tool on `PATH` except opt-in agents (`clanker`, and `dsh` via bunx) — name those explicitly. |
+| `-a, --agents` | auto-detect | Comma-separated `tool` or `tool:model` entries (one is sampled per review; `agy` and `clanker` take no model). The model id is passed to the agent CLI verbatim: use the exact spelling that CLI accepts (`claude:opus`, `claude:claude-opus-5`, `kimi:nvidia/z-ai/glm-5.2`). `mixed`/`random`/`all` expands to every installed supported tool. Repeatable. Default: auto-detect, which finds every supported tool on `PATH` except opt-in agents (`clanker`, and `dsh` via bunx); name those explicitly. |
 | `--bin TOOL=PATH` | — | Run an agent from a specific executable instead of `PATH`, e.g. `--bin claude=~/.local/bin/claude-vertex-sonnet`. Repeatable, one per agent; `~` and `$VAR` are expanded. Discovery stays `PATH`-based, so name such an agent with `--agents`. |
 | `--continue-sessions` | off | After each agent's first run, resume its session on later runs so already-read context is reused. Saves re-reading, but review contexts bleed into each other and history grows each turn; agents without prompt-mode resume (codex, cursor-agent, clanker, dsh) always start fresh, as does the review after a `--commit`/`--push` step. Resume is skipped when two models of the same CLI are in the pool (`-c` / `--resume latest` would mix their sessions). |
 
@@ -413,14 +413,16 @@ Run `gauntlet --help` for the full option list.
 | Flag | Default | Purpose |
 |---|---|---|
 | `-C, --dir` | cwd | `cd` here before running. `~` and `$VAR` are expanded. |
-| `--once` | off | Run a single loop and exit. |
+| `--target-dirs DIR [DIR ...]` | — | Run a parallel review loop per directory, each with its own lock and git baseline. Shell globs are expanded. Stats are aggregated at the end. Conflicts with `--dir`. |
+| `-1, --once` | off | Run a single loop and exit (same as `-n1`). |
 | `-n, --max-loops N` | 0 (infinite) | Stop after N loops. |
+| `--runtime DUR` | 0 (unlimited) | Wall-clock budget for the entire run (`8h`, `30m`, `2d`). When the budget is reached, the current review and its commit/push step finish before stopping. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs and structure may change, and groundwork may be built instead of skipped. Containment, your uncommitted work, and the verification step are unaffected. Expect large diffs. Also skips the `--reviews suggest` confirmation. |
 | `-y, --yes` | off | Skip the `--reviews suggest` confirmation without enabling `--yolo`. Implied when stdin is not a terminal. |
 | `--semcode` | off | Build a `semcode` index of the target dir before the loop (needs `semcode-index` in `PATH`); reviews then answer call-graph and type queries from the index instead of re-searching. C/C++/Rust trees only. |
-| `--commit` | off | After each review, an agent inspects the diff, writes a human-style commit message (no AI attribution), and commits any changes. Skipped when the working tree is clean. |
-| `--push` | off | Like `--commit` but also pushes after committing. Both flags may be combined; the effect is the same as `--push` alone (a warning is printed when both are given). When combined with `--yolo`, the agent also rebases and retries on a rejected push. |
+| `-c, --commit` | off | After each review, an agent inspects the diff, writes a human-style commit message (no AI attribution), and commits any changes. Skipped when the working tree is clean. |
+| `-p, --push` | off | Like `--commit` but also pushes after committing. `--push` implies `--commit`. When combined with `--yolo`, the agent also rebases and retries on a rejected push. |
 
 **Modes and output**
 
@@ -431,7 +433,9 @@ Run `gauntlet --help` for the full option list.
 | `--dry-run` | off | Print planned schedule and exit. |
 | `--show-prompt REVIEW` | — | Print the exact composed prompt an agent would receive for REVIEW (stripping + auto-fix suffix; honors `--yolo`/`--timeout`), then exit. |
 | `--log FILE` | — | Tee stdout/stderr to FILE, in every mode. A relative FILE is resolved against the invocation dir, not `--dir`. `~` and `$VAR` are expanded. |
-| `-q, --quiet-agents, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. Useful for chatty agents (kimi narrates every step). |
+| `-q, --quiet` | off | Discard agent stdout/stderr; keep only the runner's own log lines. |
+| `--raw` | off | Echo agent output verbatim. Default is normalized: ANSI escapes stripped, spinner frames dropped, repeated progress lines collapsed. |
+| `--tui` | off | (Experimental) Curses dashboard: live review status, stats gauges, and scrollable agent output. Implies `--quiet`. |
 | `-V, --version` | — | Print the version and exit. |
 
 ## Behavior

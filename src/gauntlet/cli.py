@@ -14,6 +14,7 @@ import filecmp
 import os
 import random
 import re
+import selectors
 import shutil
 import signal
 import stat
@@ -28,7 +29,7 @@ from dataclasses import dataclass, field
 from typing import NoReturn
 from pathlib import Path
 
-VERSION = "0.25.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.26.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -420,14 +421,50 @@ def parse_token_usage(tail: bytes) -> tuple[int | None, int | None]:
     return _max_token_match(_OUTPUT_TOKEN_RES, text), _max_token_match(_TOTAL_TOKEN_RES, text)
 
 
-def _pump_stream(src, tail: bytearray, echo: bool) -> None:
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|\x1b\][^\x07]*\x07|\r")
+_SPINNER_RE = re.compile(
+    r"^[\s⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒⠁⠂⠄⡀⢀⠠⠐⠈|/\-\\●○◎]*$"
+)
+_PROGRESS_RE = re.compile(
+    r"^\s*(reading|searching|scanning|thinking|indexing|analyzing|processing|loading"
+    r"|writing|compiling|running|checking|fetching|downloading|uploading"
+    r"|applying|saving|generating|querying|watching|waiting)\b",
+    re.IGNORECASE,
+)
+
+
+def _normalize_line(line: str, prev_category: list[str]) -> str | None:
+    """Filter one decoded line. Returns the line to echo, or None to suppress.
+
+    prev_category tracks the last echoed progress verb so repeated progress
+    lines of the same kind collapse into one.
+    """
+    stripped = _ANSI_RE.sub("", line).rstrip()
+    if not stripped:
+        return None
+    if _SPINNER_RE.fullmatch(stripped):
+        return None
+    m = _PROGRESS_RE.match(stripped)
+    if m:
+        verb = m.group(1).lower()
+        if prev_category and prev_category[0] == verb:
+            return None
+        prev_category.clear()
+        prev_category.append(verb)
+        return stripped + "\n"
+    prev_category.clear()
+    return stripped + "\n"
+
+
+def _pump_stream(src, tail: bytearray, echo: bool, normalize: bool = False) -> None:
     """Drain one child stream into the bounded tail, optionally echoing.
 
     Runs as a daemon thread so a grandchild holding the pipe open can never
-    block the runner past its join timeout. Echoing goes through
-    sys.stdout.buffer (flushed around every write) instead of a raw fd so
-    chunk order stays consistent with this process's own prints.
+    block the runner past its join timeout. When normalize is True, output is
+    line-filtered: ANSI escapes stripped, spinner frames and repeated progress
+    lines collapsed.
     """
+    prev_cat: list[str] = []
     try:
         while True:
             chunk = src.read(8192)
@@ -436,9 +473,17 @@ def _pump_stream(src, tail: bytearray, echo: bool) -> None:
             tail.extend(chunk)
             del tail[:-OUTPUT_TAIL_BYTES]
             if echo:
-                sys.stdout.flush()
-                sys.stdout.buffer.write(chunk)
-                sys.stdout.buffer.flush()
+                if normalize:
+                    for raw_line in chunk.decode("utf-8", errors="replace").splitlines(keepends=True):
+                        out = _normalize_line(raw_line, prev_cat)
+                        if out:
+                            sys.stdout.flush()
+                            sys.stdout.buffer.write(out.encode("utf-8", errors="replace"))
+                            sys.stdout.buffer.flush()
+                else:
+                    sys.stdout.flush()
+                    sys.stdout.buffer.write(chunk)
+                    sys.stdout.buffer.flush()
     except OSError:
         pass  # dead tee / broken pipe: stop echoing, keep draining
     finally:
@@ -1204,7 +1249,7 @@ class Runner:
         # Signal state must exist before _filter_reviews: --reviews suggest
         # launches an agent and installs handle_signal around that child.
         self.stopping = False
-        self.stop_signal = signal.SIGINT
+        self.stop_signal = 0
         self.interrupt_count = 0
         self.current_proc: subprocess.Popen | None = None
         self.reviews: list[str] = self._filter_reviews()
@@ -1614,11 +1659,13 @@ class Runner:
         out_tail = bytearray()
         err_tail = bytearray()
         readers = []
+        echo = not self.args.quiet_agents
+        norm = echo and not getattr(self.args, "raw_output", False)
         for stream, tail_buf in ((getattr(proc, "stdout", None), out_tail),
                                  (getattr(proc, "stderr", None), err_tail)):
             if stream is not None:
                 t = threading.Thread(
-                    target=_pump_stream, args=(stream, tail_buf, not self.args.quiet_agents),
+                    target=_pump_stream, args=(stream, tail_buf, echo, norm),
                     daemon=True)
                 t.start()
                 readers.append(t)
@@ -1853,6 +1900,8 @@ class Runner:
             print(f"Warning: not installed, would fail at runtime: {', '.join(missing)}")
         limit = str(self.args.max_loops) if self.args.max_loops else "infinite"
         print(f"Loop limit: {limit}")
+        if self.args.runtime:
+            print(f"Runtime budget: {fmt_duration(self.args.runtime)}")
         if self.args.commit or self.args.push:
             action = "commit+push" if self.args.push else "commit"
             print(f"After each review: {action} step (agent writes message, no AI attribution)")
@@ -1974,6 +2023,10 @@ class Runner:
                 loop_before = self._diff_totals()
                 for r in order:
                     if self.stopping:
+                        return
+                    if self.args.runtime and time.monotonic() - self.script_start >= self.args.runtime:
+                        log("Runtime budget exhausted, finishing up")
+                        self.stopping = True
                         return
                     self.run_review(r)
                     if not self.stopping and (self.args.commit or self.args.push):
@@ -2205,7 +2258,7 @@ def parse_args() -> argparse.Namespace:
              "(skip with --yes / --yolo / a non-terminal stdin)",
     )
     sel.add_argument(
-        "--suggest", action="store_true",
+        "-s", "--suggest", action="store_true",
         help="shorthand for --reviews suggest",
     )
     sel.add_argument(
@@ -2233,13 +2286,12 @@ def parse_args() -> argparse.Namespace:
 
     ag = p.add_argument_group("agent selection")
     ag.add_argument(
-        "-a", "--agents", "--models", dest="agents", action="append", type=parse_agents,
+        "-a", "--agents", dest="agents", action="append", type=parse_agents,
         default=None, metavar="LIST",
         help="comma-separated agent CLIs, optionally agent:model. "
              "Use 'mixed' (or 'random'/'all') as shorthand for every installed agent. "
              "Examples: 'claude', 'mixed', 'claude:opus-4-7,codex:gpt-5-codex'. "
-             "Repeatable. Default: auto-detect installed agents. "
-             "(--models is a deprecated alias.)",
+             "Repeatable. Default: auto-detect installed agents.",
     )
     ag.add_argument(
         "--bin", action="append", type=parse_bin, default=[], metavar="TOOL=PATH",
@@ -2253,6 +2305,18 @@ def parse_args() -> argparse.Namespace:
                     help="review the project in DIR (cd there before running). "
                          "~ and $VAR are expanded")
     ex.add_argument(
+        "--target-dirs", nargs="+", type=parse_path, default=None, metavar="DIR",
+        help="run a parallel review loop per directory, each with its own lock "
+             "and git baseline. Conflicts with --dir. Stats are aggregated at "
+             "the end. ~ and $VAR are expanded",
+    )
+    ex.add_argument(
+        "--runtime", type=parse_duration, default=0, metavar="DUR",
+        help="wall-clock budget for the entire run (e.g. 8h, 30m, 2d). "
+             "When the budget is reached, the current review and its "
+             "commit/push step finish before stopping. 0 = unlimited",
+    )
+    ex.add_argument(
         "-y", "--yes", action="store_true",
         help="do not ask for confirmation (--reviews suggest). "
              "Implied by --yolo and when stdin is not a terminal",
@@ -2261,7 +2325,8 @@ def parse_args() -> argparse.Namespace:
         "-t", "--timeout", default="30m", type=parse_duration, metavar="DURATION",
         help="per-review timeout, e.g. 90s, 30m, 1h, 2d (default 30m)",
     )
-    ex.add_argument("--once", action="store_true", help="run a single loop and exit")
+    ex.add_argument("-1", "--once", action="store_true",
+                    help="run a single loop and exit (same as -n1)")
     ex.add_argument("-n", "--max-loops", type=int, default=0, metavar="N",
                     help="stop after N loops (0 = unlimited)")
     ex.add_argument(
@@ -2286,15 +2351,14 @@ def parse_args() -> argparse.Namespace:
              "reviews can answer call-graph/type queries from the index",
     )
     ex.add_argument(
-        "--commit", action="store_true",
+        "-c", "--commit", action="store_true",
         help="after each review, have an agent summarize the diff and commit "
              "any changes to git. The agent writes a human-style commit message "
              "with no AI attribution. Skipped when the working tree is clean.",
     )
     ex.add_argument(
-        "--push", action="store_true",
-        help="like --commit but also pushes after committing. "
-             "--commit and --push may both be given; the effect is the same as --push alone.",
+        "-p", "--push", action="store_true",
+        help="like --commit but also pushes after committing.",
     )
 
     out = p.add_argument_group("output")
@@ -2303,14 +2367,22 @@ def parse_args() -> argparse.Namespace:
                           "is resolved against the invocation dir, not --dir. "
                           "~ and $VAR are expanded")
     out.add_argument(
-        "-q", "--quiet-agents", "--quiet", action="store_true",
+        "-q", "--quiet", action="store_true", dest="quiet_agents",
         help="discard agent stdout/stderr; only the runner's own log lines "
              "remain (some agents narrate every step)",
     )
+    out.add_argument(
+        "--raw", action="store_true", dest="raw_output",
+        help="echo agent output verbatim (ANSI escapes, spinner frames, "
+             "repeated progress lines kept). Default: normalized",
+    )
+    out.add_argument(
+        "--tui", action="store_true",
+        help="(experimental) curses dashboard: live review status, stats, "
+             "and scrollable agent output in an alternate-screen TUI",
+    )
 
     args = p.parse_args()
-    if any(a == "--models" or a.startswith("--models=") for a in sys.argv[1:]):
-        print("warning: --models is deprecated; use --agents", file=sys.stderr)
     modes = [m for m, on in (("doctor", args.command == "doctor"),
                              ("--list", args.list), ("--dry-run", args.dry_run),
                              ("--show-prompt", args.show_prompt is not None)) if on]
@@ -2319,9 +2391,14 @@ def parse_args() -> argparse.Namespace:
     if (args.commit or args.push) and args.list:
         args.commit = False
         args.push = False
-    if args.commit and args.push:
-        print("warning: --commit is redundant with --push (--push implies commit)",
-              file=sys.stderr)
+    if args.push:
+        args.commit = True
+    if args.target_dirs is not None and args.dir is not None:
+        p.error("--target-dirs conflicts with --dir")
+    if args.tui and modes:
+        p.error(f"--tui conflicts with {modes[0]}")
+    if args.tui and args.target_dirs is not None:
+        p.error("--tui conflicts with --target-dirs")
     if args.max_loops < 0:
         p.error("--max-loops must be >= 0")
     if args.once:
@@ -2377,6 +2454,120 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
+def _rebuild_argv(args: argparse.Namespace) -> list[str]:
+    """Reconstruct argv without --target-dirs and --dir for per-directory re-invocation."""
+    argv = sys.argv[:]
+    out: list[str] = []
+    skip_next = False
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if skip_next:
+            skip_next = False
+            i += 1
+            continue
+        if a == "--target-dirs":
+            i += 1
+            while i < len(argv) and not argv[i].startswith("-"):
+                i += 1
+            continue
+        if a == "--dir" or a == "-C":
+            skip_next = True
+            i += 1
+            continue
+        if a.startswith("--dir=") or a.startswith("-C="):
+            i += 1
+            continue
+        out.append(a)
+        i += 1
+    return out
+
+
+def _run_target_dirs(args: argparse.Namespace) -> int:
+    """Spawn one gauntlet subprocess per target directory, stream output, aggregate stats."""
+    import glob as _glob
+    expanded: list[Path] = []
+    for p in args.target_dirs:
+        # Expand shell globs that argparse received quoted (unquoted ones the
+        # shell already expanded). glob.glob honours *, ?, [seq].
+        matches = sorted(_glob.glob(str(p)))
+        if matches:
+            expanded.extend(Path(m) for m in matches)
+        else:
+            expanded.append(p)
+    dirs = [d.resolve() for d in expanded]
+    for d in dirs:
+        if not d.is_dir():
+            why = "is not a directory" if d.exists() else "not found"
+            usage_error(f"--target-dirs: {d} {why}")
+    base_argv = _rebuild_argv(args)
+    procs: list[tuple[Path, subprocess.Popen]] = []
+    sel = selectors.DefaultSelector()
+
+    for d in dirs:
+        child_argv = base_argv + ["--dir", str(d)]
+        proc = subprocess.Popen(
+            child_argv,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+        )
+        procs.append((d, proc))
+        assert proc.stdout is not None and proc.stderr is not None
+        os.set_blocking(proc.stdout.fileno(), False)
+        os.set_blocking(proc.stderr.fileno(), False)
+        sel.register(proc.stdout, selectors.EVENT_READ, (d, proc, sys.stdout))
+        sel.register(proc.stderr, selectors.EVENT_READ, (d, proc, sys.stderr))
+
+    stop_signal = 0
+
+    def _fwd_signal(signum: int, _frame: object) -> None:
+        nonlocal stop_signal
+        stop_signal = signum
+        for _, proc in procs:
+            try:
+                os.killpg(os.getpgid(proc.pid), signum)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+    signal.signal(signal.SIGINT, _fwd_signal)
+    signal.signal(signal.SIGTERM, _fwd_signal)
+
+    log(f"Launched {len(dirs)} target-dirs loops: {', '.join(d.name for d in dirs)}")
+
+    alive = len(procs) * 2  # two fds per proc
+    while alive > 0:
+        for key, _ in sel.select(timeout=1.0):
+            d, proc, dest = key.data
+            data = key.fileobj.read(8192)
+            if data:
+                prefix = f"[{d.name}] "
+                for line in data.decode(errors="replace").splitlines(keepends=True):
+                    dest.write(prefix + line)
+                dest.flush()
+            else:
+                sel.unregister(key.fileobj)
+                alive -= 1
+    sel.close()
+
+    codes: list[tuple[Path, int]] = []
+    for d, proc in procs:
+        proc.wait()
+        codes.append((d, proc.returncode))
+
+    print()
+    log("=== Target-dirs summary ===")
+    worst = 0
+    for d, rc in codes:
+        status = "ok" if rc == 0 else f"exit {rc}"
+        log(f"  {d.name}: {status}")
+        if rc > worst:
+            worst = rc
+    if stop_signal:
+        return 128 + stop_signal
+    return worst
+
+
 def autodetect_agents() -> list[ToolSpec]:
     found = installed_tools()
     if not found:
@@ -2404,6 +2595,9 @@ def main() -> None:
 
     # Resolve against the invocation cwd, before any --dir chdir.
     args.prompt_dir = args.prompt_dir.resolve()
+
+    if args.target_dirs is not None:
+        sys.exit(_run_target_dirs(args))
 
     # Before doctor too: an invalid --dir is a usage error in every mode,
     # not something doctor silently accepts and ignores.
@@ -2484,10 +2678,17 @@ def main() -> None:
     if runner is None:
         runner = Runner(args)
     try:
-        runner.run()
+        if args.tui:
+            # ponytail: TUI owns the screen; suppress agent echo so _pump_stream
+            # doesn't write raw bytes into the curses alternate buffer
+            args.quiet_agents = True
+            from gauntlet.tui import run_tui
+            run_tui(runner, version=VERSION)
+        else:
+            runner.run()
     except BrokenPipeError:
         sys.exit(1)  # tee died; both output fds are gone, nothing to report to
-    if runner.stopping:
+    if runner.stopping and runner.stop_signal:
         sys.exit(128 + runner.stop_signal)  # 130 for SIGINT, 143 for SIGTERM
     if any(r.status in ("fail", "timeout", "skipped") for r in runner.stats.results):
         sys.exit(1)
