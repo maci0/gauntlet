@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import NoReturn
 from pathlib import Path
 
-VERSION = "0.24.0"  # bump with a matching git tag; there is no other source of truth
+VERSION = "0.25.0"  # bump with a matching git tag; there is no other source of truth
 
 VALID_TOOLS = {"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent", "kimi",
                "opencode", "clanker", "dsh"}
@@ -139,9 +139,7 @@ DYNAMIC_SETS = {
 # names and needs an agent run plus confirmation before the loop starts.
 SUGGEST = "suggest"
 
-# Classification is not a review: do not let --timeout 30m (or 25d) burn a
-# full review budget on triage. A shorter cap still respects a smaller -t.
-SUGGEST_TIMEOUT_CAP = 300
+SUGGEST_TIMEOUT_DEFAULT = 1800  # 30m; overridden by --suggest-timeout
 CATALOG_DESC_MAX = 200
 
 SUGGEST_PROMPT = """You are triaging automated code reviews for the repository in the current directory.
@@ -1423,9 +1421,12 @@ class Runner:
         )
         # replace(), not format(): a project goal line may contain {braces}.
         prompt = SUGGEST_PROMPT.replace("{reviews}", catalog)
-        timeout = min(self.args.timeout, SUGGEST_TIMEOUT_CAP)
-        specs = list(self.tools)
-        random.shuffle(specs)
+        timeout = self.args.suggest_timeout
+        if self.args.suggest_agent is not None:
+            specs = [self.args.suggest_agent]
+        else:
+            specs = list(self.tools)
+            random.shuffle(specs)
         last_err = ""
         for spec in specs:
             if self.stopping:
@@ -2208,6 +2209,18 @@ def parse_args() -> argparse.Namespace:
         help="shorthand for --reviews suggest",
     )
     sel.add_argument(
+        "--suggest-agent", type=parse_agents, default=None, metavar="AGENT",
+        help="agent (tool or tool:model) to run the suggest step. "
+             "When set, only this agent is tried for triage; --agents is "
+             "used for the reviews themselves. Default: sample from --agents.",
+    )
+    sel.add_argument(
+        "--suggest-timeout", type=parse_duration, default=SUGGEST_TIMEOUT_DEFAULT,
+        metavar="DURATION",
+        help="timeout for the suggest step (default 30m). "
+             "Independent of --timeout, which governs reviews.",
+    )
+    sel.add_argument(
         "-x", "--exclude", action="append", default=None, metavar="LIST",
         help="comma-separated reviews and/or set names to skip. Repeatable",
     )
@@ -2304,7 +2317,8 @@ def parse_args() -> argparse.Namespace:
     if len(modes) > 1:
         p.error(f"{' and '.join(modes)} are mutually exclusive")
     if (args.commit or args.push) and args.list:
-        p.error("--commit/--push cannot be used with --list")
+        args.commit = False
+        args.push = False
     if args.commit and args.push:
         print("warning: --commit is redundant with --push (--push implies commit)",
               file=sys.stderr)
@@ -2321,10 +2335,17 @@ def parse_args() -> argparse.Namespace:
             if spec not in merged:
                 merged.append(spec)
         args.agents = merged
+    if args.suggest_agent is not None:
+        if len(args.suggest_agent) != 1:
+            p.error("--suggest-agent takes exactly one agent (tool or tool:model)")
+        args.suggest_agent = args.suggest_agent[0]
     if args.suggest:
-        if args.reviews is not None:
+        if args.list or args.dry_run:
+            pass  # --list/--dry-run take precedence; ignore --suggest
+        elif args.reviews is not None:
             p.error("--suggest conflicts with --reviews")
-        args.reviews = [SUGGEST]
+        else:
+            args.reviews = [SUGGEST]
     # None = flag omitted (run all). A present-but-empty value is explicit
     # and must not collapse into the default; see _filter_reviews.
     args.reviews_explicit = args.reviews is not None
@@ -2335,10 +2356,16 @@ def parse_args() -> argparse.Namespace:
         if len(named) > 1:
             p.error(f"'{SUGGEST}' must be the only --reviews value")
         if args.list or args.dry_run:
-            p.error(f"'{SUGGEST}' runs an agent; not usable with --list/--dry-run")
-        # Canonicalize so later dispatch string-compares agree with this
-        # tokenized check ('suggest,' and 'suggest' are the same request).
-        args.reviews = SUGGEST
+            # --list/--dry-run take precedence: drop suggest silently so the
+            # user can compose flags without order-dependent errors.
+            named.remove(SUGGEST)
+            args.reviews = ",".join(named)
+            if not named:
+                args.reviews_explicit = False
+        else:
+            # Canonicalize so later dispatch string-compares agree with this
+            # tokenized check ('suggest,' and 'suggest' are the same request).
+            args.reviews = SUGGEST
     if SUGGEST in args.exclude.split(","):
         p.error(f"'{SUGGEST}' is not a review name; it cannot be excluded")
     seen: dict[str, str] = {}

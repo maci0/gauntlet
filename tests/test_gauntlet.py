@@ -1283,7 +1283,7 @@ def test_reviews_suggest_end_to_end():
         assert "Ignoring unknown suggestions: bogus" in out, out
         assert "proceeding without confirmation" in out, out
         assert "Running stub-review" in out and "Running other-review" not in out, out
-        assert "timeout 5m00s" in out, "suggest must cap a 25d --timeout"
+        assert "timeout 30m00s" in out, "suggest uses --suggest-timeout default (30m)"
         # --yolo skips confirmation but still prints the picks and reasons
         p = subprocess.run(
             [sys.executable, str(script), "--once", "--agents", "agy",
@@ -1799,16 +1799,20 @@ def test_catalog_line_treats_description_as_data():
 
 def test_suggest_flag_is_reviews_suggest_shorthand():
     script = SCRIPT
-    # guards from --reviews suggest apply to the flag form too
-    for extra, msg in ((["--list"], "not usable with --list"),
-                       (["--dry-run"], "not usable with --list"),
-                       (["--reviews", "sec"], "conflicts with --reviews")):
+    # --suggest + --reviews is still an error
+    p = subprocess.run(
+        [sys.executable, str(script), "--suggest", "--reviews", "sec"],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    assert p.returncode == 2, p.stderr
+    assert "conflicts with --reviews" in p.stderr, p.stderr
+    # --list/--dry-run silently take precedence over --suggest
+    for extra in (["--list"], ["--dry-run"]):
         p = subprocess.run(
             [sys.executable, str(script), "--suggest", *extra],
             capture_output=True, text=True, timeout=60, check=False,
         )
-        assert p.returncode == 2, (extra, p.stderr)
-        assert msg in p.stderr, (extra, p.stderr)
+        assert p.returncode == 0, (extra, p.stderr)
 
 
 def test_suggest_prompt_does_not_format_catalog():
@@ -1866,7 +1870,7 @@ def test_reviews_suggest_falls_back_to_another_agent():
             agents=[rl.ToolSpec("claude"), rl.ToolSpec("agy")],
             prompt_dir=prompts, reviews="", exclude="",
             timeout=30, quiet_agents=False, continue_sessions=False, bin={},
-            yolo=True,
+            yolo=True, suggest_agent=None, suggest_timeout=30,
         )
         runner = rl.Runner(args)
         launches: list[str] = []
@@ -2217,19 +2221,25 @@ def test_semcode_sigterm_reaps_indexer():
 
 def test_reviews_suggest_guards():
     script = SCRIPT
-    cases = (
+    error_cases = (
         (["--reviews", "suggest,sec-review"], "must be the only --reviews value"),
-        (["--dry-run", "--reviews", "suggest"], "not usable with --list/--dry-run"),
-        (["--list", "--reviews", "suggest"], "not usable with --list/--dry-run"),
         (["--exclude", "suggest"], "cannot be excluded"),
     )
-    for argv, needle in cases:
+    for argv, needle in error_cases:
         p = subprocess.run(
             [sys.executable, str(script), "--agents", "claude", *argv],
             capture_output=True, text=True, timeout=60, check=False,
         )
         assert p.returncode == 2, (argv, p.stderr)
         assert needle in p.stderr, (argv, p.stderr)
+    # --list/--dry-run silently take precedence over --reviews suggest
+    for argv in (["--dry-run", "--reviews", "suggest"],
+                 ["--list", "--reviews", "suggest"]):
+        p = subprocess.run(
+            [sys.executable, str(script), "--agents", "claude", *argv],
+            capture_output=True, text=True, timeout=60, check=False,
+        )
+        assert p.returncode == 0, (argv, p.stderr)
 
 
 def test_reviews_suggest_rejects_empty_relevant_lines():

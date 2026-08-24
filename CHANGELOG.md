@@ -2,6 +2,23 @@
 
 Notable changes per release.
 
+## 0.25.0
+
+### Added
+
+- `--suggest-agent AGENT`: use a specific agent for the suggest triage
+  step, independent of `--agents` which governs the reviews themselves.
+  When set, only this agent is tried; default: sample from `--agents`.
+- `--suggest-timeout DUR`: timeout for the suggest step (default 30m),
+  independent of `--timeout` which governs per-review execution.
+
+### Changed
+
+- `--list` now silently takes precedence over `--suggest`, `--reviews
+  suggest`, `--commit`, and `--push` instead of erroring. Compose flags
+  freely; `--list` always wins.
+- Suggest timeout default raised from 5m to 30m.
+
 ## 0.24.0
 
 ### Changed

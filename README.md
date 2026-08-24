@@ -396,6 +396,8 @@ Run `gauntlet --help` for the full option list.
 | `-r, --reviews LIST` | all | Comma-separated review names and/or set names to run; the `-review` suffix may be omitted (`sec` means `sec-review`). Naming one more than once gives it that many slots per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Comma-separated review names and/or set names to skip (same shorthands as `--reviews`). Repeatable. |
 | `--suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
+| `--suggest-agent AGENT` | from `--agents` | Agent (`tool` or `tool:model`) to run the suggest step. Only this agent is tried for triage; `--agents` governs the reviews themselves. |
+| `--suggest-timeout DUR` | `30m` | Timeout for the suggest step, independent of `--timeout`. |
 | `--prompt-dir DIR` | `prompts/` next to script | Where `*-review.md` files live. `~` and `$VAR` are expanded. |
 
 **Choosing agents**
