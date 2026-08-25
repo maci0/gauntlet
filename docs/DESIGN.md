@@ -38,6 +38,7 @@ can replace and reload itself while a loop is running.
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
+| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
