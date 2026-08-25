@@ -91,3 +91,24 @@ func TestCount(t *testing.T) {
 		}
 	}
 }
+
+// A one-line list names a few and counts the rest, so a message about 40
+// changed files still fits on a terminal line.
+func TestList(t *testing.T) {
+	cases := []struct {
+		items []string
+		max   int
+		want  string
+	}{
+		{nil, 3, ""},
+		{[]string{"a"}, 3, "a"},
+		{[]string{"a", "b", "c"}, 3, "a, b, c"},
+		{[]string{"a", "b", "c", "d"}, 3, "a, b, c and 1 more"},
+		{[]string{"a", "b"}, 0, "a and 1 more"},
+	}
+	for _, c := range cases {
+		if got := List(c.items, c.max); got != c.want {
+			t.Errorf("List(%v, %d) = %q, want %q", c.items, c.max, got, c.want)
+		}
+	}
+}

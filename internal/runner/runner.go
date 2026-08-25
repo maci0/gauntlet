@@ -300,13 +300,23 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	if !r.repo.HasBaseline() {
 		return fmt.Errorf("--jobs > 1 needs a git repository with at least one commit: %s", r.cfg.Dir)
 	}
-	clean, err := r.repo.IsClean(ctx, r.cfg.OwnArtifacts)
+	// Only tracked modifications block: a review works from a commit, so
+	// uncommitted edits to files git knows about would be invisible to it and
+	// then collide with its merge. An untracked file is in nobody's way; it is
+	// simply not reviewed, which is worth saying once rather than refusing to
+	// run over.
+	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
 	if err != nil {
 		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
 	}
-	if !clean {
+	if len(changes.Tracked) > 0 {
 		return fmt.Errorf("%w: commit or stash your changes first, "+
-			"or run without --jobs to review the tree in place", ErrDirtyTree)
+			"or run without --jobs to review the tree in place (%s)",
+			ErrDirtyTree, humanize.List(changes.Tracked, 3))
+	}
+	if n := len(changes.Untracked); n > 0 {
+		r.log("%d untracked file(s) stay put and are not reviewed: %s",
+			n, humanize.List(changes.Untracked, 3))
 	}
 	r.repo.PruneWorktrees(ctx)
 	r.repo.ExcludeWorktreeRoot(ctx)
@@ -973,12 +983,16 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	if repo == nil {
 		return errors.New("commit step finished but the repository could not be read")
 	}
-	clean, err := repo.IsClean(ctx, nil)
+	// The same rule the worktree precondition uses: what had to be committed
+	// is what git tracks. An agent that leaves untracked scratch behind has
+	// still done the job asked of it.
+	changes, err := repo.Status(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot read git status after the commit step: %w", err)
 	}
-	if !clean {
-		return errors.New("the tree is still dirty after the commit step")
+	if len(changes.Tracked) > 0 {
+		return fmt.Errorf("still uncommitted after the commit step: %s",
+			humanize.List(changes.Tracked, 3))
 	}
 	return nil
 }

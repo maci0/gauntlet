@@ -19,8 +19,10 @@ gauntlet -j 4 -a mixed --once
 (The fan-out and merge-back are drawn in the [README](../README.md#how-a-run-works).)
 
 
-- Requires git and a **clean working tree** (a branch is cut from a commit, so
-  uncommitted work would be invisible to every review).
+- Requires git and no **uncommitted changes to tracked files** (a branch is cut
+  from a commit, so that work would be invisible to every review and then
+  collide with its merge). Untracked files do not block the run: they are in
+  nobody's way, and the run says once that they are not reviewed.
 - Each review gets `git worktree add -b gauntlet/<run>/<review>` under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
 - The runner (never the agent) commits each worktree, then merges the branches

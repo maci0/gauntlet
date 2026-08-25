@@ -788,6 +788,37 @@ sleep 0.2`)
 	}
 }
 
+// Untracked files are not what --jobs objects to: a review works from a
+// commit, so a file git never heard of is not work it would miss, and it
+// cannot collide with a merge that does not create that path. Refusing to run
+// over someone's scratch script was a dead end, since the commit step stages
+// tracked files only and would leave it there forever.
+func TestUntrackedFilesDoNotBlockWorktreeMode(t *testing.T) {
+	repo := testRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "pollbench.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Jobs = 2
+
+	bus := NewBus()
+	drain(bus)
+	defer bus.Close()
+	if _, err := New(context.Background(), cfg, bus); err != nil {
+		t.Fatalf("an untracked file blocked worktree mode: %v", err)
+	}
+
+	// A tracked modification still does, because that work would be invisible.
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main // edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(context.Background(), cfg, bus); !errors.Is(err, ErrDirtyTree) {
+		t.Fatalf("uncommitted tracked work must still block --jobs, got %v", err)
+	}
+}
+
 // The offer gauntlet makes when --jobs meets a dirty tree: hand it to an
 // agent, and report whether the tree actually ended up clean, since the agent
 // saying so is not the same as git saying so.
@@ -809,8 +840,9 @@ git -c user.name=t -c user.email=t@e commit -qm "work" >/dev/null 2>&1`)
 	}
 
 	// An agent that exits happily without committing is a failure, not a
-	// success: the run that follows needs the tree clean, not the claim.
-	if err := os.WriteFile(filepath.Join(repo, "again.go"), []byte("package main\n"), 0o644); err != nil {
+	// success: the run that follows needs the tracked work committed, not the
+	// claim that it is.
+	if err := os.WriteFile(filepath.Join(repo, "new.go"), []byte("package main // edited\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	liar := fakeAgent(t, t.TempDir(), "claude", `echo "committed everything, honest"`)

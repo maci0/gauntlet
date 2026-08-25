@@ -98,3 +98,24 @@ func Count(n int) string {
 	}
 	return b.String()
 }
+
+// List names a few items and counts the rest, for a message that has to fit
+// on one line: "a.go, b.go, c.go and 4 more".
+func List(items []string, max int) string {
+	switch {
+	case len(items) == 0:
+		return ""
+	case max < 1:
+		max = 1
+	}
+	shown := items
+	rest := 0
+	if len(items) > max {
+		shown, rest = items[:max], len(items)-max
+	}
+	out := strings.Join(shown, ", ")
+	if rest > 0 {
+		out += fmt.Sprintf(" and %d more", rest)
+	}
+	return out
+}
