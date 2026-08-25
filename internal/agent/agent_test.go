@@ -324,6 +324,76 @@ func FuzzUsageTail(f *testing.F) {
 	})
 }
 
+// FuzzParseUsage drives ParseUsage with unbounded raw agent output. Where
+// FuzzUsageTail only sees the ring's retained last few kilobytes, this pins
+// the extractor's own contracts over the whole stream the pump could hand it:
+// a counter is absent (-1) or within [0, maxPlausible], so another agent's
+// sentinel can never leak into the run totals; Known and Reported stay
+// coherent; and parsing is deterministic. Counters are deliberately not
+// monotone under concatenation: a greedy digit run that crosses maxPlausible
+// is rejected as one match, so a prefix may parse to a number its whole
+// refuses (testdata corpus 561d58e24361a7f0).
+func FuzzParseUsage(f *testing.F) {
+	seeds := []string{
+		`{"type":"assistant","message":{"usage":{"input_tokens":10,"output_tokens":42}}}`,
+		`{"usage":{"output_tokens":900,"output_tokens_details":{"thinking_tokens":300}}}`,
+		`{"choices":[{"delta":{"content":"partial"}}],"usage":{"prompt_tokens":1,"completion_tokens":2}}`,
+		"tokens used: 12,345",
+		"\nOutput tokens: 42\nTotal tokens: 77\n",
+		// The plausibility boundary itself: 2^40 is a measurement, one more
+		// is a misparse, and the int64 max sentinel from someone else's log
+		// must never survive either.
+		`{"usage":{"total_tokens":1099511627776}}`,
+		`{"usage":{"total_tokens":1099511627777}}`,
+		`{"usage":{"total_tokens":9223372036854775807}}`,
+		`{"output_tokens":"1_000_000","completion_tokens":"12,345"}`,
+		`{"outputTokens":` + strings.Repeat("9", 4096) + `}`,
+		"OUTPUT TOKENS: 5\nToKeNs used: 6",
+		strings.Repeat(`{"output_tokens":1}`, 1000),
+		"héllo wörld — ünïcode tail 🐐",
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s), 0)
+	}
+	f.Fuzz(func(t *testing.T, data []byte, split int) {
+		split = min(max(split, 0), len(data))
+		for _, in := range [][]byte{data, data[:split], data[split:]} {
+			u := ParseUsage(in)
+			for _, c := range []struct {
+				name string
+				n    int
+			}{
+				{"output", u.Output}, {"thinking", u.Thinking}, {"total", u.Total},
+			} {
+				if c.n < -1 || c.n > maxPlausible {
+					t.Fatalf("%s counter out of contract on %q: %d", c.name, in, c.n)
+				}
+			}
+
+			reported := u.Reported()
+			switch {
+			case u.Output >= 0:
+				if reported != u.Output {
+					t.Fatalf("Reported ignored output on %q: %+v -> %d", in, u, reported)
+				}
+			case u.Total >= 0:
+				if reported != u.Total {
+					t.Fatalf("Reported ignored total on %q: %+v -> %d", in, u, reported)
+				}
+			default:
+				if reported != 0 || u.Known() {
+					t.Fatalf("unknown usage leaked on %q: %+v known=%v reported=%d",
+						in, u, u.Known(), reported)
+				}
+			}
+
+			if again := ParseUsage(in); again != u {
+				t.Fatalf("ParseUsage is not deterministic on %q", in)
+			}
+		}
+	})
+}
+
 func TestParseDshProvider(t *testing.T) {
 	dump := `
 plugins:
