@@ -110,6 +110,39 @@ func baseConfig(t *testing.T, repo string, set prompt.Set, reviews []string, bin
 	}
 }
 
+// runQuiet runs cfg to completion with the event stream drained, for tests
+// that judge the outcome from the stats alone.
+func runQuiet(t *testing.T, cfg Config) *Runner {
+	t.Helper()
+	bus := NewBus()
+	drain(bus)
+	return runOn(t, cfg, bus)
+}
+
+// runRecorded runs cfg to completion and returns the runner and every event
+// it published.
+func runRecorded(t *testing.T, cfg Config) (*Runner, []Event) {
+	t.Helper()
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+	r := runOn(t, cfg, bus)
+	return r, <-done
+}
+
+// runOn is the shared body of runQuiet and runRecorded.
+func runOn(t *testing.T, cfg Config, bus *Bus) *Runner {
+	t.Helper()
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	return r
+}
+
 func TestSequentialRunEditsTreeAndCountsLines(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "sec-review", "doc-review")
@@ -119,18 +152,7 @@ echo "// touched" >> main.go
 echo '{"usage":{"output_tokens":1200}}'
 echo "RESULT: changed=1"`)
 
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), baseConfig(t, repo, set, []string{"sec-review", "doc-review"}, bin), bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	r, got := runRecorded(t, baseConfig(t, repo, set, []string{"sec-review", "doc-review"}, bin))
 
 	c := r.Stats().Counts()
 	if c.OK != 2 || c.Failures() != 0 {
@@ -190,14 +212,7 @@ func TestFailingAgentIsRetriedOnAnother(t *testing.T) {
 	}
 	cfg.Seed = seed
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	results := r.Stats().Results()
 	if len(results) != 1 {
@@ -219,15 +234,8 @@ func TestTimeoutKillsTheAgent(t *testing.T) {
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
 	cfg.Timeout = 300 * time.Millisecond
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
 	start := time.Now()
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	if elapsed := time.Since(start); elapsed > 20*time.Second {
 		t.Fatalf("timeout did not kill the agent: took %s", elapsed)
@@ -265,18 +273,7 @@ echo "RESULT: changed=1"`)
 	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review"}, bin)
 	cfg.Jobs = 3
 
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	r, got := runRecorded(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 3 {
 		t.Fatalf("counts: %+v", c)
@@ -320,14 +317,7 @@ echo "RESULT: changed=1"`)
 	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
 	cfg.Jobs = 2
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	c := r.Stats().Counts()
 	if c.Conflict != 1 || c.OK != 1 {
@@ -355,14 +345,7 @@ func TestParallelModeWithNoChangesDeletesTheBranch(t *testing.T) {
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.Jobs = 2
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 1 {
 		t.Fatalf("counts: %+v", c)
@@ -395,14 +378,7 @@ echo "RESULT: changed=1"`)
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.Jobs = 2
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	if c := r.Stats().Counts(); c.Fail != 1 {
 		t.Fatalf("want one failed review, got %+v", c)
@@ -446,17 +422,7 @@ echo "RESULT: changed=1"`)
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.Commit = true
 
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r, got := runRecorded(t, cfg)
 
 	c := r.Stats().Counts()
 	if c.OK != 1 {
@@ -467,7 +433,7 @@ echo "RESULT: changed=1"`)
 			r.Stats().CommitRuns(), r.Stats().CommitFails())
 	}
 	var commits []Event
-	for _, ev := range <-done {
+	for _, ev := range got {
 		if ev.Kind == EvCommit {
 			commits = append(commits, ev)
 		}
@@ -499,14 +465,7 @@ func TestCommitStepSkipsACleanTree(t *testing.T) {
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.Commit = true
 
-	bus := NewBus()
-	drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	if r.Stats().CommitRuns() != 0 {
 		t.Fatalf("clean tree still launched a commit step: %+v", r.Stats().Counts())
@@ -527,23 +486,13 @@ echo "RESULT: changed=1"`)
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.Commit = true
 
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r, got := runRecorded(t, cfg)
 
 	if r.Stats().CommitRuns() != 1 || r.Stats().CommitFails() != 1 {
 		t.Fatalf("failed step must be one run and one failure: runs=%d fails=%d",
 			r.Stats().CommitRuns(), r.Stats().CommitFails())
 	}
-	for _, ev := range <-done {
+	for _, ev := range got {
 		if ev.Kind != EvCommit {
 			continue
 		}
@@ -683,18 +632,7 @@ echo "RESULT: no-changes"`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
 	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	r, got := runRecorded(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
 		t.Fatalf("the third attempt succeeded, so the review did: %+v", c)
@@ -719,14 +657,7 @@ func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	bin := fakeAgent(t, t.TempDir(), "claude", "echo x >> "+marker+"\nexit 1")
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
-	bus := NewBus()
-	go drain(bus)
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
+	r := runQuiet(t, cfg)
 
 	if c := r.Stats().Counts(); c.Failures() != 1 {
 		t.Fatalf("counts: %+v", c)
@@ -757,18 +688,7 @@ echo "RESULT: changed=1"`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
 	cfg.Commit, cfg.MergeInto = true, "main-line"
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	_, got := runRecorded(t, cfg)
 
 	if branch := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); branch != "work" {
 		t.Fatalf("the tree is on %q, want the branch the reviews ran on", branch)
@@ -800,18 +720,7 @@ echo "RESULT: changed=1"`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
 	cfg.MergeInto = "main-line"
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	r, got := runRecorded(t, cfg)
 
 	if n := countKind(got, EvMerge); n != 0 {
 		t.Fatalf("%d merge events, want none: the tree was dirty", n)
@@ -932,18 +841,7 @@ echo '{"usage":{"output_tokens":900}}'
 echo "RESULT: no-changes"`)
 
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-	got := <-done
+	_, got := runRecorded(t, cfg)
 
 	var usage []int
 	var lastEnd int
@@ -973,19 +871,9 @@ func TestNoUsageEventsWhenAgentReportsNone(t *testing.T) {
 	set, _ := promptSet(t, "a-review")
 	bin := fakeAgent(t, t.TempDir(), "claude", `echo "no numbers here"; echo "RESULT: no-changes"`)
 
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
+	r, got := runRecorded(t, baseConfig(t, repo, set, []string{"a-review"}, bin))
 
-	r, err := New(context.Background(), baseConfig(t, repo, set, []string{"a-review"}, bin), bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r.Run(context.Background())
-	bus.Close()
-
-	for _, ev := range <-done {
+	for _, ev := range got {
 		if ev.Kind == EvUsage {
 			t.Fatalf("invented usage for an agent that reported none: %+v", ev)
 		}

@@ -99,47 +99,33 @@ result kind next to ok/fail/timeout (a review that finds 40 violations is not
 a failure), and whether deviation records belong in the tree (a
 `deviations/` directory the next run reads back) or only in the journal.
 
-## An interactive launcher for a bare `gauntlet`
+## The launcher as the bare `gauntlet` default
 
-**Problem.** Typing `gauntlet` with no flags starts reviewing the current
-directory with every prompt and whatever agents are installed, forever. That
-is the right default for someone who already knows the tool and the wrong
-first five seconds for everyone else: the interesting choices (which reviews,
-which agents, how many at once, which trees) are 30 flags deep, and the help
-screen teaches them one flag at a time rather than as one decision.
+The launcher shipped as `gauntlet pick`: reviews as collapsible sets with a
+fill meter each, suggest with its own agent picker, the agent pool, the run
+switches, concurrency metered against the CPU count, and the composed command
+line on screen the whole time, run through the real parser on `enter`.
 
-**Shape of the fix.** A launcher screen, on the same bubbletea stack the
-dashboard already uses, that ends by running the exact command it composed:
+What never shipped is pointing a bare `gauntlet` at it. Typing `gauntlet`
+with no flags still starts reviewing the current directory with every prompt
+and whatever agents are installed, forever: right for someone who knows the
+tool, a wall of work for everyone else.
 
-- **Panes, one decision each.** Reviews, agents, directories, concurrency,
-  duration. `tab` moves between them, `space` toggles, `enter` launches.
-- **Reviews as collapsible categories.** The sets (`quick`, `security`,
-  `frontend`, ...) are the groups, collapsed by default with a count, expanded
-  to individual reviews; toggling a group toggles its members, and a member
-  toggled by hand overrides it. `/` filters by name across groups. This is
-  where `--suggest` belongs too: a first-class "let an agent pick" entry that
-  runs the suggest step and comes back with the boxes ticked, so its choice is
-  reviewable before anything runs.
-- **Agents from detection, not from memory.** The same list `doctor` prints,
-  each with its model field, unavailable ones shown greyed with the reason.
-- **Directories with the globs the shell would have eaten.** Start at the cwd,
-  allow adding paths and globs, mark trees that are dirty (a `--jobs > 1` run
-  needs a clean tree, and finding that out after picking everything else is
-  the worst time to find it out).
-- **Concurrency that says what it will cost.** `--jobs` is per directory, so
-  the screen should show the product, "4 jobs x 3 directories = up to 12
-  agents at once", next to the CPU count. This is the number people get wrong.
-- **The command line, always visible.** The composed invocation renders at the
-  bottom and updates as choices change, so the launcher teaches the flags
-  instead of hiding them. `enter` runs it; a key copies it.
-- **Recent runs as presets.** `~/.gauntlet/index.jsonl` already records the
-  argv of every past run: offer the last few as one-key presets ("rerun
-  yesterday's security pass over both repos"), which is a preset system that
-  needs no new file format.
-
-**What would need deciding.** Whether the launcher becomes the default for a
-bare `gauntlet` on a TTY (it should never appear when stdout is a pipe, under
-`--quiet`, or with `TERM=dumb`), or stays behind `gauntlet pick`/`--menu`
-until it has earned the default. Changing what a bare `gauntlet` does is a
-change to documented behavior, so it waits for a minor version and an explicit
+**What would need deciding.** Whether a bare `gauntlet` on a TTY opens the
+launcher (never when stdout is a pipe, under `--quiet`, or with `TERM=dumb`),
+or keeps starting the run. Changing what a bare `gauntlet` does is a change
+to documented behavior, so it waits for a minor version and an explicit
 escape hatch (`--yes` to take the defaults without a screen).
+
+Smaller pieces left out of the shipped launcher, each worth having once the
+default question is settled:
+
+- `/` filters review names across groups.
+- Agents are shown with their model field and unavailable ones greyed with
+  the reason.
+- A directories pane: add paths and globs, mark trees that are dirty (a
+  `--jobs > 1` run needs a clean tree), and show the product, "4 jobs x 3
+  directories = up to 12 agents at once".
+- Recent runs from `~/.gauntlet/index.jsonl`, which already records the argv,
+  offered as one-key presets.
+- A key that copies the composed command line.
