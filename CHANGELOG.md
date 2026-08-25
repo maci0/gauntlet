@@ -9,7 +9,7 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
-## Unreleased
+## 1.3.0
 
 ### Added
 
