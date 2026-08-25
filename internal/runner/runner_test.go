@@ -585,6 +585,23 @@ func TestLockKeepsTwoRunsApart(t *testing.T) {
 	}
 }
 
+// A hot reload releases the locks before the exec, and when that exec fails
+// the deferred release runs again on the same locks. The second Release must
+// be a no-op: closing an already-closed descriptor can hit a recycled fd.
+func TestLockReleaseIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	lock, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock.Release()
+	lock.Release() // must not panic, double-close, or touch another fd
+	if _, err := Acquire(path); err != nil {
+		t.Fatalf("lock not released: %v", err)
+	}
+}
+
 // The note tells the next gauntlet what it is waiting for: it survives being
 // rewritten shorter, and hostile bytes in it never reach the terminal.
 func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
