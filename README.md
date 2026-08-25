@@ -1,8 +1,50 @@
-# gauntlet
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="gauntlet" width="420">
+  </picture>
+</p>
 
-Run your codebase through the gauntlet: ~50 specialized review prompts,
-dispatched to whichever AI coding agents you have installed, applying fixes
-directly to the working tree.
+<p align="center">
+  <em>Run your codebase through the gauntlet: ~50 specialized review prompts,
+  dispatched to whichever AI coding agents you have installed, applying fixes
+  directly to the working tree.</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/maci0/gauntlet/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/maci0/gauntlet/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/maci0/gauntlet/releases/latest"><img alt="latest release" src="https://img.shields.io/github/v/release/maci0/gauntlet?color=6aa84f"></a>
+  <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
+  <img alt="platforms" src="https://img.shields.io/badge/platform-linux%20%7C%20macOS-lightgrey">
+  <img alt="go" src="https://img.shields.io/github/go-mod/go-version/maci0/gauntlet">
+</p>
+
+```console
+$ gauntlet -j 4 -a mixed --tui
+GAUNTLET  v1.0.0  20260825T000000Z-abcd  2×worktree  project                loop 1  1m30s  ● RUNNING
+ACTIVITY agent lines/s  ◆ n/a
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│ ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+AGENTS
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ claude           idle                 ▱▱▱▱▱▱▱▱▱▱▱▱          2 done  1 fail  41,234 tok           │
+│ codex:gpt-5      code-review          ▰▱▱▱▱▱▱▱▱▱▱▱ 1m30s    0 done  0 fail  1,600 tok  240/s  ◌  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+REVIEWS  pass 1  fail 0  timeout 1  conflict 0  skip 0
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ▸ code      ⧖ doc       · perf      ✓ sec       · test                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+FEED
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ sec-review       │ Bash(go test ./...)                                                           │
+│ code-review      │ error: nil map write                                                          │
+│ code-review      │ the caller already validates this                                             │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+q:quit  space:pause feed  j/k:scroll  ?:help           41,234 tok  240 tok/s live  ▱▱▱▱▱▱▱▱▱▱ budget
+```
 
 As of 1.0 gauntlet is a single Go binary. It replaces the Python implementation
 that lived here through 0.26, keeping its prompts, its injected rules, its
@@ -94,6 +136,22 @@ repository is only granted with isolation:
 gauntlet -j 4 -a mixed --once
 ```
 
+```mermaid
+flowchart LR
+    T[your branch<br/>clean tree] --> S[scheduler]
+    S --> W1[worktree<br/>sec-review]
+    S --> W2[worktree<br/>perf-review]
+    S --> W3[worktree<br/>doc-review]
+    W1 --> C1[runner commits]
+    W2 --> C2[runner commits]
+    W3 --> C3[runner commits]
+    C1 --> M[merge --no-ff<br/>one at a time]
+    C2 --> M
+    C3 --> M
+    M --> T2[your branch]
+    M -. conflict .-> K[branch kept<br/>run exits nonzero]
+```
+
 - Requires git and a **clean working tree** (a branch is cut from a commit, so
   uncommitted work would be invisible to every review).
 - Each review gets `git worktree add -b gauntlet/<run>/<review>` under
@@ -162,6 +220,33 @@ which can take up to `--timeout`.
 
 `--tui` renders one screen: header, activity chart, one lane per agent, the
 full review grid, and the feed.
+
+```
+GAUNTLET  v1.0.0  20260825T000000Z-abcd  2×worktree  project                loop 1  1m30s  ● RUNNING
+ACTIVITY agent lines/s  ◆ n/a
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                  │
+│ ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+AGENTS
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ claude           idle                 ▱▱▱▱▱▱▱▱▱▱▱▱          2 done  1 fail  41,234 tok           │
+│ codex:gpt-5      code-review          ▰▱▱▱▱▱▱▱▱▱▱▱ 1m30s    0 done  0 fail  1,600 tok  240/s  ◌  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+REVIEWS  pass 1  fail 0  timeout 1  conflict 0  skip 0
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ ▸ code      ⧖ doc       · perf      ✓ sec       · test                                           │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+FEED
+╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ sec-review       │ Bash(go test ./...)                                                           │
+│ code-review      │ error: nil map write                                                          │
+│ code-review      │ the caller already validates this                                             │
+│                                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+q:quit  space:pause feed  j/k:scroll  ?:help           41,234 tok  240 tok/s live  ▱▱▱▱▱▱▱▱▱▱ budget
+
+```
 
 | Key | Action |
 |---|---|
