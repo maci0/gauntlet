@@ -9,15 +9,7 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
-## Unreleased
-
-### Changed
-
-- The README is a landing page again: what the tool is, install, one screen of
-  each idea, and links out. The flag, environment, and exit-code reference
-  moved to `docs/CLI.md`, worktree isolation, the run journal, and hot reload
-  to `docs/RUNS.md`, and the public token-reading API into
-  `docs/TOKEN_TELEMETRY.md` where the rest of that subject already lived.
+## 1.2.0
 
 ### Added
 
@@ -41,6 +33,19 @@ changes could land in a minor instead and were listed under Changed.
   limits and dropped connections are what this is for. Exhausting the retries
   still falls back to a different agent, as before, and timeouts are still
   never retried.
+- Journal `review_start` records carry `attempt`, so a run's retries can be
+  counted from the record rather than inferred from repeated starts.
+
+### Changed
+
+- The README is a landing page again: what the tool is, install, one screen of
+  each idea, and links out. The flag, environment, and exit-code reference
+  moved to `docs/CLI.md`, worktree isolation, the run journal, and hot reload
+  to `docs/RUNS.md`, and the public token-reading API into
+  `docs/TOKEN_TELEMETRY.md` where the rest of that subject already lived.
+- `--jobs` is documented as the per-directory pool it has always been: with
+  `--dirs`, the two multiply, and `--dirs a,b,c -j 4` is up to 12 agents at
+  once. The flag help, the help screen, and the README say so now.
 
 ## 1.1.0
 
