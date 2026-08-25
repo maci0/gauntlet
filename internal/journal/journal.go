@@ -265,27 +265,30 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 	return out, false
 }
 
-// Events replays one run's journal. Used by `gauntlet show <run-id>`.
-func Events(runID string) ([]map[string]any, error) {
+// Events replays one run's journal, handing each decodable event to visit in
+// file order. Used by `gauntlet show <run-id>`. Visiting streams rather than
+// collects: a long run's journal is bounded by disk, not by RAM, and every
+// consumer prints one line at a time anyway. Lines that do not parse are
+// skipped, matching the index reader's tolerance for a killed process.
+func Events(runID string, visit func(map[string]any)) error {
 	path, err := findRun(runID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-	var out []map[string]any
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	for sc.Scan() {
 		var m map[string]any
 		if err := json.Unmarshal(sc.Bytes(), &m); err == nil {
-			out = append(out, m)
+			visit(m)
 		}
 	}
-	return out, sc.Err()
+	return sc.Err()
 }
 
 // ErrNoJournal marks a lookup miss: the run id is not in the tree. Callers

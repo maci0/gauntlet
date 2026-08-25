@@ -13,6 +13,13 @@ import (
 	"time"
 )
 
+// collect replays runID's journal through Events and returns what it visited,
+// for tests that assert on whole streams.
+func collect(runID string) (out []map[string]any, err error) {
+	err = Events(runID, func(m map[string]any) { out = append(out, m) })
+	return out, err
+}
+
 func TestHomeHonorsOverride(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", "/somewhere/else")
 	if got := Home(); got != "/somewhere/else" {
@@ -56,7 +63,7 @@ func TestWriteAndReplay(t *testing.T) {
 		t.Fatalf("journal not at %s: %v", want, err)
 	}
 
-	events, err := Events(id)
+	events, err := collect(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +140,7 @@ func TestOpenResumesTheSameFileAcrossUTCMidnight(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	events, err := Events(id)
+	events, err := collect(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +248,7 @@ func TestNilJournalIsUsable(t *testing.T) {
 
 func TestEventsUnknownRun(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
-	_, err := Events("nope")
+	err := Events("nope", nil)
 	if err == nil {
 		t.Fatal("unknown run should error")
 	}
@@ -260,7 +267,7 @@ func TestEventsUnknownRun(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, "runs", "2026-08-25"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Events("nope")
+	err = Events("nope", nil)
 	if err == nil || !strings.Contains(err.Error(), "no journal for run nope") {
 		t.Errorf("existing tree, unknown id: got %v", err)
 	}
@@ -287,7 +294,7 @@ func TestEventsRejectsTraversalIDs(t *testing.T) {
 		"",                                 // empty
 		strings.Repeat("a", maxRunIDLen+1), // overlong
 	} {
-		events, err := Events(id)
+		events, err := collect(id)
 		if err == nil || !errors.Is(err, ErrNoJournal) {
 			t.Errorf("id %q: want ErrNoJournal, got %v (%+v)", id, err, events)
 		}
@@ -304,7 +311,7 @@ func TestEventsRejectsTraversalIDs(t *testing.T) {
 	if err := j.Close(Summary{Start: now, End: now}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Events(id); err != nil {
+	if err := Events(id, func(map[string]any) {}); err != nil {
 		t.Errorf("generated id rejected: %v", err)
 	}
 }
