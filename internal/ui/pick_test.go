@@ -231,3 +231,21 @@ func TestPickQuitKeys(t *testing.T) {
 		t.Fatal("q should leave without launching")
 	}
 }
+
+// The agents pane takes focus even when nothing is installed, so its
+// empty state must carry the cursor bar: a screen with no ❯ leaves the
+// keyboard nowhere to be.
+func TestPickEmptyAgentsPaneKeepsFocusVisible(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Agents = nil
+	for _, focus := range []pane{paneReviews, paneAgents} {
+		p.focus = focus
+		view := stripANSI(p.View())
+		hasCursor := strings.Contains(view, "❯ ")
+		inAgents := strings.Contains(view, "❯ none installed")
+		if !hasCursor || (focus == paneAgents) != inAgents {
+			t.Fatalf("focus %d: cursor bar wrong (❯ present=%t, on the empty pane=%t):\n%s",
+				focus, hasCursor, inAgents, view)
+		}
+	}
+}

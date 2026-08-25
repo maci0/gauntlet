@@ -818,8 +818,17 @@ func (p *picker) reviewPanel(w, h int) string {
 func (p *picker) agentPanel(w, h int) string {
 	inner := w - 4
 	if len(p.cfg.Agents) == 0 {
-		return panel("AGENTS", styleBad.Render("none installed")+
-			styleDim.Render(" (see: gauntlet doctor)"), inner, h)
+		// The pane still takes focus when it has nothing to list, so it must
+		// carry the cursor bar like any other pane: a screen with no ❯ leaves
+		// the keyboard nowhere to be.
+		body := styleBad.Render("none installed") +
+			styleDim.Render(" (see: gauntlet doctor)")
+		if p.focus == paneAgents {
+			body = styleInfo.Render("❯ ") + body
+		} else {
+			body = "  " + body
+		}
+		return panel("AGENTS", body, inner, h)
 	}
 	from, to := p.window(paneAgents, len(p.cfg.Agents), h)
 	lines := make([]string, 0, h)
