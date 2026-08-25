@@ -9,6 +9,32 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Added
+
+- Every review prompt now names the helper tools this machine actually has,
+  and the ones it does not: an agent that does not know `cppcheck` is here
+  reads the C by hand, and one that does not know it is absent spends budget
+  finding out, or tries to install it against the rules. The binaries are
+  probed once per run, in one parallel pass, and the same line appears in
+  `--show-prompt`.
+- The tool catalog covers the toolchains it was missing: C and C++
+  (`cppcheck`, `clang-tidy`, `clang-format`, `cpplint`, `scan-build`,
+  `include-what-you-use`, `bloaty`), Go (`staticcheck`, `golangci-lint`,
+  `gocritic`, `errcheck`, `govulncheck`, `gofumpt`, `deadcode`), typing and
+  spelling (`mypy`, `codespell`, `typos`), formatting and config (`shfmt`,
+  `editorconfig-checker`, `biome`), infrastructure (`checkov`, `conftest`,
+  `kubeconform`, `ansible-lint`, `dockle`), mobile (`swiftlint`, `ktlint`,
+  `detekt`), and more besides. `lint-review`, `error-review`,
+  `mobile-review`, and `privacy-review` have tooling for the first time.
+
+### Fixed
+
+- `journal_test.go` called `Events` with its old signature, which broke
+  `go test ./internal/journal` at HEAD: one call site was missed when the API
+  became a streaming visitor.
+
 ## 1.4.1
 
 ### Fixed

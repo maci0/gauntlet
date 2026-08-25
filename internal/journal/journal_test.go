@@ -264,7 +264,7 @@ func TestCloseAfterCloseQuietStillIndexesOnce(t *testing.T) {
 		t.Fatalf("repeated close should be a no-op: %v", err)
 	}
 
-	events, err := Events(id)
+	events, err := collect(id)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("events must survive the quiet close: %v %+v", err, events)
 	}

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -105,7 +106,10 @@ type Runner struct {
 	rng            *rand.Rand // loop-goroutine only: the per-loop review shuffle
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
-	mergeMu        sync.Mutex // serializes merges into the main tree
+	// tools is what this machine has of the helper binaries the scheduled
+	// reviews can use, probed once at startup rather than per review.
+	tools   map[string]bool
+	mergeMu sync.Mutex // serializes merges into the main tree
 
 	loopMu    sync.Mutex
 	loopCount int
@@ -182,6 +186,7 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		rng:            rand.New(rand.NewSource(int64(seed))),
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),
+		tools:          resolveTools(cfg.Reviews),
 	}
 	r.seed = seed
 	if cfg.Jobs > 1 {
@@ -190,6 +195,50 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		}
 	}
 	return r, nil
+}
+
+// resolveTools probes, in one parallel pass, every helper binary the
+// scheduled reviews might reach for. The answer goes into each prompt, so an
+// agent knows what is here before it starts guessing.
+func resolveTools(reviews []string) map[string]bool {
+	seen := map[string]bool{}
+	var names []string
+	for _, review := range reviews {
+		for _, t := range agent.ToolsFor(review) {
+			for alt := range strings.SplitSeq(t, "|") {
+				if !seen[alt] {
+					seen[alt] = true
+					names = append(names, alt)
+				}
+			}
+		}
+	}
+	found := agent.ResolveMany(names)
+	have := make(map[string]bool, len(found))
+	for name, path := range found {
+		have[name] = path != ""
+	}
+	return have
+}
+
+// toolsFor splits one review's helpers into what this machine has and what it
+// does not. An alternative pair ("ast-grep|sg") counts as present when either
+// binary is, and is named by the first: that is what the rules call it.
+func (r *Runner) toolsFor(review string) prompt.Tools {
+	var t prompt.Tools
+	for _, name := range agent.ToolsFor(review) {
+		present := false
+		for alt := range strings.SplitSeq(name, "|") {
+			present = present || r.tools[alt]
+		}
+		primary, _, _ := strings.Cut(name, "|")
+		if present {
+			t.Have = append(t.Have, primary)
+		} else {
+			t.Missing = append(t.Missing, primary)
+		}
+	}
+	return t
 }
 
 // Stats exposes the accumulated results.
@@ -554,7 +603,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// review runs in a different directory anyway.
 	resume := r.shouldResume(spec, wt)
 
-	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo)
+	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review))
 	argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
 		Continue: resume,
 		Binary:   r.cfg.Bin[spec.Tool],
