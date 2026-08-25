@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"path/filepath"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
@@ -42,6 +43,17 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 	logf := cfg.Log
 	if logf == nil {
 		logf = func(string, ...any) {}
+	}
+
+	// The suggester that is not an agent: file signals, no launch, no tokens.
+	if cfg.Only != nil && cfg.Only.Tool == FastSuggestAgent {
+		spec := *cfg.Only
+		logf("Reading %s for review signals (no agent)", filepath.Base(cfg.Dir))
+		picked := fastSuggest(cfg.Dir, cfg.Pool)
+		if len(picked) == 0 {
+			return nil, spec, errors.New("no review matched anything in this tree")
+		}
+		return picked, spec, nil
 	}
 
 	order := make([]agent.Spec, 0, len(cfg.Agents))

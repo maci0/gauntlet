@@ -132,11 +132,35 @@ func TestTruncateDescKeepsValidUTF8(t *testing.T) {
 
 // A failed re-exec ends the run for good, so the handoff file it just wrote
 // must not sit in the state dir forever.
+// A reload is a handover, not a restart: a resumed directory keeps the
+// schedule the run already resolved, so --suggest does not ask an agent (and
+// the user) a second time and a launcher-composed run does not reopen the
+// launcher.
+func TestResumedDirectoriesKeepTheirSchedule(t *testing.T) {
+	carried := &dirRun{dir: "/a"}
+	fresh := &dirRun{dir: "/b"}
+	prior := handoff{Dirs: map[string]dirHandoff{"/a": {Reviews: []string{"sec-review"}}}}
+
+	got := needPlanning([]*dirRun{carried, fresh}, prior, true)
+	if len(got) != 1 || got[0] != fresh {
+		t.Fatalf("planning was asked for %v, want only the directory with no schedule", got)
+	}
+	if len(carried.reviews) != 1 || carried.reviews[0] != "sec-review" {
+		t.Fatalf("the carried schedule was lost: %v", carried.reviews)
+	}
+
+	// A fresh process ignores whatever state happens to be lying around.
+	carried.reviews = nil
+	if got := needPlanning([]*dirRun{carried, fresh}, prior, false); len(got) != 2 {
+		t.Fatalf("a run that is not resuming must plan every directory, got %v", got)
+	}
+}
+
 func TestFailedReloadRemovesHandoffState(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "test-run"
 	if code := doReload(filepath.Join(t.TempDir(), "missing-binary"),
-		runID, time.Now(), nil, handoff{}, io.Discard); code != exitFail {
+		runID, time.Now(), nil, handoff{}, []string{"--once"}, io.Discard); code != exitFail {
 		t.Fatalf("a failed exec should exit %d, got %d", exitFail, code)
 	}
 	if _, err := os.Stat(filepath.Join(journal.StateDir(), runID+".json")); !os.IsNotExist(err) {

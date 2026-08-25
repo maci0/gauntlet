@@ -49,7 +49,7 @@ what it should offer.
 | `-r, --reviews LIST` | all | Reviews and/or set names to run. The `-review` suffix is optional (`sec` means `sec-review`). Naming one twice runs it twice per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
 | `-s, --suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
-| `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step. |
+| `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step, or `gauntlet` to choose from file signals instead of asking a model: it reads extensions, well-known filenames, and directory names, costs no tokens, and answers in milliseconds. It cannot tell a toy HTTP handler from a payment path; an agent can. |
 | `--suggest-timeout DUR` | `30m` | Timeout for the suggest step. |
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |
 

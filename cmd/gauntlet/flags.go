@@ -17,6 +17,7 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runner"
 	"golang.org/x/term"
 )
 
@@ -256,7 +257,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	})
 	alias("x", "exclude", func(n string) { fs.Var(exclude, n, "reviews and/or sets to skip") })
 	alias("s", "suggest", func(n string) { fs.BoolVar(suggest, n, false, "shorthand for --reviews suggest") })
-	fs.StringVar(suggestAgent, "suggest-agent", "", "agent to run the suggest step")
+	fs.StringVar(suggestAgent, "suggest-agent", "",
+		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
 	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout", "timeout for the suggest step")
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
@@ -391,7 +393,10 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		o.agents = specs
 	}
-	if suggestAgent != "" {
+	if suggestAgent == runner.FastSuggestAgent {
+		// Not an agent: gauntlet itself, reading the tree for signals.
+		o.suggestAgent = &agent.Spec{Tool: runner.FastSuggestAgent}
+	} else if suggestAgent != "" {
 		specs, err := agent.ParseSpecs(suggestAgent)
 		if err != nil {
 			return nil, err

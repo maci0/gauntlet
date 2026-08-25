@@ -39,8 +39,26 @@ changes could land in a minor instead and were listed under Changed.
   auto-approves the session's tool permissions itself, and `-C` continues the
   last session for `--continue-sessions`.
 
+- `--suggest-agent gauntlet`: the suggester that is not an agent. It reads the
+  tree for signals (extensions, well-known filenames, directory names) and
+  proposes the reviews those files justify, with the evidence as the reason,
+  in milliseconds and for no tokens. It cannot tell a toy HTTP handler from a
+  payment path, which is what an agent is for; it is very good at knowing
+  there is no Dockerfile. The launcher offers it beside the agents.
+- crush's token counts are read from its project database (`.crush/crush.db`,
+  `sessions.completion_tokens`) in builds with `-tags sqlite`, the same tag
+  `--opencode-db` needs. Only sessions written during a review count toward
+  it. `gauntlet doctor` says whether this build can read them.
+
 ### Fixed
 
+- A hot reload is a handover again, not a restart. The successor is exec'd
+  with the arguments this process is running rather than the ones it was typed
+  with, and every resumed directory keeps the schedule it had already
+  resolved, so a run composed by `gauntlet pick` no longer reopens the
+  launcher and a `--suggest` run no longer asks an agent (and the user) to
+  choose a second time. A resumed run also inherits the `--semcode` index its
+  predecessor built instead of spending another half hour on it.
 - `journal_test.go` called `Events` with its old signature, which broke
   `go test ./internal/journal` at HEAD: one call site was missed when the API
   became a streaming visitor.

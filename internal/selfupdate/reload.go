@@ -170,7 +170,7 @@ func LoadState(v any) bool {
 //
 // execve, not fork: the pid, the terminal, and the exit status all stay the
 // same, so a supervisor or a shell job sees one continuous process.
-func Reexec(path, statePath string) error {
+func Reexec(path, statePath string, args []string) error {
 	if path == "" {
 		return errors.New("no executable to reload")
 	}
@@ -185,7 +185,11 @@ func Reexec(path, statePath string) error {
 	if statePath != "" {
 		filtered = append(filtered, stateEnv+"="+statePath)
 	}
-	argv := append([]string{path}, os.Args[1:]...)
+	// The successor continues this run, so it is handed the arguments this
+	// process is actually running, not the ones it was typed with: a run
+	// composed by the launcher would otherwise reopen the launcher, and a
+	// `--suggest` run would ask an agent to choose all over again.
+	argv := append([]string{path}, args...)
 	if err := syscall.Exec(path, argv, filtered); err != nil {
 		return fmt.Errorf("exec %s: %w", path, err)
 	}

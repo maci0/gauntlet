@@ -21,6 +21,11 @@ import (
 // `-tags toktop`. Without that tag the methods below are a no-op and the
 // stdout reading stands alone: fewer numbers for the quietest agents, no
 // dependency, and nothing that pretends to a measurement it does not have.
+// maxPlausibleTokens bounds a counter read from an agent's own store, the way
+// the output parser bounds one read from its stdout: above this it is a
+// misread, not a measurement.
+const maxPlausibleTokens = 1 << 40
+
 type transcriptReader interface {
 	// Run reports usage as it grows, until the context is canceled.
 	Run(ctx context.Context, onChange func(output, thinking int))
@@ -43,5 +48,14 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 // The implementation is chosen at build time; see usage_toktop.go and
 // usage_off.go.
 func watchTranscript(tool, dir string, since time.Time) transcriptReader {
+	// crush keeps its sessions in a SQLite file inside the project rather than
+	// a JSONL under $HOME, so it is read here rather than by the transcript
+	// readers, and only by a build that linked a driver.
+	if tool == "crush" {
+		if r := newCrushReader(dir, since); r != nil {
+			return r
+		}
+		return nopReader{}
+	}
 	return newTranscriptReader(tool, dir, since)
 }
