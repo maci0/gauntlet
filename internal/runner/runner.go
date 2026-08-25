@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -76,10 +75,11 @@ type Config struct {
 
 	// Seed drives every stochastic choice the runner makes: the per-loop
 	// review shuffle, agent sampling, and backoff jitter. Each choice is a
-	// pure function of this seed and inputs a journal already records (review
-	// name, attempt number), so no choice depends on the order goroutines run
-	// in and a nonzero seed replays a parallel run as exactly as a sequential
-	// one. Zero derives one from the clock, as runs always have; the
+	// pure function of this seed and inputs a journal already records (loop
+	// number, review name, attempt number), so no choice depends on the order
+	// goroutines run in or on how many choices ran before it, and a nonzero
+	// seed replays a parallel run as exactly as a sequential one, across a hot
+	// reload too. Zero derives one from the clock, as runs always have; the
 	// effective seed is published on the run-start event so any journal can
 	// be reproduced from what it records.
 	Seed uint64
@@ -103,7 +103,6 @@ type Runner struct {
 	repo *gitx.Repo
 
 	mu             sync.Mutex // guards sessionStarted
-	rng            *rand.Rand // loop-goroutine only: the per-loop review shuffle
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
 	// tools is what this machine has of the helper binaries the scheduled
@@ -212,7 +211,6 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		bus:            bus,
 		st:             &Stats{Start: start},
 		repo:           gitx.Open(cfg.Dir),
-		rng:            rand.New(rand.NewSource(int64(seed))),
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),
 		tools:          resolveTools(cfg.Reviews),
@@ -344,9 +342,14 @@ func (r *Runner) pickAgent(review string, exclude map[agent.Spec]bool) agent.Spe
 	return pool[drawIndex(r.seed, "agent\x00"+review, len(pool))]
 }
 
-// schedule returns this loop's review order and arms the pending queue. The
+// schedule returns loop loopNo's review order and arms the pending queue. The
 // first call consumes a resume queue handed over by a previous process.
-func (r *Runner) schedule() []string {
+//
+// The shuffle is a keyed draw per Fisher-Yates step, not a random stream: loop
+// 3's order is the same pure function of the seed whether this process has
+// scheduled two loops before it or inherited the run from a hot reload, which
+// is what lets the successor continue the interrupted schedule exactly.
+func (r *Runner) schedule(loopNo int) []string {
 	if len(r.resume) > 0 {
 		order := r.resume
 		r.resume = nil
@@ -354,7 +357,11 @@ func (r *Runner) schedule() []string {
 		return order
 	}
 	order := append([]string(nil), r.cfg.Reviews...)
-	r.rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+	for i := len(order) - 1; i > 0; i-- {
+		key := fmt.Sprintf("shuffle\x00%d\x00%d", loopNo, i)
+		j := drawIndex(r.seed, key, i+1)
+		order[i], order[j] = order[j], order[i]
+	}
 	r.setPending(order)
 	return order
 }
@@ -427,7 +434,7 @@ func (r *Runner) budgetExhausted() bool {
 // This is the original's behavior, and the only mode that can review
 // uncommitted work.
 func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
-	r.schedule()
+	r.schedule(loopNo)
 	for {
 		if ctx.Err() != nil || r.soft.Load() {
 			return false
@@ -476,7 +483,7 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 
 	sem := make(chan struct{}, r.cfg.Jobs)
 	var wg sync.WaitGroup
-	r.schedule()
+	r.schedule(loopNo)
 	for i := 0; ; i++ {
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() || r.budgetExhausted() {
 			break
