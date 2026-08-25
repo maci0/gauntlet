@@ -68,9 +68,9 @@ var helpGroups = []flagGroup{
 	}},
 	{"Execution", []flagDoc{
 		{"C", "dir", "DIR", "directory to review"},
-		{"", "dirs", "LIST", "review several directories in parallel; globs are expanded (repeatable)"},
+		{"", "dirs", "LIST", "review several directories in parallel, each with its own --jobs pool; globs are expanded (repeatable)"},
 		{"", "target-dirs", "LIST", "alias of --dirs, kept for scripts from the Python tool; takes a comma-separated list"},
-		{"j", "jobs", "N", "reviews at a time; above 1, each gets its own git worktree and is merged back"},
+		{"j", "jobs", "N", "reviews at a time per directory; above 1, each gets its own git worktree and is merged back"},
 		{"t", "timeout", "DUR", "per-review timeout: 90s, 30m, 1h, 2d"},
 		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
 		{"1", "once", "", "run a single loop and exit"},

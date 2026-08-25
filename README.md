@@ -55,7 +55,8 @@ rewrite adds:
   own `git worktree` on its own branch and merges the results back one at a
   time. Concurrent agents never share a working tree.
 - **Parallel repositories.** `--dirs a,b,c` reviews several trees at once,
-  each with its own lock, baseline, and lane in the output.
+  each with its own lock, baseline, and lane in the output. `--jobs` applies
+  within each of them, so the two multiply.
 - **A dashboard.** `--tui` shows lanes, a live activity chart, the whole
   review grid, and a normalized feed on one screen.
 - **Output normalization.** Spinner frames, escape sequences, repainted
@@ -166,6 +167,11 @@ flowchart LR
 
 Without `--jobs`, reviews run one at a time and edit the tree in place, exactly
 like the Python original, dirty tree and all.
+
+`--jobs` counts per directory, not per run: every directory in `--dirs` gets
+its own loop, its own lock, and its own pool of `N`. `--dirs a,b,c -j 4` is up
+to 12 agents at once, so size it against your CPU count and your API limits,
+not against the review list.
 
 ## Run journal
 
@@ -292,7 +298,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 |---|---|---|
 | `-C, --dir DIR` | cwd | Directory to review. |
 | `--dirs LIST` | none | Review several directories in parallel; globs are expanded. Conflicts with `--dir`. Also accepted as `--target-dirs`, the name the Python tool used. |
-| `-j, --jobs N` | 1 | Reviews at a time; >1 uses worktree isolation and merges back. |
+| `-j, --jobs N` | 1 | Reviews at a time **per directory**; >1 uses worktree isolation and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `-1, --once` | off | One loop, then stop. |

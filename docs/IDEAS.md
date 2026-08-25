@@ -54,3 +54,92 @@ the per-agent coverage. What was never built is reading the number out of the
 TLS stream itself, by proxy or eBPF uprobe. The design and its real costs
 (privileges, fragility, plaintext source code in kernel buffers) are written
 up at the end of `docs/TOKEN_TELEMETRY.md`.
+
+## Safety-critical review family (MISRA, CERT, Power of Ten)
+
+**Problem.** The bundled prompts review code the way a senior engineer would:
+find the bug, apply the fix. Firmware, avionics, medical, and automotive work
+is judged against a written standard instead: MISRA C:2012 and its amendments,
+AUTOSAR C++14, CERT C/C++, JPL/NASA Power of Ten, and the process standards
+above them (DO-178C, ISO 26262, IEC 62304). None of that fits "find something
+worth fixing": conformance is per-rule, per-line, and every departure needs a
+recorded justification rather than a quiet edit.
+
+**Why it fits anyway.** Everything about a review here is already a prompt
+plus a set: `misra-review.md`, `cert-review.md`, `poweroften-review.md`, a
+`critical` set that runs them together, and a repo can override any of them
+with its own file. The parts that do not fit are the interesting ones:
+
+- **Rule text is licensed.** MISRA's guidelines cannot be embedded in this
+  repo. The prompt can cite rule numbers and describe intent in its own words,
+  and a team with a licensed copy can drop the real text into
+  `misra-review.md` in their own tree, where prompt discovery already picks it
+  up over the bundled one.
+- **The deterministic half belongs to a checker.** `cppcheck --addon=misra`,
+  `clang-tidy` with `cert-*`/`misra-*`, or a commercial analyzer will always
+  beat an agent at "line 412 violates 10.3". Where an agent is genuinely
+  better is the half no checker does: triaging the report, separating true
+  violations from noise, and drafting the deviation record a standard requires
+  (rule, location, rationale, risk, sign-off). So the review should run the
+  checker (it already may run any tool) and hand the agent its output.
+- **Editing certified code is the wrong default.** These reviews want an
+  advisory mode: report and justify, change nothing. Today that means a prompt
+  that forbids edits, which is a rule the agent could break; a real
+  `--no-edit` (snapshot the tree, refuse the run's commits, diff at the end)
+  would enforce it. The PR-per-review idea above is the other half: a
+  traceable change, reviewed by a human, is the only kind such a project can
+  take.
+- **Traceability is already there.** The run journal records which prompt,
+  which agent, which model, which commit, and what changed. That is the
+  skeleton of an audit record; what it lacks is a stable prompt version to
+  cite (a hash of the prompt file would do).
+
+**What would need deciding.** Whether "conformance" outcomes deserve their own
+result kind next to ok/fail/timeout (a review that finds 40 violations is not
+a failure), and whether deviation records belong in the tree (a
+`deviations/` directory the next run reads back) or only in the journal.
+
+## An interactive launcher for a bare `gauntlet`
+
+**Problem.** Typing `gauntlet` with no flags starts reviewing the current
+directory with every prompt and whatever agents are installed, forever. That
+is the right default for someone who already knows the tool and the wrong
+first five seconds for everyone else: the interesting choices (which reviews,
+which agents, how many at once, which trees) are 30 flags deep, and the help
+screen teaches them one flag at a time rather than as one decision.
+
+**Shape of the fix.** A launcher screen, on the same bubbletea stack the
+dashboard already uses, that ends by running the exact command it composed:
+
+- **Panes, one decision each.** Reviews, agents, directories, concurrency,
+  duration. `tab` moves between them, `space` toggles, `enter` launches.
+- **Reviews as collapsible categories.** The sets (`quick`, `security`,
+  `frontend`, ...) are the groups, collapsed by default with a count, expanded
+  to individual reviews; toggling a group toggles its members, and a member
+  toggled by hand overrides it. `/` filters by name across groups. This is
+  where `--suggest` belongs too: a first-class "let an agent pick" entry that
+  runs the suggest step and comes back with the boxes ticked, so its choice is
+  reviewable before anything runs.
+- **Agents from detection, not from memory.** The same list `doctor` prints,
+  each with its model field, unavailable ones shown greyed with the reason.
+- **Directories with the globs the shell would have eaten.** Start at the cwd,
+  allow adding paths and globs, mark trees that are dirty (a `--jobs > 1` run
+  needs a clean tree, and finding that out after picking everything else is
+  the worst time to find it out).
+- **Concurrency that says what it will cost.** `--jobs` is per directory, so
+  the screen should show the product, "4 jobs x 3 directories = up to 12
+  agents at once", next to the CPU count. This is the number people get wrong.
+- **The command line, always visible.** The composed invocation renders at the
+  bottom and updates as choices change, so the launcher teaches the flags
+  instead of hiding them. `enter` runs it; a key copies it.
+- **Recent runs as presets.** `~/.gauntlet/index.jsonl` already records the
+  argv of every past run: offer the last few as one-key presets ("rerun
+  yesterday's security pass over both repos"), which is a preset system that
+  needs no new file format.
+
+**What would need deciding.** Whether the launcher becomes the default for a
+bare `gauntlet` on a TTY (it should never appear when stdout is a pipe, under
+`--quiet`, or with `TERM=dumb`), or stays behind `gauntlet pick`/`--menu`
+until it has earned the default. Changing what a bare `gauntlet` does is a
+change to documented behavior, so it waits for a minor version and an explicit
+escape hatch (`--yes` to take the defaults without a screen).

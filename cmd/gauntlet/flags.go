@@ -265,14 +265,14 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.Var(agentCmds, "agent-cmd", "define an agent: NAME=ARGV with a {prompt} placeholder (repeatable)")
 
 	alias("C", "dir", func(n string) { fs.StringVar(&o.dir, n, ".", "directory to review") })
-	fs.Var(dirs, "dirs", "review several directories in parallel (repeatable, comma-separated)")
+	fs.Var(dirs, "dirs", "review several directories in parallel, each with its own --jobs pool (repeatable, comma-separated)")
 	// The name the Python tool used. Scripts that pass it keep working, but it
 	// takes a comma-separated list here rather than space-separated arguments.
 	fs.Var(dirs, "target-dirs", "alias of --dirs")
 	alias("t", "timeout", func(n string) { fs.Var(durationFlag{d: &o.timeout}, n, "per-review timeout") })
 	fs.Var(durationFlag{&o.runtime, true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
 	alias("j", "jobs", func(n string) {
-		fs.IntVar(&o.jobs, n, 1, "reviews to run at once; >1 gives each its own git worktree and merges back")
+		fs.IntVar(&o.jobs, n, 1, "reviews to run at once per directory; >1 gives each its own git worktree and merges back")
 	})
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
 	fs.Var(seedFlag{&o.seed}, "seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
