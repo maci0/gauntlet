@@ -54,6 +54,90 @@ func TestPorcelainPath(t *testing.T) {
 	}
 }
 
+// quoteGitPath encodes a path the way git quotes it inside porcelain output
+// when the path needs quoting: wrapped in double quotes, backslash and double
+// quote doubled, control bytes as three-digit octal, everything else raw.
+// It is the encoder half of the round-trip property FuzzPorcelainPath pins.
+func quoteGitPath(p string) string {
+	var b strings.Builder
+	b.Grow(len(p) + 2)
+	b.WriteByte('"')
+	for i := 0; i < len(p); i++ {
+		c := p[i]
+		switch {
+		case c == '\\' || c == '"':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case c == '\a':
+			b.WriteString(`\a`)
+		case c == '\b':
+			b.WriteString(`\b`)
+		case c == '\f':
+			b.WriteString(`\f`)
+		case c == '\n':
+			b.WriteString(`\n`)
+		case c == '\r':
+			b.WriteString(`\r`)
+		case c == '\t':
+			b.WriteString(`\t`)
+		case c == '\v':
+			b.WriteString(`\v`)
+		case c < 0x20 || c == 0x7f:
+			fmt.Fprintf(&b, "\\%03o", c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
+}
+
+// FuzzPorcelainPath drives the git status line parser with arbitrary hostile
+// repository output. The C-unquote is hand-rolled and its result decides
+// whether a run sees the tree as dirty (which blocks worktree isolation) and
+// which paths are reported, so it is pinned two ways per iteration: every raw
+// line must parse deterministically and never yield anything on a line too
+// short to carry a path, and decoding must invert exactly what git produces,
+// checked by re-encoding an arbitrary byte string into git's quoted form and
+// requiring unquoteC to restore it verbatim.
+func FuzzPorcelainPath(f *testing.F) {
+	seeds := []string{
+		" M main.go",
+		"M  main.go",
+		"?? untracked.go",
+		"R  old.txt -> new.txt",
+		"C  orig.txt -> copy.txt",
+		"?? a -> b",
+		`?? "sp ace.go"`,
+		`?? "caf\303\251.md"`,
+		` M "naïve\\dir\\file"`,
+		`?? "quo\"te.go"`,
+		`?? "tab\there.md"`,
+		`?? "trail\"`,
+		`?? "weird\qescape"`,
+		`?? "\000\037\177.md"`,
+		`R  "a\001b" -> `,
+		"",
+		" M",
+		"ab",
+	}
+	for _, s := range seeds {
+		f.Add(s, s)
+	}
+	f.Fuzz(func(t *testing.T, line, path string) {
+		got := porcelainPath(line)
+		if again := porcelainPath(line); again != got {
+			t.Fatalf("porcelainPath(%q) is not deterministic: %q vs %q", line, got, again)
+		}
+		if len(line) <= 3 && got != "" {
+			t.Fatalf("short line %q yielded a path %q", line, got)
+		}
+		if decoded := unquoteC(quoteGitPath(path)); decoded != path {
+			t.Fatalf("round trip lost %q: got %q", path, decoded)
+		}
+	})
+}
+
 func TestBranchSlug(t *testing.T) {
 	cases := map[string]string{
 		"sec-review": "sec-review",
