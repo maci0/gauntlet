@@ -166,6 +166,29 @@ func TestFailingAgentIsRetriedOnAnother(t *testing.T) {
 	cfg.Agents = []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
 	cfg.Bin = map[string]string{"claude": bad, "codex": good}
 
+	// This test's subject is the retry, which only runs when the failing
+	// agent is sampled first. Which one goes first is a seeded choice, so
+	// search for a seed that orders it that way: with the clock's default
+	// seed the assertions hold either way, and retry would go untested about
+	// half the time while the suite stayed green.
+	seed := uint64(0)
+	for s := uint64(1); s < 1000 && seed == 0; s++ {
+		probeCfg := cfg
+		probeCfg.Seed = s
+		probe, err := New(context.Background(), probeCfg, NewBus())
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe.schedule()
+		if probe.pickAgent(nil).Tool == "claude" {
+			seed = s
+		}
+	}
+	if seed == 0 {
+		t.Fatal("no seed in 1000 samples the failing agent first")
+	}
+	cfg.Seed = seed
+
 	bus := NewBus()
 	drain(bus)
 	r, err := New(context.Background(), cfg, bus)
@@ -397,6 +420,138 @@ echo "RESULT: changed=1"`)
 	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
 		t.Fatalf("tree left dirty:\n%s", out)
 	}
+}
+
+// The commit step hands the dirty tree to an agent instead of committing
+// itself, so the fakes tell the two invocations apart by the prompt: only the
+// commit step's prompt calls the agent a git commit assistant. The prompt is
+// not always the first argument, so the match runs over every argument.
+const commitStepMarker = "commit assistant"
+
+// TestCommitStepRunsAfterADirtyReview pins the happy path of --commit in
+// sequential mode: a review that edits the tree is followed by exactly one
+// commit-step launch, recorded in the run's counters and on an EvCommit event.
+func TestCommitStepRunsAfterADirtyReview(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in *"`+commitStepMarker+`"*)
+  echo "COMMIT: done" > commit-step-ran
+  exit 0;;
+esac
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Commit = true
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	c := r.Stats().Counts()
+	if c.OK != 1 {
+		t.Fatalf("review itself must succeed: %+v", c)
+	}
+	if r.Stats().CommitRuns() != 1 || r.Stats().CommitFails() != 0 {
+		t.Fatalf("commit step not run once: runs=%d fails=%d",
+			r.Stats().CommitRuns(), r.Stats().CommitFails())
+	}
+	var commits []Event
+	for _, ev := range <-done {
+		if ev.Kind == EvCommit {
+			commits = append(commits, ev)
+		}
+	}
+	if len(commits) != 1 || commits[0].Status != StatusOK {
+		t.Fatalf("want one successful commit event, got %+v", commits)
+	}
+	// The commit agent answered as the commit assistant, not by falling
+	// through the review branch again.
+	if _, err := os.Stat(filepath.Join(repo, "commit-step-ran")); err != nil {
+		t.Fatalf("the commit step never ran its own branch: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(body), "// touched"); n != 1 {
+		t.Fatalf("the commit step ran the review branch %d extra times:\n%s", n-1, body)
+	}
+}
+
+// TestCommitStepSkipsACleanTree pins the early return: a review that changed
+// nothing must not spend a commit launch on an empty tree.
+func TestCommitStepSkipsACleanTree(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Commit = true
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	if r.Stats().CommitRuns() != 0 {
+		t.Fatalf("clean tree still launched a commit step: %+v", r.Stats().Counts())
+	}
+}
+
+// TestFailedCommitStepIsCountedAsAFailure pins that a failing commit step is
+// visible as one: it is the difference between "reviews fixed things" and
+// "the fixes are sitting uncommitted in the tree".
+func TestFailedCommitStepIsCountedAsAFailure(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in *"`+commitStepMarker+`"*) echo "boom" >&2; exit 7;; esac
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Commit = true
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	if r.Stats().CommitRuns() != 1 || r.Stats().CommitFails() != 1 {
+		t.Fatalf("failed step must be one run and one failure: runs=%d fails=%d",
+			r.Stats().CommitRuns(), r.Stats().CommitFails())
+	}
+	for _, ev := range <-done {
+		if ev.Kind != EvCommit {
+			continue
+		}
+		if ev.Status != StatusFail {
+			t.Fatalf("commit event reported %v, want fail", ev.Status)
+		}
+		return
+	}
+	t.Fatal("no commit event published")
 }
 
 func TestCancelStopsTheRun(t *testing.T) {

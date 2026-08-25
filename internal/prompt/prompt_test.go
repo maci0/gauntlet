@@ -103,6 +103,39 @@ func TestComposePromptReviewException(t *testing.T) {
 	}
 }
 
+func TestCommitPromptVariants(t *testing.T) {
+	base := CommitPrompt(false, false)
+	if !strings.Contains(base, "git commit") {
+		t.Fatal("the commit instruction itself is missing")
+	}
+	if strings.Contains(strings.ToLower(base), "git push") {
+		t.Fatal("no push was asked for, but the push step is present")
+	}
+
+	pushed := CommitPrompt(true, false)
+	if !strings.Contains(pushed, "git push") {
+		t.Fatal("push step missing from a push run")
+	}
+	if strings.Contains(pushed, "--rebase") {
+		t.Fatal("rebase recovery must stay out of cautious runs")
+	}
+
+	yolo := CommitPrompt(true, true)
+	if !strings.Contains(yolo, "--rebase") {
+		t.Fatal("yolo push runs carry the divergence recovery step")
+	}
+
+	// Every variant must be fully rendered: a leftover placeholder in front
+	// of an agent is an instruction nobody wrote.
+	for name, v := range map[string]string{"base": base, "push": pushed, "yolo": yolo} {
+		for _, ph := range []string{"{push_step}", "{merge_step}"} {
+			if strings.Contains(v, ph) {
+				t.Errorf("%s prompt still contains %s", name, ph)
+			}
+		}
+	}
+}
+
 func TestSuggestPromptNeutralizesCatalogInjection(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "evil-review.md"),
