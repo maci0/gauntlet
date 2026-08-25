@@ -9,6 +9,18 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- A tagged release publishes its CHANGELOG section as the GitHub release notes
+  again, and refuses to publish when that section is missing: the Go rewrite
+  had switched to GitHub's auto-generated notes, which list commits for
+  maintainers instead of telling consumers what changed for them. The
+  workflow now also smoke-tests what it is about to publish: the host binary
+  must run and report the tagged version, and its checksums.txt line must
+  verify, so a broken or mislabeled build fails before any asset is uploaded.
+
 ## 1.3.0
 
 ### Added
