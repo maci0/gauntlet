@@ -10,10 +10,10 @@ library.
 
 ## Build and test
 
-- `make check`: gofmt, `go fix -diff`, and vet, each under the default
-  tags and `-tags notoktop`. All must be clean; run `go fix ./...` and
-  `go fix -tags notoktop ./...` before committing if the fix step reports
-  anything.
+- `make check`: gofmt, `go fix -diff`, and vet, each under all three
+  shipped tag sets: default (`sqlite`), bare, and `-tags notoktop`. All
+  must be clean; run `go fix` under those same three tag sets before
+  committing if the fix step reports anything.
 - `make test`: the suite with the race detector and shuffled order.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
