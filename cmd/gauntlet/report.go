@@ -40,17 +40,27 @@ func (p palette) red(s string) string    { return p.wrap("31", s) }
 func (p palette) green(s string) string  { return p.wrap("32", s) }
 func (p palette) yellow(s string) string { return p.wrap("33", s) }
 
+// Consumer-facing environment variables this package reads. One definition,
+// so the help screen's environment section (helpEnvVars in usage.go) cannot
+// drift from what colorEnabled actually reads.
+const (
+	envNoColor       = "NO_COLOR"
+	envTerm          = "TERM"
+	envCLIColorForce = "CLICOLOR_FORCE"
+	envForceColor    = "FORCE_COLOR"
+)
+
 // colorEnabled honors NO_COLOR (set at all, see no-color.org), TERM=dumb, and
 // whether the stream is a terminal. CLICOLOR_FORCE / FORCE_COLOR turn color
 // back on for a pipe, which is what `gauntlet … | less -R` needs.
 func colorEnabled(f *os.File) bool {
-	if _, set := os.LookupEnv("NO_COLOR"); set {
+	if _, set := os.LookupEnv(envNoColor); set {
 		return false
 	}
-	if os.Getenv("TERM") == "dumb" {
+	if os.Getenv(envTerm) == "dumb" {
 		return false
 	}
-	for _, name := range []string{"CLICOLOR_FORCE", "FORCE_COLOR"} {
+	for _, name := range []string{envCLIColorForce, envForceColor} {
 		if v := os.Getenv(name); v != "" && v != "0" {
 			return true
 		}
