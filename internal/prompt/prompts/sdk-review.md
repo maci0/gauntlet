@@ -120,6 +120,7 @@ Review the following:
 - No way to inject a custom transport or middleware for test interception
 
 10. Distribution and packaging
+(pkg-review owns the package format's policy and what the artifact ships; here own the consumer-facing distribution surface.)
 - Package name that is confusing, generic, or conflicts with other packages
 - Unnecessary dependencies that increase install size or conflict risk
 - Missing or incorrect peer dependency declarations
