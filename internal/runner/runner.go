@@ -491,6 +491,7 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 			select {
 			case sem <- struct{}{}:
 			case <-ctx.Done():
+				r.abandonQueued(review, loopNo)
 				return
 			}
 			defer func() { <-sem }()
@@ -514,6 +515,22 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	}
 	r.runMergeStep(ctx, loopNo)
 	return ctx.Err() == nil
+}
+
+// abandonQueued records a review that was popped from the queue but never
+// started because the run was canceled before a lane freed up. Sequential mode
+// records its interrupted review; without this the parallel lane would drop
+// the review from the stats, the summary, and the journal alike, and a reload
+// handoff would never hand it to a successor either.
+func (r *Runner) abandonQueued(review string, loopNo int) {
+	res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
+		Status: StatusInterrupted}
+	r.st.Add(res)
+	r.bus.Publish(Event{
+		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
+		Agent: res.Agent.Label(), Loop: loopNo, Status: StatusInterrupted,
+		ExitCode: new(res.ExitCode),
+	})
 }
 
 // runIsolated runs one review in a private worktree and merges its commit.
