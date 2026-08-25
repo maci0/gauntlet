@@ -83,6 +83,9 @@ Supply-chain posture, and what any new dependency inherits as obligations:
 - Each release ships `checksums.txt` (the contract `gauntlet update` verifies
   downloads against) and `sbom.txt`, a per-binary module inventory from
   `go version -m`.
+- A scheduled `govulncheck` job, plus one on every `go.mod`/`go.sum` change,
+  reports vulnerabilities reachable from this code; dependabot owns version
+  bumps, the scan owns advisories.
 - Licenses are MIT or BSD-3-Clause throughout, compatible with this repo's
   AGPL-3.0-or-later. A dependency's license is checked before adoption,
   not after.
