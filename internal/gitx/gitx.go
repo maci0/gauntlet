@@ -33,6 +33,15 @@ var safeConfig = []string{
 	"-c", "diff.external=",
 }
 
+// waitGrace is how long Run may outlive its process before the output pipes
+// are closed out from under whoever still holds them. A grandchild git spawned
+// (a merge driver, a signing program, a credential helper) inherits those
+// pipes, and without this bound one lingering child parks Run, and with it
+// the mutexes around Sample, Merge, and the worktree calls, forever past the
+// deadline. A var only so tests can shrink it; production always sees the
+// default.
+var waitGrace = 10 * time.Second
+
 var gitPath = sync.OnceValue(func() string {
 	// Resolve on an absolute-only PATH so a planted ./git cannot run.
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
@@ -113,6 +122,19 @@ func (r *Repo) runIn(ctx context.Context, stdin io.Reader, timeout time.Duration
 	cmd.Stdin = stdin
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
+	// The deadline kill takes the whole process group down, not just the git
+	// pid: git's own children (a hook, a merge driver) must not survive it as
+	// orphans. WaitDelay then bounds the wait on the output pipes such a
+	// child would still hold open. The same rules runProc and runIndexer
+	// enforce on their own children.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = waitGrace
 	err := cmd.Run()
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into
