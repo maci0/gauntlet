@@ -336,8 +336,11 @@ func Display(s string) string {
 	return Sanitize(s)
 }
 
-// Truncate cuts s to at most w visible cells, without splitting a UTF-8
-// sequence, marking the cut with an ellipsis.
+// Truncate cuts s to at most w code points, without splitting a UTF-8
+// sequence, marking the cut with an ellipsis. Code points are a bound, not a
+// layout measurement: wide characters occupy two terminal cells and a
+// combining mark zero, so display-width cutting lives with the dashboard,
+// which owns the column math.
 func Truncate(s string, w int) string {
 	if w <= 1 {
 		return s

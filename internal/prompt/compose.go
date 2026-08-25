@@ -122,7 +122,12 @@ const catalogDescMax = 200
 var (
 	wsRe            = regexp.MustCompile(`\s+`)
 	relevantTokenRe = regexp.MustCompile(`(?i)RELEVANT\s*:`)
-	suggestLineRe   = regexp.MustCompile(`^\s*RELEVANT:\s*([A-Za-z0-9_-]+)\s*:?\s*(.*)$`)
+	// The name token accepts Unicode letters and digits so a project review
+	// with a non-ASCII stem can be suggested like any other. Punctuation,
+	// whitespace, and ':' stay out: the capture feeds a lookup against the
+	// discovered set and must not be able to carry protocol structure of its
+	// own.
+	suggestLineRe = regexp.MustCompile(`(?i)^\s*RELEVANT:\s*([\p{L}\p{N}_-]+)\s*:?\s*(.*)$`)
 )
 
 // SuggestPrompt asks an agent which reviews apply to this repository.

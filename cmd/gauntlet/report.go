@@ -292,7 +292,8 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
 	for _, n := range set.Names {
-		nameCol = max(nameCol, len(n))
+		// fmt pads %-*s by runes, so the column budget counts the same unit.
+		nameCol = max(nameCol, utf8.RuneCountInString(n))
 	}
 	nameCol++
 	for _, name := range set.Names {
@@ -314,7 +315,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			desc = "(no description)"
 		}
 		room := max(width-len(prefix), 20)
-		if len(desc) > room {
+		if utf8.RuneCountInString(desc) > room {
 			desc = truncateDesc(desc, room-1) + "…"
 		}
 		fmt.Fprintln(out, prefix+pal.dim(desc))
@@ -325,7 +326,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 	fmt.Fprintf(out, "Sets usable with --reviews/--exclude (%d):\n", len(names))
 	setCol := 0
 	for _, n := range names {
-		setCol = max(setCol, len(n))
+		setCol = max(setCol, utf8.RuneCountInString(n))
 	}
 	setCol++
 	for _, name := range names {
@@ -351,22 +352,25 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 	}
 }
 
-// truncateDesc cuts s to at most max bytes without splitting a UTF-8
-// sequence, so a multibyte description never ends in mojibake.
+// truncateDesc cuts s to at most max runes, marking nothing: the caller adds
+// the ellipsis. Cutting at a rune start keeps a multibyte description out of
+// mojibake.
 func truncateDesc(s string, max int) string {
 	if max < 0 {
 		return ""
 	}
-	if len(s) <= max {
-		return s
+	n := 0
+	for i := range s {
+		if n == max {
+			return strings.TrimRight(s[:i], " ")
+		}
+		n++
 	}
-	for max > 0 && !utf8.RuneStart(s[max]) {
-		max--
-	}
-	return strings.TrimRight(s[:max], " ")
+	return s
 }
 
-// wrapIndent wraps a comma-separated list under a hanging indent.
+// wrapIndent wraps a comma-separated list under a hanging indent. Columns
+// count runes, agreeing with how the names themselves are measured.
 func wrapIndent(s string, width, indent int) string {
 	if width-indent < 20 {
 		return s
@@ -374,8 +378,9 @@ func wrapIndent(s string, width, indent int) string {
 	var b strings.Builder
 	col := indent
 	for i, word := range strings.Split(s, " ") {
+		n := utf8.RuneCountInString(word)
 		if i > 0 {
-			if col+len(word)+1 > width {
+			if col+n+1 > width {
 				b.WriteString("\n" + strings.Repeat(" ", indent))
 				col = indent
 			} else {
@@ -384,7 +389,7 @@ func wrapIndent(s string, width, indent int) string {
 			}
 		}
 		b.WriteString(word)
-		col += len(word)
+		col += n
 	}
 	return b.String()
 }

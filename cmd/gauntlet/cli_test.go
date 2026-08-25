@@ -111,16 +111,17 @@ func TestUnknownCommandReportsLikeABadFlag(t *testing.T) {
 
 func TestTruncateDescKeepsValidUTF8(t *testing.T) {
 	s := strings.Repeat("héllo wörld ", 20) // multibyte runes throughout
-	for max := 0; max < len(s)+4; max++ {
+	limit := utf8.RuneCountInString(s)
+	for max := 0; max < limit+4; max++ {
 		got := truncateDesc(s, max)
 		if !utf8.ValidString(got) {
 			t.Fatalf("truncateDesc(s, %d) split a rune: %q", max, got)
 		}
-		if len(got) > max {
-			t.Fatalf("truncateDesc(s, %d) returned %d bytes", max, len(got))
+		if utf8.RuneCountInString(got) > max {
+			t.Fatalf("truncateDesc(s, %d) returned %d runes", max, utf8.RuneCountInString(got))
 		}
 	}
-	if got := truncateDesc(s, len(s)); got != s {
+	if got := truncateDesc(s, limit); got != s {
 		t.Error("an input under the limit must pass through unchanged")
 	}
 	if got := truncateDesc("abc", -1); got != "" {

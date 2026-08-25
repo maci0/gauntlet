@@ -14,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -35,8 +36,9 @@ var drainGrace = 5 * time.Second
 // than ending the read: a reader that gives up on an overlong line stops
 // draining the pipe, the child then blocks on write and sits there until the
 // timeout kills it, so one huge line would burn the review's whole budget on
-// display plumbing.
-const maxLineBytes = 4 << 20
+// display plumbing. A var only so tests can shrink it; production always
+// sees the default.
+var maxLineBytes = 4 << 20
 
 // streamLineCols is the width cap for one line of agent output, shared by the
 // normalizer and by stream events that bypass it (thinking lines, raw echo).
@@ -278,11 +280,24 @@ func scanLines(r io.Reader, handle func(line string)) {
 		chunk, err := br.ReadSlice('\n')
 		if err == bufio.ErrBufferFull {
 			// The line continues past the read buffer: accumulate until it
-			// ends or reaches the cap, whichever comes first.
+			// ends or reaches the cap, whichever comes first. A chunk ends at
+			// the last rune start so a multibyte character is never split
+			// across chunks; bytes that decode as nothing (binary garbage)
+			// split as-is rather than buffering forever.
 			buf = append(buf, chunk...)
 			if len(buf) >= maxLineBytes {
-				emit(buf)
-				buf = buf[:0]
+				cut := len(buf)
+				if r, _ := utf8.DecodeLastRune(buf); r == utf8.RuneError {
+					p := len(buf) - 1
+					for p > 0 && len(buf)-p < utf8.UTFMax && !utf8.RuneStart(buf[p]) {
+						p--
+					}
+					if p > 0 && utf8.RuneStart(buf[p]) {
+						cut = p
+					}
+				}
+				emit(buf[:cut])
+				buf = append(buf[:0], buf[cut:]...)
 			}
 			continue
 		}

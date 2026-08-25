@@ -12,8 +12,10 @@ package ui
 import (
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 )
 
 // Palette: Catppuccin Mocha, degrading to the nearest 256/16 colors on old
@@ -114,7 +116,10 @@ func padBlock(content string, innerW, innerH int) string {
 	return strings.Join(lines, "\n")
 }
 
-// clip truncates a styled string to w visible columns, keeping escapes intact.
+// clip truncates a styled string to w visible columns, keeping escapes
+// intact. Widths are terminal cells, not runes: a CJK glyph is two columns
+// and a combining mark is zero, and a cut never lands inside a grapheme
+// cluster.
 func clip(s string, w int) string {
 	if w <= 0 {
 		return ""
@@ -123,26 +128,47 @@ func clip(s string, w int) string {
 		return s
 	}
 	var b strings.Builder
-	visible, inEsc := 0, false
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEsc = true
-			b.WriteRune(r)
-		case inEsc:
-			b.WriteRune(r)
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inEsc = false
-			}
-		default:
-			if visible >= w {
-				return b.String() + "\x1b[0m"
-			}
-			b.WriteRune(r)
-			visible++
+	visible := 0
+	for _, tok := range widthTokens(s) {
+		if tok[0] == 0x1b {
+			b.WriteString(tok)
+			continue
 		}
+		cw := uniseg.StringWidth(tok)
+		if visible+cw > w {
+			return b.String() + "\x1b[0m"
+		}
+		visible += cw
+		b.WriteString(tok)
 	}
 	return b.String()
+}
+
+// widthTokens splits s into the atomic units of column math: each ANSI
+// escape sequence is one zero-width unit, and everything between them is
+// split into grapheme clusters, so a wide glyph or an emoji sequence moves
+// as one piece.
+func widthTokens(s string) []string {
+	toks := make([]string, 0, 16)
+	for i := 0; i < len(s); {
+		if s[i] == 0x1b {
+			j := i + 1
+			for j < len(s) {
+				r, size := utf8.DecodeRuneInString(s[j:])
+				j += size
+				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
+					break
+				}
+			}
+			toks = append(toks, s[i:j])
+			i = j
+			continue
+		}
+		cluster, rest, _, _ := uniseg.FirstGraphemeClusterInString(s[i:], -1)
+		toks = append(toks, cluster)
+		i = len(s) - len(rest)
+	}
+	return toks
 }
 
 // heatColor maps 0..1 intensity onto a cold to hot ramp. Reserved for

@@ -331,7 +331,7 @@ func TestFeedSanitizesUntrustedText(t *testing.T) {
 
 // Review names are untrusted repository content and not always ASCII: a cut
 // must never split a rune into mojibake. Width follows the shared helper's
-// pinned contract: w runes kept, plus the ellipsis.
+// pinned contract: w cells kept, ellipsis included.
 func TestTrimNeverSplitsARune(t *testing.T) {
 	s := strings.Repeat("é", 20)
 	got := trim(s, 10)
@@ -340,6 +340,25 @@ func TestTrimNeverSplitsARune(t *testing.T) {
 	}
 	if lipgloss.Width(got) > 11 {
 		t.Fatalf("trim returned %d columns, want at most 11", lipgloss.Width(got))
+	}
+}
+
+// Width is measured in terminal cells, not runes: two CJK glyphs occupy four
+// columns, so a w-column budget holds half as many of them.
+func TestTrimRespectsDisplayWidth(t *testing.T) {
+	s := "認証テスト設定" // seven wide glyphs, fourteen cells
+	if got := trim(s, 5); lipgloss.Width(got) != 5 {
+		t.Fatalf("trim(%q, 5) = %q (%d columns), want exactly 5", s, got, lipgloss.Width(got))
+	}
+	// A combining mark belongs to its base: the cut must not orphan one onto
+	// the ellipsis.
+	accented := strings.Repeat("e\u0301", 12)
+	if got := trim(accented, 4); !utf8.ValidString(got) || lipgloss.Width(got) != 4 {
+		t.Fatalf("trim split a grapheme or miscounted: %q (%d columns)", got, lipgloss.Width(got))
+	}
+	// Exactly-fitting text comes back whole, no ellipsis.
+	if got := trim("認証テスト", 10); got != "認証テスト" {
+		t.Fatalf("trim cut a fitting string: %q", got)
 	}
 }
 
@@ -365,6 +384,12 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	styledText := lipgloss.NewStyle().Foreground(cGreen).Render("abcdefghij")
 	if got := lipgloss.Width(clip(styledText, 4)); got != 4 {
 		t.Fatalf("clip produced %d columns, want 4", got)
+	}
+	// Wide characters spend their real width: clipping ten CJK glyphs to
+	// four columns must yield four columns, not five half-cut ones.
+	styledWide := lipgloss.NewStyle().Foreground(cGreen).Render("認証認証認証認証認証")
+	if got := clip(styledWide, 4); lipgloss.Width(got) != 4 {
+		t.Fatalf("clip produced %d columns, want 4: %q", lipgloss.Width(got), got)
 	}
 }
 

@@ -206,6 +206,25 @@ func TestParseSuggestions(t *testing.T) {
 	}
 }
 
+// A review whose filename stem is not ASCII is a first-class name: the
+// catalog prints it, the agent echoes it, and the parser must accept it.
+// Punctuation still cannot ride along: the token stays one lookup key.
+func TestParseSuggestionsNonASCIIName(t *testing.T) {
+	out := strings.Join([]string{
+		"RELEVANT: sécurity-review: audits encoding",
+		"RELEVANT: 認証-review",
+		"RELEVANT: inje:ction: colon cannot join the name",
+	}, "\n")
+	picked, unknown := ParseSuggestions(out, []string{"sécurity-review", "認証-review"})
+	if len(picked) != 2 || picked[0].Name != "sécurity-review" ||
+		picked[0].Reason != "audits encoding" || picked[1].Name != "認証-review" {
+		t.Fatalf("picked: %+v", picked)
+	}
+	if len(unknown) != 1 || unknown[0] != "inje" {
+		t.Fatalf("unknown: %v", unknown)
+	}
+}
+
 // FuzzParseSuggestions feeds arbitrary agent output through the triage parser
 // and pins the contract Suggest depends on before it launches reviews: only
 // available names are ever picked, first mention wins, reasons carry no
@@ -219,6 +238,7 @@ func FuzzParseSuggestions(f *testing.F) {
 		"relevant: test-review: lowercase label",
 		"RELEVANT: nope-review: not available\nRELEVANT: nope: also not",
 		"RELEVANT:   doc-review   :  padded  ",
+		"RELEVANT: sécurity-review: audits encoding\nRELEVANT: 認証-review",
 		"RELEVANT: sec-review:\x1b[31m\x00\u202Espoof reason",
 		"RELEVANT: sec-review:" + strings.Repeat(" very long reason", 200),
 		"RELEVANT:",

@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -482,11 +483,13 @@ func (m *model) gridCols() int {
 	return max((m.w-4)/cell, 1)
 }
 
-// reviewCellWidth is the width of one review cell: glyph, space, name.
+// reviewCellWidth is the width of one review cell: glyph, space, name. The
+// longest name is measured in terminal cells, not bytes or runes, so a
+// non-ASCII name budgets the space it will actually occupy.
 func (m *model) reviewCellWidth() int {
 	longest := 8
 	for _, n := range m.order {
-		longest = max(longest, len(strings.TrimSuffix(n, "-review")))
+		longest = max(longest, uniseg.StringWidth(strings.TrimSuffix(n, "-review")))
 	}
 	return min(longest+4, 22)
 }
@@ -860,10 +863,33 @@ func pad(s string, w int) string {
 	return s
 }
 
-// trim cuts s to w runes, ellipsis included, without splitting a UTF-8
-// sequence: names come from the reviewed repository and are not always ASCII.
+// trim cuts s to at most w terminal cells, ellipsis included, cutting
+// between grapheme clusters: names come from the reviewed repository and
+// are neither always ASCII nor single-width.
 func trim(s string, w int) string {
-	return normalize.Truncate(s, w)
+	return truncateWidth(s, w)
+}
+
+// truncateWidth is clip without the styling: at most w cells of s, cut
+// between grapheme clusters, marked with an ellipsis when anything was cut.
+func truncateWidth(s string, w int) string {
+	if w <= 1 {
+		return s
+	}
+	if uniseg.StringWidth(s) <= w {
+		return s
+	}
+	var b strings.Builder
+	visible := 0
+	for _, tok := range widthTokens(s) {
+		cw := uniseg.StringWidth(tok)
+		if visible+cw > w-1 { // the cut reserves one cell for the ellipsis
+			break
+		}
+		visible += cw
+		b.WriteString(tok)
+	}
+	return b.String() + "…"
 }
 
 func clampi(v, lo, hi int) int {

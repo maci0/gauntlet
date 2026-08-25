@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -96,6 +97,32 @@ func TestOverlongLineDoesNotStallTheStream(t *testing.T) {
 	if !sawAfter || !sawResult {
 		t.Fatalf("output after the oversized line was lost (after=%t result=%t): %d lines",
 			sawAfter, sawResult, len(got))
+	}
+}
+
+// A chunk boundary must land between UTF-8 sequences, not inside one: the
+// chunks go to display and JSON parsing downstream, where a split character
+// turns into replacement garbage.
+func TestOverlongLineChunksOnRuneBoundary(t *testing.T) {
+	old := maxLineBytes
+	maxLineBytes = 16
+	defer func() { maxLineBytes = old }()
+
+	// One ASCII byte shifts every following 2-byte rune by an odd offset, so
+	// the flush at the cap lands strictly inside a rune. The line must also
+	// exceed scanLines' own read buffer for the chunking path to run at all.
+	line := "x" + strings.Repeat("é", 80000) + "\n"
+	var chunks []string
+	scanLines(strings.NewReader(line), func(line string) {
+		chunks = append(chunks, line)
+	})
+	if len(chunks) < 2 {
+		t.Fatalf("want several chunks, got %d", len(chunks))
+	}
+	for i, c := range chunks {
+		if !utf8.ValidString(c) {
+			t.Fatalf("chunk %d split a rune: %q...", i, c[:32])
+		}
 	}
 }
 
