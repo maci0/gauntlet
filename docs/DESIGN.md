@@ -193,7 +193,11 @@ verification leaves the running binary untouched. Nothing is executed from
 the download before verification. Every release also ships `sbom.txt`, a
 module inventory produced by `go version -m` over each built binary: anyone
 auditing a release can read which module versions and hashes shipped without
-rebuilding it.
+rebuilding it. The binaries themselves are bit-reproducible: `-trimpath`
+strips build paths and nothing embeds a timestamp, so the same source built
+from a different directory under a different locale and timezone yields
+identical bytes, which `make repro` proves on every CI run by building twice
+and comparing.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 few seconds, and requires two identical readings before acting so a
