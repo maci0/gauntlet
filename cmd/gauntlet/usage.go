@@ -80,7 +80,7 @@ var helpGroups = []flagGroup{
 		{"", "seed", "N", "RNG seed for review order and agent picks, recorded in the journal (default: random)"},
 		{"c", "commit", "", "after each review, an agent commits the changes"},
 		{"p", "push", "", "like --commit, and pushes"},
-		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
+		{"", "yolo", "", "drop the caution rules, and commit and push what the reviews do"},
 		{"y", "yes", "", "skip the suggest confirmation"},
 		{"", "semcode", "", "build a semcode index before the loop"},
 	}},

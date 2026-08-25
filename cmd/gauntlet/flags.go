@@ -286,7 +286,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
-	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules: bigger, more ambitious changes")
+	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules, and commit and push what the reviews do")
 	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "skip the suggest confirmation") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
 	fs.BoolVar(&o.continueSessions, "continue-sessions", false, "resume each agent's session between reviews")
@@ -439,6 +439,18 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.maxLoops < 0 {
 		return nil, errors.New("--max-loops must be >= 0")
+	}
+	// --yolo is the "do the whole thing" switch, so it turns the git steps on
+	// too: an unattended run that finds and fixes things and then leaves them
+	// uncommitted has done half a job. Explicit flags still win, so
+	// `--yolo --push=false` is a yolo run that keeps its work local.
+	if o.yolo {
+		if !isFlagSet(fs, "commit", "c") {
+			o.commit = true
+		}
+		if !isFlagSet(fs, "push", "p") {
+			o.push = true
+		}
 	}
 	if o.push {
 		o.commit = true

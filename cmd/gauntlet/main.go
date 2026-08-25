@@ -6,6 +6,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -370,7 +371,7 @@ func run(argv []string) int {
 				continue
 			}
 		}
-		r, err := runner.New(ctx, runner.Config{
+		cfg := runner.Config{
 			Dir: d.dir, Set: d.set, Reviews: d.reviews, Agents: agents, Bin: opts.bin,
 			Timeout: opts.timeout, Jobs: opts.jobs, Retries: opts.retries, MaxLoops: maxLoops,
 			Started: startedAt, ResumeQueue: carried.Pending,
@@ -382,7 +383,11 @@ func run(argv []string) int {
 			Yolo: opts.yolo, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
 			ContinueSessions: opts.continueSessions,
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
-		}, bus)
+		}
+		r, err := runner.New(ctx, cfg, bus)
+		if errors.Is(err, runner.ErrDirtyTree) && commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
+			r, err = runner.New(ctx, cfg, bus)
+		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			bus.Close()
@@ -792,6 +797,65 @@ func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 		out = append(out, d)
 	}
 	return out
+}
+
+// commitFirst offers the one thing that turns a refused --jobs run into a
+// running one: the uncommitted work is the obstacle, and gauntlet already has
+// an agent that writes commit messages. It reports whether the tree is clean
+// afterwards, so the caller can simply try again.
+//
+// It asks first, because committing someone's working tree is not a step to
+// take on a guess. --yes and --yolo are that consent, and a run with no
+// terminal keeps the plain error rather than committing unattended.
+func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
+	opts *options, out io.Writer, pal palette) bool {
+
+	spec := agents[0]
+	if opts.suggestAgent != nil && opts.suggestAgent.Tool != runner.FastSuggestAgent {
+		spec = *opts.suggestAgent
+	}
+	fmt.Fprintf(out, "\n%s has uncommitted changes, and --jobs %d needs a clean tree.\n",
+		dir, opts.jobs)
+	if !confirmCommit(out, opts, spec) {
+		return false
+	}
+	fmt.Fprintf(out, "Running the commit step with %s...\n", spec.Label())
+	err := runner.CommitNow(ctx, runner.CommitOpts{
+		Dir: dir, Agent: spec, Bin: opts.bin, Push: opts.push, Yolo: opts.yolo,
+		Timeout: opts.timeout,
+		Out:     func(line string) { fmt.Fprintln(out, pal.dim("  "+line)) },
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		return false
+	}
+	fmt.Fprintln(out, "Committed. Continuing.")
+	return true
+}
+
+// confirmCommit asks whether to hand the tree to an agent. Unattended runs
+// keep the error: this writes a commit, which is not something to do to a
+// tree nobody is watching unless the flags already said to.
+func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
+	if opts.yes || opts.yolo {
+		fmt.Fprintf(out, "Committing with %s first (--yes).\n", spec.Label())
+		return true
+	}
+	fi, err := os.Stdin.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return false
+	}
+	fmt.Fprintf(out, "Commit them with %s first? [y/N] ", spec.Label())
+	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		fmt.Fprintln(out)
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true
+	}
+	return false
 }
 
 // carriedPending is the part of the current loop this directory had not
