@@ -46,7 +46,7 @@ Review the following:
 - Missing compatibility documentation
 
 5. Authentication and authorization
-(sec-review owns missing or bypassable auth and authz. Here own consistency of the documented scheme across endpoints: same mechanism, same error shape, documented scopes.)
+(sec-review fixes missing or bypassable authn/authz as point vulnerabilities; the systematic per-endpoint authorization sweep belongs to authz-review. Here own consistency of the documented scheme across endpoints: same mechanism, same error shape, documented scopes.)
 - Inconsistent authentication mechanisms across endpoints
 - Missing authentication on endpoints that need it (note only; sec-review owns the control)
 - Authorization checks applied inconsistently (note only when a check is missing; here only when two endpoints apply different schemes)
