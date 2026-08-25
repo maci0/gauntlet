@@ -38,19 +38,23 @@ func TestCountsTotalsAndFailures(t *testing.T) {
 	st.Add(Result{Review: "slow", Status: StatusTimeout, Ins: 9, HaveLines: false,
 		Elapsed: time.Second, Agent: agent.Spec{Tool: "claude", Model: "opus"}})
 	st.Add(Result{Review: "clash", Status: StatusConflict, Agent: agent.Spec{Tool: "codex"}})
+	st.Add(Result{Review: "ghost", Status: StatusSkipped, ExitCode: -1,
+		Agent: agent.Spec{Tool: "codex"}})
 
 	c := st.Counts()
-	if c.Total() != 4 {
+	if c.Total() != 5 {
 		t.Fatalf("total: %+v", c)
 	}
-	// A failure, a timeout, and a conflict fail the run; an interruption does
-	// not, because it says nothing about the review's outcome.
-	if c.Failures() != 3 {
+	// A failure, a timeout, a conflict, and a skip fail the run, matching
+	// exit code 1's documented meaning; an interruption does not, because it
+	// says nothing about the review's outcome.
+	if c.Failures() != 4 {
 		t.Fatalf("failures: %+v", c)
 	}
 	failed := st.Failures()
-	if len(failed) != 3 ||
-		failed[0].Review != "broken" || failed[1].Review != "clash" || failed[2].Review != "slow" {
+	if len(failed) != 4 ||
+		failed[0].Review != "broken" || failed[1].Review != "clash" ||
+		failed[2].Review != "ghost" || failed[3].Review != "slow" {
 		t.Fatalf("failure list wrong: %+v", failed)
 	}
 
