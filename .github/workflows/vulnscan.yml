@@ -1,0 +1,40 @@
+name: vulnscan
+
+# Advisory scan of the dependency graph: govulncheck reports only
+# vulnerabilities reachable from this codebase, which manifest-level
+# dependabot alerts cannot. Scheduled weekly so drift between dependency
+# bumps is caught, and on every go.mod/go.sum change so a bad bump is
+# flagged while the diff is still under review. Runs with the default build
+# tags, which pull in the widest graph including the sqlite driver's tree.
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "go.mod"
+      - "go.sum"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      # Unpinned on purpose: a scanner is worth only what its advisory
+      # database knows, and its result never becomes a build input to
+      # gauntlet itself, unlike the pinned modules in go.mod.
+      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
