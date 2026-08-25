@@ -133,7 +133,7 @@ func selectReviews(ctx context.Context, d *dirRun, opts *options, agents []agent
 		}
 		picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
 			Dir: d.dir, Set: d.set, Pool: pool, Agents: agents, Only: opts.suggestAgent,
-			Bin: opts.bin, Timeout: opts.suggestTimeout,
+			Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
 			Log: func(f string, a ...any) {
 				fmt.Fprintf(out, "[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(f, a...))
 			},

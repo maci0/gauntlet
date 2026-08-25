@@ -362,6 +362,7 @@ func run(argv []string) int {
 			Timeout: opts.timeout, Jobs: opts.jobs, MaxLoops: maxLoops,
 			Started: startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
+			Seed: opts.seed,
 			// The dashboard renders the feed from these events, so --tui must
 			// not suppress them; only --quiet does.
 			Yolo: opts.yolo, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,

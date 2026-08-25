@@ -41,6 +41,27 @@ func TestBusSubscribeAfterClose(t *testing.T) {
 	}
 }
 
+// TestBusInjectedClock pins the stamping contract: an event published without
+// a timestamp gets the bus's Now when one is injected, time.Now otherwise.
+func TestBusInjectedClock(t *testing.T) {
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	bus := NewBus()
+	bus.Now = func() time.Time { return stamp }
+	ch := bus.Subscribe(1)
+	bus.Publish(Event{Kind: EvLog})
+	if got := <-ch; !got.Time.Equal(stamp) {
+		t.Fatalf("injected clock ignored: got %v, want %v", got.Time, stamp)
+	}
+
+	plain := NewBus()
+	ch = plain.Subscribe(1)
+	plain.Publish(Event{Kind: EvLog})
+	if got := <-ch; got.Time.IsZero() {
+		t.Fatal("nil clock left the event unstamped")
+	}
+}
+
 // TestBusConcurrentClose exercises the publish/close race under the detector:
 // publishers running while Close lands must either deliver or drop, never
 // send into a closed channel.

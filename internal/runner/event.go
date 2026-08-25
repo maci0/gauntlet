@@ -90,6 +90,9 @@ type Event struct {
 	Args    []string `json:"args,omitempty"`
 	Agents  []string `json:"agents,omitempty"`
 	Total   int      `json:"total,omitempty"` // reviews scheduled per loop
+	// Seed is the effective RNG seed, on EvRunStart only: review shuffles and
+	// agent sampling replay from it.
+	Seed uint64 `json:"seed,omitempty"`
 }
 
 // Bus fans one run's events out to every subscriber (logger, journal, TUI).
@@ -105,6 +108,10 @@ type Bus struct {
 	mu     sync.RWMutex
 	subs   []chan Event
 	closed bool
+
+	// Now stamps events that arrive without a timestamp of their own.
+	// Injectable for tests; nil means time.Now.
+	Now func() time.Time
 }
 
 // NewBus returns a bus with no subscribers.
@@ -131,7 +138,11 @@ func (b *Bus) Subscribe(buffer int) <-chan Event {
 // After Close it does nothing.
 func (b *Bus) Publish(e Event) {
 	if e.Time.IsZero() {
-		e.Time = time.Now()
+		if b.Now != nil {
+			e.Time = b.Now()
+		} else {
+			e.Time = time.Now()
+		}
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()

@@ -58,6 +58,13 @@ type Config struct {
 	// budget covers the whole run, not just the latest binary.
 	Started time.Time
 
+	// Seed drives every stochastic choice the runner makes: the per-loop
+	// review shuffle and agent sampling. Zero derives one from the clock, as
+	// runs always have; a nonzero seed replays those choices exactly, and the
+	// effective seed is published on the run-start event so any journal can be
+	// reproduced from what it records.
+	Seed uint64
+
 	// ResumeQueue is the unfinished part of a loop interrupted by a hot
 	// reload. When set, it is the first loop's schedule.
 	ResumeQueue []string
@@ -78,6 +85,7 @@ type Runner struct {
 
 	mu             sync.Mutex
 	rng            *rand.Rand
+	seed           uint64 // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
 	mergeMu        sync.Mutex // serializes merges into the main tree
 
@@ -150,15 +158,17 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	if start.IsZero() {
 		start = time.Now()
 	}
+	seed := seedOrClock(cfg.Seed)
 	r := &Runner{
 		cfg:            cfg,
 		bus:            bus,
 		st:             &Stats{Start: start},
 		repo:           gitx.Open(cfg.Dir),
-		rng:            rand.New(rand.NewSource(time.Now().UnixNano())),
+		rng:            rand.New(rand.NewSource(int64(seed))),
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),
 	}
+	r.seed = seed
 	if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err
@@ -169,6 +179,15 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 
 // Stats exposes the accumulated results.
 func (r *Runner) Stats() *Stats { return r.st }
+
+// seedOrClock returns the configured seed, or one derived from the clock when
+// unset, so production keeps its random shuffle while a seeded run replays it.
+func seedOrClock(seed uint64) uint64 {
+	if seed != 0 {
+		return seed
+	}
+	return uint64(time.Now().UnixNano())
+}
 
 // Loops is the number of completed loops.
 func (r *Runner) Loops() int {
@@ -244,6 +263,7 @@ func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
 		Kind: EvRunStart, Dir: r.cfg.Dir, Version: r.cfg.Version,
 		Agents: agentLabels(r.cfg.Agents), Total: len(r.cfg.Reviews),
+		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
 	if r.cfg.Jobs > 1 {

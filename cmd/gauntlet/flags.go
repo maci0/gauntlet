@@ -61,6 +61,7 @@ type options struct {
 	runtime          time.Duration
 	jobs             int
 	maxLoops         int
+	seed             uint64
 	commit           bool
 	push             bool
 	yolo             bool
@@ -252,6 +253,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		fs.IntVar(&o.jobs, n, 1, "reviews to run at once; >1 gives each its own git worktree and merges back")
 	})
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
+	fs.Uint64Var(&o.seed, "seed", 0, "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
 	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
@@ -424,13 +426,20 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, errors.New("--limit must be >= 1")
 	}
 
-	modes := map[string]bool{
-		"--list": o.list, "--dry-run": o.dryRun, "--show-prompt": o.showPrompt != "",
+	// Checked in declaration order, not map order, so the error names the
+	// conflicting modes the same way every time.
+	modes := []struct {
+		name string
+		on   bool
+	}{
+		{"--list", o.list},
+		{"--dry-run", o.dryRun},
+		{"--show-prompt", o.showPrompt != ""},
 	}
 	var active []string
-	for name, on := range modes {
-		if on {
-			active = append(active, name)
+	for _, m := range modes {
+		if m.on {
+			active = append(active, m.name)
 		}
 	}
 	if len(active) > 1 {

@@ -75,6 +75,7 @@ var helpGroups = []flagGroup{
 		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
 		{"1", "once", "", "run a single loop and exit"},
 		{"n", "max-loops", "N", "stop after N loops (0 means unlimited)"},
+		{"", "seed", "N", "RNG seed for review order and agent picks, recorded in the journal (default: random)"},
 		{"c", "commit", "", "after each review, an agent commits the changes"},
 		{"p", "push", "", "like --commit, and pushes"},
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},

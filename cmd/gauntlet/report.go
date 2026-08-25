@@ -176,12 +176,18 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 	fmt.Fprintf(out, "Total reviews run: %d\n", agg.Total())
 	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(agg.OK)))
 	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(agg.Fail+agg.Timeout)))
-	for label, n := range map[string]int{
-		"  Skipped": agg.Skipped, "  Interrupted": agg.Interrupted,
-		"  Merge conflicts": agg.Conflict,
+	// A fixed order, not a map range: the same run must summarize the same
+	// way every time.
+	for _, row := range []struct {
+		label string
+		n     int
+	}{
+		{"  Skipped", agg.Skipped},
+		{"  Interrupted", agg.Interrupted},
+		{"  Merge conflicts", agg.Conflict},
 	} {
-		if n > 0 {
-			fmt.Fprintf(out, "%s: %d\n", label, n)
+		if row.n > 0 {
+			fmt.Fprintf(out, "%s: %d\n", row.label, row.n)
 		}
 	}
 	fmt.Fprintf(out, "Total time: %s\n", humanize.Duration(wall))

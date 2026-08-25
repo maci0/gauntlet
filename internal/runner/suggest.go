@@ -25,6 +25,9 @@ type SuggestConfig struct {
 	Bin     map[string]string
 	Timeout time.Duration
 	Log     func(string, ...any)
+	// Seed shuffles the agent try order; zero derives one from the clock, so
+	// the same seed replays which agent was asked first.
+	Seed uint64
 }
 
 // Suggest runs the triage step and returns the reviews the agent picked.
@@ -46,7 +49,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		order = append(order, *cfg.Only)
 	} else {
 		order = append(order, cfg.Agents...)
-		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+		rng := rand.New(rand.NewSource(int64(seedOrClock(cfg.Seed))))
 		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
 	}
 
