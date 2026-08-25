@@ -96,3 +96,37 @@ func TestShowPromptPrintsTheExactAgentText(t *testing.T) {
 		}
 	}
 }
+
+// TestShowPromptStripsTerminalEscapes pins the display boundary on
+// --show-prompt: a planted prompt's escape sequences and bidi controls must
+// not reach the terminal (an OSC 52 sequence overwrites the clipboard in many
+// emulators), while the visible text around them survives so the prompt stays
+// readable.
+func TestShowPromptStripsTerminalEscapes(t *testing.T) {
+	dir := t.TempDir()
+	body := "Your goal is to test evil.\n\x1b]52;c;aGVsbG8=\x07" +
+		"\x1b[31mred\x1b[0m \u202Espoof\u202C tail\n"
+	if err := os.WriteFile(filepath.Join(dir, "evil-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := prompt.Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if code := cmdShowPrompt(&out, set, &options{showPrompt: "evil"}); code != exitOK {
+		t.Fatalf("exit %d for the planted review", code)
+	}
+	got := out.String()
+	for _, want := range []string{"Your goal is to test evil.", "red spoof tail"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("display form is missing visible text %q:\n%s", want, got)
+		}
+	}
+	for _, bad := range []rune{'\x1b', '\x07', '\u202E'} {
+		if strings.ContainsRune(got, bad) {
+			t.Errorf("display form carries hostile character %#x:\n%s", bad, got)
+		}
+	}
+}
