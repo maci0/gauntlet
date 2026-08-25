@@ -4,13 +4,17 @@
 package gitx
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -289,6 +293,119 @@ func TestRunCarriesGitStderr(t *testing.T) {
 	if !strings.Contains(err.Error(), "not a git repository") {
 		t.Fatalf("error should quote git's stderr, got: %v", err)
 	}
+}
+
+// installHook writes a pre-commit hook and returns its directory. The hook is
+// armed through a trailing -c because safeConfig pins core.hooksPath to
+// /dev/null first, and the last -c wins. The child pid lands in a file so the
+// test can verify (and clean up) what the hook left behind.
+func installHook(t *testing.T, r *Repo, body string) string {
+	t.Helper()
+	hooks := filepath.Join(r.Dir, "hooks")
+	if err := os.MkdirAll(hooks, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" + body
+	if err := os.WriteFile(filepath.Join(hooks, "pre-commit"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return hooks
+}
+
+// hookChildPID waits for the hook to record its background child.
+func hookChildPID(t *testing.T, r *Repo) int {
+	t.Helper()
+	pidfile := filepath.Join(r.Dir, "hooks", "child.pid")
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		b, err := os.ReadFile(pidfile)
+		if err == nil {
+			if pid, err := strconv.Atoi(strings.TrimSpace(string(b))); err == nil && pid > 0 {
+				return pid
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the hook never recorded its child")
+	return 0
+}
+
+// procAlive reports whether pid names a live process. A zombie counts as gone:
+// its parent is dead and only reaping remains.
+func procAlive(pid int) bool {
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	i := bytes.LastIndexByte(b, ')')
+	return i >= 0 && i+2 < len(b) && b[i+2] != 'Z'
+}
+
+// The deadline kill must take down the whole process group, not just the git
+// pid: a helper git spawns that outlives it must be reaped too, or every
+// timed-out call leaks an orphan still holding the output pipes. This is the
+// same rule runProc and runIndexer enforce on their own children.
+func TestRunDeadlineKillsTheProcessGroup(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	// The hook blocks on its background sleeper, so git is alive when the
+	// deadline fires and the group kill has something to reach.
+	hooks := installHook(t, r,
+		"sleep 60 &\necho $! > \"$GAUNTLET_HOOK_PIDFILE\"\nwait\n")
+	t.Setenv("GAUNTLET_HOOK_PIDFILE", filepath.Join(hooks, "child.pid"))
+
+	start := time.Now()
+	_, err := r.run(ctx, time.Second,
+		"-c", "core.hooksPath="+hooks,
+		"commit", "--allow-empty", "-m", "hooked")
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Fatalf("the deadline took %s to land on the whole group", elapsed)
+	}
+	if err == nil {
+		t.Fatal("a killed commit must report failure")
+	}
+	pid := hookChildPID(t, r)
+	deadline := time.Now().Add(10 * time.Second)
+	for procAlive(pid) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if procAlive(pid) {
+		t.Errorf("grandchild %d survived the group kill", pid)
+	}
+	syscall.Kill(pid, syscall.SIGKILL) // belt and braces; nothing outlives the test
+}
+
+// A grandchild that outlived a successful git call would hold the inherited
+// output pipes open, and Run waits for EOF on them: without WaitDelay one
+// lingering child parks this call, and with it the caller's mutexes, long
+// past any bound. ErrWaitDelay is the bounded answer.
+func TestRunBoundedWhenGrandchildHoldsOutput(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	// This hook exits successfully while its background sleeper lives on,
+	// holding stdout and stderr for far longer than the grace period.
+	hooks := installHook(t, r,
+		"sleep 30 &\necho $! > \"$GAUNTLET_HOOK_PIDFILE\"\nexit 0\n")
+	t.Setenv("GAUNTLET_HOOK_PIDFILE", filepath.Join(hooks, "child.pid"))
+
+	oldGrace := waitGrace
+	waitGrace = 200 * time.Millisecond
+	defer func() { waitGrace = oldGrace }()
+
+	start := time.Now()
+	_, err := r.run(ctx, 30*time.Second,
+		"-c", "core.hooksPath="+hooks,
+		"commit", "--allow-empty", "-m", "hooked")
+	if elapsed := time.Since(start); elapsed > 8*time.Second {
+		t.Fatalf("run took %s; a grandchild holding the pipes must not set the bound", elapsed)
+	}
+	if !errors.Is(err, exec.ErrWaitDelay) {
+		t.Fatalf("want exec.ErrWaitDelay, got %v", err)
+	}
+	pid := hookChildPID(t, r)
+	t.Cleanup(func() { syscall.Kill(pid, syscall.SIGKILL) })
 }
 
 // AddWorktree must converge when a rerun hits its own leftovers: a hot reload
