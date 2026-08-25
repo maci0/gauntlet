@@ -192,6 +192,10 @@ func TestParseUsage(t *testing.T) {
 		{"line form output", "\nOutput tokens: 42\n", 42, -1},
 		{"line form total", "\nTotal tokens: 77\n", -1, 77},
 		{"cumulative max wins", `"output_tokens":10 ... "output_tokens":90`, 90, -1},
+		// A review reading source or transcripts prints other people's
+		// sentinels; taken as a count, one of those overflows the run total.
+		{"absurd counter ignored", `{"usage":{"total_tokens":9223372036854775807}}`, -1, -1},
+		{"absurd counter does not hide a real one", `"output_tokens":123456789012345 "output_tokens":900`, 900, -1},
 		{"nothing", "no usage here", -1, -1},
 	}
 	for _, c := range cases {

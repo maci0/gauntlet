@@ -40,6 +40,11 @@ changes could land in a minor instead and were listed under Changed.
   holding commits.
 - The README install one-liner maps `aarch64` to `arm64` (so arm Linux hosts
   fetch a real asset) and creates `~/.local/bin` before writing into it.
+- Token counters parsed from an agent's output are bounded. A review that
+  prints a usage-shaped sentinel it read somewhere else (a `9223372036854775807`
+  in a source file it quoted) was believed, and the run total then overflowed
+  to a large negative number with a live rate to match. Anything above a
+  trillion tokens now reads as a misparse, not a measurement.
 
 ## 1.0.2
 

@@ -82,13 +82,20 @@ func MayCarryUsage(line string) bool {
 	return strings.Contains(line, "oken") || strings.Contains(line, "OKEN")
 }
 
+// maxPlausible bounds what a counter may claim. Agents print their own
+// output, and that output quotes files, tests, and other agents' JSON, so a
+// usage-shaped match can be someone else's sentinel: a stray math.MaxInt64
+// read as a count overflows the run total into nonsense. No review generates
+// a trillion tokens, so anything above this is a misparse, not a measurement.
+const maxPlausible = 1 << 40
+
 func maxMatch(pats []*regexp.Regexp, text string) int {
 	best := -1
 	for _, p := range pats {
 		for _, m := range p.FindAllStringSubmatch(text, -1) {
 			digits := strings.NewReplacer(",", "", "_", "").Replace(m[1])
 			n, err := strconv.Atoi(digits)
-			if err == nil && n > best {
+			if err == nil && n > best && n <= maxPlausible {
 				best = n
 			}
 		}
