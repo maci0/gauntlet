@@ -37,7 +37,12 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
+      # check compiles all three tag configurations itself and every build
+      # constraint in the tree is a tag constraint, never a GOOS one, so its
+      # verdict is identical in all six cells: run it once per OS and let the
+      # other four legs spend their runner minutes on `make test`.
       - run: make check
+        if: matrix.tags == 'sqlite'
       - run: make test TAGS=${{ matrix.tags }}
 
   dist:
