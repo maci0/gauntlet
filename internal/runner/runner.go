@@ -289,6 +289,20 @@ func (r *Runner) Loops() int {
 	return r.loopCount
 }
 
+// safePaths renders worktree paths for an error or log line. They come from
+// git status against a possibly hostile tree: a file name may carry escape,
+// control, or bidi characters that survive unquoteC's decoding, so anything
+// headed for a message that is not sanitized downstream (a returned error the
+// caller prints raw) is stripped here. Matching and own-artifact comparison
+// still see the exact paths; only display text passes through this.
+func safePaths(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = normalize.Sanitize(p)
+	}
+	return out
+}
+
 // prepareWorktreeMode enforces what isolated parallel reviews require: a git
 // repository and a clean tree. Concurrent agents in one working tree corrupt
 // each other, and a worktree is cut from a commit, so uncommitted work would
@@ -310,9 +324,11 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
 	}
 	if len(changes.Tracked) > 0 {
+		// The paths are named in an error the caller may print raw, so they
+		// are sanitized here rather than left to every consumer.
 		return fmt.Errorf("%w: commit or stash your changes first, "+
 			"or run without --jobs to review the tree in place (%s)",
-			ErrDirtyTree, humanize.List(changes.Tracked, 3))
+			ErrDirtyTree, humanize.List(safePaths(changes.Tracked), 3))
 	}
 	if n := len(changes.Untracked); n > 0 {
 		r.log("%d untracked file(s) stay put and are not reviewed: %s",
@@ -992,7 +1008,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	}
 	if len(changes.Tracked) > 0 {
 		return fmt.Errorf("still uncommitted after the commit step: %s",
-			humanize.List(changes.Tracked, 3))
+			humanize.List(safePaths(changes.Tracked), 3))
 	}
 	return nil
 }
