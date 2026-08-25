@@ -46,13 +46,14 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		return exitUsage
 	}
 
-	branch, targets := mergeTargets(ctx, dir)
+	branch, targets, dirty := treeState(ctx, dir)
 	argv, ok, err := ui.Pick(ui.PickConfig{
 		Dir:     dir,
 		Groups:  pickGroups(set),
 		Agents:  runner.AgentLabels(agent.Installed()),
 		Branch:  branch,
 		Merge:   targets,
+		Dirty:   dirty,
 		CPUs:    runtime.NumCPU(),
 		Version: version,
 	})
@@ -71,16 +72,20 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 // categories: the named sets first, then whatever no set claims, so every
 // review is reachable from the tree.
 func pickGroups(set prompt.Set) []ui.PickGroup {
+	describe := func(name string) ui.PickReview {
+		rev, _ := set.Get(name)
+		return ui.PickReview{Name: name, Desc: rev.Desc(), Project: rev.IsProject()}
+	}
 	claimed := map[string]bool{}
 	var groups []ui.PickGroup
 	for _, name := range prompt.SetNames() {
 		if _, dynamic := prompt.DynamicSets[name]; dynamic {
 			continue // "all" and "project" are views, not choices
 		}
-		var members []string
+		var members []ui.PickReview
 		for _, r := range prompt.Sets[name] {
 			if _, ok := set.Get(r); ok {
-				members = append(members, r)
+				members = append(members, describe(r))
 				claimed[r] = true
 			}
 		}
@@ -88,10 +93,10 @@ func pickGroups(set prompt.Set) []ui.PickGroup {
 			groups = append(groups, ui.PickGroup{Name: name, Reviews: members})
 		}
 	}
-	var rest []string
+	var rest []ui.PickReview
 	for _, name := range set.Names {
 		if !claimed[name] {
-			rest = append(rest, name)
+			rest = append(rest, describe(name))
 		}
 	}
 	if len(rest) > 0 {
@@ -100,13 +105,15 @@ func pickGroups(set prompt.Set) []ui.PickGroup {
 	return groups
 }
 
-// mergeTargets names the branch a run would sit on and the other local
-// branches it could be merged into. Outside a git repository there are
-// neither, and the launcher simply does not offer the choice.
-func mergeTargets(ctx context.Context, dir string) (branch string, targets []string) {
+// treeState is what the launcher needs to know about the repository: the
+// branch a run would sit on, the other local branches it could be merged
+// into, and whether the tree is dirty, which is what worktree isolation
+// refuses. Outside a git repository there is none of it, and the launcher
+// simply does not offer those choices.
+func treeState(ctx context.Context, dir string) (branch string, targets []string, dirty bool) {
 	repo := gitx.Open(dir)
 	if repo == nil {
-		return "", nil
+		return "", nil, false
 	}
 	branch = repo.CurrentBranch(ctx)
 	for _, b := range repo.Branches(ctx) {
@@ -114,5 +121,6 @@ func mergeTargets(ctx context.Context, dir string) (branch string, targets []str
 			targets = append(targets, b)
 		}
 	}
-	return branch, targets
+	clean, err := repo.IsClean(ctx, nil)
+	return branch, targets, err == nil && !clean
 }

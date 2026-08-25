@@ -23,6 +23,20 @@ changes could land in a minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- The launcher shows what each review does, in a column beside the names, and
+  marks the ones a reviewed tree carries itself as `[project]`. A list of 50
+  names said nothing about which of them to pick.
+- `/` filters the review tree by name or by description, opening what it finds
+  and hiding what it does not. Every key types while the filter is open, so a
+  review can be found by typing `quick` without the `q` quitting.
+- The launcher refuses a run the tree cannot support instead of composing a
+  command that fails on launch: concurrency above 1 needs a clean tree, and
+  the reason sits under the command line until it is resolved.
+- Picking no reviews reads as "all 51" in the launcher rather than "0 of 51",
+  which is what the composed command has always meant by saying nothing.
+
 ### Changed
 
 - The dashboard header names the tree being reviewed by path (`~/src/acme`),

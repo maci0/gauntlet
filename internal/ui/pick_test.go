@@ -14,8 +14,14 @@ func demoPicker() *picker {
 	p := newPicker(PickConfig{
 		Dir: "/home/dev/project",
 		Groups: []PickGroup{
-			{Name: "quick", Reviews: []string{"sec-review", "code-review"}},
-			{Name: "frontend", Reviews: []string{"ux-review", "a11y-review"}},
+			{Name: "quick", Reviews: []PickReview{
+				{Name: "sec-review", Desc: "hunt for vulnerabilities"},
+				{Name: "code-review", Desc: "correctness and clarity"},
+			}},
+			{Name: "frontend", Reviews: []PickReview{
+				{Name: "ux-review", Desc: "flows a person has to follow"},
+				{Name: "a11y-review", Desc: "keyboard and contrast", Project: true},
+			}},
 		},
 		Agents: []string{"claude", "codex:gpt-5"},
 		Branch: "work",
@@ -148,6 +154,67 @@ func TestPickRendersAtEverySize(t *testing.T) {
 		if size[0] >= 50 && size[1] >= 12 && !strings.Contains(view, "REVIEWS") {
 			t.Fatalf("%dx%d lost the panels:\n%s", size[0], size[1], view)
 		}
+	}
+}
+
+// The filter is a search across names and descriptions: it opens what it
+// finds, hides what it does not, and typing never reaches the panes.
+func TestPickFilterFindsByNameAndDescription(t *testing.T) {
+	p := demoPicker()
+	press(p, "/")
+	if !p.typing {
+		t.Fatal("/ should open the filter")
+	}
+	press(p, "q")
+	if p.filter != "q" {
+		t.Fatalf("filter is %q: q must type, not quit", p.filter)
+	}
+	press(p, "u", "i")
+	names := []string{}
+	for _, r := range p.rows() {
+		if r.kind == rowReview {
+			names = append(names, r.review.Name)
+		}
+	}
+	if len(names) != 0 {
+		t.Fatalf("no review matches \"qui\", got %v", names)
+	}
+	p.filter = "vulnerab" // a word only a description carries
+	found := false
+	for _, r := range p.rows() {
+		if r.kind == rowReview && r.review.Name == "sec-review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the filter must match what a review says it does, not only its name")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if p.typing || p.filter != "" {
+		t.Fatal("esc should clear the filter and return the keys to the panes")
+	}
+}
+
+// Worktree isolation needs a clean tree, so the launcher says so instead of
+// composing a command that fails on launch.
+func TestPickRefusesConcurrencyOnADirtyTree(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Dirty = true
+	press(p, "+")
+	if p.blocked() == "" {
+		t.Fatal("a dirty tree with concurrency above 1 must be refused")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.launch {
+		t.Fatal("enter launched a run the tree cannot support")
+	}
+	if !strings.Contains(p.View(), "clean tree") {
+		t.Fatalf("the reason is not on screen:\n%s", p.View())
+	}
+	press(p, "-")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !p.launch {
+		t.Fatal("back at one job the run is fine, and enter should launch it")
 	}
 }
 
