@@ -16,6 +16,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -584,5 +585,27 @@ func TestHelpOverlayShieldsTheDashboard(t *testing.T) {
 	key(" ") // with the view back, the same key acts again
 	if !m.paused {
 		t.Fatal("space stopped working after help closed")
+	}
+}
+
+// --no-color must reach the TUI: lipgloss applies NO_COLOR on its own, but it
+// cannot see a command-line flag, so run hands the request over through
+// SetMonochrome before the launcher or dashboard draws. Deterministic by
+// forcing a color profile first: a bare terminal-less test run would already
+// be monochrome and prove nothing.
+func TestSetMonochromeStripsStyle(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
+	if s := style.Render("x"); !strings.Contains(s, "\x1b[") {
+		t.Fatalf("precondition failed: colored profile rendered %q", s)
+	}
+
+	SetMonochrome()
+	if s := style.Render("x"); strings.Contains(s, "\x1b[") {
+		t.Fatalf("SetMonochrome left escape codes in place: %q", s)
 	}
 }

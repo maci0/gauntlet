@@ -12,12 +12,23 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	"github.com/rivo/uniseg"
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
 )
+
+// SetMonochrome strips color from every style this package renders.
+//
+// lipgloss honors NO_COLOR and TERM=dumb on its own, but a command-line flag
+// is invisible to that detection, so the command hands --no-color over here
+// before either the launcher or the dashboard draws. Without it the flag
+// would silence the plain reporter yet leave the TUI fully colored.
+func SetMonochrome() {
+	lipgloss.SetColorProfile(termenv.Ascii)
+}
 
 // Config describes the run the dashboard is watching.
 type Config struct {
