@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Superseded runs on the same branch or pull request only burn runners: the
+# result of an older commit tells nothing about the newer one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     strategy:
@@ -21,21 +27,25 @@ jobs:
         # must still build and fall back to what agents print.
         tags: [toktop, ""]
     runs-on: ${{ matrix.os }}
+    # A stuck agent under test must not hold the runner until GitHub's own
+    # six-hour default expires.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: stable
+          go-version-file: go.mod
       - run: make check
       - run: make test TAGS=${{ matrix.tags }}
 
   dist:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: stable
+          go-version-file: go.mod
       # Cross-compilation is part of the contract: `gauntlet update` can only
       # install a platform that actually builds.
       - run: make dist VERSION=ci

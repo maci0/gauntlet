@@ -7,16 +7,26 @@ on:
 permissions:
   contents: write
 
+# Two tag pushes racing would both reach `gh release create`: serialize instead
+# of canceling, because killing a half-published release loses assets that
+# `gauntlet update` verifies against.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Full race suite plus four-platform cross-compilation, with room to spare;
+    # bounded so a hung step cannot sit on the tag for hours.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # release notes are generated from history
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version: stable
+          go-version-file: go.mod
 
       - name: Build every platform
         run: make release VERSION="${GITHUB_REF_NAME#v}"
