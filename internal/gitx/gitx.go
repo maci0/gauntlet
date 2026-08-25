@@ -283,6 +283,45 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 // DirtyPaths returns worktree paths with uncommitted changes, excluding the
 // runner's own artifacts (matched by real path, so a repo file merely named
 // like one is still seen as a real change).
+// Changes splits what git status reports by whether git is tracking the path.
+// The distinction decides what may block worktree isolation: a modification
+// git tracks is work a review would neither see nor merge, while an untracked
+// file simply sits where it is, reviewed by nobody and in nobody's way.
+type Changes struct {
+	Tracked   []string
+	Untracked []string
+}
+
+// Status reports the working tree's changes, excluding the runner's own
+// artifacts, split by whether git tracks them.
+func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Changes, error) {
+	out, err := r.run(ctx, 10*time.Second,
+		"-c", "core.quotePath=false",
+		"status", "--porcelain")
+	if err != nil {
+		return Changes{}, err
+	}
+	var ch Changes
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		p := porcelainPath(line)
+		if p == "" {
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
+			continue
+		}
+		if strings.HasPrefix(line, "??") {
+			ch.Untracked = append(ch.Untracked, p)
+			continue
+		}
+		ch.Tracked = append(ch.Tracked, p)
+	}
+	return ch, nil
+}
+
 func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]string, error) {
 	out, err := r.run(ctx, 10*time.Second,
 		"-c", "core.quotePath=false",

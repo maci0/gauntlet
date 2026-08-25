@@ -9,6 +9,19 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Fixed
+
+- Untracked files no longer block `--jobs`. A review works from a commit, so
+  uncommitted work in a *tracked* file is what it would miss and then collide
+  with; a file git never heard of is in nobody's way. Refusing to run over one
+  was a dead end besides, since the commit step stages tracked files only
+  (`git add -u`) and would leave a scratch script sitting there forever. The
+  run now says once which untracked files are not reviewed and gets on with
+  it, and both the precondition and the commit offer name the paths that are
+  actually in the way.
+
 ## 1.6.0
 
 ### Added
