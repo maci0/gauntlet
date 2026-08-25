@@ -74,10 +74,13 @@ type Config struct {
 	Started time.Time
 
 	// Seed drives every stochastic choice the runner makes: the per-loop
-	// review shuffle and agent sampling. Zero derives one from the clock, as
-	// runs always have; a nonzero seed replays those choices exactly, and the
-	// effective seed is published on the run-start event so any journal can be
-	// reproduced from what it records.
+	// review shuffle, agent sampling, and backoff jitter. Each choice is a
+	// pure function of this seed and inputs a journal already records (review
+	// name, attempt number), so no choice depends on the order goroutines run
+	// in and a nonzero seed replays a parallel run as exactly as a sequential
+	// one. Zero derives one from the clock, as runs always have; the
+	// effective seed is published on the run-start event so any journal can
+	// be reproduced from what it records.
 	Seed uint64
 
 	// ResumeQueue is the unfinished part of a loop interrupted by a hot
@@ -98,9 +101,9 @@ type Runner struct {
 
 	repo *gitx.Repo
 
-	mu             sync.Mutex
-	rng            *rand.Rand
-	seed           uint64 // effective seed: cfg.Seed, or clock-derived when zero
+	mu             sync.Mutex // guards sessionStarted
+	rng            *rand.Rand // loop-goroutine only: the per-loop review shuffle
+	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
 	mergeMu        sync.Mutex // serializes merges into the main tree
 
@@ -237,8 +240,10 @@ func (r *Runner) log(format string, args ...any) {
 }
 
 // pickAgent samples an agent from the pool, skipping any the caller excluded
-// (a previous attempt at the same review).
-func (r *Runner) pickAgent(exclude map[agent.Spec]bool) agent.Spec {
+// (a previous attempt at the same review). The sample is keyed by review
+// name, so lanes running concurrently cannot change each other's draws and a
+// seeded run replays regardless of scheduling.
+func (r *Runner) pickAgent(review string, exclude map[agent.Spec]bool) agent.Spec {
 	pool := make([]agent.Spec, 0, len(r.cfg.Agents))
 	for _, a := range r.cfg.Agents {
 		if !exclude[a] {
@@ -248,9 +253,7 @@ func (r *Runner) pickAgent(exclude map[agent.Spec]bool) agent.Spec {
 	if len(pool) == 0 {
 		pool = r.cfg.Agents
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return pool[r.rng.Intn(len(pool))]
+	return pool[drawIndex(r.seed, "agent\x00"+review, len(pool))]
 }
 
 // schedule returns this loop's review order and arms the pending queue. The
@@ -263,9 +266,7 @@ func (r *Runner) schedule() []string {
 		return order
 	}
 	order := append([]string(nil), r.cfg.Reviews...)
-	r.mu.Lock()
 	r.rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
-	r.mu.Unlock()
 	r.setPending(order)
 	return order
 }
@@ -418,7 +419,7 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	wt, err := r.repo.AddWorktree(ctx, review, tag, base)
 	if err != nil {
 		r.log("Cannot create worktree for %s: %v", review, err)
-		return Result{Review: review, Agent: r.pickAgent(nil), Status: StatusSkipped}
+		return Result{Review: review, Agent: r.pickAgent(review, nil), Status: StatusSkipped}
 	}
 	removed := false
 	// The checkout is disposable once its commit exists; the branch is what
@@ -526,7 +527,7 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool, attempt int) Result {
 
-	spec := r.pickAgent(exclude)
+	spec := r.pickAgent(review, exclude)
 	res := Result{Review: review, Agent: spec, ExitCode: -1}
 
 	rev, ok := r.cfg.Set.Get(review)
@@ -707,7 +708,7 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 		return Result{}, false
 	}
 	if attempt < r.cfg.Retries {
-		delay := r.backoff(attempt)
+		delay := r.backoff(review, attempt)
 		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
 		if !sleepCtx(ctx, delay) {
@@ -727,9 +728,10 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 }
 
 // backoff is the wait before the next attempt: doubling, capped, and jittered
-// so reviews that failed together do not come back together. The jitter comes
-// from the run's seeded source, so a seeded run still replays.
-func (r *Runner) backoff(attempt int) time.Duration {
+// so reviews that failed together do not come back together. The jitter is
+// keyed by review and attempt, so a seeded run replays it exactly no matter
+// how many lanes are retrying at once.
+func (r *Runner) backoff(review string, attempt int) time.Duration {
 	base := r.cfg.RetryDelay
 	if base <= 0 {
 		base = retryBaseDelay
@@ -740,9 +742,9 @@ func (r *Runner) backoff(attempt int) time.Duration {
 			d = grown
 		}
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return d/2 + time.Duration(r.rng.Int63n(int64(d/2)+1))
+	jitter := drawIndex(r.seed, fmt.Sprintf("backoff\x00%s\x00%d", review, attempt),
+		int(d/2)+1)
+	return d/2 + time.Duration(jitter)
 }
 
 // sleepCtx waits for d, and reports false if the run is stopping instead.
@@ -838,7 +840,9 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		r.log("Warning: could not check git status before the commit step")
 	}
 
-	spec := r.pickAgent(nil)
+	// The commit step is one launch per loop, not tied to a review, so it
+	// samples under a stable pseudo-name of its own.
+	spec := r.pickAgent("commit", nil)
 	action := "commit"
 	if r.cfg.Push {
 		action = "commit+push"

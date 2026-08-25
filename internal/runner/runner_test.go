@@ -168,10 +168,10 @@ func TestFailingAgentIsRetriedOnAnother(t *testing.T) {
 	cfg.Bin = map[string]string{"claude": bad, "codex": good}
 
 	// This test's subject is the retry, which only runs when the failing
-	// agent is sampled first. Which one goes first is a seeded choice, so
-	// search for a seed that orders it that way: with the clock's default
-	// seed the assertions hold either way, and retry would go untested about
-	// half the time while the suite stayed green.
+	// agent is sampled first. Which one goes first is a seeded choice keyed
+	// by review name, so search for a seed that orders it that way: with the
+	// clock's default seed the assertions hold either way, and retry would go
+	// untested about half the time while the suite stayed green.
 	seed := uint64(0)
 	for s := uint64(1); s < 1000 && seed == 0; s++ {
 		probeCfg := cfg
@@ -180,8 +180,7 @@ func TestFailingAgentIsRetriedOnAnother(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		probe.schedule()
-		if probe.pickAgent(nil).Tool == "claude" {
+		if probe.pickAgent("sec-review", nil).Tool == "claude" {
 			seed = s
 		}
 	}
