@@ -148,6 +148,9 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 // CommitAll stages everything in the worktree and commits it. It reports
 // whether there was anything to commit.
 //
+// Calling it again with nothing new staged commits nothing and reports false,
+// so a retry of the finish step cannot split one review across two commits.
+//
 // The agent is forbidden to run git itself, so this is the only writer: a
 // single commit per review, authored by the runner, with no AI attribution in
 // the message (the same rule the commit-step prompt enforces).
@@ -180,6 +183,11 @@ type MergeResult struct {
 // Callers must serialize merges: git allows one at a time per worktree, and a
 // conflicting merge must be aborted before the next one starts.
 //
+// A branch that is already fully merged succeeds as a no-op rather than
+// adding a second merge commit: a rerun that reaches an already-landed review
+// (a crash between merge and branch cleanup) leaves the tree exactly as the
+// first pass did.
+//
 // On conflict the merge is aborted and the branch is kept, so the work can be
 // inspected or merged by hand. Dropping it silently would lose a review's
 // entire output.
@@ -206,6 +214,10 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 // MergeInto merges branch into target, in a scratch checkout of target rather
 // than in the tree the user is working in: gauntlet never switches the branch
 // under someone's editor, and a run that merges is still a run they can watch.
+//
+// Like Merge, a repeat over an already-landed branch succeeds as a no-op, so
+// the next loop's merge step cannot stack a second merge commit onto work
+// that never changed.
 //
 // The target branch must exist locally. On conflict the merge is aborted and
 // nothing moves, exactly as a review branch that will not merge is kept for a
