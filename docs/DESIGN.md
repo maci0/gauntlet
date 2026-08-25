@@ -42,7 +42,7 @@ can replace and reload itself while a loop is running.
 | `internal/ui` | bubbletea dashboard |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
-| `internal/runner/usage*.go` | the optional bridge to tokentop's transcript reading, chosen by build tag |
+| `internal/runner/usage*.go` | the optional bridge to toktop's transcript reading, chosen by build tag |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `prompt`, `normalize`, `gitx`, and `streamjson`; `ui` imports

@@ -6,12 +6,12 @@ VERSION ?= dev
 GO      ?= go
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-# Reading an agent's own session transcript is optional: it lives in tokentop,
+# Reading an agent's own session transcript is optional: it lives in toktop,
 # and this tag is what pulls it in. Released binaries carry it, since it costs
 # one pure-Go dependency and is the only source of counts for agents that print
 # none. Build with TAGS= for a gauntlet that depends on nothing but the
 # standard library, and reads only what agents print.
-TAGS    ?= tokentop
+TAGS    ?= toktop
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
@@ -75,7 +75,7 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 		fi
 	$(GO) fix -diff ./...
 	$(GO) vet ./...
-	$(GO) vet -tags tokentop ./...
+	$(GO) vet -tags toktop ./...
 
 .PHONY: install
 install: build ## install into ~/.local/bin

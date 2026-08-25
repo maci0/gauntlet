@@ -21,10 +21,10 @@ import (
 // binary that emits exactly what the real agent emits. The shapes are not
 // invented: they were read from the agents' own transcripts, their `--help`,
 // their packages, or `strings` on their binaries, and the same fixtures appear
-// in internal/streamjson and in tokentop's agentusage.
+// in internal/streamjson and in toktop's agentusage.
 //
 // Transcript cases need the optional reader, so they run only under
-// `-tags tokentop`; the stream cases run in every build.
+// `-tags toktop`; the stream cases run in every build.
 //
 // A rate needs two things: a growing count and the time between the readings.
 // So every case asserts at least two usage events with increasing totals, and
@@ -36,7 +36,7 @@ import (
 func needTranscripts(t *testing.T) {
 	t.Helper()
 	if transcriptSource == "" {
-		t.Skip("transcript reading is off in this build; use -tags tokentop")
+		t.Skip("transcript reading is off in this build; use -tags toktop")
 	}
 }
 

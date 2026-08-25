@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-//go:build tokentop
+//go:build toktop
 
 package runner
 
@@ -9,10 +9,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/maci0/tokentop/agentusage"
+	"github.com/maci0/toktop/agentusage"
 )
 
-// newTranscriptReader follows an agent's session transcript through tokentop,
+// newTranscriptReader follows an agent's session transcript through toktop,
 // which is where the per-agent knowledge of those formats is maintained.
 func newTranscriptReader(tool, dir string, since time.Time) transcriptReader {
 	w := agentusage.Watch(tool, dir, since)
@@ -22,7 +22,7 @@ func newTranscriptReader(tool, dir string, since time.Time) transcriptReader {
 	return watcher{w}
 }
 
-const transcriptSource = "tokentop"
+const transcriptSource = "toktop"
 
 type watcher struct{ w *agentusage.Watcher }
 

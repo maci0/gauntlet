@@ -17,8 +17,8 @@ import (
 // where each CLI keeps them, whose counters are cumulative, and which field
 // means output is a monitoring concern that belongs to a monitoring tool.
 //
-// So it lives in tokentop, and gauntlet reaches for it only when built with
-// `-tags tokentop`. Without that tag the methods below are a no-op and the
+// So it lives in toktop, and gauntlet reaches for it only when built with
+// `-tags toktop`. Without that tag the methods below are a no-op and the
 // stdout reading stands alone: fewer numbers for the quietest agents, no
 // dependency, and nothing that pretends to a measurement it does not have.
 type transcriptReader interface {
@@ -40,7 +40,7 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 // since bounds what counts: anything written before it belongs to whatever ran
 // earlier.
 //
-// The implementation is chosen at build time; see usage_tokentop.go and
+// The implementation is chosen at build time; see usage_toktop.go and
 // usage_off.go.
 func watchTranscript(tool, dir string, since time.Time) transcriptReader {
 	return newTranscriptReader(tool, dir, since)
