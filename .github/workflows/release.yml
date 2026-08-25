@@ -22,6 +22,10 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # Publishing talks to the API through gh and GH_TOKEN; nothing here
+          # needs git credentials, and this job's token can create releases.
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
@@ -30,9 +34,10 @@ jobs:
         run: make release VERSION="${GITHUB_REF_NAME#v}"
 
       # Smoke test before anything is uploaded: the host binary must run and
-      # report the tagged version (it is stamped from the tag), and its line in
-      # checksums.txt must verify. A mismatch means the tag, the asset names
-      # selfupdate.AssetName builds, and the binary have drifted apart.
+      # report the tagged version (it is stamped from the tag), and every asset
+      # must match its line in checksums.txt. Verifying all of them catches a
+      # corrupted cross-compile here rather than as a failed `gauntlet update`
+      # checksum on that platform alone.
       - name: Smoke-test what would be published
         run: |
           version="${GITHUB_REF_NAME#v}"
@@ -42,7 +47,7 @@ jobs:
             echo "smoke test failed: binary reports \"$got\", want \"gauntlet $version\"" >&2
             exit 1
           fi
-          (cd dist && grep " gauntlet_${version}_linux_amd64$" checksums.txt | sha256sum -c -)
+          (cd dist && sha256sum -c checksums.txt)
 
       # Release notes are this version's CHANGELOG section: consumers read the
       # changelog, not the commit log. A tag without that section is a mistake
@@ -63,7 +68,18 @@ jobs:
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.txt is the module
       # inventory of what shipped, read back out of each built binary.
+      #
+      # A half-published release (created, then an upload died) makes
+      # `gh release create` fail on every retry; the fallback clobbers the
+      # existing assets instead, so re-running this workflow heals it. The
+      # artifacts are reproducible and just passed the smoke test, so replacing
+      # them is safe; if no release exists, upload also fails and the job
+      # stays red.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --notes-file notes.md dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+        run: |
+          gh release create "$GITHUB_REF_NAME" --notes-file notes.md \
+            dist/gauntlet_* dist/checksums.txt dist/sbom.txt ||
+          gh release upload "$GITHUB_REF_NAME" --clobber \
+            dist/gauntlet_* dist/checksums.txt dist/sbom.txt
