@@ -8,13 +8,15 @@ import (
 	"hash/fnv"
 )
 
-// Per-review stochastic choices go through these keyed draws rather than one
-// shared random stream. A stream's output depends on the order it is consumed
-// from, and parallel review lanes consume concurrently, so a recorded seed
-// would not reproduce which agent ran what or how long a retry waited. Keyed
-// by review name and attempt instead, every choice is a pure function of the
-// effective seed and inputs that are part of the journal, which is what makes
-// a seeded --jobs > 1 run replay like a sequential one.
+// Every stochastic choice the runner makes goes through these keyed draws
+// rather than one shared random stream. A stream's output depends on the order
+// it is consumed from, and parallel lanes consume concurrently, so a recorded
+// seed would not reproduce which agent ran what, how long a retry waited, or
+// what order a later loop ran in. Keyed by loop number, review name, and
+// attempt instead, every choice is a pure function of the effective seed and
+// inputs that are part of the journal, which is what makes a seeded --jobs > 1
+// run replay like a sequential one and lets a hot-reload successor pick up the
+// interrupted run's schedule as if the swap had never happened.
 
 // draw maps key to a pseudorandom word under seed.
 func draw(seed uint64, key string) uint64 {
