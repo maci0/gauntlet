@@ -4,10 +4,12 @@
 package normalize
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 	"unicode"
+	"unicode/utf8"
 )
 
 // push feeds lines and returns every emitted text, flushing at the end.
@@ -179,6 +181,9 @@ func TestAgentSpecificNoise(t *testing.T) {
 		{"codex bullet", "• Read src/main.rs", "Read src/main.rs", Tool},
 		// The protocol lines every agent must end with survive untouched.
 		{"result line", "RESULT: changed=2", "RESULT: changed=2", Result},
+		// Tabs become spaces even when no other control character would
+		// otherwise send the line through the rewrite.
+		{"tab alignment", "a\tb", "a    b", Plain},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -339,6 +344,72 @@ func TestTruncateKeepsUTF8Intact(t *testing.T) {
 	if Truncate(in, 1) != in {
 		t.Fatal("degenerate width must be a no-op")
 	}
+}
+
+// FuzzNormalizerStream drives the stateful pipeline (clean, diff tracking,
+// duplicate collapse, truncation) with an arbitrary line sequence, the same
+// path every raw agent output line takes. Pinned contracts: whatever the
+// state machine does, nothing terminal-driving is ever emitted, a width cap
+// bounds every line, repeats count real emissions, a second Flush is silent,
+// and replaying the same stream through a fresh Normalizer reproduces the
+// exact output (state never leaks between streams).
+func FuzzNormalizerStream(f *testing.F) {
+	seeds := []string{
+		"reading files…\nreading tests…\nRESULT: changed=2",
+		"diff --git a/pool.go b/pool.go\n--- a/pool.go\n+++ b/pool.go\n@@ -1,2 +1,2 @@\n-old\n+new\n context",
+		"| continuation\n⏺ tool use\n•another gutter",
+		"\x1b[32m✓\x1b[0m done\r\x1b[2K\x1b[1Grepainted\n\x1b]0;title\x07",
+		"same line\nsame line\nsame line\nother\nsame line",
+		"error: failed\npanic: boom\nplain narration",
+		"⠋\n╭───╮\n│ box │\n╰───╯\n· · ·",
+		"a\tb\nc\rd",
+		strings.Repeat("x", 500),
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s), 80)
+	}
+	f.Fuzz(func(t *testing.T, data []byte, maxWidth int) {
+		if maxWidth < 0 {
+			maxWidth = 0
+		} else if maxWidth > 4096 {
+			maxWidth = 4096
+		}
+		cfg := Config{MaxWidth: maxWidth}
+		run := func() (out, tail []Line) {
+			n := New(cfg)
+			for line := range strings.SplitSeq(string(data), "\n") {
+				out = append(out, n.Push(line)...)
+			}
+			out = append(out, n.Flush()...)
+			return out, n.Flush()
+		}
+		got, extra := run()
+		if len(extra) != 0 {
+			t.Fatalf("the Flush after Flush emitted %v", texts(extra))
+		}
+		for _, l := range got {
+			if l.Repeat < 1 {
+				t.Fatalf("emitted line with Repeat %d: %q", l.Repeat, l.Text)
+			}
+			for _, r := range l.Text {
+				if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+					t.Fatalf("stream emitted terminal-driving %q in %q", r, l.Text)
+				}
+			}
+			if maxWidth > 1 && utf8.RuneCountInString(l.Text) > maxWidth+1 {
+				t.Fatalf("width %d exceeded: %q", maxWidth, l.Text)
+			}
+		}
+		// A normalizer that has seen nothing must have nothing to say.
+		if n := New(cfg); len(n.Flush()) != 0 {
+			t.Fatal("Flush on a fresh normalizer emitted a line")
+		}
+		// Replay determinism: one stream's state must not shape another's.
+		again, againTail := run()
+		if len(againTail) != 0 || fmt.Sprint(again) != fmt.Sprint(got) {
+			t.Fatalf("replay diverged:\n got %v (tail %v)\nwant %v", again, againTail, got)
+		}
+	})
 }
 
 // FuzzDisplay pins the one contract every caller of Display depends on: no

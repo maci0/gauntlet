@@ -4,10 +4,13 @@
 package journal
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -237,6 +240,81 @@ func TestNilJournalIsUsable(t *testing.T) {
 	if err := j.Close(Summary{}); err != nil {
 		t.Fatalf("closing a nil journal should be a no-op: %v", err)
 	}
+}
+
+// FuzzParseTail feeds parseTail an arbitrary index image and pins the
+// contract Recent relies on to list runs: at most n entries come back, a hit
+// returns exactly n, a miss returns every summary the region holds, order is
+// newest first regardless of n, and a truncated head line (dropFirst) is
+// dropped rather than half-parsed.
+func FuzzParseTail(f *testing.F) {
+	seeds := []string{
+		`{"run_id":"r2","loops":2}` + "\n" + `{"run_id":"r1","loops":1}`,
+		`{"run_id":"r0","start":"2026-08-25T12:00:00Z","end":"2026-08-25T12:01:00Z"}`,
+		"{\"run_id\": trunca\n",
+		"\n\n{}",
+		`garbage` + "\n" + `{"run_id":"ok"}` + "\n" + `also garbage`,
+		strings.Repeat(`{"run_id":"x"}`+"\n", 50),
+		"",
+		"\nno trailing newline",
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s), false, 3)
+		f.Add([]byte(s), true, 1)
+	}
+	// Regression: a negative count once panicked in make before the guard.
+	f.Add([]byte(`{"run_id":"r"}`), true, -42)
+	f.Add([]byte(`{"run_id":"r"}`), false, 0)
+	f.Fuzz(func(t *testing.T, data []byte, dropFirst bool, n int) {
+		if n <= 0 {
+			// Below 1 is outside the contract Recent establishes (n > 0);
+			// reaching here at all must merely be safe.
+			parseTail(data, dropFirst, n)
+			return
+		}
+		if n > 4096 {
+			n = 4096
+		}
+		got, enough := parseTail(data, dropFirst, n)
+
+		// Independent oracle: the summaries a reader can parse out of the
+		// region, oldest last, with an incomplete head line removed. The
+		// contract is that got is exactly its tail of length n.
+		lines := strings.Split(string(data), "\n")
+		first := 0
+		if dropFirst && len(lines) > 0 {
+			first = 1
+		}
+		var want []Summary
+		for i := first; i < len(lines); i++ {
+			var s Summary
+			if err := json.Unmarshal([]byte(strings.TrimSpace(lines[i])), &s); err != nil {
+				continue
+			}
+			want = append(want, s)
+		}
+		slices.Reverse(want)
+		take := min(n, len(want))
+		if len(got) != take {
+			t.Fatalf("got %d entries, want %d", len(got), take)
+		}
+		if enough != (len(want) >= n) {
+			t.Fatalf("enough=%v for %d entries and n=%d", enough, len(want), n)
+		}
+		for i := range got {
+			if !reflect.DeepEqual(got[i], want[i]) {
+				t.Fatalf("entry %d: got %+v, want %+v", i, got[i], want[i])
+			}
+		}
+
+		// Ordering must not depend on n: a longer read extends the same list.
+		longer, _ := parseTail(data, dropFirst, n+1)
+		for i := range got {
+			if i < len(longer) && !reflect.DeepEqual(longer[i], got[i]) {
+				t.Fatalf("order changed with n: [%d] %+v vs %+v", i, got[i], longer[i])
+			}
+		}
+	})
 }
 
 func TestEventsUnknownRun(t *testing.T) {
