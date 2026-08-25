@@ -9,9 +9,9 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
-## Unreleased
+## 1.4.1
 
-### Changed
+### Fixed
 
 - `--dirs` runs the suggest step for every directory at once instead of one
   after another. Each tree has its own prompt set and its own answer, so each
