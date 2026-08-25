@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/humanize"
@@ -98,12 +99,29 @@ func cmdShow(out io.Writer, runID string) int {
 	return exitOK
 }
 
+// indexerWaitGrace is how long Wait may outlive the deadline kill before it
+// gives up on an unreapable child, the same insurance runProc carries.
+const indexerWaitGrace = 10 * time.Second
+
 // runIndexer runs a helper binary to completion, streaming nothing: its output
 // goes straight to the terminal.
+//
+// The child gets its own process group and the deadline kill takes down the
+// whole group: semcode-index is an external binary that may have children of
+// its own, and killing only its pid would orphan them (see runProc for the
+// same rule applied to agents).
 func runIndexer(ctx context.Context, bin string, args []string, dir string) int {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = indexerWaitGrace
 	if err := cmd.Run(); err != nil {
 		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode()
