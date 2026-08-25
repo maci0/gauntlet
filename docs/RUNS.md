@@ -58,8 +58,7 @@ choices:
 
 - `--commit` has an agent write a message and commit **on the branch you are
   on**. `--push` does that and pushes it. Neither creates a branch, and
-  neither merges anything. `--yolo` turns both on unless you set them
-  yourself.
+  neither merges anything.
 - `--jobs N` is the only thing that branches: each review works on
   `gauntlet/<run>/<review>`, and the runner merges those back into **the
   branch you are on**, one at a time, `--no-ff`. Nothing here targets `main`

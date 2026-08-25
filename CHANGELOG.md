@@ -20,14 +20,6 @@ changes could land in a minor instead and were listed under Changed.
   and starts the run. `--yes` and `--yolo` answer yes; a run with no terminal
   keeps the plain error rather than committing unattended.
 
-### Changed
-
-- `--yolo` turns the git steps on: it now implies `--commit` and `--push`,
-  because an unattended run that finds and fixes things and then leaves them
-  uncommitted has done half a job. Explicit flags still win, so
-  `--yolo --push=false` is a yolo run that keeps its work local, and the
-  launcher spells that out when you turn one back off.
-
 ## 1.5.1
 
 ### Fixed
