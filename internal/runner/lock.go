@@ -8,7 +8,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
+
+	"github.com/maci0/gauntlet/internal/normalize"
+)
+
+// A lock note is one terminal line, bounded on the way in and on the way out.
+// The file sits in the reviewed tree, where an agent could rewrite it, so what
+// comes back is untrusted text: one line, stripped before it reaches a
+// terminal, and never longer than gauntlet itself would write.
+const (
+	noteRunes = 120             // what a holder may say
+	noteLimit = 4*noteRunes + 8 // its worst case in bytes, plus the newline
 )
 
 // ErrLocked means another gauntlet holds this directory's lock.
@@ -28,7 +40,7 @@ type Lock struct {
 // the path, so the check cannot be raced.
 func Acquire(path string) (*Lock, error) {
 	fd, err := syscall.Open(path,
-		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o644)
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open lock file %s: %w "+
 			"(the lock path must be a creatable regular file)", path, err)
@@ -43,13 +55,43 @@ func Acquire(path string) (*Lock, error) {
 		return nil, fmt.Errorf("lock path is not a regular file: %s", path)
 	}
 	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		syscall.Close(fd)
+		defer syscall.Close(fd)
 		if errors.Is(err, syscall.EWOULDBLOCK) {
+			if note := readNote(fd); note != "" {
+				return nil, fmt.Errorf("%w: %s (lock: %s)", ErrLocked, note, path)
+			}
 			return nil, fmt.Errorf("%w (lock: %s)", ErrLocked, path)
 		}
 		return nil, err
 	}
 	return &Lock{path: path, fd: fd}, nil
+}
+
+// Note records what the holder is doing now, so the next gauntlet to try this
+// directory is told what it is waiting for instead of just that it must wait.
+// Best effort: a note that cannot be written costs nothing but the message.
+func (l *Lock) Note(text string) {
+	if l == nil {
+		return
+	}
+	line := append([]byte(normalize.Truncate(normalize.Sanitize(text), noteRunes)), '\n')
+	if _, err := syscall.Pwrite(l.fd, line, 0); err != nil {
+		return
+	}
+	// A shorter note must not leave the tail of a longer one behind it.
+	_ = syscall.Ftruncate(l.fd, int64(len(line)))
+}
+
+// readNote returns the holder's note, or "" when there is none to read. The
+// descriptor is the one just opened, so no second path lookup can be raced.
+func readNote(fd int) string {
+	buf := make([]byte, noteLimit)
+	n, err := syscall.Pread(fd, buf, 0)
+	if err != nil || n <= 0 {
+		return ""
+	}
+	line, _, _ := strings.Cut(string(buf[:n]), "\n")
+	return normalize.Display(strings.TrimSpace(line))
 }
 
 // Release drops the lock and removes the file, so reviewed repos are not

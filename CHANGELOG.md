@@ -13,6 +13,11 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Added
 
+- The directory lock names what the run holding it is doing. `.gauntlet.lock`
+  carries the version, pid, run id, and the reviews in flight, so a second
+  gauntlet turned away from the directory reports `another gauntlet is already
+  running here: gauntlet 1.1.0 (pid 8123, run 20260825T…): config-review
+  (opencode)` instead of only that something holds it.
 - `--seed N`: replayable review order and agent picks. A nonzero seed replays
   the per-loop review shuffle and agent sampling; zero derives one from the
   clock as before. The effective seed rides the run-start event, so a journal

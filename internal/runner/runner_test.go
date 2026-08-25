@@ -5,6 +5,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -633,6 +634,35 @@ func TestLockKeepsTwoRunsApart(t *testing.T) {
 	second.Release()
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("lock file should be removed on release")
+	}
+}
+
+// The note tells the next gauntlet what it is waiting for: it survives being
+// rewritten shorter, and hostile bytes in it never reach the terminal.
+func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	held, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	held.Note("running a-review with claude, and a long tail of other work")
+	held.Note("idle\x1b[31m\x07")
+	_, err = Acquire(path)
+	if !errors.Is(err, ErrLocked) {
+		t.Fatalf("second acquire: %v, want ErrLocked", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "idle") {
+		t.Fatalf("the note is missing from %q", msg)
+	}
+	if strings.Contains(msg, "a-review") {
+		t.Fatalf("the previous, longer note was left behind: %q", msg)
+	}
+	if strings.ContainsAny(msg, "\x1b\x07") {
+		t.Fatalf("control bytes reached the message: %q", msg)
 	}
 }
 

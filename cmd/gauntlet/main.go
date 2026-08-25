@@ -280,8 +280,10 @@ func run(argv []string) int {
 	bus := runner.NewBus()
 	reportEvents := bus.Subscribe(1024)
 	journalEvents := bus.Subscribe(1024)
+	lockEvents := bus.Subscribe(1024)
 
 	var consumers sync.WaitGroup
+	consumers.Go(func() { noteLocks(runs, runID, lockEvents) })
 	consumers.Go(func() {
 		for ev := range journalEvents {
 			// The feed and the live usage ticks are high volume and
@@ -467,6 +469,51 @@ func exitCode(ctx context.Context, runs []*dirRun) int {
 		}
 	}
 	return exitOK
+}
+
+// noteLocks keeps each directory's lock file describing what that run is doing
+// now, so a second gauntlet turned away from the directory is told what holds
+// it rather than only that something does.
+func noteLocks(runs []*dirRun, runID string, events <-chan runner.Event) {
+	locks := make(map[string]*runner.Lock, len(runs))
+	running := make(map[string]map[string]string, len(runs))
+	for _, d := range runs {
+		locks[d.dir] = d.lock
+		running[d.dir] = map[string]string{}
+		d.lock.Note(fmt.Sprintf("gauntlet %s (pid %d, run %s): starting", version, os.Getpid(), runID))
+	}
+	write := func(dir string) {
+		lock, ok := locks[dir]
+		if !ok {
+			return
+		}
+		what := "idle"
+		if active := running[dir]; len(active) > 0 {
+			parts := make([]string, 0, len(active))
+			for review, agent := range active {
+				parts = append(parts, review+" ("+agent+")")
+			}
+			sort.Strings(parts) // map order would make the note flicker
+			what = strings.Join(parts, ", ")
+		}
+		lock.Note(fmt.Sprintf("gauntlet %s (pid %d, run %s): %s",
+			version, os.Getpid(), runID, what))
+	}
+	for ev := range events {
+		active, ours := running[ev.Dir]
+		if !ours {
+			continue // an event from a directory this process does not hold
+		}
+		switch ev.Kind {
+		case runner.EvReviewStart:
+			active[ev.Review] = ev.Agent
+		case runner.EvReviewEnd:
+			delete(active, ev.Review)
+		default:
+			continue
+		}
+		write(ev.Dir)
+	}
 }
 
 func releaseAll(runs []*dirRun) {
