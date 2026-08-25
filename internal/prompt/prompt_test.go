@@ -5,12 +5,14 @@ package prompt
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -202,6 +204,62 @@ func TestParseSuggestions(t *testing.T) {
 	if len(unknown) != 1 || unknown[0] != "nope-review" {
 		t.Fatalf("unknown names: %v", unknown)
 	}
+}
+
+// FuzzParseSuggestions feeds arbitrary agent output through the triage parser
+// and pins the contract Suggest depends on before it launches reviews: only
+// available names are ever picked, first mention wins, reasons carry no
+// terminal-driving characters, unknown names are reported rather than run,
+// and parsing is deterministic.
+func FuzzParseSuggestions(f *testing.F) {
+	available := []string{"sec-review", "doc-review", "test-review"}
+	seeds := []string{
+		"RELEVANT: sec-review: handles auth",
+		"thinking...\nRELEVANT: sec\nRELEVANT: doc-review",
+		"relevant: test-review: lowercase label",
+		"RELEVANT: nope-review: not available\nRELEVANT: nope: also not",
+		"RELEVANT:   doc-review   :  padded  ",
+		"RELEVANT: sec-review:\x1b[31m\x00\u202Espoof reason",
+		"RELEVANT: sec-review:" + strings.Repeat(" very long reason", 200),
+		"RELEVANT:",
+		strings.Repeat("RELEVANT: doc-review: dup\n", 50),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, out string) {
+		picked, unknown := ParseSuggestions(out, available)
+		known := map[string]bool{}
+		for _, a := range available {
+			known[a] = true
+		}
+		seen := map[string]bool{}
+		for _, s := range picked {
+			if !known[s.Name] {
+				t.Fatalf("picked %q, which is not in the pool", s.Name)
+			}
+			if seen[s.Name] {
+				t.Fatalf("duplicate pick for %q", s.Name)
+			}
+			seen[s.Name] = true
+			for _, r := range s.Reason {
+				if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+					t.Fatalf("reason for %q carries terminal-driving %q: %q",
+						s.Name, r, s.Reason)
+				}
+			}
+		}
+		for _, name := range unknown {
+			if known[name] {
+				t.Fatalf("reported available name %q as unknown", name)
+			}
+		}
+		picked2, unknown2 := ParseSuggestions(out, available)
+		if fmt.Sprint(picked) != fmt.Sprint(picked2) ||
+			fmt.Sprint(unknown) != fmt.Sprint(unknown2) {
+			t.Fatalf("ParseSuggestions is not deterministic for %q", out)
+		}
+	})
 }
 
 func TestExpandSetsAndWeights(t *testing.T) {

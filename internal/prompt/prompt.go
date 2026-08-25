@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"unicode"
 )
 
 //go:embed prompts/*.md
@@ -152,8 +153,9 @@ func readNoFollow(path string) (string, error) {
 }
 
 // sanitize strips control and formatting characters from untrusted display
-// text: C0/C1 controls, DEL, and Unicode Cf (bidi overrides like U+202E), all
-// of which can drive or spoof a terminal.
+// text: every Unicode Cc control (C0, C1, DEL) and Cf format character (bidi
+// overrides, zero widths, joiners, interlinear and tag characters), all of
+// which can drive or spoof a terminal or carry invisible text.
 func sanitize(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == ' ' {
@@ -167,13 +169,5 @@ func sanitize(s string) string {
 }
 
 func isPrintable(r rune) bool {
-	switch {
-	case r < 0x20, r == 0x7f, r >= 0x80 && r <= 0x9f:
-		return false
-	case r >= 0x200b && r <= 0x200f, r >= 0x202a && r <= 0x202e, r >= 0x2066 && r <= 0x2069:
-		return false
-	case r == 0xfeff:
-		return false
-	}
-	return true
+	return !unicode.IsControl(r) && !unicode.Is(unicode.Cf, r)
 }

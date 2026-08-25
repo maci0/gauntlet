@@ -231,6 +231,70 @@ func TestTailKeepsLastBytes(t *testing.T) {
 	}
 }
 
+// FuzzUsageTail drives the output-tail ring buffer with arbitrary writes in
+// arbitrary chunkings and checks it against a reference model: the retained
+// bytes are always exactly the last size bytes written, never more. The
+// retained tail is what ParseUsage reads, so its counters are pinned too:
+// absent stays -1, found is positive, and Reported follows Output-then-Total.
+func FuzzUsageTail(f *testing.F) {
+	f.Add([]byte("abcdefghijkl"), 8, 6)
+	f.Add([]byte("0123456789"), 4, 10)
+	f.Add([]byte(`"output_tokens":1234`), 10, 5)
+	f.Add([]byte("tokens used: 12,345"), 32, 1)
+	f.Add([]byte("héllo wörld — ünïcode tail"), 12, 3)
+	f.Add([]byte{}, 1, 0)
+	f.Add([]byte("x"), 4096, 0)
+	f.Fuzz(func(t *testing.T, data []byte, size, split int) {
+		if size < 1 {
+			size = 1
+		} else if size > 4096 {
+			size = 4096
+		}
+		split = min(max(split, 0), len(data))
+
+		tl := NewTail(size)
+		if _, err := tl.WriteString(string(data[:split])); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tl.Write(data[split:]); err != nil {
+			t.Fatal(err)
+		}
+
+		got := tl.Bytes()
+		if len(got) > size {
+			t.Fatalf("ring kept %d bytes under size %d", len(got), size)
+		}
+		want := string(data)
+		if len(want) > size {
+			want = want[len(want)-size:]
+		}
+		if string(got) != want {
+			t.Fatalf("tail %q, want last %d bytes %q", got, size, want)
+		}
+
+		u := ParseUsage(got)
+		if u.Output < -1 || u.Thinking < -1 || u.Total < -1 {
+			t.Fatalf("impossible counters on %q: %+v", got, u)
+		}
+		reported := u.Reported()
+		switch {
+		case u.Output >= 0:
+			if reported != u.Output {
+				t.Fatalf("Reported ignored output: %+v -> %d", u, reported)
+			}
+		case u.Total >= 0:
+			if reported != u.Total {
+				t.Fatalf("Reported ignored total: %+v -> %d", u, reported)
+			}
+		default:
+			if reported != 0 || u.Known() {
+				t.Fatalf("unknown usage leaked: %+v known=%v reported=%d",
+					u, u.Known(), reported)
+			}
+		}
+	})
+}
+
 func TestParseDshProvider(t *testing.T) {
 	dump := `
 plugins:
