@@ -15,6 +15,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestBundledPromptsAreEmbedded(t *testing.T) {
@@ -471,6 +473,47 @@ func testSet(t *testing.T, names ...string) Set {
 		t.Fatal(err)
 	}
 	return set
+}
+
+// Review names are identity, so one spelling must work everywhere regardless
+// of the form it arrived in: macOS writes NFD filenames while keyboards and
+// agents produce NFC. Discovery normalizes at ingestion, and Get, Expand,
+// and ParseSuggestions normalize what enters from outside.
+func TestNonASCIINameNormalizationRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	nfcStem := "sécurity-review"
+	nfdStem := norm.NFD.String(nfcStem)
+	if nfdStem == nfcStem {
+		t.Fatal("test fixture is not actually decomposed")
+	}
+	write(t, filepath.Join(dir, nfdStem+".md"),
+		"Your goal is to audit text handling.\n")
+
+	set, warnings, err := Discover(context.Background(), "", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "control characters") {
+			t.Fatalf("decomposed stem misread as hostile: %v", warnings)
+		}
+	}
+	// The stored name is the composed form; a lookup with either spelling,
+	// through any entry point, finds the same review.
+	for _, query := range []string{nfcStem, nfdStem} {
+		if _, ok := set.Get(query); !ok {
+			t.Errorf("Get(%q) missed an NFC-stored review", query)
+		}
+		names, err := set.Expand(query, "--reviews", false)
+		if err != nil || len(names) != 1 || names[0] != nfcStem {
+			t.Errorf("Expand(%q) = %v, %v", query, names, err)
+		}
+	}
+
+	picked, unknown := ParseSuggestions("RELEVANT: "+nfdStem+"\n", []string{nfcStem})
+	if len(picked) != 1 || picked[0].Name != nfcStem || len(unknown) != 0 {
+		t.Fatalf("an agent echoing a decomposed name was not matched: %+v %v", picked, unknown)
+	}
 }
 
 func write(t *testing.T, path, body string) {

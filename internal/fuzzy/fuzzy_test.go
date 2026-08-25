@@ -3,7 +3,11 @@
 
 package fuzzy
 
-import "testing"
+import (
+	"testing"
+
+	"golang.org/x/text/unicode/norm"
+)
 
 func TestClosest(t *testing.T) {
 	candidates := []string{"code-review", "sec-review", "quick", "standard"}
@@ -51,6 +55,36 @@ func TestClosestNonASCII(t *testing.T) {
 	}
 	if got := Closest("abcdefg-review", candidates); got != "" {
 		t.Errorf("Closest(abcdefg-review) = %q, want none", got)
+	}
+}
+
+// Folding equates case variants that lowercasing misses: the long s, the
+// Kelvin sign, and the final sigma all fold to their ordinary counterparts,
+// so a typo hint still fires when a name was typed with one of them.
+func TestClosestFolding(t *testing.T) {
+	candidates := []string{"sec-review", "kode-review", "sigma-review"}
+	tests := []struct{ want, got string }{
+		{"ſec-review", "sec-review"},        // U+017F LATIN SMALL LETTER LONG S
+		{"\u212Aode-review", "kode-review"}, // U+212A KELVIN SIGN
+		{"sigma-revie\u03C2", "sigma-review"},
+	}
+	for _, tt := range tests {
+		if got := Closest(tt.want, candidates); got != tt.got {
+			t.Errorf("Closest(%q) = %q, want %q", tt.want, got, tt.got)
+		}
+	}
+}
+
+// A decomposed spelling of the same name normalizes to the candidate instead
+// of counting as edits: macOS writes NFD filenames while keyboards type NFC.
+func TestClosestNormalization(t *testing.T) {
+	candidates := []string{"sécurity-review"}
+	nfd := norm.NFD.String("sécurity-review")
+	if nfd == "sécurity-review" {
+		t.Fatal("test fixture is not actually decomposed")
+	}
+	if got := Closest(nfd, candidates); got != "sécurity-review" {
+		t.Errorf("Closest(NFD) = %q, want sécurity-review", got)
 	}
 }
 
