@@ -38,15 +38,14 @@ can replace and reload itself while a loop is running.
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
-| `internal/usagewatch` | live token counts from agents' own session transcripts |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
-| `agentusage` | public package: the reading side of token telemetry, for other tools |
+| `internal/runner/usage*.go` | the optional bridge to tokentop's transcript reading, chosen by build tag |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`prompt`, `normalize`, `gitx`, `streamjson`, and `usagewatch`; `ui` imports
+`prompt`, `normalize`, `gitx`, and `streamjson`; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds and `humanize`
 formatters, and nothing else. `prompt` imports `gitx`, so project discovery's
 one git call (check-ignore) uses the same hardened resolver and safe config

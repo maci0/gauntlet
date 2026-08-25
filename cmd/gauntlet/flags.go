@@ -15,7 +15,6 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
-	"github.com/maci0/gauntlet/internal/usagewatch"
 	"golang.org/x/term"
 )
 
@@ -333,11 +332,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if !ok || def.Usage == nil {
 			continue
 		}
-		if err := usagewatch.RegisterSpec(name, usagewatch.Spec{
-			Roots:      def.Usage.Roots,
-			Suffix:     def.Usage.Suffix,
-			Cumulative: def.Usage.Cumulative,
-		}); err != nil {
+		if err := registerTranscript(name, def.Usage); err != nil {
 			return nil, err
 		}
 	}

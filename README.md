@@ -255,10 +255,13 @@ Reviewing a repository you do not trust still means running it in a container.
 
 ## Reading agent throughput from your own tools
 
-The token-reading machinery is a public package:
+The token-reading machinery lives in [tokentop](https://github.com/maci0/tokentop),
+which is where the per-agent archaeology is maintained: where each CLI keeps
+its transcript, which counters are cumulative, which field means generated
+output. Agents defined in `~/.gauntlet/agents.json` are picked up too.
 
 ```go
-import "github.com/maci0/gauntlet/agentusage"
+import "github.com/maci0/tokentop/agentusage"
 
 for _, p := range agentusage.Discover() {      // agents running right now
     w := agentusage.Watch(p.Tool, p.Dir, time.Now())
@@ -269,9 +272,10 @@ for _, p := range agentusage.Discover() {      // agents running right now
 `Discover` reads `/proc` and so lists processes on Linux only; `Watch`
 works wherever the agent's transcripts do.
 
-It knows where each agent keeps its transcript, which counters are cumulative,
-and which field means generated output. Agents defined in
-`~/.gauntlet/agents.json` are picked up too.
+Gauntlet uses it through a build tag. Released binaries and `make build`
+include it; `make build TAGS=` (or a plain `go build`) produces a gauntlet with
+no dependencies outside the standard library, which reads only the counts
+agents print themselves. `gauntlet doctor` says which build you have.
 
 ## Documentation
 

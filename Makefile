@@ -6,6 +6,14 @@ VERSION ?= dev
 GO      ?= go
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
+# Reading an agent's own session transcript is optional: it lives in tokentop,
+# and this tag is what pulls it in. Released binaries carry it, since it costs
+# one pure-Go dependency and is the only source of counts for agents that print
+# none. Build with TAGS= for a gauntlet that depends on nothing but the
+# standard library, and reads only what agents print.
+TAGS    ?= tokentop
+GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
+
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
 export TMPDIR ?= $(HOME)/.cache/gauntlet/test
@@ -30,7 +38,7 @@ help: ## show available targets
 
 .PHONY: build
 build: ## build the gauntlet binary for this host
-	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
+	$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
 .PHONY: run
 run: build ## build, then run one loop here with the dashboard
@@ -39,17 +47,17 @@ run: build ## build, then run one loop here with the dashboard
 .PHONY: test
 test: ## run all tests with the race detector, shuffled order
 	@mkdir -p $(TMPDIR)
-	$(GO) test -race -shuffle=on ./...
+	$(GO) test $(GOTAGS) -race -shuffle=on ./...
 
 .PHONY: cover
 cover: ## test coverage summary
 	@mkdir -p $(TMPDIR) $(DIST)
-	$(GO) test -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./... && \
+	$(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./... && \
 		$(GO) tool cover -func=$(DIST)/coverage.out | tail -1
 
 .PHONY: vet
 vet: ## run go vet
-	$(GO) vet ./...
+	$(GO) vet $(GOTAGS) ./...
 
 # Package directories only: the Go tool already ignores dot-directories, but
 # gofmt walks everything, including scratch fixtures.
@@ -67,6 +75,7 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 		fi
 	$(GO) fix -diff ./...
 	$(GO) vet ./...
+	$(GO) vet -tags tokentop ./...
 
 .PHONY: install
 install: build ## install into ~/.local/bin
@@ -88,7 +97,7 @@ dist: ## build every release platform into dist/
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		echo "building $$name"; \
 		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
-			$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
+			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
 	done
 
 .PHONY: release

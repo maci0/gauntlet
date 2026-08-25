@@ -55,8 +55,8 @@ type Custom struct {
 	Note string `json:"note,omitempty"`
 }
 
-// UsageSpec locates a defined agent's transcripts. It mirrors
-// usagewatch.Spec, which the CLI hands it to; keeping it here means the whole
+// UsageSpec locates a defined agent's transcripts. It mirrors the reader's
+// own spec, which the CLI hands it to; keeping it here means the whole
 // definition lives in one JSON object.
 type UsageSpec struct {
 	Roots      []string `json:"roots"`

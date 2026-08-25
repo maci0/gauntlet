@@ -21,20 +21,37 @@ import (
 // binary that emits exactly what the real agent emits. The shapes are not
 // invented: they were read from the agents' own transcripts, their `--help`,
 // their packages, or `strings` on their binaries, and the same fixtures appear
-// in internal/streamjson and internal/usagewatch.
+// in internal/streamjson and in tokentop's agentusage.
+//
+// Transcript cases need the optional reader, so they run only under
+// `-tags tokentop`; the stream cases run in every build.
 //
 // A rate needs two things: a growing count and the time between the readings.
 // So every case asserts at least two usage events with increasing totals, and
 // that the last one matches what the agent reported.
+
+// needTranscripts skips a case that only a build with transcript reading can
+// satisfy. Without it those agents report nothing, which is the intended
+// behavior, not a failure.
+func needTranscripts(t *testing.T) {
+	t.Helper()
+	if transcriptSource == "" {
+		t.Skip("transcript reading is off in this build; use -tags tokentop")
+	}
+}
 
 // usageCase is one agent's route to live token counts.
 type usageCase struct {
 	name string
 	// tool is the agent name gauntlet knows it by.
 	tool string
-	// stream says the counts arrive on stdout (the agent's machine-readable
-	// mode), rather than through a session transcript.
+	// stream launches the agent in its machine-readable mode, which is how
+	// the counts reach stdout, and for dsh also what makes it write a
+	// readable session log.
 	stream bool
+	// transcript says the counts come from a session file rather than
+	// stdout, so the case needs a build with transcript reading.
+	transcript bool
 	// script is the fake agent: it prints the stream, or writes the transcript.
 	script string
 	// wantFinal is the last cumulative output-token count expected.
@@ -92,7 +109,7 @@ echo "RESULT: no-changes"`,
 		},
 		// Transcript agents: the counts never reach stdout at all.
 		{
-			name: "claude transcript", tool: "claude", wantFinal: 350, wantThinking: 140,
+			name: "claude transcript", transcript: true, tool: "claude", wantFinal: 350, wantThinking: 140,
 			script: `
 d="$HOME/.claude/projects/proj"; mkdir -p "$d"
 printf '{"type":"assistant","cwd":"%s","message":{"usage":{"input_tokens":5,"output_tokens":100,"output_tokens_details":{"thinking_tokens":40}}}}\n' "$PWD" >> "$d/s.jsonl"
@@ -101,7 +118,7 @@ printf '{"type":"assistant","cwd":"%s","message":{"usage":{"input_tokens":5,"out
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "codex rollout", tool: "codex", wantFinal: 1300, wantThinking: 400,
+			name: "codex rollout", transcript: true, tool: "codex", wantFinal: 1300, wantThinking: 400,
 			script: `
 d="$HOME/.codex/sessions/2026/08/25"; mkdir -p "$d"; f="$d/rollout-x.jsonl"
 printf '{"type":"session_meta","payload":{"id":"x","cwd":"%s"}}\n' "$PWD" >> "$f"
@@ -111,7 +128,7 @@ printf '{"type":"event_msg","payload":{"type":"token_count","info":{"total_token
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "qwen chat transcript", tool: "qwen", wantFinal: 305, wantThinking: 87,
+			name: "qwen chat transcript", transcript: true, tool: "qwen", wantFinal: 305, wantThinking: 87,
 			script: `
 d="$HOME/.qwen/projects/p/chats"; mkdir -p "$d"; f="$d/c.jsonl"
 printf '{"type":"assistant","cwd":"%s","usageMetadata":{"candidatesTokenCount":205,"thoughtsTokenCount":82,"totalTokenCount":387}}\n' "$PWD" >> "$f"
@@ -120,7 +137,7 @@ printf '{"type":"assistant","cwd":"%s","usageMetadata":{"candidatesTokenCount":1
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "dsh session log", tool: "dsh", stream: true, wantFinal: 260, wantThinking: 90,
+			name: "dsh session log", tool: "dsh", stream: true, transcript: true, wantFinal: 260, wantThinking: 90,
 			script: `
 d="$HOME/.dsh/sessions/--proj--/sess"; mkdir -p "$d"; f="$d/session.jsonl"
 printf '{"type":"session","version":1,"id":"s","cwd":"%s"}\n' "$PWD" >> "$f"
@@ -130,7 +147,7 @@ printf '{"type":"assistant-message","usage":{"prompt_tokens":1200,"completion_to
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "clanker token log", tool: "clanker", wantFinal: 2000,
+			name: "clanker token log", transcript: true, tool: "clanker", wantFinal: 2000,
 			script: `
 mkdir -p state
 printf '{"ts":1,"provider":"p","model":"m","prompt_tokens":900,"completion_tokens":1663,"total_tokens":2563,"ok":true}\n' >> state/token_stats.jsonl
@@ -140,7 +157,7 @@ echo "RESULT: no-changes"`,
 		},
 		// The pi family, which ships as definitions rather than code.
 		{
-			name: "pi session", tool: "pi", wantFinal: 480, wantThinking: 130,
+			name: "pi session", transcript: true, tool: "pi", wantFinal: 480, wantThinking: 130,
 			script: `
 d="$HOME/.pi/agent/sessions"; mkdir -p "$d"; f="$d/s.jsonl"
 printf '{"type":"message","cwd":"%s","message":{"usage":{"output":180,"reasoning":50,"totalTokens":900}}}\n' "$PWD" >> "$f"
@@ -149,7 +166,7 @@ printf '{"type":"message","cwd":"%s","message":{"usage":{"output":300,"reasoning
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "prime-agent session", tool: "prime-agent", wantFinal: 260,
+			name: "prime-agent session", transcript: true, tool: "prime-agent", wantFinal: 260,
 			script: `
 d="$HOME/.prime/agent/sessions"; mkdir -p "$d"; f="$d/s.jsonl"
 printf '{"type":"session","cwd":"%s"}\n' "$PWD" >> "$f"
@@ -159,7 +176,7 @@ printf '{"type":"message","cwd":"%s","message":{"usage":{"input":100,"output":15
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "feynman session", tool: "feynman", wantFinal: 220, wantThinking: 70,
+			name: "feynman session", transcript: true, tool: "feynman", wantFinal: 220, wantThinking: 70,
 			script: `
 d="$HOME/.feynman/sessions"; mkdir -p "$d"; f="$d/s.jsonl"
 printf '{"type":"message","cwd":"%s","message":{"usage":{"output":100,"reasoning":30,"totalTokens":800}}}\n' "$PWD" >> "$f"
@@ -171,6 +188,9 @@ echo "RESULT: no-changes"`,
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
+			if c.transcript {
+				needTranscripts(t)
+			}
 			// A private HOME so the fake agent's transcript is the only one the
 			// watcher can see, and the real ~/.claude is never read.
 			home := t.TempDir()
@@ -280,6 +300,7 @@ func TestAgentsWithoutASourceReportNothing(t *testing.T) {
 // TestTranscriptAgentsAreNotConfusedByOtherProjects guards the attribution
 // that makes per-agent rates trustworthy when several reviews run at once.
 func TestTranscriptAgentsAreNotConfusedByOtherProjects(t *testing.T) {
+	needTranscripts(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	other := t.TempDir()
@@ -319,6 +340,7 @@ echo "RESULT: no-changes"`)
 // TestStreamAndTranscriptAgreeOnTheHigherNumber covers an agent that reports
 // through both routes at once, which claude and the pi family do.
 func TestStreamAndTranscriptAgreeOnTheHigherNumber(t *testing.T) {
+	needTranscripts(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 

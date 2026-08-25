@@ -200,6 +200,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	if len(missingRec) > 0 {
 		fmt.Fprintln(out, pal.dim("Worth installing: ")+wrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
+	fmt.Fprintln(out, pal.dim(tokenSourceLine))
 	fmt.Fprintln(out, pal.dim("Stack-specific tools only matter for the languages you review."))
 	return 0
 }

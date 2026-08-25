@@ -35,8 +35,9 @@ for any agent that prints a counter, and needs no configuration.
 
 ### Source 2: the agent's own session transcript, tailed
 
-`internal/usagewatch` reads the JSONL transcripts the CLIs write for their own
-session history. Verified against live transcripts on a real machine:
+`agentusage` in [tokentop](https://github.com/maci0/tokentop) reads the JSONL
+transcripts the CLIs write for their own session history. Gauntlet links it
+through the `tokentop` build tag (see "Where this code lives" below). Verified against live transcripts on a real machine:
 
 **claude** writes `~/.claude/projects/<slug>/<session-uuid>.jsonl`, one JSON
 object per line. The interesting records are:
@@ -245,7 +246,7 @@ so next to the agent.
 
 ## Using this from another tool
 
-The reading side is a public package, `github.com/maci0/gauntlet/agentusage`,
+The reading side is a public package, `github.com/maci0/tokentop/agentusage`,
 so a monitor does not have to repeat the archaeology above:
 
 ```go
@@ -272,9 +273,29 @@ same rule the dashboard follows: no span, no rate, rather than a zero.
 `LoadDefinitions` reads the same `~/.gauntlet/agents.json`, so a tool that
 imports this package inherits any agent the user has defined.
 
-tokentop uses it exactly this way: it discovers agent processes, reads their
-transcripts, and shows their throughput beside the inference engines, with no
-cooperation required from the agent.
+tokentop is where this lives, and it uses it exactly this way: it discovers
+agent processes, reads their transcripts, and shows their throughput beside the
+inference engines, with no cooperation required from the agent. An agent
+connected to an engine tokentop is already watching is suppressed rather than
+added, since counting both would double the number.
+
+## Where this code lives
+
+Source 1 (agent output) is gauntlet's own: `internal/streamjson` plus the
+counter scan in `internal/agent`. It is always compiled in.
+
+Source 2 (transcripts) is tokentop's, and optional. `internal/runner/usage.go`
+declares the interface; `usage_tokentop.go` and `usage_off.go` supply the two
+implementations, selected by the `tokentop` build tag.
+
+```sh
+make build            # with transcripts (what releases ship)
+make build TAGS=      # standard library only, agent output as the sole source
+gauntlet doctor       # says which build this is
+```
+
+Without the tag, agents that print no counter report no tokens at all, which is
+the same rule as everywhere else here: measure, or say nothing.
 
 ## What was considered and not built
 

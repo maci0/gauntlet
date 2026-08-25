@@ -19,7 +19,6 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
-	"github.com/maci0/gauntlet/internal/usagewatch"
 )
 
 // commitTimeout caps the commit and push step; a review's own --timeout may be
@@ -570,12 +569,8 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// The transcript watcher lives exactly as long as the agent does. Its
 	// context is derived from the review's, so an interrupt stops it too.
 	watchCtx, stopWatch := context.WithCancel(ctx)
-	watcher := usagewatch.New(spec.Tool, dir, start)
-	if watcher != nil {
-		go watcher.Run(watchCtx, 0, func(s usagewatch.Sample) {
-			publishUsage(s.Output, s.Thinking)
-		})
-	}
+	watcher := watchTranscript(spec.Tool, dir, start)
+	go watcher.Run(watchCtx, publishUsage)
 
 	pr := runProc(ctx, procOpts{
 		Argv:           argv,
@@ -590,12 +585,10 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Stream: r.cfg.Stream,
 	})
 	stopWatch()
-	if watcher != nil {
-		// The agent's last records are written as it exits, so the final read
-		// happens here rather than on a tick that already passed.
-		if s := watcher.Poll(); s.Output > 0 || s.Thinking > 0 {
-			publishUsage(s.Output, s.Thinking)
-		}
+	// The agent's last records are written as it exits, so the final read
+	// happens here rather than on a tick that already passed.
+	if out, think := watcher.Final(); out > 0 || think > 0 {
+		publishUsage(out, think)
 	}
 	res.Elapsed = time.Since(start)
 	res.ExitCode = pr.ExitCode

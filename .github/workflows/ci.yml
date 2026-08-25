@@ -16,6 +16,10 @@ jobs:
         # The runner shells out to agents, locks directories, and kills process
         # groups, so both supported platforms run the real suite.
         os: [ubuntu-latest, macos-latest]
+        # Both halves of the optional tokentop integration are shipped, so both
+        # are tested: with it the transcript readers run, without it gauntlet
+        # must still build and fall back to what agents print.
+        tags: [tokentop, ""]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +27,7 @@ jobs:
         with:
           go-version: stable
       - run: make check
-      - run: make test
+      - run: make test TAGS=${{ matrix.tags }}
 
   dist:
     runs-on: ubuntu-latest
