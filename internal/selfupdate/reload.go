@@ -109,6 +109,12 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 
 // SaveState writes the handoff blob the reloaded process picks up, and returns
 // its path.
+//
+// The blob is written to a sibling temp file, synced, and renamed into place:
+// the exec follows immediately, so a kill mid-write must leave either the
+// previous state or none, never a truncated file. LoadState cannot parse a
+// torn blob, and an unparseable handoff silently restarts every loop from
+// zero.
 func SaveState(dir, runID string, v any) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
@@ -118,7 +124,25 @@ func SaveState(dir, runID string, v any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+runID+".json-*")
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(name) // no-op once the rename succeeded
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return "", err
+	}
+	if err := tmp.Sync(); err != nil {
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(name, path); err != nil {
 		return "", err
 	}
 	return path, nil
