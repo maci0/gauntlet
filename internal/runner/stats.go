@@ -59,16 +59,16 @@ func (s *Stats) CommitFails() int {
 	return s.commitFails
 }
 
-// AddCommitRun records one commit step that launched.
-func (s *Stats) AddCommitRun() {
+// addCommitRun records one commit step that launched.
+func (s *Stats) addCommitRun() {
 	s.mu.Lock()
 	s.commitRuns++
 	s.mu.Unlock()
 }
 
-// AddCommitFail records one commit-step failure, including launches that
+// addCommitFail records one commit-step failure, including launches that
 // never reached an agent.
-func (s *Stats) AddCommitFail() {
+func (s *Stats) addCommitFail() {
 	s.mu.Lock()
 	s.commitFails++
 	s.mu.Unlock()
@@ -104,8 +104,8 @@ type Counts struct {
 	OK, Fail, Timeout, Skipped, Interrupted, Conflict int
 }
 
-// Tally records one result under its status bucket.
-func (c *Counts) Tally(s Status) {
+// tally records one result under its status bucket.
+func (c *Counts) tally(s Status) {
 	switch s {
 	case StatusOK:
 		c.OK++
@@ -144,7 +144,7 @@ func (c Counts) Failures() int { return c.Fail + c.Timeout + c.Skipped + c.Confl
 func (s *Stats) Counts() Counts {
 	var c Counts
 	for _, r := range s.Results() {
-		c.Tally(r.Status)
+		c.tally(r.Status)
 	}
 	return c
 }
@@ -193,7 +193,7 @@ func (s *Stats) ByAgent() []AgentSummary {
 			a = &AgentSummary{Label: label}
 			byLabel[label] = a
 		}
-		a.Counts.Tally(r.Status)
+		a.Counts.tally(r.Status)
 		a.Tokens += r.Tokens
 		a.Elapsed += r.Elapsed
 	}

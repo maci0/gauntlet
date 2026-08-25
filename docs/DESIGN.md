@@ -42,6 +42,7 @@ can replace and reload itself while a loop is running.
 | `internal/ui` | bubbletea dashboard |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
+| `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 | `internal/runner/usage*.go` | the optional bridge to toktop's transcript reading, chosen by build tag |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
@@ -49,8 +50,9 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `runner`'s event types plus the shared `normalize` line kinds and `humanize`
 formatters, and nothing else. `prompt` imports `gitx`, so project discovery's
 one git call (check-ignore) uses the same hardened resolver and safe config
-as every other git invocation. Nothing imports `ui`, so the loop runs headless
-with zero TUI cost.
+as every other git invocation. `agent` and `prompt` import `fuzzy`, so a
+mistyped review or agent name gets the same suggestion everywhere.
+Nothing imports `ui`, so the loop runs headless with zero TUI cost.
 
 ## Concurrency model
 

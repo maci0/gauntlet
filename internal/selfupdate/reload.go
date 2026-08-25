@@ -14,8 +14,8 @@ import (
 	"time"
 )
 
-// StateEnv names the handoff file passed to the reloaded process.
-const StateEnv = "GAUNTLET_STATE"
+// stateEnv names the handoff file passed to the reloaded process.
+const stateEnv = "GAUNTLET_STATE"
 
 // fingerprint identifies one build of the executable on disk.
 type fingerprint struct {
@@ -127,7 +127,7 @@ func SaveState(dir, runID string, v any) (string, error) {
 // LoadState reads and removes the handoff blob named by GAUNTLET_STATE. It
 // reports whether state was found: a normal start simply has none.
 func LoadState(v any) bool {
-	path := os.Getenv(StateEnv)
+	path := os.Getenv(stateEnv)
 	if path == "" {
 		return false
 	}
@@ -153,13 +153,13 @@ func Reexec(path, statePath string) error {
 	env := os.Environ()
 	filtered := env[:0]
 	for _, kv := range env {
-		if len(kv) > len(StateEnv) && kv[:len(StateEnv)+1] == StateEnv+"=" {
+		if len(kv) > len(stateEnv) && kv[:len(stateEnv)+1] == stateEnv+"=" {
 			continue
 		}
 		filtered = append(filtered, kv)
 	}
 	if statePath != "" {
-		filtered = append(filtered, StateEnv+"="+statePath)
+		filtered = append(filtered, stateEnv+"="+statePath)
 	}
 	argv := append([]string{path}, os.Args[1:]...)
 	if err := syscall.Exec(path, argv, filtered); err != nil {

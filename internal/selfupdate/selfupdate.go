@@ -141,7 +141,7 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot fetch checksums: %w", err)
 	}
-	expect, ok := ChecksumFor(string(sums), want)
+	expect, ok := checksumFor(string(sums), want)
 	if !ok {
 		return "", fmt.Errorf("checksums.txt has no entry for %s", want)
 	}
@@ -217,9 +217,9 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// ChecksumFor finds one file's expected hash in a `sha256sum` style listing
+// checksumFor finds one file's expected hash in a `sha256sum` style listing
 // ("<hex>  <name>", with an optional binary-mode asterisk).
-func ChecksumFor(listing, name string) (string, bool) {
+func checksumFor(listing, name string) (string, bool) {
 	for line := range strings.SplitSeq(listing, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
 		if len(fields) != 2 {

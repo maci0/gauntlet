@@ -17,7 +17,7 @@ import (
 )
 
 func TestBundledPromptsAreEmbedded(t *testing.T) {
-	names := BundledNames()
+	names := bundledNames()
 	if len(names) < 40 {
 		t.Fatalf("expected the full bundled set, got %d", len(names))
 	}
@@ -42,7 +42,7 @@ func TestStripReportSections(t *testing.T) {
 		"Important:",
 		"- keep this",
 	}, "\n")
-	got := StripReportSections(in)
+	got := stripReportSections(in)
 	if strings.Contains(got, "severity") {
 		t.Fatalf("report template survived: %q", got)
 	}
@@ -55,7 +55,7 @@ func TestStripReportSectionsFailsOpen(t *testing.T) {
 	// A report marker with no Important block after it would otherwise strip
 	// to end of file: losing real content is worse than carrying noise.
 	in := "Output format:\n- everything after this is content\n- and more"
-	if got := StripReportSections(in); got != in {
+	if got := stripReportSections(in); got != in {
 		t.Fatalf("should have failed open, got %q", got)
 	}
 }
@@ -381,7 +381,7 @@ func TestDiscoverSkipsGitIgnoredPrompts(t *testing.T) {
 func TestReadNoFollowRejectsOversize(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "big-review.md")
-	write(t, path, strings.Repeat("x", MaxBytes+1))
+	write(t, path, strings.Repeat("x", maxBytes+1))
 	if _, err := readNoFollow(path); err == nil {
 		t.Fatal("oversized prompt accepted")
 	}

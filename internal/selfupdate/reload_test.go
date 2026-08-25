@@ -28,7 +28,7 @@ func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 	if path != filepath.Join(dir, "run-1.json") {
 		t.Fatalf("state at %q, want it named after the run id", path)
 	}
-	t.Setenv(StateEnv, path)
+	t.Setenv(stateEnv, path)
 
 	var got handoffBlob
 	if !LoadState(&got) {
@@ -49,7 +49,7 @@ func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 }
 
 func TestLoadStateWithoutHandoff(t *testing.T) {
-	t.Setenv(StateEnv, "")
+	t.Setenv(stateEnv, "")
 	var v handoffBlob
 	if LoadState(&v) {
 		t.Fatal("a normal start has no state to load")
@@ -62,7 +62,7 @@ func TestLoadStateRejectsGarbage(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(StateEnv, path)
+	t.Setenv(stateEnv, path)
 
 	var v handoffBlob
 	if LoadState(&v) {

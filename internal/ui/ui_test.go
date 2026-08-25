@@ -50,7 +50,7 @@ func demoEvents() []runner.Event {
 }
 
 func TestStaticFrameHasEveryInstrument(t *testing.T) {
-	frame := StaticFrame(demoConfig(), demoEvents(), 120, 40)
+	frame := staticFrame(demoConfig(), demoEvents(), 120, 40)
 	for _, want := range []string{
 		"GAUNTLET", "ACTIVITY", "AGENTS", "REVIEWS", "FEED",
 		"sec-review", "claude", "2×worktree", "1.0.0",
@@ -63,7 +63,7 @@ func TestStaticFrameHasEveryInstrument(t *testing.T) {
 
 func TestStaticFrameFitsItsPane(t *testing.T) {
 	const w, h = 100, 30
-	frame := StaticFrame(demoConfig(), demoEvents(), w, h)
+	frame := staticFrame(demoConfig(), demoEvents(), w, h)
 	lines := strings.Split(frame, "\n")
 	if len(lines) > h {
 		t.Fatalf("frame is %d rows tall, pane is %d", len(lines), h)
@@ -76,7 +76,7 @@ func TestStaticFrameFitsItsPane(t *testing.T) {
 }
 
 func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
-	frame := StaticFrame(demoConfig(), demoEvents(), 40, 10)
+	frame := staticFrame(demoConfig(), demoEvents(), 40, 10)
 	if !strings.Contains(frame, "too small") {
 		t.Fatalf("expected the minimal view, got:\n%s", frame)
 	}
@@ -85,7 +85,7 @@ func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
 // The fallback must keep what answers "is it done, did anything break", plus
 // the keys: a view that hides how to quit is its own dead end.
 func TestMinimalViewKeepsStateTallyAndKeys(t *testing.T) {
-	frame := stripANSI(StaticFrame(demoConfig(), demoEvents(), 40, 10))
+	frame := stripANSI(staticFrame(demoConfig(), demoEvents(), 40, 10))
 	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "too small"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("minimal view lost %q:\n%s", want, frame)
@@ -117,7 +117,7 @@ func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
 	for i := range 120 {
 		cfg.Reviews = append(cfg.Reviews, fmt.Sprintf("r%03d-review", i))
 	}
-	frame := stripANSI(StaticFrame(cfg, nil, 120, 30))
+	frame := stripANSI(staticFrame(cfg, nil, 120, 30))
 	m := regexp.MustCompile(`\+(\d+) more`).FindStringSubmatch(frame)
 	if m == nil {
 		t.Fatalf("an overflowing grid hid reviews without announcing it:\n%s", frame)
@@ -129,7 +129,7 @@ func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
 	if !strings.Contains(frame, "r000") {
 		t.Fatal("the marker replaced every visible cell")
 	}
-	if fit := stripANSI(StaticFrame(demoConfig(), demoEvents(), 120, 40)); strings.Contains(fit, "more\n") {
+	if fit := stripANSI(staticFrame(demoConfig(), demoEvents(), 120, 40)); strings.Contains(fit, "more\n") {
 		t.Fatalf("a fitting grid grew a marker: %s", fit)
 	}
 }
@@ -141,7 +141,7 @@ func TestHiddenAgentsAreAnnouncedNotSilent(t *testing.T) {
 	for i := range 10 {
 		cfg.Agents = append(cfg.Agents, fmt.Sprintf("agent%02d", i))
 	}
-	frame := stripANSI(StaticFrame(cfg, nil, 120, 40))
+	frame := stripANSI(staticFrame(cfg, nil, 120, 40))
 	if !strings.Contains(frame, "+2 more agents") {
 		t.Fatalf("10 lanes in an 8-row panel must announce the 2 hidden:\n%s", frame)
 	}
@@ -168,7 +168,7 @@ func TestLiveTokenRateIsMeasuredNotInvented(t *testing.T) {
 	if quiet := m.lanes["claude"]; quiet.tokenRate != 0 {
 		t.Fatalf("invented a rate for a silent agent: %.2f", quiet.tokenRate)
 	}
-	if !strings.Contains(StaticFrame(demoConfig(), demoEvents(), 120, 40), "tok/s live") {
+	if !strings.Contains(staticFrame(demoConfig(), demoEvents(), 120, 40), "tok/s live") {
 		t.Fatal("live rate is measured but never shown")
 	}
 }
@@ -186,7 +186,7 @@ func TestThinkingIsShownAsAShareNotAGuess(t *testing.T) {
 	if got := m.lanes["claude"].liveThinking; got != 0 {
 		t.Fatalf("invented reasoning for a silent agent: %d", got)
 	}
-	frame := StaticFrame(demoConfig(), demoEvents(), 130, 40)
+	frame := staticFrame(demoConfig(), demoEvents(), 130, 40)
 	if !strings.Contains(stripANSI(frame), "640") {
 		t.Fatal("reasoning share is tracked but never shown")
 	}

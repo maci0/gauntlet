@@ -32,9 +32,9 @@ var (
 
 var dshProviderRe = regexp.MustCompile(`^\s+provider:\s*['"]?([\w.-]+)['"]?\s*$`)
 
-// ParseDshProvider reads the provider of the agent-default-model entry from a
+// parseDshProvider reads the provider of the agent-default-model entry from a
 // `dsh --dump-config` listing.
-func ParseDshProvider(dump string) string {
+func parseDshProvider(dump string) string {
 	inEntry := false
 	for line := range strings.SplitSeq(dump, "\n") {
 		if strings.HasPrefix(strings.TrimLeft(line, " \t"), "- id:") {
@@ -65,7 +65,7 @@ func dshDefaultProvider(base []string) (string, error) {
 			dshProbeErr = fmt.Errorf("%s --dump-config failed: %w", argv[0], err)
 			return
 		}
-		dshProvider = ParseDshProvider(string(out))
+		dshProvider = parseDshProvider(string(out))
 		if dshProvider == "" {
 			dshProbeErr = errors.New("the headless profile config has no agent-default-model provider")
 		}

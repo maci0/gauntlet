@@ -13,7 +13,7 @@ func Closest(want string, candidates []string) string {
 	want = strings.ToLower(want)
 	best, bestD := "", distance+1
 	for _, c := range candidates {
-		if d := EditDistance(want, strings.ToLower(c)); d < bestD {
+		if d := editDistance(want, strings.ToLower(c)); d < bestD {
 			best, bestD = c, d
 		}
 	}
@@ -23,7 +23,7 @@ func Closest(want string, candidates []string) string {
 // distance is how far a typo may stray and still earn a hint.
 const distance = 3
 
-func EditDistance(a, b string) int {
+func editDistance(a, b string) int {
 	prev := make([]int, len(b)+1)
 	cur := make([]int, len(b)+1)
 	for j := range prev {

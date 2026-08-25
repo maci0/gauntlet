@@ -38,8 +38,8 @@ func TestEditDistance(t *testing.T) {
 		{"a", "", 1},
 	}
 	for _, tt := range tests {
-		if got := EditDistance(tt.a, tt.b); got != tt.want {
-			t.Errorf("EditDistance(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
+		if got := editDistance(tt.a, tt.b); got != tt.want {
+			t.Errorf("editDistance(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
 	}
 }

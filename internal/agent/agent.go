@@ -82,8 +82,8 @@ var streamFlags = map[string][]string{
 	"clanker": {"--stream"},
 }
 
-// IsValid reports whether name is a supported agent CLI, built in or defined.
-func IsValid(name string) bool {
+// isValid reports whether name is a supported agent CLI, built in or defined.
+func isValid(name string) bool {
 	if isBuiltinTool(name) {
 		return true
 	}
@@ -99,8 +99,8 @@ func AllNames() []string {
 	return out
 }
 
-// TakesModel reports whether the agent accepts a model on the command line.
-func TakesModel(tool string) bool {
+// takesModel reports whether the agent accepts a model on the command line.
+func takesModel(tool string) bool {
 	if d, ok := CustomDef(tool); ok {
 		return len(d.Model) > 0 || containsPlaceholder(d.Argv, modelPlaceholder)
 	}
@@ -277,7 +277,7 @@ func ParseSpecs(s string) ([]Spec, error) {
 		tool, model, _ := strings.Cut(entry, ":")
 		tool = strings.ToLower(strings.TrimSpace(tool))
 		model = strings.TrimSpace(model)
-		if !IsValid(tool) {
+		if !isValid(tool) {
 			hint := ""
 			if c := fuzzy.Closest(tool, AllNames()); c != "" {
 				hint = fmt.Sprintf(" (did you mean %q?)", c)
@@ -285,7 +285,7 @@ func ParseSpecs(s string) ([]Spec, error) {
 			return nil, fmt.Errorf("unknown tool: %q%s (valid: %s, or mixed for all)",
 				tool, hint, strings.Join(AllNames(), ", "))
 		}
-		if !TakesModel(tool) && model != "" {
+		if !takesModel(tool) && model != "" {
 			return nil, fmt.Errorf("%s does not support specifying a model: %q", tool, entry)
 		}
 		// The dsh model is spliced into a generated YAML overlay; keep the
@@ -316,13 +316,13 @@ type BuildOpts struct {
 	Stream bool
 }
 
-// MaxPromptArg bounds one exec argument. A composed prompt travels as a
+// maxPromptArg bounds one exec argument. A composed prompt travels as a
 // single argv element, and Linux refuses the whole exec with E2BIG once one
 // argument passes MAX_ARG_STRLEN (32 pages, about 128 KiB). Prompt files are
 // accepted well past that, so without this check an oversized review would
 // fail at launch on every agent instead of failing here, once, by name.
 // The margin below MAX_ARG_STRLEN leaves room for the flags around it.
-const MaxPromptArg = 120 << 10
+const maxPromptArg = 120 << 10
 
 // BuildCmd returns the argv that runs one prompt headlessly through spec.
 func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
@@ -349,10 +349,10 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd[0] = opts.Binary
 	}
 	for _, a := range cmd {
-		if len(a) > MaxPromptArg {
+		if len(a) > maxPromptArg {
 			return nil, fmt.Errorf("an argument is %d bytes, over the %d-byte "+
 				"single-argument exec limit: the composed prompt cannot be dispatched, "+
-				"shorten or split it", len(a), MaxPromptArg)
+				"shorten or split it", len(a), maxPromptArg)
 		}
 	}
 	return cmd, nil
@@ -494,7 +494,7 @@ func ParseBin(s string) (string, string, error) {
 		return "", "", fmt.Errorf("expected TOOL=PATH, got: %q", s)
 	}
 	tool = strings.ToLower(tool)
-	if !IsValid(tool) {
+	if !isValid(tool) {
 		hint := ""
 		if c := fuzzy.Closest(tool, AllNames()); c != "" {
 			hint = fmt.Sprintf(" (did you mean %q?)", c)

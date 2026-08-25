@@ -206,7 +206,7 @@ func TestExcludeWorktreeRootIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(body), "/"+WorktreeRoot+"/"); n != 1 {
+	if n := strings.Count(string(body), "/"+worktreeRoot+"/"); n != 1 {
 		t.Fatalf("exclude entry written %d times:\n%s", n, body)
 	}
 }

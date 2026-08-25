@@ -23,11 +23,11 @@ import (
 //go:embed prompts/*.md
 var bundled embed.FS
 
-// MaxBytes caps a prompt file. A single argv string over ~128 KB (Linux
+// maxBytes caps a prompt file. A single argv string over ~128 KB (Linux
 // MAX_ARG_STRLEN) already fails at exec with E2BIG, so no real prompt
 // approaches this; the cap only stops a hostile multi-GB *-review.md from
 // being buffered into RAM before that.
-const MaxBytes = 1 << 20
+const maxBytes = 1 << 20
 
 // Origin says where a review's text came from.
 type Origin uint8
@@ -101,8 +101,8 @@ func (s Set) ProjectNames() []string {
 	return out
 }
 
-// BundledNames lists the reviews compiled into the binary.
-func BundledNames() []string {
+// bundledNames lists the reviews compiled into the binary.
+func bundledNames() []string {
 	entries, err := fs.Glob(bundled, "prompts/*-review.md")
 	if err != nil {
 		return nil
@@ -142,12 +142,12 @@ func readNoFollow(path string) (string, error) {
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		return "", err
 	}
-	data, err := io.ReadAll(io.LimitReader(f, MaxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
 		return "", err
 	}
-	if len(data) > MaxBytes {
-		return "", fmt.Errorf("prompt exceeds %d bytes: %s", MaxBytes, path)
+	if len(data) > maxBytes {
+		return "", fmt.Errorf("prompt exceeds %d bytes: %s", maxBytes, path)
 	}
 	return string(data), nil
 }

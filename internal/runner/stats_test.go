@@ -132,8 +132,8 @@ func TestStatsSurvivesConcurrentUse(t *testing.T) {
 	})
 	wg.Go(func() {
 		for range 100 {
-			st.AddCommitRun()
-			st.AddCommitFail()
+			st.addCommitRun()
+			st.addCommitFail()
 		}
 	})
 	wg.Wait()

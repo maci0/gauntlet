@@ -23,10 +23,10 @@ type Worktree struct {
 	repo   *Repo
 }
 
-// WorktreeRoot is where per-review checkouts live, relative to the repo.
+// worktreeRoot is where per-review checkouts live, relative to the repo.
 // Keeping them inside the repo means one .git object store and no cross-device
 // rename; keeping them under one directory means one line in info/exclude.
-const WorktreeRoot = ".gauntlet/worktrees"
+const worktreeRoot = ".gauntlet/worktrees"
 
 // IsClean reports whether the working tree has no uncommitted changes beyond
 // the runner's own artifacts. Worktree mode requires a clean tree: a branch is
@@ -72,7 +72,7 @@ func (r *Repo) ExcludeWorktreeRoot(ctx context.Context) {
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
 	body, _ := os.ReadFile(path)
-	entry := "/" + WorktreeRoot + "/"
+	entry := "/" + worktreeRoot + "/"
 	if strings.Contains(string(body), entry) {
 		return
 	}
@@ -103,7 +103,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 
 	slug := branchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
-	dir := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot), tag+"-"+slug)
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
 	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
 	// A leftover branch would fail the add too: a hot reload continues the
@@ -218,7 +218,7 @@ func (r *Repo) PruneWorktrees(ctx context.Context) {
 // left in it, so a finished run leaves no trace in the reviewed tree.
 // os.Remove on a non-empty directory fails, which is the intended guard.
 func (r *Repo) CleanWorktreeRoot() {
-	root := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot))
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
 	_ = os.Remove(root)
 	_ = os.Remove(filepath.Dir(root))
 }

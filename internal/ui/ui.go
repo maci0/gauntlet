@@ -876,10 +876,10 @@ func clampi(v, lo, hi int) int {
 	return v
 }
 
-// StaticFrame renders one frame from a sequence of events, for tests and for
+// staticFrame renders one frame from a sequence of events, for tests and for
 // non-interactive snapshots. It is the same code path the live view uses, so a
 // layout regression shows up here too.
-func StaticFrame(cfg Config, events []runner.Event, w, h int) string {
+func staticFrame(cfg Config, events []runner.Event, w, h int) string {
 	mod := newModel(cfg)
 	mod.w, mod.h, mod.ready = w, h, true
 	for _, ev := range events {

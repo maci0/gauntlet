@@ -16,18 +16,18 @@ func TestChecksumFor(t *testing.T) {
 		sum + "  gauntlet_1.2.3_linux_amd64\n" +
 		strings.Repeat("b", 64) + " *dist/gauntlet_1.2.3_darwin_arm64\n"
 
-	got, ok := ChecksumFor(listing, "gauntlet_1.2.3_linux_amd64")
+	got, ok := checksumFor(listing, "gauntlet_1.2.3_linux_amd64")
 	if !ok || got != sum {
 		t.Fatalf("got %q %v", got, ok)
 	}
 	// Binary-mode asterisk and a directory prefix must still match.
-	if got, ok := ChecksumFor(listing, "gauntlet_1.2.3_darwin_arm64"); !ok || got != strings.Repeat("b", 64) {
+	if got, ok := checksumFor(listing, "gauntlet_1.2.3_darwin_arm64"); !ok || got != strings.Repeat("b", 64) {
 		t.Fatalf("got %q %v", got, ok)
 	}
-	if _, ok := ChecksumFor(listing, "gauntlet_1.2.3_windows_amd64"); ok {
+	if _, ok := checksumFor(listing, "gauntlet_1.2.3_windows_amd64"); ok {
 		t.Fatal("missing entry reported as found")
 	}
-	if _, ok := ChecksumFor("deadbeef  short-hash-line", "short-hash-line"); ok {
+	if _, ok := checksumFor("deadbeef  short-hash-line", "short-hash-line"); ok {
 		t.Fatal("a short hash must not be accepted")
 	}
 }

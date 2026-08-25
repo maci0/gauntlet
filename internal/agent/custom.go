@@ -72,8 +72,8 @@ const (
 	modelPlaceholder  = "{model}"
 )
 
-// Validate reports whether a definition can actually launch something.
-func (c Custom) Validate(name string) error {
+// validate reports whether a definition can actually launch something.
+func (c Custom) validate(name string) error {
 	if name == "" {
 		return fmt.Errorf("custom agent needs a name")
 	}
@@ -158,7 +158,7 @@ var (
 
 // Register adds or replaces a custom agent definition.
 func Register(name string, def Custom) error {
-	if err := def.Validate(name); err != nil {
+	if err := def.validate(name); err != nil {
 		return err
 	}
 	if isBuiltinTool(name) {
@@ -209,7 +209,7 @@ func ParseAgentCmd(s string) (string, Custom, error) {
 		return "", Custom{}, fmt.Errorf("expected NAME=ARGV, got %q", s)
 	}
 	def := Custom{Argv: strings.Fields(rest)}
-	if err := def.Validate(name); err != nil {
+	if err := def.validate(name); err != nil {
 		return "", Custom{}, err
 	}
 	return name, def, nil

@@ -156,9 +156,9 @@ func TestBuildCmdBinaryOverride(t *testing.T) {
 
 func TestBuildCmdRefusesAPromptOverTheArgvLimit(t *testing.T) {
 	// Linux fails the whole exec with E2BIG once one argument passes
-	// MAX_ARG_STRLEN; a prompt past MaxPromptArg must be refused here, once,
+	// MAX_ARG_STRLEN; a prompt past maxPromptArg must be refused here, once,
 	// instead of failing at launch on every agent.
-	big := strings.Repeat("a", MaxPromptArg+1)
+	big := strings.Repeat("a", maxPromptArg+1)
 	for _, tool := range []string{"claude", "codex", "opencode"} {
 		if _, err := BuildCmd(Spec{Tool: tool}, big, BuildOpts{}); err == nil {
 			t.Errorf("%s: accepted a %d-byte argument", tool, len(big))
@@ -304,10 +304,10 @@ plugins:
     provider: "deepseek"
     model: 'chat'
 `
-	if got := ParseDshProvider(dump); got != "deepseek" {
+	if got := parseDshProvider(dump); got != "deepseek" {
 		t.Fatalf("got %q, want deepseek", got)
 	}
-	if got := ParseDshProvider("nothing here"); got != "" {
+	if got := parseDshProvider("nothing here"); got != "" {
 		t.Fatalf("got %q, want empty", got)
 	}
 }
@@ -334,7 +334,7 @@ func TestCustomAgentInvocation(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if !IsValid("myagent") {
+	if !isValid("myagent") {
 		t.Fatal("a defined agent should be usable")
 	}
 
@@ -405,7 +405,7 @@ func TestPiFamilyDefinitions(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s should ship as a definition", name)
 		}
-		if err := def.Validate(name); err != nil {
+		if err := def.validate(name); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
 		argv, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{})
@@ -415,7 +415,7 @@ func TestPiFamilyDefinitions(t *testing.T) {
 		if argv[0] != name || argv[len(argv)-1] != "PROMPT" {
 			t.Errorf("%s: argv %v", name, argv)
 		}
-		if !TakesModel(name) {
+		if !takesModel(name) {
 			t.Errorf("%s: should accept a model", name)
 		}
 	}
