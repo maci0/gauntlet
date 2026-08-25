@@ -54,6 +54,15 @@ with `make test TAGS=notoktop` and `make test TAGS=` when your change
 touches tagged files; you do not need dist or repro unless you touched the
 release path.
 
+## Changelog
+
+User-visible changes land in [CHANGELOG.md](CHANGELOG.md) under `##
+Unreleased` in the same change that makes them. The release workflow turns
+that section into the release notes and fails a tag push that has no
+matching `## <version>` section, so a fix or feature without an entry is
+found after push rather than before it. Internal refactors with no visible
+behavior need nothing.
+
 ## Layout
 
 `cmd/gauntlet` is flags and dispatch only; everything real lives in
