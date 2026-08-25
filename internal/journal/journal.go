@@ -90,6 +90,9 @@ type Journal struct {
 	w   *bufio.Writer
 	enc *json.Encoder
 	err error
+
+	closed  bool // the file is flushed and closed; a later Close only indexes
+	indexed bool // the summary row is written; further Closes add nothing
 }
 
 // Open creates the journal file for one run.
@@ -147,19 +150,32 @@ func (j *Journal) Flush() {
 }
 
 // Close finishes the journal and appends the run to the index.
+//
+// It converges: a hot reload closed the file quietly before execing away, and
+// when that exec fails the dying process still has to finish its own run. So
+// Close after CloseQuiet skips straight to the index append, and a repeated
+// Close never writes a second row: one run, one summary, whatever order the
+// endings arrive in.
 func (j *Journal) Close(s Summary) error {
 	if j == nil {
 		return nil
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	if err := j.w.Flush(); err != nil {
-		j.err = err
+	if j.indexed {
+		return j.err
 	}
-	if err := j.f.Close(); err != nil && j.err == nil {
-		j.err = err
+	if !j.closed {
+		if err := j.w.Flush(); err != nil {
+			j.err = err
+		}
+		if err := j.f.Close(); err != nil && j.err == nil {
+			j.err = err
+		}
+		j.closed = true
 	}
 	s.RunID, s.Path = j.runID, j.path
+	j.indexed = true
 	if err := appendIndex(s); err != nil && j.err == nil {
 		j.err = err
 	}
@@ -186,13 +202,18 @@ func appendIndex(s Summary) error {
 
 // CloseQuiet flushes and closes the journal without writing an index entry.
 // A hot reload uses it: the successor continues the same run and writes the
-// one summary row that covers all of it.
+// one summary row that covers all of it. If the exec then fails, a later
+// Close still writes that row; nothing is lost by closing quietly first.
 func (j *Journal) CloseQuiet() {
 	if j == nil {
 		return
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	if j.closed {
+		return
+	}
+	j.closed = true
 	_ = j.w.Flush()
 	_ = j.f.Close()
 }

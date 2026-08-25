@@ -227,6 +227,46 @@ func TestRecentReadsPastTheFirstChunk(t *testing.T) {
 	}
 }
 
+func TestCloseAfterCloseQuietStillIndexesOnce(t *testing.T) {
+	// A hot reload closes the journal quietly and execs into the new binary,
+	// which was to write the one summary row. When that exec fails, the dying
+	// process must finish its own run: exactly one index row, whatever was
+	// closed before it, and no second row from a repeated Close. Without this
+	// a failed swap strands the run unindexed and gauntlet runs never shows
+	// it happened.
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	j.CloseQuiet()
+
+	want := filepath.Join(home, "runs", "2026-08-25", id+".jsonl")
+	if err := j.Close(Summary{Version: "test", Start: now, End: now}); err != nil {
+		t.Fatalf("closing after a quiet close should still index the run: %v", err)
+	}
+	if err := j.Close(Summary{Version: "test", Start: now, End: now}); err != nil {
+		t.Fatalf("repeated close should be a no-op: %v", err)
+	}
+
+	events, err := Events(id)
+	if err != nil || len(events) != 1 {
+		t.Fatalf("events must survive the quiet close: %v %+v", err, events)
+	}
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].RunID != id || runs[0].Path != want {
+		t.Fatalf("index must hold exactly one row pointing at the journal: %+v (want %s)", runs, want)
+	}
+}
+
 func TestNilJournalIsUsable(t *testing.T) {
 	// Journaling is never load-bearing: a run whose journal could not be
 	// opened must still work.
