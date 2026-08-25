@@ -510,3 +510,33 @@ func TestLaneNamesTheRetry(t *testing.T) {
 		t.Fatalf("the second attempt is not visible on the lane:\n%s", got)
 	}
 }
+
+// The help overlay owns the screen while it is up: a key acting on the hidden
+// dashboard would change state nobody can see, so it answers only its closing
+// keys and every other key is inert until the view is back.
+func TestHelpOverlayShieldsTheDashboard(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	key := func(s string) {
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
+	}
+	key("?")
+	if !m.help {
+		t.Fatal("? did not open help")
+	}
+	key(" ")
+	key("f")
+	key("k")
+	if m.paused || m.filter != feedAll || m.scroll != 0 {
+		t.Fatalf("a key acted behind the overlay: paused=%t filter=%d scroll=%d",
+			m.paused, m.filter, m.scroll)
+	}
+	key("?")
+	if m.help {
+		t.Fatal("? did not close help")
+	}
+	key(" ") // with the view back, the same key acts again
+	if !m.paused {
+		t.Fatal("space stopped working after help closed")
+	}
+}
