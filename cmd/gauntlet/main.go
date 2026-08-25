@@ -429,10 +429,15 @@ func run(argv []string) int {
 	// A pending reload takes over before anything final is printed: the
 	// successor continues this run, and it writes the one summary that covers
 	// all of it.
+	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
 		if code := doReload(*path, runID, startedAt, runs, prior, stdout); code >= 0 {
-			return code
+			// The exec failed, so no successor is coming: finish the run here.
+			// Returning without the summary would orphan the whole journal,
+			// because the quiet close already skipped this process's index row
+			// and the successor that was to write it will never exist.
+			reloadFailed = true
 		}
 	}
 
@@ -450,6 +455,9 @@ func run(argv []string) int {
 	}
 
 	code := exitCode(ctx, runs)
+	if reloadFailed {
+		code = exitFail
+	}
 	writeSummary(jrnl, runID, startedAt, dirs, agents, runs, code)
 	return code
 }
