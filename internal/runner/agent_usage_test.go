@@ -24,7 +24,7 @@ import (
 // in internal/streamjson and in toktop's agentusage.
 //
 // Transcript cases need the optional reader, so they run only under
-// `-tags toktop`; the stream cases run in every build.
+// every build but `-tags notoktop`; the stream cases run in all of them.
 //
 // A rate needs two things: a growing count and the time between the readings.
 // So every case asserts at least two usage events with increasing totals, and
@@ -36,7 +36,7 @@ import (
 func needTranscripts(t *testing.T) {
 	t.Helper()
 	if transcriptSource == "" {
-		t.Skip("transcript reading is off in this build; use -tags toktop")
+		t.Skip("transcript reading is off in this build (-tags notoktop)")
 	}
 }
 

@@ -20,6 +20,11 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Changed
 
+- Reading an agent's own session transcript is on by default, in source builds
+  too: it costs one pure-Go dependency and is the only source of counts for
+  agents that print none, so the tag now opts out (`-tags notoktop`,
+  `make build TAGS=notoktop`) rather than in. `--opencode-db` needs `-tags
+  sqlite` alone now that `toktop` is implied.
 - `agents.json` refuses unknown keys instead of ignoring them: a misspelled
   `opt_in` or `usage` would silently change what a definition does (an
   unverified agent becoming auto-detectable, live token counts vanishing), so

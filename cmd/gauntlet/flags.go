@@ -290,7 +290,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&o.logFile, "log", "", "also write all output to FILE")
 	alias("q", "quiet", func(n string) { fs.BoolVar(&o.quiet, n, false, "discard agent output") })
 	fs.BoolVar(&o.raw, "raw", false, "echo agent output verbatim instead of normalizing it")
-	fs.BoolVar(&o.openCodeDB, "opencode-db", false, "read opencode's SQLite session store for its token counts (needs a build with -tags \"toktop sqlite\")")
+	fs.BoolVar(&o.openCodeDB, "opencode-db", false, "read opencode's SQLite session store for its token counts (needs a build with -tags sqlite)")
 	fs.BoolVar(&o.stream, "stream", true, "ask agents for machine-readable output where supported: live token counts and reasoning (--stream=false to disable)")
 	fs.BoolVar(&o.tui, "tui", false, "live dashboard")
 	fs.BoolVar(&o.noColor, "no-color", false, "disable color")
@@ -355,7 +355,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 	}
 	if o.openCodeDB && !enableOpenCodeDB() {
-		return nil, errors.New("--opencode-db needs a build with -tags \"toktop sqlite\"")
+		return nil, errors.New("--opencode-db needs a build with -tags sqlite")
 	}
 	// A definition may say where its agent keeps transcripts, which is what
 	// gives a non-built-in agent live token counts.

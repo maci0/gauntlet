@@ -43,7 +43,7 @@ can replace and reload itself while a loop is running.
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
-| `internal/runner/usage*.go` | the optional bridge to toktop's transcript reading, chosen by build tag |
+| `internal/runner/usage*.go` | the bridge to toktop's transcript reading, on unless `-tags notoktop` |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `prompt`, `normalize`, `gitx`, and `streamjson`; `ui` imports

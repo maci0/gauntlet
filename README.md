@@ -288,15 +288,16 @@ for _, p := range agentusage.Discover() {      // agents running right now
 `Discover` reads `/proc` and so lists processes on Linux only; `Watch`
 works wherever the agent's transcripts do.
 
-Gauntlet uses it through a build tag. Released binaries and `make build`
-include it; `make build TAGS=` (or a plain `go build`) produces a gauntlet with
-no dependencies outside the standard library, which reads only the counts
-agents print themselves. `gauntlet doctor` says which build you have.
+Gauntlet reads transcripts by default: released binaries, `make build`, and a
+plain `go build` all include it. `make build TAGS=notoktop` opts out and
+produces a gauntlet with no dependencies outside the standard library, which
+reads only the counts agents print themselves. `gauntlet doctor` says which
+build you have.
 
 opencode keeps its sessions in SQLite instead, so reading it needs both
-`make build TAGS="toktop sqlite"` and `--opencode-db`: a database driver is a
-lot to link in for one agent, and opening someone's session database should be
-asked for.
+`make build TAGS=sqlite` and `--opencode-db`: a database driver is a lot to
+link in for one agent, and opening someone's session database should be asked
+for.
 
 ## Documentation
 

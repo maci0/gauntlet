@@ -37,7 +37,7 @@ for any agent that prints a counter, and needs no configuration.
 
 `agentusage` in [toktop](https://github.com/maci0/toktop) reads the JSONL
 transcripts the CLIs write for their own session history. Gauntlet links it
-through the `toktop` build tag (see "Where this code lives" below). The formats
+unless a build opts out (see "Where this code lives" below). The formats
 below were verified against live transcripts on a real machine:
 
 **claude** writes `~/.claude/projects/<slug>/<session-uuid>.jsonl`, one JSON
@@ -285,25 +285,26 @@ added, since counting both would double the number.
 Source 1 (agent output) is gauntlet's own: `internal/streamjson` plus the
 counter scan in `internal/agent`. It is always compiled in.
 
-Source 2 (transcripts) is toktop's, and optional. `internal/runner/usage.go`
-declares the interface; `usage_toktop.go` and `usage_off.go` supply the two
-implementations, selected by the `toktop` build tag.
+Source 2 (transcripts) is toktop's, and on by default.
+`internal/runner/usage.go` declares the interface; `usage_toktop.go` and
+`usage_off.go` supply the two implementations, and `-tags notoktop` picks the
+second.
 
 ```sh
-make build                       # with transcripts (what releases ship)
-make build TAGS=                 # standard library only, agent output alone
-make build TAGS="toktop sqlite"  # and opencode's database, with --opencode-db
-gauntlet doctor                  # says which build this is
+make build                    # with transcripts (what releases ship)
+make build TAGS=notoktop      # standard library only, agent output alone
+make build TAGS=sqlite        # and opencode's database, with --opencode-db
+gauntlet doctor               # says which build this is
 ```
 
 opencode is the one agent that neither prints a counter nor keeps a JSONL
 transcript: its sessions live in `~/.local/share/opencode/opencode.db`. Reading
-that means linking a SQLite driver in, so it takes both the extra build tag and
-`--opencode-db` at runtime. Without both, opencode reports nothing, and asking
+that means linking a SQLite driver in, so it takes both the `sqlite` build tag
+and `--opencode-db` at runtime. Without both, opencode reports nothing, and asking
 for the flag in a build that cannot honor it is an error rather than silence.
 
-Without the tag, agents that print no counter report no tokens at all, which is
-the same rule as everywhere else here: measure, or say nothing.
+In an opted-out build, agents that print no counter report no tokens at all,
+which is the same rule as everywhere else here: measure, or say nothing.
 
 ## What was considered and not built
 

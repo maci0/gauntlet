@@ -79,7 +79,7 @@ Untrusted inputs with their validation point:
 | Environment: `GAUNTLET_HOME`, `GITHUB_TOKEN`, `TERM`/NO_COLOR, `GAUNTLET_STATE` | `custom.go:247`, `journal.go:35`, `selfupdate.go:74`, `cmd/gauntlet/report.go:50`, `selfupdate/reload.go:130` | operator-controlled, same-user trust |
 | Agent stdout/stderr | pipes in `exec.go:97-106`; line scan `exec.go:273` | 4 MiB per line (`exec.go:41`), escape/control/bidi strip before terminal (`normalize.go:332 Display`), width cap 2000 cols (`exec.go:45`), rate limit 200 lines/s (`runner.go:31`) |
 | Stream-JSON events from agents | `streamjson.Parse` at `exec.go:182` | envelope-agnostic parser; thinking lines sanitized + capped (`exec.go:333`) |
-| Token counters parsed from output and transcripts | `exec.go:153-158,247-256`; transcript watch behind `-tags toktop`, `usage_toktop.go:17`; custom roots `custom.go:61` | integers only; transcripts are other files under `$HOME` |
+| Token counters parsed from output and transcripts | `exec.go:153-158,247-256`; transcript watch off with `-tags notoktop`, `usage_toktop.go:17`; custom roots `custom.go:61` | integers only; transcripts are other files under `$HOME` |
 | GitHub release metadata | `selfupdate.Check`, `selfupdate.go:64` | HTTPS, 4 MiB decode cap |
 | Release asset + `checksums.txt` | `applyTo`, `selfupdate.go:122-177` | checksums fetched first (1 MiB cap), asset streamed with 256 MiB cap, SHA-256 must match before rename into place |
 | Git outputs (shortstat, porcelain, check-ignore) | `gitx.go:133,286,315` | regex/line parsing; counts only, never executed |
