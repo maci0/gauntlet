@@ -54,9 +54,18 @@ func (r Review) IsProject() bool { return r.Origin == Project }
 func (r Review) Body() (string, error) {
 	if r.Origin == Bundled {
 		b, err := bundled.ReadFile("prompts/" + r.Name + ".md")
-		return string(b), err
+		return stripBOM(string(b)), err
 	}
-	return readNoFollow(r.Path)
+	b, err := readNoFollow(r.Path)
+	return stripBOM(b), err
+}
+
+// stripBOM removes a leading UTF-8 byte-order mark. The BOM declares the
+// encoding; it is not content. Editors on Windows write one in front of every
+// file, and left in place it hides a prompt's first line from the prefix
+// match that extracts its description.
+func stripBOM(s string) string {
+	return strings.TrimPrefix(s, "\xef\xbb\xbf")
 }
 
 // Desc is the prompt's first "Your goal" line, stripped to its predicate. It

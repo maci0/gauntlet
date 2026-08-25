@@ -186,6 +186,27 @@ func TestSuggestPromptTruncatesOnRuneBoundary(t *testing.T) {
 	}
 }
 
+// The BOM Windows editors write in front of a file declares the encoding; it
+// must not count as content, or it hides the first line from the description
+// reader and rides along into composed prompts.
+func TestBodyStripsLeadingBOM(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "bom-review.md"),
+		"\xef\xbb\xbfYour goal is to test that the BOM is not read as text\n")
+	set, _, err := Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := set.Get("bom-review")
+	if !ok {
+		t.Fatal("BOM'd prompt not discovered")
+	}
+	got := r.Desc()
+	if want := "test that the BOM is not read as text"; got != want {
+		t.Fatalf("Desc() = %q, want %q: the BOM broke the prefix match", got, want)
+	}
+}
+
 func TestParseSuggestions(t *testing.T) {
 	out := strings.Join([]string{
 		"thinking...",
