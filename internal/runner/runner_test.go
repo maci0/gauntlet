@@ -1,0 +1,684 @@
+// Copyright (C) 2026 Marcel W. Wysocki
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package runner
+
+import (
+	"context"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/prompt"
+)
+
+// fakeAgent writes an executable that behaves like an agent CLI: it takes the
+// prompt as its last argument, prints some output, and edits the tree.
+func fakeAgent(t *testing.T, dir, name, body string) string {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	script := "#!/bin/sh\n" + body + "\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// testRepo makes a git repository with one commit.
+func testRepo(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for runner tests")
+	}
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "test@example.invalid")
+	run("config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(dir, "main.go"),
+		[]byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	return dir
+}
+
+// promptSet builds a small review set on disk.
+func promptSet(t *testing.T, names ...string) (prompt.Set, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for _, n := range names {
+		body := "Your goal is to test " + n + ".\n"
+		if err := os.WriteFile(filepath.Join(dir, n+".md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set, _, err := Discover(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set, dir
+}
+
+// Discover is a thin test helper around prompt.Discover.
+func Discover(t *testing.T, dir string) (prompt.Set, []string, error) {
+	t.Helper()
+	return prompt.Discover(context.Background(), dir, dir)
+}
+
+// drain subscribes now and discards events in the background, so a test that
+// does not inspect the stream still cannot block the runner.
+func drain(bus *Bus) {
+	ch := bus.Subscribe(256)
+	go func() {
+		for range ch {
+		}
+	}()
+}
+
+// collect drains a bus subscription into a slice until it closes.
+func collect(ch <-chan Event, done chan<- []Event) {
+	var got []Event
+	for ev := range ch {
+		got = append(got, ev)
+	}
+	done <- got
+}
+
+func baseConfig(t *testing.T, repo string, set prompt.Set, reviews []string, bin string) Config {
+	t.Helper()
+	return Config{
+		Dir: repo, Set: set, Reviews: reviews,
+		Agents:  []agent.Spec{{Tool: "claude"}},
+		Bin:     map[string]string{"claude": bin},
+		Timeout: 30 * time.Second, Jobs: 1, MaxLoops: 1,
+		RunID: "test", Version: "test", Quiet: false,
+	}
+}
+
+func TestSequentialRunEditsTreeAndCountsLines(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review", "doc-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "Reading main.go"
+echo "// touched" >> main.go
+echo '{"usage":{"output_tokens":1200}}'
+echo "RESULT: changed=1"`)
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), baseConfig(t, repo, set, []string{"sec-review", "doc-review"}, bin), bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	c := r.Stats().Counts()
+	if c.OK != 2 || c.Failures() != 0 {
+		t.Fatalf("counts: %+v", c)
+	}
+	body, err := os.ReadFile(filepath.Join(repo, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(body), "// touched") != 2 {
+		t.Fatalf("both reviews should have edited the tree:\n%s", body)
+	}
+	for _, res := range r.Stats().Results() {
+		if !res.HaveLines || res.Ins != 1 {
+			t.Errorf("%s: line stats wrong: %+v", res.Review, res)
+		}
+		if res.Tokens != 1200 {
+			t.Errorf("%s: tokens not parsed: %d", res.Review, res.Tokens)
+		}
+	}
+	if countKind(got, EvReviewEnd) != 2 || countKind(got, EvLoopEnd) != 1 {
+		t.Fatalf("event stream is missing results: %d ends", countKind(got, EvReviewEnd))
+	}
+}
+
+func TestFailingAgentIsRetriedOnAnother(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	binDir := t.TempDir()
+	bad := fakeAgent(t, binDir, "claude", `echo "boom" >&2; exit 3`)
+	good := fakeAgent(t, binDir, "codex", `echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bad)
+	cfg.Agents = []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
+	cfg.Bin = map[string]string{"claude": bad, "codex": good}
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	results := r.Stats().Results()
+	if len(results) != 1 {
+		t.Fatalf("a retry must produce one result, got %d: %+v", len(results), results)
+	}
+	// Whichever agent was picked first, the review must end up recorded as a
+	// success on the working agent: the retry replaces the failed attempt
+	// entirely, so neither a failure nor the bad agent may survive.
+	if results[0].Status != StatusOK || results[0].Agent.Tool != "codex" {
+		t.Fatalf("unexpected outcome: %+v", results[0])
+	}
+}
+
+func TestTimeoutKillsTheAgent(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo starting; sleep 30`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Timeout = 300 * time.Millisecond
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	r.Run(context.Background())
+	bus.Close()
+
+	if elapsed := time.Since(start); elapsed > 20*time.Second {
+		t.Fatalf("timeout did not kill the agent: took %s", elapsed)
+	}
+	if got := r.Stats().Counts(); got.Timeout != 1 {
+		t.Fatalf("counts: %+v", got)
+	}
+}
+
+func TestParallelModeRequiresCleanTree(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo ok`)
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Jobs = 3
+
+	_, err := New(context.Background(), cfg, NewBus())
+	if err == nil || !strings.Contains(err.Error(), "clean working tree") {
+		t.Fatalf("want a clean-tree error, got %v", err)
+	}
+}
+
+func TestParallelModeIsolatesAndMerges(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review")
+	// Each review writes its own file, so all three merge cleanly.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+name=$(basename "$PWD")
+echo "content of $name" > "fix-$name.txt"
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review"}, bin)
+	cfg.Jobs = 3
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	if c := r.Stats().Counts(); c.OK != 3 {
+		t.Fatalf("counts: %+v", c)
+	}
+	if n := countKind(got, EvMerge); n != 3 {
+		t.Fatalf("want three merges, got %d", n)
+	}
+	// Every review's work reached the main tree, and nothing was left behind.
+	entries, err := os.ReadDir(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixes := 0
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "fix-") {
+			fixes++
+		}
+		if e.Name() == ".gauntlet" {
+			t.Error("worktree root was not cleaned up")
+		}
+	}
+	if fixes != 3 {
+		t.Fatalf("want three merged files, found %d", fixes)
+	}
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Fatalf("tree should be clean after merges:\n%s", out)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
+		t.Fatalf("merged branches should be deleted:\n%s", out)
+	}
+}
+
+func TestParallelModeKeepsConflictingBranches(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	// Both reviews rewrite the same line differently: one merges, one cannot.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+printf 'package main\n\nfunc main() { /* %s */ }\n' "$(basename "$PWD")" > main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	c := r.Stats().Counts()
+	if c.Conflict != 1 || c.OK != 1 {
+		t.Fatalf("want one merge and one conflict, got %+v", c)
+	}
+	// The conflicting work is preserved, not dropped.
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out == "" {
+		t.Fatal("the conflicting branch was deleted, losing that review's work")
+	}
+	// And the tree is left usable, not mid-merge.
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Fatalf("aborted merge left the tree dirty:\n%s", out)
+	}
+}
+
+// TestParallelModeWithNoChangesDeletesTheBranch pins the empty-review path:
+// a review that changed nothing leaves no branch behind. Its branch points at
+// the base commit, so keeping it would litter the repo with dead refs run
+// after run.
+func TestParallelModeWithNoChangesDeletesTheBranch(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Jobs = 2
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	if c := r.Stats().Counts(); c.OK != 1 {
+		t.Fatalf("counts: %+v", c)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
+		t.Fatalf("a review with no changes must leave no branch:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".gauntlet")); !os.IsNotExist(err) {
+		t.Error("worktree root was not cleaned up")
+	}
+}
+
+// TestFailedCommitDeletesTheBranch pins the commit-failure path: when the
+// commit step itself fails, the branch still points at the base (nothing was
+// committed), so it is deleted like any other failed review's instead of
+// surviving as litter.
+func TestFailedCommitDeletesTheBranch(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	// Make every git commit fail without a secret key while leaving `git add`
+	// working, which is exactly the shape of a real commit-step failure.
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "commit.gpgsign")
+	t.Setenv("GIT_CONFIG_VALUE_0", "true")
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Jobs = 2
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	if c := r.Stats().Counts(); c.Fail != 1 {
+		t.Fatalf("want one failed review, got %+v", c)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
+		t.Fatalf("a failed commit must leave no branch:\n%s", out)
+	}
+	if entries, err := os.ReadDir(repo); err == nil {
+		for _, e := range entries {
+			if e.Name() == ".gauntlet" {
+				t.Error("worktree root survived a failed commit")
+			}
+		}
+	}
+	// The agent only ever touched its own checkout, so the main tree is clean.
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Fatalf("tree left dirty:\n%s", out)
+	}
+}
+
+func TestCancelStopsTheRun(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `sleep 10`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review"}, bin)
+	cfg.MaxLoops = 0 // would otherwise loop forever
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+		cancel()
+	}()
+	start := time.Now()
+	r.Run(ctx)
+	bus.Close()
+
+	if elapsed := time.Since(start); elapsed > 20*time.Second {
+		t.Fatalf("cancel did not stop the run: took %s", elapsed)
+	}
+	if c := r.Stats().Counts(); c.Interrupted == 0 {
+		t.Fatalf("interrupted review not recorded: %+v", c)
+	}
+}
+
+func TestRequestStopFinishesInFlightWork(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.MaxLoops = 0
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		r.RequestStop()
+	}()
+	r.Run(context.Background())
+	bus.Close()
+
+	if !r.Stopping() {
+		t.Fatal("stop was not recorded")
+	}
+	// A soft stop never kills an agent, so nothing may be interrupted.
+	if c := r.Stats().Counts(); c.Interrupted != 0 {
+		t.Fatalf("soft stop killed a review: %+v", c)
+	}
+}
+
+func TestLockKeepsTwoRunsApart(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	first, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Acquire(path); err == nil {
+		t.Fatal("second acquire should fail")
+	}
+	first.Release()
+	second, err := Acquire(path)
+	if err != nil {
+		t.Fatalf("lock not released: %v", err)
+	}
+	second.Release()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("lock file should be removed on release")
+	}
+}
+
+func countKind(events []Event, kind Kind) int {
+	n := 0
+	for _, ev := range events {
+		if ev.Kind == kind {
+			n++
+		}
+	}
+	return n
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"; sleep 0.4`)
+
+	reviews := []string{"a-review", "b-review", "c-review", "d-review"}
+	cfg := baseConfig(t, repo, set, reviews, bin)
+	cfg.MaxLoops = 1
+
+	bus := NewBus()
+	drain(bus)
+	first, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		first.RequestStop() // as a hot reload does
+	}()
+	first.Run(context.Background())
+	bus.Close()
+
+	done := first.Stats().Counts().Total()
+	pending := first.Pending()
+	if done == 0 || done == len(reviews) {
+		t.Fatalf("test needs a partial loop: %d done", done)
+	}
+	if len(pending) != len(reviews)-done {
+		t.Fatalf("pending %v does not match %d finished reviews", pending, done)
+	}
+	// Nothing was killed: a soft stop lets in-flight agents finish.
+	if c := first.Stats().Counts(); c.Interrupted != 0 || c.Failures() != 0 {
+		t.Fatalf("soft stop disturbed a review: %+v", c)
+	}
+
+	// The successor picks up exactly what was left, and finishes the loop.
+	bus2 := NewBus()
+	drain(bus2)
+	cfg2 := cfg
+	cfg2.ResumeQueue = pending
+	second, err := New(context.Background(), cfg2, bus2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Run(context.Background())
+	bus2.Close()
+
+	var ran []string
+	for _, r := range second.Stats().Results() {
+		ran = append(ran, r.Review)
+	}
+	sort.Strings(ran)
+	want := append([]string(nil), pending...)
+	sort.Strings(want)
+	if strings.Join(ran, ",") != strings.Join(want, ",") {
+		t.Fatalf("successor ran %v, want exactly the pending %v", ran, want)
+	}
+	if second.Loops() != 1 {
+		t.Fatalf("the resumed loop should count as complete, got %d", second.Loops())
+	}
+}
+
+func TestLiveUsageIsReportedWhileTheAgentRuns(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	// An agent that streams growing cumulative usage, as several CLIs do.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo 'thinking'
+echo '{"usage":{"output_tokens":100}}'
+sleep 0.3
+echo '{"usage":{"output_tokens":250}}'
+sleep 0.3
+echo '{"usage":{"output_tokens":900}}'
+echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	var usage []int
+	var lastEnd int
+	for _, ev := range got {
+		switch ev.Kind {
+		case EvUsage:
+			usage = append(usage, ev.Tokens)
+		case EvReviewEnd:
+			lastEnd = ev.Tokens
+		}
+	}
+	if len(usage) < 3 {
+		t.Fatalf("want a usage event per growth step, got %v", usage)
+	}
+	for i := 1; i < len(usage); i++ {
+		if usage[i] <= usage[i-1] {
+			t.Fatalf("usage must only grow: %v", usage)
+		}
+	}
+	if usage[len(usage)-1] != 900 || lastEnd != 900 {
+		t.Fatalf("final usage %v, review end %d, want 900", usage, lastEnd)
+	}
+}
+
+func TestNoUsageEventsWhenAgentReportsNone(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "no numbers here"; echo "RESULT: no-changes"`)
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), baseConfig(t, repo, set, []string{"a-review"}, bin), bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	for _, ev := range <-done {
+		if ev.Kind == EvUsage {
+			t.Fatalf("invented usage for an agent that reported none: %+v", ev)
+		}
+	}
+	if got := r.Stats().Results()[0].Tokens; got != 0 {
+		t.Fatalf("tokens should stay zero, got %d", got)
+	}
+}
+
+func TestCancelDuringParallelLeavesNoWorktrees(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review", "d-review"}, bin)
+	cfg.Jobs = 3
+
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		cancel()
+	}()
+	r.Run(ctx)
+	bus.Close()
+
+	// Interrupting mid-flight must not leave checkouts, branches, or a
+	// half-merged tree behind: the next run has to start from a sane repo.
+	if entries, err := os.ReadDir(repo); err == nil {
+		for _, e := range entries {
+			if e.Name() == ".gauntlet" {
+				t.Error("worktree root survived the cancel")
+			}
+		}
+	}
+	if out := gitOut(t, repo, "worktree", "list"); strings.Count(out, "\n") != 0 {
+		t.Errorf("stray worktrees registered:\n%s", out)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
+		t.Errorf("stray branches left behind:\n%s", out)
+	}
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Errorf("tree left dirty:\n%s", out)
+	}
+}

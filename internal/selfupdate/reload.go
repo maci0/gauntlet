@@ -1,0 +1,169 @@
+// Copyright (C) 2026 Marcel W. Wysocki
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package selfupdate
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"syscall"
+	"time"
+)
+
+// StateEnv names the handoff file passed to the reloaded process.
+const StateEnv = "GAUNTLET_STATE"
+
+// fingerprint identifies one build of the executable on disk.
+type fingerprint struct {
+	inode uint64
+	size  int64
+	mtime time.Time
+}
+
+func (f fingerprint) valid() bool { return f.size > 0 }
+
+func stat(path string) (fingerprint, error) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return fingerprint{}, err
+	}
+	var ino uint64
+	if st, ok := fi.Sys().(*syscall.Stat_t); ok {
+		ino = st.Ino
+	}
+	return fingerprint{inode: ino, size: fi.Size(), mtime: fi.ModTime()}, nil
+}
+
+// Watcher notices when the running executable is replaced on disk.
+//
+// Polling beats an inotify dependency here: the question is asked every few
+// seconds, the answer is one stat, and a missed event only delays a reload
+// until the next tick.
+type Watcher struct {
+	path   string
+	every  time.Duration
+	base   fingerprint
+	Change <-chan string // receives the executable path once it changes
+}
+
+// Watch starts watching the current executable. A zero interval means 5s.
+func Watch(ctx context.Context, every time.Duration) (*Watcher, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
+	base, err := stat(self)
+	if err != nil {
+		return nil, err
+	}
+	if every <= 0 {
+		every = 5 * time.Second
+	}
+	ch := make(chan string, 1)
+	w := &Watcher{path: self, every: every, base: base, Change: ch}
+	go w.run(ctx, ch)
+	return w, nil
+}
+
+func (w *Watcher) run(ctx context.Context, ch chan<- string) {
+	defer close(ch)
+	t := time.NewTicker(w.every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			cur, err := stat(w.path)
+			if err != nil || !cur.valid() {
+				continue // mid-rename: the next tick sees the new file
+			}
+			if cur == w.base {
+				continue
+			}
+			// Re-stat at once and require the same reading: a file caught
+			// mid-rename comes back different or missing. The double read is
+			// not proof the new binary is complete, only that it has settled;
+			// writers here (self-update, go build) rename atomically, so a
+			// stable fingerprint means a whole file.
+			settled, err := stat(w.path)
+			if err != nil || settled != cur {
+				continue
+			}
+			w.base = cur
+			select {
+			case ch <- w.path:
+			default:
+			}
+			return
+		}
+	}
+}
+
+// SaveState writes the handoff blob the reloaded process picks up, and returns
+// its path.
+func SaveState(dir, runID string, v any) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, runID+".json")
+	data, err := json.Marshal(v)
+	if err != nil {
+		return "", err
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+// LoadState reads and removes the handoff blob named by GAUNTLET_STATE. It
+// reports whether state was found: a normal start simply has none.
+func LoadState(v any) bool {
+	path := os.Getenv(StateEnv)
+	if path == "" {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	// Read once, then drop it: a stale handoff must not resurrect old counters
+	// on the next manual start.
+	_ = os.Remove(path)
+	if err != nil {
+		return false
+	}
+	return json.Unmarshal(data, v) == nil
+}
+
+// Reexec replaces this process with the binary at path, keeping the original
+// arguments and adding the handoff file to the environment.
+//
+// execve, not fork: the pid, the terminal, and the exit status all stay the
+// same, so a supervisor or a shell job sees one continuous process.
+func Reexec(path, statePath string) error {
+	if path == "" {
+		return errors.New("no executable to reload")
+	}
+	env := os.Environ()
+	filtered := env[:0]
+	for _, kv := range env {
+		if len(kv) > len(StateEnv) && kv[:len(StateEnv)+1] == StateEnv+"=" {
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+	if statePath != "" {
+		filtered = append(filtered, StateEnv+"="+statePath)
+	}
+	argv := append([]string{path}, os.Args[1:]...)
+	if err := syscall.Exec(path, argv, filtered); err != nil {
+		return fmt.Errorf("exec %s: %w", path, err)
+	}
+	return nil // unreachable on success
+}

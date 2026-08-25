@@ -1,33 +1,45 @@
-# gauntlet — project conventions
+# gauntlet: project conventions
 
-gauntlet is a dependency-free Python review loop: ~50 specialized review
-prompts dispatched to installed AI coding agents, applying small fixes
-directly to the working tree. Zero runtime dependencies (stdlib only);
-packaging in `pyproject.toml`, tests in `tests/`.
+The Go implementation of gauntlet: ~50 review prompts dispatched to installed AI coding
+agents, applying fixes to the working tree. One static binary, prompts
+embedded, bubbletea for the dashboard, everything else standard library.
 
-## Build & test
+## Build and test
 
-- `uv run pytest` — run the suite (tests/test_gauntlet.py). Keep it green.
-- `uv run ruff check .` — lint. No code is merged without both.
+- `make check`: gofmt, `go fix -diff`, and vet. All must be clean; run
+  `go fix ./...` before committing if the fix step reports anything.
+- `make test`: the suite with the race detector and shuffled order.
+- Tests must not write into a tmpfs or into a gitignored path inside this
+  repo: the prompt discovery tests would then see their own fixtures as
+  ignored. `TMPDIR` is set by the Makefile for that reason.
 
-## Docs: PRD / RFC / ADR roles
+## Layout
 
-gauntlet ships no product docs of its own, but its prompts review other
-repos' PRD/RFC/ADR sets, and this repo's own docs and prompts must keep the
-same industry-standard boundaries:
+`cmd/gauntlet` is flags and dispatch only. Everything real lives in
+`internal/`, and dependencies point one way: `runner` uses `agent`, `prompt`,
+`normalize`, `gitx`, `journal`; `ui` uses only the runner's event types.
+Nothing imports `ui`, so a headless run costs nothing.
 
-- **PRD** — product requirements: what to build and why (problem →
-  requirements → acceptance).
-- **RFC** — request for comments: the technical proposal (the "how"),
-  circulated for review before the decision is locked. Options + a
-  recommendation, not a settled spec.
-- **ADR** — records a decision that has been made (context → decision →
-  consequences); immutable — a reversal supersedes, never edits. A decision
-  still being made is an RFC, not a proposed ADR.
+## Rules that are not style preferences
 
-Enforcement lives in the review prompts: `specs-review.md` audits ADR/RFC/PRD
-sets on reviewed repos (ADR statuses accepted/superseded/deprecated, RFC as
-proposal, PRD as requirements), and `agentrules-review.md` flags agent rules
-that misstate the roles. When editing these prompts — or any gauntlet doc —
-keep the roles above: never reintroduce a "proposed ADR" or an RFC that
-records a decision.
+- **Concurrency in one repository requires isolation.** Reviews run
+  sequentially in place, or in a `git worktree` per review with a merge step.
+  There is no third mode, and no flag that lets two agents share a tree.
+- **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
+  unlit meter shows its remainder, and no series is smoothed or interpolated.
+  See `docs/DESIGN.md`.
+- **Containment is prompt text plus process discipline**, and both are ported
+  verbatim from the original. Changing the rule files in
+  `internal/prompt/rules/` changes what agents are allowed to do: treat those
+  files as security-relevant.
+- **Untrusted input** is anything from the reviewed repository: prompt names,
+  descriptions, agent output. Sanitize before display, never interpolate into
+  a prompt without fencing.
+- **A conflicting merge keeps its branch.** Losing a review's entire output
+  silently is worse than a noisy failure.
+
+## Docs
+
+- `docs/DESIGN.md` records the architecture and what each decision costs.
+- `docs/IDEAS.md` records what was deliberately not built, and why. Move an
+  entry out of it when it ships; do not leave both.

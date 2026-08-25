@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.0.0
+
+Rewritten in Go, shipped as one static binary. The Python implementation
+(0.26.0 and earlier) is replaced; prompts, injected rules, containment, and
+exit codes are unchanged, so existing invocations keep working.
+
+Added:
+
+- Parallel reviews with git-level isolation: `--jobs N` gives every review its
+  own worktree and branch, then merges them back one at a time. A conflicting
+  merge keeps its branch instead of dropping the work.
+- `--dirs` reviews several repositories at once, each with its own lock,
+  baseline, and lane.
+- `--tui`, a live dashboard: per-agent lanes, activity chart, the full review
+  grid, and a normalized feed.
+- Output normalization: escapes, spinners, repainted progress lines, tool
+  gutters, and duplicate narration collapse instead of scrolling past. Diffs
+  are colored by sign.
+- Live token throughput, read from what agents already report: their streams,
+  their own session transcripts, and their machine-readable modes (`--stream`,
+  on by default where an agent has one). Reasoning tokens are tracked and shown
+  separately. Agents that report nothing show no rate rather than a zero.
+- A run journal under `~/.gauntlet`, with `gauntlet runs` and `gauntlet show`.
+- `gauntlet update`: verified self-update, plus hot reload that finishes the
+  reviews in flight, hands over the unfinished part of the loop, and re-execs
+  without losing counters.
+- Agents can be defined rather than compiled in (`--agent-cmd`,
+  `~/.gauntlet/agents.json`), including where they keep transcripts. The pi
+  family (`pi`, `prime-agent`, `feynman`, `omp`) ships as such definitions.
+- `agentusage`, a public package exposing the token reading, so other tools can
+  report the same numbers.
+
+Changed:
+
+- Linux and macOS only. The runner depends on process groups, `flock`,
+  `O_NOFOLLOW`, and `execve`; Windows has no equivalent that keeps those
+  guarantees.
+- `--target-dirs` is now `--dirs`, with the old name kept as an alias.
+
+
 Notable changes per release.
 
 ## 0.26.0

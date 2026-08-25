@@ -8,46 +8,30 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.14"]
+        # The runner shells out to agents, locks directories, and kills process
+        # groups, so both supported platforms run the real suite.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+          go-version: stable
+      - run: make check
+      - run: make test
+
+  dist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          python-version: ${{ matrix.python }}
-      - name: Lint
-        if: matrix.python == '3.10'
-        run: pipx run ruff==0.16.1 check src/gauntlet/cli.py tests/test_gauntlet.py
-      - name: Type-check
-        if: matrix.python == '3.10'
-        run: pipx run mypy==1.19.0 src/gauntlet
-      - name: Run tests
-        run: python tests/test_gauntlet.py
-      - name: Smoke-test the CLI (no agent CLIs installed here)
-        run: |
-          python src/gauntlet/cli.py --version
-          python src/gauntlet/cli.py --list
-          # doctor must exit 1 here specifically because no agent CLI exists,
-          # not because it crashed: require exit code 1 exactly plus the report.
-          rc=0; out=$(python src/gauntlet/cli.py doctor 2>&1) || rc=$?
-          test "$rc" -eq 1
-          echo "$out" | grep -q "Per-review helpers"
-          echo "$out" | grep -q "No agent CLI found"
-      - name: Smoke-test the installed package (entry point, python -m, prompts)
-        run: |
-          python -m pip -q install .
-          gauntlet --version
-          python -m gauntlet --version
-          gauntlet --list | grep -q "Available reviews (50)"
+          go-version: stable
+      # Cross-compilation is part of the contract: `gauntlet update` can only
+      # install a platform that actually builds.
+      - run: make dist VERSION=ci

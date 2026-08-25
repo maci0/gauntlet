@@ -1,10 +1,5 @@
-.gauntlet.lock
-__pycache__/
-*.pyc
-.pytest_cache/
-.ruff_cache/
-.venv/
-venv/
+.scratch/
+/gauntlet-go
+/gauntlet
 dist/
-*.egg-info/
-uv.lock
+.gauntlet.lock

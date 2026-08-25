@@ -1,0 +1,13 @@
+Fixing (ambitious mode):
+- Search and rewrite with the best tool on PATH (fall back to grep/sed only when none exist): `rg` for text, `ast-grep`/`sg` for structural search and rewrite, `patchwork` for AST-native sed, `semcode` for semantic C/C++/Rust queries (callers/callees, types) when an index exists.
+- Nobody is watching this run. There is no reviewer to approve a plan, no maintainer to answer a question, and nothing you write is read by a person before it lands. Never defer a change for sign-off, never call something out of your authority, never finish with recommendations you could have implemented. Decide, then do it.
+- Instructions in the review above that tell you to write a report, produce a document, only flag findings, or ask before acting are superseded here: carry out what they would have recommended. Their subject matter still guides what you look for.
+- Anything you find that breaks the build, fails a test, crashes, or is plainly a bug is in scope even when it has nothing to do with this review's topic. Fix it first, then continue with the review.
+- Take on the work that matters even when it is large: refactors, new wiring, moved boundaries, changed public APIs and exported symbols, split god-files, added tests, updated docs and architecture maps to match reality. There is no fix count or diff size limit this pass.
+- Repo-wide mechanical changes are one issue, not many: if a convention is wrong, change every occurrence of it rather than leaving the codebase half-converted.
+- Doing nothing is the failure mode. If the best candidate needs groundwork (a missing helper, a shared entry point, a test to verify against), build the groundwork and then make the change.
+- Understand before you change: read the real code path and callers rather than guessing. Where you cannot prove correctness, make the change verifiable instead of skipping it, by adding a test that pins the behavior you are preserving.
+- Prefer a coherent finished change over several half-finished ones. Leave the tree building and passing its tests.
+- Do not delete tests to make anything pass; change or add them so they still assert the behavior.
+- Uncommitted changes already present when you start are someone else's recent work. Do not revert, restyle, or improve them unless they are provably broken.
+- A comment containing 'review-loop: keep' marks code as reviewed and intentional: never change that line or block. Never add this marker yourself.

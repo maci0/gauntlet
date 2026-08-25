@@ -1,0 +1,828 @@
+// Copyright (C) 2026 Marcel W. Wysocki
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// Command gauntlet runs a codebase through ~50 specialized review prompts,
+// dispatched to whichever AI coding agents are installed.
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/maci0/gauntlet/internal/selfupdate"
+	"github.com/maci0/gauntlet/internal/ui"
+)
+
+// version is stamped at build time: go build -ldflags "-X main.version=1.2.3".
+var version = "dev"
+
+// Exit codes, matching the Python original so scripts keep working.
+const (
+	exitOK     = 0
+	exitFail   = 1  // a review failed, timed out, was skipped, or would not merge
+	exitUsage  = 2  // usage error
+	exitLocked = 75 // EX_TEMPFAIL: another instance holds the lock
+)
+
+// autoUpdateEvery is how often --auto-update asks GitHub for a new release.
+// Deliberately slow: an update check is never on the critical path.
+const autoUpdateEvery = 6 * time.Hour
+
+// autoUpdateDelay is how long --auto-update waits before its first check, so
+// the network never delays the first review.
+const autoUpdateDelay = 30 * time.Second
+
+func main() { os.Exit(run(os.Args[1:])) }
+
+// dirRun is one directory's slice of a run.
+type dirRun struct {
+	dir     string
+	set     prompt.Set
+	reviews []string
+	lock    *runner.Lock
+	r       *runner.Runner
+	stats   *runner.Stats
+	loops   int
+	// carriedLoops are the loops this directory finished in an earlier
+	// process, before a hot reload handed the run over.
+	carriedLoops int
+}
+
+// handoff is the state a hot reload carries across the exec. It holds the
+// full results, not just counters: the successor prints the run's summary and
+// writes its index row, and both must describe the whole run.
+type handoff struct {
+	RunID     string                `json:"run_id"`
+	StartedAt time.Time             `json:"started_at"`
+	Reloads   int                   `json:"reloads"`
+	Dirs      map[string]dirHandoff `json:"dirs"`
+}
+
+// dirHandoff is one directory's progress at the moment of the swap.
+type dirHandoff struct {
+	Loops int `json:"loops"`
+	// Pending is what the interrupted loop had not started yet, so the
+	// successor finishes that loop instead of starting it over.
+	Pending     []string        `json:"pending,omitempty"`
+	CommitRuns  int             `json:"commit_runs,omitempty"`
+	CommitFails int             `json:"commit_fails,omitempty"`
+	Results     []runner.Result `json:"results,omitempty"`
+}
+
+// Loops totals the loops finished before the reload.
+func (h handoff) Loops() int {
+	n := 0
+	for _, d := range h.Dirs {
+		n += d.Loops
+	}
+	return n
+}
+
+func run(argv []string) int {
+	opts, err := parseFlags(argv)
+	if err != nil {
+		if errors.Is(err, errHelp) {
+			return exitOK
+		}
+		if _, ok := errors.AsType[parseError](err); !ok {
+			fmt.Fprintln(os.Stderr, err)
+		}
+		return exitUsage
+	}
+
+	stdout := io.Writer(os.Stdout)
+	pal := palette{on: colorEnabled(os.Stdout) && !opts.noColor}
+
+	// --log tees every stream this process writes. Native multi-writer, not a
+	// tee subprocess: one less dependency and no broken-pipe failure mode.
+	var logWriter io.Writer
+	if opts.logFile != "" {
+		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write log file %s: %v\n", opts.logFile, err)
+			return exitUsage
+		}
+		defer f.Close()
+		logWriter = f
+		stdout = io.MultiWriter(os.Stdout, f)
+		pal.on = false // escape codes would land in the file too
+	}
+
+	ctx, stop := context.WithCancel(context.Background())
+	defer stop()
+	watchSignals(ctx, stop, stdout)
+
+	switch opts.command {
+	case "doctor":
+		return doctor(stdout, pal, opts.bin, opts.width)
+	case "update":
+		return cmdUpdate(ctx, stdout, pal, opts)
+	case "runs":
+		return cmdRuns(stdout, pal, opts.runsLimit)
+	case "show":
+		return cmdShow(stdout, opts.showRun)
+	case "version":
+		fmt.Fprintf(stdout, "gauntlet %s\n", version)
+		return exitOK
+	}
+
+	dirs, err := resolveDirs(opts)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return exitUsage
+	}
+
+	// Agents: explicit list, or everything installed.
+	agents := opts.agents
+	autoDetected := false
+	if len(agents) == 0 {
+		agents = agent.Installed()
+		autoDetected = true
+		if len(agents) == 0 {
+			fmt.Fprintf(os.Stderr, "No auto-detectable agents found in PATH. Install one of: %s, "+
+				"or name an agent explicitly with --agents.\n", strings.Join(agent.Valid, ", "))
+			return exitUsage
+		}
+	}
+	for _, spec := range agents {
+		if opts.bin[spec.Tool] != "" {
+			continue
+		}
+		if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
+			continue // BuildCmd falls back to bunx @deepseek-ai/dsh
+		}
+		if agent.Resolve(spec.Tool) == "" {
+			fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", spec.Tool)
+			return exitUsage
+		}
+	}
+
+	// Discovery and selection happen per directory: a project can carry its
+	// own *-review.md files, so the available set differs per tree.
+	runs := make([]*dirRun, 0, len(dirs))
+	for _, dir := range dirs {
+		set, warnings, err := prompt.Discover(ctx, opts.promptDir, dir)
+		if err != nil {
+			if opts.promptDir != "" {
+				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return exitUsage
+		}
+		for _, w := range warnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+		if set.Len() == 0 {
+			fmt.Fprintf(os.Stderr, "No reviews found for %s\n", dir)
+			return exitUsage
+		}
+		runs = append(runs, &dirRun{dir: dir, set: set})
+	}
+
+	// Informational modes act on the first directory, then exit.
+	if opts.showPrompt != "" {
+		return cmdShowPrompt(stdout, runs[0].set, opts)
+	}
+
+	for _, d := range runs {
+		reviews, err := selectReviews(ctx, d, opts, agents, stdout, pal)
+		if err != nil {
+			if errors.Is(err, errAborted) {
+				return exitOK
+			}
+			fmt.Fprintln(os.Stderr, err)
+			if errors.Is(err, errAgentFailed) {
+				return exitFail
+			}
+			return exitUsage
+		}
+		d.reviews = reviews
+	}
+
+	if opts.list {
+		listReviews(stdout, pal, runs[0].set, runs[0].reviews, opts.width)
+		return exitOK
+	}
+	if opts.dryRun {
+		dryRun(stdout, pal, runs, agents, opts)
+		return exitOK
+	}
+
+	// From here the run is real: take the locks before doing anything an agent
+	// could observe.
+	ownArtifacts := map[string]bool{}
+	if opts.logFile != "" {
+		ownArtifacts[runner.RealPath(opts.logFile)] = true
+	}
+	for _, d := range runs {
+		lockPath := runner.LockPath(d.dir)
+		lock, err := runner.Acquire(lockPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			releaseAll(runs)
+			if errors.Is(err, runner.ErrLocked) {
+				return exitLocked
+			}
+			return exitUsage
+		}
+		d.lock = lock
+		ownArtifacts[runner.RealPath(lockPath)] = true
+	}
+	defer releaseAll(runs)
+
+	if opts.semcode {
+		if code := buildSemcodeIndex(ctx, stdout, runs); code != exitOK {
+			return code
+		}
+	}
+
+	// Continue a run that a hot reload interrupted, so counters and the
+	// journal survive the swap.
+	var prior handoff
+	resumed := selfupdate.LoadState(&prior)
+	if prior.Dirs == nil {
+		prior.Dirs = map[string]dirHandoff{}
+	}
+	runID := prior.RunID
+	startedAt := prior.StartedAt
+	// One clock read for both the id and the shard: two reads either side of
+	// a UTC midnight would put a fresh run's id date and its directory one
+	// day apart.
+	now := time.Now()
+	if !resumed || runID == "" {
+		runID = journal.NewRunID(now)
+		startedAt = now
+	}
+
+	jrnl, err := journal.Open(runID, now)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot write run journal: %v\n", err)
+	}
+
+	bus := runner.NewBus()
+	reportEvents := bus.Subscribe(1024)
+	journalEvents := bus.Subscribe(1024)
+
+	var consumers sync.WaitGroup
+	consumers.Go(func() {
+		for ev := range journalEvents {
+			// The feed and the live usage ticks are high volume and
+			// reconstructible; the results they add up to are not, and those
+			// are recorded in full.
+			if ev.Kind == runner.EvOutput || ev.Kind == runner.EvUsage {
+				continue
+			}
+			jrnl.Write(ev)
+			if ev.Kind == runner.EvLoopEnd {
+				jrnl.Flush()
+			}
+		}
+	})
+
+	var dash *ui.Dashboard
+	if opts.tui {
+		dash = ui.New(ui.Config{
+			Version: version,
+			RunID:   runID,
+			Dirs:    dirs,
+			Agents:  agentLabels(agents),
+			Reviews: allReviews(runs),
+			Jobs:    opts.jobs,
+			Timeout: opts.timeout,
+			Budget:  opts.runtime,
+			Started: startedAt,
+		}, bus.Subscribe(4096))
+	} else {
+		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet}
+		consumers.Go(func() {
+			rep.Consume(reportEvents)
+		})
+		if resumed {
+			rep.logf("Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
+				version, runID, prior.Reloads, prior.Loops())
+		}
+		rep.logf("gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agentLabels(agents), ", "))
+		if autoDetected {
+			rep.logf("Auto-detected agents (name them with --agents to pin the pool)")
+		}
+		if opts.jobs > 1 {
+			rep.logf("Parallel mode: %d reviews at a time, each in its own git worktree", opts.jobs)
+		}
+	}
+	if opts.tui {
+		// The dashboard owns the screen, so the reporter has nowhere to print.
+		// With --log it still has somewhere to write: the file. Without one,
+		// its subscription is drained, or the bus blocks when its buffer fills.
+		if logWriter != nil {
+			fileRep := &reporter{out: logWriter, pal: palette{}, multiDir: len(runs) > 1, quiet: opts.quiet}
+			consumers.Go(func() {
+				fileRep.Consume(reportEvents)
+			})
+		} else {
+			go func() {
+				for range reportEvents {
+				}
+			}()
+		}
+	}
+
+	for _, d := range runs {
+		// A reloaded process inherits the same argv, so each directory's loop
+		// budget must be reduced by what it already finished before the swap.
+		carried := prior.Dirs[d.dir]
+		maxLoops := opts.maxLoops
+		if maxLoops > 0 {
+			maxLoops -= carried.Loops
+			if maxLoops <= 0 {
+				// This directory already ran its loops; keep its results for
+				// the summary and do not start it again.
+				d.stats = &runner.Stats{Start: startedAt}
+				d.stats.Seed(carried.Results, carried.Loops, carried.CommitRuns, carried.CommitFails)
+				d.loops = carried.Loops
+				continue
+			}
+		}
+		r, err := runner.New(ctx, runner.Config{
+			Dir: d.dir, Set: d.set, Reviews: d.reviews, Agents: agents, Bin: opts.bin,
+			Timeout: opts.timeout, Jobs: opts.jobs, MaxLoops: maxLoops,
+			Started: startedAt, ResumeQueue: carried.Pending,
+			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
+			// The dashboard renders the feed from these events, so --tui must
+			// not suppress them; only --quiet does.
+			Yolo: opts.yolo, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
+			ContinueSessions: opts.continueSessions,
+			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
+		}, bus)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			bus.Close()
+			consumers.Wait()
+			return exitUsage
+		}
+		d.r = r
+		d.stats = r.Stats()
+		d.stats.Seed(carried.Results, carried.Loops, carried.CommitRuns, carried.CommitFails)
+		d.carriedLoops = carried.Loops
+	}
+
+	reloadPath := startReloadWatch(ctx, opts, runs, bus)
+	if opts.autoUpdate {
+		go autoUpdateLoop(ctx, opts, bus)
+	}
+
+	// One goroutine per directory: distinct trees, distinct locks, no shared
+	// mutable state beyond the event bus.
+	var workers sync.WaitGroup
+	for _, d := range runs {
+		if d.r == nil {
+			continue // finished its loops before the reload
+		}
+		workers.Add(1)
+		go func(d *dirRun) {
+			defer workers.Done()
+			d.r.Run(ctx)
+			d.loops = d.carriedLoops + d.r.Loops()
+		}(d)
+	}
+
+	if dash != nil {
+		// The dashboard owns the terminal and returns when the user quits or
+		// the run ends; quitting cancels the run. A pending hot reload closes
+		// it instead: the successor needs the terminal, and waiting for a
+		// keypress would stall the swap indefinitely.
+		go func() {
+			workers.Wait()
+			dash.Finish()
+			if p := reloadPath.Load(); p != nil && *p != "" {
+				dash.Quit()
+			}
+		}()
+		if err := dash.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "dashboard error: %v\n", err)
+		}
+		stop()
+	}
+	workers.Wait()
+	bus.Close()
+	consumers.Wait()
+
+	// A pending reload takes over before anything final is printed: the
+	// successor continues this run, and it writes the one summary that covers
+	// all of it.
+	if path := reloadPath.Load(); path != nil && *path != "" {
+		jrnl.CloseQuiet()
+		if code := doReload(*path, runID, startedAt, runs, prior, stdout); code >= 0 {
+			return code
+		}
+	}
+
+	wall := time.Since(startedAt)
+	switch {
+	case !opts.tui:
+		summary(stdout, pal, runs, wall)
+	case logWriter != nil:
+		summary(logWriter, palette{}, runs, wall)
+	}
+	// The dashboard cleared itself on the way out, so a terminal-only run
+	// leaves nothing behind: point at the journal before exiting.
+	if opts.tui {
+		fmt.Fprintf(stdout, "Run %s saved. Replay it with: gauntlet show %s\n", runID, runID)
+	}
+
+	code := exitCode(ctx, runs)
+	writeSummary(jrnl, runID, startedAt, dirs, agents, runs, code)
+	return code
+}
+
+// exitCode maps the run's outcome onto the documented codes.
+func exitCode(ctx context.Context, runs []*dirRun) int {
+	if ctx.Err() != nil {
+		return 128 + int(syscall.SIGINT)
+	}
+	for _, d := range runs {
+		if d.stats == nil {
+			continue
+		}
+		if d.stats.Counts().Failures() > 0 || d.stats.CommitFails > 0 {
+			return exitFail
+		}
+	}
+	return exitOK
+}
+
+func releaseAll(runs []*dirRun) {
+	for _, d := range runs {
+		d.lock.Release()
+	}
+}
+
+// writeSummary closes the journal with this run's index entry.
+func writeSummary(j *journal.Journal, runID string, start time.Time, dirs []string,
+	agents []agent.Spec, runs []*dirRun, code int) {
+
+	s := journal.Summary{
+		Version: version, Dirs: dirs, Agents: agentLabels(agents),
+		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: code,
+	}
+	for _, d := range runs {
+		if d.stats == nil {
+			continue
+		}
+		c := d.stats.Counts()
+		s.Loops += d.loops
+		s.Reviews += c.Total()
+		s.OK += c.OK
+		s.Failed += c.Fail + c.Timeout
+		s.Skipped += c.Skipped
+		s.Conflicts += c.Conflict
+		ins, del, tokens, _, _, _ := d.stats.Totals()
+		s.Ins += ins
+		s.Del += del
+		s.Tokens += tokens
+	}
+	if err := j.Close(s); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: run journal incomplete: %v\n", err)
+	}
+}
+
+// watchSignals stops the run on the first signal and kills the process on the
+// second, matching the original's two-stage Ctrl+C.
+func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer) {
+	ch := make(chan os.Signal, 2)
+	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-ch:
+			fmt.Fprintf(out, "\nSignal received (%s), terminating running reviews. Again to force-kill.\n", sig)
+			stop()
+		case <-ctx.Done():
+			return
+		}
+		<-ch
+		fmt.Fprintln(out, "\nForce-killing.")
+		os.Exit(128 + int(syscall.SIGINT))
+	}()
+}
+
+// semcodeIndexTimeout bounds one directory's index build. The indexer walks
+// the whole tree before the first review starts; without a cap a wedged build
+// would hang the run indefinitely.
+const semcodeIndexTimeout = 30 * time.Minute
+
+// buildSemcodeIndex runs the indexer once per directory before the loop, so
+// reviews can answer call-graph and type queries from an index.
+func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
+	idx := agent.Resolve("semcode-index")
+	if idx == "" {
+		fmt.Fprintln(os.Stderr, "Required tool not found in PATH: semcode-index")
+		return exitUsage
+	}
+	for _, d := range runs {
+		fmt.Fprintf(out, "Building semcode index in %s\n", d.dir)
+		ictx, cancel := context.WithTimeout(ctx, semcodeIndexTimeout)
+		code := runIndexer(ictx, idx, []string{"-s", "."}, d.dir)
+		cancel()
+		if code == 0 {
+			continue
+		}
+		switch {
+		case ictx.Err() == context.DeadlineExceeded:
+			fmt.Fprintf(os.Stderr, "semcode-index timed out after %v in %s\n",
+				semcodeIndexTimeout, d.dir)
+		case code < 0:
+			fmt.Fprintf(os.Stderr, "semcode-index failed in %s (interrupted or killed)\n", d.dir)
+		default:
+			fmt.Fprintf(os.Stderr, "semcode-index failed in %s with exit code %d\n", d.dir, code)
+		}
+		return exitFail
+	}
+	return exitOK
+}
+
+// startReloadWatch arms the hot-reload watcher. When the executable changes,
+// every runner is asked to stop at its next quiescent point; the exec happens
+// after the summary is written.
+func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *runner.Bus) *atomicString {
+	var pending atomicString
+	if !opts.hotReload {
+		return &pending
+	}
+	w, err := selfupdate.Watch(ctx, 5*time.Second)
+	if err != nil {
+		// The run can proceed without reloads; staying silent would leave the
+		// user assuming a safety net that is not there.
+		bus.Publish(runner.Event{Kind: runner.EvLog,
+			Text: fmt.Sprintf("hot reload disabled: %v", err)})
+		return &pending
+	}
+	go func() {
+		path, ok := <-w.Change
+		if !ok || path == "" {
+			return
+		}
+		pending.Store(&path)
+		bus.Publish(runner.Event{
+			Kind: runner.EvReload,
+			Text: "new binary detected, reloading after in-flight reviews finish",
+		})
+		for _, d := range runs {
+			if d.r != nil {
+				d.r.RequestStop()
+			}
+		}
+	}()
+	return &pending
+}
+
+// doReload hands control to the new binary. It returns a nonnegative exit code
+// only when the exec failed and the caller should exit normally instead.
+func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff, out io.Writer) int {
+	h := handoff{
+		RunID: runID, StartedAt: start, Reloads: prior.Reloads + 1,
+		Dirs: make(map[string]dirHandoff, len(runs)),
+	}
+	for _, d := range runs {
+		if d.stats == nil {
+			continue
+		}
+		loops := d.loops
+		if d.r != nil {
+			loops = d.carriedLoops + d.r.Loops()
+		}
+		pending := carriedPending(d)
+		h.Dirs[d.dir] = dirHandoff{
+			Loops:       loops,
+			Pending:     pending,
+			CommitRuns:  d.stats.CommitRuns,
+			CommitFails: d.stats.CommitFails,
+			// Seeded stats already include what earlier processes did, so this
+			// is the whole run's history, not just this process's slice.
+			Results: d.stats.Results(),
+		}
+	}
+	statePath, err := selfupdate.SaveState(journal.StateDir(), runID, h)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot save reload state: %v\n", err)
+	}
+	// Locks are released here, before the exec: the successor takes them.
+	releaseAll(runs)
+	fmt.Fprintf(out, "Reloading into the new binary at %s\n", path)
+	if err := selfupdate.Reexec(path, statePath); err != nil {
+		// The exec failed, so no successor will pick the handoff up; leaving
+		// it would strand one file in the state dir per failed reload.
+		if statePath != "" {
+			os.Remove(statePath)
+		}
+		fmt.Fprintf(os.Stderr, "Reload failed: %v\n", err)
+		return exitFail
+	}
+	return -1 // unreachable: exec replaced this process
+}
+
+// carriedPending is the part of the current loop this directory had not
+// started. An empty result means the loop was complete (or never began).
+func carriedPending(d *dirRun) []string {
+	if d.r == nil {
+		return nil
+	}
+	return d.r.Pending()
+}
+
+// autoUpdateLoop replaces the binary in the background. The reload watcher
+// notices the new file and schedules the swap, so nothing here touches the run.
+func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
+	t := time.NewTicker(autoUpdateEvery)
+	defer t.Stop()
+	// A first check shortly after start, so a run shorter than the interval
+	// still benefits; then on the interval. Never on the startup path itself.
+	first := time.NewTimer(autoUpdateDelay)
+	defer first.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-first.C:
+		case <-t.C:
+		}
+		rel, err := selfupdate.Check(ctx, opts.updateRepo)
+		if err != nil {
+			// An opted-in updater that keeps failing should say so, not sit
+			// silently on an old binary.
+			bus.Publish(runner.Event{Kind: runner.EvLog,
+				Text: fmt.Sprintf("update check failed: %v", err)})
+			continue
+		}
+		if !rel.NewerThan(version) {
+			continue
+		}
+		if _, err := selfupdate.Apply(ctx, rel); err != nil {
+			bus.Publish(runner.Event{Kind: runner.EvLog,
+				Text: fmt.Sprintf("auto-update to %s failed: %v", rel.TagName, err)})
+			continue
+		}
+		bus.Publish(runner.Event{Kind: runner.EvLog,
+			Text: fmt.Sprintf("updated to %s on disk; reloading at the next safe point", rel.TagName)})
+	}
+}
+
+// cmdUpdate implements `gauntlet update`.
+func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) int {
+	rel, err := selfupdate.Check(ctx, opts.updateRepo)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot check for updates: %v\n", err)
+		return exitFail
+	}
+	if !rel.NewerThan(version) {
+		fmt.Fprintf(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName)
+		return exitOK
+	}
+	fmt.Fprintf(out, "New release: %s (running %s)\n", pal.bold(rel.TagName), version)
+	if opts.checkOnly {
+		fmt.Fprintln(out, rel.HTMLURL)
+		return exitOK
+	}
+	path, err := selfupdate.Apply(ctx, rel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+		return exitFail
+	}
+	fmt.Fprintf(out, "Installed %s to %s\n", rel.TagName, path)
+	return exitOK
+}
+
+// resolveDirs expands and validates the target directories.
+//
+// A pattern is expanded here as well as by the shell, so a quoted --dirs
+// '~/src/*' works. Non-directories among a pattern's matches are skipped
+// (a glob over a source tree hits files too), but a literal path that is not
+// a directory is a usage error: the user named something specific.
+func resolveDirs(opts *options) ([]string, error) {
+	// Name the flag the user actually passed: a bad --dir value must not be
+	// reported as a --dirs problem.
+	label := "--dir"
+	list := opts.dirs
+	if len(list) == 0 {
+		list = []string{opts.dir}
+	} else {
+		label = "--dirs"
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(list))
+	for _, entry := range list {
+		expanded := expandPath(entry)
+		matches := []string{expanded}
+		globbed := isGlob(expanded)
+		if globbed {
+			found, err := filepath.Glob(expanded)
+			if err != nil {
+				return nil, fmt.Errorf("%s: bad pattern %q: %w", label, entry, err)
+			}
+			if len(found) == 0 {
+				return nil, fmt.Errorf("%s: %q matched nothing", label, entry)
+			}
+			sort.Strings(found)
+			matches = found
+		}
+		added := 0
+		for _, m := range matches {
+			abs, err := filepath.Abs(m)
+			if err != nil {
+				return nil, err
+			}
+			fi, err := os.Stat(abs)
+			if err != nil {
+				if globbed {
+					continue
+				}
+				return nil, fmt.Errorf("%s: %s: %w", label, abs, err)
+			}
+			if !fi.IsDir() {
+				if globbed {
+					continue
+				}
+				return nil, fmt.Errorf("%s: not a directory: %s", label, abs)
+			}
+			added++
+			if seen[abs] {
+				continue // one tree twice would just block on its own lock
+			}
+			seen[abs] = true
+			out = append(out, abs)
+		}
+		if globbed && added == 0 {
+			return nil, fmt.Errorf("%s: %q matched no directories", label, entry)
+		}
+	}
+	return out, nil
+}
+
+// isGlob reports whether a path needs expansion. filepath.Match's
+// metacharacters are the ones that matter here.
+func isGlob(p string) bool { return strings.ContainsAny(p, "*?[") }
+
+func expandPath(p string) string {
+	p = os.ExpandEnv(p)
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
+
+func agentLabels(specs []agent.Spec) []string {
+	out := make([]string, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, s.Label())
+	}
+	return out
+}
+
+// allReviews is the union of every directory's schedule, for the dashboard's
+// review grid.
+func allReviews(runs []*dirRun) []string {
+	var all []string
+	for _, d := range runs {
+		all = append(all, d.reviews...)
+	}
+	return uniq(all)
+}
+
+func uniq(in []string) []string {
+	seen := map[string]bool{}
+	out := in[:0:0]
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// atomicString is a tiny holder for the pending reload path.
+type atomicString struct {
+	mu sync.Mutex
+	v  *string
+}
+
+func (a *atomicString) Store(v *string) { a.mu.Lock(); a.v = v; a.mu.Unlock() }
+func (a *atomicString) Load() *string   { a.mu.Lock(); defer a.mu.Unlock(); return a.v }
+
+// gitAvailable is used by the flag validation to explain --jobs requirements.
+func gitAvailable() bool { return gitx.Available() }
