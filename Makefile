@@ -101,7 +101,7 @@ clean: ## remove build artifacts
 	rm -rf $(DIST) $(BINARY)
 
 # Release artifacts are the binaries, checksums.txt (the contract `gauntlet
-# update` verifies against: see internal/selfupdate.AssetName), and sbom.txt, a
+# update` verifies against: see internal/selfupdate.assetName), and sbom.txt, a
 # module inventory read back out of each binary with `go version -m`: versions
 # and hashes of everything that shipped. Changing asset names or checksums.txt
 # breaks self-update for every installed binary.

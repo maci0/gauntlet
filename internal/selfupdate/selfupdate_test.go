@@ -33,7 +33,7 @@ func TestChecksumFor(t *testing.T) {
 }
 
 func TestAssetName(t *testing.T) {
-	got := AssetName("1.2.3")
+	got := assetName("1.2.3")
 	if !strings.Contains(got, runtime.GOOS) || !strings.Contains(got, runtime.GOARCH) {
 		t.Fatalf("asset name lacks the platform: %q", got)
 	}
