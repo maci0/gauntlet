@@ -74,13 +74,16 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			note = pal.dim("  " + extra)
 		}
 		if path := overrides[a]; path != "" {
-			// An override names the executable directly, so "usable" means it
-			// exists and could be executed; a broken override must not make
-			// doctor report a working setup (or exit 0) on an empty box.
+			// An override names the executable directly, so it wins over what
+			// PATH has: cmd[0] becomes exactly this file, which is what a run
+			// would exec. "Usable" means it exists and could be executed; a
+			// broken override must not make doctor report a working setup
+			// (or exit 0) on an empty box.
 			if binRunnable(path) {
 				ok = true
 				note = pal.dim("  --bin " + path)
 			} else {
+				ok = false
 				note = pal.red("  --bin " + path + " is not a runnable file")
 			}
 		} else if agent.IsOptIn(a) && note == "" {
@@ -189,7 +192,18 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		pal.bold("recommended"), ratio(recHave, len(seenRec)),
 		pal.bold("stack-specific"), ratio(optHave, len(seenOpt)))
 
-	if usable == 0 && len(overrides) == 0 {
+	// An explicit --bin is the user vouching for one exact file, so a
+	// runnable override counts as an agent even when nothing auto-detects.
+	// A broken override vouches for nothing: with no working agent anywhere,
+	// this is the empty box again and gets its answer.
+	pinned := false
+	for _, path := range overrides {
+		if binRunnable(path) {
+			pinned = true
+			break
+		}
+	}
+	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
 			msg = "No auto-detectable agent CLI found: install one, or name an opt-in agent with --agents."
@@ -201,9 +215,12 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		fmt.Fprintln(out, pal.dim("Worth installing: ")+wrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
 	// Where persistent definitions were read from, so a definition that
-	// misbehaves can be traced to its file (and to any GAUNTLET_HOME in play).
+	// misbehaves can be traced to its file (and to any GAUNTLET_HOME in
+	// play). Named only when the file exists: missing is missing.
 	if p := agent.CustomFilePath(); p != "" {
-		fmt.Fprintln(out, pal.dim("Definitions: "+p))
+		if _, err := os.Stat(p); err == nil {
+			fmt.Fprintln(out, pal.dim("Definitions: "+p))
+		}
 	}
 	fmt.Fprintln(out, pal.dim(tokenSourceLine))
 	fmt.Fprintln(out, pal.dim("Stack-specific tools only matter for the languages you review."))
