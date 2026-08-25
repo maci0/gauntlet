@@ -420,10 +420,7 @@ func (p *picker) View() string {
 // when it would otherwise leave.
 func (p *picker) window(which pane, n, h int) (from, to int) {
 	cur := min(p.cursor[which], max(0, n-1))
-	top := p.scroll[which]
-	if cur < top {
-		top = cur
-	}
+	top := min(cur, p.scroll[which])
 	if cur >= top+h {
 		top = cur - h + 1
 	}
@@ -523,10 +520,7 @@ func slicesAny(b []bool) bool {
 // pickLine lays one row out: left text, right text, and the cursor bar that
 // says which row the keys will act on.
 func pickLine(cursor bool, w int, left, right string) string {
-	gap := w - lipgloss.Width(left) - lipgloss.Width(right) - 2
-	if gap < 1 {
-		gap = 1
-	}
+	gap := max(w-lipgloss.Width(left)-lipgloss.Width(right)-2, 1)
 	body := left + strings.Repeat(" ", gap) + right
 	if cursor {
 		return styleInfo.Render("❯ ") + body

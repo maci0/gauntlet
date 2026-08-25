@@ -567,7 +567,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		humanize.Duration(r.cfg.Timeout))
 	r.bus.Publish(Event{
 		Kind: EvReviewStart, Dir: r.cfg.Dir, Review: review,
-		Agent: spec.Label(), Loop: loopNo,
+		Agent: spec.Label(), Loop: loopNo, Attempt: attempt + 1,
 	})
 
 	before, haveBefore := gitx.Stats{}, false

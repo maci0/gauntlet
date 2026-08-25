@@ -27,6 +27,12 @@ changes could land in a minor instead and were listed under Changed.
   line it is building stays on screen and `enter` runs exactly that, through
   the same parser as a hand-typed one, so the launcher teaches the flags
   instead of replacing them.
+- The dashboard says when a review is on its second try (`sec-review ↻2` in
+  the lane): a retry reuses the lane and resets the clock, so it read as a
+  review that had restarted itself.
+- `f` in the dashboard narrows the feed to results, errors, and diffs, and
+  back. Four agents narrating at once bury the two lines that matter; the
+  filter drops nothing, so widening it brings the history back.
 - `--retries N` (default 2): a review whose agent fails to launch or exits
   nonzero is rerun on the same agent, waiting 5s and doubling from there, with
   jitter so reviews that failed together do not come back together. Rate

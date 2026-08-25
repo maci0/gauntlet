@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -467,4 +468,45 @@ func stripANSI(s string) string {
 		}
 	}
 	return b.String()
+}
+
+// The feed filter narrows what is on screen without losing what was collected:
+// widening it brings the dropped lines back.
+func TestFeedFilterNarrowsWithoutDiscarding(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 40, true
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	all := len(m.visibleFeed())
+	if all == 0 {
+		t.Fatal("the demo events should have filled the feed")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	narrowed := m.visibleFeed()
+	if len(narrowed) >= all {
+		t.Fatalf("filter kept %d of %d lines, want fewer", len(narrowed), all)
+	}
+	for _, l := range narrowed {
+		if l.kind == normalize.Plain || l.kind == normalize.Thinking {
+			t.Fatalf("narration survived the filter: %+v", l)
+		}
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	if len(m.visibleFeed()) != all {
+		t.Fatalf("widening left %d lines, want the original %d", len(m.visibleFeed()), all)
+	}
+}
+
+// A retry reuses the lane and resets the clock, so the lane has to say which
+// attempt is running or it reads as a review that restarted itself.
+func TestLaneNamesTheRetry(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	m.apply(runner.Event{Kind: runner.EvReviewStart, Review: "sec-review",
+		Agent: "claude", Attempt: 2, Time: m.cfg.Started})
+	m.now = m.cfg.Started.Add(time.Second)
+	if got := m.View(); !strings.Contains(got, "↻2") {
+		t.Fatalf("the second attempt is not visible on the lane:\n%s", got)
+	}
 }

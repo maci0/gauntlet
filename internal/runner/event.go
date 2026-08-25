@@ -61,6 +61,10 @@ type Event struct {
 	Agent  string `json:"agent,omitempty"`
 	Loop   int    `json:"loop,omitempty"`
 
+	// Attempt is which try this is, from 1. Above 1 it says a retry is under
+	// way, which is otherwise invisible: the review looks like it restarted.
+	Attempt int `json:"attempt,omitempty"`
+
 	Status   Status  `json:"status,omitempty"`
 	ExitCode *int    `json:"exit_code,omitempty"`
 	Elapsed  float64 `json:"elapsed_s,omitempty"`

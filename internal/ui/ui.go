@@ -75,6 +75,38 @@ type laneState struct {
 	lastAt       time.Time
 	lastThinkAt  time.Time // when the reasoning share last grew
 	tokenRate    float64
+	attempt      int // 1, or which retry of this review is running
+}
+
+// feedFilter is how much of the feed is worth the screen right now. Four
+// agents narrating at once bury the two lines that matter, so the feed can be
+// narrowed without pausing it or losing what it already collected.
+type feedFilter int
+
+const (
+	feedAll     feedFilter = iota // everything the agents said
+	feedSignal                    // errors, results, and diffs
+	feedFilters                   // count, for cycling
+)
+
+// keep reports whether a line survives the current filter.
+func (f feedFilter) keep(l feedLine) bool {
+	if f == feedAll {
+		return true
+	}
+	switch l.kind {
+	case normalize.Error, normalize.Result,
+		normalize.DiffAdd, normalize.DiffDel, normalize.DiffMeta:
+		return true
+	}
+	return false
+}
+
+func (f feedFilter) label() string {
+	if f == feedSignal {
+		return "results and errors"
+	}
+	return ""
 }
 
 type feedLine struct {
@@ -98,6 +130,7 @@ type model struct {
 
 	feed      []feedLine
 	scroll    int
+	filter    feedFilter
 	paused    bool
 	help      bool
 	done      bool
@@ -232,11 +265,14 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "j", "down":
 			m.scroll = max(0, m.scroll-1)
 		case "k", "up":
-			m.scroll = min(m.scroll+1, max(0, len(m.feed)-1))
+			m.scroll = min(m.scroll+1, max(0, len(m.visibleFeed())-1))
 		case "g":
-			m.scroll = max(0, len(m.feed)-1)
+			m.scroll = max(0, len(m.visibleFeed())-1)
 		case "G":
 			m.scroll = 0
+		case "f":
+			m.filter = (m.filter + 1) % feedFilters
+			m.scroll = 0 // the line count changed under the scrollback
 		case "?", "h":
 			m.help = !m.help
 		}
@@ -289,7 +325,7 @@ func (m *model) apply(ev runner.Event) {
 		r := m.review(ev.Review)
 		r.status, r.agentLbl, r.start, r.flash = "running", ev.Agent, ev.Time, ev.Time
 		if l := m.lane(m.laneKey(ev)); l != nil {
-			l.review, l.start = ev.Review, ev.Time
+			l.review, l.start, l.attempt = ev.Review, ev.Time, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
 			l.lastAt, l.lastThinkAt = ev.Time, time.Time{}
 		}
@@ -594,7 +630,13 @@ func (m *model) renderLanes(w, h int) string {
 			if m.cfg.Timeout > 0 {
 				frac = m.now.Sub(l.start).Seconds() / m.cfg.Timeout.Seconds()
 			}
-			work = pad(styleValue.Render(trim(l.review, revW)), revW) + " " +
+			name := l.review
+			if l.attempt > 1 {
+				// A retry looks like a restart otherwise: same review, same
+				// lane, clock back to zero.
+				name = fmt.Sprintf("%s ↻%d", l.review, l.attempt)
+			}
+			work = pad(styleValue.Render(trim(name, revW)), revW) + " " +
 				meter(frac, meterW, hue) + " " +
 				pad(styleDim.Render(humanize.Duration(m.now.Sub(l.start))), elapsedW)
 		} else {
@@ -720,23 +762,47 @@ func (m *model) renderGrid(w, h int) string {
 	return strings.Join(rows, "\n")
 }
 
-// feedTitle keeps the reader oriented while scrolled back: nothing else on
-// screen distinguishes reading history from pausing at the live edge.
-func (m *model) feedTitle() string {
-	if m.scroll <= 0 {
-		return "FEED"
+// visibleFeed is the feed as the current filter leaves it. The filter never
+// drops a line from the model: widening it brings the history back.
+func (m *model) visibleFeed() []feedLine {
+	if m.filter == feedAll {
+		return m.feed
 	}
-	return "FEED  " + styleDim.Render(fmt.Sprintf("%d lines back", m.scroll))
+	out := make([]feedLine, 0, len(m.feed))
+	for _, l := range m.feed {
+		if m.filter.keep(l) {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// feedTitle keeps the reader oriented while scrolled back or narrowed:
+// nothing else on screen distinguishes reading history from pausing at the
+// live edge, or a quiet feed from a filtered one.
+func (m *model) feedTitle() string {
+	title := "FEED"
+	if l := m.filter.label(); l != "" {
+		title += "  " + styleInfo.Render(l)
+	}
+	if m.scroll > 0 {
+		title += "  " + styleDim.Render(fmt.Sprintf("%d lines back", m.scroll))
+	}
+	return title
 }
 
 func (m *model) renderFeed(w, h int) string {
-	if len(m.feed) == 0 {
+	feed := m.visibleFeed()
+	if len(feed) == 0 {
+		if len(m.feed) > 0 {
+			return styleFaint.Render("nothing matches this filter yet (f to widen it)")
+		}
 		return styleFaint.Render("waiting for agent output…")
 	}
-	end := len(m.feed) - m.scroll
-	end = clampi(end, 1, len(m.feed))
+	end := len(feed) - m.scroll
+	end = clampi(end, 1, len(feed))
 	start := max(end-h, 0)
-	visible := m.feed[start:end]
+	visible := feed[start:end]
 
 	rows := make([]string, 0, len(visible))
 	for _, l := range visible {
@@ -778,7 +844,7 @@ func lineStyle(k normalize.Kind) lipgloss.Style {
 
 func (m *model) renderFooter() string {
 	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"space", "pause feed"}, {"j/k", "scroll"}, {"?", "help"},
+		{"q", "quit"}, {"space", "pause feed"}, {"j/k", "scroll"}, {"f", "filter"}, {"?", "help"},
 	}
 	var b strings.Builder
 	for _, k := range keys {
@@ -840,6 +906,7 @@ func (m *model) renderHelp() string {
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
 		"  g / G       jump to oldest / newest",
+		"  f           narrow the feed to results and errors, and back",
 		"  ?, h        toggle this help",
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),

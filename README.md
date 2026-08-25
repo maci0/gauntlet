@@ -152,6 +152,7 @@ one lane per agent, the full review grid, and the feed.
 | `q`, `esc` | quit (stops the run) |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
+| `f` | narrow the feed to results, errors, and diffs, and back |
 | `g` / `G` | jump to oldest / newest |
 | `?` | help, and the list of unmerged branches |
 
