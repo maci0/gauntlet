@@ -49,6 +49,7 @@ Review the following:
 - Function that asserts preconditions then awaits or yields, so those assertions may be false after resume. Keep the function running to completion, or re-check after each suspend. (code-review owns the assertion; here own the suspend)
 
 5. Thread and task lifecycle
+(resource-review owns the accumulation side: per-request goroutine/thread leaks and caps on worker counts. Here own lifecycle correctness: tracking, join, shutdown, cancellation.)
 - Threads or goroutines spawned without tracking or cleanup
 - Missing join, wait, or completion tracking for background work
 - Thread leaks from unhandled exceptions in worker threads
@@ -95,7 +96,7 @@ Review the following:
 - Missing row-level or advisory locking for exclusive operations
 - Connection pool exhaustion from long-held connections or missing timeouts
 - Distributed lock implementations without TTL or fencing tokens
-- Cache stampede on expiration (thundering herd)
+- Cache stampede on expiration (thundering herd) (note only; cache-review owns the fix)
 - Missing idempotency for operations that can be retried concurrently (idempotency-review owns the re-execution safety analysis; here flag only the concurrency-specific race)
 
 10. Testing and verification
