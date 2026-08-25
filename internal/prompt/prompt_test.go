@@ -514,6 +514,59 @@ func TestWalkProjectSkipsPromptDir(t *testing.T) {
 	}
 }
 
+// Duplicate detection compares files from the reviewed tree, so it must
+// answer from sizes where it can and never buffer more than a prompt could
+// be: an oversized *-review.md is reported as conflicting, not read whole.
+func TestSameFileAnswersWithoutReadingWholeOversizedCopies(t *testing.T) {
+	dir := t.TempDir()
+	same := filepath.Join(dir, "same-review.md")
+	write(t, same, "Your goal is to agree.\n")
+	if !sameFile(same, same) {
+		t.Fatal("a file is identical to itself")
+	}
+	other := filepath.Join(dir, "other-review.md")
+	write(t, other, "Your goal is to differ.\n")
+	if sameFile(same, other) {
+		t.Fatal("different contents reported identical")
+	}
+
+	big := strings.Repeat("x", maxBytes+1)
+	bigA := filepath.Join(dir, "big-a-review.md")
+	bigB := filepath.Join(dir, "big-b-review.md")
+	write(t, bigA, big)
+	write(t, bigB, big)
+	if sameFile(bigA, bigB) {
+		t.Fatal("oversized copies were compared instead of refused at the cap")
+	}
+}
+
+func TestSameContentComparesAgainstTheShadowedBody(t *testing.T) {
+	dir := t.TempDir()
+	body := "Your goal is to check this project's own rules.\n"
+	mine := Review{Name: "sec-review", Path: filepath.Join(dir, "mine-review.md"), Origin: Project}
+	write(t, mine.Path, body)
+	if !sameContent(mine, mine.Path) {
+		t.Fatal("a file equal to the shadowed body was reported divergent")
+	}
+
+	longer := filepath.Join(dir, "longer-review.md")
+	write(t, longer, body+"Extra.\n")
+	if sameContent(mine, longer) {
+		t.Fatal("a different-size file matched without being read")
+	}
+
+	equalLen := filepath.Join(dir, "equallength-review.md")
+	write(t, equalLen, strings.Repeat("y", len(body)))
+	if sameContent(mine, equalLen) {
+		t.Fatal("equal-size different contents matched")
+	}
+
+	missing := filepath.Join(dir, "gone-review.md")
+	if sameContent(mine, missing) {
+		t.Fatal("an unreadable file matched")
+	}
+}
+
 func testSet(t *testing.T, names ...string) Set {
 	t.Helper()
 	dir := t.TempDir()
