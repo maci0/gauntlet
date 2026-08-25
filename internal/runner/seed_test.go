@@ -50,7 +50,7 @@ func TestSeedReplaysScheduleAndPicks(t *testing.T) {
 		}
 		out := make([]agent.Spec, n)
 		for i := range out {
-			out[i] = r.pickAgent(nil)
+			out[i] = r.pickAgent(reviews[i%len(reviews)], nil)
 		}
 		return out
 	}
@@ -63,6 +63,46 @@ func TestSeedReplaysScheduleAndPicks(t *testing.T) {
 	}
 	if slices.Equal(schedule(42), schedule(43)) {
 		t.Fatal("different seeds produced identical schedules")
+	}
+}
+
+// TestPicksDoNotDependOnDrawOrder pins the property that lets a --jobs > 1
+// run replay: sampling review B must not disturb what review A samples, no
+// matter how the lanes interleave. A shared random stream would fail this on
+// the first swapped call, because the OS scheduler would own the draw order.
+func TestPicksDoNotDependOnDrawOrder(t *testing.T) {
+	reviews := []string{"aa-review", "ab-review", "ac-review"}
+	agents := []agent.Spec{{Tool: "claude"}, {Tool: "codex"}, {Tool: "gemini"}}
+
+	build := func() *Runner {
+		t.Helper()
+		r, err := New(context.Background(), seedConfig(t, reviews, agents, 7), NewBus())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+
+	r := build()
+	aFirst := r.pickAgent(reviews[0], nil)
+	bAfterA := r.pickAgent(reviews[1], nil)
+
+	r = build()
+	bFirst := r.pickAgent(reviews[1], nil)
+	aAfterB := r.pickAgent(reviews[0], nil)
+
+	if aFirst != aAfterB || bFirst != bAfterA {
+		t.Fatalf("pick order changed the picks: a %v then b %v, vs b %v then a %v",
+			aFirst.Tool, bAfterA.Tool, bFirst.Tool, aAfterB.Tool)
+	}
+
+	// An agent excluded for a failed attempt must stay excluded even though
+	// the draw key is unchanged.
+	exclude := map[agent.Spec]bool{aFirst: true}
+	for range 20 {
+		if spec := r.pickAgent(reviews[0], exclude); spec == aFirst {
+			t.Fatalf("excluded %s was sampled again", aFirst.Tool)
+		}
 	}
 }
 
