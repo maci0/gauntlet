@@ -218,7 +218,10 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 }
 
 // checksumFor finds one file's expected hash in a `sha256sum` style listing
-// ("<hex>  <name>", with an optional binary-mode asterisk).
+// ("<hex>  <name>", with an optional binary-mode asterisk). Only entries
+// whose hash is 64 hex digits count: anything else is not a digest, and a
+// mangled or misattributed entry must read as "no entry" rather than as an
+// expectation the downloaded bytes can never meet.
 func checksumFor(listing, name string) (string, bool) {
 	for line := range strings.SplitSeq(listing, "\n") {
 		fields := strings.Fields(strings.TrimSpace(line))
@@ -226,9 +229,28 @@ func checksumFor(listing, name string) (string, bool) {
 			continue
 		}
 		sum, file := fields[0], strings.TrimPrefix(fields[1], "*")
-		if filepath.Base(file) == name && len(sum) == 64 {
+		if filepath.Base(file) == name && isHexDigest(sum) {
 			return strings.ToLower(sum), true
 		}
 	}
 	return "", false
+}
+
+// isHexDigest reports whether s is a SHA-256 digest exactly as sha256sum
+// writes it: 64 hex digits, nothing else. The length check is on bytes before
+// any case folding: ToLower can grow a multibyte rune, so folding first could
+// turn a 64-byte non-digest into something of some other length entirely.
+func isHexDigest(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+		default:
+			return false
+		}
+	}
+	return true
 }
