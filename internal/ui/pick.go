@@ -5,7 +5,6 @@ package ui
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -134,8 +133,8 @@ func newPicker(cfg PickConfig) *picker {
 		selected: map[string]bool{},
 		agents:   make([]bool, len(cfg.Agents)),
 		opts: []option{
-			{kind: optCount, label: "jobs", n: 1,
-				help: "reviews at a time, each in its own git worktree"},
+			{kind: optCount, label: "concurrency", n: 1,
+				help: "reviews at a time (-j), each in its own git worktree"},
 			{kind: optCycle, label: "suggest agent", flag: "--suggest-agent",
 				values: append([]string{"from the pool"}, cfg.Agents...),
 				help:   "which agent proposes the reviews"},
@@ -237,8 +236,23 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.toggle()
 	case "a":
 		p.toggleAll()
+	case "+", "=":
+		p.concurrency().n++
+	case "-", "_":
+		p.concurrency().n = max(1, p.concurrency().n-1)
 	}
 	return p, nil
+}
+
+// concurrency is the run pane's job-count row, which +/- reach from any pane:
+// it is the choice with a cost attached, so it should never need hunting for.
+func (p *picker) concurrency() *option {
+	for i := range p.opts {
+		if p.opts[i].kind == optCount {
+			return &p.opts[i]
+		}
+	}
+	return &option{}
 }
 
 // paneLen is how many rows the given pane has, for cursor bounds.
@@ -514,8 +528,11 @@ func (p *picker) View() string {
 	// Chrome: header, two panel titles and borders on the right, the command
 	// line, the hint, and the keys.
 	free := max(4, p.h-9)
-	runH := len(p.opts)
-	agentH := clampi(len(p.cfg.Agents), 1, max(free-runH-3, 1))
+	// Each panel costs three rows of chrome. The run pane is where the cost
+	// of a run is chosen, so it keeps its rows and the agent list gives first;
+	// both scroll rather than spilling off the screen.
+	runH := clampi(len(p.opts), 1, max(free-7, 1))
+	agentH := clampi(len(p.cfg.Agents), 1, max(free-runH-6, 1))
 	// The tree takes what it needs and no more; the panels beside it are
 	// sized by the terminal, not by how many groups happen to be open.
 	reviewH := clampi(len(p.rows()), 1, free)
@@ -540,7 +557,6 @@ func (p *picker) renderHeader() string {
 		wordmark(),
 		styleDim.Render("v" + p.cfg.Version),
 		styleInfo.Render("compose a run"),
-		styleDim.Render(filepath.Base(p.cfg.Dir)),
 	}
 	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.known()))
 	if p.suggest {
@@ -554,6 +570,9 @@ func (p *picker) renderHeader() string {
 		styleValue.Render(scope),
 		styleDim.Render(agents),
 	}, "  ")
+	// The directory takes what the rest of the header leaves.
+	room := p.w - lipgloss.Width(strings.Join(left, "  ")) - lipgloss.Width(right) - 4
+	left = append(left, styleDim.Render(dirLabel(p.cfg.Dir, room)))
 	return spread(strings.Join(left, "  "), right, p.w)
 }
 
@@ -585,7 +604,7 @@ func (p *picker) hint() string {
 func (p *picker) renderKeys() string {
 	keys := []struct{ k, v string }{
 		{"tab", "pane"}, {"space", "toggle"}, {"←/→", "open, adjust"},
-		{"a", "all/none"}, {"⏎", "run"}, {"q", "cancel"},
+		{"a", "all/none"}, {"+/-", "concurrency"}, {"⏎", "run"}, {"q", "cancel"},
 	}
 	var b strings.Builder
 	for i, k := range keys {
@@ -700,8 +719,10 @@ func (p *picker) agentPanel(w, h int) string {
 
 func (p *picker) runPanel(w, h int) string {
 	inner := w - 4
-	lines := make([]string, 0, len(p.opts))
-	for i, o := range p.opts {
+	from, to := p.window(paneOptions, len(p.opts), h)
+	lines := make([]string, 0, h)
+	for i := from; i < to; i++ {
+		o := p.opts[i]
 		cur := p.focus == paneOptions && i == p.cursor[paneOptions]
 		var left, right string
 		switch o.kind {
@@ -737,7 +758,11 @@ func (p *picker) runPanel(w, h int) string {
 		}
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}
-	return panel("RUN", strings.Join(lines, "\n"), inner, h)
+	title := "RUN"
+	if hidden := len(p.opts) - (to - from); hidden > 0 {
+		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
+	}
+	return panel(title, strings.Join(lines, "\n"), inner, h)
 }
 
 func checkbox(on bool) string {

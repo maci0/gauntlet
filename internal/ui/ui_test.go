@@ -395,6 +395,28 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	}
 }
 
+// One hue per agent, and the vendor's own where there is one: a lane is
+// identifiable before its name is read. Two models of one vendor must still
+// be distinguishable, so the second takes the rotation.
+func TestAgentHuesPreferTheVendorColor(t *testing.T) {
+	h := newHueMap()
+	if got := h.get("claude"); got != brandHues["claude"] {
+		t.Fatalf("claude got %v, want the vendor color", got)
+	}
+	if got := h.get("codex:gpt-5"); got != brandHues["codex"] {
+		t.Fatalf("codex:gpt-5 got %v, want codex's vendor color", got)
+	}
+	if got := h.get("claude:opus"); got == brandHues["claude"] {
+		t.Fatal("a second model of one vendor must not reuse its lane color")
+	}
+	if got := h.get("opencode"); got == brandHues["claude"] || got == brandHues["codex"] {
+		t.Fatalf("an agent with no vendor color took one: %v", got)
+	}
+	if first, again := h.get("claude"), h.get("claude"); first != again {
+		t.Fatal("an agent's color must be stable across lookups")
+	}
+}
+
 // Theme tokens are pinned to WCAG 2.2 AA on both background variants they
 // ship with: any color that can sit behind text clears 4.5:1 (SC 1.4.3),
 // including the status hues that color grid names and feed lines, and the
@@ -407,6 +429,11 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 		"red": cRed, "green": cGreen, "yellow": cYellow, "peach": cPeach,
 		"blue": cBlue, "cyan": cCyan, "teal": cTeal, "magenta": cMagenta,
 		"pink": cPink, "lavender": cLavender,
+	}
+	// Agent lanes render their label in the vendor's color, so those clear the
+	// same floor: a brand is never a reason to ship unreadable text.
+	for tool, hue := range brandHues {
+		textTokens["brand "+tool] = hue
 	}
 	for name, fg := range textTokens {
 		if got := contrastRatio(t, fg.Dark, darkBase); got < 4.5 {

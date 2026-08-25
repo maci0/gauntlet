@@ -80,6 +80,9 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 		{"every agent means auto-detect", func(p *picker) {
 			p.agents[0], p.agents[1] = true, true
 		}, "-C /home/dev/project --once --tui"},
+		{"+ raises concurrency from any pane", func(p *picker) {
+			press(p, "+", "+", "+")
+		}, "-C /home/dev/project -j 4 --once --tui"},
 		{"concurrency above one is passed", func(p *picker) {
 			p.focus = paneOptions
 			p.adjust(+1)

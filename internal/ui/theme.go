@@ -10,6 +10,7 @@
 package ui
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -73,11 +74,34 @@ var (
 // an agent keeps its color in its lane, its review rows, and its feed lines.
 var agentHues = []lipgloss.AdaptiveColor{cBlue, cPeach, cTeal, cMagenta, cPink, cYellow, cCyan, cLavender, cGreen}
 
+// brandHues give the agents whose vendor has a recognizable color that color,
+// so a lane is identifiable before its name is read. Each is the brand hue
+// pulled toward its background until it clears the same 4.5:1 text floor as
+// every other token here: a brand is a hint, never a reason to ship
+// unreadable text. Agents whose vendor has no such color, or whose color
+// would be another one of these, keep the rotation.
+var brandHues = map[string]lipgloss.AdaptiveColor{
+	"claude": adaptive("#a8471f", "#e08a63"), // Anthropic terracotta
+	"codex":  adaptive("#0a6b53", "#3fcfa6"), // OpenAI green
+	"gemini": adaptive("#1a56c4", "#7aa9ff"), // Google blue
+	"qwen":   adaptive("#5b21b6", "#c4a7fb"), // Qwen violet
+	"grok":   adaptive("#3a3a3a", "#e4e4e7"), // xAI monochrome
+}
+
+// brandHue returns the vendor color for an agent label ("claude",
+// "codex:gpt-5"), and reports whether there is one.
+func brandHue(label string) (lipgloss.AdaptiveColor, bool) {
+	tool, _, _ := strings.Cut(label, ":")
+	c, ok := brandHues[tool]
+	return c, ok
+}
+
 // hueFor assigns a stable color per agent label, in first-seen order.
 type hueMap struct {
 	mu     sync.Mutex
 	order  []string
 	byName map[string]lipgloss.AdaptiveColor
+	taken  map[lipgloss.AdaptiveColor]bool
 }
 
 func newHueMap() *hueMap { return &hueMap{byName: map[string]lipgloss.AdaptiveColor{}} }
@@ -91,10 +115,43 @@ func (h *hueMap) get(label string) lipgloss.AdaptiveColor {
 	if c, ok := h.byName[label]; ok {
 		return c
 	}
-	c := agentHues[len(h.order)%len(agentHues)]
+	// The vendor color goes to the first agent of that vendor. A second one
+	// (two models of the same CLI) takes the rotation instead: telling two
+	// lanes apart matters more than showing the brand twice.
+	c, ok := brandHue(label)
+	if !ok || h.taken[c] {
+		c = agentHues[len(h.order)%len(agentHues)]
+	}
+	if h.taken == nil {
+		h.taken = map[lipgloss.AdaptiveColor]bool{}
+	}
+	h.taken[c] = true
 	h.order = append(h.order, label)
 	h.byName[label] = c
 	return c
+}
+
+// dirLabel is a directory as a person recognizes it: the home prefix as "~",
+// and long paths cut from the left, since the tail is what identifies a tree.
+func dirLabel(dir string, w int) string {
+	if dir == "" {
+		return ""
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if dir == home {
+			dir = "~"
+		} else if rest, ok := strings.CutPrefix(dir, home+string(os.PathSeparator)); ok {
+			dir = "~" + string(os.PathSeparator) + rest
+		}
+	}
+	if w > 1 && uniseg.StringWidth(dir) > w {
+		for uniseg.StringWidth(dir) > w-1 {
+			_, size := utf8.DecodeRuneInString(dir)
+			dir = dir[size:]
+		}
+		dir = "…" + dir
+	}
+	return dir
 }
 
 func styled(c lipgloss.TerminalColor, s string) string {
