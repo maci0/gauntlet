@@ -18,15 +18,15 @@ func TestSeedPrependsCarriedOverResults(t *testing.T) {
 	st.Add(Result{Review: "b-review", Agent: agent.Spec{Tool: "codex"}, Status: StatusOK})
 	st.Seed([]Result{
 		{Review: "a-review", Agent: agent.Spec{Tool: "claude"}, Status: StatusOK},
-	}, 2, 1, 1)
+	}, 1, 1)
 
 	got := st.Results()
 	if len(got) != 2 || got[0].Review != "a-review" || got[1].Review != "b-review" {
 		t.Fatalf("seeded results must come first: %+v", got)
 	}
-	if st.LoopsDone() != 2 || st.CommitRuns() != 1 || st.CommitFails() != 1 {
-		t.Fatalf("carried-over counters lost: loops=%d runs=%d fails=%d",
-			st.LoopsDone(), st.CommitRuns(), st.CommitFails())
+	if st.CommitRuns() != 1 || st.CommitFails() != 1 {
+		t.Fatalf("carried-over counters lost: runs=%d fails=%d",
+			st.CommitRuns(), st.CommitFails())
 	}
 }
 
@@ -118,7 +118,6 @@ func TestStatsSurvivesConcurrentUse(t *testing.T) {
 				st.Counts()
 				st.Totals()
 				st.ByAgent()
-				_ = st.LoopsDone()
 				_ = st.CommitRuns()
 				_ = st.CommitFails()
 			}
@@ -126,7 +125,7 @@ func TestStatsSurvivesConcurrentUse(t *testing.T) {
 	}
 	wg.Go(func() {
 		for range 100 {
-			st.Seed(nil, 1, 1, 0)
+			st.Seed(nil, 1, 0)
 			st.Results()
 			st.Failures()
 		}
@@ -142,7 +141,7 @@ func TestStatsSurvivesConcurrentUse(t *testing.T) {
 	if got := len(st.Results()); got != lanes*perLane {
 		t.Fatalf("results lost under concurrency: %d, want %d", got, lanes*perLane)
 	}
-	if loops, runs, fails := st.LoopsDone(), st.CommitRuns(), st.CommitFails(); loops != 100 || runs != 200 || fails != 100 {
-		t.Fatalf("counters lost under concurrency: loops=%d runs=%d fails=%d", loops, runs, fails)
+	if runs, fails := st.CommitRuns(), st.CommitFails(); runs != 200 || fails != 100 {
+		t.Fatalf("counters lost under concurrency: runs=%d fails=%d", runs, fails)
 	}
 }

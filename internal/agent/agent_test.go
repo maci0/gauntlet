@@ -422,14 +422,31 @@ func TestPiFamilyDefinitions(t *testing.T) {
 }
 
 func TestPiFamilyStreamAndTranscripts(t *testing.T) {
-	// pi, prime-agent, and omp have a json output mode; feynman does not, and
-	// must not be given a flag it would reject.
+	// pi, prime-agent, and omp have a json output mode, so Stream must change
+	// their argv; feynman does not, and must not be given a flag it would
+	// reject.
 	for _, name := range []string{"pi", "prime-agent", "omp"} {
-		if !SupportsStream(name) {
+		plain, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		streamed, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{Stream: true})
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if slices.Equal(plain, streamed) {
 			t.Errorf("%s should support machine-readable output", name)
 		}
 	}
-	if SupportsStream("feynman") {
+	plain, err := BuildCmd(Spec{Tool: "feynman"}, "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	streamed, err := BuildCmd(Spec{Tool: "feynman"}, "PROMPT", BuildOpts{Stream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(plain, streamed) {
 		t.Error("feynman has no json mode; claiming one would break it")
 	}
 
@@ -461,7 +478,11 @@ func TestCustomAgentFileRoundTrip(t *testing.T) {
 	if err := LoadCustomFile(path); err != nil {
 		t.Fatal(err)
 	}
-	if !SupportsStream("piclone") {
+	argv, err := BuildCmd(Spec{Tool: "piclone"}, "PROMPT", BuildOpts{Stream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(argv, "--jsonl") {
 		t.Fatal("stream flags from the file were lost")
 	}
 	// A missing file is normal, not an error.

@@ -103,7 +103,6 @@ type model struct {
 	reloading bool
 
 	loop        int
-	loopsDone   int
 	counts      map[string]int
 	tokens      int
 	thinking    int
@@ -279,7 +278,7 @@ func (m *model) apply(ev runner.Event) {
 			}
 		}
 	case runner.EvLoopEnd:
-		m.loopsDone = ev.Loop
+		m.loop = ev.Loop
 		if ev.Ins != nil && ev.Del != nil {
 			m.ins += *ev.Ins
 			m.del += *ev.Del
@@ -510,7 +509,7 @@ func (m *model) renderHeader() string {
 		left = append(left, styleDim.Render(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))))
 	}
 
-	loop := fmt.Sprintf("loop %d", max(m.loop, m.loopsDone))
+	loop := fmt.Sprintf("loop %d", m.loop)
 	stateTxt, stateStyle := m.stateLabel()
 	right := strings.Join([]string{
 		styleDim.Render(loop),
@@ -815,7 +814,7 @@ func (m *model) renderMinimal() string {
 	stateTxt, stateStyle := m.stateLabel()
 	return strings.Join([]string{
 		fmt.Sprintf("gauntlet %s  loop %d  %s  %s",
-			m.cfg.Version, max(m.loop, m.loopsDone),
+			m.cfg.Version, m.loop,
 			styleDim.Render(humanize.Duration(m.now.Sub(m.cfg.Started))),
 			stateStyle.Render(stateTxt)),
 		tally.String(),

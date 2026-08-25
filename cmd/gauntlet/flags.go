@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"golang.org/x/term"
@@ -28,7 +29,6 @@ var errHelp = errors.New("help requested")
 type parseError struct{ err error }
 
 func (e parseError) Error() string { return e.err.Error() }
-func (e parseError) Unwrap() error { return e.err }
 
 // reportUsage writes the message and the help screen to stderr, mirroring how
 // the flag package reports its own failures, and returns the error marked as
@@ -436,7 +436,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.jobs < 1 {
 		return nil, errors.New("--jobs must be >= 1")
 	}
-	if o.jobs > 1 && !gitAvailable() {
+	if o.jobs > 1 && !gitx.Available() {
 		return nil, errors.New("--jobs > 1 needs git: each review runs in its own worktree")
 	}
 	if len(o.dirs) > 0 && isFlagSet(fs, "dir", "C") {

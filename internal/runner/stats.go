@@ -38,18 +38,10 @@ type Stats struct {
 	mu      sync.Mutex
 	results []Result
 
-	loops       int
 	commitRuns  int
 	commitFails int
 
 	Start time.Time
-}
-
-// LoopsDone is the number of completed loops recorded so far.
-func (s *Stats) LoopsDone() int {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.loops
 }
 
 // CommitRuns is how many commit steps ran.
@@ -92,11 +84,10 @@ func (s *Stats) Add(r Result) {
 // Seed pre-loads results carried over from an earlier process. A hot reload
 // continues the same run, so its successor must report the whole run, not just
 // what happened after the swap.
-func (s *Stats) Seed(results []Result, loops, commitRuns, commitFails int) {
+func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.results = append(append([]Result(nil), results...), s.results...)
-	s.loops += loops
 	s.commitRuns += commitRuns
 	s.commitFails += commitFails
 }

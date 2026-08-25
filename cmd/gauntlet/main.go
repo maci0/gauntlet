@@ -20,7 +20,6 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
-	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -356,7 +355,7 @@ func run(argv []string) int {
 				// This directory already ran its loops; keep its results for
 				// the summary and do not start it again.
 				d.stats = &runner.Stats{Start: startedAt}
-				d.stats.Seed(carried.Results, carried.Loops, carried.CommitRuns, carried.CommitFails)
+				d.stats.Seed(carried.Results, carried.CommitRuns, carried.CommitFails)
 				d.loops = carried.Loops
 				continue
 			}
@@ -381,7 +380,7 @@ func run(argv []string) int {
 		}
 		d.r = r
 		d.stats = r.Stats()
-		d.stats.Seed(carried.Results, carried.Loops, carried.CommitRuns, carried.CommitFails)
+		d.stats.Seed(carried.Results, carried.CommitRuns, carried.CommitFails)
 		d.carriedLoops = carried.Loops
 	}
 
@@ -820,6 +819,3 @@ type atomicString struct {
 
 func (a *atomicString) Store(v *string) { a.mu.Lock(); a.v = v; a.mu.Unlock() }
 func (a *atomicString) Load() *string   { a.mu.Lock(); defer a.mu.Unlock(); return a.v }
-
-// gitAvailable is used by the flag validation to explain --jobs requirements.
-func gitAvailable() bool { return gitx.Available() }

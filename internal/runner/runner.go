@@ -139,9 +139,6 @@ func (r *Runner) takeNext() (string, bool) {
 	return next, true
 }
 
-// Stopping reports whether a soft stop was requested.
-func (r *Runner) Stopping() bool { return r.soft.Load() }
-
 // New prepares a runner. It opens the repository (if any) and validates the
 // preconditions for the requested concurrency.
 func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {

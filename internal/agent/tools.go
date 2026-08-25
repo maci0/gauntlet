@@ -3,7 +3,10 @@
 
 package agent
 
-import "sort"
+import (
+	"sort"
+	"strings"
+)
 
 // CoreTools are the search and rewrite binaries the injected rules point every
 // review at. "a|b" means either binary satisfies the check.
@@ -90,7 +93,7 @@ func AllProbeNames() []string {
 	}
 	add("bunx")
 	for _, c := range CoreTools {
-		for _, alt := range splitAlts(c.Name) {
+		for alt := range strings.SplitSeq(c.Name, "|") {
 			add(alt)
 		}
 	}
@@ -101,16 +104,4 @@ func AllProbeNames() []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func splitAlts(name string) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(name); i++ {
-		if name[i] == '|' {
-			out = append(out, name[start:i])
-			start = i + 1
-		}
-	}
-	return append(out, name[start:])
 }

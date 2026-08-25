@@ -606,7 +606,7 @@ func TestRequestStopFinishesInFlightWork(t *testing.T) {
 	r.Run(context.Background())
 	bus.Close()
 
-	if !r.Stopping() {
+	if !r.soft.Load() {
 		t.Fatal("stop was not recorded")
 	}
 	// A soft stop never kills an agent, so nothing may be interrupted.

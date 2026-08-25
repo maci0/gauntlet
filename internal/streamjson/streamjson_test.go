@@ -14,6 +14,9 @@ import (
 // and OpenAI-shaped. The parser is deliberately envelope-agnostic, so these
 // double as a statement of what it must survive.
 
+// usageFound reports whether any counter was found.
+func usageFound(u Usage) bool { return u.Output > 0 || u.Total > 0 || u.Input > 0 || u.Thinking > 0 }
+
 func TestAnthropicShapedLine(t *testing.T) {
 	line := `{"type":"assistant","message":{"role":"assistant","content":[
 		{"type":"text","text":"Fixed the leak in pool.go"}],
@@ -117,10 +120,10 @@ func TestUnknownEnvelopeContributesNothingRatherThanGarbage(t *testing.T) {
 	if !ok {
 		t.Fatal("valid JSON was rejected")
 	}
-	if ev.Usage.Has() {
+	if usageFound(ev.Usage) {
 		t.Fatalf("invented usage: %+v", ev.Usage)
 	}
-	if !ev.Empty() {
+	if ev.Text != "" || ev.Thinking != "" || usageFound(ev.Usage) {
 		t.Fatalf("invented content: %+v", ev)
 	}
 }
@@ -214,7 +217,7 @@ func TestAbsurdCountersReportNothing(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s should parse as JSON", line)
 		}
-		if ev.Usage.Has() {
+		if usageFound(ev.Usage) {
 			t.Fatalf("%s invented usage %+v", line, ev.Usage)
 		}
 	}

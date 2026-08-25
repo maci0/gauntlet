@@ -82,29 +82,6 @@ var streamFlags = map[string][]string{
 	"clanker": {"--stream"},
 }
 
-// SupportsStream reports whether an agent can emit machine-readable output.
-func SupportsStream(tool string) bool {
-	if _, ok := streamFlags[tool]; ok {
-		return true
-	}
-	if d, ok := CustomDef(tool); ok {
-		return len(d.Stream) > 0
-	}
-	return false
-}
-
-// StreamFlags returns the arguments that put an agent into its
-// machine-readable mode, or nil when it has none.
-func StreamFlags(tool string) []string {
-	if f, ok := streamFlags[tool]; ok {
-		return append([]string(nil), f...)
-	}
-	if d, ok := CustomDef(tool); ok && len(d.Stream) > 0 {
-		return append([]string(nil), d.Stream...)
-	}
-	return nil
-}
-
 // IsValid reports whether name is a supported agent CLI, built in or defined.
 func IsValid(name string) bool {
 	if isBuiltinTool(name) {

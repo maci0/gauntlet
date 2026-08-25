@@ -49,12 +49,6 @@ type Usage struct {
 	Input    int
 }
 
-// Has reports whether any counter was found.
-func (u Usage) Has() bool { return u.Output > 0 || u.Total > 0 || u.Input > 0 || u.Thinking > 0 }
-
-// Empty reports whether the line contributed nothing at all.
-func (e Event) Empty() bool { return e.Text == "" && e.Thinking == "" && !e.Usage.Has() }
-
 // Keys recognized as token counters, mapped onto the fields above. These are
 // the names used by the Anthropic, OpenAI, and Gemini shaped APIs, which every
 // supported agent's output follows in one dialect or another.
