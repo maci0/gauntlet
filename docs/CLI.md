@@ -32,6 +32,7 @@ learned rather than hidden. It needs a terminal on stdin and stdout, and takes
 | `space` | toggle a review, a whole set, an agent, or a switch |
 | `left`/`right`, `h`/`l` | collapse or expand a set; change the job count |
 | `a` | select all or none in this pane |
+| `+` / `-` | raise or lower concurrency, from any pane |
 | `enter` / `q` | run the composed command / leave without running |
 
 ## Options

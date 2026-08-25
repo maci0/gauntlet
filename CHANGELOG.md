@@ -21,6 +21,25 @@ changes could land in a minor instead and were listed under Changed.
   must run and report the tagged version, and its checksums.txt line must
   verify, so a broken or mislabeled build fails before any asset is uploaded.
 
+## Unreleased
+
+### Changed
+
+- The dashboard header names the tree being reviewed by path (`~/src/acme`),
+  not by basename: several checkouts of one project share a basename, and a
+  run is not the same run in each of them. The path takes the room the rest of
+  the header leaves and is cut from the left, so the loop and the run state
+  are never pushed off the line. The launcher header does the same.
+- Agents wear their vendor's color where there is one (claude, codex, gemini,
+  qwen, grok), in the launcher and in the run that follows, so a lane is
+  identifiable before its name is read. Each is pulled toward its background
+  until it clears the same 4.5:1 text floor as every other color here, and a
+  second model of the same vendor takes the old rotation, because telling two
+  lanes apart matters more than showing a brand twice.
+- The launcher's job count is labelled `concurrency` and `+`/`-` change it
+  from any pane. Its panels also scroll rather than spilling off a short
+  terminal, and the run pane keeps its rows while the agent list gives first.
+
 ## 1.3.0
 
 ### Added

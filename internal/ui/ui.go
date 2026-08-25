@@ -542,12 +542,6 @@ func (m *model) renderHeader() string {
 		mode = fmt.Sprintf("%d×worktree", m.cfg.Jobs)
 	}
 	left = append(left, styleInfo.Render(mode))
-	if len(m.cfg.Dirs) == 1 {
-		left = append(left, styleDim.Render(filepath.Base(m.cfg.Dirs[0])))
-	} else {
-		left = append(left, styleDim.Render(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))))
-	}
-
 	loop := fmt.Sprintf("loop %d", m.loop)
 	stateTxt, stateStyle := m.stateLabel()
 	right := strings.Join([]string{
@@ -555,6 +549,17 @@ func (m *model) renderHeader() string {
 		styleValue.Render(humanize.Duration(elapsed)),
 		stateStyle.Render(stateTxt),
 	}, "  ")
+
+	// The tree being reviewed, as a path rather than a basename: several
+	// checkouts of one project share a basename, and a run is not the same run
+	// in each of them. It takes the room the rest of the header leaves, and no
+	// more: the loop and the run state are never pushed off the line.
+	if len(m.cfg.Dirs) == 1 {
+		room := m.w - lipgloss.Width(strings.Join(left, "  ")) - lipgloss.Width(right) - 4
+		left = append(left, styleDim.Render(dirLabel(m.cfg.Dirs[0], room)))
+	} else {
+		left = append(left, styleDim.Render(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))))
+	}
 	return spread(strings.Join(left, "  "), right, m.w)
 }
 
