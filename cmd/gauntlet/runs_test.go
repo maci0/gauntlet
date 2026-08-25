@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/journal"
 )
 
 // TestRunIndexerKillsProcessGroup pins the rule runProc states for agents:
@@ -85,5 +88,38 @@ func writeScript(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A replayed journal reaches a terminal through `gauntlet show`. Event text
+// records fragments of a possibly hostile tree verbatim (git merge errors,
+// file names), and json.Marshal escapes control bytes but passes bidi
+// overrides through as raw UTF-8, so the replay must strip them the way every
+// other display surface already does.
+func TestShowSanitizesReplayedEvents(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	runID := "20260826T120000Z-dead"
+	dir := filepath.Join(journal.Home(), "runs", "2026-08-26")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Valid JSON escapes: decoding yields a real ESC, BEL, and bidi pair.
+	line := `{"ev":"merge","ts":"2026-08-26T12:00:00Z","status":"conflict",` +
+		`"text":"CONFLICT in evil\u001b]0;pwned\u0007.md \u202ebad\u202c.md"}`
+	if err := os.WriteFile(filepath.Join(dir, runID+".jsonl"), []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdShow(&buf, runID); code != exitOK {
+		t.Fatalf("replaying a recorded run should exit %d, got %d", exitOK, code)
+	}
+	out := buf.String()
+	for _, bad := range []string{"\x1b", "\x07", "\u202e", "\u202c"} {
+		if strings.Contains(out, bad) {
+			t.Errorf("replay emitted %q to the terminal: %q", bad, out)
+		}
+	}
+	if !strings.Contains(out, "CONFLICT") || !strings.Contains(out, "evil") {
+		t.Errorf("replay lost the readable content: %q", out)
 	}
 }
