@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -948,7 +949,7 @@ func resolveDirs(opts *options) ([]string, error) {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(list))
 	for _, entry := range list {
-		expanded := expandPath(entry)
+		expanded := gauntlethome.ExpandPath(entry)
 		matches := []string{expanded}
 		globbed := isGlob(expanded)
 		if globbed {
@@ -998,16 +999,6 @@ func resolveDirs(opts *options) ([]string, error) {
 // isGlob reports whether a path needs expansion. filepath.Match's
 // metacharacters are the ones that matter here.
 func isGlob(p string) bool { return strings.ContainsAny(p, "*?[") }
-
-func expandPath(p string) string {
-	p = os.ExpandEnv(p)
-	if strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[2:])
-		}
-	}
-	return p
-}
 
 // allReviews is the union of every directory's schedule, for the dashboard's
 // review grid.

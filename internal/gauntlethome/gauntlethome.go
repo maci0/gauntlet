@@ -10,6 +10,7 @@ package gauntlethome
 import (
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // Dir returns the state root and whether it rests on a usable HOME.
@@ -45,4 +46,20 @@ func absolute(p string) string {
 		return p
 	}
 	return abs
+}
+
+// ExpandPath expands $VARIABLES and a leading ~ in a user-supplied path.
+//
+// Every flag or file entry that takes a directory or file from the user goes
+// through this one function, so --dir, --dirs, --log, --prompt-dir, and
+// --bin all expand the same way. A bare "~" or "~user" is left alone: only
+// "~/..." names something under HOME.
+func ExpandPath(p string) string {
+	p = os.ExpandEnv(p)
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
 }
