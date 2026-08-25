@@ -133,10 +133,23 @@ func run(argv []string) int {
 		pal.on = false // escape codes would land in the file too
 	}
 
+	// Run-control messages ("Finishing: …", signal receipts) must not fight
+	// the dashboard for a screen it owns: a raw write into the alt screen
+	// leaves stray text across the frame. While --tui is up, the header's
+	// FINISHING label carries the news, and --log keeps the words.
+	runCtl := io.Writer(stdout)
+	if opts.tui {
+		if logWriter != nil {
+			runCtl = logWriter
+		} else {
+			runCtl = io.Discard
+		}
+	}
+
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
 	graceful := &gracefulStop{}
-	watchSignals(ctx, stop, stdout, graceful)
+	watchSignals(ctx, stop, runCtl, graceful)
 
 	switch opts.command {
 	case "pick":
@@ -403,7 +416,7 @@ func run(argv []string) int {
 
 	// From here a graceful quit has runners to reach; one that arrived while
 	// they were being built applies now.
-	graceful.arm(runs, stdout)
+	graceful.arm(runs, runCtl)
 
 	reloadPath := startReloadWatch(ctx, opts, runs, bus)
 	if opts.autoUpdate {

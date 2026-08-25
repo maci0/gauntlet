@@ -630,7 +630,11 @@ func (p *picker) View() string {
 	agentH := clampi(len(p.cfg.Agents), 1, max(free-runH-6, 1))
 	// The tree takes what it needs and no more; the panels beside it are
 	// sized by the terminal, not by how many groups happen to be open.
-	reviewH := clampi(len(p.rows()), 1, free)
+	reviewRows := len(p.rows())
+	if p.filter != "" && reviewRows == 1 {
+		reviewRows++ // the fruitless-filter notice needs its own row
+	}
+	reviewH := clampi(reviewRows, 1, free)
 
 	right := lipgloss.JoinVertical(lipgloss.Left,
 		p.agentPanel(rightW, agentH),
@@ -833,6 +837,14 @@ func (p *picker) reviewPanel(w, h int) string {
 			}
 			lines = append(lines, pickLine(cur, inner, row, ""))
 		}
+	}
+	// A filter that matches nothing hides the whole tree: without a word,
+	// silence reads as an empty prompt set rather than a search that missed.
+	// Every surviving match contributes at least its group header, so the
+	// suggest row alone means nothing matched. The dashboard's feed carries
+	// the same message for the same reason.
+	if p.filter != "" && len(rows) == 1 {
+		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
 	}
 	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.known()))
 	if p.chosen() == 0 {

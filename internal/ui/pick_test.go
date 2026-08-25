@@ -199,6 +199,24 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	}
 }
 
+// A filter that matches nothing hides the whole tree: the pane must say so
+// and name the way out, or silence reads as an empty prompt set.
+func TestPickEmptyFilterSaysSo(t *testing.T) {
+	p := demoPicker()
+	press(p, "/", "z", "z", "z") // nothing is named or described with zzz
+	if view := stripANSI(p.View()); !strings.Contains(view, "no reviews match this filter") {
+		t.Fatalf("a fruitless filter left no trace in the pane:\n%s", view)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter}) // keep the filter, leave typing
+	if view := stripANSI(p.View()); !strings.Contains(view, "no reviews match this filter") {
+		t.Fatalf("the kept filter lost its empty state:\n%s", view)
+	}
+	p.filter = "vulnerab" // a match brings the tree back and the notice goes
+	if view := stripANSI(p.View()); strings.Contains(view, "no reviews match this filter") {
+		t.Fatalf("a matching filter still shows the empty state:\n%s", view)
+	}
+}
+
 // Discovery stores every review name NFC, while typed text arrives in
 // whatever form the terminal sends it: a dead-key accent lands as its own
 // rune after the letter. The filter must still find the review, the same way
