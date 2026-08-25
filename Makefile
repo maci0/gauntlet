@@ -13,6 +13,11 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 TAGS    ?=
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
+# Release artifacts must not depend on the build host's locale: the shell
+# orders glob expansion with strcoll, so checksums.txt and sbom.txt would
+# list assets in a different order on hosts with a different LC_COLLATE.
+export LC_ALL := C
+
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
 export TMPDIR ?= $(HOME)/.cache/gauntlet/test
@@ -110,3 +115,28 @@ release: test dist ## build every platform and write dist/checksums.txt and dist
 		$(GO) version -m "$$f"; \
 	done > $(DIST)/sbom.txt
 	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.txt)"
+
+# The same source must produce the same bytes wherever it is built: -trimpath
+# strips build paths and nothing in a Go binary embeds a timestamp, so two
+# builds from different directories under different locale and timezone are
+# byte-identical. This target proves it instead of asserting it: two full
+# copies of the tree, one built pinned to C/UTC, one under the ambient
+# environment, then cmp. CI runs it on every push.
+REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
+
+.PHONY: repro
+repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
+	@rm -rf "$(REPRO_DIR)" && mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b" && \
+		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
+		for side in a b; do \
+			tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
+				-cf - . | tar -C "$(REPRO_DIR)/$$side" -xf - || exit 1; \
+		done && \
+		echo "repro: copy a (LC_ALL=C TZ=UTC)" && \
+		(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 TZ=UTC LC_ALL=C \
+			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
+		echo "repro: copy b (ambient locale and TZ)" && \
+		(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
+		cmp "$(REPRO_DIR)/a/$(BINARY)_linux_amd64" "$(REPRO_DIR)/b/$(BINARY)_linux_amd64" && \
+		echo "repro: identical bytes from different paths, locales, and timezones"

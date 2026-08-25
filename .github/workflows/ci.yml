@@ -49,3 +49,6 @@ jobs:
       # Cross-compilation is part of the contract: `gauntlet update` can only
       # install a platform that actually builds.
       - run: make dist VERSION=ci
+      # A reproducibility claim nobody tests is decoration: same source, two
+      # paths, different locale and TZ, must give byte-identical binaries.
+      - run: make repro
