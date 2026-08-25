@@ -457,6 +457,43 @@ func TestCustomAgentInvocation(t *testing.T) {
 	}
 }
 
+// A definition can splice the model into its own argv with a {model}
+// placeholder instead of a Model flag block. Such an agent accepts a pinned
+// model, which lands exactly where the placeholder sits; one with nowhere to
+// put a model refuses it instead of dropping it silently.
+func TestCustomAgentModelPlaceholderInArgv(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	if err := Register("withmodel", Custom{
+		Argv: []string{"withmodel", "--model={model}", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("nomodel", Custom{
+		Argv: []string{"nomodel", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	specs, err := ParseSpecs("withmodel:m1")
+	if err != nil {
+		t.Fatalf("an argv placeholder should accept a model: %v", err)
+	}
+	if len(specs) != 1 || specs[0].Model != "m1" {
+		t.Fatalf("parsed specs wrong: %+v", specs)
+	}
+	argv, err := BuildCmd(Spec{Tool: "withmodel", Model: "m1"}, "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "withmodel --model=m1 PROMPT"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	if _, err := ParseSpecs("nomodel:m"); err == nil {
+		t.Error("an agent with nowhere to put a model should refuse one")
+	}
+}
+
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
@@ -676,6 +713,69 @@ func TestDshStreamAsksForReadableSessions(t *testing.T) {
 	if !strings.Contains(string(body), "session-persistence-jsonl") ||
 		!strings.Contains(string(body), "compression: 'none'") {
 		t.Fatalf("overlay does not disable compression:\n%s", body)
+	}
+}
+
+// dsh pins its model through a generated --patch overlay rather than a model
+// flag, so a pinned model must produce an overlay file naming both provider
+// and model while the prompt stays last. Everything before the last slash is
+// the provider, so org-scoped models keep their namespace.
+func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	if got, err := os.UserCacheDir(); err != nil || got != cache {
+		t.Skip("UserCacheDir does not follow XDG_CACHE_HOME here")
+	}
+
+	dshPatchMu.Lock()
+	saved := maps.Clone(dshPatches)
+	clear(dshPatches)
+	dshPatchMu.Unlock()
+	defer func() {
+		dshPatchMu.Lock()
+		clear(dshPatches)
+		maps.Copy(dshPatches, saved)
+		dshPatchMu.Unlock()
+	}()
+
+	modelPatch := func(model string) string {
+		t.Helper()
+		argv, err := BuildCmd(Spec{Tool: "dsh", Model: model}, "PROMPT", BuildOpts{})
+		if err != nil {
+			t.Fatalf("%s: %v", model, err)
+		}
+		if argv[len(argv)-1] != "PROMPT" {
+			t.Fatalf("%s: prompt must stay last: %v", model, argv)
+		}
+		var patch string
+		for i, a := range argv {
+			if a == "--patch" && i+1 < len(argv) {
+				patch = argv[i+1]
+			}
+		}
+		if patch == "" {
+			t.Fatalf("%s: no --patch overlay in %v", model, argv)
+		}
+		return patch
+	}
+
+	for _, c := range []struct{ model, key, want string }{
+		{"deepseek/chat", "deepseek_chat",
+			"- id: agent-default-model\n  config:\n    provider: 'deepseek'\n    model: 'chat'\n"},
+		{"openrouter/deepseek/deepseek-chat", "openrouter_deepseek_deepseek-chat",
+			"- id: agent-default-model\n  config:\n    provider: 'openrouter/deepseek'\n    model: 'deepseek-chat'\n"},
+	} {
+		patch := modelPatch(c.model)
+		if want := filepath.Join(cache, "gauntlet", "dsh", c.key+".yml"); patch != want {
+			t.Errorf("%s: overlay at %q, want %q", c.model, patch, want)
+		}
+		body, err := os.ReadFile(patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(body) != c.want {
+			t.Errorf("%s: overlay does not pin the pair:\n got %q\nwant %q", c.model, body, c.want)
+		}
 	}
 }
 
