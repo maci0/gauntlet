@@ -294,6 +294,12 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		weight[r]++
 	}
 	fmt.Fprintf(out, "Available reviews (%d):\n", set.Len())
+	// The marks below are only as readable as their legend: spell them out
+	// once, right where they first appear. wrapIndent indents only its
+	// continuation lines, so the first line carries its own.
+	fmt.Fprintln(out, pal.dim(strings.Repeat(" ", 4)+wrapIndent(
+		"✓ scheduled   ○ available, not selected   xN selected with repeated weight   "+
+			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
 	for _, n := range set.Names {
 		nameCol = max(nameCol, len(n))

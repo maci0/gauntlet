@@ -103,6 +103,9 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"exclude suggest", []string{"-x", "suggest"}, "not a review name"},
 		{"once with max-loops", []string{"-1", "-n", "3"}, "conflicts"},
 		{"negative loops", []string{"-n", "-2"}, "must be >= 0"},
+		{"negative seed", []string{"--seed", "-1"}, "must be a nonnegative integer"},
+		{"garbage seed", []string{"--seed", "soon"}, "must be a nonnegative integer"},
+		{"hex seed", []string{"--seed", "0x10"}, ""},
 		{"zero jobs", []string{"-j", "0"}, "must be >= 1"},
 		{"negative limit", []string{"runs", "--limit", "-3"}, "--limit must be >= 1"},
 		{"zero limit", []string{"runs", "--limit", "0"}, "--limit must be >= 1"},
@@ -194,6 +197,27 @@ func TestParseFlagsRepeatableAndCommaLists(t *testing.T) {
 	}
 	if strings.Join(o.dirs, "|") != "a|b|c" {
 		t.Fatalf("dirs: %v", o.dirs)
+	}
+}
+
+// The seed value must keep the flag package's base-0 uint64 parsing (hex
+// literals and underscores), which the custom Value replaced.
+func TestParseFlagsSeedLiterals(t *testing.T) {
+	for _, c := range []struct {
+		v    string
+		want uint64
+	}{
+		{"42", 42},
+		{"0x2a", 42},
+		{"1_000", 1000},
+	} {
+		o, err := parseFlags([]string{"--seed", c.v})
+		if err != nil {
+			t.Fatalf("--seed %q: %v", c.v, err)
+		}
+		if o.seed != c.want {
+			t.Errorf("--seed %q parsed as %d, want %d", c.v, o.seed, c.want)
+		}
 	}
 }
 

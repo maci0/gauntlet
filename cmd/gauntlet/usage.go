@@ -69,7 +69,7 @@ var helpGroups = []flagGroup{
 	{"Execution", []flagDoc{
 		{"C", "dir", "DIR", "directory to review"},
 		{"", "dirs", "LIST", "review several directories in parallel; globs are expanded (repeatable)"},
-		{"", "target-dirs", "LIST", "alias of --dirs, the name the Python tool used"},
+		{"", "target-dirs", "LIST", "alias of --dirs, kept for scripts from the Python tool; takes a comma-separated list"},
 		{"j", "jobs", "N", "reviews at a time; above 1, each gets its own git worktree and is merged back"},
 		{"t", "timeout", "DUR", "per-review timeout: 90s, 30m, 1h, 2d"},
 		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
@@ -130,7 +130,7 @@ var helpExamples = []struct{ Cmd, Help string }{
 
 var helpExitCodes = []struct{ Code, Meaning string }{
 	{"0", "every review ran and passed"},
-	{"1", "a review failed, timed out, was skipped, or would not merge"},
+	{"1", "a review failed, timed out, was skipped, or would not merge; a commit step failed"},
 	{"2", "usage error"},
 	{"75", "another instance holds the lock for that directory"},
 	{"130", "interrupted"},

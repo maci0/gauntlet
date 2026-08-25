@@ -34,7 +34,7 @@ var version = "dev"
 // Exit codes, matching the Python original so scripts keep working.
 const (
 	exitOK     = 0
-	exitFail   = 1  // a review failed, timed out, was skipped, or would not merge
+	exitFail   = 1  // a review failed, timed out, was skipped, would not merge, or a commit step failed
 	exitUsage  = 2  // usage error
 	exitLocked = 75 // EX_TEMPFAIL: another instance holds the lock
 )
