@@ -3,14 +3,17 @@
 The Go implementation of gauntlet: ~50 review prompts dispatched to installed AI coding
 agents, applying fixes to the working tree. One static binary, prompts
 embedded, small dependency surface: bubbletea and lipgloss for the
-dashboard, toktop for transcript token counts (build with `TAGS=notoktop`
-to drop it), `x/term` and `uniseg` for terminal text, everything else
-standard library.
+dashboard, toktop for transcript token counts (it brings the pure-Go
+sqlite driver; build with `TAGS=notoktop` to drop both), `x/term`,
+`x/text`, and `uniseg` for terminal text, everything else standard
+library.
 
 ## Build and test
 
-- `make check`: gofmt, `go fix -diff`, and vet. All must be clean; run
-  `go fix ./...` before committing if the fix step reports anything.
+- `make check`: gofmt, `go fix -diff`, and vet, each under the default
+  tags and `-tags notoktop`. All must be clean; run `go fix ./...` and
+  `go fix -tags notoktop ./...` before committing if the fix step reports
+  anything.
 - `make test`: the suite with the race detector and shuffled order.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
@@ -21,7 +24,8 @@ standard library.
 `cmd/gauntlet` is flags and dispatch only. Everything real lives in
 `internal/`, and dependencies point one way: `runner` uses `agent`, `prompt`,
 `normalize`, `gitx`, `streamjson`, `humanize`; `ui` uses the runner's event
-types plus the shared `normalize` and `humanize`. No package inside
+types plus the shared `normalize` and `humanize`; `cmd` wires it all
+together, including `journal` and `selfupdate`. No package inside
 `internal/` imports `ui`, so a headless run costs nothing.
 
 ## Rules that are not style preferences
