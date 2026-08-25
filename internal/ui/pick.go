@@ -661,8 +661,12 @@ func (p *picker) renderCommand() string {
 // blocked reports why the composed run would not start, or "" when it would.
 // Worktree isolation cuts branches from a commit, so uncommitted work would
 // be invisible to every review: better to say so here than to compose a
-// command that fails on launch.
+// command that fails on launch. The same goes for an empty agent pool: every
+// run auto-detects its agents, so nothing here can launch at all.
 func (p *picker) blocked() string {
+	if len(p.cfg.Agents) == 0 {
+		return "no agent CLI is installed: install one (see: gauntlet doctor)"
+	}
 	if p.cfg.Dirty && p.concurrency().n > 1 {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
 	}
@@ -670,7 +674,8 @@ func (p *picker) blocked() string {
 }
 
 // hint explains the row under the cursor, in the one place that always has
-// room for a sentence.
+// room for a sentence. A review row explains itself: descriptions are longer
+// than any pane column, so the status line is where one is read whole.
 func (p *picker) hint() string {
 	if p.typing {
 		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
@@ -681,12 +686,15 @@ func (p *picker) hint() string {
 	case paneAgents:
 		return "the pool reviews are drawn from; none picked means auto-detect"
 	default:
-		switch p.rowAt(p.cursor[paneReviews]).kind {
+		switch r := p.rowAt(p.cursor[paneReviews]); r.kind {
 		case rowSuggest:
 			return "an agent reads the repo and proposes the reviews, before any run"
 		case rowGroup:
 			return "space takes the whole set, →/← open and close it"
 		default:
+			if d := strings.TrimSpace(r.review.Desc); d != "" {
+				return d
+			}
 			return "space takes this review on its own"
 		}
 	}

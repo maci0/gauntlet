@@ -197,7 +197,6 @@ func printUsage(out io.Writer, pal palette, width int) {
 		{"NO_COLOR", "disable color, however it is set"},
 		{"CLICOLOR_FORCE", "keep color when the output is piped"},
 		{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
-		{"TERM=dumb", "disables color unless forced"},
 		{"GITHUB_TOKEN", "used for release lookups, to avoid rate limits"},
 	} {
 		fmt.Fprintf(out, "  %-14s %s\n", e.Name, pal.dim(e.Help))
