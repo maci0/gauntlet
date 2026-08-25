@@ -92,6 +92,22 @@ func TestMinimalViewKeepsStateTallyAndKeys(t *testing.T) {
 	}
 }
 
+// Skips are part of "did anything break": the small-terminal tally counts
+// them the way it counts conflicts, once any exist.
+func TestMinimalViewCountsSkips(t *testing.T) {
+	base := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 40, 10, true
+	m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "doc-review",
+		Agent: "claude", Status: runner.StatusSkipped, Time: base})
+	if got := stripANSI(m.renderMinimal()); !strings.Contains(got, "skipped 1") {
+		t.Fatalf("minimal tally %q omits the skip count", got)
+	}
+	if got := stripANSI(newModel(demoConfig()).renderMinimal()); strings.Contains(got, "skipped") {
+		t.Fatalf("an empty tally still advertises skips: %q", got)
+	}
+}
+
 // A grid that cannot hold every review says how many it dropped; a fitting
 // grid stays clean.
 func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
@@ -224,6 +240,62 @@ func TestFeedTitleMarksScrolledBack(t *testing.T) {
 	m.scroll = 12
 	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "12 lines back") {
 		t.Fatalf("scrolled-back title %q, want the distance from the live edge", got)
+	}
+}
+
+// Pausing must hold, not drop: everything an agent prints while the feed is
+// paused stays readable afterwards, and the viewport does not move until the
+// reader asks it to.
+func TestPauseHoldsInsteadOfDropping(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	send := func(text string) {
+		m.apply(runner.Event{Kind: runner.EvOutput, Review: "sec-review",
+			Agent: "claude", Text: text, Time: m.cfg.Started})
+	}
+	send("before the pause")
+	m.paused = true
+	send("held one")
+	send("held two")
+	if len(m.feed) != 3 {
+		t.Fatalf("feed holds %d lines, want 3: output printed during a pause may not be dropped", len(m.feed))
+	}
+	if m.scroll != 2 {
+		t.Fatalf("scroll %d, want 2 so the viewport holds still while paused", m.scroll)
+	}
+	if frozen := stripANSI(m.renderFeed(100, 10)); strings.Contains(frozen, "held two") {
+		t.Fatalf("the view moved while paused:\n%s", frozen)
+	}
+	m.paused = false
+	m.scroll = 0 // G: back to the live edge
+	live := stripANSI(m.renderFeed(100, 10))
+	for _, want := range []string{"before the pause", "held one", "held two"} {
+		if !strings.Contains(live, want) {
+			t.Fatalf("resumed feed lost %q:\n%s", want, live)
+		}
+	}
+}
+
+// A reader parked in history stays parked when the ring overflows and trims:
+// skipping the anchor on a trimmed push lets the window slide toward the
+// live edge instead of holding the lines it shows.
+func TestScrollAnchorSurvivesRingTrim(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	send := func(i int) {
+		m.apply(runner.Event{Kind: runner.EvOutput, Review: "sec-review",
+			Agent: "claude", Text: fmt.Sprintf("line %04d", i), Time: m.cfg.Started})
+	}
+	for i := range feedMax + 10 {
+		send(i)
+	}
+	m.scroll = 20 // j twenty times: parked twenty lines back
+	parkedAt := m.feed[len(m.feed)-m.scroll-1].text
+	for i := range 50 {
+		send(feedMax + 10 + i) // every push trims once the ring is full
+	}
+	if got := m.feed[len(m.feed)-m.scroll-1].text; got != parkedAt {
+		t.Fatalf("parked reader now looks at %q, want %q", got, parkedAt)
 	}
 }
 

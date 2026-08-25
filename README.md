@@ -166,13 +166,13 @@ full review grid, and the feed.
 | Key | Action |
 |---|---|
 | `q`, `esc` | quit (stops the run) |
-| `space` | pause the feed; reviews keep running |
+| `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `g` / `G` | jump to oldest / newest |
 | `?` | help, and the list of unmerged branches |
 
 Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
-`⑂` merge conflict, `–` skipped.
+`⑂` merge conflict, `–` skipped, `␘` interrupted.
 
 ## Options
 
@@ -183,8 +183,8 @@ Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
 | `-r, --reviews LIST` | all | Reviews and/or set names to run. The `-review` suffix is optional (`sec` means `sec-review`). Naming one twice runs it twice per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
 | `-s, --suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
-| `--suggest-agent AGENT` | from `--agents` | Agent to run the triage step. |
-| `--suggest-timeout DUR` | `30m` | Timeout for the triage step. |
+| `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step. |
+| `--suggest-timeout DUR` | `30m` | Timeout for the suggest step. |
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |
 
 Sets: `all`, `project`, `quick`, `standard`, `security`, `frontend`,

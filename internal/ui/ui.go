@@ -358,12 +358,10 @@ func (m *model) apply(ev runner.Event) {
 		if l := m.lane(m.laneKey(ev)); l != nil {
 			l.pending++
 		}
-		if !m.paused {
-			m.pushFeed(feedLine{
-				text: ev.Text, kind: ev.LineKind, agent: ev.Agent,
-				review: ev.Review, repeat: ev.Repeat,
-			})
-		}
+		m.pushFeed(feedLine{
+			text: ev.Text, kind: ev.LineKind, agent: ev.Agent,
+			review: ev.Review, repeat: ev.Repeat,
+		})
 	}
 }
 
@@ -415,8 +413,11 @@ func (m *model) pushFeed(l feedLine) {
 	if len(m.feed) > feedMax {
 		m.feed = m.feed[len(m.feed)-feedMax:]
 	}
-	if m.scroll > 0 {
-		m.scroll++ // keep the reader anchored while new lines arrive
+	// A paused or scrolled-back reader holds their place: the viewport stays
+	// anchored to the lines it shows while history grows underneath, and
+	// nothing printed during a pause is discarded.
+	if m.paused || m.scroll > 0 {
+		m.scroll++
 	}
 }
 
@@ -801,7 +802,7 @@ func (m *model) renderMinimal() string {
 	c := m.counts
 	var tally strings.Builder
 	tally.WriteString(fmt.Sprintf("pass %d  fail %d  timeout %d", c["ok"], c["fail"], c["timeout"]))
-	for _, s := range []string{"conflict", "interrupted"} {
+	for _, s := range []string{"skipped", "conflict", "interrupted"} {
 		if n := c[s]; n > 0 {
 			tally.WriteString(fmt.Sprintf("  %s %d", s, n))
 		}
@@ -823,12 +824,12 @@ func (m *model) renderHelp() string {
 		styleTitle.Render("gauntlet dashboard"),
 		"",
 		"  q, esc      quit (stops the run)",
-		"  space       pause the feed (reviews keep running)",
+		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
 		"  g / G       jump to oldest / newest",
-		"  ?           toggle this help",
+		"  ?, h        toggle this help",
 		"",
-		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped"),
+		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
 	}
 	if len(m.conflicts) > 0 {
 		lines = append(lines, "", styleWarn.Render("  Unmerged branches:"))

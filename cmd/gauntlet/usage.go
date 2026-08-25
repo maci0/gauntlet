@@ -56,8 +56,8 @@ var helpGroups = []flagGroup{
 		{"r", "reviews", "LIST", "reviews and/or sets to run; the -review suffix is optional, repeats add weight, 'suggest' lets an agent choose (repeatable)"},
 		{"x", "exclude", "LIST", "reviews and/or sets to skip (repeatable)"},
 		{"s", "suggest", "", "shorthand for --reviews suggest"},
-		{"", "suggest-agent", "AGENT", "agent to run the triage step (default: sample from --agents)"},
-		{"", "suggest-timeout", "DUR", "timeout for the triage step"},
+		{"", "suggest-agent", "AGENT", "agent to run the suggest step (default: sample from --agents)"},
+		{"", "suggest-timeout", "DUR", "timeout for the suggest step"},
 		{"", "prompt-dir", "DIR", "use *-review.md files from DIR instead of the embedded set"},
 	}},
 	{"Agents", []flagDoc{

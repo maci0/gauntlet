@@ -32,6 +32,9 @@ func cmdRuns(out io.Writer, pal palette, limit int) int {
 	}
 	fmt.Fprintf(out, "%-22s  %-16s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
 		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
+	// The column's name overstates what it counts; say so once, right where
+	// it first appears, or a run that only skipped reviews reads as broken.
+	fmt.Fprintln(out, pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
 	for _, e := range entries {
 		dur := humanize.Duration(e.End.Sub(e.Start))
 		dirs := make([]string, 0, len(e.Dirs))
