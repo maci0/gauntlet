@@ -128,7 +128,8 @@ func run(argv []string) int {
 
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	watchSignals(ctx, stop, stdout)
+	graceful := &gracefulStop{}
+	watchSignals(ctx, stop, stdout, graceful)
 
 	switch opts.command {
 	case "pick":
@@ -309,6 +310,8 @@ func run(argv []string) int {
 			Timeout: opts.timeout,
 			Budget:  opts.runtime,
 			Started: startedAt,
+			// `s` on the dashboard is the same request SIGQUIT makes.
+			OnFinish: func() { graceful.request(nil) },
 		}, bus.Subscribe(4096))
 	} else {
 		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet}
@@ -385,6 +388,10 @@ func run(argv []string) int {
 		d.carriedLoops = carried.Loops
 	}
 
+	// From here a graceful quit has runners to reach; one that arrived while
+	// they were being built applies now.
+	graceful.arm(runs, stdout)
+
 	reloadPath := startReloadWatch(ctx, opts, runs, bus)
 	if opts.autoUpdate {
 		go autoUpdateLoop(ctx, opts, bus)
@@ -413,7 +420,9 @@ func run(argv []string) int {
 		go func() {
 			workers.Wait()
 			dash.Finish()
-			if p := reloadPath.Load(); p != nil && *p != "" {
+			// A reload needs the terminal back, and a graceful quit was a
+			// request to leave: neither should wait for a keypress.
+			if p := reloadPath.Load(); (p != nil && *p != "") || graceful.asking() {
 				dash.Quit()
 			}
 		}()
@@ -560,7 +569,24 @@ func writeSummary(j *journal.Journal, runID string, start time.Time, dirs []stri
 
 // watchSignals stops the run on the first signal and kills the process on the
 // second, matching the original's two-stage Ctrl+C.
-func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer) {
+func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, graceful *gracefulStop) {
+	// SIGQUIT (Ctrl-\) is the graceful one: stop starting reviews, let the
+	// ones running finish and land their work, then exit. Interrupt and
+	// SIGTERM keep meaning "stop now", because that is what they mean
+	// everywhere else and a run is not the place to be clever about it.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGQUIT)
+	go func() {
+		for {
+			select {
+			case <-quit:
+				graceful.request(out)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	ch := make(chan os.Signal, 2)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -575,6 +601,57 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer) {
 		fmt.Fprintln(out, "\nForce-killing.")
 		os.Exit(128 + int(syscall.SIGINT))
 	}()
+}
+
+// gracefulStop carries the "finish and quit" request from whoever asks for it
+// (a signal, a key in the dashboard) to the runners, which may not exist yet
+// when the signal handler is installed.
+type gracefulStop struct {
+	mu    sync.Mutex
+	runs  []*dirRun
+	asked bool
+	out   io.Writer
+}
+
+// arm gives the request somewhere to land. A request that arrived before the
+// runners existed is applied now.
+func (g *gracefulStop) arm(runs []*dirRun, out io.Writer) {
+	g.mu.Lock()
+	g.runs, g.out = runs, out
+	asked := g.asked
+	g.mu.Unlock()
+	if asked {
+		g.request(out)
+	}
+}
+
+// request asks every runner to finish what it started and stop. Repeating it
+// is harmless, and says so once rather than twice.
+func (g *gracefulStop) request(out io.Writer) {
+	g.mu.Lock()
+	first, runs := !g.asked, g.runs
+	g.asked = true
+	if g.out != nil {
+		out = g.out
+	}
+	g.mu.Unlock()
+	for _, d := range runs {
+		if d.r != nil {
+			d.r.RequestFinish()
+		}
+	}
+	if first && out != nil {
+		fmt.Fprintln(out, "\nFinishing: no new reviews will start. "+
+			"The ones running will end, commit, and merge as configured. Ctrl-C to stop now.")
+	}
+}
+
+// asking reports whether a graceful quit was requested, for the caller that
+// decides whether the dashboard should close itself.
+func (g *gracefulStop) asking() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.asked
 }
 
 // semcodeIndexTimeout bounds one directory's index build. The indexer walks

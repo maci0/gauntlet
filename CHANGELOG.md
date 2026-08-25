@@ -29,6 +29,16 @@ changes could land in a minor instead and were listed under Changed.
   `detekt`), and more besides. `lint-review`, `error-review`,
   `mobile-review`, and `privacy-review` have tooling for the first time.
 
+- A graceful quit: `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) anywhere,
+  stops starting reviews, lets the ones running finish, commits, pushes, and
+  merges what they produced, and then ends the run. `Ctrl-C` still means stop
+  now. The difference matters mid-loop: interrupting leaves agent edits
+  uncommitted in the tree, and this does not.
+- `crush` ([charmbracelet/crush](https://github.com/charmbracelet/crush)) is a
+  supported agent: `crush run --quiet` is its non-interactive mode, which
+  auto-approves the session's tool permissions itself, and `-C` continues the
+  last session for `--continue-sessions`.
+
 ### Fixed
 
 - `journal_test.go` called `Events` with its old signature, which broke
