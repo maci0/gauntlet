@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -404,6 +405,58 @@ func TestReadNoFollowRejectsOversize(t *testing.T) {
 	write(t, path, strings.Repeat("x", maxBytes+1))
 	if _, err := readNoFollow(path); err == nil {
 		t.Fatal("oversized prompt accepted")
+	}
+}
+
+// The promptDir is excluded from the project walk even when it sits inside the
+// tree: its files are already offered through the Dir origin, and finding them
+// again as project prompts would double-report overrides. The walk must reach
+// the same verdict for absolute and relative roots.
+func TestWalkProjectSkipsPromptDir(t *testing.T) {
+	dir := t.TempDir()
+	pd := filepath.Join(dir, "prompts")
+	if err := os.MkdirAll(pd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(pd, "in-dir-review.md"), "Your goal is to be counted once.\n")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(sub, "kept-review.md"), "Your goal is to stay.\n")
+
+	inDir := filepath.Join(pd, "in-dir-review.md")
+	kept := filepath.Join(sub, "kept-review.md")
+	stems := func(paths []string) []string {
+		out := make([]string, 0, len(paths))
+		for _, p := range paths {
+			out = append(out, strings.TrimSuffix(filepath.Base(p), ".md"))
+		}
+		return out
+	}
+	// A walk rooted at an absolute path yields absolute paths; one rooted at
+	// "." yields cwd-relative ones. What must agree is which files turned up.
+	inDirFound := func(root string, found []string) bool {
+		if !filepath.IsAbs(root) {
+			return slices.Contains(stems(found), "in-dir-review")
+		}
+		return slices.Contains(found, inDir)
+	}
+	keptFound := func(root string, found []string) bool {
+		if !filepath.IsAbs(root) {
+			return slices.Contains(stems(found), "kept-review")
+		}
+		return slices.Contains(found, kept)
+	}
+	for _, root := range []string{dir, "."} {
+		t.Chdir(dir)
+		found := walkProject(root, pd)
+		if inDirFound(root, found) {
+			t.Errorf("root %q: promptDir was walked: %v", root, found)
+		}
+		if !keptFound(root, found) {
+			t.Errorf("root %q: legitimate prompt dropped: %v", root, found)
+		}
 	}
 }
 

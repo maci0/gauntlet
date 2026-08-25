@@ -70,18 +70,9 @@ func failedCell(pal palette, bad int) string {
 
 // cmdShow replays one run's journal as readable lines.
 func cmdShow(out io.Writer, runID string) int {
-	events, err := journal.Events(runID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
-		// An id that names nothing is a bad argument, like an unknown review
-		// name for --show-prompt: usage error. A journal that exists but
-		// cannot be read is a general failure.
-		if errors.Is(err, journal.ErrNoJournal) {
-			return exitUsage
-		}
-		return exitFail
-	}
-	for _, ev := range events {
+	// One event in memory at a time: a long run's journal can be far larger
+	// than the screen it is being replayed onto.
+	err := journal.Events(runID, func(ev map[string]any) {
 		ts := ""
 		if s, ok := ev["ts"].(string); ok {
 			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
@@ -93,6 +84,16 @@ func cmdShow(out io.Writer, runID string) int {
 		delete(ev, "ev")
 		rest, _ := json.Marshal(ev)
 		fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, string(rest))
+	})
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		// An id that names nothing is a bad argument, like an unknown review
+		// name for --show-prompt: usage error. A journal that exists but
+		// cannot be read is a general failure.
+		if errors.Is(err, journal.ErrNoJournal) {
+			return exitUsage
+		}
+		return exitFail
 	}
 	return exitOK
 }

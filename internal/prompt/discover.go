@@ -125,6 +125,15 @@ func walkProject(root, promptDir string) []string {
 	if promptDir != "" {
 		absPromptDir, _ = filepath.Abs(promptDir)
 	}
+	// One Abs for the whole walk, not one per directory: filepath.Abs reads
+	// the working directory every call, and the trees under review can hold
+	// tens of thousands of them. WalkDir yields root-joined paths, so a
+	// cleaned root makes the prefix cut below exact.
+	root = filepath.Clean(root)
+	absRoot, _ := filepath.Abs(root)
+	abspath := func(path string) string {
+		return filepath.Join(absRoot, strings.TrimPrefix(path, root))
+	}
 	var found []string
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -138,10 +147,8 @@ func walkProject(root, promptDir string) []string {
 			if skipDirs[name] || strings.HasPrefix(name, ".") {
 				return fs.SkipDir
 			}
-			if absPromptDir != "" {
-				if abs, e := filepath.Abs(path); e == nil && abs == absPromptDir {
-					return fs.SkipDir
-				}
+			if absPromptDir != "" && abspath(path) == absPromptDir {
+				return fs.SkipDir
 			}
 			return nil
 		}
