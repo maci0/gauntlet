@@ -346,6 +346,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, errors.New("--limit requires 'gauntlet runs'")
 		}
 	}
+	if err := rejectStrayFlags(o, fs); err != nil {
+		return nil, err
+	}
 
 	// A file of definitions first, then the command line, which wins.
 	if path := agent.CustomFilePath(); path != "" {
@@ -509,6 +512,57 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		o.logFile = gauntlethome.ExpandPath(o.logFile)
 	}
 	return o, nil
+}
+
+// subcommandFlags names the flags each subcommand actually reads, on top of
+// the global ones. The default run (no subcommand) is not listed: it reads
+// them all.
+var subcommandFlags = map[string][]string{
+	"pick":   {"C", "dir", "dirs", "target-dirs", "prompt-dir"},
+	"doctor": {"agent-cmd", "bin"},
+	"update": {"check", "update-repo"},
+	"runs":   {"limit"},
+	"show":   {},
+}
+
+// globalFlags are honored no matter the command: help, version, color, and
+// the output tee, which run() wires up before dispatching anywhere.
+var globalFlags = []string{"h", "help", "V", "version", "log", "no-color"}
+
+// rejectStrayFlags refuses a flag a named subcommand would parse and then
+// drop: `gauntlet runs --jobs 4` must fail loudly rather than print its
+// table while ignoring the concurrency it was given. The flag is named the
+// way it was spelled, so `-j 4` reads as -j.
+func rejectStrayFlags(o *options, fs *flag.FlagSet) error {
+	allowed, known := subcommandFlags[o.command]
+	if !known {
+		return nil // the default run path reads every flag
+	}
+	stray := ""
+	fs.Visit(func(f *flag.Flag) {
+		if stray != "" || slices.Contains(globalFlags, f.Name) || slices.Contains(allowed, f.Name) {
+			return
+		}
+		stray = f.Name
+	})
+	if stray == "" {
+		return nil
+	}
+	spell := func(name string) string {
+		if len(name) == 1 {
+			return "-" + name
+		}
+		return "--" + name
+	}
+	takes := make([]string, 0, len(allowed))
+	for _, n := range allowed {
+		takes = append(takes, spell(n))
+	}
+	if len(takes) == 0 {
+		takes = append(takes, "no flags of its own")
+	}
+	return fmt.Errorf("%s does not apply to 'gauntlet %s', which takes %s",
+		spell(stray), o.command, strings.Join(takes, ", "))
 }
 
 func isFlagSet(fs *flag.FlagSet, names ...string) bool {
