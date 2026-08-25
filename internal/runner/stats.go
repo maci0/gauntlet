@@ -205,11 +205,14 @@ func (s *Stats) ByAgent() []AgentSummary {
 	return out
 }
 
-// Failures lists failed, timed out, and conflicting reviews, by name.
+// Failures lists every result that makes the run exit nonzero, by name.
+// Skipped is included: a review that never ran (unknown name, unreadable
+// prompt) is why exit code 1 exists alongside ok and interrupted, and the
+// detailed list must account for every nonzero exit the counts report.
 func (s *Stats) Failures() []Result {
 	var out []Result
 	for _, r := range s.Results() {
-		if r.Status == StatusFail || r.Status == StatusTimeout || r.Status == StatusConflict {
+		if r.Status.Failed() {
 			out = append(out, r)
 		}
 	}
