@@ -134,6 +134,20 @@ var (
 // must not make every sample re-read gigabytes.
 const untrackedLineCap = 8 << 20
 
+// countReadBytes is the size of one read chunk.
+const countReadBytes = 1 << 20
+
+// lineBufs recycles read buffers across the untracked-file walk. Sample runs
+// every few hundred milliseconds and touches every untracked file each time,
+// so a fresh 1 MiB per file would hand the GC tens of megabytes of garbage
+// per sample while reviews accumulate new files.
+var lineBufs = sync.Pool{
+	New: func() any {
+		buf := make([]byte, countReadBytes)
+		return &buf
+	},
+}
+
 // minSampleInterval debounces sampling. Two lanes finishing together, or a
 // review that ends in under a second, must not each pay for a full git walk.
 const minSampleInterval = 750 * time.Millisecond
@@ -214,7 +228,9 @@ func countLines(path string) int {
 	// Clear O_NONBLOCK now that the file is known to be regular.
 	_ = syscall.SetNonblock(fd, false)
 
-	buf := make([]byte, 1<<20)
+	bp := lineBufs.Get().(*[]byte)
+	defer lineBufs.Put(bp)
+	buf := *bp
 	n, read := 0, 0
 	var last byte
 	truncated := false
