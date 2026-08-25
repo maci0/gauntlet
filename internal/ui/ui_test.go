@@ -85,10 +85,11 @@ func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
 }
 
 // The fallback must keep what answers "is it done, did anything break", plus
-// the keys: a view that hides how to quit is its own dead end.
+// the keys: a view that hides how to quit is its own dead end, and one that
+// hides how to finish gracefully forces the harsher one.
 func TestMinimalViewKeepsStateTallyAndKeys(t *testing.T) {
 	frame := stripANSI(staticFrame(demoConfig(), demoEvents(), 40, 10))
-	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "too small"} {
+	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "s finish", "too small"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("minimal view lost %q:\n%s", want, frame)
 		}

@@ -920,7 +920,7 @@ func (m *model) renderMinimal() string {
 			stateStyle.Render(stateTxt)),
 		tally.String(),
 		styleDim.Render("terminal too small for the dashboard"),
-		styleDim.Render("q quit  space pause feed  j/k scroll  ? help"),
+		styleDim.Render("q quit  s finish  space pause  j/k scroll  ? help"),
 	}, "\n")
 }
 
