@@ -411,13 +411,13 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		o.reviews, o.reviewsSet = prompt.Suggest, true
 	}
-	if named := splitNames(o.reviews); contains(named, prompt.Suggest) {
+	if named := splitNames(o.reviews); slices.Contains(named, prompt.Suggest) {
 		if len(named) > 1 {
 			return nil, fmt.Errorf("%q must be the only --reviews value", prompt.Suggest)
 		}
 		o.reviews = prompt.Suggest
 	}
-	if contains(splitNames(o.exclude), prompt.Suggest) {
+	if slices.Contains(splitNames(o.exclude), prompt.Suggest) {
 		return nil, fmt.Errorf("%q is not a review name; it cannot be excluded", prompt.Suggest)
 	}
 
@@ -506,10 +506,6 @@ func splitNames(s string) []string {
 		}
 	}
 	return out
-}
-
-func contains(list []string, want string) bool {
-	return slices.Contains(list, want)
 }
 
 func terminalWidth() int {

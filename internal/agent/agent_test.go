@@ -107,7 +107,7 @@ func TestBuildCmdPlacesPromptLast(t *testing.T) {
 		if argv[len(argv)-1] != "PROMPT" {
 			t.Errorf("%s: prompt is not the last argument: %v", name, argv)
 		}
-		if spec.Model != "" && !contains(argv, spec.Model) {
+		if spec.Model != "" && !slices.Contains(argv, spec.Model) {
 			t.Errorf("%s: model missing from %v", name, argv)
 		}
 	}
@@ -139,7 +139,7 @@ func TestBuildCmdNoContinueForFreshOnlyAgents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if contains(argv, "-c") {
+	if slices.Contains(argv, "-c") {
 		t.Fatalf("unexpected resume flag: %v", argv)
 	}
 }
@@ -246,10 +246,6 @@ plugins:
 	if got := ParseDshProvider("nothing here"); got != "" {
 		t.Fatalf("got %q, want empty", got)
 	}
-}
-
-func contains(list []string, want string) bool {
-	return slices.Contains(list, want)
 }
 
 func TestParseUsagePicksUpThinkingTokens(t *testing.T) {
@@ -444,10 +440,10 @@ func TestDshStreamAsksForReadableSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if contains(plain, "--patch") {
+	if slices.Contains(plain, "--patch") {
 		t.Fatalf("no overlay should be passed without --stream: %v", plain)
 	}
-	if !contains(streamed, "--patch") {
+	if !slices.Contains(streamed, "--patch") {
 		t.Fatalf("stream mode should pass the overlay: %v", streamed)
 	}
 	if streamed[len(streamed)-1] != "P" {
