@@ -28,4 +28,5 @@ func registerTranscript(name string, u *agent.UsageSpec) error {
 }
 
 // tokenSourceLine tells doctor which token sources this build can read.
-const tokenSourceLine = "Token rates: from what agents print, plus their session transcripts (via toktop)."
+const tokenSourceLine = "Token rates: from what agents print, plus their session transcripts (via toktop)" +
+	crushSourceNote + "."

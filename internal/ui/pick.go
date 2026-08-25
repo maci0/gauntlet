@@ -10,6 +10,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // The launcher: the screen `gauntlet pick` opens so a run can be composed
@@ -149,8 +151,10 @@ func newPicker(cfg PickConfig) *picker {
 			{kind: optCount, label: "concurrency", n: 1,
 				help: "reviews at a time (-j), each in its own git worktree"},
 			{kind: optCycle, label: "suggest agent", flag: "--suggest-agent",
-				values: append([]string{"from the pool"}, cfg.Agents...),
-				help:   "which agent proposes the reviews"},
+				// "gauntlet" is the suggester that is not an agent: it reads
+				// the tree for signals, costs nothing, and answers at once.
+				values: append([]string{"from the pool", runner.FastSuggestAgent}, cfg.Agents...),
+				help:   "who proposes the reviews; gauntlet reads the files instead of asking a model"},
 			{kind: optToggle, label: "once", flag: "--once", on: true,
 				help: "one loop, then stop"},
 			{kind: optToggle, label: "dashboard", flag: "--tui", on: true,

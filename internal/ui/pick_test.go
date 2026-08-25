@@ -57,12 +57,16 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.toggle() // the cursor starts on the suggest row
 		}, "-C /home/dev/project --suggest --once --tui"},
 		{"a suggest agent is only passed for a suggested run", func(p *picker) {
-			p.opts[optSuggestAgent].idx = 2 // codex:gpt-5
+			p.opts[optSuggestAgent].idx = 3 // codex:gpt-5
 		}, "-C /home/dev/project --once --tui"},
 		{"the suggest agent rides along with suggest", func(p *picker) {
 			p.suggest = true
-			p.opts[optSuggestAgent].idx = 2
+			p.opts[optSuggestAgent].idx = 3
 		}, "-C /home/dev/project --suggest --suggest-agent codex:gpt-5 --once --tui"},
+		{"gauntlet itself can be the suggester", func(p *picker) {
+			p.suggest = true
+			p.opts[optSuggestAgent].idx = 1
+		}, "-C /home/dev/project --suggest --suggest-agent gauntlet --once --tui"},
 		{"a single review is named by its short name", func(p *picker) {
 			p.selected["ux-review"] = true
 		}, "-C /home/dev/project -r ux --once --tui"},

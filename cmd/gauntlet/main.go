@@ -77,7 +77,12 @@ type dirHandoff struct {
 	Loops int `json:"loops"`
 	// Pending is what the interrupted loop had not started yet, so the
 	// successor finishes that loop instead of starting it over.
-	Pending     []string        `json:"pending,omitempty"`
+	Pending []string `json:"pending,omitempty"`
+	// Reviews is the schedule this directory resolved, so a successor
+	// continues the same run instead of deciding again: a suggest step would
+	// ask an agent (and the user) a second time, and a launcher-composed run
+	// would open the launcher.
+	Reviews     []string        `json:"reviews,omitempty"`
 	CommitRuns  int             `json:"commit_runs,omitempty"`
 	CommitFails int             `json:"commit_fails,omitempty"`
 	Results     []runner.Result `json:"results,omitempty"`
@@ -205,7 +210,25 @@ func run(argv []string) int {
 		return cmdShowPrompt(stdout, runs[0].set, opts)
 	}
 
-	if err := planReviews(ctx, runs, opts, agents, stdout, pal); err != nil {
+	// Continue a run that a hot reload interrupted, so counters and the
+	// journal survive the swap.
+	var prior handoff
+	resumed := selfupdate.LoadState(&prior)
+	if prior.Dirs == nil {
+		prior.Dirs = map[string]dirHandoff{}
+	}
+	runID := prior.RunID
+	startedAt := prior.StartedAt
+	// One clock read for both the id and the shard: two reads either side of
+	// a UTC midnight would put a fresh run's id date and its directory one
+	// day apart.
+	now := time.Now()
+	if !resumed || runID == "" {
+		runID = journal.NewRunID(now)
+		startedAt = now
+	}
+
+	if err := planReviews(ctx, needPlanning(runs, prior, resumed), opts, agents, stdout, pal); err != nil {
 		if errors.Is(err, errAborted) {
 			return exitOK
 		}
@@ -247,28 +270,12 @@ func run(argv []string) int {
 	}
 	defer releaseAll(runs)
 
-	if opts.semcode {
+	// The index describes the tree, not this process: a reload inherits the
+	// one its predecessor built rather than spending another half hour.
+	if opts.semcode && !resumed {
 		if code := buildSemcodeIndex(ctx, stdout, runs); code != exitOK {
 			return code
 		}
-	}
-
-	// Continue a run that a hot reload interrupted, so counters and the
-	// journal survive the swap.
-	var prior handoff
-	resumed := selfupdate.LoadState(&prior)
-	if prior.Dirs == nil {
-		prior.Dirs = map[string]dirHandoff{}
-	}
-	runID := prior.RunID
-	startedAt := prior.StartedAt
-	// One clock read for both the id and the shard: two reads either side of
-	// a UTC midnight would put a fresh run's id date and its directory one
-	// day apart.
-	now := time.Now()
-	if !resumed || runID == "" {
-		runID = journal.NewRunID(now)
-		startedAt = now
 	}
 
 	jrnl, err := journal.Open(runID, now)
@@ -441,7 +448,7 @@ func run(argv []string) int {
 	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
-		if code := doReload(*path, runID, startedAt, runs, prior, stdout); code >= 0 {
+		if code := doReload(*path, runID, startedAt, runs, prior, argv, stdout); code >= 0 {
 			// The exec failed, so no successor is coming: finish the run here.
 			// Returning without the summary would orphan the whole journal,
 			// because the quiet close already skipped this process's index row
@@ -726,7 +733,8 @@ func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *r
 
 // doReload hands control to the new binary. It returns a nonnegative exit code
 // only when the exec failed and the caller should exit normally instead.
-func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff, out io.Writer) int {
+func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff,
+	argv []string, out io.Writer) int {
 	h := handoff{
 		RunID: runID, StartedAt: start, Reloads: prior.Reloads + 1,
 		Dirs: make(map[string]dirHandoff, len(runs)),
@@ -743,6 +751,7 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 		h.Dirs[d.dir] = dirHandoff{
 			Loops:       loops,
 			Pending:     pending,
+			Reviews:     d.reviews,
 			CommitRuns:  d.stats.CommitRuns(),
 			CommitFails: d.stats.CommitFails(),
 			// Seeded stats already include what earlier processes did, so this
@@ -757,7 +766,7 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 	// Locks are released here, before the exec: the successor takes them.
 	releaseAll(runs)
 	fmt.Fprintf(out, "Reloading into the new binary at %s\n", path)
-	if err := selfupdate.Reexec(path, statePath); err != nil {
+	if err := selfupdate.Reexec(path, statePath, argv); err != nil {
 		// The exec failed, so no successor will pick the handoff up; leaving
 		// it would strand one file in the state dir per failed reload.
 		if statePath != "" {
@@ -767,6 +776,22 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 		return exitFail
 	}
 	return -1 // unreachable: exec replaced this process
+}
+
+// needPlanning returns the directories whose reviews still have to be chosen,
+// after giving every resumed directory back the schedule it was already
+// running. A hot reload is a handover: choosing again would re-ask an agent
+// (and the user) with --suggest, or reopen the launcher for a run it composed.
+func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
+	out := runs[:0:0]
+	for _, d := range runs {
+		if carried := prior.Dirs[d.dir]; resumed && len(carried.Reviews) > 0 {
+			d.reviews = carried.Reviews
+			continue
+		}
+		out = append(out, d)
+	}
+	return out
 }
 
 // carriedPending is the part of the current loop this directory had not
