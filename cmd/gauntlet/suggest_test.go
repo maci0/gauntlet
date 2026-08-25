@@ -108,19 +108,34 @@ func TestSelectReviewsFiltersSuggestedReviewsThroughExclude(t *testing.T) {
 // trees would otherwise be one suggest timeout after another.
 func TestSuggestRunsForEveryDirectory(t *testing.T) {
 	// The fake agent answers with whatever the directory it runs in is named
-	// after: proof that each directory was asked on its own.
-	body := `case "$PWD" in
-	*a) echo "RELEVANT: sec-review: auth code";;
-	*) echo "RELEVANT: doc-review: docs drifted";;
-	esac
-	sleep 0.3`
+	// after: proof that each directory was asked on its own. Both agents also
+	// register a slot while they work, and report an overlap the moment two
+	// slots exist at once, which is proof of concurrency that no wall clock
+	// under load can fake or flake.
+	bar := t.TempDir()
+	body := `
+slots="` + bar + `/slots"
+mkdir -p "$slots"
+mkdir "$slots/$(basename "$PWD")" 2>/dev/null
+i=0
+while [ "$i" -lt 150 ]; do
+	if [ "$(ls "$slots" | wc -l)" -ge 2 ]; then
+		echo overlapping > "` + bar + `/concurrent"
+		break
+	fi
+	i=$((i+1))
+	sleep 0.02
+done
+case "$PWD" in
+*a) echo "RELEVANT: sec-review: auth code";;
+*) echo "RELEVANT: doc-review: docs drifted";;
+esac`
 	first, opts := suggestFixture(t, body)
 	second, _ := suggestFixture(t, body)
 	// Both directories share one agent binary and one options set.
 	second.dir = renameDir(t, second.dir, "a")
 
 	var out bytes.Buffer
-	start := time.Now()
 	err := planReviews(context.Background(), []*dirRun{first, second}, opts,
 		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
 	if err != nil {
@@ -132,8 +147,8 @@ func TestSuggestRunsForEveryDirectory(t *testing.T) {
 	if got := second.reviews; len(got) != 1 || got[0] != "sec-review" {
 		t.Fatalf("second directory scheduled %v, want its own answer", got)
 	}
-	if elapsed := time.Since(start); elapsed > 550*time.Millisecond {
-		t.Fatalf("the two suggest steps took %s: they ran one after another", elapsed)
+	if _, err := os.Stat(filepath.Join(bar, "concurrent")); err != nil {
+		t.Fatalf("the two suggest steps never overlapped, so they did not run together: %v", err)
 	}
 	if !strings.Contains(out.String(), "reviews in ") {
 		t.Fatalf("the report does not say which directory each answer belongs to:\n%s", out.String())
