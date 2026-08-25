@@ -64,7 +64,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 			if err != nil || !fi.Mode().IsRegular() {
 				continue
 			}
-			stem := strings.TrimSuffix(name, ".md")
+			stem := nfc(strings.TrimSuffix(name, ".md"))
 			if sanitize(stem) != stem {
 				warnings = append(warnings, "ignoring prompt with control characters in its name: "+sanitize(full))
 				continue
@@ -84,7 +84,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 		if ignored[path] {
 			continue
 		}
-		stem := strings.TrimSuffix(filepath.Base(path), ".md")
+		stem := nfc(strings.TrimSuffix(filepath.Base(path), ".md"))
 		if sanitize(stem) != stem {
 			warnings = append(warnings, "ignoring project prompt with control characters in its name: "+sanitize(path))
 			continue

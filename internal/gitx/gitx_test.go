@@ -26,6 +26,20 @@ func TestPorcelainPath(t *testing.T) {
 		{"?? a -> b", "a -> b"},
 		// Porcelain quotes paths containing special characters.
 		{`?? "sp ace.go"`, "sp ace.go"},
+		// With core.quotePath off, non-ASCII arrives raw inside the quotes
+		// when something else forced quoting.
+		{`?? "café.md"`, "café.md"},
+		// Octal escapes are how git encodes non-ASCII bytes when quoting is
+		// on; decoding them is what keeps é from arriving as \303\251.
+		{`?? "caf\303\251.md"`, "café.md"},
+		// A literal backslash in a filename arrives doubled inside quotes.
+		{` M "naïve\\dir\\file"`, `naïve\dir\file`},
+		{`?? "quo\"te.go"`, `quo"te.go`},
+		{`?? "tab\there.md"`, "tab\there.md"},
+		// A lone trailing backslash inside quotes stays verbatim.
+		{`?? "trail\"`, `trail\`},
+		{`?? "weird\qescape"`, `weird\qescape`},
+		{"?? café.md", "café.md"},
 		{"", ""},
 		{" M", ""},
 	}
@@ -193,6 +207,24 @@ func TestDirtyPathsHonorsOwnArtifacts(t *testing.T) {
 	}
 	if clean, err := r.IsClean(ctx, map[string]bool{real: true}); clean || err != nil {
 		t.Fatalf("a real edit is not clean: clean=%v err=%v", clean, err)
+	}
+}
+
+func TestDirtyPathsNonASCIIFilename(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	name := "café-review-notes.md"
+	if err := os.WriteFile(filepath.Join(r.Dir, name),
+		[]byte("notes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dirty, err := r.DirtyPaths(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirty) != 1 || dirty[0] != name {
+		t.Fatalf("non-ASCII path must survive git status verbatim, got %q", dirty)
 	}
 }
 

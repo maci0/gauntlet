@@ -91,7 +91,10 @@ func (s Set) Expand(list, flag string, emptyOK bool) ([]string, error) {
 	unknown := map[string]bool{}
 
 	for raw := range strings.SplitSeq(list, ",") {
-		name := strings.TrimSpace(raw)
+		// Names are identity and discovery stores them NFC-normalized; a
+		// decomposed spelling typed on the command line must find the same
+		// review (see nfc).
+		name := nfc(strings.TrimSpace(raw))
 		if name == "" {
 			continue
 		}
