@@ -96,6 +96,13 @@ func dshModelPatch(provider, model string) (string, error) {
 
 // writeDshPatch stores one overlay under the user cache dir and returns its
 // path, writing it at most once per process.
+//
+// The file is renamed over any existing copy rather than truncated in place:
+// the cache is shared across gauntlet processes, and another run's dsh child
+// may be reading this exact overlay as it starts. A reader that catches a
+// truncate sees an empty or half-written config; a rename is atomic, so every
+// reader gets one whole file, and identical content makes old and new
+// interchangeable.
 func writeDshPatch(key, body string) (string, error) {
 	dshPatchMu.Lock()
 	defer dshPatchMu.Unlock()
@@ -111,7 +118,22 @@ func writeDshPatch(key, body string) (string, error) {
 		return "", err
 	}
 	path := filepath.Join(dir, key+".yml")
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+key+".yml-*")
+	if err != nil {
+		return "", err
+	}
+	name := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(name) // no-op once the rename succeeded
+	}()
+	if _, err := tmp.WriteString(body); err != nil {
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		return "", err
+	}
+	if err := os.Rename(name, path); err != nil {
 		return "", err
 	}
 	dshPatches[key] = path

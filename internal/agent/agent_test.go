@@ -583,3 +583,65 @@ func TestDshStreamAsksForReadableSessions(t *testing.T) {
 		t.Fatalf("overlay does not disable compression:\n%s", body)
 	}
 }
+
+func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
+	cache := t.TempDir()
+	t.Setenv("XDG_CACHE_HOME", cache)
+	if got, err := os.UserCacheDir(); err != nil || got != cache {
+		t.Skip("UserCacheDir does not follow XDG_CACHE_HOME here")
+	}
+
+	dshPatchMu.Lock()
+	saved := maps.Clone(dshPatches)
+	clear(dshPatches)
+	dshPatchMu.Unlock()
+	defer func() {
+		dshPatchMu.Lock()
+		clear(dshPatches)
+		maps.Copy(dshPatches, saved)
+		dshPatchMu.Unlock()
+	}()
+
+	dir := filepath.Join(cache, "gauntlet", "dsh")
+	// Callers slug the key first (dshModelPatch), so it is always one path
+	// element.
+	path, err := writeDshPatch("prov_model", "body-one\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != filepath.Join(dir, "prov_model.yml") {
+		t.Fatalf("patch at %q, want %q", path, filepath.Join(dir, "prov_model.yml"))
+	}
+	if body, err := os.ReadFile(path); err != nil || string(body) != "body-one\n" {
+		t.Fatalf("first write wrong: %q, %v", body, err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Fatalf("patch mode %v, want 0600", fi.Mode().Perm())
+	}
+
+	// The cache is shared across processes: a rewrite must replace the file
+	// whole (rename) rather than truncate it in place, so a concurrent reader
+	// never sees a half-written overlay.
+	dshPatchMu.Lock()
+	delete(dshPatches, "prov_model")
+	dshPatchMu.Unlock()
+	if _, err := writeDshPatch("prov_model", "body-two\n"); err != nil {
+		t.Fatal(err)
+	}
+	if body, err := os.ReadFile(path); err != nil || string(body) != "body-two\n" {
+		t.Fatalf("overwrite lost or torn: %q, %v", body, err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".prov_model.yml-") {
+			t.Fatalf("temp file left behind: %s", e.Name())
+		}
+	}
+}

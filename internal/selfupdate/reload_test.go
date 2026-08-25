@@ -95,3 +95,43 @@ func TestSaveStateMarshalsWhatLoadStateReads(t *testing.T) {
 		t.Fatalf("loops not encoded: %s", raw)
 	}
 }
+
+func TestSaveStateReplacesWholeFile(t *testing.T) {
+	// The handoff is written moments before the exec: a rewrite must replace
+	// the file whole rather than truncate it in place, so a kill mid-write
+	// leaves either the old state or none instead of a blob that fails to
+	// parse and silently restarts every loop.
+	dir := t.TempDir()
+	first := handoffBlob{Loops: 1, Pending: []string{"a-review"}}
+	second := handoffBlob{Loops: 2, Pending: []string{"b-review", "c-review"}}
+
+	path, err := SaveState(dir, "run-1", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SaveState(dir, "run-1", second); err != nil {
+		t.Fatal(err)
+	}
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got handoffBlob
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("rewritten state does not parse (torn write?): %v", err)
+	}
+	if got.Loops != 2 || len(got.Pending) != 2 || got.Pending[1] != "c-review" {
+		t.Fatalf("rewrite lost: %+v", got)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "run-1.json" {
+			t.Fatalf("temp file left behind: %s", e.Name())
+		}
+	}
+}
