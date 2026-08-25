@@ -99,7 +99,7 @@ Review the following:
 (Native lifecycle, offline, battery, permissions, platform idioms, and store readiness belong to mobile-review. Here own small-viewport layout and touch usability.)
 - Touch interactions that do not work reliably on a small viewport
 - Content that overflows or is cut off on smaller screens
-- Interactive elements too close together for comfortable touch (WCAG 2.5.8 minimum size belongs to a11y-review)
+- Interactive elements too close together for comfortable touch (WCAG 2.2 SC 2.5.8 minimum size belongs to a11y-review)
 - Missing small-viewport patterns (stacked layout, reachable controls) where the existing design already uses them elsewhere
 - Desktop-only features with no small-viewport alternative
 - Text too small to read on mobile without zooming (note only; a11y-review owns text resize and zoom)

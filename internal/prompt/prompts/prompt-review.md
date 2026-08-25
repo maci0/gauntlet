@@ -71,7 +71,7 @@ Instructions:
 - Judge prompts as an agent consumes them, not as a human reads them: every sentence either changes agent behavior or costs attention.
 - Compare each prompt against its siblings before judging it alone; most defects are inconsistencies, not isolated flaws.
 - Fix with the smallest edit: sharpen a bullet, add a fence line, delete a duplicate. Never rewrite a prompt wholesale in one pass.
-- You may modify existing prompt files only where the execution environment permits it; never create new prompt files and never delete one.
+- You may modify existing prompt files only where the execution environment permits it; never delete one. Create a new prompt file only as the Missing-prompts rule below directs.
 - Report-shaped sections (`For each finding include`, `Output format`) stay: the runner strips them at compose time so standalone use still has a finding template. Do not delete them.
 - Do not review prompt templates inside application source (llm-review), shipped skills (skills-review), agent rule files (agentrules-review), general documentation (doc-review), or PRDs/ADRs/RFCs (specs-review).
 - Test factual claims (tool names, flags, standards) before flagging them; a wrong correction is worse than the original.

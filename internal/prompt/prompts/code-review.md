@@ -117,7 +117,7 @@ Review the following:
 10. Assertions and programmer errors
 (error-review owns operating errors that must be handled. test-review owns test assertions. fuzz-review owns harness assertions. slop-review removes speculative guards. Here own production assertions that encode the author's mental model. Add an assertion only for a property the function already requires or a concrete path can violate.)
 - Missing assertions on arguments, return values, preconditions, postconditions, or invariants. A function must not operate blindly on data it has not checked
-- Assertion density well below two per non-trivial function
+- Assertion density well below two per non-trivial function (a lead only: each added assertion still needs the property or concrete path above)
 - A property enforced on only one side of a boundary (assert before write but not after read; assert on send but not on receive). Pair assertions
 - Compound `assert(a && b)` instead of `assert(a); assert(b);`. Split asserts are easier to read and fail more precisely
 - Single-line implication not written as `if (a) assert(b)`
