@@ -4,6 +4,7 @@
 package journal
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -262,5 +263,48 @@ func TestEventsUnknownRun(t *testing.T) {
 	_, err = Events("nope")
 	if err == nil || !strings.Contains(err.Error(), "no journal for run nope") {
 		t.Errorf("existing tree, unknown id: got %v", err)
+	}
+}
+
+func TestEventsRejectsTraversalIDs(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	// A file the lookup must never reach even though the id names it.
+	outside := filepath.Join(home, "secret.jsonl")
+	if err := os.WriteFile(outside, []byte(`{"ev":"leaked"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, "runs", "2026-08-25"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{
+		"../secret",                         // climbs out of the shard
+		"..%2Fsecret",                       // percent junk is not an id either
+		filepath.Join("..", "..", "secret"), // separator-carrying
+		"20260825T120000Z-0001/../../../../../secret", // mixed
+		"",                                 // empty
+		strings.Repeat("a", maxRunIDLen+1), // overlong
+	} {
+		events, err := Events(id)
+		if err == nil || !errors.Is(err, ErrNoJournal) {
+			t.Errorf("id %q: want ErrNoJournal, got %v (%+v)", id, err, events)
+		}
+	}
+
+	// A generated id still resolves.
+	now := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	if err := j.Close(Summary{Start: now, End: now}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Events(id); err != nil {
+		t.Errorf("generated id rejected: %v", err)
 	}
 }

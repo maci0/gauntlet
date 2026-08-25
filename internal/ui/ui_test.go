@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
@@ -296,6 +297,35 @@ func TestScrollAnchorSurvivesRingTrim(t *testing.T) {
 	}
 	if got := m.feed[len(m.feed)-m.scroll-1].text; got != parkedAt {
 		t.Fatalf("parked reader now looks at %q, want %q", got, parkedAt)
+	}
+}
+
+// The feed mixes pre-normalized agent output with log lines carrying
+// fragments of a possibly hostile repository (git stderr, merge output).
+// Nothing may reach the screen able to drive or spoof the terminal, and
+// sanitization must not eat visible text.
+func TestFeedSanitizesUntrustedText(t *testing.T) {
+	m := newModel(demoConfig())
+	m.apply(runner.Event{Kind: runner.EvLog,
+		Text: "merge failed\x1b[2J\x07 in \u202Eevil\u202C", Time: m.cfg.Started})
+	m.apply(runner.Event{Kind: runner.EvOutput, Review: "sec-review", Agent: "claude",
+		Text: "plain output survives \x1b[31muntouched\x1b[0m", Time: m.cfg.Started})
+	if len(m.feed) != 2 {
+		t.Fatalf("feed holds %d lines, want 2", len(m.feed))
+	}
+	for i, l := range m.feed {
+		for _, r := range l.text {
+			if r == '\x1b' || unicode.Is(unicode.Cf, r) || unicode.IsControl(r) {
+				t.Fatalf("line %d kept a control or formatting rune (%q): %q", i, r, l.text)
+			}
+		}
+	}
+	logLine, outLine := m.feed[0].text, m.feed[1].text
+	for _, want := range []string{"merge failed[2J in evil", "plain output survives [31muntouched[0m"} {
+		if !strings.Contains(logLine+outLine, want) {
+			t.Fatalf("sanitization dropped visible text %q (log %q, output %q)",
+				want, logLine, outLine)
+		}
 	}
 }
 

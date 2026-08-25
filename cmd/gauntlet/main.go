@@ -110,9 +110,13 @@ func run(argv []string) int {
 
 	// --log tees every stream this process writes. Native multi-writer, not a
 	// tee subprocess: one less dependency and no broken-pipe failure mode.
+	//
+	// 0600, like the journal: the file captures agent output, and reviews
+	// quote what they find in the target tree, credentials included. On a
+	// multi-user host that must not land world-readable.
 	var logWriter io.Writer
 	if opts.logFile != "" {
-		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cannot write log file %s: %v\n", opts.logFile, err)
 			return exitUsage

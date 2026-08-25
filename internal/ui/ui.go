@@ -409,6 +409,11 @@ func (m *model) lane(label string) *laneState {
 }
 
 func (m *model) pushFeed(l feedLine) {
+	// The feed mixes pre-normalized agent output with log lines that carry
+	// fragments of a possibly hostile repository (git stderr, merge output,
+	// prompt names). Every line is sanitized here, once, so nothing reaches
+	// the terminal able to drive it; visible text is untouched.
+	l.text = normalize.Sanitize(l.text)
 	m.feed = append(m.feed, l)
 	if len(m.feed) > feedMax {
 		m.feed = m.feed[len(m.feed)-feedMax:]
