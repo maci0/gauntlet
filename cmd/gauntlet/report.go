@@ -265,6 +265,8 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 				detail = "timeout"
 			case runner.StatusConflict:
 				detail = "merge conflict, kept on " + f.Branch
+			case runner.StatusSkipped:
+				detail = "skipped: never ran (unknown name or unreadable prompt)"
 			case runner.StatusFail:
 				if f.ExitCode >= 0 {
 					detail = fmt.Sprintf("exit %d", f.ExitCode)
