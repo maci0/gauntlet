@@ -3,11 +3,12 @@
 Notable changes per release. Versions follow SemVer against this consumer
 contract: review names (`*-review.md` stems consumed by `--reviews`), set
 names (`quick`, `standard`, ...), CLI flags and their documented behavior,
-exit codes, and every non-internal Go package in this module another program
-can import (the Go import-compatibility rule). Removing or renaming any of
-these is breaking and waits for a major version; new flags and other
-additions may land in a minor. While the project was 0.x, other behavior
-changes could land in a minor instead and were listed under Changed.
+the documented environment variables, exit codes, and every non-internal Go
+package in this module another program can import (the Go
+import-compatibility rule). Removing or renaming any of these is breaking
+and waits for a major version; new flags and other additions may land in a
+minor. While the project was 0.x, other behavior changes could land in a
+minor instead and were listed under Changed.
 
 ## Unreleased
 
@@ -15,7 +16,9 @@ changes could land in a minor instead and were listed under Changed.
 
 - A release-contract guard. Tests now pin every surface this file declares
   consumer-facing: bundled review names, review set names, CLI flag names,
-  commands, exit codes, and that no importable Go package lives outside
+  commands, exit codes, the documented environment variable names
+  (`GAUNTLET_HOME`, `GITHUB_TOKEN`, `NO_COLOR`, `CLICOLOR_FORCE`,
+  `FORCE_COLOR`), and that no importable Go package lives outside
   `internal/`. Removing or renaming one fails the suite with the required
   bump kind spelled out, and a set member left pointing at a renamed review
   is caught instead of silently shrinking its set. This is the automated
@@ -28,6 +31,29 @@ changes could land in a minor instead and were listed under Changed.
   not list: `--seed`, `--opencode-db`, `--no-color`, `--hot-reload`,
   `--auto-update`, and `--update-repo`.
 - The help screen's environment section printed `TERM=dumb` twice.
+- `gauntlet show` sanitizes journal lines before printing them. An event's
+  text can carry fragments of the reviewed repository (git error output,
+  merge-conflict file names); JSON escaping removes control bytes but lets
+  bidi overrides through, so a hostile tree could rearrange how the replay
+  reads on a terminal. Every other display surface already stripped; the
+  replay path was missed.
+- A review that never ran says so in the final summary (`skipped: never ran
+  (unknown name or unreadable prompt)`) instead of listing itself with an
+  empty reason.
+- A project prompt saved with a UTF-8 byte-order mark keeps its first line:
+  editors on Windows write the mark in front of every file, and left in
+  place it hid the goal line descriptions are extracted from, so the
+  launcher and the suggest catalog showed such reviews as undescribed.
+- The suggest step fences a planted review *name* the way it already fenced
+  planted goal text: a project-local name carrying `</catalog>` or a
+  `RELEVANT:` marker cannot close its fence or forge a proposal line.
+- Launcher input matches how terminals actually send text: backspace deletes
+  one grapheme cluster rather than one code point (a dead-key accent leaves
+  with its letter), filter matching normalizes Unicode so a composed
+  spelling finds the same review the command line does, a tree with no
+  installed agent CLI is refused with its reason instead of composing a run
+  that fails on launch, and the row under the cursor explains itself in the
+  status line.
 
 ## 1.6.1
 

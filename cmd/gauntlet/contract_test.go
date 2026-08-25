@@ -14,15 +14,17 @@ import (
 )
 
 // CHANGELOG.md states the consumer contract: CLI flags, the commands, the
-// exit codes, and every importable non-internal Go package in this module are
-// API. Removing or renaming one is breaking and waits for the next major
-// version; additions may land in a minor. These snapshots turn drift into a
-// failed test, so every change to the surface is conscious, lands in the same
-// commit as its changelog entry, and gets the right bump kind.
+// environment variables, the exit codes, and every importable non-internal
+// Go package in this module are API. Removing or renaming one is breaking
+// and waits for the next major version; additions may land in a minor.
+// These snapshots turn drift into a failed test, so every change to the
+// surface is conscious, lands in the same commit as its changelog entry,
+// and gets the right bump kind.
 //
 // The flags snapshot rides on TestHelpMatchesTheRealFlags: helpGroups is
 // already proven equal to the registered flag set, so pinning help pins what
-// a consumer can type.
+// a consumer can type. The environment snapshot rides on helpEnvVars, whose
+// color names are compile-time tied to what colorEnabled reads.
 
 // goldenFlagNames is every flag name (long and short) consumers can pass.
 var goldenFlagNames = []string{
@@ -65,6 +67,18 @@ var goldenCommands = []string{
 // goldenExitCodes is the exit-code contract documented in docs/CLI.md.
 var goldenExitCodes = []string{"0", "1", "2", "75", "130"}
 
+// goldenEnvVars is the environment-variable surface: the names docs/CLI.md
+// and the help screen tell consumers to set. GAUNTLET_STATE is deliberately
+// absent; docs/CLI.md documents it as a hot-reload handoff detail, not part
+// of the contract.
+var goldenEnvVars = []string{
+	"CLICOLOR_FORCE",
+	"FORCE_COLOR",
+	"GAUNTLET_HOME",
+	"GITHUB_TOKEN",
+	"NO_COLOR",
+}
+
 func TestFlagNamesMatchTheContract(t *testing.T) {
 	var got []string
 	for name := range documentedFlags() {
@@ -87,6 +101,14 @@ func TestExitCodesMatchTheContract(t *testing.T) {
 		got = append(got, c.Code)
 	}
 	assertSurfaceUnchanged(t, "exit code", goldenExitCodes, got)
+}
+
+func TestEnvVarNamesMatchTheContract(t *testing.T) {
+	got := make([]string, 0, len(helpEnvVars))
+	for _, e := range helpEnvVars {
+		got = append(got, e.Name)
+	}
+	assertSurfaceUnchanged(t, "environment variable", goldenEnvVars, got)
 }
 
 // A package outside internal/ that is not a main package is importable by
