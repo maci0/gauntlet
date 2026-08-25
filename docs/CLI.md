@@ -98,7 +98,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
 | `--stream` | Ask agents for machine-readable output where they support it: live token counts, and the reasoning/output split shown separately in the feed. |
-| `--no-color` | Disable color. The `NO_COLOR` environment variable does the same. |
+| `--no-color` | Disable color everywhere, the plain log and the dashboard/launcher both. The `NO_COLOR` environment variable does the same. |
 | `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. |
 | `-V, --version` | Print the version. |
