@@ -42,6 +42,9 @@ what it should offer.
 
 ## Options
 
+Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
+`--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use.
+
 **Choosing reviews**
 
 | Flag | Default | Purpose |

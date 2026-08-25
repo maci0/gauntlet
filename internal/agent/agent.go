@@ -17,6 +17,7 @@ import (
 	"sync"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // Spec is one agent, optionally pinned to a model. The zero value is invalid.
@@ -514,12 +515,7 @@ func ParseBin(s string) (string, string, error) {
 		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, hint,
 			strings.Join(AllNames(), ", "))
 	}
-	expanded := os.ExpandEnv(path)
-	if strings.HasPrefix(expanded, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			expanded = filepath.Join(home, expanded[2:])
-		}
-	}
+	expanded := gauntlethome.ExpandPath(path)
 	// A path with a directory component is used as is; a bare name searches
 	// PATH without cwd-relative entries. Either way the result is absolute
 	// before any chdir, so a relative --bin cannot retarget into the tree.

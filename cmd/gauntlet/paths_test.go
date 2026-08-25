@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/journal"
 )
 
@@ -17,21 +18,21 @@ func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if got := expandPath("~/src"); got != filepath.Join(home, "src") {
+	if got := gauntlethome.ExpandPath("~/src"); got != filepath.Join(home, "src") {
 		t.Errorf("~/src expanded to %q", got)
 	}
-	if got := expandPath("~"); got != "~" {
+	if got := gauntlethome.ExpandPath("~"); got != "~" {
 		t.Errorf("a bare ~ must be left alone, got %q", got)
 	}
-	if got := expandPath("~other/src"); got != "~other/src" {
+	if got := gauntlethome.ExpandPath("~other/src"); got != "~other/src" {
 		t.Errorf("another user's home is not ours to expand: %q", got)
 	}
 
 	t.Setenv("GAUNTLET_TEST_DIR", filepath.Join(home, "env"))
-	if got := expandPath("$GAUNTLET_TEST_DIR/sub"); got != filepath.Join(home, "env", "sub") {
+	if got := gauntlethome.ExpandPath("$GAUNTLET_TEST_DIR/sub"); got != filepath.Join(home, "env", "sub") {
 		t.Errorf("$VAR not expanded: %q", got)
 	}
-	if got := expandPath("/plain/path"); got != "/plain/path" {
+	if got := gauntlethome.ExpandPath("/plain/path"); got != "/plain/path" {
 		t.Errorf("plain path changed: %q", got)
 	}
 }
