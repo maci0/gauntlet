@@ -217,6 +217,46 @@ func TestSuggestPromptTruncatesOnRuneBoundary(t *testing.T) {
 	}
 }
 
+// The catalog budget counts runes, not bytes: a CJK description within the
+// budget must survive whole (three bytes per character cannot eat the
+// allowance), and one past it must be cut to exactly catalogDescMax code
+// points on a rune boundary.
+func TestSuggestPromptCatalogBudgetCountsRunes(t *testing.T) {
+	dir := t.TempDir()
+	// 120 runes, 360 bytes: over no plausible byte reading of the budget,
+	// safely under the rune budget.
+	write(t, filepath.Join(dir, "cjk-review.md"),
+		"Your goal is to "+strings.Repeat("設計審査", 30)+"\n")
+	set, _, err := Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := SuggestPrompt(set, set.Names)
+	if strings.Contains(got, "…") {
+		t.Fatalf("a description within the rune budget was cut:\n%s", got)
+	}
+
+	long := filepath.Join(dir, "longcjk-review.md")
+	write(t, long, "Your goal is to "+strings.Repeat("字", catalogDescMax+10)+"\n")
+	set2, _, err := Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got2 := SuggestPrompt(set2, set2.Names)
+	entry := "longcjk-review: "
+	i := strings.Index(got2, entry)
+	if i < 0 {
+		t.Fatalf("catalog entry for longcjk-review missing:\n%s", got2)
+	}
+	line := got2[i+len(entry):]
+	if j := strings.IndexByte(line, '\n'); j >= 0 {
+		line = line[:j]
+	}
+	if n := utf8.RuneCountInString(line); n != catalogDescMax {
+		t.Fatalf("cut entry is %d code points, want %d: %q", n, catalogDescMax, line)
+	}
+}
+
 // The BOM Windows editors write in front of a file declares the encoding; it
 // must not count as content, or it hides the first line from the description
 // reader and rides along into composed prompts.

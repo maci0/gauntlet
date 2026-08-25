@@ -88,6 +88,30 @@ func TestClosestNormalization(t *testing.T) {
 	}
 }
 
+// Fold maps every rune to its orbit's smallest member, so strings differing
+// only by case (including the pairs lowercasing cannot equate, like final and
+// ordinary sigma) compare equal. It is idempotent: folding a folded string
+// changes nothing.
+func TestFold(t *testing.T) {
+	tests := []struct {
+		a, b string
+	}{
+		{"quick", "QUICK"},
+		{"sigma", "SIGMA"},
+		// Lowercasing equates neither of these pairs; folding must.
+		{"\u03C3", "\u03C2"},         // ordinary vs final sigma
+		{"ſec-review", "sec-review"}, // U+017F LONG S vs s
+	}
+	for _, tt := range tests {
+		if Fold(tt.a) != Fold(tt.b) {
+			t.Errorf("Fold(%q) = %q != Fold(%q) = %q", tt.a, Fold(tt.a), tt.b, Fold(tt.b))
+		}
+	}
+	if got := Fold(Fold("AbC")); got != Fold("AbC") {
+		t.Errorf("Fold is not idempotent: %q", got)
+	}
+}
+
 func TestEditDistance(t *testing.T) {
 	tests := []struct {
 		a, b string

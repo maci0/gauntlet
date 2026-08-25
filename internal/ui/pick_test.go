@@ -219,6 +219,25 @@ func TestPickFilterMatchesDecomposedSpelling(t *testing.T) {
 	}
 }
 
+// Case in the filter is folded, not lowercased, so one spelling of a letter
+// finds text spelled with another: lowercasing equates neither the Greek
+// final and ordinary sigma nor the long and round s, folding equates both.
+func TestPickFilterFoldsCase(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Groups[1].Reviews = append(p.cfg.Groups[1].Reviews,
+		PickReview{Name: "logos-review", Desc: "the \u03BB\u03BF\u03B3\u03BF\u03C2 of the code", Project: true})
+	p.filter = "\u03BB\u03BF\u03B3\u039F\u03A3" // uppercase, ordinary sigma
+	found := false
+	for _, r := range p.rows() {
+		if r.kind == rowReview && r.review.Name == "logos-review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a query spelled with one sigma must find text spelled with the other")
+	}
+}
+
 // One backspace is one keystroke's worth of text, not one code point: a
 // combining accent typed separately from its letter must leave with it.
 func TestPickBackspaceRemovesWholeCluster(t *testing.T) {
