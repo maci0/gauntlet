@@ -195,6 +195,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 	for _, e := range []struct{ Name, Help string }{
 		{"GAUNTLET_HOME", "where run journals live (default ~/.gauntlet)"},
 		{"NO_COLOR", "disable color, however it is set"},
+		{"TERM=dumb", "disables color unless forced"},
 		{"CLICOLOR_FORCE", "keep color when the output is piped"},
 		{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
 		{"GITHUB_TOKEN", "used for release lookups, to avoid rate limits"},

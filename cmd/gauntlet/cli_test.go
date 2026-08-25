@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/journal"
 )
 
@@ -206,5 +207,21 @@ func TestBinRunnable(t *testing.T) {
 		if got := binRunnable(c.path); got != c.want {
 			t.Errorf("binRunnable(%q) = %v, want %v", c.path, got, c.want)
 		}
+	}
+}
+
+// Pinning every agent to an override that names nothing runnable is the empty
+// box again: doctor must say so and exit 1, not report a working setup
+// because an override was present.
+func TestDoctorBrokenOverridesExitLikeAnEmptyBox(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	bin := filepath.Join(t.TempDir(), "missing")
+	overrides := make(map[string]string)
+	for _, a := range agent.AllNames() {
+		overrides[a] = bin
+	}
+	var out strings.Builder
+	if code := doctor(&out, palette{}, overrides, 100); code != 1 {
+		t.Errorf("only broken --bin overrides should exit 1, got %d:\n%s", code, out.String())
 	}
 }
