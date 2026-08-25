@@ -23,6 +23,15 @@ import (
 // killGrace is how long a process group gets between SIGTERM and SIGKILL.
 const killGrace = 10 * time.Second
 
+// maxLineBytes bounds one logical line handed to the parsers. Agent output is
+// untrusted, and a single physical line can be megabytes (a minified bundle,
+// an embedded tool result). Above the cap a line is emitted in chunks rather
+// than ending the read: a reader that gives up on an overlong line stops
+// draining the pipe, the child then blocks on write and sits there until the
+// timeout kills it, so one huge line would burn the review's whole budget on
+// display plumbing.
+const maxLineBytes = 4 << 20
+
 // streamLineCols is the width cap for one line of agent output, shared by the
 // normalizer and by stream events that bypass it (thinking lines, raw echo).
 const streamLineCols = 2000
@@ -146,15 +155,12 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			MaxLinesPerSec: o.MaxLinesPerSec,
 			MaxWidth:       streamLineCols,
 		})
-		sc := bufio.NewScanner(r)
-		sc.Buffer(make([]byte, 0, 64<<10), 4<<20)
 		emit := func(l normalize.Line) {
 			if o.Sink != nil {
 				o.Sink(l)
 			}
 		}
-		for sc.Scan() {
-			line := sc.Text()
+		handle := func(line string) {
 			tailMu.Lock()
 			_, _ = tail.WriteString(line)
 			_, _ = tail.WriteString("\n")
@@ -172,13 +178,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 						Total:    pick(ev.Usage.Total),
 					})
 					emitStream(ev, norm, emit)
-					continue
+					return
 				}
 			}
 
 			observe(line)
 			if o.Sink == nil {
-				continue
+				return
 			}
 			if o.Raw {
 				// Verbatim means the visible characters survive untouched; the
@@ -186,12 +192,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 				// terminal do not. Agent output is untrusted, and this line is
 				// headed for a terminal (or a log file) as-is.
 				emit(normalize.Line{Text: normalize.Display(line), Repeat: 1})
-				continue
+				return
 			}
 			for _, l := range norm.Push(line) {
 				emit(l)
 			}
 		}
+		scanLines(r, handle)
 		for _, l := range norm.Flush() {
 			emit(l)
 		}
@@ -246,6 +253,53 @@ func pick(n int) int {
 		return -1
 	}
 	return n
+}
+
+// scanLines splits r into lines and hands each to handle. It is bufio.Scanner
+// with ScanLines plus one difference: a line past maxLineBytes is emitted in
+// bounded chunks instead of ending the read (see maxLineBytes). A trailing
+// carriage return is dropped like ScanLines would; a final line without a
+// newline still arrives.
+func scanLines(r io.Reader, handle func(line string)) {
+	br := bufio.NewReaderSize(r, 64<<10)
+	var buf []byte
+	emit := func(b []byte) {
+		handle(strings.TrimSuffix(string(b), "\r"))
+	}
+	for {
+		chunk, err := br.ReadSlice('\n')
+		if err == bufio.ErrBufferFull {
+			// The line continues past the read buffer: accumulate until it
+			// ends or reaches the cap, whichever comes first.
+			buf = append(buf, chunk...)
+			if len(buf) >= maxLineBytes {
+				emit(buf)
+				buf = buf[:0]
+			}
+			continue
+		}
+		if len(chunk) > 0 {
+			if chunk[len(chunk)-1] == '\n' {
+				if len(buf) == 0 {
+					emit(chunk[:len(chunk)-1])
+				} else {
+					buf = append(buf, chunk[:len(chunk)-1]...)
+					emit(buf)
+					buf = buf[:0]
+				}
+			} else {
+				buf = append(buf, chunk...)
+			}
+		}
+		if err != nil {
+			// EOF or a failed read: whatever is left in the buffer is the
+			// stream's last, unterminated line.
+			if len(buf) > 0 {
+				emit(buf)
+			}
+			return
+		}
+	}
 }
 
 // emitStream turns one parsed event into feed lines: reasoning first, then
@@ -326,11 +380,18 @@ func exitCode(cmd *exec.Cmd, err error) int {
 	return -1
 }
 
-// captureProc runs a command to completion and returns its stdout. Used for
-// the short helper steps (suggest triage, the semcode indexer) where the
-// output is parsed rather than streamed.
+// suggestTailBytes bounds what the triage step keeps of an agent's output.
+// The RELEVANT lines are pinned to the very end by the prompt, and dozens of
+// them at ~100 bytes each sit far below this, so nothing parseable is lost
+// while memory stays flat no matter how much the agent prints.
+const suggestTailBytes = 1 << 20
+
+// captureProc runs a command to completion and returns the tail of its stdout.
+// Used for the short helper steps whose output is parsed rather than streamed:
+// today that is the suggest triage. The bound is what makes an output loop in
+// the child a bounded annoyance instead of unbounded memory growth.
 func captureProc(ctx context.Context, argv []string, dir string, timeout time.Duration) (string, procResult) {
-	var sb strings.Builder
+	tail := agent.NewTail(suggestTailBytes)
 	var mu sync.Mutex
 	res := runProc(ctx, procOpts{
 		Argv:    argv,
@@ -339,10 +400,12 @@ func captureProc(ctx context.Context, argv []string, dir string, timeout time.Du
 		Raw:     true,
 		Sink: func(l normalize.Line) {
 			mu.Lock()
-			sb.WriteString(l.Text)
-			sb.WriteByte('\n')
+			_, _ = tail.WriteString(l.Text)
+			_, _ = tail.WriteString("\n")
 			mu.Unlock()
 		},
 	})
-	return sb.String(), res
+	mu.Lock()
+	defer mu.Unlock()
+	return string(tail.Bytes()), res
 }

@@ -154,6 +154,30 @@ func TestBuildCmdBinaryOverride(t *testing.T) {
 	}
 }
 
+func TestBuildCmdRefusesAPromptOverTheArgvLimit(t *testing.T) {
+	// Linux fails the whole exec with E2BIG once one argument passes
+	// MAX_ARG_STRLEN; a prompt past MaxPromptArg must be refused here, once,
+	// instead of failing at launch on every agent.
+	big := strings.Repeat("a", MaxPromptArg+1)
+	for _, tool := range []string{"claude", "codex", "opencode"} {
+		if _, err := BuildCmd(Spec{Tool: tool}, big, BuildOpts{}); err == nil {
+			t.Errorf("%s: accepted a %d-byte argument", tool, len(big))
+		}
+	}
+	// A custom definition splices the prompt into its own argv; the guard must
+	// hold there too.
+	if _, err := BuildCmd(Spec{Tool: "pi"}, big, BuildOpts{}); err == nil {
+		t.Error("custom agent accepted an oversized prompt")
+	}
+	small, err := BuildCmd(Spec{Tool: "claude"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if small[len(small)-1] != "P" {
+		t.Fatalf("normal prompts broken: %v", small)
+	}
+}
+
 func TestParseUsage(t *testing.T) {
 	cases := []struct {
 		name      string

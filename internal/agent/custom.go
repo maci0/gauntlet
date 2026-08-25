@@ -296,8 +296,5 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 	argv = append(argv, head[promptAt:]...)
 
 	argv = expand(argv)
-	if opts.Binary != "" {
-		argv[0] = opts.Binary
-	}
 	return argv
 }

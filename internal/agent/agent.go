@@ -339,11 +339,49 @@ type BuildOpts struct {
 	Stream bool
 }
 
+// MaxPromptArg bounds one exec argument. A composed prompt travels as a
+// single argv element, and Linux refuses the whole exec with E2BIG once one
+// argument passes MAX_ARG_STRLEN (32 pages, about 128 KiB). Prompt files are
+// accepted well past that, so without this check an oversized review would
+// fail at launch on every agent instead of failing here, once, by name.
+// The margin below MAX_ARG_STRLEN leaves room for the flags around it.
+const MaxPromptArg = 120 << 10
+
 // BuildCmd returns the argv that runs one prompt headlessly through spec.
 func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
+	var (
+		cmd []string
+		err error
+	)
 	if def, ok := CustomDef(spec.Tool); ok {
-		return buildCustom(def, spec, prompt, opts), nil
+		cmd = buildCustom(def, spec, prompt, opts)
+	} else if cmd, err = buildBuiltin(spec, prompt, opts); err != nil {
+		return nil, err
 	}
+	if opts.Stream {
+		if flags, ok := streamFlags[spec.Tool]; ok {
+			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
+		}
+	}
+	if opts.Continue {
+		if flags, ok := continueFlags[spec.Tool]; ok {
+			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
+		}
+	}
+	if opts.Binary != "" {
+		cmd[0] = opts.Binary
+	}
+	for _, a := range cmd {
+		if len(a) > MaxPromptArg {
+			return nil, fmt.Errorf("an argument is %d bytes, over the %d-byte "+
+				"single-argument exec limit: the composed prompt cannot be dispatched, "+
+				"shorten or split it", len(a), MaxPromptArg)
+		}
+	}
+	return cmd, nil
+}
+
+func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	var cmd []string
 	switch spec.Tool {
 	case "claude":
@@ -441,19 +479,6 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = append(cmd, "-p", prompt)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", spec.Tool)
-	}
-	if opts.Stream {
-		if flags, ok := streamFlags[spec.Tool]; ok {
-			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
-		}
-	}
-	if opts.Continue {
-		if flags, ok := continueFlags[spec.Tool]; ok {
-			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
-		}
-	}
-	if opts.Binary != "" {
-		cmd[0] = opts.Binary
 	}
 	return cmd, nil
 }
