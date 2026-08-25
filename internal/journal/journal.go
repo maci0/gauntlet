@@ -242,6 +242,9 @@ const recentChunk = 256 << 10
 // returning up to n of them newest first. dropFirst says whether the head of
 // data may cut a line in half (it does whenever the slice starts past byte 0).
 func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) {
+	if n <= 0 {
+		return nil, false // up to zero entries is no entries
+	}
 	lines := strings.Split(string(data), "\n")
 	first := 0
 	if dropFirst && len(lines) > 0 {

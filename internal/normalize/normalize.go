@@ -236,7 +236,7 @@ func clean(raw string) (string, bool) {
 // (bidi overrides included) that can drive or spoof a terminal. Tabs become
 // spaces so alignment survives.
 func stripControl(s string) string {
-	if !strings.ContainsFunc(s, isControl) {
+	if !strings.ContainsRune(s, '\t') && !strings.ContainsFunc(s, isControl) {
 		return s
 	}
 	var b strings.Builder
