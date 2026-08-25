@@ -18,6 +18,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl.
@@ -84,7 +85,13 @@ func cmdShow(out io.Writer, runID string) int {
 		delete(ev, "ts")
 		delete(ev, "ev")
 		rest, _ := json.Marshal(ev)
-		fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, string(rest))
+		// The journal records events verbatim, and event text can carry
+		// fragments of a hostile repository (git error output, merge-conflict
+		// file names). json.Marshal escapes control bytes but lets bidi
+		// overrides and other formatting characters through, and this line
+		// goes straight to a terminal: strip them here, where every other
+		// display surface already does.
+		fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
