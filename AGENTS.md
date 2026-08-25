@@ -2,7 +2,10 @@
 
 The Go implementation of gauntlet: ~50 review prompts dispatched to installed AI coding
 agents, applying fixes to the working tree. One static binary, prompts
-embedded, bubbletea for the dashboard, everything else standard library.
+embedded, small dependency surface: bubbletea and lipgloss for the
+dashboard, toktop for transcript token counts (build with `TAGS=notoktop`
+to drop it), `x/term` and `uniseg` for terminal text, everything else
+standard library.
 
 ## Build and test
 
@@ -17,9 +20,9 @@ embedded, bubbletea for the dashboard, everything else standard library.
 
 `cmd/gauntlet` is flags and dispatch only. Everything real lives in
 `internal/`, and dependencies point one way: `runner` uses `agent`, `prompt`,
-`normalize`, `gitx`, `streamjson`; `ui` uses the runner's event types plus
-the shared `normalize` and `humanize`. Nothing imports `ui`, so a headless
-run costs nothing.
+`normalize`, `gitx`, `streamjson`, `humanize`; `ui` uses the runner's event
+types plus the shared `normalize` and `humanize`. No package inside
+`internal/` imports `ui`, so a headless run costs nothing.
 
 ## Rules that are not style preferences
 
