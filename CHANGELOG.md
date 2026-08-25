@@ -48,10 +48,16 @@ changes could land in a minor instead and were listed under Changed.
 - crush's token counts are read from its project database (`.crush/crush.db`,
   `sessions.completion_tokens`) in builds with `-tags sqlite`, the same tag
   `--opencode-db` needs. Only sessions written during a review count toward
-  it. `gauntlet doctor` says whether this build can read them.
+  it. `gauntlet doctor` says whether this build can read them. The reading
+  lives in toktop's `agentusage` with every other agent's, not here (toktop
+  v0.4.3).
 
 ### Fixed
 
+- Token counts are not lost by a short review: toktop's final read was reusing
+  a cached listing that predates the transcript the review just wrote, so a
+  review finishing within a second of its first output reported nothing at
+  all. Fixed in toktop v0.4.3, which this release requires.
 - A hot reload is a handover again, not a restart. The successor is exec'd
   with the arguments this process is running rather than the ones it was typed
   with, and every resumed directory keeps the schedule it had already

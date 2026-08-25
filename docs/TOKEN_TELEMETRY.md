@@ -160,7 +160,7 @@ from its own `--help`, transcript layouts from its own session files.
 | omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in |
 | dsh | with `--stream` | yes | its session log, once `--stream` asks for it uncompressed (below) |
-| crush | no | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read with `-tags sqlite`, no flag needed |
+| crush | no | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | no | no | its binary builds `storage/session/{info,message,part}` under an XDG data root, but nothing is materialized on the machine checked, so an adapter would be guesswork |
 | agy | only if it prints a counter | no | no machine-readable mode and no transcript store found |
 
