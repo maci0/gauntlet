@@ -6,10 +6,11 @@ package ui
 import (
 	"fmt"
 	"strings"
-	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/rivo/uniseg"
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/maci0/gauntlet/internal/runner"
 )
@@ -285,8 +286,7 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		p.typing = false // the filter stays, the keys go back to the panes
 	case "backspace":
 		if p.filter != "" {
-			_, size := utf8.DecodeLastRuneInString(p.filter)
-			p.filter = p.filter[:len(p.filter)-size]
+			p.filter = trimLastCluster(p.filter)
 		}
 	case "up", "down":
 		p.move(map[string]int{"up": -1, "down": +1}[key])
@@ -297,6 +297,23 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	}
 	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
 	return p, nil
+}
+
+// trimLastCluster removes the final grapheme cluster of s. One backspace is
+// one keystroke's worth of text: a dead-key accent, an emoji sequence, or a
+// flag arrives as several code points and must leave as one, or deleting a
+// decomposed é would first peel the accent off and leave the letter behind.
+func trimLastCluster(s string) string {
+	cut := 0
+	rest := s
+	for len(rest) > 0 {
+		var cluster string
+		cluster, rest, _, _ = uniseg.FirstGraphemeClusterInString(rest, -1)
+		if len(rest) == 0 {
+			cut = len(s) - len(cluster)
+		}
+	}
+	return s[:cut]
 }
 
 // concurrency is the run pane's job-count row, which +/- reach from any pane:
@@ -436,15 +453,21 @@ func (p *picker) groupOn(i int) int {
 
 // matching is the members of a group the current filter keeps, by name or by
 // what the review says it does.
+//
+// Both sides are normalized to NFC first: discovery stores every name NFC
+// (see prompt.Set), but typed text arrives in whatever form the terminal
+// sends, and a dead-key or IME spelling of the same word must find the same
+// review here that --reviews finds on the command line. Case is then folded
+// with simple lowercasing on both sides, symmetric and locale-independent.
 func (p *picker) matching(g PickGroup) []PickReview {
 	if p.filter == "" {
 		return g.Reviews
 	}
-	needle := strings.ToLower(p.filter)
+	needle := strings.ToLower(norm.NFC.String(p.filter))
 	var out []PickReview
 	for _, rev := range g.Reviews {
-		if strings.Contains(strings.ToLower(rev.Name), needle) ||
-			strings.Contains(strings.ToLower(rev.Desc), needle) {
+		if strings.Contains(strings.ToLower(norm.NFC.String(rev.Name)), needle) ||
+			strings.Contains(strings.ToLower(norm.NFC.String(rev.Desc)), needle) {
 			out = append(out, rev)
 		}
 	}

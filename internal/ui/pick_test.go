@@ -199,6 +199,42 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	}
 }
 
+// Discovery stores every review name NFC, while typed text arrives in
+// whatever form the terminal sends it: a dead-key accent lands as its own
+// rune after the letter. The filter must still find the review, the same way
+// --reviews does on the command line.
+func TestPickFilterMatchesDecomposedSpelling(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Groups[1].Reviews = append(p.cfg.Groups[1].Reviews,
+		PickReview{Name: "caf\u00e9-review", Desc: "taste and aroma", Project: true})
+	p.filter = "cafe\u0301" // decomposed: e + combining acute
+	found := false
+	for _, r := range p.rows() {
+		if r.kind == rowReview && r.review.Name == "caf\u00e9-review" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a decomposed spelling of the same word must match an NFC name")
+	}
+}
+
+// One backspace is one keystroke's worth of text, not one code point: a
+// combining accent typed separately from its letter must leave with it.
+func TestPickBackspaceRemovesWholeCluster(t *testing.T) {
+	p := demoPicker()
+	press(p, "/")
+	press(p, "c", "a", "f", "e")
+	p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("\u0301")})
+	if got, want := p.filter, "cafe\u0301"; got != want {
+		t.Fatalf("filter is %q, want %q", got, want)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if got, want := p.filter, "caf"; got != want {
+		t.Fatalf("backspace left %q, want %q: the accent must not outlive its letter", got, want)
+	}
+}
+
 // Worktree isolation needs a clean tree, so the launcher says so instead of
 // composing a command that fails on launch.
 func TestPickRefusesConcurrencyOnADirtyTree(t *testing.T) {
