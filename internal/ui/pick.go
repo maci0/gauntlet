@@ -12,6 +12,7 @@ import (
 	"github.com/rivo/uniseg"
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
@@ -457,17 +458,19 @@ func (p *picker) groupOn(i int) int {
 // Both sides are normalized to NFC first: discovery stores every name NFC
 // (see prompt.Set), but typed text arrives in whatever form the terminal
 // sends, and a dead-key or IME spelling of the same word must find the same
-// review here that --reviews finds on the command line. Case is then folded
-// with simple lowercasing on both sides, symmetric and locale-independent.
+// review here that --reviews finds on the command line. Case is then folded,
+// not lowercased, so one spelling of a letter (final and ordinary sigma)
+// finds the other; the same convention guides the "did you mean" hints
+// (see fuzzy.Closest).
 func (p *picker) matching(g PickGroup) []PickReview {
 	if p.filter == "" {
 		return g.Reviews
 	}
-	needle := strings.ToLower(norm.NFC.String(p.filter))
+	needle := fuzzy.Fold(norm.NFC.String(p.filter))
 	var out []PickReview
 	for _, rev := range g.Reviews {
-		if strings.Contains(strings.ToLower(norm.NFC.String(rev.Name)), needle) ||
-			strings.Contains(strings.ToLower(norm.NFC.String(rev.Desc)), needle) {
+		if strings.Contains(fuzzy.Fold(norm.NFC.String(rev.Name)), needle) ||
+			strings.Contains(fuzzy.Fold(norm.NFC.String(rev.Desc)), needle) {
 			out = append(out, rev)
 		}
 	}

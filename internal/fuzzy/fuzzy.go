@@ -6,6 +6,7 @@
 package fuzzy
 
 import (
+	"strings"
 	"unicode"
 
 	"golang.org/x/text/unicode/norm"
@@ -29,6 +30,23 @@ func Closest(want string, candidates []string) string {
 		}
 	}
 	return best
+}
+
+// Fold canonicalizes case: every rune is mapped to the smallest rune of its
+// simple-fold orbit. Lowercasing misses the pairs whose lowercase forms
+// differ from their fold forms (Greek final and ordinary sigma, long and
+// round s), so a query typed with one spelling would not find text spelled
+// with the other; folding equates them on both sides.
+func Fold(s string) string {
+	return strings.Map(func(r rune) rune {
+		lo := r
+		for t := unicode.SimpleFold(r); t != r; t = unicode.SimpleFold(t) {
+			if t < lo {
+				lo = t
+			}
+		}
+		return lo
+	}, s)
 }
 
 // distance is how far a typo may stray and still earn a hint.

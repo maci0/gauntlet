@@ -193,12 +193,19 @@ func SuggestPrompt(set Set, names []string) string {
 		}
 		desc = strings.ReplaceAll(desc, "</catalog>", "</ catalog>")
 		desc = relevantTokenRe.ReplaceAllString(desc, "relevant-")
-		if len(desc) > catalogDescMax {
-			// Cut on a rune boundary: a multibyte description must not end in
-			// mojibake (the same rule the --list renderer applies).
-			cut := catalogDescMax - 1
-			for cut > 0 && !utf8.RuneStart(desc[cut]) {
-				cut--
+		// The budget counts runes like every other display limit here
+		// (--list's truncateDesc, normalize.Truncate), not bytes: a CJK
+		// description must keep its full allowance. The cut lands on a rune
+		// boundary so a multibyte description cannot end in mojibake.
+		if utf8.RuneCountInString(desc) > catalogDescMax {
+			cut := len(desc)
+			n := 0
+			for i := range desc {
+				if n == catalogDescMax-1 {
+					cut = i
+					break
+				}
+				n++
 			}
 			desc = strings.TrimRight(desc[:cut], " ") + "…"
 		}
