@@ -69,7 +69,30 @@ type Repo struct {
 	lastAt   time.Time
 	lastVal  Stats
 	haveLast bool
+
+	// lineCounts caches untracked-file line counts across samples, guarded by
+	// mu. Sampling repeats for the life of a loop, and re-reading every
+	// untracked file each time turns one dashboard number into a background
+	// disk scan that grows as reviews add files. An entry is trusted only
+	// while size and mtime still match, so an edited file recomputes; files
+	// that vanish leave their entries behind until the table resets.
+	lineCounts map[string]lineCount
 }
+
+// lineCount is one cached count and the stat it was measured against. mtime
+// equality is the whole validation, so on a filesystem with coarse timestamps
+// a same-size rewrite inside one tick can show stale counts for a sample;
+// the numbers feed display only, which make(1) long ago decided this
+// tradeoff is good enough for.
+type lineCount struct {
+	size    int64
+	modTime time.Time
+	lines   int
+}
+
+// lineCountCacheMax bounds the table; past it the cache resets rather than
+// growing with every path ever seen in a run.
+const lineCountCacheMax = 4096
 
 // Stats are cumulative worktree line changes against a baseline commit.
 type Stats struct {
@@ -198,7 +221,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		if real, err := filepath.EvalSymlinks(p); err == nil && ownArtifacts[real] {
 			continue
 		}
-		st.Ins += countLines(p)
+		st.Ins += r.countLinesCached(p)
 	}
 
 	r.lastVal, r.lastAt, r.haveLast = st, time.Now(), true
@@ -217,23 +240,63 @@ func (r *Repo) Invalidate() {
 	r.mu.Unlock()
 }
 
-// countLines counts newlines in a regular file, refusing symlinks at open
-// time. A planted symlink (to a FIFO, device, or out-of-tree file) must not be
-// followed, and opening a writer-less FIFO would block forever.
-func countLines(path string) int {
+// openRegular opens path read-only, refusing symlinks at open time. A planted
+// symlink (to a FIFO, device, or out-of-tree file) must not be followed, and
+// opening a writer-less FIFO would block forever. O_NONBLOCK is cleared once
+// the descriptor is known to be a regular file.
+func openRegular(path string) (*os.File, error) {
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("not a regular file")
+	}
+	_ = syscall.SetNonblock(fd, false)
+	return f, nil
+}
+
+// countLines counts newlines in a regular file.
+func countLines(path string) int {
+	f, err := openRegular(path)
 	if err != nil {
 		return 0
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
+	return countLinesFrom(f)
+}
+
+// countLinesCached is countLines against the repo's sample cache: an
+// unchanged file (same size and mtime) returns its remembered count instead
+// of being read again. Sample calls this for every untracked file every
+// sample, so the cache is what keeps repeated sampling at stat cost.
+func (r *Repo) countLinesCached(path string) int {
+	f, err := openRegular(path)
+	if err != nil {
 		return 0
 	}
-	// Clear O_NONBLOCK now that the file is known to be regular.
-	_ = syscall.SetNonblock(fd, false)
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return 0
+	}
+	size, mod := fi.Size(), fi.ModTime()
+	if e, ok := r.lineCounts[path]; ok && e.size == size && e.modTime.Equal(mod) {
+		return e.lines
+	}
+	n := countLinesFrom(f)
+	if r.lineCounts == nil || len(r.lineCounts) >= lineCountCacheMax {
+		r.lineCounts = make(map[string]lineCount)
+	}
+	r.lineCounts[path] = lineCount{size: size, modTime: mod, lines: n}
+	return n
+}
 
+// countLinesFrom counts newlines on an open regular file.
+func countLinesFrom(f *os.File) int {
 	bp := lineBufs.Get().(*[]byte)
 	defer lineBufs.Put(bp)
 	buf := *bp

@@ -173,6 +173,32 @@ func TestSampleNeedsABaseline(t *testing.T) {
 	}
 }
 
+// Sampling repeats every interval for the life of a loop, so an unchanged
+// file must answer from the cache (same count) and an edited one must not
+// (size and mtime no longer match, so the entry is recomputed).
+func TestCountLinesCachedRecountsChangedFiles(t *testing.T) {
+	r := Open(t.TempDir())
+	p := filepath.Join(r.Dir, "notes.txt")
+	if err := os.WriteFile(p, []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.countLinesCached(p); n != 2 {
+		t.Fatalf("first count = %d, want 2", n)
+	}
+	if n := r.countLinesCached(p); n != 2 {
+		t.Fatalf("cached count = %d, want 2", n)
+	}
+	if err := os.WriteFile(p, []byte("a\nb\nc\nd\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.countLinesCached(p); n != 4 {
+		t.Fatalf("count after edit = %d, want 4 (stale cache entry?)", n)
+	}
+	if n := r.countLinesCached(filepath.Join(r.Dir, "absent.txt")); n != 0 {
+		t.Fatalf("missing file counted %d lines", n)
+	}
+}
+
 func TestDirtyPathsHonorsOwnArtifacts(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
