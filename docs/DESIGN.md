@@ -55,6 +55,46 @@ as every other git invocation. `agent` and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere.
 Nothing imports `ui`, so the loop runs headless with zero TUI cost.
 
+## External dependencies
+
+Six direct modules and one deliberate transitive; everything else is
+standard library. The default is no
+new dependency: each row earns its place by doing something the standard
+library cannot, and each was kept small on purpose.
+
+| Module | Why it exists | Contained by |
+|---|---|---|
+| `charmbracelet/bubbletea` | dashboard event loop | imported by `internal/ui` only |
+| `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
+| `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
+| `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | pulled in through toktop; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
+| `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji render in alignment | display paths in `internal/ui` only |
+| `golang.org/x/text` | NFC normalization under fuzzy matching and prompt-name handling | `internal/fuzzy`, `internal/prompt` |
+| `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
+
+What the hand-rolled packages replace: `humanize`, `streamjson`, and `fuzzy`
+exist because a general library for each would cost more in weight and
+supply-chain surface than the few hundred lines they stand in for.
+
+Supply-chain posture, and what any new dependency inherits as obligations:
+
+- Every module is pinned to an exact version and verified against `go.sum`
+  at build time. GitHub Actions are pinned by commit SHA, not tag.
+- Each release ships `checksums.txt` (the contract `gauntlet update` verifies
+  downloads against) and `sbom.txt`, a per-binary module inventory from
+  `go version -m`.
+- Licenses are MIT or BSD-3-Clause throughout, compatible with this repo's
+  AGPL-3.0-or-later. A dependency's license is checked before adoption,
+  not after.
+- The sqlite driver tracks upstream SQLite closely; when auditing, read the
+  `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
+  self-constructed queries against agent-owned database files, never SQL
+  from untrusted input.
+- Major versions of the Charm stack (bubbletea/lipgloss v2, February 2026)
+  are adopted through a dedicated migration pass, never a drive-by bump:
+  the v2 View API changes wholesale, and the v1 line continues to receive
+  fixes in the meantime.
+
 ## Concurrency model
 
 Two agents editing one working tree corrupt each other's work: one rewrites a
