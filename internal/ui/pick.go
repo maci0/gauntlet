@@ -142,7 +142,9 @@ func newPicker(cfg PickConfig) *picker {
 			{kind: optToggle, label: "dashboard", flag: "--tui", on: true,
 				help: "live screen instead of scrolling output"},
 			{kind: optToggle, label: "commit", flag: "--commit",
-				help: "commit after each review"},
+				help: "an agent commits what the reviews changed, on this branch"},
+			{kind: optToggle, label: "push", flag: "--push",
+				help: "commit, then git push to the remote (implies commit)"},
 			{kind: optToggle, label: "yolo", flag: "--yolo",
 				help: "drop the caution rules: bigger changes"},
 		},
@@ -414,6 +416,9 @@ func (p *picker) argv() []string {
 		case o.kind == optCycle:
 			// Already emitted next to the choice it qualifies.
 		case o.kind == optToggle && o.on:
+			if o.flag == "--commit" && p.pushing() {
+				continue // --push already implies it
+			}
 			out = append(out, o.flag)
 		}
 	}
@@ -444,6 +449,22 @@ func (p *picker) reviewArgs() string {
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+// optByFlag finds a run-pane row by the flag it contributes.
+func (p *picker) optByFlag(flag string) *option {
+	for i := range p.opts {
+		if p.opts[i].flag == flag {
+			return &p.opts[i]
+		}
+	}
+	return nil
+}
+
+// pushing reports whether the composed run ends in a git push.
+func (p *picker) pushing() bool {
+	o := p.optByFlag("--push")
+	return o != nil && o.on
 }
 
 // suggestAgent is the label chosen for the suggest step, or "" for whichever

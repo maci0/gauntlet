@@ -61,6 +61,10 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 		{"everything selected is the default again", func(p *picker) {
 			p.toggleAll()
 		}, "-C /home/dev/project --once --tui"},
+		{"push implies commit, so only push is passed", func(p *picker) {
+			p.optByFlag("--commit").on = true
+			p.optByFlag("--push").on = true
+		}, "-C /home/dev/project --once --tui --push"},
 		{"a subset of agents is passed, all of them is not", func(p *picker) {
 			p.agents[0] = true
 		}, "-C /home/dev/project -a claude --once --tui"},
