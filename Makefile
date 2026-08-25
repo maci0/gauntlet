@@ -66,6 +66,17 @@ test: ## run all tests with the race detector, shuffled order
 	@mkdir -p $(TMPDIR)
 	$(GO) test $(GOTAGS) -race -shuffle=on ./...
 
+# One package at a time keeps the edit-test loop fast; the flags match `make
+# test` so a green package here stays green in the full run. RUN is a go test
+# -run pattern (default: every test in the package).
+PKG ?= ./...
+RUN ?=
+
+.PHONY: test-pkg
+test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
+	@mkdir -p $(TMPDIR)
+	$(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
+
 .PHONY: cover
 cover: ## test coverage summary
 	@mkdir -p $(TMPDIR) $(DIST)
@@ -84,6 +95,9 @@ GOFILES = $(shell $(GO) list -f '{{.Dir}}' ./...)
 fmt: ## rewrite all Go files with gofmt
 	gofmt -s -w $(GOFILES)
 
+# CI tests all three tag configurations (see the matrix in ci.yml); check
+# compiles each of them so a break under one of them fails here and not
+# after push. The bare pass is the third configuration: neither tag defined.
 .PHONY: check
 check: ## verify formatting, toolchain fixes, and vet (CI parity)
 	@unformatted=$$(gofmt -s -l $(GOFILES)); \
@@ -94,9 +108,11 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 # no tags at all (the stdlib-only binary TAGS= ships). CI tests all three; the
 # analysis step must see the same set or a mode only it compiles goes unvetted.
 	$(GO) fix -diff $(GOTAGS) ./...
+	$(GO) fix -diff ./...
 	$(GO) fix -diff -tags notoktop ./...
 	$(GO) fix -diff ./...
 	$(GO) vet $(GOTAGS) ./...
+	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
 	$(GO) vet ./...
 

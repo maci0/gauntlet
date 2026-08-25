@@ -193,7 +193,7 @@ var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
 // preconditions for the requested concurrency.
 func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	if len(cfg.Agents) == 0 {
-		return nil, errors.New("no agents to run reviews with")
+		return nil, errors.New("no agents to run reviews with: install one (see `gauntlet doctor`)")
 	}
 	if len(cfg.Reviews) == 0 {
 		return nil, errors.New("no reviews scheduled")

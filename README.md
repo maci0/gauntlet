@@ -196,6 +196,7 @@ have. Per-agent coverage, and the public reading API, are in
 | [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md) | where token counts come from, per agent, and the public reading API |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | trust boundaries, what is validated where, and what is out of scope |
 | [docs/IDEAS.md](docs/IDEAS.md) | things deliberately not built yet, and why |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | building, testing, and the checks a pull request runs |
 
 ## License
 
