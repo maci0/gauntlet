@@ -1,5 +1,79 @@
 # Changelog
 
+Notable changes per release. Versions follow SemVer against this consumer
+contract: review names (`*-review.md` stems consumed by `--reviews`), set
+names (`quick`, `standard`, ...), CLI flags and their documented behavior,
+exit codes, and every non-internal Go package in this module another program
+can import (the Go import-compatibility rule). Removing or renaming any of
+these is breaking and waits for a major version; new flags and other
+additions may land in a minor. While the project was 0.x, other behavior
+changes could land in a minor instead and were listed under Changed.
+
+## Unreleased
+
+### Added
+
+- `--seed N`: replayable review order and agent picks. A nonzero seed replays
+  the per-loop review shuffle and agent sampling; zero derives one from the
+  clock as before. The effective seed rides the run-start event, so a journal
+  describes its own rerun, and hex literals (`0x…`) are accepted.
+
+### Changed
+
+- `code-review` treats assertion density as a lead only: each added assertion
+  still needs the property or concrete path it encodes.
+- `prompt-review` allows creating new prompt files when its missing-prompts
+  rule calls for one, instead of banning them outright.
+- `ux-review` cites WCAG 2.2 SC 2.5.8 for the touch-target minimum size.
+
+### Fixed
+
+- A hot reload that crosses UTC midnight appends to the run's original journal
+  file instead of splitting it across two date shards; a worktree rerun after
+  a reload rebuilds a branch still at base and fails rather than destroys one
+  holding commits.
+- The README install one-liner maps `aarch64` to `arm64` (so arm Linux hosts
+  fetch a real asset) and creates `~/.local/bin` before writing into it.
+
+## 1.0.2
+
+### Added
+
+- `--opencode-db`: read opencode's session database for its token counts.
+  opencode keeps sessions in SQLite rather than the JSONL every other agent
+  writes, which is why it reported no tokens until now. Needs a build with
+  `-tags "toktop sqlite"`; a build that cannot honor the flag says so instead
+  of silently measuring nothing.
+
+### Changed
+
+- The transcript-reader dependency is renamed: `tokentop` is now `toktop`
+  (`github.com/maci0/toktop/agentusage`), and the build tag is `toktop` to
+  match. Source builds that passed `TAGS=tokentop` pass `TAGS=toktop`.
+  Tracks toktop v0.4.1.
+
+## 1.0.1
+
+### Removed
+
+- **Breaking:** the public `agentusage` package is gone from this module;
+  transcript token reading moved to tokentop's
+  `github.com/maci0/tokentop/agentusage`. Programs importing
+  `github.com/maci0/gauntlet/agentusage` stop compiling against v1.0.1:
+  migrate the import to tokentop's package (renamed again to
+  `github.com/maci0/toktop/agentusage` in 1.0.2). This removal shipped in a
+  patch release without an entry here at the time; it belongs under a major
+  bump per the contract above, and is recorded now rather than left silent.
+
+### Fixed
+
+- Worktree bookkeeping is serialized so parallel reviews cannot strand
+  branches or stray checkouts after an interrupt: git validates every
+  registered worktree on each add or remove, and two at once could read
+  another's half-deleted metadata.
+- `make build TAGS=` produces a standard-library-only binary that reads only
+  what agents print; released binaries carry the reader as before.
+
 ## 1.0.0
 
 Rewritten in Go, shipped as one static binary. The Python implementation
@@ -38,9 +112,6 @@ Changed:
   `O_NOFOLLOW`, and `execve`; Windows has no equivalent that keeps those
   guarantees.
 - `--target-dirs` is now `--dirs`, with the old name kept as an alias.
-
-
-Notable changes per release.
 
 ## 0.26.0
 
@@ -436,12 +507,6 @@ Notable changes per release.
   unjustified ignores), typing coverage, and blocking CI enforcement. The
   analyzers' findings stay with their owning reviews (code-review, sec-review);
   this one reviews the analyzers themselves. Joins `standard`.
-
-The consumer contract is review names (`*-review.md` stems consumed by
-`--reviews`), set names (`quick`, `standard`, ...), CLI flags, and exit
-codes. Renaming or removing a review or set name is a breaking change.
-While the project is 0.x, other behavior changes may land in a minor;
-they are listed under Changed.
 
 ## 0.9.0
 
