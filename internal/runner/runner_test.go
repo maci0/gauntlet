@@ -1063,3 +1063,67 @@ func TestCancelDuringParallelLeavesNoWorktrees(t *testing.T) {
 		t.Errorf("tree left dirty:\n%s", out)
 	}
 }
+
+func TestCancelRecordsQueuedReviews(t *testing.T) {
+	repo := testRepo(t)
+	names := []string{"a-review", "b-review", "c-review", "d-review", "e-review"}
+	set, _ := promptSet(t, names...)
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
+
+	cfg := baseConfig(t, repo, set, names, bin)
+	cfg.Jobs = 2
+	cfg.Seed = 1
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		cancel()
+	}()
+	r.Run(ctx)
+	bus.Close()
+
+	// Every dispatched review must be accounted for: the two lanes that were
+	// running are interrupted, and the ones still queued behind the semaphore
+	// are recorded as interrupted or skipped rather than vanishing from the
+	// stats, the summary, and any reload handoff.
+	results := r.Stats().Results()
+	got := map[string]Result{}
+	for _, res := range results {
+		if prev, dup := got[res.Review]; dup {
+			t.Fatalf("review %s recorded twice (%s and %s)", res.Review, prev.Status, res.Status)
+		}
+		got[res.Review] = res
+		switch res.Status {
+		case StatusInterrupted, StatusSkipped:
+		default:
+			t.Errorf("review %s recorded as %s after cancel, want interrupted or skipped",
+				res.Review, res.Status)
+		}
+	}
+	for _, name := range names {
+		if _, ok := got[name]; !ok {
+			t.Errorf("review %s vanished: no result was recorded for it", name)
+		}
+	}
+
+	published := map[string]bool{}
+	for _, ev := range <-done {
+		if ev.Kind == EvReviewEnd {
+			published[ev.Review] = true
+		}
+	}
+	for _, name := range names {
+		if !published[name] {
+			t.Errorf("review %s has no review_end event: its outcome was never published", name)
+		}
+	}
+}
