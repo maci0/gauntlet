@@ -222,14 +222,14 @@ func TestUsageReported(t *testing.T) {
 
 func TestTailKeepsLastBytes(t *testing.T) {
 	tl := NewTail(8)
-	tl.Write([]byte("abcdef"))
-	tl.Write([]byte("ghijkl"))
+	tl.WriteString("abcdef")
+	tl.WriteString("ghijkl")
 	if got := string(tl.Bytes()); got != "efghijkl" {
 		t.Fatalf("got %q, want %q", got, "efghijkl")
 	}
 
 	tl = NewTail(4)
-	tl.Write([]byte("0123456789"))
+	tl.WriteString("0123456789")
 	if got := string(tl.Bytes()); got != "6789" {
 		t.Fatalf("oversized write: got %q", got)
 	}
@@ -260,7 +260,7 @@ func FuzzUsageTail(f *testing.F) {
 		if _, err := tl.WriteString(string(data[:split])); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tl.Write(data[split:]); err != nil {
+		if _, err := tl.WriteString(string(data[split:])); err != nil {
 			t.Fatal(err)
 		}
 

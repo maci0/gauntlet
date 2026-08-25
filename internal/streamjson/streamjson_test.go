@@ -15,7 +15,7 @@ import (
 // double as a statement of what it must survive.
 
 // usageFound reports whether any counter was found.
-func usageFound(u Usage) bool { return u.Output > 0 || u.Total > 0 || u.Input > 0 || u.Thinking > 0 }
+func usageFound(u Usage) bool { return u.Output > 0 || u.Total > 0 || u.Thinking > 0 }
 
 func TestAnthropicShapedLine(t *testing.T) {
 	line := `{"type":"assistant","message":{"role":"assistant","content":[
@@ -29,11 +29,8 @@ func TestAnthropicShapedLine(t *testing.T) {
 	if ev.Text != "Fixed the leak in pool.go" {
 		t.Fatalf("text: %q", ev.Text)
 	}
-	if ev.Usage.Output != 120 || ev.Usage.Thinking != 40 || ev.Usage.Input != 900 {
+	if ev.Usage.Output != 120 || ev.Usage.Thinking != 40 {
 		t.Fatalf("usage: %+v", ev.Usage)
-	}
-	if ev.Kind != "assistant" {
-		t.Fatalf("kind: %q", ev.Kind)
 	}
 }
 
@@ -150,9 +147,6 @@ func TestResultLineCarriesFinalUsage(t *testing.T) {
 	if ev.Usage.Output != 250 || ev.Usage.Total != 1250 {
 		t.Fatalf("usage: %+v", ev.Usage)
 	}
-	if ev.Kind != "result" {
-		t.Fatalf("kind: %q", ev.Kind)
-	}
 }
 
 // The two shapes below were read out of the shipped binaries themselves
@@ -169,7 +163,7 @@ func TestGrokStreamEventShape(t *testing.T) {
 	if ev.Text != "patching pool.go" {
 		t.Fatalf("text: %q", ev.Text)
 	}
-	if ev.Usage.Output != 88 || ev.Usage.Thinking != 31 || ev.Usage.Input != 4096 {
+	if ev.Usage.Output != 88 || ev.Usage.Thinking != 31 {
 		t.Fatalf("usage: %+v", ev.Usage)
 	}
 }
@@ -181,26 +175,21 @@ func TestCursorAgentResultShape(t *testing.T) {
 	if !ok {
 		t.Fatal("valid JSON was rejected")
 	}
-	if ev.Usage.Output != 410 || ev.Usage.Input != 9000 {
+	if ev.Usage.Output != 410 {
 		t.Fatalf("usage: %+v", ev.Usage)
 	}
 }
 
-func TestDshSessionRecordsCarryUsageAndCwd(t *testing.T) {
-	// dsh writes a session header naming the directory, then events whose
-	// usage comes straight from the provider response.
-	header := `{"type":"session","version":1,"id":"abc","cwd":"/home/dev/project","createdAt":1}`
-	ev, ok := Parse([]byte(header))
-	if !ok || ev.Cwd != "/home/dev/project" {
-		t.Fatalf("header cwd not found: %+v", ev)
-	}
+func TestDshSessionRecordsCarryUsage(t *testing.T) {
+	// dsh writes session records whose usage comes straight from the provider
+	// response.
 	event := `{"type":"assistant-message","usage":{"prompt_tokens":1200,"completion_tokens":260,` +
 		`"reasoning_tokens":90,"cached_tokens":800}}`
-	ev, ok = Parse([]byte(event))
+	ev, ok := Parse([]byte(event))
 	if !ok {
 		t.Fatal("valid JSON was rejected")
 	}
-	if ev.Usage.Output != 260 || ev.Usage.Thinking != 90 || ev.Usage.Input != 1200 {
+	if ev.Usage.Output != 260 || ev.Usage.Thinking != 90 {
 		t.Fatalf("usage: %+v", ev.Usage)
 	}
 }
@@ -267,7 +256,7 @@ func FuzzParse(f *testing.F) {
 		if !ok && ev != (Event{}) {
 			t.Fatalf("rejected line contributed content: %q -> %+v", line, ev)
 		}
-		if ev.Usage.Output < 0 || ev.Usage.Thinking < 0 || ev.Usage.Total < 0 || ev.Usage.Input < 0 {
+		if ev.Usage.Output < 0 || ev.Usage.Thinking < 0 || ev.Usage.Total < 0 {
 			t.Fatalf("negative counter: %q -> %+v", line, ev.Usage)
 		}
 		if ev2, ok2 := Parse(line); ok2 != ok || ev2 != ev {
