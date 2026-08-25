@@ -42,8 +42,12 @@ PLATFORMS := \
 
 .PHONY: help
 help: ## show available targets
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+# Plain greedy ERE on purpose: a lazy `.*?` is a PCRE-ism that POSIX ERE
+# leaves undefined, and BSD grep and awk (macOS) reject the adjacent
+# duplication with "repetition-operator operand invalid". `## ` appears at
+# most once per documented target line, so greedy matches the same split.
+	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
+		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: build
 build: ## build the gauntlet binary for this host
