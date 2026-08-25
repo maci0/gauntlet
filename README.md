@@ -34,8 +34,9 @@ rewrite adds:
 ## Install
 
 ```sh
-# a release binary
-curl -fsSL https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_$(uname -s | tr A-Z a-z)_$(uname -m | sed s/x86_64/amd64/) -o ~/.local/bin/gauntlet
+# a release binary (linux/darwin, amd64/arm64)
+mkdir -p ~/.local/bin
+curl -fsSL https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/) -o ~/.local/bin/gauntlet
 chmod +x ~/.local/bin/gauntlet
 
 # or from source
