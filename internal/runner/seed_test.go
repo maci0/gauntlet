@@ -40,7 +40,7 @@ func TestSeedReplaysScheduleAndPicks(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		return r.schedule()
+		return r.schedule(1)
 	}
 	picks := func(seed uint64, n int) []agent.Spec {
 		t.Helper()
@@ -117,6 +117,44 @@ func TestZeroSeedDerivesFromClock(t *testing.T) {
 	}
 	if r.seed == 0 {
 		t.Fatal("clock-derived seed is zero")
+	}
+}
+
+// TestScheduleReplaysAcrossAReload pins the property a hot reload needs: a
+// successor built from the recorded seed schedules every later loop exactly as
+// the uninterrupted run would have. This only holds because each loop's order
+// is a keyed draw rather than the next bite of a random stream; a stream would
+// restart from its beginning in the successor and diverge from the lineage it
+// took over.
+func TestScheduleReplaysAcrossAReload(t *testing.T) {
+	reviews := []string{
+		"aa-review", "ab-review", "ac-review", "ad-review", "ae-review", "af-review",
+	}
+	agents := []agent.Spec{{Tool: "claude"}, {Tool: "codex"}, {Tool: "gemini"}}
+
+	// The uninterrupted run: three whole loops in one process.
+	r, err := New(context.Background(), seedConfig(t, reviews, agents, 7), NewBus())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineage := [][]string{r.schedule(1), r.schedule(2), r.schedule(3)}
+
+	// The successor takes over mid-loop: loop 1 finishes from the handed-over
+	// queue, then its loops 2 and 3 must match the lineage's, not restart the
+	// sequence.
+	cfg := seedConfig(t, reviews, agents, 7)
+	cfg.ResumeQueue = []string{"ad-review"}
+	succ, err := New(context.Background(), cfg, NewBus())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := succ.schedule(1); !slices.Equal(got, []string{"ad-review"}) {
+		t.Fatalf("resume queue was reordered: %v", got)
+	}
+	for _, l := range []int{2, 3} {
+		if got := succ.schedule(l); !slices.Equal(got, lineage[l-1]) {
+			t.Fatalf("loop %d: lineage %v, successor %v", l, lineage[l-1], got)
+		}
 	}
 }
 
