@@ -29,7 +29,7 @@ var ErrLocked = errors.New("another gauntlet is already running here")
 // Lock is an exclusive, advisory lock on one review directory.
 type Lock struct {
 	path string
-	fd   int
+	fd   int // -1 once released
 }
 
 // Acquire takes the directory lock. The descriptor stays open for the lifetime
@@ -71,7 +71,7 @@ func Acquire(path string) (*Lock, error) {
 // directory is told what it is waiting for instead of just that it must wait.
 // Best effort: a note that cannot be written costs nothing but the message.
 func (l *Lock) Note(text string) {
-	if l == nil {
+	if l == nil || l.fd < 0 {
 		return
 	}
 	line := append([]byte(normalize.Truncate(normalize.Sanitize(text), noteRunes)), '\n')
@@ -95,14 +95,19 @@ func readNote(fd int) string {
 }
 
 // Release drops the lock and removes the file, so reviewed repos are not
-// littered with stray locks.
+// littered with stray locks. It is safe to call twice: a hot reload releases
+// before the exec, and a failed exec leaves the deferred release to run on the
+// same lock. Closing an already-closed descriptor twice is not harmless, the
+// second close can land on a recycled fd, so Release marks the lock spent.
 func (l *Lock) Release() {
-	if l == nil {
+	if l == nil || l.fd < 0 {
 		return
 	}
+	fd := l.fd
+	l.fd = -1
 	_ = os.Remove(l.path)
-	_ = syscall.Flock(l.fd, syscall.LOCK_UN)
-	_ = syscall.Close(l.fd)
+	_ = syscall.Flock(fd, syscall.LOCK_UN)
+	_ = syscall.Close(fd)
 }
 
 // RealPath resolves a path for own-artifact comparisons. Symlinks are resolved
