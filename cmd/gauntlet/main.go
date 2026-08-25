@@ -459,7 +459,7 @@ func exitCode(ctx context.Context, runs []*dirRun) int {
 		if d.stats == nil {
 			continue
 		}
-		if d.stats.Counts().Failures() > 0 || d.stats.CommitFails > 0 {
+		if d.stats.Counts().Failures() > 0 || d.stats.CommitFails() > 0 {
 			return exitFail
 		}
 	}
@@ -609,8 +609,8 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 		h.Dirs[d.dir] = dirHandoff{
 			Loops:       loops,
 			Pending:     pending,
-			CommitRuns:  d.stats.CommitRuns,
-			CommitFails: d.stats.CommitFails,
+			CommitRuns:  d.stats.CommitRuns(),
+			CommitFails: d.stats.CommitFails(),
 			// Seeded stats already include what earlier processes did, so this
 			// is the whole run's history, not just this process's slice.
 			Results: d.stats.Results(),

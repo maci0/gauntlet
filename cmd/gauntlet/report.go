@@ -165,8 +165,8 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		timed += tm
 		haveLines = haveLines || hl
 		loops += d.loops
-		commitRuns += d.stats.CommitRuns
-		commitFails += d.stats.CommitFails
+		commitRuns += d.stats.CommitRuns()
+		commitFails += d.stats.CommitFails()
 	}
 
 	if len(results) > 1 {

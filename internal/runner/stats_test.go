@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -23,8 +24,9 @@ func TestSeedPrependsCarriedOverResults(t *testing.T) {
 	if len(got) != 2 || got[0].Review != "a-review" || got[1].Review != "b-review" {
 		t.Fatalf("seeded results must come first: %+v", got)
 	}
-	if st.Loops != 2 || st.CommitRuns != 1 || st.CommitFails != 1 {
-		t.Fatalf("carried-over counters lost: %+v", st)
+	if st.LoopsDone() != 2 || st.CommitRuns() != 1 || st.CommitFails() != 1 {
+		t.Fatalf("carried-over counters lost: loops=%d runs=%d fails=%d",
+			st.LoopsDone(), st.CommitRuns(), st.CommitFails())
 	}
 }
 
@@ -96,5 +98,51 @@ func TestTokensPerSec(t *testing.T) {
 	}
 	if got := (AgentSummary{Tokens: 100, Elapsed: 20 * time.Second}).TokensPerSec(); got != 5 {
 		t.Errorf("got %v, want 5", got)
+	}
+}
+
+// TestStatsSurvivesConcurrentUse pins the documented guarantee under the race
+// detector: parallel lanes Add results and record commit steps while readers
+// tally, and a hot-reload Seed lands mid-run. Every access must go through the
+// mutex; an unsynchronized counter shows up here as a detector report long
+// before it shows up in a run.
+func TestStatsSurvivesConcurrentUse(t *testing.T) {
+	st := &Stats{Start: time.Now()}
+	const lanes, perLane = 8, 250
+
+	var wg sync.WaitGroup
+	for range lanes {
+		wg.Go(func() {
+			for range perLane {
+				st.Add(Result{Review: "r-review", Status: StatusOK})
+				st.Counts()
+				st.Totals()
+				st.ByAgent()
+				_ = st.LoopsDone()
+				_ = st.CommitRuns()
+				_ = st.CommitFails()
+			}
+		})
+	}
+	wg.Go(func() {
+		for range 100 {
+			st.Seed(nil, 1, 1, 0)
+			st.Results()
+			st.Failures()
+		}
+	})
+	wg.Go(func() {
+		for range 100 {
+			st.AddCommitRun()
+			st.AddCommitFail()
+		}
+	})
+	wg.Wait()
+
+	if got := len(st.Results()); got != lanes*perLane {
+		t.Fatalf("results lost under concurrency: %d, want %d", got, lanes*perLane)
+	}
+	if loops, runs, fails := st.LoopsDone(), st.CommitRuns(), st.CommitFails(); loops != 100 || runs != 200 || fails != 100 {
+		t.Fatalf("counters lost under concurrency: loops=%d runs=%d fails=%d", loops, runs, fails)
 	}
 }

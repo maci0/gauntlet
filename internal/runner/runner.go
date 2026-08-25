@@ -723,7 +723,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool]})
 	if err != nil {
 		r.log("Cannot build %s command for %s: %v", action, spec.Label(), err)
-		r.st.CommitFails++
+		r.st.AddCommitFail()
 		return
 	}
 
@@ -735,7 +735,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	r.mu.Unlock()
 
 	r.log("Running %s step with %s", action, spec.Label())
-	r.st.CommitRuns++
+	r.st.AddCommitRun()
 	timeout := min(r.cfg.Timeout, commitTimeout)
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: r.cfg.Dir, Timeout: timeout,
@@ -760,7 +760,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		r.log("%s step done (%s)", action, spec.Label())
 	}
 	if status == StatusFail || status == StatusTimeout {
-		r.st.CommitFails++
+		r.st.AddCommitFail()
 	}
 	r.bus.Publish(Event{
 		Kind: EvCommit, Dir: r.cfg.Dir, Agent: spec.Label(),

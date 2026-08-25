@@ -31,15 +31,55 @@ type Result struct {
 	Branch   string // set in worktree mode
 }
 
-// Stats accumulates results across a run. Safe for concurrent use.
+// Stats accumulates results across a run. Safe for concurrent use: parallel
+// review lanes Add results while the commit step records its runs, and a
+// reader may tally at any point in between.
 type Stats struct {
 	mu      sync.Mutex
 	results []Result
 
-	Loops       int
-	CommitRuns  int
-	CommitFails int
-	Start       time.Time
+	loops       int
+	commitRuns  int
+	commitFails int
+
+	Start time.Time
+}
+
+// LoopsDone is the number of completed loops recorded so far.
+func (s *Stats) LoopsDone() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loops
+}
+
+// CommitRuns is how many commit steps ran.
+func (s *Stats) CommitRuns() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commitRuns
+}
+
+// CommitFails is how many commit steps failed, including launches that never
+// reached an agent.
+func (s *Stats) CommitFails() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.commitFails
+}
+
+// AddCommitRun records one commit step that launched.
+func (s *Stats) AddCommitRun() {
+	s.mu.Lock()
+	s.commitRuns++
+	s.mu.Unlock()
+}
+
+// AddCommitFail records one commit-step failure, including launches that
+// never reached an agent.
+func (s *Stats) AddCommitFail() {
+	s.mu.Lock()
+	s.commitFails++
+	s.mu.Unlock()
 }
 
 // Add records one result.
@@ -54,11 +94,11 @@ func (s *Stats) Add(r Result) {
 // what happened after the swap.
 func (s *Stats) Seed(results []Result, loops, commitRuns, commitFails int) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.results = append(append([]Result(nil), results...), s.results...)
-	s.mu.Unlock()
-	s.Loops += loops
-	s.CommitRuns += commitRuns
-	s.CommitFails += commitFails
+	s.loops += loops
+	s.commitRuns += commitRuns
+	s.commitFails += commitFails
 }
 
 // Results returns a copy of every result so far.
