@@ -6,16 +6,25 @@
 package fuzzy
 
 import (
-	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Closest returns the candidate nearest want within a small edit distance,
-// compared case-insensitively, or "" when nothing is close enough.
+// compared case-insensitively and after Unicode normalization, or "" when
+// nothing is close enough.
+//
+// Case comparison is simple case folding, not lowercasing: folding equates
+// characters whose lowercase forms differ (ſ and s, U+212A KELVIN SIGN and k,
+// final and ordinary sigma), which ToLower misses on one side only.
+// Normalization to NFC first keeps a decomposed spelling of the same name
+// from looking like several edits' worth of typos.
 func Closest(want string, candidates []string) string {
-	want = strings.ToLower(want)
+	want = norm.NFC.String(want)
 	best, bestD := "", distance+1
 	for _, c := range candidates {
-		if d := editDistance(want, strings.ToLower(c)); d < bestD {
+		if d := editDistance(want, norm.NFC.String(c)); d < bestD {
 			best, bestD = c, d
 		}
 	}
@@ -41,7 +50,7 @@ func editDistance(a, b string) int {
 		cur[0] = i
 		for j := 1; j <= len(br); j++ {
 			cost := 1
-			if ar[i-1] == br[j-1] {
+			if foldEqual(ar[i-1], br[j-1]) {
 				cost = 0
 			}
 			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
@@ -49,4 +58,19 @@ func editDistance(a, b string) int {
 		prev, cur = cur, prev
 	}
 	return prev[len(br)]
+}
+
+// foldEqual reports whether two runes are equal under simple case folding.
+// The orbit walk terminates: SimpleFold is a permutation over the runes that
+// fold together, so it always returns to its starting point.
+func foldEqual(a, b rune) bool {
+	if a == b {
+		return true
+	}
+	for r := unicode.SimpleFold(a); r != a; r = unicode.SimpleFold(r) {
+		if r == b {
+			return true
+		}
+	}
+	return false
 }

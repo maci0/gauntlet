@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 //go:embed prompts/*.md
@@ -81,9 +83,11 @@ type Set struct {
 	byName map[string]Review
 }
 
-// Get returns the review with this name.
+// Get returns the review with this name. The query is normalized the same way
+// discovery normalized its keys, so a name typed in one Unicode form finds a
+// review stored under another.
 func (s Set) Get(name string) (Review, bool) {
-	r, ok := s.byName[name]
+	r, ok := s.byName[nfc(name)]
 	return r, ok
 }
 
@@ -150,6 +154,17 @@ func readNoFollow(path string) (string, error) {
 		return "", fmt.Errorf("prompt exceeds %d bytes: %s", maxBytes, path)
 	}
 	return string(data), nil
+}
+
+// nfc is the review-name normalization form. Names are identity: they key
+// discovery maps, --reviews selection, suggest matching, and branch slugs.
+// Storing every discovered name as NFC and normalizing every name that enters
+// from text typed by a user or emitted by an agent makes those comparisons
+// byte-exact again for the same word spelled in different forms: a project
+// file created on macOS carries an NFD stem (decomposed é) while a shell or
+// keyboard produces NFC, and without this one of the two would not match.
+func nfc(s string) string {
+	return norm.NFC.String(s)
 }
 
 // sanitize strips control and formatting characters from untrusted display

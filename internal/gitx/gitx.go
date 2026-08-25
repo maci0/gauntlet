@@ -284,7 +284,9 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 // runner's own artifacts (matched by real path, so a repo file merely named
 // like one is still seen as a real change).
 func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]string, error) {
-	out, err := r.run(ctx, 10*time.Second, "status", "--porcelain")
+	out, err := r.run(ctx, 10*time.Second,
+		"-c", "core.quotePath=false",
+		"status", "--porcelain")
 	if err != nil {
 		return nil, err
 	}
@@ -345,7 +347,69 @@ func porcelainPath(line string) string {
 	if (line[0] == 'R' || line[0] == 'C') && strings.Contains(entry, " -> ") {
 		_, entry, _ = strings.Cut(entry, " -> ")
 	}
-	// Porcelain double-quotes paths with special characters; the runner's own
-	// artifacts never need quoting, so an unquoted compare is enough.
-	return strings.Trim(strings.TrimSpace(entry), `"`)
+	return unquoteC(strings.TrimSpace(entry))
+}
+
+// unquoteC reverses git's C-style path quoting. The status call runs with
+// core.quotePath=false, so UTF-8 bytes arrive raw, but a path holding a
+// control character, a quote, or a backslash still arrives wrapped in double
+// quotes with C escapes inside. Without decoding, a name would surface as the
+// literal text `caf\303\251.md` instead of café.md and never match its real
+// path again. An unrecognized escape is kept verbatim rather than invented.
+func unquoteC(s string) string {
+	if len(s) < 2 || s[0] != '"' || s[len(s)-1] != '"' {
+		return s
+	}
+	body := s[1 : len(s)-1]
+	var b strings.Builder
+	b.Grow(len(body))
+	for i := 0; i < len(body); {
+		c := body[i]
+		if c != '\\' {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		if i+1 >= len(body) {
+			b.WriteByte(c)
+			break
+		}
+		i++
+		switch e := body[i]; {
+		case e == 'a':
+			b.WriteByte('\a')
+			i++
+		case e == 'b':
+			b.WriteByte('\b')
+			i++
+		case e == 'f':
+			b.WriteByte('\f')
+			i++
+		case e == 'n':
+			b.WriteByte('\n')
+			i++
+		case e == 'r':
+			b.WriteByte('\r')
+			i++
+		case e == 't':
+			b.WriteByte('\t')
+			i++
+		case e == 'v':
+			b.WriteByte('\v')
+			i++
+		case e == '\\' || e == '"':
+			b.WriteByte(e)
+			i++
+		case e >= '0' && e <= '7' && i+2 < len(body) &&
+			body[i+1] >= '0' && body[i+1] <= '7' &&
+			body[i+2] >= '0' && body[i+2] <= '7':
+			b.WriteByte((e-'0')<<6 | (body[i+1]-'0')<<3 | (body[i+2] - '0'))
+			i += 3
+		default:
+			b.WriteByte('\\')
+			b.WriteByte(e)
+			i++
+		}
+	}
+	return b.String()
 }
