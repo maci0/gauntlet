@@ -6,6 +6,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -30,6 +31,7 @@ type PickConfig struct {
 	Agents  []string    // installed agent labels, empty when none were found
 	Branch  string      // the branch the reviews would run on, "" off a branch
 	Merge   []string    // other local branches, as merge targets
+	Dirty   bool        // the tree has uncommitted changes, which worktrees refuse
 	CPUs    int         // the concurrency meter is drawn against this
 	Version string
 }
@@ -38,7 +40,16 @@ type PickConfig struct {
 // that exist in this prompt directory.
 type PickGroup struct {
 	Name    string
-	Reviews []string
+	Reviews []PickReview
+}
+
+// PickReview is one review as the launcher shows it: what it is called, what
+// it does, and whether it came from the reviewed tree rather than the
+// bundled set.
+type PickReview struct {
+	Name    string
+	Desc    string
+	Project bool
 }
 
 // Pick runs the launcher. It returns the argv of the composed run, or ok=false
@@ -99,7 +110,7 @@ const (
 type row struct {
 	kind   rowKind
 	group  int
-	review string
+	review PickReview
 }
 
 type picker struct {
@@ -112,6 +123,8 @@ type picker struct {
 	focus pane
 
 	suggest  bool            // let an agent pick the reviews instead
+	filter   string          // narrows the review tree by name or description
+	typing   bool            // keys are going into the filter, not the panes
 	open     []bool          // per group
 	selected map[string]bool // review name -> chosen
 	agents   []bool          // per installed agent
@@ -178,9 +191,14 @@ func (p *picker) rows() []row {
 	out := make([]row, 0, len(p.cfg.Groups)*4+1)
 	out = append(out, row{kind: rowSuggest})
 	for i, g := range p.cfg.Groups {
+		matches := p.matching(g)
+		// A filter is a search: it opens what it finds, and hides the rest.
+		if p.filter != "" && len(matches) == 0 {
+			continue
+		}
 		out = append(out, row{kind: rowGroup, group: i})
-		if p.open[i] {
-			for _, r := range g.Reviews {
+		if p.open[i] || p.filter != "" {
+			for _, r := range matches {
 				out = append(out, row{kind: rowReview, group: i, review: r})
 			}
 		}
@@ -200,10 +218,16 @@ func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	if p.typing {
+		return p.filterKey(msg, key)
+	}
 	switch key {
 	case "ctrl+c", "q", "esc":
 		return p, tea.Quit
 	case "enter":
+		if p.blocked() != "" {
+			return p, nil // the reason is on screen; nothing to launch yet
+		}
 		p.launch = true
 		return p, tea.Quit
 	case "tab":
@@ -236,11 +260,38 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.toggle()
 	case "a":
 		p.toggleAll()
+	case "/":
+		p.typing, p.focus = true, paneReviews
 	case "+", "=":
 		p.concurrency().n++
 	case "-", "_":
 		p.concurrency().n = max(1, p.concurrency().n-1)
 	}
+	return p, nil
+}
+
+// filterKey types into the review filter. Everything is a character while it
+// is open, so a review named "quick" can be found by typing q-u-i-c-k without
+// the q quitting the launcher.
+func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc", "ctrl+c":
+		p.filter, p.typing = "", false
+	case "enter":
+		p.typing = false // the filter stays, the keys go back to the panes
+	case "backspace":
+		if p.filter != "" {
+			_, size := utf8.DecodeLastRuneInString(p.filter)
+			p.filter = p.filter[:len(p.filter)-size]
+		}
+	case "up", "down":
+		p.move(map[string]int{"up": -1, "down": +1}[key])
+	default:
+		if msg.Type == tea.KeyRunes || key == " " {
+			p.filter += string(msg.Runes)
+		}
+	}
+	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
 	return p, nil
 }
 
@@ -325,13 +376,13 @@ func (p *picker) toggle() {
 				p.cursor[paneOptions] = optSuggestAgent
 			}
 		case rowReview:
-			p.selected[r.review] = !p.selected[r.review]
+			p.selected[r.review.Name] = !p.selected[r.review.Name]
 		case rowGroup:
 			// A header fills its group, and empties it when it is already full.
 			g := p.cfg.Groups[r.group]
 			want := p.groupOn(r.group) < len(g.Reviews)
-			for _, name := range g.Reviews {
-				p.selected[name] = want
+			for _, rev := range g.Reviews {
+				p.selected[rev.Name] = want
 			}
 			p.open[r.group] = true
 		}
@@ -357,8 +408,8 @@ func (p *picker) toggleAll() {
 	case paneReviews:
 		want := p.chosen() == 0
 		for _, g := range p.cfg.Groups {
-			for _, name := range g.Reviews {
-				p.selected[name] = want
+			for _, rev := range g.Reviews {
+				p.selected[rev.Name] = want
 			}
 		}
 	case paneAgents:
@@ -371,12 +422,29 @@ func (p *picker) toggleAll() {
 
 func (p *picker) groupOn(i int) int {
 	n := 0
-	for _, name := range p.cfg.Groups[i].Reviews {
-		if p.selected[name] {
+	for _, rev := range p.cfg.Groups[i].Reviews {
+		if p.selected[rev.Name] {
 			n++
 		}
 	}
 	return n
+}
+
+// matching is the members of a group the current filter keeps, by name or by
+// what the review says it does.
+func (p *picker) matching(g PickGroup) []PickReview {
+	if p.filter == "" {
+		return g.Reviews
+	}
+	needle := strings.ToLower(p.filter)
+	var out []PickReview
+	for _, rev := range g.Reviews {
+		if strings.Contains(strings.ToLower(rev.Name), needle) ||
+			strings.Contains(strings.ToLower(rev.Desc), needle) {
+			out = append(out, rev)
+		}
+	}
+	return out
 }
 
 // chosen counts distinct selected reviews: a review in two sets is one review.
@@ -395,10 +463,10 @@ func (p *picker) known() []string {
 	seen := map[string]bool{}
 	out := []string{}
 	for _, g := range p.cfg.Groups {
-		for _, name := range g.Reviews {
-			if !seen[name] {
-				seen[name] = true
-				out = append(out, name)
+		for _, rev := range g.Reviews {
+			if !seen[rev.Name] {
+				seen[rev.Name] = true
+				out = append(out, rev.Name)
 			}
 		}
 	}
@@ -470,8 +538,8 @@ func (p *picker) reviewArgs() string {
 	for i, g := range p.cfg.Groups {
 		if len(g.Reviews) > 0 && p.groupOn(i) == len(g.Reviews) {
 			parts = append(parts, g.Name)
-			for _, name := range g.Reviews {
-				covered[name] = true
+			for _, rev := range g.Reviews {
+				covered[rev.Name] = true
 			}
 		}
 	}
@@ -545,7 +613,7 @@ func (p *picker) View() string {
 		p.renderHeader(),
 		lipgloss.JoinHorizontal(lipgloss.Top, p.reviewPanel(leftW, reviewH), " ", right),
 		p.renderCommand(),
-		clip(styleDim.Render(p.hint()), p.w),
+		p.renderStatus(),
 		p.renderKeys(),
 	}, "\n")
 }
@@ -559,8 +627,13 @@ func (p *picker) renderHeader() string {
 		styleInfo.Render("compose a run"),
 	}
 	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.known()))
-	if p.suggest {
+	switch {
+	case p.suggest:
 		scope = "agent-picked reviews"
+	case p.chosen() == 0:
+		// Nothing picked is not an empty run: it is every review, which is
+		// what the composed command says by saying nothing.
+		scope = fmt.Sprintf("all %d reviews", len(p.known()))
 	}
 	agents := "all installed"
 	if picked := p.pickedAgents(); len(picked) > 0 {
@@ -581,9 +654,23 @@ func (p *picker) renderCommand() string {
 	return clip(styleDim.Render("$ ")+styleValue.Render(cmd), p.w)
 }
 
+// blocked reports why the composed run would not start, or "" when it would.
+// Worktree isolation cuts branches from a commit, so uncommitted work would
+// be invisible to every review: better to say so here than to compose a
+// command that fails on launch.
+func (p *picker) blocked() string {
+	if p.cfg.Dirty && p.concurrency().n > 1 {
+		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
+	}
+	return ""
+}
+
 // hint explains the row under the cursor, in the one place that always has
 // room for a sentence.
 func (p *picker) hint() string {
+	if p.typing {
+		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
+	}
 	switch p.focus {
 	case paneOptions:
 		return p.opts[p.cursor[paneOptions]].help
@@ -601,10 +688,20 @@ func (p *picker) hint() string {
 	}
 }
 
+// renderStatus is the line under the command: what is blocking a launch if
+// anything is, otherwise what the cursor is on.
+func (p *picker) renderStatus() string {
+	if why := p.blocked(); why != "" {
+		return clip(styleWarn.Render("⚠ "+why), p.w)
+	}
+	return clip(styleDim.Render(p.hint()), p.w)
+}
+
 func (p *picker) renderKeys() string {
 	keys := []struct{ k, v string }{
 		{"tab", "pane"}, {"space", "toggle"}, {"←/→", "open, adjust"},
-		{"a", "all/none"}, {"+/-", "concurrency"}, {"⏎", "run"}, {"q", "cancel"},
+		{"a", "all/none"}, {"/", "filter"}, {"+/-", "concurrency"},
+		{"⏎", "run"}, {"q", "cancel"},
 	}
 	var b strings.Builder
 	for i, k := range keys {
@@ -644,6 +741,14 @@ func (p *picker) reviewPanel(w, h int) string {
 	inner := w - 4 // the panel border and its padding
 	rows := p.rows()
 	from, to := p.window(paneReviews, len(rows), h)
+	// One name column for the whole pane, so the descriptions line up.
+	nameW := 4
+	for _, r := range rows {
+		if r.kind == rowReview {
+			nameW = max(nameW, lipgloss.Width(reviewLabel(r.review)))
+		}
+	}
+	nameW = min(nameW, inner/3)
 	lines := make([]string, 0, h)
 	for i := from; i < to; i++ {
 		r := rows[i]
@@ -678,15 +783,29 @@ func (p *picker) reviewPanel(w, h int) string {
 				styleDim.Render(mark)+" "+name,
 				count+" "+meter(float64(on)/float64(max(len(g.Reviews), 1)), 6, cTeal)))
 		case rowReview:
-			name := strings.TrimSuffix(r.review, "-review")
-			text := "   " + checkbox(p.selected[r.review]) + " " + name
+			rev := r.review
+			name := reviewLabel(rev)
+			box := checkbox(p.selected[rev.Name])
 			if p.suggest {
-				text = styleFaint.Render("   " + checkboxPlain(p.selected[r.review]) + " " + name)
+				box, name = checkboxPlain(p.selected[rev.Name]), styleFaint.Render(name)
 			}
-			lines = append(lines, pickLine(cur, inner, text, ""))
+			row := "   " + box + " " + pad(name, nameW)
+			// The description is what makes a name mean something. It sits in
+			// one column so the eye can run down it, and is the first thing to
+			// go when the pane is narrow.
+			if room := inner - lipgloss.Width(row) - 3; room > 12 {
+				row += " " + styleFaint.Render(trim(rev.Desc, room))
+			}
+			lines = append(lines, pickLine(cur, inner, row, ""))
 		}
 	}
 	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.known()))
+	if p.chosen() == 0 {
+		title = fmt.Sprintf("REVIEWS  all %d", len(p.known()))
+	}
+	if p.filter != "" {
+		title += styleInfo.Render("   /" + p.filter)
+	}
 	if p.suggest {
 		title = "REVIEWS  " + styleInfo.Render("chosen by an agent at run time")
 	}
@@ -713,6 +832,9 @@ func (p *picker) agentPanel(w, h int) string {
 	title := "AGENTS"
 	if len(p.pickedAgents()) == 0 {
 		title += styleDim.Render("  none picked: auto-detect")
+	}
+	if hidden := len(p.cfg.Agents) - (to - from); hidden > 0 {
+		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
 	}
 	return panel(title, strings.Join(lines, "\n"), inner, h)
 }
@@ -763,6 +885,17 @@ func (p *picker) runPanel(w, h int) string {
 		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
 	}
 	return panel(title, strings.Join(lines, "\n"), inner, h)
+}
+
+// reviewLabel is a review's name as the pane shows it: the -review suffix is
+// noise repeated 50 times, and a prompt the reviewed tree carries overrides
+// the bundled one of that name, which is worth knowing before picking it.
+func reviewLabel(rev PickReview) string {
+	name := strings.TrimSuffix(rev.Name, "-review")
+	if rev.Project {
+		name += " [project]"
+	}
+	return name
 }
 
 func checkbox(on bool) string {
