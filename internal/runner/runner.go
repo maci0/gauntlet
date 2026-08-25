@@ -500,28 +500,56 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	sem := make(chan struct{}, r.cfg.Jobs)
 	var wg sync.WaitGroup
 	r.schedule(loopNo)
+	// A lane is claimed before a review comes off the queue. Popping first
+	// and waiting for a lane second would empty the queue at dispatch speed
+	// while every review still waited minutes for its turn, and a stop could
+	// no longer tell never-started work from in-flight work: a hot reload
+	// would report nothing pending and lose the loop's remainder, and a
+	// graceful quit or an expired budget would keep launching everything
+	// already popped. Claiming first leaves the unstarted half on the queue,
+	// where the stop handling below already knows what to do with it.
+loop:
 	for i := 0; ; i++ {
-		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() || r.budgetExhausted() {
+		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
 			break
+		}
+		if r.budgetExhausted() {
+			r.log("Runtime budget exhausted, finishing up")
+			break
+		}
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			break loop
+		}
+		if ctx.Err() != nil {
+			// Cancel landed while both select cases were ready: give the lane
+			// back rather than dispatch into a dead context.
+			<-sem
+			break loop
 		}
 		review, ok := r.takeNext()
 		if !ok {
+			<-sem
 			break
 		}
 		wg.Add(1)
 		go func(i int, review string) {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-			case <-ctx.Done():
-				r.abandonQueued(review, loopNo)
-				return
-			}
 			defer func() { <-sem }()
 			r.st.Add(r.runIsolated(ctx, review, loopNo, i, base))
 		}(i, review)
 	}
 	wg.Wait()
+
+	// A hard cancel strands whatever never got a lane: no successor will
+	// ever start it, so each is recorded as interrupted rather than let
+	// vanish from the stats, the summary, and the journal. Soft stops and
+	// budget stops leave the queue alone instead: the handoff or the caller
+	// decides, exactly as the sequential loop does.
+	if ctx.Err() != nil {
+		r.abandonQueue(loopNo)
+	}
 
 	if len(r.Pending()) > 0 && !r.finish.Load() {
 		return false // stopped early: this loop is unfinished
@@ -540,20 +568,25 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	return ctx.Err() == nil
 }
 
-// abandonQueued records a review that was popped from the queue but never
-// started because the run was canceled before a lane freed up. Sequential mode
-// records its interrupted review; without this the parallel lane would drop
-// the review from the stats, the summary, and the journal alike, and a reload
-// handoff would never hand it to a successor either.
-func (r *Runner) abandonQueued(review string, loopNo int) {
-	res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
-		Status: StatusInterrupted}
-	r.st.Add(res)
-	r.bus.Publish(Event{
-		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
-		Agent: res.Agent.Label(), Loop: loopNo, Status: StatusInterrupted,
-		ExitCode: new(res.ExitCode),
-	})
+// abandonQueue records every queued review a hard cancel will never start.
+// There is no successor to hand them to, so letting them vanish would drop
+// them from the stats, the summary, and the journal alike. Soft stops never
+// call this: their queue is the handoff.
+func (r *Runner) abandonQueue(loopNo int) {
+	for {
+		review, ok := r.takeNext()
+		if !ok {
+			return
+		}
+		res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
+			Status: StatusInterrupted}
+		r.st.Add(res)
+		r.bus.Publish(Event{
+			Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
+			Agent: res.Agent.Label(), Loop: loopNo, Status: StatusInterrupted,
+			ExitCode: new(res.ExitCode),
+		})
+	}
 }
 
 // runIsolated runs one review in a private worktree and merges its commit.

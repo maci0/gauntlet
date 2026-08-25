@@ -966,6 +966,73 @@ func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
 	}
 }
 
+// The parallel twin of TestSoftStopHandsOverTheRestOfTheLoop. With more
+// reviews than lanes, whatever never got a lane must still be pending after a
+// soft stop: a dispatch loop that empties the queue up front would run the
+// whole loop behind the stop and hand the successor nothing.
+func TestSoftStopInParallelModeHandsOverTheQueue(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"; sleep 1.2`)
+
+	reviews := []string{"a-review", "b-review", "c-review", "d-review"}
+	cfg := baseConfig(t, repo, set, reviews, bin)
+	cfg.Jobs = 2
+	cfg.MaxLoops = 1
+
+	bus := NewBus()
+	drain(bus)
+	first, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		first.RequestStop() // as a hot reload does
+	}()
+	first.Run(context.Background())
+	bus.Close()
+
+	done := first.Stats().Counts().Total()
+	pending := first.Pending()
+	if done == 0 || done == len(reviews) {
+		t.Fatalf("test needs a partial loop: %d done", done)
+	}
+	if len(pending) != len(reviews)-done {
+		t.Fatalf("pending %v does not match %d finished reviews", pending, done)
+	}
+	// Nothing was killed: a soft stop lets in-flight agents finish.
+	if c := first.Stats().Counts(); c.Interrupted != 0 || c.Failures() != 0 {
+		t.Fatalf("soft stop disturbed a review: %+v", c)
+	}
+
+	// The successor picks up exactly what never started, and finishes the loop.
+	bus2 := NewBus()
+	drain(bus2)
+	cfg2 := cfg
+	cfg2.ResumeQueue = pending
+	second, err := New(context.Background(), cfg2, bus2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second.Run(context.Background())
+	bus2.Close()
+
+	var ran []string
+	for _, r := range second.Stats().Results() {
+		ran = append(ran, r.Review)
+	}
+	sort.Strings(ran)
+	want := append([]string(nil), pending...)
+	sort.Strings(want)
+	if strings.Join(ran, ",") != strings.Join(want, ",") {
+		t.Fatalf("successor ran %v, want exactly the pending %v", ran, want)
+	}
+	if second.Loops() != 1 {
+		t.Fatalf("the resumed loop should count as complete, got %d", second.Loops())
+	}
+}
+
 func TestLiveUsageIsReportedWhileTheAgentRuns(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "a-review")

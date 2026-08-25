@@ -278,7 +278,15 @@ func (w *Worktree) Remove(ctx context.Context) error {
 
 // DeleteBranch removes a merged review branch. Unmerged branches need -D and
 // are kept instead, so nothing is destroyed by accident.
+//
+// It takes wtMu like every other worktree-bookkeeping command: deleting a
+// branch walks the registered worktrees (a branch checked out anywhere has to
+// survive), and reading that metadata while AddWorktree or PruneWorktrees is
+// halfway through its own update fails exactly the way their doc comment
+// describes. The failure would be swallowed here, leaving the branch stranded.
 func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
 	_, _ = r.run(ctx, 30*time.Second, "branch", "-d", branch)
 }
 
