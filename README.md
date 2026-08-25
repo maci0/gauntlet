@@ -78,7 +78,8 @@ rewrite adds:
 ```sh
 # a release binary (linux/darwin, amd64/arm64)
 mkdir -p ~/.local/bin
-curl -fsSL https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/) -o ~/.local/bin/gauntlet
+ver=$(curl -fsSL https://api.github.com/repos/maci0/gauntlet/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+curl -fsSL "https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)" -o ~/.local/bin/gauntlet
 chmod +x ~/.local/bin/gauntlet
 
 # or from source

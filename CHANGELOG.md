@@ -9,7 +9,7 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
-## Unreleased
+## 1.1.0
 
 ### Added
 
@@ -57,7 +57,9 @@ changes could land in a minor instead and were listed under Changed.
   a reload rebuilds a branch still at base and fails rather than destroys one
   holding commits.
 - The README install one-liner maps `aarch64` to `arm64` (so arm Linux hosts
-  fetch a real asset) and creates `~/.local/bin` before writing into it.
+  fetch a real asset), creates `~/.local/bin` before writing into it, and asks
+  for the asset by its real name: release binaries carry the version
+  (`gauntlet_1.1.0_linux_amd64`), so the unversioned URL it used was a 404.
 - Token counters parsed from an agent's output are bounded. A review that
   prints a usage-shaped sentinel it read somewhere else (a `9223372036854775807`
   in a source file it quoted) was believed, and the run total then overflowed
