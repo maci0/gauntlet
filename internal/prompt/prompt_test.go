@@ -20,7 +20,7 @@ import (
 )
 
 func TestBundledPromptsAreEmbedded(t *testing.T) {
-	names := bundledNames()
+	names := BundledNames()
 	if len(names) < 40 {
 		t.Fatalf("expected the full bundled set, got %d", len(names))
 	}
