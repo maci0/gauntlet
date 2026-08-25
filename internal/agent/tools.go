@@ -46,7 +46,7 @@ var ReviewTools = map[string][]string{
 	"lint-review": {"golangci-lint", "ruff", "eslint", "biome", "clang-tidy",
 		"clang-format", "cpplint", "gofumpt", "shellcheck", "yamllint"},
 	"mobile-review":  {"swiftlint", "ktlint", "detekt"},
-	"privacy-review": {"semgrep", "gitleaks"},
+	"privacy-review": {"semgrep"},
 	"api-review":     {"spectral", "oasdiff", "buf"},
 	"arch-review":    {"madge", "depcruise", "pydeps", "lint-imports"},
 	"authz-review":   {"semgrep"},

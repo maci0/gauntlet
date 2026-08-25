@@ -80,6 +80,7 @@ Instructions:
 - The device is hostile: the OS kills the process, the network vanishes mid-write, permissions get revoked, storage fills. Review each flow as if all of that happens, because it does.
 - Be concrete: name the screen, the manifest key, the lifecycle callback, the call site.
 - Test claims against both platforms when the app is cross-platform; parity gaps are findings.
+- If available, use: `swiftlint` (Swift), `ktlint`/`detekt` (Kotlin). Never install tools.
 - Distinguish confirmed issues from likely ones from those needing a device to verify — flag device-only checks rather than guessing.
 - Do not report general UX, accessibility, security, or packaging findings — those belong to their own reviews.
 - Prefer fewer high-value findings over many weak ones.
