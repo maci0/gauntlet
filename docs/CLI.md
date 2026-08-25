@@ -72,7 +72,8 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `-1, --once` | off | One loop, then stop. |
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
-| `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits, optionally pushing. |
+| `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
+| `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. |
 | `-y, --yes` | off | Skip the suggest confirmation. |
 | `--semcode` | off | Build a semcode index before the loop. |

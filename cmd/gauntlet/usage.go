@@ -72,6 +72,7 @@ var helpGroups = []flagGroup{
 		{"", "target-dirs", "LIST", "alias of --dirs, kept for scripts from the Python tool; takes a comma-separated list"},
 		{"j", "jobs", "N", "reviews at a time per directory; above 1, each gets its own git worktree and is merged back"},
 		{"t", "timeout", "DUR", "per-review timeout: 90s, 30m, 1h, 2d"},
+		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
 		{"", "retries", "N", "reruns of a failed review on the same agent, waiting longer each time (default 2)"},
 		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
 		{"1", "once", "", "run a single loop and exit"},

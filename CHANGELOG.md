@@ -13,6 +13,14 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Added
 
+- `--merge-into BRANCH`: after each loop, the committed work on the branch the
+  reviews ran on is merged into BRANCH. Until now nothing in gauntlet targeted
+  a branch by name: `--commit` commits where you are, and the worktree
+  machinery merges back into where you are. The merge runs in a scratch
+  checkout of the target, so your own checkout is never switched under you; it
+  needs `--commit` or `--push`, since only committed work merges; and a
+  conflict aborts and leaves both branches untouched. The launcher offers it
+  as a branch picker beside the commit switches.
 - The launcher offers `push` beside `commit`, which was the one run switch it
   could not compose. Picking it passes `--push` alone, since that already
   implies the commit step.

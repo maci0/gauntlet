@@ -56,8 +56,12 @@ type Config struct {
 
 	Commit bool
 	Push   bool
-	Yolo   bool
-	Raw    bool
+	// MergeInto is a branch this run's work is merged into after each loop,
+	// once the commit step has left the tree clean. Empty leaves the work
+	// where the reviews put it, on the branch that was checked out.
+	MergeInto string
+	Yolo      bool
+	Raw       bool
 	// Stream asks agents that support it for machine-readable output, which
 	// carries token usage and separates reasoning from visible text.
 	Stream           bool
@@ -353,6 +357,7 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 			r.runCommitStep(ctx)
 		}
 	}
+	r.runMergeStep(ctx, loopNo)
 	return true
 }
 
@@ -403,6 +408,7 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		// the only safe moment to hand it to a commit agent.
 		r.runCommitStep(ctx)
 	}
+	r.runMergeStep(ctx, loopNo)
 	return ctx.Err() == nil
 }
 
@@ -767,6 +773,59 @@ func (r *Runner) outputSink(review, agentLabel string) func(normalize.Line) {
 
 // runCommitStep asks an agent to commit (and optionally push) whatever the
 // reviews changed.
+// runMergeStep merges what this loop produced into --merge-into. It runs
+// after the commit step, because only committed work can be merged: anything
+// still dirty in the tree is not in the branch, and merging then would report
+// a success that moved none of it.
+//
+// The merge happens in a scratch checkout of the target, so the branch the
+// reviews ran on stays checked out and the run stays watchable. A conflict
+// aborts and keeps everything where it is: the work is on this branch, and a
+// human resolves it.
+func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
+	if r.cfg.MergeInto == "" || ctx.Err() != nil || r.repo == nil {
+		return
+	}
+	from := r.repo.CurrentBranch(ctx)
+	if from == "" {
+		r.log("Not merging into %s: this tree is on a detached HEAD", r.cfg.MergeInto)
+		return
+	}
+	if from == r.cfg.MergeInto {
+		return // the work is already there
+	}
+	if dirty, err := r.repo.DirtyPaths(ctx, r.cfg.OwnArtifacts); err == nil && len(dirty) > 0 {
+		r.log("Not merging into %s: %d uncommitted path(s) would be left behind",
+			r.cfg.MergeInto, len(dirty))
+		r.st.addCommitFail()
+		return
+	}
+
+	r.mergeMu.Lock()
+	mr := r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
+		fmt.Sprintf("Merge %s from gauntlet run %s", from, r.cfg.RunID))
+	r.mergeMu.Unlock()
+
+	ev := Event{
+		Kind: EvMerge, Dir: r.cfg.Dir, Loop: loopNo,
+		Review: from, Branch: r.cfg.MergeInto, Text: mr.Detail,
+	}
+	switch {
+	case mr.Merged:
+		r.log("Merged %s into %s", from, r.cfg.MergeInto)
+		ev.Status = StatusOK
+	case mr.Conflict:
+		r.log("MERGE CONFLICT: %s does not merge into %s (%s)", from, r.cfg.MergeInto, mr.Detail)
+		ev.Status = StatusConflict
+		r.st.addCommitFail()
+	default:
+		r.log("Cannot merge %s into %s: %s", from, r.cfg.MergeInto, mr.Detail)
+		ev.Status = StatusFail
+		r.st.addCommitFail()
+	}
+	r.bus.Publish(ev)
+}
+
 func (r *Runner) runCommitStep(ctx context.Context) {
 	if ctx.Err() != nil {
 		return

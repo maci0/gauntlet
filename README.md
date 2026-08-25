@@ -139,8 +139,10 @@ flowchart LR
 ```
 
 `--jobs` counts per directory, so `--dirs a,b,c -j 4` is up to 12 agents at
-once. Conflicts abort the merge and keep the branch for you. The details, plus
-the run journal and hot reload, are in [docs/RUNS.md](docs/RUNS.md).
+once. Conflicts abort the merge and keep the branch for you. Everything lands
+on the branch you are already on; `--merge-into BRANCH` is what carries a
+loop's committed work anywhere else. The details, plus the run journal and hot
+reload, are in [docs/RUNS.md](docs/RUNS.md).
 
 ## Dashboard
 

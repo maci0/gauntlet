@@ -49,6 +49,23 @@ func (r *Repo) CurrentBranch(ctx context.Context) string {
 	return strings.TrimSpace(string(out))
 }
 
+// Branches lists local branch names, excluding gauntlet's own review
+// branches: those are a run's scratch space, never a merge target.
+func (r *Repo) Branches(ctx context.Context) []string {
+	out, err := r.run(ctx, 10*time.Second, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" && !strings.HasPrefix(name, "gauntlet/") {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // Tip returns the commit the given ref points at.
 func (r *Repo) Tip(ctx context.Context, ref string) (string, error) {
 	out, err := r.run(ctx, 10*time.Second, "rev-parse", ref)
@@ -184,6 +201,53 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	// does not inherit it.
 	_, _ = r.run(ctx, 60*time.Second, "merge", "--abort")
 	return MergeResult{Conflict: true, Detail: firstLine(detail)}
+}
+
+// MergeInto merges branch into target, in a scratch checkout of target rather
+// than in the tree the user is working in: gauntlet never switches the branch
+// under someone's editor, and a run that merges is still a run they can watch.
+//
+// The target branch must exist locally. On conflict the merge is aborted and
+// nothing moves, exactly as a review branch that will not merge is kept for a
+// human.
+func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) MergeResult {
+	if !Available() {
+		return MergeResult{Detail: "git is not available"}
+	}
+	if _, err := r.Tip(ctx, "refs/heads/"+target); err != nil {
+		return MergeResult{Detail: fmt.Sprintf("no local branch %s to merge into", target)}
+	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
+	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
+	if _, err := r.run(ctx, 120*time.Second, "worktree", "add", "--quiet", dir, target); err != nil {
+		// A target already checked out elsewhere is the common cause, and it
+		// is the user's own checkout: say so rather than the raw git error.
+		return MergeResult{Detail: fmt.Sprintf("cannot check out %s to merge into: %v", target, err)}
+	}
+	defer func() {
+		_, _ = r.run(context.WithoutCancel(ctx), 30*time.Second, "worktree", "remove", "--force", dir)
+	}()
+
+	sub := &Repo{Dir: dir}
+	out, err := sub.run(ctx, 120*time.Second,
+		"-c", "user.name=gauntlet",
+		"-c", "user.email=gauntlet@localhost",
+		"merge", "--no-ff", "--no-verify", "-m", message, branch)
+	if err == nil {
+		return MergeResult{Merged: true}
+	}
+	detail := strings.TrimSpace(string(out))
+	if detail == "" {
+		detail = err.Error()
+	}
+	_, _ = sub.run(context.WithoutCancel(ctx), 60*time.Second, "merge", "--abort")
+	return MergeResult{Conflict: true, Detail: detail}
 }
 
 // Remove deletes the checkout. The branch is left alone: Merge decides

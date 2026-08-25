@@ -29,6 +29,8 @@ type PickConfig struct {
 	Dir     string      // the directory the composed run will review
 	Groups  []PickGroup // review sets, in display order
 	Agents  []string    // installed agent labels, empty when none were found
+	Branch  string      // the branch the reviews would run on, "" off a branch
+	Merge   []string    // other local branches, as merge targets
 	CPUs    int         // the concurrency meter is drawn against this
 	Version string
 }
@@ -145,6 +147,9 @@ func newPicker(cfg PickConfig) *picker {
 				help: "an agent commits what the reviews changed, on this branch"},
 			{kind: optToggle, label: "push", flag: "--push",
 				help: "commit, then git push to the remote (implies commit)"},
+			{kind: optCycle, label: "merge into", flag: "--merge-into",
+				values: append([]string{"stay on " + branchLabel(cfg.Branch)}, cfg.Merge...),
+				help:   "merge each loop's commits into another branch (needs commit)"},
 			{kind: optToggle, label: "yolo", flag: "--yolo",
 				help: "drop the caution rules: bigger changes"},
 		},
@@ -155,6 +160,15 @@ func newPicker(cfg PickConfig) *picker {
 		p.hues.get(a)
 	}
 	return p
+}
+
+// branchLabel names the branch the run would sit on, for a screen that must
+// say something even off a branch.
+func branchLabel(b string) string {
+	if b == "" {
+		return "this checkout"
+	}
+	return b
 }
 
 func (p *picker) Init() tea.Cmd { return nil }
@@ -413,8 +427,12 @@ func (p *picker) argv() []string {
 		switch {
 		case o.kind == optCount && o.n > 1:
 			out = append(out, "-j", fmt.Sprint(o.n))
+		case o.kind == optCycle && o.flag == "--merge-into":
+			if o.idx > 0 && p.committing() {
+				out = append(out, o.flag, o.values[o.idx])
+			}
 		case o.kind == optCycle:
-			// Already emitted next to the choice it qualifies.
+			// The suggest agent is emitted next to the choice it qualifies.
 		case o.kind == optToggle && o.on:
 			if o.flag == "--commit" && p.pushing() {
 				continue // --push already implies it
@@ -459,6 +477,13 @@ func (p *picker) optByFlag(flag string) *option {
 		}
 	}
 	return nil
+}
+
+// committing reports whether the composed run produces commits at all, which
+// is what a merge target needs to mean anything.
+func (p *picker) committing() bool {
+	c := p.optByFlag("--commit")
+	return p.pushing() || (c != nil && c.on)
 }
 
 // pushing reports whether the composed run ends in a git push.
@@ -688,16 +713,24 @@ func (p *picker) runPanel(w, h int) string {
 			right = meter(frac, 8, heatColor(frac)) + " " +
 				styleValue.Render(fmt.Sprint(o.n)) + styleDim.Render(fmt.Sprintf("/%d cpu", p.cfg.CPUs))
 		case optCycle:
-			left = "  " + o.label
+			// A cycle row that cannot apply yet is drawn inert: the suggest
+			// agent without suggest, a merge target without commits.
 			value := o.values[o.idx]
+			applies := p.suggest
+			chosen := styled(p.hues.get(value), value)
+			if o.flag == "--merge-into" {
+				applies = p.committing()
+				chosen = styleValue.Render(value)
+			}
+			left = "  " + o.label
 			switch {
-			case !p.suggest:
+			case !applies:
 				left = styleFaint.Render("  " + o.label)
 				right = styleFaint.Render(value)
 			case o.idx == 0:
 				right = styleDim.Render(value)
 			default:
-				right = styled(p.hues.get(value), value)
+				right = chosen
 			}
 		default:
 			left = checkbox(o.on) + " " + o.label

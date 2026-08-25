@@ -18,6 +18,8 @@ func demoPicker() *picker {
 			{Name: "frontend", Reviews: []string{"ux-review", "a11y-review"}},
 		},
 		Agents: []string{"claude", "codex:gpt-5"},
+		Branch: "work",
+		Merge:  []string{"main", "release"},
 		CPUs:   8,
 	})
 	p.w, p.h, p.ready = 100, 30, true
@@ -65,6 +67,13 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.optByFlag("--commit").on = true
 			p.optByFlag("--push").on = true
 		}, "-C /home/dev/project --once --tui --push"},
+		{"a merge target without commits is not passed", func(p *picker) {
+			p.optByFlag("--merge-into").idx = 1 // main
+		}, "-C /home/dev/project --once --tui"},
+		{"a merge target rides with the commits it moves", func(p *picker) {
+			p.optByFlag("--commit").on = true
+			p.optByFlag("--merge-into").idx = 1
+		}, "-C /home/dev/project --once --tui --commit --merge-into main"},
 		{"a subset of agents is passed, all of them is not", func(p *picker) {
 			p.agents[0] = true
 		}, "-C /home/dev/project -a claude --once --tui"},

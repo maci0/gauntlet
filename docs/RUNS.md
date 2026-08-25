@@ -38,6 +38,30 @@ its own loop, its own lock, and its own pool of `N`. `--dirs a,b,c -j 4` is up
 to 12 agents at once, so size it against your CPU count and your API limits,
 not against the review list.
 
+## Committing, and where the work lands
+
+Reviews edit the working tree. What happens to those edits is three separate
+choices:
+
+- `--commit` has an agent write a message and commit **on the branch you are
+  on**. `--push` does that and pushes it. Neither creates a branch, and
+  neither merges anything.
+- `--jobs N` is the only thing that branches: each review works on
+  `gauntlet/<run>/<review>`, and the runner merges those back into **the
+  branch you are on**, one at a time, `--no-ff`. Nothing here targets `main`
+  by name; if you are on `feature-x`, the work lands on `feature-x`.
+- `--merge-into BRANCH` is the step after that: once a loop's work is
+  committed, the branch you are on is merged into BRANCH. It runs in a scratch
+  checkout of BRANCH under `.gauntlet/worktrees/`, so the branch the reviews
+  are running on stays checked out and the run stays watchable. It needs
+  `--commit` or `--push`, because only committed work can merge, and it
+  refuses (rather than reporting a merge that moved nothing) if the tree is
+  still dirty. A conflict aborts the merge and leaves both branches where they
+  were, for a human to resolve.
+
+The merge is local. Pushing the branch that was merged into is deliberately
+not part of it: that is a decision about a shared branch, and it stays yours.
+
 ## Run journal
 
 Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):

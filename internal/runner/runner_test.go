@@ -740,6 +740,90 @@ func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	}
 }
 
+// --merge-into moves each loop's commits onto another branch without ever
+// checking that branch out in the tree the reviews are running in.
+func TestMergeIntoLandsTheWorkOnAnotherBranch(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	gitRun(t, repo, "checkout", "-q", "-b", "work")
+	set, _ := promptSet(t, "sec-review")
+	// A fake that commits its own work, which is what the commit step asks a
+	// real agent to do.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+git add -A
+git -c user.name=t -c user.email=t@e commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Commit, cfg.MergeInto = true, "main-line"
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	if branch := gitOut(t, repo, "rev-parse", "--abbrev-ref", "HEAD"); branch != "work" {
+		t.Fatalf("the tree is on %q, want the branch the reviews ran on", branch)
+	}
+	if !strings.Contains(gitOut(t, repo, "log", "--oneline", "main-line"), "review work") {
+		t.Fatalf("main-line did not take the work:\n%s",
+			gitOut(t, repo, "log", "--oneline", "--all"))
+	}
+	var merged bool
+	for _, ev := range got {
+		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
+			merged = true
+		}
+	}
+	if !merged {
+		t.Fatal("the merge was not reported on the bus")
+	}
+}
+
+// The merge is refused rather than faked when the work is still uncommitted:
+// merging then would report moving what it did not move.
+func TestMergeIntoRefusesADirtyTree(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.MergeInto = "main-line"
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	if n := countKind(got, EvMerge); n != 0 {
+		t.Fatalf("%d merge events, want none: the tree was dirty", n)
+	}
+	if r.Stats().CommitFails() == 0 {
+		t.Fatal("a refused merge must be counted, not passed over in silence")
+	}
+	if tip := gitOut(t, repo, "rev-parse", "main-line"); tip != gitOut(t, repo, "rev-parse", "HEAD") {
+		t.Fatal("nothing was committed, so main-line must not have moved")
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {
@@ -748,6 +832,17 @@ func countKind(events []Event, kind Kind) int {
 		}
 	}
 	return n
+}
+
+// gitRun runs one git command in a test repository, failing the test if it
+// does not succeed.
+func gitRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
 }
 
 func gitOut(t *testing.T, dir string, args ...string) string {

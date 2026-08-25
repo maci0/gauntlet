@@ -62,6 +62,7 @@ type options struct {
 	runtime          time.Duration
 	jobs             int
 	retries          int
+	mergeInto        string
 	maxLoops         int
 	seed             uint64
 	commit           bool
@@ -281,6 +282,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
 	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
+	fs.StringVar(&o.mergeInto, "merge-into", "",
+		"after each loop, merge this branch's committed work into BRANCH")
 	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules: bigger, more ambitious changes")
 	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "skip the suggest confirmation") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
@@ -440,6 +443,17 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.retries < 0 {
 		return nil, errors.New("--retries must be >= 0")
+	}
+	if o.mergeInto != "" {
+		// Only committed work can be merged, so the flag that produces the
+		// commits is not optional here: without it the merge would report a
+		// success that moved nothing the reviews wrote.
+		if !o.commit {
+			return nil, errors.New("--merge-into needs --commit (or --push): only committed work merges")
+		}
+		if !gitx.Available() {
+			return nil, errors.New("--merge-into needs git")
+		}
 	}
 	if o.jobs > 1 && !gitx.Available() {
 		return nil, errors.New("--jobs > 1 needs git: each review runs in its own worktree")

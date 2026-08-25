@@ -14,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/ui"
@@ -45,10 +46,13 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		return exitUsage
 	}
 
+	branch, targets := mergeTargets(ctx, dir)
 	argv, ok, err := ui.Pick(ui.PickConfig{
 		Dir:     dir,
 		Groups:  pickGroups(set),
 		Agents:  runner.AgentLabels(agent.Installed()),
+		Branch:  branch,
+		Merge:   targets,
 		CPUs:    runtime.NumCPU(),
 		Version: version,
 	})
@@ -94,4 +98,21 @@ func pickGroups(set prompt.Set) []ui.PickGroup {
 		groups = append(groups, ui.PickGroup{Name: "other", Reviews: rest})
 	}
 	return groups
+}
+
+// mergeTargets names the branch a run would sit on and the other local
+// branches it could be merged into. Outside a git repository there are
+// neither, and the launcher simply does not offer the choice.
+func mergeTargets(ctx context.Context, dir string) (branch string, targets []string) {
+	repo := gitx.Open(dir)
+	if repo == nil {
+		return "", nil
+	}
+	branch = repo.CurrentBranch(ctx)
+	for _, b := range repo.Branches(ctx) {
+		if b != branch {
+			targets = append(targets, b)
+		}
+	}
+	return branch, targets
 }
