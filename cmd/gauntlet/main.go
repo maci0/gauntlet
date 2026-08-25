@@ -204,19 +204,15 @@ func run(argv []string) int {
 		return cmdShowPrompt(stdout, runs[0].set, opts)
 	}
 
-	for _, d := range runs {
-		reviews, err := selectReviews(ctx, d, opts, agents, stdout, pal)
-		if err != nil {
-			if errors.Is(err, errAborted) {
-				return exitOK
-			}
-			fmt.Fprintln(os.Stderr, err)
-			if errors.Is(err, errAgentFailed) {
-				return exitFail
-			}
-			return exitUsage
+	if err := planReviews(ctx, runs, opts, agents, stdout, pal); err != nil {
+		if errors.Is(err, errAborted) {
+			return exitOK
 		}
-		d.reviews = reviews
+		fmt.Fprintln(os.Stderr, err)
+		if errors.Is(err, errAgentFailed) {
+			return exitFail
+		}
+		return exitUsage
 	}
 
 	if opts.list {

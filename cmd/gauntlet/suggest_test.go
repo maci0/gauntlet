@@ -60,11 +60,11 @@ func TestSelectReviewsRunsTheSuggestStep(t *testing.T) {
 	d, opts := suggestFixture(t, `echo "thinking"; echo "RELEVANT: sec-review: has auth code"`)
 	var out bytes.Buffer
 
-	got, err := selectReviews(context.Background(), d, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{})
+	err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "sec-review" {
+	if got := d.reviews; len(got) != 1 || got[0] != "sec-review" {
 		t.Fatalf("schedule %v, want the one suggested review", got)
 	}
 	if !strings.Contains(out.String(), "suggests 1 of 2") ||
@@ -79,7 +79,7 @@ func TestSelectReviewsRefusesAnAgentWithNoSuggestions(t *testing.T) {
 	d, opts := suggestFixture(t, `echo "I would run everything"`)
 	var out bytes.Buffer
 
-	_, err := selectReviews(context.Background(), d, opts,
+	err := planReviews(context.Background(), []*dirRun{d}, opts,
 		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
 	if !errors.Is(err, errAgentFailed) {
 		t.Fatalf("an agent that picks nothing must fail the triage step, got %v", err)
@@ -93,12 +93,59 @@ func TestSelectReviewsFiltersSuggestedReviewsThroughExclude(t *testing.T) {
 	opts.exclude = "sec"
 	var out bytes.Buffer
 
-	got, err := selectReviews(context.Background(), d, opts,
+	err := planReviews(context.Background(), []*dirRun{d}, opts,
 		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != "doc-review" {
+	if got := d.reviews; len(got) != 1 || got[0] != "doc-review" {
 		t.Fatalf("excluded suggestion survived: %v", got)
 	}
+}
+
+// Every directory gets its own triage: their prompt sets differ, so one
+// directory's answer is not another's. They run together, because several
+// trees would otherwise be one suggest timeout after another.
+func TestSuggestRunsForEveryDirectory(t *testing.T) {
+	// The fake agent answers with whatever the directory it runs in is named
+	// after: proof that each directory was asked on its own.
+	body := `case "$PWD" in
+	*a) echo "RELEVANT: sec-review: auth code";;
+	*) echo "RELEVANT: doc-review: docs drifted";;
+	esac
+	sleep 0.3`
+	first, opts := suggestFixture(t, body)
+	second, _ := suggestFixture(t, body)
+	// Both directories share one agent binary and one options set.
+	second.dir = renameDir(t, second.dir, "a")
+
+	var out bytes.Buffer
+	start := time.Now()
+	err := planReviews(context.Background(), []*dirRun{first, second}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := first.reviews; len(got) != 1 || got[0] != "doc-review" {
+		t.Fatalf("first directory scheduled %v, want its own answer", got)
+	}
+	if got := second.reviews; len(got) != 1 || got[0] != "sec-review" {
+		t.Fatalf("second directory scheduled %v, want its own answer", got)
+	}
+	if elapsed := time.Since(start); elapsed > 550*time.Millisecond {
+		t.Fatalf("the two suggest steps took %s: they ran one after another", elapsed)
+	}
+	if !strings.Contains(out.String(), "reviews in ") {
+		t.Fatalf("the report does not say which directory each answer belongs to:\n%s", out.String())
+	}
+}
+
+// renameDir moves a test directory so its basename is predictable.
+func renameDir(t *testing.T, dir, name string) string {
+	t.Helper()
+	next := filepath.Join(filepath.Dir(dir), name)
+	if err := os.Rename(dir, next); err != nil {
+		t.Fatal(err)
+	}
+	return next
 }
