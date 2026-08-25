@@ -119,6 +119,6 @@ Grouped by category, using the finding template above.
 
 Important:
 - Base findings on the actual code and its concurrency/I/O model, not assumptions.
-- If the system is not a fit for DST, print the skip result instead of forcing findings.
+- If the system is not a fit for DST, print the skip result and stop instead of forcing findings.
 - Prioritize the few central seams that unlock everything else over many scattered small leaks.
 - Optimize for actionable feedback a team could turn into simulation-enablement tickets immediately.

@@ -30,6 +30,7 @@ Review the following:
 - Deserialization of untrusted data
 - Missing Content-Type validation on file uploads
 - XML external entity (XXE) processing
+- Integer overflow or truncation on attacker-controlled length, count, or offset values reaching allocation size, indexing, or copy length (numerics-review owns arithmetic correctness; here own the memory-safety consequence)
 - Confusable/homoglyph or bidi-control characters in identity-bearing input (usernames, domains, paths) enabling spoofing or filter bypass (unicode-review owns the encoding/normalization mechanics; here own the impersonation or bypass)
 
 4. Data exposure

@@ -71,7 +71,8 @@ Review the following:
 - Missing connection timeouts or idle connection cleanup
 - Transactions held open longer than necessary
 - Missing statement timeouts that could allow runaway queries
-- Connection pool size not tuned for the workload
+- Connection pool size not tuned for the workload (note only; perf-review owns tuning)
+- Server memory settings absent or grossly mismatched in committed database config (buffer pool/page cache, work_mem-class): cache-review defers the engine's own buffer and query caches here
 - Missing retry logic for transient connection failures (note only; error-review owns retry/backoff)
 - Connection strings or credentials hardcoded in application code (note only; sec-review owns the secret)
 

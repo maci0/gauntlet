@@ -168,6 +168,6 @@ Ordered by risk and effort:
 
 Important:
 - Base findings on the actual manifests, Dockerfiles, and source. Do not flag theoretical issues that cannot be observed in the repo.
-- A container that works in docker-compose but lacks probes, security context, and resource limits is not container-native; call this out clearly.
+- A workload that works in docker-compose but whose Kubernetes/Helm/Kustomize declaration lacks probes, security context, and resource limits is not container-native; call this out clearly. Probe presence and limits in compose/CI wiring themselves are infra-review findings.
 - Do not recommend Istio, a service mesh, or a policy engine as a fix for an application-level gap. The application must implement the practice itself.
 - Call out workloads that are already correctly configured; not every finding needs a fix.
