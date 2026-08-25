@@ -732,6 +732,62 @@ echo "RESULT: changed=1"`)
 	}
 }
 
+// A graceful quit stops starting reviews, lets the ones running finish, and
+// still commits what this loop produced: there is no successor to do it, so
+// dropping the commit step would leave the work uncommitted on disk.
+func TestRequestFinishDrainsAndCommits(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
+	// Each review edits and commits, like the commit step would.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+git add -A
+git -c user.name=t -c user.email=t@e commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"
+sleep 0.2`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review", "d-review"}, bin)
+	cfg.Commit, cfg.MaxLoops = true, 0 // loop forever until asked to stop
+	bus := NewBus()
+	events := bus.Subscribe(512)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		// Let the first review start, then ask for the graceful quit.
+		time.Sleep(150 * time.Millisecond)
+		r.RequestFinish()
+	}()
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	if !r.Finishing() {
+		t.Fatal("the runner should report that it is finishing")
+	}
+	started := countKind(got, EvReviewStart)
+	ended := countKind(got, EvReviewEnd)
+	if started == 0 {
+		t.Fatal("nothing ran at all")
+	}
+	if started != ended {
+		t.Fatalf("%d reviews started but %d ended: a graceful quit must drain", started, ended)
+	}
+	if started == len(cfg.Reviews) {
+		t.Fatalf("all %d reviews ran: the quit did not stop the queue", started)
+	}
+	if n := countKind(got, EvLoopEnd); n == 0 {
+		t.Fatal("the loop that was draining never reported its end")
+	}
+	if pending := r.Pending(); len(pending) != 0 {
+		t.Fatalf("%v is still queued: a graceful quit has no successor to hand it to", pending)
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {

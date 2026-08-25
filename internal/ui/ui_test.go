@@ -417,6 +417,24 @@ func TestAgentHuesPreferTheVendorColor(t *testing.T) {
 	}
 }
 
+// The graceful quit is a request, not an exit: the screen says it is
+// finishing and keeps running until the reviews in flight are done.
+func TestDashboardFinishKeyAsksOnce(t *testing.T) {
+	asked := 0
+	cfg := demoConfig()
+	cfg.OnFinish = func() { asked++ }
+	m := newModel(cfg)
+	m.w, m.h, m.ready = 100, 30, true
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if asked != 1 {
+		t.Fatalf("the finish request was made %d times, want once", asked)
+	}
+	if got := m.View(); !strings.Contains(got, "FINISHING") {
+		t.Fatalf("the header does not say the run is finishing:\n%s", got)
+	}
+}
+
 // Theme tokens are pinned to WCAG 2.2 AA on both background variants they
 // ship with: any color that can sit behind text clears 4.5:1 (SC 1.4.3),
 // including the status hues that color grid names and feed lines, and the

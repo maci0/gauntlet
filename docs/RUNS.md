@@ -75,6 +75,20 @@ choices:
 The merge is local. Pushing the branch that was merged into is deliberately
 not part of it: that is a decision about a shared branch, and it stays yours.
 
+## Stopping a run
+
+Three ways, and they mean different things:
+
+| How | What happens |
+|---|---|
+| `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) | Graceful: no new review starts, the ones running finish, their work is committed, pushed, and merged as the flags ask, and the run then exits normally. Reviews not yet started are dropped. |
+| `Ctrl-C`, `SIGINT`, `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. A second one force-kills. |
+| `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
+
+The graceful stop is the one to reach for when a loop is halfway through and
+the tree should not be left with uncommitted agent edits: it is the only stop
+that still runs the commit and merge steps.
+
 ## Run journal
 
 Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):

@@ -112,6 +112,13 @@ None is required; unset, everything lives under `~/.gauntlet`.
 (`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
 handoff file passed across the exec.)
 
+## Signals
+
+| Signal | Effect |
+|---|---|
+| `SIGQUIT` (`Ctrl-\`) | Finish gracefully: no new review starts, the ones running end and land their work, then the run exits normally. `s` on the dashboard does the same. |
+| `SIGINT` (`Ctrl-C`), `SIGTERM` | Terminate the running reviews and exit 130. A second one force-kills. |
+
 ## Exit codes
 
 | Code | Meaning |

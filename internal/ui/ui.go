@@ -30,6 +30,10 @@ type Config struct {
 	Timeout time.Duration
 	Budget  time.Duration
 	Started time.Time
+
+	// OnFinish is the graceful quit: stop starting reviews, let the ones
+	// running land their work, then end the run. Nil disables the key.
+	OnFinish func()
 }
 
 // tickEvery drives the redraw. Ten frames a second is enough to feel alive
@@ -132,6 +136,7 @@ type model struct {
 	scroll    int
 	filter    feedFilter
 	paused    bool
+	finishing bool // a graceful quit was asked for and is draining
 	help      bool
 	done      bool
 	reloading bool
@@ -279,6 +284,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f":
 			m.filter = (m.filter + 1) % feedFilters
 			m.scroll = 0 // the line count changed under the scrollback
+		case "s":
+			// Asking twice changes nothing, so the screen says it once and
+			// keeps saying it in the header until the run ends.
+			if m.cfg.OnFinish != nil && !m.finishing {
+				m.finishing = true
+				m.cfg.OnFinish()
+			}
 		case "?", "h":
 			m.help = !m.help
 		}
@@ -575,6 +587,8 @@ func (m *model) stateLabel() (string, lipgloss.Style) {
 	switch {
 	case m.done:
 		return "● DONE", styleDim
+	case m.finishing:
+		return "● FINISHING", styleWarn
 	case m.reloading:
 		return "● RELOADING", styleMagic
 	case m.paused:
@@ -855,7 +869,8 @@ func lineStyle(k normalize.Kind) lipgloss.Style {
 
 func (m *model) renderFooter() string {
 	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"space", "pause feed"}, {"j/k", "scroll"}, {"f", "filter"}, {"?", "help"},
+		{"q", "quit"}, {"s", "finish"}, {"space", "pause feed"}, {"j/k", "scroll"},
+		{"f", "filter"}, {"?", "help"},
 	}
 	var b strings.Builder
 	for _, k := range keys {
@@ -913,7 +928,8 @@ func (m *model) renderHelp() string {
 	lines := []string{
 		styleTitle.Render("gauntlet dashboard"),
 		"",
-		"  q, esc      quit (stops the run)",
+		"  q, esc      quit (stops the run, killing what is running)",
+		"  s           finish: no new reviews, then commit, merge, and exit",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
 		"  g / G       jump to oldest / newest",

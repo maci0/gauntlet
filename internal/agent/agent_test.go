@@ -93,11 +93,36 @@ func TestParseBinResolvesBeforeAnyChdir(t *testing.T) {
 	}
 }
 
+// crush's non-interactive mode is a subcommand, and its interactive --yolo
+// flag is not accepted there: `crush run --yolo` exits with "unknown flag"
+// instead of running, and the run itself auto-approves the session anyway.
+func TestBuildCmdCrushUsesRunMode(t *testing.T) {
+	argv, err := BuildCmd(Spec{Tool: "crush", Model: "openai/gpt-5"}, "P", BuildOpts{Continue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"crush", "run", "-C", "--quiet", "-m", "openai/gpt-5", "P"}
+	if len(argv) != len(want) {
+		t.Fatalf("argv %v, want %v", argv, want)
+	}
+	for i := range want {
+		if argv[i] != want[i] {
+			t.Fatalf("argv %v, want %v", argv, want)
+		}
+	}
+	for _, a := range argv {
+		if a == "--yolo" || a == "-y" {
+			t.Fatalf("crush run does not take %q: %v", a, argv)
+		}
+	}
+}
+
 func TestBuildCmdPlacesPromptLast(t *testing.T) {
 	cases := map[string]Spec{
 		"claude": {Tool: "claude", Model: "opus"},
 		"codex":  {Tool: "codex"},
 		"kimi":   {Tool: "kimi", Model: "k2"},
+		"crush":  {Tool: "crush", Model: "anthropic/claude-sonnet-4"},
 	}
 	for name, spec := range cases {
 		argv, err := BuildCmd(spec, "PROMPT", BuildOpts{})

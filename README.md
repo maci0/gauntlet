@@ -93,7 +93,7 @@ equivalent for: process groups to kill an agent's whole tree on timeout,
 for hot reload.
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
-`cursor-agent`, `kimi`, `opencode`, `clanker`, `dsh`, plus the pi family
+`cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, plus the pi family
 (`pi`, `prime-agent`, `feynman`, `omp`), which ships as editable definitions
 rather than code. At least one must be on `PATH`.
 
@@ -151,7 +151,8 @@ one lane per agent, the full review grid, and the feed.
 
 | Key | Action |
 |---|---|
-| `q`, `esc` | quit (stops the run) |
+| `q`, `esc` | quit (stops the run, killing what is running) |
+| `s` | finish: no new reviews, then commit, merge, and exit |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `f` | narrow the feed to results, errors, and diffs, and back |

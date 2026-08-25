@@ -36,7 +36,7 @@ func (s Spec) Label() string {
 // Valid lists every supported agent CLI.
 var Valid = []string{
 	"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent",
-	"kimi", "opencode", "clanker", "dsh",
+	"kimi", "opencode", "crush", "clanker", "dsh",
 }
 
 // noModel agents pick their model from their own config, not the command line.
@@ -49,7 +49,7 @@ var optIn = map[string]bool{"clanker": true}
 
 // subcommand agents are invoked as "binary subcommand ...": session flags
 // belong after the subcommand, not next to the binary.
-var subcommand = map[string]string{"codex": "exec", "opencode": "run", "clanker": "run"}
+var subcommand = map[string]string{"codex": "exec", "opencode": "run", "clanker": "run", "crush": "run"}
 
 // continueFlags resume the agent's most recent session in this directory.
 // Agents absent here always start fresh: their resume mechanics do not compose
@@ -61,6 +61,7 @@ var continueFlags = map[string][]string{
 	"kimi":     {"-c"},
 	"grok":     {"-c"},
 	"opencode": {"-c"},
+	"crush":    {"-C"},
 	"gemini":   {"--resume", "latest"},
 }
 
@@ -442,6 +443,17 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = []string{"clanker", "run", prompt}
 	case "opencode":
 		cmd = []string{"opencode", "run", "--auto"}
+		if spec.Model != "" {
+			cmd = append(cmd, "-m", spec.Model)
+		}
+		cmd = append(cmd, prompt)
+	case "crush":
+		// `crush run` is the non-interactive mode, and it auto-approves the
+		// session's tool permissions itself (app.RunNonInteractive calls
+		// AutoApproveSession); the interactive --yolo flag is not accepted
+		// here and would make it exit instead of run. --quiet drops the
+		// spinner, whose repaints are noise in a captured stream.
+		cmd = []string{"crush", "run", "--quiet"}
 		if spec.Model != "" {
 			cmd = append(cmd, "-m", spec.Model)
 		}

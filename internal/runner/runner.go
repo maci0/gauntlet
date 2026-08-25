@@ -126,12 +126,36 @@ type Runner struct {
 	// soft is set when the run should end at the next quiescent point: a hot
 	// reload waiting for in-flight reviews, or a runtime budget that expired.
 	soft atomic.Bool
+	// finish is the graceful quit: like soft, no new review starts, but what
+	// is in flight is drained and its work is committed, pushed, and merged
+	// before the run ends. A reload hands its unfinished reviews to a
+	// successor; a graceful quit has no successor, so it must not leave the
+	// loop's output uncommitted.
+	finish atomic.Bool
 }
 
 // RequestStop asks the runner to finish the reviews already in flight and then
 // return. Unlike canceling the context, it never kills a running agent: the
 // reviews now running finish normally, including their commit and merge.
 func (r *Runner) RequestStop() { r.soft.Store(true) }
+
+// RequestFinish asks the runner to stop starting reviews and end the run once
+// the ones already running are done, their results committed, pushed, and
+// merged as the flags ask. Reviews not yet started are dropped, not deferred:
+// nothing follows this run.
+func (r *Runner) RequestFinish() { r.finish.Store(true) }
+
+// Finishing reports whether a graceful quit is under way, for a screen that
+// should say so.
+func (r *Runner) Finishing() bool { return r.finish.Load() }
+
+// dropPending clears the unstarted queue, for a run that is ending on purpose
+// and has no successor to hand it to.
+func (r *Runner) dropPending() {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	r.pending = nil
+}
 
 // Pending is what the current loop had not started when the runner stopped.
 // Handing it to a successor lets a hot reload finish the loop rather than
@@ -371,6 +395,9 @@ func (r *Runner) Run(ctx context.Context) {
 		}
 		r.bus.Publish(ev)
 
+		if r.finish.Load() {
+			return // the graceful quit's last loop is done
+		}
 		if r.cfg.MaxLoops > 0 && loops >= r.cfg.MaxLoops {
 			return
 		}
@@ -389,6 +416,13 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 	for {
 		if ctx.Err() != nil || r.soft.Load() {
 			return false
+		}
+		if r.finish.Load() {
+			// No new review starts, and what was never started is dropped:
+			// there is no successor to hand it to. What this loop did still
+			// commits and merges below.
+			r.dropPending()
+			break
 		}
 		if r.budgetExhausted() {
 			r.log("Runtime budget exhausted, finishing up")
@@ -429,7 +463,7 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	var wg sync.WaitGroup
 	r.schedule()
 	for i := 0; ; i++ {
-		if ctx.Err() != nil || r.soft.Load() || r.budgetExhausted() {
+		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() || r.budgetExhausted() {
 			break
 		}
 		review, ok := r.takeNext()
@@ -450,8 +484,13 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	}
 	wg.Wait()
 
-	if len(r.Pending()) > 0 {
+	if len(r.Pending()) > 0 && !r.finish.Load() {
 		return false // stopped early: this loop is unfinished
+	}
+	if r.finish.Load() {
+		// A graceful quit drops what it never started: there is no successor
+		// to hand the queue to, and the work that did run must still land.
+		r.dropPending()
 	}
 	if r.cfg.Commit || r.cfg.Push {
 		// All lanes have drained and merged: the tree is quiescent, which is
