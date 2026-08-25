@@ -870,6 +870,12 @@ const (
 // deliberately not retried: the next attempt would most likely spend the same
 // budget for the same reason.
 //
+// A retried review starts from the same state as the first attempt: in an
+// isolated review the worktree is reset to its base commit, so the failed
+// attempt's half-applied fixes cannot leak into what the retry sees, commits,
+// or merges. Sequential reviews retry in place, where the tree belongs to the
+// user and is not the runner's to rewind.
+//
 // ponytail: the backoff is per review, not per agent. Reviews rate-limited by
 // one provider each wait on their own; a shared per-agent gate is the upgrade
 // if that turns out to matter.
@@ -886,6 +892,9 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 		if !sleepCtx(ctx, delay) {
 			return Result{}, false
 		}
+		if !r.resetForRetry(ctx, review, wt) {
+			return Result{}, false
+		}
 		return r.runReviewExcluding(ctx, review, loopNo, wt, exclude, attempt+1), true
 	}
 	next := map[agent.Spec]bool{failed: true}
@@ -896,7 +905,25 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 		return Result{}, false
 	}
 	r.log("Retrying %s with another agent after %s failed", review, failed.Label())
+	if !r.resetForRetry(ctx, review, wt) {
+		return Result{}, false
+	}
 	return r.runReviewExcluding(ctx, review, loopNo, wt, next, 0), true
+}
+
+// resetForRetry rewinds an isolated review's checkout to its base before the
+// next attempt runs. It reports whether the retry may proceed: a checkout that
+// cannot be restored would make every later attempt build on unknown state,
+// so the review fails instead of committing something no rerun could produce.
+func (r *Runner) resetForRetry(ctx context.Context, review string, wt *gitx.Worktree) bool {
+	if wt == nil {
+		return true
+	}
+	if err := wt.ResetToBase(ctx); err != nil {
+		r.log("Cannot restore the worktree for %s before the retry: %v", review, err)
+		return false
+	}
+	return true
 }
 
 // backoff is the wait before the next attempt: doubling, capped, and jittered
