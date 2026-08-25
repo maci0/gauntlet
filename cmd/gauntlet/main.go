@@ -114,6 +114,12 @@ func run(argv []string) int {
 	stdout := io.Writer(os.Stdout)
 	pal := palette{on: colorEnabled(os.Stdout) && !opts.noColor}
 
+	// The launcher and the dashboard draw through lipgloss, which sees
+	// NO_COLOR but not this flag; hand the request over before either draws.
+	if opts.noColor {
+		ui.SetMonochrome()
+	}
+
 	// --log tees every stream this process writes. Native multi-writer, not a
 	// tee subprocess: one less dependency and no broken-pipe failure mode.
 	//
