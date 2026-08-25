@@ -11,10 +11,10 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0 # release notes are generated from history
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version: stable
 
@@ -22,8 +22,9 @@ jobs:
         run: make release VERSION="${GITHUB_REF_NAME#v}"
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
-      # install an asset it cannot verify against it.
+      # install an asset it cannot verify against it. sbom.txt is the module
+      # inventory of what shipped, read back out of each built binary.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes dist/gauntlet_* dist/checksums.txt
+        run: gh release create "$GITHUB_REF_NAME" --generate-notes dist/gauntlet_* dist/checksums.txt dist/sbom.txt

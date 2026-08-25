@@ -24,8 +24,6 @@ github.com/hashicorp/golang-lru/v2 v2.0.7 h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs
 github.com/hashicorp/golang-lru/v2 v2.0.7/go.mod h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
-github.com/maci0/toktop v0.4.0 h1:fy6BwVwH7G6gPT3cnZf96171+PALsP7VQeCMl133188=
-github.com/maci0/toktop v0.4.0/go.mod h1:9Hj58mC2h3YevpoRYFsoi7P66UsimpKxjPIaRD+tMbg=
 github.com/maci0/toktop v0.4.1 h1:953EI/1ynn0aED9thk6DJu1oa0mGa39TG19QSBpYf2A=
 github.com/maci0/toktop v0.4.1/go.mod h1:9Hj58mC2h3YevpoRYFsoi7P66UsimpKxjPIaRD+tMbg=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=

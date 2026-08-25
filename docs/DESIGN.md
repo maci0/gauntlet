@@ -188,7 +188,10 @@ background during a long run) fetches the latest release for this `GOOS/GOARCH`,
 verifies its SHA-256 against the release's `checksums.txt`, writes it next to
 the current binary, and renames it into place atomically. A failed
 verification leaves the running binary untouched. Nothing is executed from
-the download before verification.
+the download before verification. Every release also ships `sbom.txt`, a
+module inventory produced by `go version -m` over each built binary: anyone
+auditing a release can read which module versions and hashes shipped without
+rebuilding it.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 few seconds, and requires two identical readings before acting so a

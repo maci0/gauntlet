@@ -87,9 +87,11 @@ install: build ## install into ~/.local/bin
 clean: ## remove build artifacts
 	rm -rf $(DIST) $(BINARY)
 
-# Asset names and checksums.txt are the contract `gauntlet update` verifies
-# against: see internal/selfupdate.AssetName. Changing either breaks
-# self-update for every installed binary.
+# Release artifacts are the binaries, checksums.txt (the contract `gauntlet
+# update` verifies against: see internal/selfupdate.AssetName), and sbom.txt, a
+# module inventory read back out of each binary with `go version -m`: versions
+# and hashes of everything that shipped. Changing asset names or checksums.txt
+# breaks self-update for every installed binary.
 .PHONY: dist
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
@@ -102,6 +104,10 @@ dist: ## build every release platform into dist/
 	done
 
 .PHONY: release
-release: test dist ## build every platform and write dist/checksums.txt
+release: test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
 	@cd $(DIST) && { command -v sha256sum >/dev/null 2>&1 && sha256sum $(BINARY)_* || shasum -a 256 $(BINARY)_*; } > checksums.txt
-	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt)"
+	@for f in $(DIST)/$(BINARY)_*; do \
+		echo "## $$f"; \
+		$(GO) version -m "$$f"; \
+	done > $(DIST)/sbom.txt
+	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.txt)"
