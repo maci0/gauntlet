@@ -9,6 +9,18 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- `--dirs` runs the suggest step for every directory at once instead of one
+  after another. Each tree has its own prompt set and its own answer, so each
+  is asked on its own, and asking six trees in sequence meant up to six
+  `--suggest-timeout` waits (three hours at the default) before the first
+  review started. The lines from the concurrent steps carry the directory they
+  belong to, the proposals are printed in directory order, and one
+  confirmation covers all of them.
+
 ## 1.4.0
 
 ### Added

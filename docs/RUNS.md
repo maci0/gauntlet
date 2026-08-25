@@ -38,6 +38,19 @@ its own loop, its own lock, and its own pool of `N`. `--dirs a,b,c -j 4` is up
 to 12 agents at once, so size it against your CPU count and your API limits,
 not against the review list.
 
+## Several directories at once
+
+`--dirs a,b,c` (also `--target-dirs`) reviews each tree in its own goroutine,
+with its own lock, its own baseline, and its own `--jobs` pool, so the agents
+running at once are `jobs x directories`.
+
+Review discovery is per directory too: a tree carrying its own `*-review.md`
+files has a different set from its neighbor. `--suggest` follows from that, so
+the suggest step runs once per directory, and those steps run together rather
+than in sequence: their log lines carry the directory they belong to, the
+proposals are printed in directory order, and one confirmation covers all of
+them.
+
 ## Committing, and where the work lands
 
 Reviews edit the working tree. What happens to those edits is three separate

@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
@@ -106,90 +108,160 @@ var (
 	errAgentFailed = errors.New("agent failed")
 )
 
-// selectReviews turns the flags into the scheduled review list for one
-// directory, running the suggest step when asked.
-func selectReviews(ctx context.Context, d *dirRun, opts *options, agents []agent.Spec,
-	out io.Writer, pal palette) ([]string, error) {
+// planReviews fills in every directory's scheduled reviews.
+//
+// The suggest step is one agent launch per directory, each with its own
+// timeout, so they run together: several trees would otherwise mean one
+// half-hour wait after another before the first review starts. Their output
+// is collected and printed in directory order, and one confirmation covers
+// the lot.
+func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []agent.Spec,
+	out io.Writer, pal palette) error {
 
-	excluded := map[string]bool{}
-	if opts.exclude != "" {
-		names, err := d.set.Expand(opts.exclude, "--exclude", true)
+	suggesting := strings.TrimSpace(opts.reviews) == prompt.Suggest
+	pools := make([][]string, len(runs))
+	for i, d := range runs {
+		excluded, err := excludedIn(d, opts)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		for _, n := range names {
-			excluded[n] = true
+		if !suggesting {
+			reviews, err := scheduleFor(d, opts, excluded)
+			if err != nil {
+				return err
+			}
+			d.reviews = reviews
+			continue
 		}
-	}
-
-	var scheduled []string
-	switch {
-	case strings.TrimSpace(opts.reviews) == prompt.Suggest:
-		var pool []string
 		for _, n := range d.set.Names {
 			if !excluded[n] {
-				pool = append(pool, n)
+				pools[i] = append(pools[i], n)
 			}
 		}
-		if len(pool) == 0 {
-			return nil, errors.New("no reviews remain after filtering")
+		if len(pools[i]) == 0 {
+			return fmt.Errorf("%s: no reviews remain after filtering", d.dir)
 		}
-		picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
-			Dir: d.dir, Set: d.set, Pool: pool, Agents: agents, Only: opts.suggestAgent,
-			Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
-			Log: func(f string, a ...any) {
-				fmt.Fprintf(out, "[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(f, a...))
-			},
+	}
+	if !suggesting {
+		return nil
+	}
+
+	type suggestion struct {
+		picked []prompt.Suggestion
+		spec   agent.Spec
+		err    error
+	}
+	results := make([]suggestion, len(runs))
+	var logMu sync.Mutex
+	logf := func(dir, format string, a ...any) {
+		logMu.Lock()
+		defer logMu.Unlock()
+		where := ""
+		if len(runs) > 1 {
+			where = " [" + filepath.Base(dir) + "]"
+		}
+		fmt.Fprintf(out, "[%s]%s %s\n", time.Now().Format("15:04:05"), where,
+			fmt.Sprintf(format, a...))
+	}
+
+	var wg sync.WaitGroup
+	for i, d := range runs {
+		wg.Go(func() {
+			picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
+				Dir: d.dir, Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
+				Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
+				Log: func(f string, a ...any) { logf(d.dir, f, a...) },
+			})
+			results[i] = suggestion{picked: picked, spec: spec, err: err}
 		})
-		if err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil, errAborted
+	}
+	wg.Wait()
+
+	total := 0
+	for i, d := range runs {
+		r := results[i]
+		if r.err != nil {
+			if errors.Is(r.err, context.Canceled) {
+				return errAborted
 			}
-			return nil, fmt.Errorf("%w: %v", errAgentFailed, err)
+			return fmt.Errorf("%w: %s: %v", errAgentFailed, d.dir, r.err)
 		}
-		fmt.Fprintf(out, "\n%s suggests %d of %d reviews:\n", spec.Label(), len(picked), len(pool))
+		where := ""
+		if len(runs) > 1 {
+			where = " in " + filepath.Base(d.dir)
+		}
+		fmt.Fprintf(out, "\n%s suggests %d of %d reviews%s:\n",
+			r.spec.Label(), len(r.picked), len(pools[i]), where)
 		col := 0
-		for _, p := range picked {
+		for _, p := range r.picked {
 			col = max(col, len(p.Name))
 		}
-		for _, p := range picked {
+		for _, p := range r.picked {
 			reason := p.Reason
 			if reason == "" {
 				reason = "(no reason given)"
 			}
 			fmt.Fprintf(out, "  %-*s %s\n", col+1, p.Name, pal.dim(reason))
 		}
-		if !confirm(out, opts, len(picked)) {
-			fmt.Fprintln(out, "Aborted.")
-			return nil, errAborted
-		}
-		for _, p := range picked {
+		total += len(r.picked)
+	}
+	if !confirm(out, opts, total) {
+		fmt.Fprintln(out, "Aborted.")
+		return errAborted
+	}
+	for i, d := range runs {
+		var scheduled []string
+		for _, p := range results[i].picked {
 			scheduled = append(scheduled, p.Name)
 		}
-	case opts.reviewsSet:
+		if len(scheduled) == 0 {
+			return fmt.Errorf("%s: the suggest step picked no reviews", d.dir)
+		}
+		d.reviews = scheduled
+	}
+	return nil
+}
+
+// excludedIn expands --exclude against one directory's discovered set.
+func excludedIn(d *dirRun, opts *options) (map[string]bool, error) {
+	excluded := map[string]bool{}
+	if opts.exclude == "" {
+		return excluded, nil
+	}
+	names, err := d.set.Expand(opts.exclude, "--exclude", true)
+	if err != nil {
+		return nil, err
+	}
+	for _, n := range names {
+		excluded[n] = true
+	}
+	return excluded, nil
+}
+
+// scheduleFor turns --reviews (or its absence) into one directory's list.
+func scheduleFor(d *dirRun, opts *options, excluded map[string]bool) ([]string, error) {
+	var scheduled []string
+	if opts.reviewsSet {
 		names, err := d.set.Expand(opts.reviews, "--reviews", false)
 		if err != nil {
 			return nil, err
 		}
 		scheduled = names
-	default:
+	} else {
 		scheduled = append(scheduled, d.set.Names...)
 	}
-
-	out2 := scheduled[:0]
+	kept := scheduled[:0]
 	for _, n := range scheduled {
 		if !excluded[n] {
-			out2 = append(out2, n)
+			kept = append(kept, n)
 		}
 	}
-	if len(out2) == 0 {
+	if len(kept) == 0 {
 		return nil, errors.New("no reviews remain after filtering")
 	}
-	return out2, nil
+	return kept, nil
 }
 
-// confirm asks before running an agent-picked review list. --yes, --yolo, and
-// a non-terminal stdin all proceed without asking.
 func confirm(out io.Writer, opts *options, n int) bool {
 	if opts.yes || opts.yolo {
 		fmt.Fprintln(out, "Proceeding without confirmation.")
