@@ -6,10 +6,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -18,19 +20,17 @@ import (
 
 // TestRunIndexerKillsProcessGroup pins the rule runProc states for agents:
 // the deadline must take down the whole process tree, not just the direct
-// child. The fixture backgrounds a marked sleeper, so without the group kill
-// the grandchild outlives the killed parent and shows up in /proc.
+// child. The fixture backgrounds a sleeper and records its pid, so without
+// the group kill the grandchild outlives the killed parent and answers a
+// liveness probe.
 func TestRunIndexerKillsProcessGroup(t *testing.T) {
-	if runtime.GOOS != "linux" {
-		t.Skip("the leak check walks /proc")
-	}
 	dir := t.TempDir()
-	marker := "gauntlet-group-kill-test-" + time.Now().Format("150405.000000000")
 
 	sleeper := filepath.Join(dir, "sleeper")
 	writeScript(t, sleeper, "#!/bin/sh\nsleep 30\n")
+	pidFile := filepath.Join(dir, "sleeper.pid")
 	tree := filepath.Join(dir, "tree")
-	writeScript(t, tree, "#!/bin/sh\n\""+sleeper+"\" \""+marker+"\" &\nwait\n")
+	writeScript(t, tree, "#!/bin/sh\n\""+sleeper+"\" &\necho $! > \""+pidFile+"\"\nwait\n")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
@@ -38,13 +38,23 @@ func TestRunIndexerKillsProcessGroup(t *testing.T) {
 		t.Fatal("the indexer reported success after its deadline killed it")
 	}
 
-	// A zombie keeps its /proc entry but an empty cmdline, so only a live
-	// orphan matches.
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 1 {
+		t.Fatalf("fixture wrote no usable sleeper pid: %q", data)
+	}
+
+	// kill(pid, 0) reports whether anything still answers at that pid, on
+	// every POSIX target this project ships for, so no /proc walk is needed.
+	// A survivor runs sleep 30 and stays alive far longer than this wait; a
+	// killed one disappears within it. Its only possible parent (the killed
+	// script) died in the same group kill, so it cannot linger unreaped as a
+	// zombie and keep the probe green.
 	deadline := time.Now().Add(2 * time.Second)
-	for {
-		if !liveCmdlineContains(t, marker) {
-			return
-		}
+	for processAlive(pid) {
 		if time.Now().After(deadline) {
 			t.Fatal("a grandchild of the killed indexer is still alive")
 		}
@@ -52,36 +62,11 @@ func TestRunIndexerKillsProcessGroup(t *testing.T) {
 	}
 }
 
-// liveCmdlineContains reports whether any live process carries needle in its
-// command line.
-func liveCmdlineContains(t *testing.T, needle string) bool {
-	t.Helper()
-	entries, err := os.ReadDir("/proc")
-	if err != nil {
-		t.Skipf("cannot read /proc: %v", err)
-	}
-	for _, e := range entries {
-		if !e.IsDir() || !isNumeric(e.Name()) {
-			continue
-		}
-		data, err := os.ReadFile(filepath.Join("/proc", e.Name(), "cmdline"))
-		if err != nil {
-			continue // exited between the listing and the read
-		}
-		if strings.Contains(string(data), needle) {
-			return true
-		}
-	}
-	return false
-}
-
-func isNumeric(s string) bool {
-	for _, r := range s {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-	return s != ""
+// processAlive probes one pid with a zero signal: nil or EPERM means something
+// is there, ESRCH means it is gone.
+func processAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 func writeScript(t *testing.T, path, body string) {
