@@ -49,9 +49,13 @@ help: ## show available targets
 	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
+# The tree has no cgo sources, and dist/repro pin CGO_ENABLED=0; building the
+# host binary without the pin would let an ambient C toolchain flip net and
+# os/user onto the cgo path, so `make install` could ship a dynamically
+# linked flavor that no release ever produced.
 .PHONY: build
 build: ## build the gauntlet binary for this host
-	$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
+	CGO_ENABLED=0 $(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
 .PHONY: run
 run: build ## build, then run one loop here with the dashboard
@@ -113,6 +117,10 @@ clean: ## remove build artifacts
 .PHONY: dist
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
+	# A previous dist with a different VERSION or PLATFORMS must not leak into
+	# this one: release globs dist/gauntlet_* both into checksums.txt and the
+	# uploaded assets, so stale binaries here would ship as release artifacts.
+	@rm -f $(DIST)/$(BINARY)_*
 	@for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
@@ -123,7 +131,14 @@ dist: ## build every release platform into dist/
 
 .PHONY: release
 release: test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
-	@cd $(DIST) && { command -v sha256sum >/dev/null 2>&1 && sha256sum $(BINARY)_* || shasum -a 256 $(BINARY)_*; } > checksums.txt
+	# if/else, not `cmd && sum || fallback`: a sha256sum that exists but fails
+	# mid-list would otherwise fall through to shasum and append a second,
+	# conflicting copy of the entries to checksums.txt.
+	@if command -v sha256sum >/dev/null 2>&1; then \
+		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
+	else \
+		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
+	fi
 	@for f in $(DIST)/$(BINARY)_*; do \
 		echo "## $$f"; \
 		$(GO) version -m "$$f"; \
