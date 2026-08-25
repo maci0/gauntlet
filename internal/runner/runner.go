@@ -144,9 +144,9 @@ func (r *Runner) RequestStop() { r.soft.Store(true) }
 // nothing follows this run.
 func (r *Runner) RequestFinish() { r.finish.Store(true) }
 
-// Finishing reports whether a graceful quit is under way, for a screen that
+// finishing reports whether a graceful quit is under way, for a screen that
 // should say so.
-func (r *Runner) Finishing() bool { return r.finish.Load() }
+func (r *Runner) finishing() bool { return r.finish.Load() }
 
 // dropPending clears the unstarted queue, for a run that is ending on purpose
 // and has no successor to hand it to.

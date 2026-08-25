@@ -20,7 +20,7 @@ import (
 // the hash.
 func releaseServer(t *testing.T, payload []byte, sum string) (*httptest.Server, *Release) {
 	t.Helper()
-	name := AssetName("9.9.9")
+	name := assetName("9.9.9")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/asset", func(w http.ResponseWriter, r *http.Request) { w.Write(payload) })
 	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
@@ -72,7 +72,7 @@ func TestApplyRefusesReleaseWithoutChecksums(t *testing.T) {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
 		Size int64  `json:"size"`
-	}{Name: AssetName("9.9.9"), URL: "http://127.0.0.1:1/asset"})
+	}{Name: assetName("9.9.9"), URL: "http://127.0.0.1:1/asset"})
 
 	if _, err := Apply(context.Background(), rel); err == nil ||
 		!strings.Contains(err.Error(), "checksums.txt") {

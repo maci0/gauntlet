@@ -30,8 +30,8 @@ import (
 	"time"
 )
 
-// DefaultRepo is the GitHub repository releases are fetched from.
-const DefaultRepo = "maci0/gauntlet"
+// defaultRepo is the GitHub repository releases are fetched from.
+const defaultRepo = "maci0/gauntlet"
 
 // maxAssetBytes bounds a download. A release binary that large is a mistake or
 // an attack, and either way should not fill the disk.
@@ -51,9 +51,9 @@ type Release struct {
 // Version is the release version without a leading "v".
 func (r *Release) Version() string { return strings.TrimPrefix(r.TagName, "v") }
 
-// AssetName is the binary this platform needs from a release. It must match
+// assetName is the binary this platform needs from a release. It must match
 // what the Makefile's dist target produces, or self-update finds nothing.
-func AssetName(version string) string {
+func assetName(version string) string {
 	return fmt.Sprintf("gauntlet_%s_%s_%s", version, runtime.GOOS, runtime.GOARCH)
 }
 
@@ -63,7 +63,7 @@ var client = &http.Client{Timeout: 5 * time.Minute}
 // a version check must not stand between the user and the first review.
 func Check(ctx context.Context, repo string) (*Release, error) {
 	if repo == "" {
-		repo = DefaultRepo
+		repo = defaultRepo
 	}
 	url := "https://api.github.com/repos/" + repo + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -120,7 +120,7 @@ func Apply(ctx context.Context, rel *Release) (string, error) {
 // applyTo is Apply with an explicit target, so the install path can be tested
 // without replacing the test binary.
 func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
-	want := AssetName(rel.Version())
+	want := assetName(rel.Version())
 	var assetURL, sumsURL string
 	for _, a := range rel.Assets {
 		switch a.Name {
