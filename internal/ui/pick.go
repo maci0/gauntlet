@@ -167,7 +167,7 @@ func newPicker(cfg PickConfig) *picker {
 				values: append([]string{"stay on " + branchLabel(cfg.Branch)}, cfg.Merge...),
 				help:   "merge each loop's commits into another branch (needs commit)"},
 			{kind: optToggle, label: "yolo", flag: "--yolo",
-				help: "drop the caution rules: bigger changes"},
+				help: "drop the caution rules, and commit and push what the reviews do"},
 		},
 	}
 	// One hue per agent, assigned in the order the dashboard would assign it,
@@ -519,10 +519,11 @@ func (p *picker) argv() []string {
 			}
 		case o.kind == optCycle:
 			// The suggest agent is emitted next to the choice it qualifies.
-		case o.kind == optToggle && o.on:
-			if o.flag == "--commit" && p.pushing() {
-				continue // --push already implies it
+		case o.flag == "--commit" || o.flag == "--push":
+			if arg := p.gitToggle(o); arg != "" {
+				out = append(out, arg)
 			}
+		case o.kind == optToggle && o.on:
 			out = append(out, o.flag)
 		}
 	}
@@ -565,11 +566,39 @@ func (p *picker) optByFlag(flag string) *option {
 	return nil
 }
 
+// gitToggle spells one of the two git switches, or "" when the command says
+// it already. --push implies --commit, and --yolo implies both, so the
+// interesting case is turning one of them back off: a launcher that stayed
+// silent there would compose a run that commits when the screen says it does
+// not.
+func (p *picker) gitToggle(o option) string {
+	if o.flag == "--commit" && p.pushing() {
+		return "" // --push already implies it
+	}
+	if p.yolo() {
+		if o.on {
+			return "" // --yolo already implies it
+		}
+		return o.flag + "=false"
+	}
+	if o.on {
+		return o.flag
+	}
+	return ""
+}
+
+// yolo reports whether the composed run drops the caution rules, which also
+// turns the git steps on.
+func (p *picker) yolo() bool {
+	o := p.optByFlag("--yolo")
+	return o != nil && o.on
+}
+
 // committing reports whether the composed run produces commits at all, which
 // is what a merge target needs to mean anything.
 func (p *picker) committing() bool {
 	c := p.optByFlag("--commit")
-	return p.pushing() || (c != nil && c.on)
+	return p.pushing() || p.yolo() || (c != nil && c.on)
 }
 
 // pushing reports whether the composed run ends in a git push.

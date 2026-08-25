@@ -80,7 +80,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
-| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. |
+| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. It also turns the git steps on, since an unattended run that fixes things and leaves them uncommitted has done half a job: `--commit` and `--push` follow from it unless you set them yourself (`--yolo --push=false` keeps the work local). Containment is unaffected. |
 | `-y, --yes` | off | Skip the suggest confirmation. |
 | `--semcode` | off | Build a semcode index before the loop. |
 

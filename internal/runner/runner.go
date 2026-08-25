@@ -185,6 +185,11 @@ func (r *Runner) takeNext() (string, bool) {
 	return next, true
 }
 
+// ErrDirtyTree is the one worktree precondition a caller can do something
+// about: the work is there, it simply is not committed. Callers that can ask
+// a person offer the commit step rather than stopping.
+var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
+
 // New prepares a runner. It opens the repository (if any) and validates the
 // preconditions for the requested concurrency.
 func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
@@ -300,8 +305,8 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
 	}
 	if !clean {
-		return errors.New("--jobs > 1 needs a clean working tree: commit or stash your changes first, " +
-			"or run without --jobs to review the tree in place")
+		return fmt.Errorf("%w: commit or stash your changes first, "+
+			"or run without --jobs to review the tree in place", ErrDirtyTree)
 	}
 	r.repo.PruneWorktrees(ctx)
 	r.repo.ExcludeWorktreeRoot(ctx)
@@ -914,6 +919,68 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 		r.st.addCommitFail()
 	}
 	r.bus.Publish(ev)
+}
+
+// CommitOpts describes a commit step run on its own, outside a loop: the
+// offer gauntlet makes when --jobs needs a clean tree and the only thing in
+// the way is uncommitted work.
+type CommitOpts struct {
+	Dir     string
+	Agent   agent.Spec
+	Bin     map[string]string
+	Push    bool
+	Yolo    bool
+	Timeout time.Duration
+	// Out receives the agent's normalized output, so a caller with a terminal
+	// can show the work rather than a silent pause. Nil discards it.
+	Out func(string)
+}
+
+// CommitNow hands the working tree to one agent to commit, and reports
+// whether the tree ended up clean. It is the same prompt and the same
+// containment as the commit step inside a loop; what differs is that nothing
+// else is running, so the caller waits for it.
+func CommitNow(ctx context.Context, o CommitOpts) error {
+	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(o.Push, o.Yolo),
+		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool]})
+	if err != nil {
+		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
+	}
+	timeout := o.Timeout
+	if timeout <= 0 || timeout > commitTimeout {
+		timeout = commitTimeout
+	}
+	var sink func(normalize.Line)
+	if o.Out != nil {
+		sink = func(l normalize.Line) { o.Out(l.Text) }
+	}
+	pr := runProc(ctx, procOpts{
+		Argv: argv, Dir: o.Dir, Timeout: timeout,
+		MaxLinesPerSec: outputRateLimit, Sink: sink,
+	})
+	switch {
+	case pr.Err != nil:
+		return fmt.Errorf("commit step could not launch %s: %w", o.Agent.Label(), pr.Err)
+	case pr.TimedOut:
+		return fmt.Errorf("commit step timed out after %s", humanize.Duration(timeout))
+	case pr.Canceled:
+		return context.Canceled
+	case pr.ExitCode != 0:
+		return fmt.Errorf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode)
+	}
+	// The agent says it committed; git decides whether it did.
+	repo := gitx.Open(o.Dir)
+	if repo == nil {
+		return errors.New("commit step finished but the repository could not be read")
+	}
+	clean, err := repo.IsClean(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot read git status after the commit step: %w", err)
+	}
+	if !clean {
+		return errors.New("the tree is still dirty after the commit step")
+	}
+	return nil
 }
 
 func (r *Runner) runCommitStep(ctx context.Context) {

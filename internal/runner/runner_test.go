@@ -788,6 +788,41 @@ sleep 0.2`)
 	}
 }
 
+// The offer gauntlet makes when --jobs meets a dirty tree: hand it to an
+// agent, and report whether the tree actually ended up clean, since the agent
+// saying so is not the same as git saying so.
+func TestCommitNowReportsWhatGitSees(t *testing.T) {
+	repo := testRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "new.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	committer := fakeAgent(t, t.TempDir(), "claude", `
+git add -A
+git -c user.name=t -c user.email=t@e commit -qm "work" >/dev/null 2>&1`)
+
+	err := CommitNow(context.Background(), CommitOpts{
+		Dir: repo, Agent: agent.Spec{Tool: "claude"},
+		Bin: map[string]string{"claude": committer}, Timeout: 30 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("the tree was committed, so this should succeed: %v", err)
+	}
+
+	// An agent that exits happily without committing is a failure, not a
+	// success: the run that follows needs the tree clean, not the claim.
+	if err := os.WriteFile(filepath.Join(repo, "again.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	liar := fakeAgent(t, t.TempDir(), "claude", `echo "committed everything, honest"`)
+	err = CommitNow(context.Background(), CommitOpts{
+		Dir: repo, Agent: agent.Spec{Tool: "claude"},
+		Bin: map[string]string{"claude": liar}, Timeout: 30 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("a tree still dirty after the commit step must be reported as such")
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {

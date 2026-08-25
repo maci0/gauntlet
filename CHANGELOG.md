@@ -9,6 +9,25 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Added
+
+- A dirty tree no longer just refuses a `--jobs` run: gauntlet offers to
+  commit it. The changes are the obstacle, and there is already an agent that
+  writes commit messages, so it asks (`Commit them with claude first? [y/N]`),
+  runs the commit step, checks with git rather than taking the agent's word,
+  and starts the run. `--yes` and `--yolo` answer yes; a run with no terminal
+  keeps the plain error rather than committing unattended.
+
+### Changed
+
+- `--yolo` turns the git steps on: it now implies `--commit` and `--push`,
+  because an unattended run that finds and fixes things and then leaves them
+  uncommitted has done half a job. Explicit flags still win, so
+  `--yolo --push=false` is a yolo run that keeps its work local, and the
+  launcher spells that out when you turn one back off.
+
 ## 1.5.1
 
 ### Fixed

@@ -84,6 +84,18 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.optByFlag("--commit").on = true
 			p.optByFlag("--merge-into").idx = 1
 		}, "-C /home/dev/project --once --tui --commit --merge-into main"},
+		{"yolo implies the git steps, so they are not spelled out", func(p *picker) {
+			p.optByFlag("--yolo").on = true
+			p.optByFlag("--commit").on = true
+			p.optByFlag("--push").on = true
+		}, "-C /home/dev/project --once --tui --yolo"},
+		{"turning the git steps off under yolo is spelled out", func(p *picker) {
+			p.optByFlag("--yolo").on = true
+		}, "-C /home/dev/project --once --tui --commit=false --push=false --yolo"},
+		{"yolo with push only says so once", func(p *picker) {
+			p.optByFlag("--yolo").on = true
+			p.optByFlag("--push").on = true
+		}, "-C /home/dev/project --once --tui --yolo"},
 		{"a subset of agents is passed, all of them is not", func(p *picker) {
 			p.agents[0] = true
 		}, "-C /home/dev/project -a claude --once --tui"},
