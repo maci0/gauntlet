@@ -30,6 +30,11 @@ gauntlet -j 4 -a mixed --once
 - A conflicting merge is **aborted, and its branch is kept**, named after the
   review, so the work can be inspected or merged by hand. Conflicts are
   reported as their own outcome and make the run exit nonzero.
+- A review that is retried (`--retries`, after a launch failure or a nonzero
+  exit) starts over from the commit its worktree was cut from: whatever the
+  failed attempt left behind is reset away, so attempt N+1 sees exactly what
+  attempt N saw. In-place reviews (`--jobs` unset) retry in the live tree,
+  which belongs to you and is not rewound.
 - Merged branches and their checkouts are cleaned up; unmerged ones survive.
 
 Without `--jobs`, reviews run one at a time and edit the tree in place, exactly
