@@ -45,7 +45,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 	var warnings []string
 
 	if promptDir == "" {
-		for _, name := range bundledNames() {
+		for _, name := range BundledNames() {
 			byName[name] = Review{Name: name, Origin: Bundled}
 		}
 	} else {
