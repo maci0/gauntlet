@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -51,15 +52,31 @@ func parseDshProvider(dump string) string {
 	return ""
 }
 
+// dshProbeGrace is how long Wait may outlive the deadline kill before it
+// gives up on an unreapable child.
+const dshProbeGrace = 10 * time.Second
+
 // dshDefaultProvider probes the headless profile's configured provider once
 // per process. A failed probe keeps its error, not just an empty result, so
 // the caller can say why a bare dsh:model could not be resolved.
+//
+// The probe runs in its own process group and the deadline kill takes down the
+// whole group: Output reads through a pipe, and a grandchild that outlived the
+// killed child would hold that pipe open and hang this call forever.
 func dshDefaultProvider(base []string) (string, error) {
 	dshProbeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
 		argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process != nil {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil
+		}
+		cmd.WaitDelay = dshProbeGrace
 		out, err := cmd.Output()
 		if err != nil {
 			dshProbeErr = fmt.Errorf("%s --dump-config failed: %w", argv[0], err)
