@@ -44,12 +44,13 @@ func chart(vals []float64, w, h int) string {
 					pattern |= int(brailleBits[sr][0]) | int(brailleBits[sr][1])
 				}
 			}
-			var col lipgloss.Color
+			var col lipgloss.TerminalColor
 			switch {
 			case pattern == 0 && cy == h-1:
-				// Unlit baseline grid: dim, several times fainter than data.
+				// Unlit baseline grid: dim, several times fainter than data,
+				// but still a readable stroke (3:1), not near-invisible.
 				pattern = int(brailleBits[3][0]) | int(brailleBits[3][1])
-				col = cBorder
+				col = cTrack
 			case pattern == 0:
 				rows[cy].WriteByte(' ')
 				continue
@@ -72,10 +73,11 @@ func chart(vals []float64, w, h int) string {
 	return strings.Join(out, "\n")
 }
 
-// colorKey turns a hex color into a cheap cache key.
-func colorKey(c lipgloss.Color) uint32 {
+// colorKey turns a color into a cheap cache key. Adaptive pairs stringify
+// stably, so one key covers both resolved variants.
+func colorKey(c lipgloss.TerminalColor) uint32 {
 	var k uint32
-	for _, ch := range string(c) {
+	for _, ch := range fmt.Sprint(c) {
 		k = k*31 + uint32(ch)
 	}
 	return k
@@ -103,7 +105,7 @@ func tailCols(vals []float64, w int) ([]float64, float64) {
 // meter renders a quantized segment bar with its unlit remainder visible. The
 // distance to full is as important as the current level, so the empty track is
 // always drawn.
-func meter(frac float64, w int, on lipgloss.Color) string {
+func meter(frac float64, w int, on lipgloss.TerminalColor) string {
 	if w < 3 {
 		w = 3
 	}
@@ -111,7 +113,7 @@ func meter(frac float64, w int, on lipgloss.Color) string {
 	filled := int(frac*float64(w) + 0.5)
 	filled = min(filled, w)
 	return styled(on, strings.Repeat("▰", filled)) +
-		styleFaint.Render(strings.Repeat("▱", w-filled))
+		styleTrack.Render(strings.Repeat("▱", w-filled))
 }
 
 // sparkline is a one-row braille trace, for lanes and small cells. A thumbnail
@@ -119,7 +121,7 @@ func meter(frac float64, w int, on lipgloss.Color) string {
 func sparkline(vals []float64, w int) string { return chart(vals, w, 1) }
 
 // statusGlyph is the review grid's cell: one column, one meaning.
-func statusGlyph(s string) (string, lipgloss.Color) {
+func statusGlyph(s string) (string, lipgloss.TerminalColor) {
 	switch s {
 	case "running":
 		return "▸", cCyan
@@ -136,7 +138,9 @@ func statusGlyph(s string) (string, lipgloss.Color) {
 	case "interrupted":
 		return "␘", cYellow
 	default:
-		return "·", cBorder
+		// Pending is real state, not chrome: the glyph reads at text
+		// contrast, matching its faint-but-legible name in the cell.
+		return "·", cFaint
 	}
 }
 

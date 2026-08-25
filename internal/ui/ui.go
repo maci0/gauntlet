@@ -550,8 +550,14 @@ func (m *model) activityTitle() string {
 			value = "0"
 		}
 	}
+	// The live-edge marker is text, so a resting or idle chart shows it dim
+	// but legible; only a real measurement rides the heat ramp.
+	var fg lipgloss.TerminalColor = cDim
+	if cur > 0 {
+		fg = heatColor(clamp01(cur / 50))
+	}
 	return "ACTIVITY " + styleDim.Render("agent lines/s") + "  " +
-		lipgloss.NewStyle().Bold(true).Foreground(heatColor(clamp01(cur/50))).Render("◆ "+value)
+		lipgloss.NewStyle().Bold(true).Foreground(fg).Render("◆ "+value)
 }
 
 // renderLanes draws one row per agent: what it is doing, how long it has been
@@ -593,7 +599,7 @@ func (m *model) renderLanes(w, h int) string {
 				pad(styleDim.Render(humanize.Duration(m.now.Sub(l.start))), elapsedW)
 		} else {
 			work = pad(styleDim.Render("idle"), revW) + " " +
-				styleFaint.Render(strings.Repeat("▱", meterW)) + " " +
+				styleTrack.Render(strings.Repeat("▱", meterW)) + " " +
 				strings.Repeat(" ", elapsedW)
 		}
 

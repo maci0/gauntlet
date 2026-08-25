@@ -28,6 +28,12 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Fixed
 
+- The dashboard palette adapts to light and dark terminals instead of
+  assuming a dark one, and every color that can sit behind text clears WCAG
+  2.2 AA contrast on its background (SC 1.4.3). De-emphasized text such as
+  pending review cells was near-invisible, the zero-rate activity marker
+  rendered in a near-background tone, and unlit meter segments and the chart
+  baseline now meet the 3:1 non-text floor (SC 1.4.11).
 - A hot reload that crosses UTC midnight appends to the run's original journal
   file instead of splitting it across two date shards; a worktree rerun after
   a reload rebuilds a branch still at base and fails rather than destroys one

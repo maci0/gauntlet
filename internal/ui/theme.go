@@ -18,29 +18,41 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// Palette: Catppuccin Mocha, degrading to the nearest 256/16 colors on old
-// terminals. Secondary text stays above 4.5:1 on the base.
+// Palette: Catppuccin Mocha on dark terminals, Latte on light ones. Every
+// color that can sit behind text ships as an adaptive pair, and the pairs are
+// pinned by test: body, secondary, de-emphasized, and status text clears
+// 4.5:1 (WCAG 2.2 AA SC 1.4.3) and instrument strokes clear 3:1 (SC 1.4.11)
+// against the base they are drawn on. Borders are decorative chrome carrying
+// no information, so they alone are exempt.
 var (
-	cSurface  = lipgloss.Color("#313244")
-	cDim      = lipgloss.Color("#9399b2")
-	cText     = lipgloss.Color("#cdd6f4")
-	cBorder   = lipgloss.Color("#45475a")
-	cRed      = lipgloss.Color("#f38ba8")
-	cGreen    = lipgloss.Color("#a6e3a1")
-	cYellow   = lipgloss.Color("#f9e2af")
-	cPeach    = lipgloss.Color("#fab387")
-	cBlue     = lipgloss.Color("#89b4fa")
-	cCyan     = lipgloss.Color("#89dceb")
-	cTeal     = lipgloss.Color("#94e2d5")
-	cMagenta  = lipgloss.Color("#cba6f7")
-	cPink     = lipgloss.Color("#f5c2e7")
-	cLavender = lipgloss.Color("#b4befe")
+	cText     = adaptive("#4c4f69", "#cdd6f4")
+	cDim      = adaptive("#6a6d82", "#9399b2")
+	cFaint    = adaptive("#6b6d7b", "#84889f")
+	cTrack    = adaptive("#878b99", "#6c7086")
+	cBorder   = adaptive("#acb0be", "#45475a")
+	cRed      = adaptive("#d20f39", "#f38ba8")
+	cGreen    = adaptive("#327d22", "#a6e3a1")
+	cYellow   = adaptive("#996214", "#f9e2af")
+	cPeach    = adaptive("#bc4a08", "#fab387")
+	cBlue     = adaptive("#1d64ef", "#89b4fa")
+	cCyan     = adaptive("#0376a3", "#89dceb")
+	cTeal     = adaptive("#137a80", "#94e2d5")
+	cMagenta  = adaptive("#8839ef", "#cba6f7")
+	cPink     = adaptive("#a2528c", "#f5c2e7")
+	cLavender = adaptive("#5767c2", "#b4befe")
 )
+
+// adaptive pairs a Latte tone for light backgrounds with its Mocha
+// counterpart, resolved per terminal at render time.
+func adaptive(light, dark string) lipgloss.AdaptiveColor {
+	return lipgloss.AdaptiveColor{Light: light, Dark: dark}
+}
 
 var (
 	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(cLavender)
 	styleDim   = lipgloss.NewStyle().Foreground(cDim)
-	styleFaint = lipgloss.NewStyle().Foreground(cBorder)
+	styleFaint = lipgloss.NewStyle().Foreground(cFaint)
+	styleTrack = lipgloss.NewStyle().Foreground(cTrack)
 	styleValue = lipgloss.NewStyle().Bold(true).Foreground(cText)
 	styleOK    = lipgloss.NewStyle().Foreground(cGreen)
 	styleWarn  = lipgloss.NewStyle().Foreground(cYellow)
@@ -59,18 +71,18 @@ var (
 
 // agentHues is the fixed rotation for per-agent color. One concept, one hue:
 // an agent keeps its color in its lane, its review rows, and its feed lines.
-var agentHues = []lipgloss.Color{cBlue, cPeach, cTeal, cMagenta, cPink, cYellow, cCyan, cLavender, cGreen}
+var agentHues = []lipgloss.AdaptiveColor{cBlue, cPeach, cTeal, cMagenta, cPink, cYellow, cCyan, cLavender, cGreen}
 
 // hueFor assigns a stable color per agent label, in first-seen order.
 type hueMap struct {
 	mu     sync.Mutex
 	order  []string
-	byName map[string]lipgloss.Color
+	byName map[string]lipgloss.AdaptiveColor
 }
 
-func newHueMap() *hueMap { return &hueMap{byName: map[string]lipgloss.Color{}} }
+func newHueMap() *hueMap { return &hueMap{byName: map[string]lipgloss.AdaptiveColor{}} }
 
-func (h *hueMap) get(label string) lipgloss.Color {
+func (h *hueMap) get(label string) lipgloss.AdaptiveColor {
 	if label == "" {
 		return cDim
 	}
@@ -85,7 +97,7 @@ func (h *hueMap) get(label string) lipgloss.Color {
 	return c
 }
 
-func styled(c lipgloss.Color, s string) string {
+func styled(c lipgloss.TerminalColor, s string) string {
 	return lipgloss.NewStyle().Foreground(c).Render(s)
 }
 
@@ -172,11 +184,13 @@ func widthTokens(s string) []string {
 }
 
 // heatColor maps 0..1 intensity onto a cold to hot ramp. Reserved for
-// magnitude and health; never used decoratively.
-func heatColor(f float64) lipgloss.Color {
+// magnitude and health; never used decoratively. The cold end stops at the
+// track tone, not a near-background one: every dot it renders is an
+// instrument stroke and must clear 3:1 (SC 1.4.11).
+func heatColor(f float64) lipgloss.TerminalColor {
 	switch {
 	case f <= 0.02:
-		return cSurface
+		return cTrack
 	case f < 0.25:
 		return cTeal
 	case f < 0.5:
@@ -193,7 +207,7 @@ func heatColor(f float64) lipgloss.Color {
 // wordmark renders the logo once, with a cyan to peach gradient.
 var wordmark = sync.OnceValue(func() string {
 	letters := []rune("GAUNTLET")
-	colors := []lipgloss.Color{cTeal, cCyan, cBlue, cLavender, cMagenta, cPink, cPeach, cYellow}
+	colors := []lipgloss.AdaptiveColor{cTeal, cCyan, cBlue, cLavender, cMagenta, cPink, cPeach, cYellow}
 	var b strings.Builder
 	for i, l := range letters {
 		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(colors[i%len(colors)]).Render(string(l)))

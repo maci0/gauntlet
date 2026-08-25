@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -391,6 +392,63 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	if got := clip(styledWide, 4); lipgloss.Width(got) != 4 {
 		t.Fatalf("clip produced %d columns, want 4: %q", lipgloss.Width(got), got)
 	}
+}
+
+// Theme tokens are pinned to WCAG 2.2 AA on both background variants they
+// ship with: any color that can sit behind text clears 4.5:1 (SC 1.4.3),
+// including the status hues that color grid names and feed lines, and the
+// instrument strokes clear the 3:1 non-text floor (SC 1.4.11). Borders are
+// decorative chrome carrying no information, so they alone are exempt.
+func TestThemeClearsWCAGContrastFloors(t *testing.T) {
+	const darkBase, lightBase = "#1e1e2e", "#eff1f5"
+	textTokens := map[string]lipgloss.AdaptiveColor{
+		"text": cText, "dim": cDim, "faint": cFaint,
+		"red": cRed, "green": cGreen, "yellow": cYellow, "peach": cPeach,
+		"blue": cBlue, "cyan": cCyan, "teal": cTeal, "magenta": cMagenta,
+		"pink": cPink, "lavender": cLavender,
+	}
+	for name, fg := range textTokens {
+		if got := contrastRatio(t, fg.Dark, darkBase); got < 4.5 {
+			t.Errorf("%s dark %q is %.2f:1 on the dark base, want at least 4.5", name, fg.Dark, got)
+		}
+		if got := contrastRatio(t, fg.Light, lightBase); got < 4.5 {
+			t.Errorf("%s light %q is %.2f:1 on the light base, want at least 4.5", name, fg.Light, got)
+		}
+	}
+	if got := contrastRatio(t, cTrack.Dark, darkBase); got < 3 {
+		t.Errorf("track dark %q is %.2f:1 on the dark base, want at least 3", cTrack.Dark, got)
+	}
+	if got := contrastRatio(t, cTrack.Light, lightBase); got < 3 {
+		t.Errorf("track light %q is %.2f:1 on the light base, want at least 3", cTrack.Light, got)
+	}
+}
+
+func contrastRatio(t *testing.T, fg, bg string) float64 {
+	t.Helper()
+	a, b := wcagLuminance(t, fg), wcagLuminance(t, bg)
+	hi, lo := max(a, b), min(a, b)
+	return (hi + 0.05) / (lo + 0.05)
+}
+
+func wcagLuminance(t *testing.T, hex string) float64 {
+	t.Helper()
+	if len(hex) != 7 || hex[0] != '#' {
+		t.Fatalf("color %q is not #rrggbb", hex)
+	}
+	var lin [3]float64
+	for i := range lin {
+		v, err := strconv.ParseInt(hex[1+2*i:3+2*i], 16, 64)
+		if err != nil {
+			t.Fatalf("color %q has a bad channel: %v", hex, err)
+		}
+		c := float64(v) / 255
+		if c <= 0.04045 {
+			lin[i] = c / 12.92
+		} else {
+			lin[i] = math.Pow((c+0.055)/1.055, 2.4)
+		}
+	}
+	return 0.2126*lin[0] + 0.7152*lin[1] + 0.0722*lin[2]
 }
 
 func stripANSI(s string) string {
