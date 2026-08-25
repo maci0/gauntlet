@@ -25,6 +25,17 @@ minor instead and were listed under Changed.
   check whose absence let the public `agentusage` removal ship in the 1.0.1
   patch release unrecorded.
 
+### Changed
+
+- A subcommand now refuses flags it does not read, instead of parsing and
+  silently dropping them: `gauntlet runs --jobs 4` used to print its table
+  while ignoring the concurrency it was given. Each command accepts what
+  docs/CLI.md lists for it (`pick`: `-C/--dir`, `--dirs`, `--prompt-dir`;
+  `doctor`: `--bin`, `--agent-cmd`; `update`: `--check`, `--update-repo`;
+  `runs`: `--limit`; `show`: nothing of its own), plus the global `--log`
+  and `--no-color`, and names the flag and the command in the error.
+  Scripts that passed such flags and never noticed will see exit 2.
+
 ### Fixed
 
 - docs/CLI.md documents the six flags its intro claimed to cover but did

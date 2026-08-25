@@ -122,6 +122,15 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"check under update", []string{"update", "--check"}, ""},
 		{"limit under runs", []string{"runs", "--limit", "5"}, ""},
 		{"version wins over scoping", []string{"-V", "--limit", "5"}, ""},
+		{"stray jobs under runs", []string{"runs", "--jobs", "4"}, "does not apply to 'gauntlet runs'"},
+		{"stray short flag keeps its spelling", []string{"runs", "-j", "4"}, "-j does not apply"},
+		{"stray yolo under doctor", []string{"doctor", "--yolo"}, "does not apply to 'gauntlet doctor'"},
+		{"stray tui under show", []string{"show", "20260825T000000Z-abcd", "--tui"},
+			"does not apply to 'gauntlet show'"},
+		{"doctor reads its bin", []string{"doctor", "--bin", "claude=/bin/sh"}, ""},
+		{"pick reads its dir", []string{"pick", "-C", "."}, ""},
+		{"global log follows runs", []string{"runs", "--log", "gauntlet.log"}, ""},
+		{"no-color follows everything", []string{"runs", "--no-color"}, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

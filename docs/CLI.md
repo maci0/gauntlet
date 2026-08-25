@@ -16,6 +16,14 @@ installed.
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 
+Each subcommand reads only the flags that mean something to it: `pick` takes
+`-C/--dir`, `--dirs`, and `--prompt-dir`, `doctor` takes `--bin` and
+`--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
+`--limit`, and `show` takes none of its own. `--log` and `--no-color` work
+everywhere. Any other flag is refused with a usage error (exit 2) rather than
+parsed and silently dropped, so `gauntlet runs --jobs 4` fails loudly instead
+of printing a table that ignores the concurrency it was given.
+
 `pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
 with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
 proposes the reviews, and the run pane names which agent does it), the agents
