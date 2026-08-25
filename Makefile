@@ -9,6 +9,10 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
 export TMPDIR ?= $(HOME)/.cache/gauntlet/test
+# Every go command inherits TMPDIR, and go refuses to start when it does not
+# exist, so it is created at parse time rather than per target: a fresh CI
+# runner has no such directory.
+$(shell mkdir -p $(TMPDIR))
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
 # groups, the directory lock needs flock, prompt reads need O_NOFOLLOW, and hot
