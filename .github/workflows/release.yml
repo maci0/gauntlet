@@ -22,8 +22,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          fetch-depth: 0 # release notes are generated from history
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
@@ -31,10 +29,41 @@ jobs:
       - name: Build every platform
         run: make release VERSION="${GITHUB_REF_NAME#v}"
 
+      # Smoke test before anything is uploaded: the host binary must run and
+      # report the tagged version (it is stamped from the tag), and its line in
+      # checksums.txt must verify. A mismatch means the tag, the asset names
+      # selfupdate.AssetName builds, and the binary have drifted apart.
+      - name: Smoke-test what would be published
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          got="$(dist/gauntlet_${version}_linux_amd64 version)"
+          echo "$got"
+          if [ "$got" != "gauntlet $version" ]; then
+            echo "smoke test failed: binary reports \"$got\", want \"gauntlet $version\"" >&2
+            exit 1
+          fi
+          (cd dist && grep " gauntlet_${version}_linux_amd64$" checksums.txt | sha256sum -c -)
+
+      # Release notes are this version's CHANGELOG section: consumers read the
+      # changelog, not the commit log. A tag without that section is a mistake
+      # and fails here instead of publishing auto-generated notes.
+      - name: Extract this version's CHANGELOG section
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 == "## " ver { found = 1; next }
+            /^## / && found { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! test -s notes.md; then
+            echo "no CHANGELOG.md section for $version; add one before tagging" >&2
+            exit 1
+          fi
+
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.txt is the module
       # inventory of what shipped, read back out of each built binary.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --generate-notes dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+        run: gh release create "$GITHUB_REF_NAME" --notes-file notes.md dist/gauntlet_* dist/checksums.txt dist/sbom.txt
