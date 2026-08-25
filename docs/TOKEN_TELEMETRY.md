@@ -180,10 +180,10 @@ A transcript root may be inside the reviewed project rather than under `$HOME`:
 clanker is read, since it logs every request to `state/token_stats.jsonl` in
 the repository it runs in.
 
-Anyone can add another, without a new binary:
+Anyone can add another, without a new binary. In `~/.gauntlet/agents.json`
+(plain JSON: comments and trailing commas are refused at startup):
 
-```jsonc
-// ~/.gauntlet/agents.json
+```json
 {
   "myagent": {
     "argv": ["myagent", "-p", "{prompt}"],

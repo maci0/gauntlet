@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/journal"
 )
 
 func TestExpandPath(t *testing.T) {
@@ -43,6 +46,29 @@ func TestIsGlob(t *testing.T) {
 		if isGlob(p) {
 			t.Errorf("%q is a literal path, not a pattern", p)
 		}
+	}
+}
+
+// The two resolvers of the gauntlet state root must agree wherever a home
+// exists: agents.json lives under the same root as the journal. They differ
+// only when HOME is unusable, and that difference is deliberate (see
+// journal.Home): the journal degrades to the working directory, while agent
+// definitions refuse a working-directory pickup.
+func TestStateRootAgreement(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("GAUNTLET_HOME", "")
+	want := filepath.Join(journal.Home(), "agents.json")
+	if got := agent.CustomFilePath(); got != want {
+		t.Fatalf("CustomFilePath = %q, want agents.json under the journal root (%q)", got, want)
+	}
+
+	custom := filepath.Join(t.TempDir(), "state")
+	t.Setenv("GAUNTLET_HOME", custom)
+	if got := journal.Home(); got != custom {
+		t.Fatalf("journal.Home = %q, want GAUNTLET_HOME %q", got, custom)
+	}
+	if got := agent.CustomFilePath(); got != filepath.Join(custom, "agents.json") {
+		t.Fatalf("CustomFilePath = %q, want agents.json under GAUNTLET_HOME", got)
 	}
 }
 

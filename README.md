@@ -63,7 +63,7 @@ rather than code. At least one must be on `PATH`.
 Any other agent can be added without a new binary, with `--agent-cmd` for one
 run or `~/.gauntlet/agents.json` to keep it:
 
-```jsonc
+```json
 {"myagent": {"argv": ["myagent", "-p", "{prompt}"],
              "stream": ["--mode", "json"],
              "usage": {"roots": ["~/.myagent/sessions"]}}}
@@ -228,6 +228,21 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--stream` | Ask agents for machine-readable output where they support it: live token counts, and the reasoning/output split shown separately in the feed. |
 | `--tui` | Live dashboard. |
 | `-V, --version` | Print the version. |
+
+## Environment variables
+
+None is required; unset, everything lives under `~/.gauntlet`.
+
+| Variable | Effect |
+|---|---|
+| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. |
+| `GITHUB_TOKEN` | Optional. Sent only to api.github.com by `gauntlet update` and `--auto-update`, for a higher API rate limit. |
+| `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
+| `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty or `0`: force color on, so piping through `less -R` keeps its palette. |
+| `TERM=dumb` | Disables color unless forced. |
+
+(`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
+handoff file passed across the exec.)
 
 ## Exit codes
 

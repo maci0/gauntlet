@@ -4,7 +4,9 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -220,8 +222,11 @@ func ParseAgentCmd(s string) (string, Custom, error) {
 //
 //	{"pi": {"argv": ["pi","-p","{prompt}"], "stream": ["--json"]}}
 //
-// A missing file is not an error; a malformed one is, because silently running
-// with the wrong agent set is worse than refusing to start.
+// A missing file is not an error; anything else wrong is, because silently
+// running with the wrong agent set is worse than refusing to start. Unknown
+// keys are refused like syntax errors: a misspelled one ("optin" for
+// "opt_in") would otherwise be dropped on the floor and quietly change what
+// the definition does.
 func LoadCustomFile(path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -231,7 +236,7 @@ func LoadCustomFile(path string) error {
 		return err
 	}
 	var defs map[string]Custom
-	if err := json.Unmarshal(data, &defs); err != nil {
+	if err := unmarshalStrict(data, &defs); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
 	for name, def := range defs {
@@ -242,7 +247,26 @@ func LoadCustomFile(path string) error {
 	return nil
 }
 
-// CustomFilePath is where agent definitions live by default.
+// unmarshalStrict decodes exactly one JSON value: unknown fields are errors,
+// so a typo cannot drop part of a definition, and trailing data is rejected
+// as encoding/json.Unmarshal rejects it.
+func unmarshalStrict(data []byte, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if dec.More() {
+		return errors.New("unexpected data after the JSON value")
+	}
+	return nil
+}
+
+// CustomFilePath is where agent definitions live by default: agents.json in
+// the same root journal.Home resolves (GAUNTLET_HOME, else $HOME/.gauntlet).
+// Unlike the journal, a missing HOME yields "" instead of a path in the
+// working directory: definitions carry executable argv, and picking one up
+// from ./.gauntlet would let the reviewed tree define its own agents.
 func CustomFilePath() string {
 	if h := os.Getenv("GAUNTLET_HOME"); h != "" {
 		return filepath.Join(h, "agents.json")

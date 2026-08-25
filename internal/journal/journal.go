@@ -30,7 +30,14 @@ import (
 	"time"
 )
 
-// Home is the root of the journal tree. GAUNTLET_HOME overrides it.
+// Home is the root of the state tree: GAUNTLET_HOME if set, else
+// $HOME/.gauntlet. With no usable HOME it degrades to ".gauntlet" beside the
+// working directory: nothing here is load-bearing, and a degraded location
+// beats refusing to run.
+//
+// agent.CustomFilePath resolves the same root for agents.json but refuses a
+// working-directory fallback, because a definitions file picked up from there
+// could be planted by the reviewed tree.
 func Home() string {
 	if h := os.Getenv("GAUNTLET_HOME"); h != "" {
 		return h

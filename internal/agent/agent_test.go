@@ -503,6 +503,35 @@ func TestCustomAgentFileRoundTrip(t *testing.T) {
 	}
 }
 
+// A misspelled key must refuse startup rather than silently change what the
+// definition does: an ignored "optin" would auto-detect an agent its author
+// had marked opt-in, and a dropped "usage" would quietly lose live tokens.
+func TestCustomAgentFileUnknownField(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agents.json")
+	body := `{"piclone":{"argv":["piclone","-p","{prompt}"],"optin":true}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := LoadCustomFile(path)
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("want an unknown-field rejection naming the key, got %v", err)
+	}
+}
+
+func TestCustomAgentFileTrailingData(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agents.json")
+	if err := os.WriteFile(path, []byte(`{} {"piclone":{"argv":["x","{prompt}"]}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err == nil {
+		t.Fatal("data after the JSON object must be rejected, not half-read")
+	}
+}
+
 // resetCustom restores the definition registry after a test mutates it.
 func resetCustom(t *testing.T) func() {
 	t.Helper()

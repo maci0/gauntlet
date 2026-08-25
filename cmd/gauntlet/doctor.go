@@ -200,6 +200,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	if len(missingRec) > 0 {
 		fmt.Fprintln(out, pal.dim("Worth installing: ")+wrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
+	// Where persistent definitions were read from, so a definition that
+	// misbehaves can be traced to its file (and to any GAUNTLET_HOME in play).
+	if p := agent.CustomFilePath(); p != "" {
+		fmt.Fprintln(out, pal.dim("Definitions: "+p))
+	}
 	fmt.Fprintln(out, pal.dim(tokenSourceLine))
 	fmt.Fprintln(out, pal.dim("Stack-specific tools only matter for the languages you review."))
 	return 0

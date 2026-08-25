@@ -20,6 +20,10 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Changed
 
+- `agents.json` refuses unknown keys instead of ignoring them: a misspelled
+  `opt_in` or `usage` would silently change what a definition does (an
+  unverified agent becoming auto-detectable, live token counts vanishing), so
+  it now fails at startup like any other malformed definition.
 - `code-review` treats assertion density as a lead only: each added assertion
   still needs the property or concrete path it encodes.
 - `prompt-review` allows creating new prompt files when its missing-prompts
@@ -28,6 +32,10 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Fixed
 
+- The `agents.json` examples were labeled and written as JSONC, one with a
+  comment; the loader accepts only plain JSON, so copying them verbatim failed
+  at startup. The examples are plain JSON now, and the README documents every
+  environment variable (`GAUNTLET_HOME`, `GITHUB_TOKEN`, the color controls).
 - The dashboard palette adapts to light and dark terminals instead of
   assuming a dark one, and every color that can sit behind text clears WCAG
   2.2 AA contrast on its background (SC 1.4.3). De-emphasized text such as
