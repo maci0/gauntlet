@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // captureStderr swaps os.Stderr for a pipe, runs f, and returns what was
@@ -248,4 +250,59 @@ func TestDoctorBrokenOverridesExitLikeAnEmptyBox(t *testing.T) {
 	if code := doctor(&out, palette{}, overrides, 100); code != 1 {
 		t.Errorf("only broken --bin overrides should exit 1, got %d:\n%s", code, out.String())
 	}
+}
+
+// exitCode maps a run onto the codes docs/CLI.md promises to scripts. The
+// contract test pins that the documented set does not drift; this one pins
+// which outcome produces which number, including the two easy to get
+// backwards: an interruption is not a failure (it says nothing about the
+// reviews), and a failed commit step is (the fixes are sitting uncommitted).
+func TestExitCodeMapsTheDocumentedCodes(t *testing.T) {
+	run := func(status runner.Status) *dirRun {
+		d := &dirRun{dir: "/repo", stats: &runner.Stats{}}
+		d.stats.Add(runner.Result{Review: "r-review", Status: status})
+		return d
+	}
+
+	t.Run("nothing failed", func(t *testing.T) {
+		for _, runs := range [][]*dirRun{
+			nil,
+			{&dirRun{dir: "/repo"}}, // no stats yet: not a failure
+			{run(runner.StatusOK)},
+			{run(runner.StatusInterrupted)},
+			{run(runner.StatusOK), run(runner.StatusInterrupted)},
+		} {
+			if got := exitCode(context.Background(), runs); got != exitOK {
+				t.Errorf("exitCode(%d results) = %d, want %d", len(runs), got, exitOK)
+			}
+		}
+	})
+
+	t.Run("any review failure fails the run", func(t *testing.T) {
+		for _, status := range []runner.Status{
+			runner.StatusFail, runner.StatusTimeout,
+			runner.StatusConflict, runner.StatusSkipped,
+		} {
+			if got := exitCode(context.Background(), []*dirRun{run(status)}); got != exitFail {
+				t.Errorf("%s should exit %d, got %d", status, exitFail, got)
+			}
+		}
+	})
+
+	t.Run("a failed commit step fails the run on its own", func(t *testing.T) {
+		d := &dirRun{dir: "/repo", stats: &runner.Stats{}}
+		d.stats.Add(runner.Result{Review: "r-review", Status: runner.StatusOK})
+		d.stats.Seed(nil, 2, 1) // two commit steps ran, one failed
+		if got := exitCode(context.Background(), []*dirRun{d}); got != exitFail {
+			t.Errorf("commit step failure should exit %d, got %d", exitFail, got)
+		}
+	})
+
+	t.Run("an interrupted run reports the interrupt", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if got := exitCode(ctx, []*dirRun{run(runner.StatusOK)}); got != 130 {
+			t.Errorf("a cancelled context should exit 130, got %d", got)
+		}
+	})
 }
