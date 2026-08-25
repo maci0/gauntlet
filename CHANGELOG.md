@@ -9,6 +9,16 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## 1.5.1
+
+### Fixed
+
+- crush's token counts are read for real runs, not just for tests. Its
+  `sessions.updated_at` column carries two units (crush writes milliseconds,
+  the table's own trigger writes seconds), so the window bound matched nothing
+  and every crush review reported zero. Found by running one. Fixed in toktop
+  v0.4.5, which this release requires.
+
 ## 1.5.0
 
 ### Added
