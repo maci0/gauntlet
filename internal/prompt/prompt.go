@@ -114,8 +114,10 @@ func (s Set) ProjectNames() []string {
 	return out
 }
 
-// bundledNames lists the reviews compiled into the binary.
-func bundledNames() []string {
+// BundledNames lists the reviews compiled into the binary, sorted. It is the
+// catalog every other bundled-review list is checked against: doctor's tool
+// table and the review sets must cover exactly these names.
+func BundledNames() []string {
 	entries, err := fs.Glob(bundled, "prompts/*-review.md")
 	if err != nil {
 		return nil

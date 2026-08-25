@@ -44,7 +44,7 @@ var goldenSetNames = []string{
 }
 
 func TestBundledReviewNamesMatchTheContract(t *testing.T) {
-	assertSurfaceUnchanged(t, "bundled review name", goldenReviewNames, bundledNames())
+	assertSurfaceUnchanged(t, "bundled review name", goldenReviewNames, BundledNames())
 }
 
 func TestSetNamesMatchTheContract(t *testing.T) {
@@ -56,7 +56,7 @@ func TestSetNamesMatchTheContract(t *testing.T) {
 // belongs to instead of failing loudly. Members must always resolve.
 func TestEverySetMemberIsABundledReview(t *testing.T) {
 	bundled := make(map[string]bool, len(goldenReviewNames))
-	for _, n := range bundledNames() {
+	for _, n := range BundledNames() {
 		bundled[n] = true
 	}
 	for set, members := range Sets {
