@@ -9,6 +9,17 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Added
+
+- `--retries N` (default 2): a review whose agent fails to launch or exits
+  nonzero is rerun on the same agent, waiting 5s and doubling from there, with
+  jitter so reviews that failed together do not come back together. Rate
+  limits and dropped connections are what this is for. Exhausting the retries
+  still falls back to a different agent, as before, and timeouts are still
+  never retried.
+
 ## 1.1.0
 
 ### Added

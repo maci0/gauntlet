@@ -666,6 +666,80 @@ func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
 	}
 }
 
+// A review whose agent dies once is rerun on the same agent after a wait, and
+// only falls through to another agent once the retries are spent.
+func TestFailedReviewIsRetriedOnTheSameAgent(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	marker := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo x >> `+marker+`
+attempts=$(wc -l < `+marker+`)
+if [ "$attempts" -lt 3 ]; then
+	echo "overloaded_error" >&2
+	exit 1
+fi
+echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+	got := <-done
+
+	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
+		t.Fatalf("the third attempt succeeded, so the review did: %+v", c)
+	}
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(body), "x"); lines != 3 {
+		t.Fatalf("agent ran %d times, want 3 (first try plus two retries)", lines)
+	}
+	if n := countKind(got, EvReviewEnd); n != 1 {
+		t.Fatalf("%d review_end events, want one: a retried review ends once", n)
+	}
+}
+
+// Retries are bounded: with none configured, one failure is one failure.
+func TestRetriesOffMeansOneAttempt(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	marker := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", "echo x >> "+marker+"\nexit 1")
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	bus := NewBus()
+	go drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	if c := r.Stats().Counts(); c.Failures() != 1 {
+		t.Fatalf("counts: %+v", c)
+	}
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(body), "x"); lines != 1 {
+		t.Fatalf("agent ran %d times, want 1", lines)
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {

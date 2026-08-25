@@ -43,6 +43,17 @@ type Config struct {
 	MaxLoops int
 	Runtime  time.Duration
 
+	// Retries is how many times a review is rerun on the same agent after a
+	// launch failure or a nonzero exit, with a growing delay between tries.
+	// The failures worth waiting out are transient: a rate limit, a dropped
+	// connection, a CLI that died before it started. Zero keeps only the
+	// fallback to a different agent.
+	Retries int
+	// RetryDelay is the first wait between retries; it doubles from there.
+	// Zero means retryBaseDelay, which is what a run wants; tests set it low
+	// so a retry path costs milliseconds.
+	RetryDelay time.Duration
+
 	Commit bool
 	Push   bool
 	Yolo   bool
@@ -484,7 +495,7 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 
 // runReview dispatches one review to one agent. wt is nil for in-place runs.
 func (r *Runner) runReview(ctx context.Context, review string, loopNo int, wt *gitx.Worktree) Result {
-	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{})
+	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{}, 0)
 }
 
 // shouldResume reports whether this launch may resume the spec's previous
@@ -507,7 +518,7 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 }
 
 func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo int,
-	wt *gitx.Worktree, exclude map[agent.Spec]bool) Result {
+	wt *gitx.Worktree, exclude map[agent.Spec]bool, attempt int) Result {
 
 	spec := r.pickAgent(exclude)
 	res := Result{Review: review, Agent: spec, ExitCode: -1}
@@ -634,7 +645,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	case pr.Err != nil:
 		r.log("FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
 		res.Status = StatusFail
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec); ok {
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
 	case pr.TimedOut:
@@ -647,7 +658,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)
 		res.Status = StatusFail
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec); ok {
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
 	default:
@@ -668,14 +679,35 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	return res
 }
 
-// retry reruns a review on a different agent after a launch failure or a
-// nonzero exit. Timeouts are deliberately not retried: the next agent would
-// most likely spend the same budget for the same reason.
+// Retry delays. A rate limit or a dropped connection clears in seconds, so the
+// wait starts long enough to matter and doubles from there.
+const (
+	retryBaseDelay = 5 * time.Second
+	retryMaxDelay  = 2 * time.Minute
+)
+
+// retry reruns a review after a launch failure or a nonzero exit: first on the
+// same agent, backing off between tries, then on a different one. Timeouts are
+// deliberately not retried: the next attempt would most likely spend the same
+// budget for the same reason.
+//
+// ponytail: the backoff is per review, not per agent. Reviews rate-limited by
+// one provider each wait on their own; a shared per-agent gate is the upgrade
+// if that turns out to matter.
 func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
-	exclude map[agent.Spec]bool, failed agent.Spec) (Result, bool) {
+	exclude map[agent.Spec]bool, failed agent.Spec, attempt int) (Result, bool) {
 
 	if ctx.Err() != nil {
 		return Result{}, false
+	}
+	if attempt < r.cfg.Retries {
+		delay := r.backoff(attempt)
+		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
+			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
+		if !sleepCtx(ctx, delay) {
+			return Result{}, false
+		}
+		return r.runReviewExcluding(ctx, review, loopNo, wt, exclude, attempt+1), true
 	}
 	next := map[agent.Spec]bool{failed: true}
 	for k := range exclude {
@@ -685,7 +717,38 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 		return Result{}, false
 	}
 	r.log("Retrying %s with another agent after %s failed", review, failed.Label())
-	return r.runReviewExcluding(ctx, review, loopNo, wt, next), true
+	return r.runReviewExcluding(ctx, review, loopNo, wt, next, 0), true
+}
+
+// backoff is the wait before the next attempt: doubling, capped, and jittered
+// so reviews that failed together do not come back together. The jitter comes
+// from the run's seeded source, so a seeded run still replays.
+func (r *Runner) backoff(attempt int) time.Duration {
+	base := r.cfg.RetryDelay
+	if base <= 0 {
+		base = retryBaseDelay
+	}
+	d := retryMaxDelay
+	if attempt < 32 {
+		if grown := base << attempt; grown > 0 && grown < retryMaxDelay {
+			d = grown
+		}
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return d/2 + time.Duration(r.rng.Int63n(int64(d/2)+1))
+}
+
+// sleepCtx waits for d, and reports false if the run is stopping instead.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 // outputSink forwards normalized agent lines onto the bus. --quiet drops them

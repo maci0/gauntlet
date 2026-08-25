@@ -298,6 +298,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 |---|---|---|
 | `-C, --dir DIR` | cwd | Directory to review. |
 | `--dirs LIST` | none | Review several directories in parallel; globs are expanded. Conflicts with `--dir`. Also accepted as `--target-dirs`, the name the Python tool used. |
+| `--retries N` | 2 | Reruns of a failed review on the same agent, waiting longer each time (5s, then doubling, jittered). A run that exhausts them still falls back to another agent. Timeouts are never retried. |
 | `-j, --jobs N` | 1 | Reviews at a time **per directory**; >1 uses worktree isolation and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |

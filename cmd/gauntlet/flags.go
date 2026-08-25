@@ -61,6 +61,7 @@ type options struct {
 	timeout          time.Duration
 	runtime          time.Duration
 	jobs             int
+	retries          int
 	maxLoops         int
 	seed             uint64
 	commit           bool
@@ -163,7 +164,7 @@ func (f seedFlag) Set(v string) error {
 func parseFlags(argv []string) (*options, error) {
 	o := &options{
 		bin: map[string]string{}, timeout: 30 * time.Minute,
-		suggestTimeout: 30 * time.Minute, jobs: 1, hotReload: true, stream: true,
+		suggestTimeout: 30 * time.Minute, jobs: 1, retries: 2, hotReload: true, stream: true,
 		runsLimit: 20, width: terminalWidth(),
 	}
 
@@ -274,6 +275,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("j", "jobs", func(n string) {
 		fs.IntVar(&o.jobs, n, 1, "reviews to run at once per directory; >1 gives each its own git worktree and merges back")
 	})
+	fs.IntVar(&o.retries, "retries", 2, "reruns of a failed review on the same agent, waiting longer each time (0 = none)")
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
 	fs.Var(seedFlag{&o.seed}, "seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
@@ -435,6 +437,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.jobs < 1 {
 		return nil, errors.New("--jobs must be >= 1")
+	}
+	if o.retries < 0 {
+		return nil, errors.New("--retries must be >= 0")
 	}
 	if o.jobs > 1 && !gitx.Available() {
 		return nil, errors.New("--jobs > 1 needs git: each review runs in its own worktree")

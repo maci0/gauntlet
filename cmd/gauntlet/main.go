@@ -364,7 +364,7 @@ func run(argv []string) int {
 		}
 		r, err := runner.New(ctx, runner.Config{
 			Dir: d.dir, Set: d.set, Reviews: d.reviews, Agents: agents, Bin: opts.bin,
-			Timeout: opts.timeout, Jobs: opts.jobs, MaxLoops: maxLoops,
+			Timeout: opts.timeout, Jobs: opts.jobs, Retries: opts.retries, MaxLoops: maxLoops,
 			Started: startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
 			Seed: opts.seed,
