@@ -105,6 +105,7 @@ knows, defined ones included. See
 ## Quick start
 
 ```sh
+gauntlet pick                     # compose a run on screen: reviews, agents, jobs
 gauntlet --list                   # every review and set, and what is scheduled
 gauntlet --dry-run                # the plan, without running anything
 gauntlet -a claude --once         # one pass over everything, then stop

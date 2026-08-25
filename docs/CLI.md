@@ -4,6 +4,33 @@ Every flag, environment variable, and exit code. `gauntlet --help` prints the
 same flags from the binary itself, and `gauntlet doctor` reports what is
 installed.
 
+## Commands
+
+| Command | What it does |
+|---|---|
+| `gauntlet [flags]` | review the current directory, looping until stopped |
+| `gauntlet pick` | compose a run on screen, then run it |
+| `gauntlet doctor` | report which agent CLIs and helper tools are installed |
+| `gauntlet update [--check]` | replace this binary with the latest verified release |
+| `gauntlet runs [--limit N]` | list recent runs recorded under `~/.gauntlet` |
+| `gauntlet show <run-id>` | replay one run's journal |
+| `gauntlet version` / `help` | print the version / this help |
+
+`pick` opens a launcher: reviews as collapsible sets, the agents this machine
+has, concurrency against the CPU count, and the run switches. The composed
+command line is on screen the whole time, and `enter` runs exactly that, so
+the flags are learned rather than hidden. It needs a terminal on stdin and
+stdout, and takes `-C/--dir` and `--prompt-dir` to say what it should offer.
+
+| Key | Action |
+|---|---|
+| `tab` / `shift+tab` | move between reviews, agents, and run options |
+| `up`/`down`, `j`/`k` | move within a pane |
+| `space` | toggle a review, a whole set, an agent, or a switch |
+| `left`/`right`, `h`/`l` | collapse or expand a set; change the job count |
+| `a` | select all or none in this pane |
+| `enter` / `q` | run the composed command / leave without running |
+
 ## Options
 
 **Choosing reviews**

@@ -131,6 +131,8 @@ func run(argv []string) int {
 	watchSignals(ctx, stop, stdout)
 
 	switch opts.command {
+	case "pick":
+		return cmdPick(ctx, stdout, opts)
 	case "doctor":
 		return doctor(stdout, pal, opts.bin, opts.width)
 	case "update":

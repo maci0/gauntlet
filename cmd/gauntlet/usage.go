@@ -112,6 +112,7 @@ var helpGroups = []flagGroup{
 
 var helpCommands = []struct{ Cmd, Help string }{
 	{"gauntlet [flags]", "review the current directory, looping until stopped"},
+	{"gauntlet pick", "compose a run on screen: reviews, agents, concurrency"},
 	{"gauntlet doctor", "report which agent CLIs and helper tools are installed"},
 	{"gauntlet update [--check]", "replace this binary with the latest verified release"},
 	{"gauntlet runs [--limit N]", "list recent runs recorded under ~/.gauntlet"},

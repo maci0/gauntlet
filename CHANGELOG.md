@@ -21,6 +21,12 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Added
 
+- `gauntlet pick`: a launcher that composes a run on screen. Reviews as
+  collapsible sets with per-set counts, the agents this machine actually has,
+  concurrency shown against the CPU count, and the run switches. The command
+  line it is building stays on screen and `enter` runs exactly that, through
+  the same parser as a hand-typed one, so the launcher teaches the flags
+  instead of replacing them.
 - `--retries N` (default 2): a review whose agent fails to launch or exits
   nonzero is rerun on the same agent, waiting 5s and doubling from there, with
   jitter so reviews that failed together do not come back together. Rate

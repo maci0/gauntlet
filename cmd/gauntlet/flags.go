@@ -171,7 +171,7 @@ func parseFlags(argv []string) (*options, error) {
 	// Subcommands come first and take their own small flag sets.
 	if len(argv) > 0 && !strings.HasPrefix(argv[0], "-") {
 		switch argv[0] {
-		case "doctor", "update", "runs", "show", "version":
+		case "doctor", "update", "runs", "show", "version", "pick":
 			o.command = argv[0]
 			argv = argv[1:]
 			if o.command == "show" {
@@ -193,7 +193,7 @@ func parseFlags(argv []string) (*options, error) {
 			return nil, errHelp
 		default:
 			return nil, reportUsage(o, fmt.Errorf(
-				"unknown command: %q (try: help, doctor, update, runs, show, version)", argv[0]))
+				"unknown command: %q (try: help, pick, doctor, update, runs, show, version)", argv[0]))
 		}
 	}
 
