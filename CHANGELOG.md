@@ -9,6 +9,26 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
+## Unreleased
+
+### Added
+
+- A release-contract guard. Tests now pin every surface this file declares
+  consumer-facing: bundled review names, review set names, CLI flag names,
+  commands, exit codes, and that no importable Go package lives outside
+  `internal/`. Removing or renaming one fails the suite with the required
+  bump kind spelled out, and a set member left pointing at a renamed review
+  is caught instead of silently shrinking its set. This is the automated
+  check whose absence let the public `agentusage` removal ship in the 1.0.1
+  patch release unrecorded.
+
+### Fixed
+
+- docs/CLI.md documents the six flags its intro claimed to cover but did
+  not list: `--seed`, `--opencode-db`, `--no-color`, `--hot-reload`,
+  `--auto-update`, and `--update-repo`.
+- The help screen's environment section printed `TERM=dumb` twice.
+
 ## 1.6.1
 
 ### Fixed
