@@ -20,6 +20,7 @@ import (
 type Worktree struct {
 	Dir    string // absolute path of the checkout
 	Branch string
+	base   string // the commit the checkout was cut from
 	repo   *Repo
 }
 
@@ -142,7 +143,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	if _, err := r.run(ctx, 120*time.Second, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
-	return &Worktree{Dir: dir, Branch: branch, repo: r}, nil
+	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
 }
 
 // CommitAll stages everything in the worktree and commits it. It reports
@@ -170,6 +171,30 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 		return false, fmt.Errorf("git commit: %w", err)
 	}
 	return true, nil
+}
+
+// ResetToBase restores the checkout to the commit it was cut from, undoing
+// everything a failed attempt left behind: tracked files go back to base
+// (staged or not), and untracked files the attempt created are removed.
+//
+// It is what makes a retried review converge: attempt N+1 must start from the
+// same state attempt N did, or a review that half-applied its fixes before
+// exiting nonzero would hand its successor a tree no rerun could reproduce,
+// and one failed attempt would change what a later successful one commits.
+//
+// Like CommitAll, this is the runner writing, never the agent. Running it on
+// an already-clean checkout is a no-op, so calling it before every retry is
+// safe whatever the previous attempt actually did. Ignored files stay: only
+// git-visible debris is the retry's problem.
+func (w *Worktree) ResetToBase(ctx context.Context) error {
+	sub := &Repo{Dir: w.Dir}
+	if _, err := sub.run(ctx, 60*time.Second, "reset", "--hard", w.base); err != nil {
+		return fmt.Errorf("git reset --hard: %w", err)
+	}
+	if _, err := sub.run(ctx, 60*time.Second, "clean", "-fd"); err != nil {
+		return fmt.Errorf("git clean -fd: %w", err)
+	}
+	return nil
 }
 
 // MergeResult says what happened when a review's branch met the main tree.

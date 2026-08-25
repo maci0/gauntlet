@@ -687,6 +687,57 @@ func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	}
 }
 
+// A retried isolated review must start from the same commit the first attempt
+// did: the failed attempt's half-applied fixes are reset out of the worktree,
+// so the retry converges to what one successful attempt would have produced.
+func TestRetriedWorktreeReviewStartsFromBase(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	counter := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo x >> `+counter+`
+attempts=$(wc -l < `+counter+`)
+if [ "$attempts" -ge 2 ]; then
+	if [ -e scratch.go ]; then
+		echo "the failed attempt left scratch.go behind" >&2
+		exit 4
+	fi
+	echo "package fixed" > fixed.go
+	echo "RESULT: no-changes"
+	exit 0
+fi
+echo "package broken" > scratch.go
+exit 1`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Jobs = 2
+	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
+		t.Fatalf("the retry must succeed against a restored worktree: %+v", c)
+	}
+	body, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(body), "x"); lines != 2 {
+		t.Fatalf("agent ran %d times, want 2 (first try plus one retry)", lines)
+	}
+
+	// The landed work is exactly what the successful attempt wrote.
+	fixed, err := exec.Command("git", "-C", repo, "show", "HEAD:fixed.go").Output()
+	if err != nil {
+		t.Fatalf("the retry's own change never landed: %v", err)
+	}
+	if string(fixed) != "package fixed\n" {
+		t.Fatalf("fixed.go holds %q", fixed)
+	}
+	if err := exec.Command("git", "-C", repo, "cat-file", "-e", "HEAD:scratch.go").Run(); err == nil {
+		t.Fatal("the failed attempt's scratch.go was committed")
+	}
+}
+
 // --merge-into moves each loop's commits onto another branch without ever
 // checking that branch out in the tree the reviews are running in.
 func TestMergeIntoLandsTheWorkOnAnotherBranch(t *testing.T) {

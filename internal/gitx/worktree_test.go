@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // The finish path runs under retries, hot reloads, and loop after loop, so
@@ -59,6 +60,63 @@ func TestCommitAllTwiceCommitsOnce(t *testing.T) {
 	}
 	if one != two {
 		t.Fatalf("a repeated CommitAll moved the branch: %s != %s", one, two)
+	}
+}
+
+func TestResetToBaseRestoresAndConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	// What a failed attempt leaves behind: an edited tracked file, a staged
+	// tracked file, and an untracked scratch file.
+	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
+		[]byte("package fix\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := &Repo{Dir: wt.Dir}
+	if _, err := sub.run(ctx, 30*time.Second, "add", "-A"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := wt.ResetToBase(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertWorktreeMatchesBase(t, ctx, r, wt, base)
+
+	// A second reset over an already-restored checkout must be a no-op, not
+	// an error: the retry path calls it before every attempt.
+	if err := wt.ResetToBase(ctx); err != nil {
+		t.Fatalf("a repeated ResetToBase must succeed: %v", err)
+	}
+	assertWorktreeMatchesBase(t, ctx, r, wt, base)
+}
+
+func assertWorktreeMatchesBase(t *testing.T, ctx context.Context, r *Repo, wt *Worktree, base string) {
+	t.Helper()
+	sub := &Repo{Dir: wt.Dir}
+	changes, err := sub.Status(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(changes.Tracked) > 0 || len(changes.Untracked) > 0 {
+		t.Fatalf("the checkout is not back to base: tracked=%v untracked=%v",
+			changes.Tracked, changes.Untracked)
+	}
+	tip, err := r.Tip(ctx, wt.Branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tip != base {
+		t.Fatalf("the branch moved during the review: %s != %s", tip, base)
 	}
 }
 

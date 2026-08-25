@@ -24,6 +24,11 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Fixed
 
+- A retried review in `--jobs` mode now starts from the commit its worktree
+  was cut from. Previously a failed attempt's half-applied fixes stayed in
+  the checkout, so the retry (and whatever it committed) depended on how
+  many attempts had run before it. In-place reviews are unchanged: their
+  tree belongs to the user and is not rewound.
 - docs/CLI.md documents the six flags its intro claimed to cover but did
   not list: `--seed`, `--opencode-db`, `--no-color`, `--hot-reload`,
   `--auto-update`, and `--update-repo`.
