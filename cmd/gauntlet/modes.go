@@ -21,6 +21,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
 )
@@ -45,7 +46,15 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	}
 	// The point of --show-prompt is the exact text, and part of that text is
 	// what this machine has: probe the same way a run would.
-	fmt.Fprintln(out, prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name)))
+	//
+	// What reaches the terminal is the display form, though, not the bytes:
+	// the body may come from a hostile *-review.md, and an escape sequence
+	// planted there (an OSC 52 clipboard overwrite, cursor addressing) would
+	// fire against whoever inspected it here before deciding to run. The
+	// agent still receives the exact bytes; Display strips only what could
+	// drive or spoof the terminal.
+	fmt.Fprintln(out, normalize.Display(
+		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name))))
 	return exitOK
 }
 
