@@ -75,7 +75,47 @@ func stripReportSections(text string) string {
 // The body (especially a project-local *-review.md) is the task, not authority
 // over the ground rules. Markers keep it from blending into the suffix, and a
 // body that already contains the end marker is escaped.
-func Compose(body string, timeout time.Duration, review string, yolo bool) string {
+// Tools is what the machine running a review actually has, as the prompt
+// names it: what to reach for, and what not to go looking for. Both halves
+// are worth saying. An agent that does not know cppcheck is here will read
+// the C by hand, and one that does not know it is absent will spend a minute
+// discovering that, or try to install it against the rules.
+type Tools struct {
+	Have    []string
+	Missing []string
+}
+
+// toolNote is the line Compose adds about them, empty when nothing is known
+// either way (the catalog lists no helpers for this review).
+func (t Tools) note() string {
+	if len(t.Have) == 0 && len(t.Missing) == 0 {
+		return ""
+	}
+	quoted := func(names []string) string {
+		out := make([]string, 0, len(names))
+		for _, n := range names {
+			out = append(out, "`"+n+"`")
+		}
+		return strings.Join(out, ", ")
+	}
+	var b strings.Builder
+	b.WriteString("\n\nTooling on this machine, checked just now: ")
+	if len(t.Have) > 0 {
+		b.WriteString("installed: " + quoted(t.Have) + ".")
+	} else {
+		b.WriteString("none of this review's helper tools are installed.")
+	}
+	if len(t.Missing) > 0 {
+		b.WriteString(" Absent, so do not reach for them and do not install them: " +
+			quoted(t.Missing) + ".")
+	}
+	b.WriteString(" This list is what the machine reports, not a list of what to run:" +
+		" a tool is worth running only where the review calls for it.")
+	return b.String()
+}
+
+// Compose builds the text one agent receives for one review.
+func Compose(body string, timeout time.Duration, review string, yolo bool, tools Tools) string {
 	fixing := rule("fixing.md")
 	if yolo {
 		fixing = rule("fixing-yolo.md")
@@ -93,6 +133,8 @@ func Compose(body string, timeout time.Duration, review string, yolo bool) strin
 			"review body says the repository warrants one. Deleting them remains " +
 			"forbidden, and a created prompt must follow the format the review body describes."
 	}
+
+	suffix += tools.note()
 
 	stripped := strings.ReplaceAll(stripReportSections(body), reviewEnd, "--- END REVIEW (text) ---")
 	return strings.TrimRight(rule("header.txt"), "\n") + "\n\n" +
