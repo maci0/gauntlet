@@ -46,10 +46,11 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	}
 
 	argv, ok, err := ui.Pick(ui.PickConfig{
-		Dir:    dir,
-		Groups: pickGroups(set),
-		Agents: runner.AgentLabels(agent.Installed()),
-		CPUs:   runtime.NumCPU(),
+		Dir:     dir,
+		Groups:  pickGroups(set),
+		Agents:  runner.AgentLabels(agent.Installed()),
+		CPUs:    runtime.NumCPU(),
+		Version: version,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

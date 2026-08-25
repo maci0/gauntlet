@@ -41,8 +41,20 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 		{"defaults are not spelled out", func(*picker) {},
 			"-C /home/dev/project --once --tui"},
 		{"a whole set is named by its set", func(p *picker) {
-			p.toggle() // the cursor starts on the first group header
+			p.cursor[paneReviews] = 1 // past the suggest row, on the first group
+			p.toggle()
 		}, "-C /home/dev/project -r quick --once --tui"},
+		{"suggest replaces the review list", func(p *picker) {
+			p.selected["ux-review"] = true
+			p.toggle() // the cursor starts on the suggest row
+		}, "-C /home/dev/project --suggest --once --tui"},
+		{"a suggest agent is only passed for a suggested run", func(p *picker) {
+			p.opts[optSuggestAgent].idx = 2 // codex:gpt-5
+		}, "-C /home/dev/project --once --tui"},
+		{"the suggest agent rides along with suggest", func(p *picker) {
+			p.suggest = true
+			p.opts[optSuggestAgent].idx = 2
+		}, "-C /home/dev/project --suggest --suggest-agent codex:gpt-5 --once --tui"},
 		{"a single review is named by its short name", func(p *picker) {
 			p.selected["ux-review"] = true
 		}, "-C /home/dev/project -r ux --once --tui"},
@@ -77,6 +89,7 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 // it rather than filling it again.
 func TestPickGroupHeaderTogglesItsMembers(t *testing.T) {
 	p := demoPicker()
+	p.cursor[paneReviews] = 1
 	p.toggle()
 	if p.chosen() != 2 {
 		t.Fatalf("%d reviews chosen, want the group's two", p.chosen())
@@ -111,8 +124,13 @@ func TestPickRendersAtEverySize(t *testing.T) {
 		p := demoPicker()
 		p.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		view := p.View()
-		if !strings.Contains(view, "REVIEWS") || !strings.Contains(view, "gauntlet ") {
-			t.Fatalf("%dx%d lost the panes or the command line:\n%s", size[0], size[1], view)
+		// The command line is what every size must keep; the panels only
+		// appear where they fit.
+		if !strings.Contains(view, "gauntlet ") {
+			t.Fatalf("%dx%d lost the command line:\n%s", size[0], size[1], view)
+		}
+		if size[0] >= 50 && size[1] >= 12 && !strings.Contains(view, "REVIEWS") {
+			t.Fatalf("%dx%d lost the panels:\n%s", size[0], size[1], view)
 		}
 	}
 }

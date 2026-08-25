@@ -16,11 +16,14 @@ installed.
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 
-`pick` opens a launcher: reviews as collapsible sets, the agents this machine
-has, concurrency against the CPU count, and the run switches. The composed
-command line is on screen the whole time, and `enter` runs exactly that, so
-the flags are learned rather than hidden. It needs a terminal on stdin and
-stdout, and takes `-C/--dir` and `--prompt-dir` to say what it should offer.
+`pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
+with a fill meter each, `suggest` as the first choice in that list (an agent
+proposes the reviews, and the run pane names which agent does it), the agents
+this machine has in the colors they will keep during the run, concurrency
+metered against the CPU count, and the run switches. The composed command line
+is on screen the whole time, and `enter` runs exactly that, so the flags are
+learned rather than hidden. It needs a terminal on stdin and stdout, and takes
+`-C/--dir` and `--prompt-dir` to say what it should offer.
 
 | Key | Action |
 |---|---|

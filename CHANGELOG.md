@@ -21,12 +21,14 @@ changes could land in a minor instead and were listed under Changed.
 
 ### Added
 
-- `gauntlet pick`: a launcher that composes a run on screen. Reviews as
-  collapsible sets with per-set counts, the agents this machine actually has,
-  concurrency shown against the CPU count, and the run switches. The command
-  line it is building stays on screen and `enter` runs exactly that, through
-  the same parser as a hand-typed one, so the launcher teaches the flags
-  instead of replacing them.
+- `gauntlet pick`: a launcher that composes a run on screen, drawn with the
+  dashboard's instruments so the two screens read as one cockpit. Reviews are
+  collapsible sets with a fill meter each, `suggest` is the first choice among
+  them with its own agent picker, the agent pool carries the hues it will keep
+  during the run, and concurrency is metered against the CPU count. The
+  command line it is building stays on screen and `enter` runs exactly that,
+  through the same parser as a hand-typed one, so the launcher teaches the
+  flags instead of replacing them.
 - The dashboard says when a review is on its second try (`sec-review ↻2` in
   the lane): a retry reuses the lane and resets the clock, so it read as a
   review that had restarted itself.
