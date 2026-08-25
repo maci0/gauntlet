@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // Custom describes an agent gauntlet was not compiled to know about: the argv
@@ -263,19 +265,17 @@ func unmarshalStrict(data []byte, v any) error {
 }
 
 // CustomFilePath is where agent definitions live by default: agents.json in
-// the same root journal.Home resolves (GAUNTLET_HOME, else $HOME/.gauntlet).
-// Unlike the journal, a missing HOME yields "" instead of a path in the
-// working directory: definitions carry executable argv, and picking one up
-// from ./.gauntlet would let the reviewed tree define its own agents.
+// the state root gauntlethome.Dir resolves (GAUNTLET_HOME, else
+// $HOME/.gauntlet). Unlike the journal, a missing HOME yields "" instead of a
+// path in the working directory: definitions carry executable argv, and
+// picking one up from ./.gauntlet would let the reviewed tree define its own
+// agents.
 func CustomFilePath() string {
-	if h := os.Getenv("GAUNTLET_HOME"); h != "" {
-		return filepath.Join(h, "agents.json")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
+	root, ok := gauntlethome.Dir()
+	if !ok {
 		return ""
 	}
-	return filepath.Join(home, ".gauntlet", "agents.json")
+	return filepath.Join(root, "agents.json")
 }
 
 // buildCustom expands a custom definition into an argv.

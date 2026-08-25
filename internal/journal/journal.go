@@ -28,25 +28,21 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
-// Home is the root of the state tree: GAUNTLET_HOME if set, else
-// $HOME/.gauntlet. With no usable HOME it degrades to ".gauntlet" beside the
-// working directory: nothing here is load-bearing, and a degraded location
-// beats refusing to run.
+// Home is the root of the state tree, resolved by gauntlethome.Dir:
+// GAUNTLET_HOME if set, else $HOME/.gauntlet. With no usable HOME it degrades
+// to ".gauntlet" beside the working directory: nothing here is load-bearing,
+// and a degraded location beats refusing to run.
 //
 // agent.CustomFilePath resolves the same root for agents.json but refuses a
 // working-directory fallback, because a definitions file picked up from there
 // could be planted by the reviewed tree.
 func Home() string {
-	if h := os.Getenv("GAUNTLET_HOME"); h != "" {
-		return h
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".gauntlet"
-	}
-	return filepath.Join(home, ".gauntlet")
+	root, _ := gauntlethome.Dir()
+	return root
 }
 
 // StateDir holds hot-reload handoff files.

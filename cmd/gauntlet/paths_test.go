@@ -70,6 +70,21 @@ func TestStateRootAgreement(t *testing.T) {
 	if got := agent.CustomFilePath(); got != filepath.Join(custom, "agents.json") {
 		t.Fatalf("CustomFilePath = %q, want agents.json under GAUNTLET_HOME", got)
 	}
+
+	// A relative GAUNTLET_HOME is made absolute once, so the root cannot come
+	// to depend on the directory current when some later call reads it.
+	rel := "relative-state"
+	t.Setenv("GAUNTLET_HOME", rel)
+	wantRel, err := filepath.Abs(rel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := journal.Home(); got != wantRel {
+		t.Fatalf("journal.Home = %q, want the absolute form %q", got, wantRel)
+	}
+	if got := agent.CustomFilePath(); got != filepath.Join(wantRel, "agents.json") {
+		t.Fatalf("CustomFilePath = %q, want agents.json under %q", got, wantRel)
+	}
 }
 
 // resolveDirs turns flags into absolute directories. A quoted glob still
