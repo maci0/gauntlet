@@ -17,8 +17,9 @@ embedded, bubbletea for the dashboard, everything else standard library.
 
 `cmd/gauntlet` is flags and dispatch only. Everything real lives in
 `internal/`, and dependencies point one way: `runner` uses `agent`, `prompt`,
-`normalize`, `gitx`, `journal`; `ui` uses only the runner's event types.
-Nothing imports `ui`, so a headless run costs nothing.
+`normalize`, `gitx`, `streamjson`; `ui` uses the runner's event types plus
+the shared `normalize` and `humanize`. Nothing imports `ui`, so a headless
+run costs nothing.
 
 ## Rules that are not style preferences
 
