@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -170,27 +171,62 @@ func walkProject(root, promptDir string) []string {
 }
 
 // sameContent reports whether a project file matches the review it shadows.
+//
+// The size check settles most pairs without reading anything, and what is
+// read is capped at one body plus a sentinel byte. Both files come from the
+// reviewed tree; discovery only runs here to decide whether a warning is
+// worth printing, and must not buffer an arbitrary file to decide that.
 func sameContent(prev Review, path string) bool {
 	want, err := prev.Body()
 	if err != nil {
 		return false
 	}
-	got, err := os.ReadFile(path)
-	if err != nil {
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() != int64(len(want)) {
 		return false
 	}
-	return string(got) == want
+	got, ok := readBounded(path, int64(len(want))+1)
+	return ok && string(got) == want
 }
 
 // sameFile reports whether two prompt copies are byte-identical.
+//
+// Equal sizes are the common case for real duplicates and are required for
+// identical content anyway, so differing sizes answer without a read. A pair
+// over maxBytes is refused unread: neither copy could ever load as a prompt,
+// and reporting them as conflicting keeps two multi-gigabyte files out of
+// memory.
 func sameFile(a, b string) bool {
-	ab, err := os.ReadFile(a)
-	if err != nil {
+	sa, oka := fileSize(a)
+	sb, okb := fileSize(b)
+	if !oka || !okb || sa != sb || sa > maxBytes {
 		return false
 	}
-	bb, err := os.ReadFile(b)
-	if err != nil {
-		return false
+	ab, oka := readBounded(a, sa+1)
+	bb, okb := readBounded(b, sb+1)
+	return oka && int64(len(ab)) == sa && int64(len(bb)) == sb && bytes.Equal(ab, bb)
+}
+
+func fileSize(path string) (int64, bool) {
+	fi, err := os.Stat(path)
+	if err != nil || fi.Size() < 0 {
+		return 0, false
 	}
-	return bytes.Equal(ab, bb)
+	return fi.Size(), true
+}
+
+// readBounded reads at most limit bytes of path. ok is false on an error or
+// when the file holds limit bytes or more, so a caller that stats size n and
+// passes n+1 can tell a full read from truncation.
+func readBounded(path string, limit int64) ([]byte, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	got, err := io.ReadAll(io.LimitReader(f, limit))
+	if err != nil || int64(len(got)) >= limit {
+		return nil, false
+	}
+	return got, true
 }
