@@ -139,6 +139,18 @@ var helpExitCodes = []struct{ Code, Meaning string }{
 	{"130", "interrupted"},
 }
 
+// helpEnvVars is the environment section: the variables a consumer can set to
+// change gauntlet's behavior. GAUNTLET_HOME and GITHUB_TOKEN are read by
+// internal packages (gauntlethome, selfupdate); the color names come from
+// report.go's consts, so this table cannot drift from colorEnabled.
+var helpEnvVars = []struct{ Name, Help string }{
+	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)"},
+	{"NO_COLOR", "disable color, however it is set"},
+	{"CLICOLOR_FORCE", "keep color when the output is piped"},
+	{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
+	{"GITHUB_TOKEN", "used for release lookups, to avoid rate limits"},
+}
+
 // printUsage renders the help screen.
 func printUsage(out io.Writer, pal palette, width int) {
 	if width < 60 {
@@ -192,13 +204,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 	}
 
 	head("environment")
-	for _, e := range []struct{ Name, Help string }{
-		{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)"},
-		{"NO_COLOR", "disable color, however it is set"},
-		{"CLICOLOR_FORCE", "keep color when the output is piped"},
-		{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
-		{"GITHUB_TOKEN", "used for release lookups, to avoid rate limits"},
-	} {
+	for _, e := range helpEnvVars {
 		fmt.Fprintf(out, "  %-14s %s\n", e.Name, pal.dim(e.Help))
 	}
 	fmt.Fprintln(out)
