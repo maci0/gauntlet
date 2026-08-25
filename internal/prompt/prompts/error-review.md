@@ -108,6 +108,7 @@ Instructions:
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.
 - Trace one request path with every external call failed; a crash or silent data loss is the finding.
+- If available, use: `errcheck`/`staticcheck` (Go; unchecked errors and suspicious handling). Never install tools.
 - Do not flag every missing try/catch. Focus on errors that would cause real damage if unhandled.
 - Prefer error handling that is explicit and visible over clever or implicit patterns.
 - Consider the operational burden of errors: can an on-call engineer understand and fix the issue from the error output alone?
