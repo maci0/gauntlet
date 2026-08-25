@@ -199,7 +199,7 @@ None of these is demonstrated here; evidence is the cited code paths.
 ## Document status
 
 - SECURITY.md: absent. Claims to correct: none found elsewhere; README's
-  "Trust model" section (README.md:242-255) was checked line by line against
+  "Trust model" section was checked line by line against
   the code above and matches.
 - Response readiness: the journal provides the audit trail
   (o11y-review owns its structure); the reporting path is the gap listed

@@ -306,6 +306,36 @@ for the flag in a build that cannot honor it is an error rather than silence.
 In an opted-out build, agents that print no counter report no tokens at all,
 which is the same rule as everywhere else here: measure, or say nothing.
 
+## Reading agent throughput from your own tools
+
+The token-reading machinery lives in [toktop](https://github.com/maci0/toktop),
+which is where the per-agent archaeology is maintained: where each CLI keeps
+its transcript, which counters are cumulative, which field means generated
+output. Agents defined in `~/.gauntlet/agents.json` are picked up too.
+
+```go
+import "github.com/maci0/toktop/agentusage"
+
+for _, p := range agentusage.Discover() {      // agents running right now
+    w := agentusage.Watch(p.Tool, p.Dir, time.Now())
+    // w.Read() returns cumulative usage; agentusage.Rate turns two into tok/s
+}
+```
+
+`Discover` reads `/proc` and so lists processes on Linux only; `Watch`
+works wherever the agent's transcripts do.
+
+Gauntlet reads transcripts by default: released binaries, `make build`, and a
+plain `go build` all include it. `make build TAGS=notoktop` opts out and
+produces a gauntlet with no dependencies outside the standard library, which
+reads only the counts agents print themselves. `gauntlet doctor` says which
+build you have.
+
+opencode keeps its sessions in SQLite instead, so reading it needs both
+`make build TAGS=sqlite` and `--opencode-db`: a database driver is a lot to
+link in for one agent, and opening someone's session database should be asked
+for.
+
 ## What was considered and not built
 
 ### A local MITM proxy

@@ -41,6 +41,15 @@ run costs nothing.
 
 ## Docs
 
+- `README.md` is the landing page: what the tool is, install, one screen of
+  each idea, and links out. Keep it short; detail belongs in `docs/`.
+- `docs/CLI.md` is the flag, environment, and exit-code reference. A new flag
+  is documented there and in the help table in `cmd/gauntlet/usage.go`.
+- `docs/RUNS.md` covers worktree isolation and merging, the run journal, and
+  hot reload.
 - `docs/DESIGN.md` records the architecture and what each decision costs.
+- `docs/TOKEN_TELEMETRY.md` records where token counts come from, per agent.
+- `docs/THREAT_MODEL.md` records the trust boundaries and what is validated
+  where.
 - `docs/IDEAS.md` records what was deliberately not built, and why. Move an
   entry out of it when it ships; do not leave both.

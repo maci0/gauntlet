@@ -11,6 +11,14 @@ changes could land in a minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Changed
+
+- The README is a landing page again: what the tool is, install, one screen of
+  each idea, and links out. The flag, environment, and exit-code reference
+  moved to `docs/CLI.md`, worktree isolation, the run journal, and hot reload
+  to `docs/RUNS.md`, and the public token-reading API into
+  `docs/TOKEN_TELEMETRY.md` where the rest of that subject already lived.
+
 ### Added
 
 - `--retries N` (default 2): a review whose agent fails to launch or exits
