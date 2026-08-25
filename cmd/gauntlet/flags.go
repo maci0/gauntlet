@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -502,10 +503,10 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		o.commit, o.push = false, false
 	}
 	if o.promptDir != "" {
-		o.promptDir = expandPath(o.promptDir)
+		o.promptDir = gauntlethome.ExpandPath(o.promptDir)
 	}
 	if o.logFile != "" {
-		o.logFile = expandPath(o.logFile)
+		o.logFile = gauntlethome.ExpandPath(o.logFile)
 	}
 	return o, nil
 }
