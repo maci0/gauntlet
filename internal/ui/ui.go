@@ -253,12 +253,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.help {
+			// The overlay owns the screen: a keypress acting on the hidden
+			// dashboard changes state nobody can see, so it answers only its
+			// closing keys.
+			switch msg.String() {
+			case "q", "ctrl+c", "esc", "?", "h":
+				m.help = false
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
-			if m.help {
-				m.help = false
-				return m, nil
-			}
 			return m, tea.Quit
 		case " ":
 			m.paused = !m.paused

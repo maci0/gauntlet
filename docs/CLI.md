@@ -94,7 +94,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
 | `--stream` | Ask agents for machine-readable output where they support it: live token counts, and the reasoning/output split shown separately in the feed. |
-| `--tui` | Live dashboard. |
+| `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. |
 | `-V, --version` | Print the version. |
 
 ## Environment variables
