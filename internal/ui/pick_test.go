@@ -222,6 +222,41 @@ func TestPickRefusesConcurrencyOnADirtyTree(t *testing.T) {
 	}
 }
 
+// Every composed run auto-detects its agents, so an empty pool cannot launch
+// at all: enter must refuse here, with the reason on screen, rather than hand
+// back a command that dies the moment it starts.
+func TestPickRefusesToLaunchWithoutAgents(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Agents = nil
+	p.agents = nil
+	if p.blocked() == "" {
+		t.Fatal("an empty agent pool must be refused")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.launch {
+		t.Fatal("enter launched a run that has no agents to run")
+	}
+	if !strings.Contains(p.View(), "gauntlet doctor") {
+		t.Fatalf("the reason is not on screen:\n%s", p.View())
+	}
+}
+
+// The status line is where a review's description is read whole: the pane
+// column truncates every one of them.
+func TestPickHintShowsTheFocusedReviewDescription(t *testing.T) {
+	p := demoPicker()
+	p.open[0] = true          // the tree starts collapsed; open quick to reach its rows
+	p.cursor[paneReviews] = 2 // past suggest and the group header, on sec-review
+	if got := p.hint(); got != "hunt for vulnerabilities" {
+		t.Fatalf("hint %q, want the review's own description", got)
+	}
+	noDesc := PickReview{Name: "bare-review"}
+	p.cfg.Groups[0].Reviews[0] = noDesc
+	if got := p.hint(); got != "space takes this review on its own" {
+		t.Fatalf("hint %q, want the action fallback when there is no description", got)
+	}
+}
+
 // Enter launches, q leaves with nothing.
 func TestPickQuitKeys(t *testing.T) {
 	p := demoPicker()
