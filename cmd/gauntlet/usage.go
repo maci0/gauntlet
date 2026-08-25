@@ -96,7 +96,7 @@ var helpGroups = []flagGroup{
 		{"q", "quiet", "", "discard agent output"},
 		{"", "raw", "", "echo agent output verbatim instead of normalizing it"},
 		{"", "stream", "", "machine-readable agent output where supported: live token counts and reasoning (default true; --stream=false to disable)"},
-		{"", "opencode-db", "", "read opencode's session database for its token counts (needs a build with -tags \"toktop sqlite\")"},
+		{"", "opencode-db", "", "read opencode's session database for its token counts; the driver ships in a default build, this flag opens the store"},
 		{"", "log", "FILE", "also write all output to FILE"},
 		{"", "no-color", "", "disable color"},
 	}},

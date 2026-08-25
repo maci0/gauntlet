@@ -8,9 +8,14 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for
-# agents that print none. Build with TAGS=notoktop for a gauntlet that depends
-# on nothing but the standard library, and reads only what agents print.
-TAGS    ?=
+# agents that print none. `sqlite` is on for the same reason: crush and
+# opencode keep their counters in databases rather than transcripts, and the
+# driver is pure Go, so cross-compilation is unaffected.
+#
+# TAGS=notoktop drops transcript reading; TAGS= drops the database driver too,
+# leaving a gauntlet that depends on nothing but the standard library and
+# reads only what agents print.
+TAGS    ?= sqlite
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
 # Release artifacts must not depend on the build host's locale: the shell
@@ -77,9 +82,9 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 		if [ -n "$$unformatted" ]; then \
 			echo "needs gofmt:"; echo "$$unformatted"; exit 1; \
 		fi
-	$(GO) fix -diff ./...
+	$(GO) fix -diff $(GOTAGS) ./...
 	$(GO) fix -diff -tags notoktop ./...
-	$(GO) vet ./...
+	$(GO) vet $(GOTAGS) ./...
 	$(GO) vet -tags notoktop ./...
 
 .PHONY: install

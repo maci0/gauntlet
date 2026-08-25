@@ -292,17 +292,18 @@ Source 2 (transcripts) is toktop's, and on by default.
 second.
 
 ```sh
-make build                    # with transcripts (what releases ship)
-make build TAGS=notoktop      # standard library only, agent output alone
-make build TAGS=sqlite        # and opencode's database, with --opencode-db
+make build                    # transcripts and databases (what releases ship)
+make build TAGS=notoktop      # no transcript reading, agent output alone
+make build TAGS=              # and no database driver either: stdlib only
 gauntlet doctor               # says which build this is
 ```
 
-opencode is the one agent that neither prints a counter nor keeps a JSONL
-transcript: its sessions live in `~/.local/share/opencode/opencode.db`. Reading
-that means linking a SQLite driver in, so it takes both the `sqlite` build tag
-and `--opencode-db` at runtime. Without both, opencode reports nothing, and asking
-for the flag in a build that cannot honor it is an error rather than silence.
+Two agents keep databases instead of transcripts, and the `sqlite` tag (on by
+default) is what links a driver for them. crush's database is inside the
+project it is working on, so the tag is all it takes. opencode's holds every
+project on the machine, so it takes `--opencode-db` as well: opening an
+operator's session store should be asked for. Asking for that flag in a build
+without the driver is an error rather than silence.
 
 In an opted-out build, agents that print no counter report no tokens at all,
 which is the same rule as everywhere else here: measure, or say nothing.
@@ -327,15 +328,15 @@ for _, p := range agentusage.Discover() {      // agents running right now
 works wherever the agent's transcripts do.
 
 Gauntlet reads transcripts by default: released binaries, `make build`, and a
-plain `go build` all include it. `make build TAGS=notoktop` opts out and
-produces a gauntlet with no dependencies outside the standard library, which
+plain `go build` all include it. `make build TAGS=notoktop` opts out of
+transcript reading, and `make build TAGS=` drops the SQLite driver with it,
+leaving a gauntlet with no dependencies outside the standard library that
 reads only the counts agents print themselves. `gauntlet doctor` says which
 build you have.
 
-opencode keeps its sessions in SQLite instead, so reading it needs both
-`make build TAGS=sqlite` and `--opencode-db`: a database driver is a lot to
-link in for one agent, and opening someone's session database should be asked
-for.
+opencode's session store is the one thing a build never opens on its own: it
+holds every project on the machine, so it takes `--opencode-db` as well as the
+driver.
 
 ## What was considered and not built
 

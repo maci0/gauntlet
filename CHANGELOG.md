@@ -9,7 +9,7 @@ these is breaking and waits for a major version; new flags and other
 additions may land in a minor. While the project was 0.x, other behavior
 changes could land in a minor instead and were listed under Changed.
 
-## Unreleased
+## 1.5.0
 
 ### Added
 
@@ -51,6 +51,15 @@ changes could land in a minor instead and were listed under Changed.
   it. `gauntlet doctor` says whether this build can read them. The reading
   lives in toktop's `agentusage` with every other agent's, not here (toktop
   v0.4.3).
+
+### Changed
+
+- Released binaries and `make build` carry the SQLite driver by default
+  (`TAGS ?= sqlite`), so crush's project database is read with no flag and
+  `--opencode-db` can be asked for on any release. The driver is pure Go, so
+  cross-compilation is unaffected. `make build TAGS=notoktop` still drops
+  transcript reading, and `make build TAGS=` now drops the driver with it,
+  which is the standard-library-only build.
 
 ### Fixed
 

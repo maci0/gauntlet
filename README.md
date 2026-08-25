@@ -179,9 +179,11 @@ The boundaries are drawn one by one in
 ## Token counts
 
 Counts come from what the agent prints, its machine-readable mode
-(`--stream`), and its own session transcript, which is read by default and
-opts out with `make build TAGS=notoktop`. `gauntlet doctor` says which build
-you have. Per-agent coverage, and the public reading API, are in
+(`--stream`), its own session transcript, and, for the two agents that keep
+databases instead (crush, opencode), those. All of it is on in a default
+build; `make build TAGS=notoktop` drops transcript reading and `make build
+TAGS=` drops the database driver too. `gauntlet doctor` says which build you
+have. Per-agent coverage, and the public reading API, are in
 [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
 
 ## Documentation
