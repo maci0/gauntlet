@@ -100,6 +100,57 @@ func TestOpenShardsByUTCNotLocalZone(t *testing.T) {
 	}
 }
 
+func TestOpenResumesTheSameFileAcrossUTCMidnight(t *testing.T) {
+	// A hot reload continues the same run in a new process. If the exec lands
+	// past UTC midnight, deriving the shard from the successor's clock would
+	// split one run's stream over two files and a replay by id would find only
+	// the newer half. The run's existing file must be followed instead.
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	type ev struct{ Kind string }
+	first := time.Date(2026, 8, 25, 23, 59, 40, 0, time.UTC)
+	id := NewRunID(first)
+
+	j, err := Open(id, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(ev{"run_start"})
+	j.Flush()
+	j.CloseQuiet()
+
+	second := time.Date(2026, 8, 26, 0, 0, 10, 0, time.UTC)
+	j2, err := Open(id, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j2.Write(ev{"loop_end"})
+	j2.Flush()
+	want := filepath.Join(home, "runs", "2026-08-25", id+".jsonl")
+	if err := j2.Close(Summary{Version: "test", Start: first.UTC(), End: second.UTC()}); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := Events(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 2 || events[0]["Kind"] != "run_start" || events[1]["Kind"] != "loop_end" {
+		t.Fatalf("replay lost or reordered events across the reload: %+v", events)
+	}
+	if _, err := os.Stat(filepath.Join(home, "runs", "2026-08-26")); err == nil {
+		t.Fatal("a second shard must not be created for one run")
+	}
+	runs, err := Recent(1)
+	if err != nil || len(runs) != 1 {
+		t.Fatalf("index should hold exactly one row: %v %v", runs, err)
+	}
+	if runs[0].Path != want {
+		t.Fatalf("index should point at the one journal file: %q", runs[0].Path)
+	}
+}
+
 func TestRecentIsNewestFirstAndSkipsGarbage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)

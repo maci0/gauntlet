@@ -106,6 +106,19 @@ func (r *Repo) AddWorktree(ctx context.Context, name, runID, base string) (*Work
 	dir := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot), runID+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
 	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
+	// A leftover branch would fail the add too: a hot reload continues the
+	// same run id while the successor's loop numbering restarts, so tags and
+	// their branches recur. One still pointing at base carries no committed
+	// work (a review commits before its branch matters), so dropping it lets a
+	// rerun converge. One pointing anywhere else holds real output, and the
+	// same rule that keeps conflicted branches applies: fail rather than destroy.
+	if tip, err := r.Tip(ctx, branch); err == nil {
+		if tip != base {
+			return nil, fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
+				branch, tip[:min(12, len(tip))], base[:min(12, len(base))])
+		}
+		_, _ = r.run(ctx, 30*time.Second, "branch", "-D", branch)
+	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, err
 	}

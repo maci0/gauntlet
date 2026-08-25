@@ -93,11 +93,18 @@ type Journal struct {
 // an id prefix with a directory misses by one day for every run in that
 // window. Rendering stays free to convert to local at display time.
 func Open(runID string, now time.Time) (*Journal, error) {
-	dir := filepath.Join(Home(), "runs", now.UTC().Format("2006-01-02"))
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	path := filepath.Join(Home(), "runs", now.UTC().Format("2006-01-02"), runID+".jsonl")
+	// A hot reload continues the same run id in a new process, and a reload
+	// that crosses UTC midnight derives a different shard from the successor's
+	// clock. That would split one run's event stream over two files, and a
+	// replay by id would find only the newer half, so follow the file the run
+	// already has when there is one.
+	if prev, ok, _ := locateRun(runID); ok {
+		path = prev
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, runID+".jsonl")
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, err
@@ -281,6 +288,19 @@ var ErrNoJournal = errors.New("no journal for run")
 
 // findRun locates a run journal by id, searching the date shards newest first.
 func findRun(runID string) (string, error) {
+	if p, ok, err := locateRun(runID); err != nil {
+		return "", err
+	} else if ok {
+		return p, nil
+	}
+	return "", fmt.Errorf("%w %s under %s", ErrNoJournal, runID,
+		filepath.Join(Home(), "runs"))
+}
+
+// locateRun returns the path already holding runID's journal, if any. Shards
+// are searched newest first, so a run that somehow has more than one file
+// resolves to the one a replay would read anyway.
+func locateRun(runID string) (string, bool, error) {
 	root := filepath.Join(Home(), "runs")
 	days, err := os.ReadDir(root)
 	if err != nil {
@@ -288,16 +308,16 @@ func findRun(runID string) (string, error) {
 		// filesystem error: `gauntlet show <id>` before the first run, or on
 		// a fresh GAUNTLET_HOME, must read as a miss, not as ENOENT noise.
 		if os.IsNotExist(err) {
-			return "", fmt.Errorf("%w %s under %s", ErrNoJournal, runID, root)
+			return "", false, nil
 		}
-		return "", err
+		return "", false, err
 	}
 	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
 	for _, d := range days {
 		p := filepath.Join(root, d.Name(), runID+".jsonl")
 		if _, err := os.Stat(p); err == nil {
-			return p, nil
+			return p, true, nil
 		}
 	}
-	return "", fmt.Errorf("%w %s under %s", ErrNoJournal, runID, root)
+	return "", false, nil
 }

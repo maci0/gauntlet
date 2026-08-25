@@ -259,6 +259,56 @@ func TestRunCarriesGitStderr(t *testing.T) {
 	}
 }
 
+// AddWorktree must converge when a rerun hits its own leftovers: a hot reload
+// continues the same run id while loop numbering restarts, so tags recur. A
+// branch still at base is provably empty and may be rebuilt; a branch holding
+// commits (what a kept conflict looks like) must stop the run, not be destroyed.
+func TestAddWorktreeConvergesOnLeftoverBranch(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = r.Dir
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatalf("a second identical add must succeed: %v", err)
+	}
+	if again.Branch != wt.Branch || again.Dir != wt.Dir {
+		t.Fatalf("rerun should rebuild the same worktree: %+v vs %+v", again, wt)
+	}
+	if err := again.Remove(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := git("rev-parse", "HEAD^{tree}")
+	commit := git("commit-tree", tree, "-p", base, "-m", "conflicted work")
+	kept := "gauntlet/run-l2-00/sec-review"
+	git("branch", kept, commit)
+
+	if _, err := r.AddWorktree(ctx, "sec-review", "run-l2-00", base); err == nil {
+		t.Fatal("an add over a branch with real work must fail")
+	}
+	if got := git("rev-parse", kept); got != commit {
+		t.Fatalf("the kept branch was modified: %s != %s", got, commit)
+	}
+}
+
 // Reviews add and remove their checkouts at the same time, and git validates
 // every registered worktree while doing either: without serialization one
 // removal reads another's half-deleted metadata and fails, stranding a branch
