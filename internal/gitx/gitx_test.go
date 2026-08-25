@@ -5,10 +5,12 @@ package gitx
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -254,5 +256,54 @@ func TestRunCarriesGitStderr(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not a git repository") {
 		t.Fatalf("error should quote git's stderr, got: %v", err)
+	}
+}
+
+// Reviews add and remove their checkouts at the same time, and git validates
+// every registered worktree while doing either: without serialization one
+// removal reads another's half-deleted metadata and fails, stranding a branch
+// in the reviewed repo.
+func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 6
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			wt, err := r.AddWorktree(ctx, fmt.Sprintf("review-%d", i), "run", base)
+			if err != nil {
+				errs <- err
+				return
+			}
+			errs <- wt.Remove(ctx)
+		})
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Errorf("concurrent worktree lifecycle: %v", err)
+		}
+	}
+
+	out, err := exec.Command("git", "-C", r.Dir, "branch", "--list", "gauntlet/*").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(out) == 0 {
+		return // every branch was cleaned up by its own removal
+	}
+	// Remove leaves branches alone by design; what matters is that each one
+	// exists exactly once and no checkout survives.
+	if list, err := exec.Command("git", "-C", r.Dir, "worktree", "list").Output(); err != nil {
+		t.Fatal(err)
+	} else if strings.Count(string(list), "\n") != 1 {
+		t.Errorf("checkouts survived:\n%s", list)
 	}
 }

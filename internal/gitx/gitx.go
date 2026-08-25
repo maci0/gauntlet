@@ -54,6 +54,16 @@ func Available() bool { return gitPath() != "" }
 type Repo struct {
 	Dir string
 
+	// wtMu serializes worktree bookkeeping. Git validates every registered
+	// worktree while adding or removing one, so two of those running at once
+	// can trip over each other's half-deleted metadata:
+	//
+	//	fatal: failed to read .git/worktrees/<other>/commondir
+	//
+	// The operations take milliseconds, and getting one wrong strands a
+	// branch or a checkout in the reviewed repo.
+	wtMu sync.Mutex
+
 	mu       sync.Mutex
 	baseline string
 	lastAt   time.Time

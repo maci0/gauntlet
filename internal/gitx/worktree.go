@@ -98,6 +98,9 @@ func (r *Repo) AddWorktree(ctx context.Context, name, runID, base string) (*Work
 	if !Available() {
 		return nil, errors.New("git is required for parallel reviews")
 	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+
 	slug := branchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", runID, slug)
 	dir := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot), runID+"-"+slug)
@@ -176,6 +179,8 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	if w == nil || w.repo == nil {
 		return nil
 	}
+	w.repo.wtMu.Lock()
+	defer w.repo.wtMu.Unlock()
 	if _, err := w.repo.run(ctx, 60*time.Second, "worktree", "remove", "--force", w.Dir); err != nil {
 		return fmt.Errorf("git worktree remove: %w", err)
 	}
@@ -191,6 +196,8 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
 // is what a killed run leaves behind.
 func (r *Repo) PruneWorktrees(ctx context.Context) {
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
 	_, _ = r.run(ctx, 60*time.Second, "worktree", "prune")
 }
 
