@@ -5,6 +5,8 @@ package runner
 
 import (
 	"context"
+	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -110,4 +112,40 @@ func TestCaptureProcKeepsTheTailOfHugeOutput(t *testing.T) {
 	if len(picked) != 1 || picked[0].Name != "sec-review" {
 		t.Fatalf("tail lost the suggestion: %+v", picked)
 	}
+}
+
+func TestRunProcPumpsEndWhenAGrandchildHoldsThePipe(t *testing.T) {
+	// An agent that daemonizes a helper (setsid escapes the process group)
+	// leaves it holding the pipe's write end, so no EOF ever arrives. The
+	// deferred closes must still evict the reads parked on our ends: without
+	// that, both pump goroutines outlive runProc by as long as the escapee
+	// lives, one pair per such review.
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid is required to simulate a detached grandchild")
+	}
+	oldDrain := drainGrace
+	drainGrace = 250 * time.Millisecond
+	t.Cleanup(func() { drainGrace = oldDrain })
+
+	// setsid -f forks immediately, so the sleeping grandchild is in a session
+	// of its own while the direct child stays killable by the group SIGTERM.
+	bin := fakeAgent(t, t.TempDir(), "agent", "setsid -f sleep 20\nexec sleep 20\n")
+
+	before := runtime.NumGoroutine()
+	res := runProc(context.Background(), procOpts{
+		Argv:    []string{bin},
+		Timeout: 500 * time.Millisecond,
+	})
+	if !res.TimedOut {
+		t.Fatalf("want timeout, got %+v", res)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("pump goroutines outlived runProc: %d goroutines now, %d before",
+		runtime.NumGoroutine(), before)
 }

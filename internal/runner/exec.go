@@ -23,6 +23,12 @@ import (
 // killGrace is how long a process group gets between SIGTERM and SIGKILL.
 const killGrace = 10 * time.Second
 
+// drainGrace is how long the output readers get to see EOF after the child
+// is gone before runProc returns and closes their descriptors out from under
+// them. A var only so tests can shrink it; production always sees the
+// default.
+var drainGrace = 5 * time.Second
+
 // maxLineBytes bounds one logical line handed to the parsers. Agent output is
 // untrusted, and a single physical line can be megabytes (a minified bundle,
 // an embedded tool result). Above the cap a line is emitted in chunks rather
@@ -226,12 +232,14 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	}
 
 	// EOF follows the child and, via the group kill, its children. A
-	// grandchild that somehow holds a pipe open only costs this grace period.
+	// grandchild that somehow holds a pipe open only costs this grace period:
+	// the deferred closes below evict any read still parked on these
+	// descriptors, so neither the pumps nor this function outlive it.
 	drained := make(chan struct{})
 	go func() { wg.Wait(); close(drained) }()
 	select {
 	case <-drained:
-	case <-time.After(5 * time.Second):
+	case <-time.After(drainGrace):
 	}
 
 	tailMu.Lock()
