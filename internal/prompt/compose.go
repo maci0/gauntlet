@@ -175,8 +175,9 @@ var (
 )
 
 // SuggestPrompt asks an agent which reviews apply to this repository.
-// Descriptions come from project prompts and are untrusted: a planted goal
-// line must not close the catalog fence or prime the output protocol.
+// Names and descriptions come from project prompts and are untrusted: a
+// planted goal line or filename must not close the catalog fence or prime
+// the output protocol.
 func SuggestPrompt(set Set, names []string) string {
 	var b strings.Builder
 	for _, name := range names {
@@ -184,6 +185,8 @@ func SuggestPrompt(set Set, names []string) string {
 		if !ok {
 			continue
 		}
+		name = strings.ReplaceAll(name, "</catalog>", "</ catalog>")
+		name = relevantTokenRe.ReplaceAllString(name, "relevant-")
 		desc := strings.TrimSpace(wsRe.ReplaceAllString(r.Desc(), " "))
 		if desc == "" {
 			desc = "(no description)"
