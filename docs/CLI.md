@@ -78,6 +78,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `-1, --once` | off | One loop, then stop. |
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
+| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any integer literal (`0x…` included); `0` derives one from the clock. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes when a `--jobs` run offers to commit a dirty tree. |
@@ -94,8 +95,18 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
 | `--stream` | Ask agents for machine-readable output where they support it: live token counts, and the reasoning/output split shown separately in the feed. |
+| `--no-color` | Disable color. The `NO_COLOR` environment variable does the same. |
+| `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. |
 | `-V, --version` | Print the version. |
+
+**Updating**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--hot-reload` | on | When this binary is replaced during a run (by `gauntlet update`, `make install`, or a rebuild), finish the reviews in flight and hand the rest of the loop to the new binary instead of exiting. |
+| `--auto-update` | off | During a run, check for a new release shortly after start and every six hours, install it, and hand over at the next safe point like a hot reload. A failed check is reported and the run goes on. |
+| `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from. |
 
 ## Environment variables
 
