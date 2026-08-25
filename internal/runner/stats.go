@@ -113,6 +113,34 @@ type Counts struct {
 	OK, Fail, Timeout, Skipped, Interrupted, Conflict int
 }
 
+// Tally records one result under its status bucket.
+func (c *Counts) Tally(s Status) {
+	switch s {
+	case StatusOK:
+		c.OK++
+	case StatusFail:
+		c.Fail++
+	case StatusTimeout:
+		c.Timeout++
+	case StatusSkipped:
+		c.Skipped++
+	case StatusInterrupted:
+		c.Interrupted++
+	case StatusConflict:
+		c.Conflict++
+	}
+}
+
+// Add merges another tally into this one.
+func (c *Counts) Add(o Counts) {
+	c.OK += o.OK
+	c.Fail += o.Fail
+	c.Timeout += o.Timeout
+	c.Skipped += o.Skipped
+	c.Interrupted += o.Interrupted
+	c.Conflict += o.Conflict
+}
+
 // Total is every recorded result.
 func (c Counts) Total() int {
 	return c.OK + c.Fail + c.Timeout + c.Skipped + c.Interrupted + c.Conflict
@@ -125,20 +153,7 @@ func (c Counts) Failures() int { return c.Fail + c.Timeout + c.Skipped + c.Confl
 func (s *Stats) Counts() Counts {
 	var c Counts
 	for _, r := range s.Results() {
-		switch r.Status {
-		case StatusOK:
-			c.OK++
-		case StatusFail:
-			c.Fail++
-		case StatusTimeout:
-			c.Timeout++
-		case StatusSkipped:
-			c.Skipped++
-		case StatusInterrupted:
-			c.Interrupted++
-		case StatusConflict:
-			c.Conflict++
-		}
+		c.Tally(r.Status)
 	}
 	return c
 }
@@ -187,20 +202,7 @@ func (s *Stats) ByAgent() []AgentSummary {
 			a = &AgentSummary{Label: label}
 			byLabel[label] = a
 		}
-		switch r.Status {
-		case StatusOK:
-			a.Counts.OK++
-		case StatusFail:
-			a.Counts.Fail++
-		case StatusTimeout:
-			a.Counts.Timeout++
-		case StatusSkipped:
-			a.Counts.Skipped++
-		case StatusInterrupted:
-			a.Counts.Interrupted++
-		case StatusConflict:
-			a.Counts.Conflict++
-		}
+		a.Counts.Tally(r.Status)
 		a.Tokens += r.Tokens
 		a.Elapsed += r.Elapsed
 	}

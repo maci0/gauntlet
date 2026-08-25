@@ -92,9 +92,9 @@ func (r *Repo) ExcludeWorktreeRoot(ctx context.Context) {
 }
 
 // AddWorktree creates a checkout of base on a fresh branch. The name is the
-// review it belongs to; runID keeps concurrent and repeated runs from
-// colliding on branch names.
-func (r *Repo) AddWorktree(ctx context.Context, name, runID, base string) (*Worktree, error) {
+// review it belongs to; the tag (run id plus loop and lane) keeps concurrent
+// and repeated runs from colliding on branch names.
+func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktree, error) {
 	if !Available() {
 		return nil, errors.New("git is required for parallel reviews")
 	}
@@ -102,8 +102,8 @@ func (r *Repo) AddWorktree(ctx context.Context, name, runID, base string) (*Work
 	defer r.wtMu.Unlock()
 
 	slug := branchSlug(name)
-	branch := fmt.Sprintf("gauntlet/%s/%s", runID, slug)
-	dir := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot), runID+"-"+slug)
+	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
+	dir := filepath.Join(r.Dir, filepath.FromSlash(WorktreeRoot), tag+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
 	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
 	// A leftover branch would fail the add too: a hot reload continues the

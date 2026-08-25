@@ -78,9 +78,12 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	if opts.jobs > 1 {
 		mode = fmt.Sprintf("%d at a time, one git worktree per review, merged back", opts.jobs)
 	}
+	yolo := ""
+	if opts.yolo {
+		yolo = "  |  YOLO"
+	}
 	fmt.Fprintf(out, "Agents: %s  |  timeout: %s  |  mode: %s%s\n",
-		strings.Join(agentLabels(agents), ", "), humanize.Duration(opts.timeout), mode,
-		map[bool]string{true: "  |  YOLO"}[opts.yolo])
+		strings.Join(runner.AgentLabels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
 	limit := "infinite"
 	if opts.maxLoops > 0 {
 		limit = fmt.Sprint(opts.maxLoops)

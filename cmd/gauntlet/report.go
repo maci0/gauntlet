@@ -150,12 +150,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			continue
 		}
 		c := d.stats.Counts()
-		agg.OK += c.OK
-		agg.Fail += c.Fail
-		agg.Timeout += c.Timeout
-		agg.Skipped += c.Skipped
-		agg.Interrupted += c.Interrupted
-		agg.Conflict += c.Conflict
+		agg.Add(c)
 		i, dl, t, at, tm, hl := d.stats.Totals()
 		ins, del, tokens = ins+i, del+dl, tokens+t
 		for _, r := range d.stats.Results() {
@@ -228,12 +223,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		for _, a := range d.stats.ByAgent() {
 			cur := byAgent[a.Label]
 			cur.Label = a.Label
-			cur.Counts.OK += a.Counts.OK
-			cur.Counts.Fail += a.Counts.Fail
-			cur.Counts.Timeout += a.Counts.Timeout
-			cur.Counts.Skipped += a.Counts.Skipped
-			cur.Counts.Interrupted += a.Counts.Interrupted
-			cur.Counts.Conflict += a.Counts.Conflict
+			cur.Counts.Add(a.Counts)
 			cur.Tokens += a.Tokens
 			cur.Elapsed += a.Elapsed
 			byAgent[a.Label] = cur

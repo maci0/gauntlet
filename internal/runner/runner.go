@@ -262,7 +262,7 @@ func (r *Runner) schedule() []string {
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
 		Kind: EvRunStart, Dir: r.cfg.Dir, Version: r.cfg.Version,
-		Agents: agentLabels(r.cfg.Agents), Total: len(r.cfg.Reviews),
+		Agents: AgentLabels(r.cfg.Agents), Total: len(r.cfg.Reviews),
 		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
@@ -423,13 +423,17 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 
 	res := r.runReview(ctx, review, loopNo, wt)
 	res.Branch = wt.Branch
-	if res.Status != StatusOK {
-		// Nothing was committed, so the branch still points at the base.
-		// Leaving it would litter the repo with one empty branch per failed
-		// review, run after run.
+	// A worktree that produced nothing keeps no branch: it still points at
+	// base, and leaving it behind would litter the repo with one empty branch
+	// per failed review. The checkout must go first; git refuses to delete a
+	// branch its worktree still has checked out.
+	discard := func() {
 		release()
 		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
 		res.Branch = ""
+	}
+	if res.Status != StatusOK {
+		discard()
 		return res
 	}
 
@@ -439,18 +443,12 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)
 		res.Status = StatusFail
-		// Nothing was committed, so the branch still points at the base.
-		// It can only be deleted once its worktree is gone.
-		release()
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
-		res.Branch = ""
+		discard()
 		return res
 	}
 	if !changed {
 		res.Ins, res.Del, res.HaveLines = 0, 0, true
-		release()
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
-		res.Branch = ""
+		discard()
 		return res
 	}
 	if ins, del, ok := r.repo.DiffStat(ctx, wt.Dir, base, "HEAD"); ok {
@@ -492,6 +490,25 @@ func (r *Runner) runReview(ctx context.Context, review string, loopNo int, wt *g
 	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{})
 }
 
+// shouldResume reports whether this launch may resume the spec's previous
+// session, and records that the spec has now started one.
+func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
+	if !r.cfg.ContinueSessions || wt != nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	sameTool := 0
+	for _, s := range r.cfg.Agents {
+		if s.Tool == spec.Tool {
+			sameTool++
+		}
+	}
+	resume := r.sessionStarted[spec] && sameTool == 1
+	r.sessionStarted[spec] = true
+	return resume
+}
+
 func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool) Result {
 
@@ -520,19 +537,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// directory, not a model id. Skip it when two models of one CLI are in the
 	// pool (their sessions would mix), and in worktree mode, where every
 	// review runs in a different directory anyway.
-	resume := false
-	if r.cfg.ContinueSessions && wt == nil {
-		r.mu.Lock()
-		sameTool := 0
-		for _, s := range r.cfg.Agents {
-			if s.Tool == spec.Tool {
-				sameTool++
-			}
-		}
-		resume = r.sessionStarted[spec] && sameTool == 1
-		r.sessionStarted[spec] = true
-		r.mu.Unlock()
-	}
+	resume := r.shouldResume(spec, wt)
 
 	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo)
 	argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
@@ -794,7 +799,8 @@ func linesNote(res Result) string {
 	return fmt.Sprintf(", +%d/-%d lines", res.Ins, res.Del)
 }
 
-func agentLabels(specs []agent.Spec) []string {
+// AgentLabels renders each spec as its display form.
+func AgentLabels(specs []agent.Spec) []string {
 	out := make([]string, 0, len(specs))
 	for _, s := range specs {
 		out = append(out, s.Label())

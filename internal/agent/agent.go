@@ -15,6 +15,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"github.com/maci0/gauntlet/internal/fuzzy"
 )
 
 // Spec is one agent, optionally pinned to a model. The zero value is invalid.
@@ -300,7 +302,7 @@ func ParseSpecs(s string) ([]Spec, error) {
 		model = strings.TrimSpace(model)
 		if !IsValid(tool) {
 			hint := ""
-			if c := closest(tool, AllNames()); c != "" {
+			if c := fuzzy.Closest(tool, AllNames()); c != "" {
 				hint = fmt.Sprintf(" (did you mean %q?)", c)
 			}
 			return nil, fmt.Errorf("unknown tool: %q%s (valid: %s, or mixed for all)",
@@ -442,26 +444,36 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	}
 	if opts.Stream {
 		if flags, ok := streamFlags[spec.Tool]; ok {
-			at := 1
-			if _, sub := subcommand[spec.Tool]; sub {
-				at = 2
-			}
-			cmd = append(cmd[:at:at], append(append([]string{}, flags...), cmd[at:]...)...)
+			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
 		}
 	}
 	if opts.Continue {
 		if flags, ok := continueFlags[spec.Tool]; ok {
-			at := 1
-			if _, sub := subcommand[spec.Tool]; sub {
-				at = 2
-			}
-			cmd = append(cmd[:at], append(append([]string{}, flags...), cmd[at:]...)...)
+			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
 		}
 	}
 	if opts.Binary != "" {
 		cmd[0] = opts.Binary
 	}
 	return cmd, nil
+}
+
+// flagInsertAt is where output and session flags go: directly after the
+// executable, or after its subcommand when the CLI takes one.
+func flagInsertAt(tool string) int {
+	if _, sub := subcommand[tool]; sub {
+		return 2
+	}
+	return 1
+}
+
+// splice inserts flags after the first at elements of cmd, returning a fresh
+// slice so the caller's argv is never aliased or overwritten in place.
+func splice(cmd []string, at int, flags []string) []string {
+	out := make([]string, 0, len(cmd)+len(flags))
+	out = append(out, cmd[:at]...)
+	out = append(out, flags...)
+	return append(out, cmd[at:]...)
 }
 
 func splitProvider(model string) (provider, name string) {
@@ -482,7 +494,7 @@ func ParseBin(s string) (string, string, error) {
 	tool = strings.ToLower(tool)
 	if !IsValid(tool) {
 		hint := ""
-		if c := closest(tool, AllNames()); c != "" {
+		if c := fuzzy.Closest(tool, AllNames()); c != "" {
 			hint = fmt.Sprintf(" (did you mean %q?)", c)
 		}
 		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, hint,
@@ -513,36 +525,4 @@ func ParseBin(s string) (string, string, error) {
 		return "", "", fmt.Errorf("not an executable: %s%s", path, extra)
 	}
 	return tool, resolved, nil
-}
-
-// closest returns the nearest candidate within a small edit distance, for
-// "did you mean" hints.
-func closest(want string, candidates []string) string {
-	best, bestD := "", 4
-	for _, c := range candidates {
-		if d := editDistance(want, c); d < bestD {
-			best, bestD = c, d
-		}
-	}
-	return best
-}
-
-func editDistance(a, b string) int {
-	prev := make([]int, len(b)+1)
-	cur := make([]int, len(b)+1)
-	for j := range prev {
-		prev[j] = j
-	}
-	for i := 1; i <= len(a); i++ {
-		cur[0] = i
-		for j := 1; j <= len(b); j++ {
-			cost := 1
-			if a[i-1] == b[j-1] {
-				cost = 0
-			}
-			cur[j] = min(prev[j]+1, cur[j-1]+1, prev[j-1]+cost)
-		}
-		prev, cur = cur, prev
-	}
-	return prev[len(b)]
 }

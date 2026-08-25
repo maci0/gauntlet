@@ -129,6 +129,18 @@ var (
 	delRe = regexp.MustCompile(`(\d+) deletion`)
 )
 
+// parseShortstat reads the counts out of a `git diff --shortstat` output.
+func parseShortstat(out []byte) Stats {
+	var st Stats
+	if m := insRe.FindSubmatch(out); m != nil {
+		st.Ins, _ = strconv.Atoi(string(m[1]))
+	}
+	if m := delRe.FindSubmatch(out); m != nil {
+		st.Del, _ = strconv.Atoi(string(m[1]))
+	}
+	return st
+}
+
 // untrackedLineCap bounds the per-file line count of untracked files. This
 // stat runs repeatedly for the life of the loop, so one huge untracked file
 // must not make every sample re-read gigabytes.
@@ -177,13 +189,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		return Stats{}, false
 	}
 
-	var st Stats
-	if m := insRe.FindSubmatch(diff); m != nil {
-		st.Ins, _ = strconv.Atoi(string(m[1]))
-	}
-	if m := delRe.FindSubmatch(diff); m != nil {
-		st.Del, _ = strconv.Atoi(string(m[1]))
-	}
+	st := parseShortstat(diff)
 	for name := range bytes.SplitSeq(untracked, []byte{0}) {
 		if len(name) == 0 {
 			continue
@@ -270,13 +276,8 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 	if err != nil {
 		return 0, 0, false
 	}
-	if m := insRe.FindSubmatch(out); m != nil {
-		ins, _ = strconv.Atoi(string(m[1]))
-	}
-	if m := delRe.FindSubmatch(out); m != nil {
-		del, _ = strconv.Atoi(string(m[1]))
-	}
-	return ins, del, true
+	st := parseShortstat(out)
+	return st.Ins, st.Del, true
 }
 
 // DirtyPaths returns worktree paths with uncommitted changes, excluding the

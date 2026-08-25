@@ -300,7 +300,7 @@ func run(argv []string) int {
 			Version: version,
 			RunID:   runID,
 			Dirs:    dirs,
-			Agents:  agentLabels(agents),
+			Agents:  runner.AgentLabels(agents),
 			Reviews: allReviews(runs),
 			Jobs:    opts.jobs,
 			Timeout: opts.timeout,
@@ -316,7 +316,7 @@ func run(argv []string) int {
 			rep.logf("Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
 				version, runID, prior.Reloads, prior.Loops())
 		}
-		rep.logf("gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agentLabels(agents), ", "))
+		rep.logf("gauntlet %s, run %s, agents: %s", version, runID, strings.Join(runner.AgentLabels(agents), ", "))
 		if autoDetected {
 			rep.logf("Auto-detected agents (name them with --agents to pin the pool)")
 		}
@@ -477,7 +477,7 @@ func writeSummary(j *journal.Journal, runID string, start time.Time, dirs []stri
 	agents []agent.Spec, runs []*dirRun, code int) {
 
 	s := journal.Summary{
-		Version: version, Dirs: dirs, Agents: agentLabels(agents),
+		Version: version, Dirs: dirs, Agents: runner.AgentLabels(agents),
 		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: code,
 	}
 	for _, d := range runs {
@@ -784,14 +784,6 @@ func expandPath(p string) string {
 		}
 	}
 	return p
-}
-
-func agentLabels(specs []agent.Spec) []string {
-	out := make([]string, 0, len(specs))
-	for _, s := range specs {
-		out = append(out, s.Label())
-	}
-	return out
 }
 
 // allReviews is the union of every directory's schedule, for the dashboard's
