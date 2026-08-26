@@ -965,7 +965,7 @@ echo "RESULT: changed=1"`)
 	}
 	// The repository's own identity signs the commits, the same as a commit
 	// typed by hand.
-	for _, line := range strings.Split(gitOut(t, repo, "log", "--format=%an <%ae>", before+"..HEAD"), "\n") {
+	for line := range strings.SplitSeq(gitOut(t, repo, "log", "--format=%an <%ae>", before+"..HEAD"), "\n") {
 		if line != "test <test@example.invalid>" {
 			t.Fatalf("commit authored by %q, want the repository's configured identity", line)
 		}
