@@ -834,9 +834,6 @@ sleep 0.2`)
 	bus.Close()
 	got := <-done
 
-	if !r.finishing() {
-		t.Fatal("the runner should report that it is finishing")
-	}
 	started := countKind(got, EvReviewStart)
 	ended := countKind(got, EvReviewEnd)
 	if started == 0 {

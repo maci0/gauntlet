@@ -15,6 +15,9 @@ library.
   must be clean; run `go fix` under those same three tag sets before
   committing if the fix step reports anything.
 - `make test`: the suite with the race detector and shuffled order.
+- `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
+  in the Makefile. The floor ratchets: raise it when a change carries coverage
+  up, never lower it to make a change fit.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
   ignored. `TMPDIR` is set by the Makefile for that reason.

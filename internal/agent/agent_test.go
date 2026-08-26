@@ -122,6 +122,34 @@ func TestBuildCmdCrushUsesRunMode(t *testing.T) {
 // The resolver caches what it found, and PATH decides what there is to find:
 // a process that changes PATH (a wrapper adding a directory, a test) must not
 // keep being told an agent is missing because it was missing a moment ago.
+// ParseSubject reads agent output, which is untrusted, and what it returns
+// goes into a commit message. Whatever it is fed, the result must be one line
+// of printable text and nothing longer than a subject line.
+func FuzzParseSubject(f *testing.F) {
+	f.Add("SUBJECT: fix: guard the nil map write\nRESULT: changed=1")
+	f.Add("subject:\tfeat(ui): tighten the lanes\r\n")
+	f.Add("SUBJECT: " + strings.Repeat("x", 4096))
+	f.Add("SUBJECT: fix\x1b[31m: colored\x00 and \x07 belled")
+	f.Add("PATH: a.go\nSUBJECT:   \nSUBJECT: chore: the last one wins\n")
+	f.Fuzz(func(t *testing.T, tail string) {
+		got := ParseSubject([]byte(tail))
+		if len(got) > subjectMax {
+			t.Fatalf("subject is %d bytes, want at most %d: %q", len(got), subjectMax, got)
+		}
+		if strings.ContainsAny(got, "\n\r") {
+			t.Fatalf("a subject spanning lines can forge a commit body: %q", got)
+		}
+		for _, r := range got {
+			if r < 0x20 || r == 0x7f {
+				t.Fatalf("control byte %q survived into %q", r, got)
+			}
+		}
+		if got != strings.TrimSpace(got) {
+			t.Fatalf("subject keeps outer whitespace: %q", got)
+		}
+	})
+}
+
 func TestResolveFollowsPathChanges(t *testing.T) {
 	dir := t.TempDir()
 	stub := filepath.Join(dir, "pretend-agent")

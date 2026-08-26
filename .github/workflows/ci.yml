@@ -44,6 +44,10 @@ jobs:
       - run: make check
         if: matrix.tags == 'sqlite'
       - run: make test TAGS=${{ matrix.tags }}
+      # The floor ratchets: a change that drops a tested path fails here
+      # rather than being noticed a release later.
+      - run: make cover
+        if: matrix.tags == 'sqlite' && runner.os == 'Linux'
 
   # The one Python file here is the screenshot renderer. It gates the same way
   # every other language in this repository does, so a maintainer task cannot

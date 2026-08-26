@@ -22,15 +22,6 @@ type flagDoc struct {
 	Help  string
 }
 
-// names lists every flag name this row documents, for the drift test.
-func (f flagDoc) names() []string {
-	out := []string{f.Long}
-	if f.Short != "" {
-		out = append(out, f.Short)
-	}
-	return out
-}
-
 // left renders the flag column, e.g. "-r, --reviews LIST".
 func (f flagDoc) left() string {
 	var b strings.Builder

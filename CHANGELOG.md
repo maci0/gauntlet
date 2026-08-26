@@ -10,6 +10,29 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Fixed
+
+- `SUBJECT:` lines keep no ragged end. Control bytes were stripped after the
+  trim, so a line ending in spaces and a NUL left the spaces in the commit
+  subject. Found by the fuzz target added for it, whose seed is now the
+  regression corpus.
+
+### Changed
+
+- Coverage ratchets: `make cover` fails below `COVER_MIN` (76.0% today, the
+  measured total) and CI runs it. A refactor that quietly drops a tested path
+  fails where it happens rather than a release later.
+- Two parsers that read input from outside the program are fuzzed:
+  `SUBJECT:` lines, which are agent output on their way into a commit message,
+  and `--timeout` durations, which are whatever a person typed.
+- Production code that only tests called is gone or moved: the runner's
+  `finishing`, gitx's uncached `countLines` (its test drives the cached path
+  the program uses), the dashboard's `staticFrame`, and the help table's
+  `names` accessor. The two that stayed live beside their callers, in test
+  files.
+
 ## 1.7.2
 
 ### Fixed

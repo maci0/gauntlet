@@ -112,3 +112,24 @@ func TestList(t *testing.T) {
 		}
 	}
 }
+
+// ParseDuration reads what a person typed after --timeout, and every shape
+// that is not a duration has to come back as an error rather than a panic or
+// a silent zero.
+func FuzzParseDuration(f *testing.F) {
+	for _, seed := range []string{"90s", "30m", "1h", "2d", "", "0", "-5m", "d", "9999999999999999999d", "1.5h", "1h30m"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		d, err := ParseDuration(in)
+		if err != nil {
+			return
+		}
+		if d <= 0 {
+			t.Fatalf("ParseDuration(%q) accepted %v: a review cannot run for no time", in, d)
+		}
+		// Whatever it accepted must round-trip through the formatter without
+		// panicking, since that is where every accepted value ends up.
+		_ = Duration(d)
+	})
+}

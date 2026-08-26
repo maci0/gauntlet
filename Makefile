@@ -78,10 +78,20 @@ test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=T
 	$(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
 
 .PHONY: cover
-cover: ## test coverage summary
+cover: ## test coverage summary, gated by COVER_MIN
 	@mkdir -p $(TMPDIR) $(DIST)
-	$(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./... && \
-		$(GO) tool cover -func=$(DIST)/coverage.out | tail -1
+	$(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
+	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
+		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
+		awk -v got="$${total%\%}" -v min="$(COVER_MIN)" 'BEGIN { \
+			if (got + 0 < min + 0) { \
+				printf "coverage fell to %s%%, below the %s%% floor\n", got, min > "/dev/stderr"; exit 1 \
+			} }' 
+
+# The coverage floor. It ratchets: raise it when a change carries coverage up,
+# never lower it to make a change fit. `make cover` fails below it, so a
+# refactor that quietly drops a tested path is caught where it happens.
+COVER_MIN ?= 76.0
 
 .PHONY: vet
 vet: ## run go vet

@@ -315,19 +315,9 @@ func openRegular(path string) (*os.File, error) {
 	return f, nil
 }
 
-// countLines counts newlines in a regular file.
-func countLines(path string) int {
-	f, err := openRegular(path)
-	if err != nil {
-		return 0
-	}
-	defer f.Close()
-	return countLinesFrom(f)
-}
-
-// countLinesCached is countLines against the repo's sample cache: an
-// unchanged file (same size and mtime) returns its remembered count instead
-// of being read again. Sample calls this for every untracked file every
+// countLinesCached counts the newlines in a regular file through the repo's
+// sample cache: an unchanged file (same size and mtime) returns its
+// remembered count instead of being read again. Sample calls this for every untracked file every
 // sample, so the cache is what keeps repeated sampling at stat cost.
 func (r *Repo) countLinesCached(path string) int {
 	f, err := openRegular(path)

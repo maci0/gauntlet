@@ -148,15 +148,18 @@ const subjectMax = 100
 func ParseSubject(tail []byte) string {
 	matches := subjectRe.FindAllStringSubmatch(string(tail), -1)
 	for _, m := range slices.Backward(matches) {
-		s := strings.TrimSpace(m[1])
-		// One line, no controls: this becomes a commit message, and a
-		// newline in it would forge a body, an author trailer, or worse.
-		s = strings.Map(func(r rune) rune {
+		// Controls go first, then the trim: dropping a control byte can
+		// expose whitespace that was hiding behind it, and a subject is a
+		// line of text, not a line of text with a ragged end. This becomes a
+		// commit message, where a newline would forge a body or an author
+		// trailer.
+		s := strings.Map(func(r rune) rune {
 			if r < 0x20 || r == 0x7f {
 				return -1
 			}
 			return r
-		}, s)
+		}, m[1])
+		s = strings.TrimSpace(s)
 		if len(s) > subjectMax {
 			s = strings.TrimSpace(s[:subjectMax])
 		}

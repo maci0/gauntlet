@@ -176,8 +176,14 @@ func TestCountLines(t *testing.T) {
 		"binary is refused": {"text\x00more\n", 0},
 	}
 	for name, c := range cases {
-		if got := countLines(write(strings.NewReplacer(" ", "_").Replace(name)+".txt", c.body)); got != c.want {
-			t.Errorf("%s: countLines = %d, want %d", name, got, c.want)
+		r := &Repo{Dir: dir}
+		path := write(strings.NewReplacer(" ", "_").Replace(name)+".txt", c.body)
+		if got := r.countLinesCached(path); got != c.want {
+			t.Errorf("%s: countLinesCached = %d, want %d", name, got, c.want)
+		}
+		// And again from the cache: the same file must count the same.
+		if got := r.countLinesCached(path); got != c.want {
+			t.Errorf("%s: cached read = %d, want %d", name, got, c.want)
 		}
 	}
 
@@ -187,7 +193,7 @@ func TestCountLines(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if got := countLines(link); got != 0 {
+	if got := (&Repo{Dir: dir}).countLinesCached(link); got != 0 {
 		t.Errorf("a symlink counted %d lines; it must be refused outright", got)
 	}
 }
