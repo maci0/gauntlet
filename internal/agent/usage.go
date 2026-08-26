@@ -112,23 +112,7 @@ type Tail struct {
 // NewTail returns a tail buffer holding at most size bytes.
 func NewTail(size int) *Tail { return &Tail{size: size} }
 
-// Write appends p, discarding everything but the last size bytes.
-func (t *Tail) Write(p []byte) (int, error) {
-	n := len(p)
-	if n >= t.size {
-		t.buf = append(t.buf[:0], p[n-t.size:]...)
-		return n, nil
-	}
-	if len(t.buf)+n > t.size {
-		drop := len(t.buf) + n - t.size
-		t.buf = append(t.buf[:0], t.buf[drop:]...)
-	}
-	t.buf = append(t.buf, p...)
-	return n, nil
-}
-
-// WriteString appends s without the []byte conversion Write would force on a
-// string. It is the form the output pump calls once per line.
+// WriteString appends s and keeps only the last size bytes.
 func (t *Tail) WriteString(s string) (int, error) {
 	n := len(s)
 	if n >= t.size {
