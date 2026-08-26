@@ -986,6 +986,30 @@ echo "RESULT: changed=1"`)
 	}
 }
 
+// A killed run leaves its lock file behind, note and all. The flock died with
+// it, so the note describes nothing: taking the lock clears it rather than
+// letting a dead run keep answering for the directory.
+func TestAcquireClearsAStaleNote(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	if err := os.WriteFile(path, []byte("gauntlet dev (pid 1, run old): sec-review (claude)\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := Acquire(path)
+	if err != nil {
+		t.Fatalf("a stale lock file must not block a new run: %v", err)
+	}
+	defer lock.Release()
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(body) != 0 {
+		t.Fatalf("the dead run's note survived: %q", body)
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {

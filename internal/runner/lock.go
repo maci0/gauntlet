@@ -64,6 +64,10 @@ func Acquire(path string) (*Lock, error) {
 		}
 		return nil, err
 	}
+	// A predecessor that was killed leaves its file behind with its note in
+	// it. The flock is gone, so the run it describes is gone too: clear it
+	// rather than let a dead run keep answering for this directory.
+	_ = syscall.Ftruncate(fd, 0)
 	return &Lock{path: path, fd: fd}, nil
 }
 
