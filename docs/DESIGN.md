@@ -48,8 +48,9 @@ can replace and reload itself while a loop is running.
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `prompt`, `normalize`, `gitx`, and `streamjson`; `ui` imports
-`runner`'s event types plus the shared `normalize` line kinds and `humanize`
-formatters, and nothing else. `prompt` imports `gitx`, so project discovery's
+`runner`'s event types plus the shared `normalize` line kinds, `humanize`
+formatters, and the `fuzzy` fold behind the picker's filter, and nothing
+else. `prompt` imports `gitx`, so project discovery's
 one git call (check-ignore) uses the same hardened resolver and safe config
 as every other git invocation. `agent` and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere.
