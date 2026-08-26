@@ -10,6 +10,16 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- The README shows the dashboard and the launcher as screenshots rather than
+  an ASCII transcript. Both are the renderer's own output: `scripts/shots.sh`
+  writes the frames from `internal/ui`, exports them as a terminal, and
+  rasterizes that, so refreshing them after a change to the screen is one
+  command rather than a hand-drawn approximation.
+
 ## 1.7.0
 
 ### Added

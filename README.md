@@ -19,32 +19,9 @@
   <img alt="go" src="https://img.shields.io/github/go-mod/go-version/maci0/gauntlet">
 </p>
 
-```console
-$ gauntlet -j 4 -a mixed --tui
-GAUNTLET  v1.0.0  20260825T000000Z-abcd  2×worktree  project                loop 1  1m30s  ● RUNNING
-ACTIVITY agent lines/s  ◆ n/a
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│                                                                                                  │
-│ ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀ │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-AGENTS
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ claude           idle                 ▱▱▱▱▱▱▱▱▱▱▱▱          2 done  1 fail  41,234 tok           │
-│ codex:gpt-5      code-review          ▰▱▱▱▱▱▱▱▱▱▱▱ 1m30s    0 done  0 fail  1,600 tok  240/s  ◌  │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-REVIEWS  pass 1  fail 0  timeout 1  conflict 0  skip 0
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ ▸ code      ⧖ doc       · perf      ✓ sec       · test                                           │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-FEED
-╭──────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ sec-review       │ Bash(go test ./...)                                                           │
-│ code-review      │ error: nil map write                                                          │
-│ code-review      │ the caller already validates this                                             │
-│                                                                                                  │
-╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
-q:quit  space:pause feed  j/k:scroll  ?:help           41,234 tok  240 tok/s live  ▱▱▱▱▱▱▱▱▱▱ budget
-```
+<p align="center">
+  <img src="assets/dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="900">
+</p>
 
 One static binary loops ~50 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
@@ -147,7 +124,13 @@ reload, are in [docs/RUNS.md](docs/RUNS.md).
 ## Dashboard
 
 `--tui` renders the screen at the top of this page: header, activity chart,
-one lane per agent, the full review grid, and the feed.
+one lane per agent, the full review grid, and the feed. `gauntlet pick`
+composes a run before it starts, and shows the command it is building while
+you do:
+
+<p align="center">
+  <img src="assets/launcher.png" alt="The gauntlet launcher: review sets with descriptions, the installed agents, concurrency against the CPU count, and the composed command line" width="900">
+</p>
 
 | Key | Action |
 |---|---|
