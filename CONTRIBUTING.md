@@ -54,6 +54,12 @@ with `make test TAGS=notoktop` and `make test TAGS=` when your change
 touches tagged files; you do not need dist or repro unless you touched the
 release path.
 
+Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
+the advisory scan of the dependency graph
+([vulnscan.yml](.github/workflows/vulnscan.yml)). `make vuln` runs the same
+scan locally; run it before pushing a dependency bump rather than learning
+about it from a red check.
+
 ## Changelog
 
 User-visible changes land in [CHANGELOG.md](CHANGELOG.md) under `##
@@ -73,7 +79,10 @@ records what each decision costs.
 
 Adding a review prompt is dropping `NAME-review.md` into
 `internal/prompt/prompts/`: prompts are embedded by glob and discovered by
-filename, so there is no registration list to update. Named sets such as
+filename. Review names are API (see the consumer contract at the top of
+[CHANGELOG.md](CHANGELOG.md)), so the same change also adds the stem to
+`goldenReviewNames` in [internal/prompt/contract_test.go](internal/prompt/contract_test.go):
+that test fails until you do, with these instructions. Named sets such as
 `quick` are separate, in `internal/prompt/sets.go`. Files under
 `internal/prompt/rules/` are different: they are the containment text every
 agent runs under, so treat changes there as security-relevant.

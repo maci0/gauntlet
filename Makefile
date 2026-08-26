@@ -114,6 +114,15 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
 
+# Advisory scan of the dependency graph, the same invocation vulnscan.yml
+# runs on pull requests that touch go.mod or go.sum. Unpinned for the reason
+# stated there: a scanner is worth only what its advisory database knows,
+# and its result never becomes a build input to gauntlet itself. Needs
+# network on first use; everything else in this Makefile does not.
+.PHONY: vuln
+vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
 .PHONY: install
 install: build ## install into ~/.local/bin
 	install -d ~/.local/bin

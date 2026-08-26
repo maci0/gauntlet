@@ -14,6 +14,12 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- `make vuln` runs locally the same govulncheck advisory scan that
+  vulnscan.yml runs on pull requests touching go.mod or go.sum, so a
+  vulnerable dependency bump surfaces before push instead of after.
+  CONTRIBUTING.md documents it and the real steps for adding a review
+  prompt: the name-surface snapshot in contract_test.go must gain the new
+  stem in the same change.
 - A release-contract guard. Tests now pin every surface this file declares
   consumer-facing: bundled review names, review set names, CLI flag names,
   commands, exit codes, the documented environment variable names
