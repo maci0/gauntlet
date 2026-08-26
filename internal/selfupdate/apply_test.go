@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // releaseServer serves one asset and a checksums.txt, optionally lying about
@@ -115,5 +116,38 @@ func TestApplyReplacesTargetOnMatch(t *testing.T) {
 	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(target), ".gauntlet-update-*"))
 	if len(matches) != 0 {
 		t.Fatalf("temp files left behind: %v", matches)
+	}
+}
+
+// An update killed mid-download (SIGKILL, OOM, power cut) skips every defer
+// and leaves its partial download beside the binary. The next update sweeps
+// what is old enough to be certainly abandoned and touches nothing else.
+func TestSweepStaleTempsRemovesOnlyAbandonedDownloads(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("partial"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	old := write(".gauntlet-update-old")
+	fresh := write(".gauntlet-update-new")
+	other := write("gauntlet")
+	past := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+
+	sweepStaleTemps(dir, ".gauntlet-update-", staleTempAge)
+
+	for _, p := range []string{fresh, other} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s must survive the sweep: %v", filepath.Base(p), err)
+		}
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("the abandoned download should be gone (stat err=%v)", err)
 	}
 }

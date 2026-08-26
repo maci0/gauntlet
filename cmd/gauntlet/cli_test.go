@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -305,4 +306,74 @@ func TestExitCodeMapsTheDocumentedCodes(t *testing.T) {
 			t.Errorf("a cancelled context should exit 130, got %d", got)
 		}
 	})
+}
+
+// A run that dies while the runners are being built must still close its
+// journal: the quiet close flushes what New logged before it failed, and a
+// run that never started writes no index row. The first directory logs its
+// untracked-file notice before the second one fails construction, so the
+// notice sitting in the journal file is the proof the flush happened.
+func TestFailedRunConstructionStillClosesTheJournal(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required for this test")
+	}
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	// A stub agent satisfies the PATH check; nothing is ever spawned because
+	// construction fails on the second directory first.
+	bin := t.TempDir()
+	stub := filepath.Join(bin, "claude")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	good := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = good
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "test@example.invalid")
+	git("config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(good, "main.go"),
+		[]byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git("add", "-A")
+	git("commit", "-qm", "init")
+	// Untracked files are what make New log to the bus before it succeeds.
+	if err := os.WriteFile(filepath.Join(good, "notes.txt"),
+		[]byte("not tracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bad := t.TempDir() // not a git repository: --jobs > 1 refuses it
+
+	stderr := captureStderr(t, func() int {
+		return run([]string{"--dirs", good + "," + bad, "--jobs", "2", "--agents", "claude"})
+	})
+	if !strings.Contains(stderr, "needs a git repository") {
+		t.Errorf("the non-git directory should be named as the failure:\n%s", stderr)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(home, "runs", "*", "*.jsonl"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("expected exactly one journal file under %s (err=%v): %v", home, err, matches)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "untracked") {
+		t.Errorf("the event logged before construction failed was not flushed:\n%s", data)
+	}
+	if _, err := os.Stat(filepath.Join(home, "index.jsonl")); !os.IsNotExist(err) {
+		t.Errorf("a run that never started must not get an index row (stat err=%v)", err)
+	}
 }

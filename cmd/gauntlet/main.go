@@ -412,6 +412,9 @@ func run(argv []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			bus.Close()
 			consumers.Wait()
+			// The run never started, so it gets no index row; the quiet close
+			// still flushes whatever New logged before it failed.
+			jrnl.CloseQuiet()
 			return exitUsage
 		}
 		d.r = r
