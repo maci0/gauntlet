@@ -111,31 +111,56 @@ func ToolsFor(review string) []string {
 	return out
 }
 
+// ToolBins expands helper entries into the individual binaries they may need:
+// an entry "ast-grep|sg" contributes both names, duplicates are dropped. This
+// is the input ResolveMany wants, so one parallel pass can probe them all.
+func ToolBins(entries []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range entries {
+		for alt := range strings.SplitSeq(e, "|") {
+			if !seen[alt] {
+				seen[alt] = true
+				out = append(out, alt)
+			}
+		}
+	}
+	return out
+}
+
+// SplitTools sorts helper entries into the ones this machine has and the ones
+// it lacks, given ResolveMany's result over ToolBins(entries). An entry with
+// alternatives counts as present when any of its binaries resolved, and is
+// named by its primary (the first alternative): that is what the rules call it.
+func SplitTools(entries []string, found map[string]string) (have, missing []string) {
+	for _, entry := range entries {
+		present := false
+		for alt := range strings.SplitSeq(entry, "|") {
+			present = present || found[alt] != ""
+		}
+		primary, _, _ := strings.Cut(entry, "|")
+		if present {
+			have = append(have, primary)
+		} else {
+			missing = append(missing, primary)
+		}
+	}
+	return have, missing
+}
+
 // AllProbeNames lists every binary doctor asks about, so they can be resolved
 // in one parallel pass instead of one blocking lookup at a time.
 func AllProbeNames() []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(n string) {
-		if !seen[n] {
-			seen[n] = true
-			out = append(out, n)
-		}
-	}
-	for _, t := range Valid {
-		add(t)
-	}
-	add("bunx")
+	names := make([]string, 0, len(Valid)+1+len(CoreTools))
+	names = append(names, Valid...)
+	names = append(names, "bunx")
 	for _, c := range CoreTools {
-		for alt := range strings.SplitSeq(c.Name, "|") {
-			add(alt)
-		}
+		names = append(names, c.Name)
 	}
 	for _, tools := range ReviewTools {
-		for _, t := range tools {
-			add(t)
-		}
+		names = append(names, tools...)
 	}
+	out := ToolBins(names)
 	sort.Strings(out)
 	return out
 }
