@@ -31,12 +31,6 @@ type Event struct {
 	// Usage is any token counters found on the line. Absent counters stay at
 	// zero, and Has reports whether anything was found at all.
 	Usage Usage
-	// Kind labels the record when the agent names it (assistant, tool_use,
-	// result, error). Empty when the line does not say.
-	Kind string
-	// Cwd is the working directory the record was produced in, when the agent
-	// records one. Transcripts use it to attribute a session to a review.
-	Cwd string
 }
 
 // Usage holds token counters found on one line. Agents report a mix of
@@ -46,7 +40,6 @@ type Usage struct {
 	Output   int
 	Thinking int
 	Total    int
-	Input    int
 }
 
 // Keys recognized as token counters, mapped onto the fields above. These are
@@ -66,20 +59,11 @@ var (
 	totalKeys = map[string]bool{
 		"total_tokens": true, "totaltokens": true, "totaltokencount": true,
 	}
-	inputKeys = map[string]bool{
-		"input_tokens": true, "inputtokens": true, "prompt_tokens": true,
-		"prompttokens": true, "prompttokencount": true, "input": true,
-	}
 	// Fields whose string value is visible assistant text.
 	textKeys = map[string]bool{"text": true, "content": true, "delta": true, "message": true}
 	// Fields whose string value is reasoning output.
 	thinkingTextKeys = map[string]bool{
 		"thinking": true, "reasoning": true, "thought": true, "reasoning_content": true,
-	}
-	// Fields naming the working directory a record belongs to.
-	cwdKeys = map[string]bool{
-		"cwd": true, "working_directory": true, "workingdirectory": true,
-		"workdir": true, "project_dir": true, "projectdir": true,
 	}
 )
 
@@ -123,18 +107,11 @@ func walk(node any, ev *Event, text, thinking *strings.Builder, depth int, inThi
 	}
 	switch v := node.(type) {
 	case map[string]any:
-		if t, ok := v["type"].(string); ok && ev.Kind == "" {
-			ev.Kind = t
-		}
 		thinkingHere := inThinking || isThinkingBlock(v)
 		for k, child := range v {
 			lower := strings.ToLower(k)
 			str, isString := child.(string)
 			switch {
-			case isString && cwdKeys[lower]:
-				if ev.Cwd == "" {
-					ev.Cwd = str
-				}
 			case isString && thinkingTextKeys[lower]:
 				appendText(thinking, str)
 			case isNumberKey(lower):
@@ -167,7 +144,7 @@ func isThinkingBlock(v map[string]any) bool {
 }
 
 func isNumberKey(lower string) bool {
-	return outputKeys[lower] || thinkingKeys[lower] || totalKeys[lower] || inputKeys[lower]
+	return outputKeys[lower] || thinkingKeys[lower] || totalKeys[lower]
 }
 
 // assign records a counter, keeping the largest value seen for that field on
@@ -184,8 +161,6 @@ func assign(ev *Event, lower string, val any) {
 		ev.Usage.Output = max(ev.Usage.Output, n)
 	case totalKeys[lower]:
 		ev.Usage.Total = max(ev.Usage.Total, n)
-	case inputKeys[lower]:
-		ev.Usage.Input = max(ev.Usage.Input, n)
 	}
 }
 
