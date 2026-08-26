@@ -23,6 +23,18 @@ minor instead and were listed under Changed.
   flag defaults the docs quote (`--timeout`, `--retries`, `runs --limit`), the
   dashboard's thinking-glyph timings, and the four budgets every git command
   now picks from instead of carrying a bare duration.
+- `.scratch_refs.txt`, a throwaway file that reached a commit, is out of the
+  repository. The root holds config, manifests, and top-level docs, and
+  nothing else.
+- The journal reports a write it lost. `Flush` and `CloseQuiet` dropped their
+  errors on the floor, so a disk that filled halfway through a run left a
+  truncated journal that still closed clean; both keep the first error now,
+  and `Close` reports it the way it always claimed to.
+- CI gates the one Python file here (`scripts/shots/render.py`) with ruff and
+  mypy `--strict`, the way every other language in this repository is gated.
+- Every remaining discarded error says what it swallows and why nothing else
+  can reach it: a process group that is already gone, a ring buffer that
+  cannot fail, a cleanup whose failure the next command reports anyway.
 - `scripts/shots.sh` no longer writes Python from shell or works in `/tmp`:
   the renderer is `scripts/shots/render.py`, a uv script with inline
   dependencies, and the working directory is `.scratch/`, which is on disk

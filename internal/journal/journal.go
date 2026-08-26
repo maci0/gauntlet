@@ -142,7 +142,12 @@ func (j *Journal) Flush() {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
-	_ = j.w.Flush()
+	// A full disk fails here, halfway through a run, and Close is what
+	// reports it: keep the first error rather than letting the journal go
+	// quiet and still look complete.
+	if err := j.w.Flush(); err != nil && j.err == nil {
+		j.err = err
+	}
 }
 
 // Close finishes the journal and appends the run to the index.
@@ -210,8 +215,12 @@ func (j *Journal) CloseQuiet() {
 		return
 	}
 	j.closed = true
-	_ = j.w.Flush()
-	_ = j.f.Close()
+	if err := j.w.Flush(); err != nil && j.err == nil {
+		j.err = err
+	}
+	if err := j.f.Close(); err != nil && j.err == nil {
+		j.err = err
+	}
 }
 
 // Recent returns the last n runs from the index, newest first. The index is

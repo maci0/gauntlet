@@ -288,6 +288,8 @@ func openRegular(path string) (*os.File, error) {
 		f.Close()
 		return nil, errors.New("not a regular file")
 	}
+	// Restoring blocking mode is courtesy to whoever inherits the
+	// descriptor; there is nothing to do if the kernel refuses.
 	_ = syscall.SetNonblock(fd, false)
 	return f, nil
 }

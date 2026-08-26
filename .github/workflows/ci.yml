@@ -45,6 +45,22 @@ jobs:
         if: matrix.tags == 'sqlite'
       - run: make test TAGS=${{ matrix.tags }}
 
+  # The one Python file here is the screenshot renderer. It gates the same way
+  # every other language in this repository does, so a maintainer task cannot
+  # rot into something nobody can run.
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+      - run: uvx ruff check scripts
+      - run: uvx ruff format --check scripts
+      # rich has type information, so mypy needs it installed to see it.
+      - run: uvx --with rich mypy --strict scripts
+
   dist:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -23,6 +23,29 @@ func collect(runID string) (out []map[string]any, err error) {
 	return out, err
 }
 
+// A journal that cannot be written must not still look complete: the first
+// write error survives to Close, which is where the run reports it.
+func TestWriteErrorSurvivesToClose(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Now()
+	j, err := Open("broken-run", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Close the file under the writer: every later flush fails the way a full
+	// disk does, without needing one.
+	if err := j.f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 4096 {
+		j.Write(map[string]string{"ev": "log", "text": "a line long enough to fill the buffer"})
+	}
+	j.Flush()
+	if closeErr := j.Close(Summary{Version: "test", Start: now, End: now}); closeErr == nil {
+		t.Fatal("a journal that failed to write reported a clean close")
+	}
+}
+
 func TestHomeHonorsOverride(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", "/somewhere/else")
 	if got := Home(); got != "/somewhere/else" {

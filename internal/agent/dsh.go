@@ -72,6 +72,7 @@ func dshDefaultProvider(base []string) (string, error) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmd.Cancel = func() error {
 			if cmd.Process != nil {
+				// ESRCH: the group is already gone, which is the outcome asked for.
 				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 			}
 			return nil

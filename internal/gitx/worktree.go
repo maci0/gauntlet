@@ -145,6 +145,8 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 			return nil, fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
 				branch, tip[:min(12, len(tip))], base[:min(12, len(base))])
 		}
+		// A failure here is not swallowed for long: the worktree add below
+		// then fails on the branch that is still there, with git's own words.
 		_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
@@ -289,6 +291,8 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	defer r.wtMu.Unlock()
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
+	// Clearing a checkout a killed run left here; if it fails, the add below
+	// reports it rather than this line.
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return MergeResult{Detail: err.Error()}
