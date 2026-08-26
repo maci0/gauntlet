@@ -22,9 +22,9 @@ library.
 ## Layout
 
 `cmd/gauntlet` is flags and dispatch only. Everything real lives in
-`internal/`, and dependencies point one way: `runner` uses `agent`, `prompt`,
-`normalize`, `gitx`, `streamjson`, `humanize`; `ui` uses the runner's event
-types plus the shared `normalize` and `humanize`; `cmd` wires it all
+`internal/`, and dependencies point one way: `runner` uses `agent`,
+`prompt`, `normalize`, `gitx`, `streamjson`, `humanize`; `ui` uses the runner's event
+types plus the shared `normalize`, `humanize`, and `fuzzy`; `cmd` wires it all
 together, including `journal` and `selfupdate`. No package inside
 `internal/` imports `ui`, so a headless run costs nothing.
 

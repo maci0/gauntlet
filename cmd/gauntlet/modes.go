@@ -58,28 +58,13 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	return exitOK
 }
 
-// toolsFor reports which of a review's helper binaries this machine has.
+// toolsFor reports which of a review's helper binaries this machine has,
+// probing the PATH fresh: --show-prompt composes one prompt, so it does not
+// share the runner's startup-wide probe.
 func toolsFor(review string) prompt.Tools {
 	names := agent.ToolsFor(review)
-	var probe []string
-	for _, n := range names {
-		probe = append(probe, strings.Split(n, "|")...)
-	}
-	found := agent.ResolveMany(probe)
-	var t prompt.Tools
-	for _, name := range names {
-		present := false
-		for alt := range strings.SplitSeq(name, "|") {
-			present = present || found[alt] != ""
-		}
-		primary, _, _ := strings.Cut(name, "|")
-		if present {
-			t.Have = append(t.Have, primary)
-		} else {
-			t.Missing = append(t.Missing, primary)
-		}
-	}
-	return t
+	have, missing := agent.SplitTools(names, agent.ResolveMany(agent.ToolBins(names)))
+	return prompt.Tools{Have: have, Missing: missing}
 }
 
 // dryRun prints the planned schedule without launching anything.

@@ -840,3 +840,52 @@ func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 		}
 	}
 }
+
+func TestToolBins(t *testing.T) {
+	got := ToolBins([]string{"rg", "ast-grep|sg", "ast-grep|sg", "shellcheck"})
+	want := []string{"rg", "ast-grep", "sg", "shellcheck"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ToolBins = %v, want %v", got, want)
+	}
+	if got := ToolBins(nil); got != nil {
+		t.Fatalf("no entries should give no bins, got %v", got)
+	}
+}
+
+func TestSplitTools(t *testing.T) {
+	found := map[string]string{"ast-grep": "/usr/bin/ast-grep"}
+	have, missing := SplitTools([]string{"rg", "ast-grep|sg"}, found)
+	// The alternative pair counts as present through its second name, and is
+	// reported by the first, which is what the rules call it.
+	if !slices.Equal(have, []string{"ast-grep"}) {
+		t.Fatalf("have = %v, want [ast-grep]", have)
+	}
+	if !slices.Equal(missing, []string{"rg"}) {
+		t.Fatalf("missing = %v, want [rg]", missing)
+	}
+	// An entry present in the map with an empty path counts as absent.
+	have, missing = SplitTools([]string{"rg", "patchwork"},
+		map[string]string{"rg": "", "patchwork": "/usr/bin/patchwork"})
+	if len(have) != 1 || have[0] != "patchwork" || len(missing) != 1 || missing[0] != "rg" {
+		t.Fatalf("empty-path resolution must count as missing: have=%v missing=%v", have, missing)
+	}
+	have, missing = SplitTools(nil, found)
+	if have != nil || missing != nil {
+		t.Fatalf("no entries should split to nothing, got %v and %v", have, missing)
+	}
+}
+
+func TestToolsForOrderAndAlts(t *testing.T) {
+	// The core tools come first (git excluded: it is the runner's own tool),
+	// then the review's own helpers in catalog order, duplicates dropped.
+	got := ToolsFor("config-review")
+	want := []string{"rg", "ast-grep|sg", "patchwork", "semcode",
+		"check-jsonschema", "yamllint", "taplo", "dotenv-linter",
+		"editorconfig-checker|ec", "shfmt"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("ToolsFor(config-review) = %v, want %v", got, want)
+	}
+	if got := ToolsFor("agentrules-review"); slices.Contains(got, "git") {
+		t.Fatalf("git must not be offered to agents: %v", got)
+	}
+}

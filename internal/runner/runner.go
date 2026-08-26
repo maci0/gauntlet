@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -101,9 +100,10 @@ type Runner struct {
 	mu             sync.Mutex // guards sessionStarted
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
-	// tools is what this machine has of the helper binaries the scheduled
-	// reviews can use, probed once at startup rather than per review.
-	tools   map[string]bool
+	// tools is where this machine's helper binaries resolved to, probed once
+	// at startup rather than per review; SplitTools treats an empty or
+	// absent entry as missing.
+	tools   map[string]string
 	mergeMu sync.Mutex // serializes merges into the main tree
 
 	loopMu    sync.Mutex
@@ -223,45 +223,19 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 // resolveTools probes, in one parallel pass, every helper binary the
 // scheduled reviews might reach for. The answer goes into each prompt, so an
 // agent knows what is here before it starts guessing.
-func resolveTools(reviews []string) map[string]bool {
-	seen := map[string]bool{}
-	var names []string
+func resolveTools(reviews []string) map[string]string {
+	var entries []string
 	for _, review := range reviews {
-		for _, t := range agent.ToolsFor(review) {
-			for alt := range strings.SplitSeq(t, "|") {
-				if !seen[alt] {
-					seen[alt] = true
-					names = append(names, alt)
-				}
-			}
-		}
+		entries = append(entries, agent.ToolsFor(review)...)
 	}
-	found := agent.ResolveMany(names)
-	have := make(map[string]bool, len(found))
-	for name, path := range found {
-		have[name] = path != ""
-	}
-	return have
+	return agent.ResolveMany(agent.ToolBins(entries))
 }
 
 // toolsFor splits one review's helpers into what this machine has and what it
-// does not. An alternative pair ("ast-grep|sg") counts as present when either
-// binary is, and is named by the first: that is what the rules call it.
+// does not, from the paths resolveTools probed once for the whole schedule.
 func (r *Runner) toolsFor(review string) prompt.Tools {
-	var t prompt.Tools
-	for _, name := range agent.ToolsFor(review) {
-		present := false
-		for alt := range strings.SplitSeq(name, "|") {
-			present = present || r.tools[alt]
-		}
-		primary, _, _ := strings.Cut(name, "|")
-		if present {
-			t.Have = append(t.Have, primary)
-		} else {
-			t.Missing = append(t.Missing, primary)
-		}
-	}
-	return t
+	have, missing := agent.SplitTools(agent.ToolsFor(review), r.tools)
+	return prompt.Tools{Have: have, Missing: missing}
 }
 
 // Stats exposes the accumulated results.
