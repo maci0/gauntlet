@@ -50,7 +50,10 @@ type procResult struct {
 	TimedOut bool
 	Canceled bool
 	Usage    agent.Usage
-	Err      error // launch failure only
+	// Subject is the commit subject the agent printed for its change, empty
+	// when it printed none.
+	Subject string
+	Err     error // launch failure only
 }
 
 // procOpts configures one agent launch.
@@ -246,6 +249,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 
 	tailMu.Lock()
 	final := agent.ParseUsage(tail.Bytes())
+	res.Subject = agent.ParseSubject(tail.Bytes())
 	tailMu.Unlock()
 	usageMu.Lock()
 	res.Usage = agent.Usage{

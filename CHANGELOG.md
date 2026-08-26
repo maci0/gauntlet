@@ -77,6 +77,26 @@ minor instead and were listed under Changed.
   that fails on launch, and the row under the cursor explains itself in the
   status line.
 
+## Unreleased
+
+### Changed
+
+- Worktree runs leave a history that looks like the project's. Review branches
+  are squashed rather than merged, so a loop of forty reviews leaves forty
+  commits and not forty merge nodes; the commits are authored with your git
+  identity instead of a `gauntlet <gauntlet@localhost>` one; and the subject
+  is what the review says its change was, in the project's own conventional
+  form, rather than "automated review fixes". Reviews print it as
+  `SUBJECT: fix: …` alongside their `PATH:` lines, and a review that prints
+  none falls back to `chore(<review>): apply review findings`.
+- `--push` pushes each review as it lands in worktree mode, not once at the
+  end of the loop, so a long run publishes as it goes. A failed push is
+  reported and counted rather than fatal: the work is committed, and the next
+  push carries it.
+- The offer to commit a dirty tree uses the run's own agent, never
+  `--suggest-agent`: that one was asked which reviews apply, which says
+  nothing about who should write commits.
+
 ## 1.6.1
 
 ### Fixed

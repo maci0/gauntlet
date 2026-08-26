@@ -25,8 +25,15 @@ gauntlet -j 4 -a mixed --once
   nobody's way, and the run says once that they are not reviewed.
 - Each review gets `git worktree add -b gauntlet/<run>/<review>` under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
-- The runner (never the agent) commits each worktree, then merges the branches
-  back into your branch one at a time, `--no-ff`.
+- The runner (never the agent) commits each worktree, then lands the branches
+  on your branch one at a time, squashed: one commit per review, no merge
+  nodes. The commit is authored by you, with your git identity, and its
+  subject is the one the review printed for its own change (`SUBJECT: fix: …`
+  in the output protocol), so the history reads like the project's, not like a
+  tool's. A review that prints none gets `chore(<review>): apply review
+  findings`.
+- With `--push`, each review is pushed as it lands rather than all of them at
+  the end, so a long run publishes as it goes.
 - A conflicting merge is **aborted, and its branch is kept**, named after the
   review, so the work can be inspected or merged by hand. Conflicts are
   reported as their own outcome and make the run exit nonzero.

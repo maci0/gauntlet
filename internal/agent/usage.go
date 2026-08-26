@@ -5,6 +5,7 @@ package agent
 
 import (
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -130,3 +131,38 @@ func (t *Tail) WriteString(s string) (int, error) {
 // Bytes returns the retained tail. The slice aliases the ring: copy before
 // holding it past the next Write.
 func (t *Tail) Bytes() []byte { return t.buf }
+
+// subjectRe finds the commit subject a review prints for the change it made.
+// The runner writes the commit in worktree mode, and only the agent knows
+// what the change was: without this the history reads "automated fixes" forty
+// times over.
+var subjectRe = regexp.MustCompile(`(?im)^\s*SUBJECT:\s*(.+?)\s*$`)
+
+// subjectMax bounds a commit subject. Git wraps a longer one badly, and the
+// line is agent output, which is untrusted text headed for a file people read.
+const subjectMax = 100
+
+// ParseSubject returns the commit subject a review asked for, or "" when it
+// printed none. The last one wins: an agent that revises itself means the
+// later line.
+func ParseSubject(tail []byte) string {
+	matches := subjectRe.FindAllStringSubmatch(string(tail), -1)
+	for _, m := range slices.Backward(matches) {
+		s := strings.TrimSpace(m[1])
+		// One line, no controls: this becomes a commit message, and a
+		// newline in it would forge a body, an author trailer, or worse.
+		s = strings.Map(func(r rune) rune {
+			if r < 0x20 || r == 0x7f {
+				return -1
+			}
+			return r
+		}, s)
+		if len(s) > subjectMax {
+			s = strings.TrimSpace(s[:subjectMax])
+		}
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}

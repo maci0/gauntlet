@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -559,6 +560,29 @@ func (r *Runner) abandonQueue(loopNo int) {
 	}
 }
 
+// commitSubject is what the history will say about a review's change: what
+// the agent called it, or a plain fallback naming the review's subject area.
+// Neither mentions this tool, a run id, or a model: the commit is the
+// project's, not the machinery's.
+func commitSubject(fromAgent, review string) string {
+	if fromAgent != "" {
+		return fromAgent
+	}
+	return fmt.Sprintf("chore(%s): apply review findings", strings.TrimSuffix(review, "-review"))
+}
+
+// pushLanded publishes what just landed on this branch. A failure is logged
+// and counted, never fatal: the work is committed, and the next review's push
+// (or the commit step) carries it.
+func (r *Runner) pushLanded(ctx context.Context, review string) {
+	if err := r.repo.Push(context.WithoutCancel(ctx)); err != nil {
+		r.log("Push after %s failed: %v", review, err)
+		r.st.addCommitFail()
+		return
+	}
+	r.log("Pushed %s", review)
+}
+
 // runIsolated runs one review in a private worktree and merges its commit.
 func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int, base string) Result {
 	tag := fmt.Sprintf("%s-l%d-%02d", r.cfg.RunID, loopNo, idx)
@@ -598,8 +622,7 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 		return res
 	}
 
-	msg := fmt.Sprintf("%s: automated review fixes\n\nRun %s, agent %s.",
-		review, r.cfg.RunID, res.Agent.Label())
+	msg := commitSubject(res.Subject, review)
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), msg)
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)
@@ -620,8 +643,13 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	// One merge at a time: git allows one per worktree, and a conflicting
 	// merge must be aborted before the next one starts.
 	r.mergeMu.Lock()
-	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch,
-		fmt.Sprintf("Merge %s from gauntlet run %s", review, r.cfg.RunID))
+	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, commitSubject(res.Subject, review))
+	if mr.Merged && r.cfg.Push {
+		// Push while the merge lock is held: two pushes racing on one branch
+		// is one rejection and one wasted round trip. A run of forty reviews
+		// publishes as it goes rather than holding everything to the end.
+		r.pushLanded(ctx, review)
+	}
 	r.mergeMu.Unlock()
 
 	switch {
@@ -778,6 +806,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	}
 	res.Elapsed = time.Since(start)
 	res.ExitCode = pr.ExitCode
+	res.Subject = pr.Subject
 	usageMu.Lock()
 	res.Tokens = max(pr.Usage.Reported(), best)
 	res.Thinking = max(max(pr.Usage.Thinking, 0), bestThink)

@@ -117,6 +117,37 @@ func TestBuildCmdCrushUsesRunMode(t *testing.T) {
 	}
 }
 
+// The runner writes the commit in worktree mode, and only the agent knows
+// what its change was: the subject it prints is what the history will say.
+func TestParseSubject(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"a plain subject", "PATH: x\nSUBJECT: fix: guard the nil map write\nRESULT: changed=1",
+			"fix: guard the nil map write"},
+		{"none printed", "PATH: x\nRESULT: changed=1", ""},
+		{"the last one wins", "SUBJECT: chore: first\nSUBJECT: feat: second\n", "feat: second"},
+		{"empty is no subject", "SUBJECT:   \n", ""},
+		{"leading space is fine", "   SUBJECT: docs: explain the lock\n", "docs: explain the lock"},
+	}
+	for _, c := range cases {
+		if got := ParseSubject([]byte(c.in)); got != c.want {
+			t.Errorf("%s: ParseSubject = %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// The subject becomes a commit message, so it is one line of printable text
+// and nothing else: a newline in it would forge a body or an author trailer.
+func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
+	got := ParseSubject([]byte("SUBJECT: fix: thing\x1b[31m\x07 and \x00more\n"))
+	if strings.ContainsAny(got, "\x1b\x07\x00\n") {
+		t.Fatalf("control bytes survived: %q", got)
+	}
+	long := "SUBJECT: " + strings.Repeat("x", 500) + "\n"
+	if n := len(ParseSubject([]byte(long))); n > subjectMax {
+		t.Fatalf("subject is %d bytes, want at most %d", n, subjectMax)
+	}
+}
+
 func TestBuildCmdPlacesPromptLast(t *testing.T) {
 	cases := map[string]Spec{
 		"claude": {Tool: "claude", Model: "opus"},

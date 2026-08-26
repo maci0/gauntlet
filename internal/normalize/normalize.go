@@ -75,7 +75,7 @@ var (
 
 	errorRe = regexp.MustCompile(`(?i)\b(error|failed|failure|exception|traceback|panic|fatal|refused|denied|timed out)\b`)
 
-	resultRe = regexp.MustCompile(`^\s*(RESULT|PATH|RELEVANT|COMMIT):`)
+	resultRe = regexp.MustCompile(`^\s*(RESULT|PATH|RELEVANT|COMMIT|SUBJECT):`)
 
 	// Diff recognition. Agents paste unified diffs constantly, and a diff read
 	// as prose is unreadable: the sign at the start of the line is the whole

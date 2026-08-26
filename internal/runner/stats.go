@@ -25,6 +25,10 @@ type Result struct {
 	HaveLines bool
 
 	Tokens int
+	// Subject is the commit subject the agent gave for its change, when the
+	// review printed one. The runner writes the commit in worktree mode, and
+	// this is the only description of the change it has.
+	Subject string
 	// Thinking is the reasoning share of Tokens, 0 when the agent does not
 	// report one.
 	Thinking int

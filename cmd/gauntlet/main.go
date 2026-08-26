@@ -833,10 +833,10 @@ func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	opts *options, out io.Writer, pal palette) bool {
 
+	// The run's own agent, never --suggest-agent: that one was asked which
+	// reviews apply, which says nothing about who should write commits, and a
+	// run with `--agents opencode --suggest-agent claude` means opencode.
 	spec := agents[0]
-	if opts.suggestAgent != nil && opts.suggestAgent.Tool != runner.FastSuggestAgent {
-		spec = *opts.suggestAgent
-	}
 	fmt.Fprintf(out, "\n%s has uncommitted changes, and --jobs %d needs a clean tree.\n",
 		dir, opts.jobs)
 	if !confirmCommit(out, opts, spec) {

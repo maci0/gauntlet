@@ -165,8 +165,6 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 		return false, nil
 	}
 	if _, err := sub.run(ctx, 60*time.Second,
-		"-c", "user.name=gauntlet",
-		"-c", "user.email=gauntlet@localhost",
 		"commit", "--no-verify", "--quiet", "-m", message); err != nil {
 		return false, fmt.Errorf("git commit: %w", err)
 	}
@@ -204,36 +202,59 @@ type MergeResult struct {
 	Detail   string
 }
 
-// Merge integrates a review branch into the current branch of the main tree.
+// Merge lands a review branch on the current branch of the main tree as one
+// commit. The branch is squashed rather than merged: a loop of forty reviews
+// should leave forty commits in the project's history, not forty of them
+// threaded through forty merge nodes.
+//
 // Callers must serialize merges: git allows one at a time per worktree, and a
 // conflicting merge must be aborted before the next one starts.
 //
-// A branch that is already fully merged succeeds as a no-op rather than
-// adding a second merge commit: a rerun that reaches an already-landed review
-// (a crash between merge and branch cleanup) leaves the tree exactly as the
-// first pass did.
+// A branch that carries nothing new succeeds as a no-op rather than adding an
+// empty commit: a rerun that reaches an already-landed review (a crash
+// between merge and branch cleanup) leaves the tree exactly as the first pass
+// did.
 //
-// On conflict the merge is aborted and the branch is kept, so the work can be
+// On conflict nothing lands and the branch is kept, so the work can be
 // inspected or merged by hand. Dropping it silently would lose a review's
 // entire output.
 func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
-	out, err := r.run(ctx, 120*time.Second,
-		"-c", "user.name=gauntlet",
-		"-c", "user.email=gauntlet@localhost",
-		"merge", "--no-ff", "--no-verify", "-m", message, branch)
-	if err == nil {
+	out, err := r.run(ctx, 120*time.Second, "merge", "--squash", "--no-verify", branch)
+	if err != nil {
+		// A conflicted merge narrates on stdout; other failures explain on
+		// stderr, which run folds into the error. Either way keep the cause.
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			detail = err.Error()
+		}
+		r.abortMerge(ctx)
+		return MergeResult{Conflict: true, Detail: firstLine(detail)}
+	}
+	// A squash stages; it never commits. Nothing staged means the branch held
+	// nothing this tree does not already have.
+	if _, clean := r.run(ctx, 30*time.Second, "diff", "--cached", "--quiet"); clean == nil {
 		return MergeResult{Merged: true}
 	}
-	// A conflicted merge narrates on stdout; other failures explain on
-	// stderr, which run folds into the error. Either way keep the cause.
-	detail := strings.TrimSpace(string(out))
-	if detail == "" {
-		detail = err.Error()
+	out, err = r.run(ctx, 60*time.Second,
+		"commit", "--no-verify", "--quiet", "-m", message)
+	if err != nil {
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			detail = err.Error()
+		}
+		r.abortMerge(ctx)
+		return MergeResult{Conflict: true, Detail: firstLine(detail)}
 	}
-	// Abort whatever state the failed merge left behind, so the next review
-	// does not inherit it.
+	return MergeResult{Merged: true}
+}
+
+// abortMerge clears whatever a failed merge left behind, so the next review
+// does not inherit it. A squash leaves staged changes rather than a merge in
+// progress, which `merge --abort` does not know about: the hard reset is what
+// covers both.
+func (r *Repo) abortMerge(ctx context.Context) {
 	_, _ = r.run(ctx, 60*time.Second, "merge", "--abort")
-	return MergeResult{Conflict: true, Detail: firstLine(detail)}
+	_, _ = r.run(ctx, 60*time.Second, "reset", "--hard", "HEAD")
 }
 
 // MergeInto merges branch into target, in a scratch checkout of target rather
@@ -273,8 +294,6 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 
 	sub := &Repo{Dir: dir}
 	out, err := sub.run(ctx, 120*time.Second,
-		"-c", "user.name=gauntlet",
-		"-c", "user.email=gauntlet@localhost",
 		"merge", "--no-ff", "--no-verify", "-m", message, branch)
 	if err == nil {
 		return MergeResult{Merged: true}
@@ -285,6 +304,21 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	}
 	_, _ = sub.run(context.WithoutCancel(ctx), 60*time.Second, "merge", "--abort")
 	return MergeResult{Conflict: true, Detail: detail}
+}
+
+// Push sends the current branch to its upstream. It is used after a review
+// lands, so a long run publishes as it goes instead of holding everything
+// until the end, and a failure is reported rather than fatal: the work is
+// committed either way, and the next push will carry it.
+func (r *Repo) Push(ctx context.Context) error {
+	if out, err := r.run(ctx, 300*time.Second, "push"); err != nil {
+		detail := firstLine(strings.TrimSpace(string(out)))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return errors.New(detail)
+	}
+	return nil
 }
 
 // Remove deletes the checkout. The branch is left alone: Merge decides
@@ -312,7 +346,11 @@ func (w *Worktree) Remove(ctx context.Context) error {
 func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
-	_, _ = r.run(ctx, 30*time.Second, "branch", "-d", branch)
+	// -D, not -d: a squashed branch is not "merged" as far as git is
+	// concerned, though its content is in the commit that just landed. This
+	// is only ever called after that commit succeeded, or for a branch that
+	// never left its base.
+	_, _ = r.run(ctx, 30*time.Second, "branch", "-D", branch)
 }
 
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
