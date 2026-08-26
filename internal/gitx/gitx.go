@@ -53,9 +53,30 @@ const (
 
 var waitGrace = 10 * time.Second
 
-var gitPath = sync.OnceValue(func() string {
+// gitPath resolves git once per PATH. The memo is keyed by the PATH it was
+// built from for the same reason the agent resolver's is: a cache that
+// outlives its input answers for a machine that no longer exists.
+var (
+	gitMu       sync.Mutex
+	gitPathSeen string
+	gitPathFor  string
+	gitPathOnce bool
+)
+
+func gitPath() string {
+	path := os.Getenv("PATH")
+	gitMu.Lock()
+	defer gitMu.Unlock()
+	if gitPathOnce && gitPathSeen == path {
+		return gitPathFor
+	}
+	gitPathSeen, gitPathFor, gitPathOnce = path, resolveGit(path), true
+	return gitPathFor
+}
+
+func resolveGit(rawPath string) string {
 	// Resolve on an absolute-only PATH so a planted ./git cannot run.
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+	for _, dir := range filepath.SplitList(rawPath) {
 		if dir == "" || !filepath.IsAbs(dir) {
 			continue
 		}
@@ -65,7 +86,7 @@ var gitPath = sync.OnceValue(func() string {
 		}
 	}
 	return ""
-})
+}
 
 // Available reports whether git itself was found.
 func Available() bool { return gitPath() != "" }

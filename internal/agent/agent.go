@@ -133,7 +133,7 @@ func IsOptIn(tool string) bool {
 // Empty slots and "." mean cwd, and relative slots mean $CWD/<slot>: after a
 // cd into the review target, either one would pick up a planted executable
 // with the same name as an agent.
-var pathNoCWD = sync.OnceValue(func() string {
+func pathNoCWD() string {
 	raw := os.Getenv("PATH")
 	if raw == "" {
 		raw = "/usr/local/bin:/usr/bin:/bin"
@@ -145,27 +145,49 @@ var pathNoCWD = sync.OnceValue(func() string {
 		}
 	}
 	return strings.Join(keep, string(os.PathListSeparator))
-})
+}
 
+// The cache is keyed by the PATH it was filled from. A memo that outlives its
+// input answers for a machine that no longer exists: a process that changes
+// PATH (a test harness, a wrapper that adds a directory before launching)
+// would keep being told an agent is missing because it was missing before.
 var (
 	resolveMu    sync.RWMutex
+	resolvePath  string
 	resolveCache = map[string]string{}
 )
+
+// resolveLookup answers from the cache, refilling it when PATH has changed
+// since it was built.
+func resolveLookup(name, path string) (string, bool) {
+	resolveMu.RLock()
+	defer resolveMu.RUnlock()
+	if resolvePath != path {
+		return "", false
+	}
+	got, ok := resolveCache[name]
+	return got, ok
+}
+
+func resolveStore(name, path, found string) {
+	resolveMu.Lock()
+	defer resolveMu.Unlock()
+	if resolvePath != path {
+		resolvePath, resolveCache = path, map[string]string{}
+	}
+	resolveCache[name] = found
+}
 
 // Resolve returns the absolute path of an executable found on a
 // cwd-independent PATH, or "" when it is not installed. Results are memoized:
 // doctor and auto-detection probe the same names repeatedly.
 func Resolve(name string) string {
-	resolveMu.RLock()
-	got, ok := resolveCache[name]
-	resolveMu.RUnlock()
-	if ok {
+	path := pathNoCWD()
+	if got, ok := resolveLookup(name, path); ok {
 		return got
 	}
-	found := lookIn(name, pathNoCWD())
-	resolveMu.Lock()
-	resolveCache[name] = found
-	resolveMu.Unlock()
+	found := lookIn(name, path)
+	resolveStore(name, path, found)
 	return found
 }
 

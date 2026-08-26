@@ -119,6 +119,31 @@ func TestBuildCmdCrushUsesRunMode(t *testing.T) {
 
 // The runner writes the commit in worktree mode, and only the agent knows
 // what its change was: the subject it prints is what the history will say.
+// The resolver caches what it found, and PATH decides what there is to find:
+// a process that changes PATH (a wrapper adding a directory, a test) must not
+// keep being told an agent is missing because it was missing a moment ago.
+func TestResolveFollowsPathChanges(t *testing.T) {
+	dir := t.TempDir()
+	stub := filepath.Join(dir, "pretend-agent")
+
+	if got := Resolve("pretend-agent"); got != "" {
+		t.Fatalf("nothing is installed yet, got %q", got)
+	}
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if got := Resolve("pretend-agent"); got != stub {
+		t.Fatalf("Resolve = %q after PATH gained %s, want %q", got, dir, stub)
+	}
+
+	// And the reverse: dropping the directory drops the answer.
+	t.Setenv("PATH", "/nonexistent-"+filepath.Base(dir))
+	if got := Resolve("pretend-agent"); got != "" {
+		t.Fatalf("Resolve = %q after PATH lost the directory, want none", got)
+	}
+}
+
 func TestParseSubject(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		{"a plain subject", "PATH: x\nSUBJECT: fix: guard the nil map write\nRESULT: changed=1",

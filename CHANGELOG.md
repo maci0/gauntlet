@@ -10,7 +10,18 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
-## 1.7.1
+## 1.7.2
+
+### Fixed
+
+- The binary lookup follows `PATH` instead of answering from a cache built
+  before it changed. Both resolvers memoized on nothing: the agent probe and
+  the git lookup each answered once per process, so a program that added a
+  directory to `PATH` (a wrapper, a test harness) kept being told the tool it
+  had just put there was missing. Each memo is keyed by the `PATH` it was
+  built from now. This is what made 1.7.1 fail to publish: its own test suite
+  hit the stale answer on a machine where the agent it stubbed was not
+  otherwise installed.
 
 ### Changed
 
