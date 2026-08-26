@@ -10,7 +10,7 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
-## Unreleased
+## 1.7.0
 
 ### Added
 
@@ -41,6 +41,36 @@ minor instead and were listed under Changed.
   `runs`: `--limit`; `show`: nothing of its own), plus the global `--log`
   and `--no-color`, and names the flag and the command in the error.
   Scripts that passed such flags and never noticed will see exit 2.
+- gauntlet's own scratch is excluded from the repository it reviews: the run
+  lock (`.gauntlet.lock`) joins the worktree root in `.git/info/exclude`, in
+  every run rather than only in `--jobs` mode, so it can never be committed by
+  a review, a commit step, or a person running `git add -A`. The exclusion is
+  local to the clone, which is where one tool's scratch belongs.
+- Worktree runs leave a history that looks like the project's. Review branches
+  are squashed rather than merged, so a loop of forty reviews leaves forty
+  commits and not forty merge nodes; the commits are authored with your git
+  identity instead of a `gauntlet <gauntlet@localhost>` one; and the subject
+  is what the review says its change was, in the project's own conventional
+  form, rather than "automated review fixes". Reviews print it as
+  `SUBJECT: fix: …` alongside their `PATH:` lines, and a review that prints
+  none falls back to `chore(<review>): apply review findings`.
+- `--push` pushes each review as it lands in worktree mode, not once at the
+  end of the loop, so a long run publishes as it goes. A failed push is
+  reported and counted rather than fatal: the work is committed, and the next
+  push carries it.
+- The offer to commit a dirty tree uses the run's own agent, never
+  `--suggest-agent`: that one was asked which reviews apply, which says
+  nothing about who should write commits.
+- The commit step asks for a conventional type. Its prompt matched whatever
+  style the repository already used, which on a repository with no style
+  produced whatever the agent felt like; it now asks for `feat`, `fix`,
+  `docs`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, or `style`, a
+  scope when one area owns the change, imperative mood and no trailing
+  period, and still defers to the repository when its own log says otherwise.
+- `--merge-into` writes `Merge branch '<branch>'` rather than a message
+  naming the run that produced it, and a conflicted review now prints the
+  command that lands it without writing the scratch branch name into the
+  history: `git merge --squash <branch> && git commit -m "<its subject>"`.
 
 ### Fixed
 
@@ -76,31 +106,10 @@ minor instead and were listed under Changed.
   installed agent CLI is refused with its reason instead of composing a run
   that fails on launch, and the row under the cursor explains itself in the
   status line.
-
-## Unreleased
-
-### Changed
-
-- gauntlet's own scratch is excluded from the repository it reviews: the run
-  lock (`.gauntlet.lock`) joins the worktree root in `.git/info/exclude`, in
-  every run rather than only in `--jobs` mode, so it can never be committed by
-  a review, a commit step, or a person running `git add -A`. The exclusion is
-  local to the clone, which is where one tool's scratch belongs.
-- Worktree runs leave a history that looks like the project's. Review branches
-  are squashed rather than merged, so a loop of forty reviews leaves forty
-  commits and not forty merge nodes; the commits are authored with your git
-  identity instead of a `gauntlet <gauntlet@localhost>` one; and the subject
-  is what the review says its change was, in the project's own conventional
-  form, rather than "automated review fixes". Reviews print it as
-  `SUBJECT: fix: …` alongside their `PATH:` lines, and a review that prints
-  none falls back to `chore(<review>): apply review findings`.
-- `--push` pushes each review as it lands in worktree mode, not once at the
-  end of the loop, so a long run publishes as it goes. A failed push is
-  reported and counted rather than fatal: the work is committed, and the next
-  push carries it.
-- The offer to commit a dirty tree uses the run's own agent, never
-  `--suggest-agent`: that one was asked which reviews apply, which says
-  nothing about who should write commits.
+- Taking the directory lock clears a dead run's note. A killed run leaves its
+  lock file behind with its note in it; the flock died with the process, so
+  the next run takes the lock without trouble, but anything reading the file
+  was told a run is under way that ended yesterday.
 
 ## 1.6.1
 
