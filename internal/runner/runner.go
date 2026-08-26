@@ -213,6 +213,11 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		tools:          resolveTools(cfg.Reviews),
 	}
 	r.seed = seed
+	// Whatever this run does, it writes a lock in the reviewed tree and may
+	// write worktrees under it. Neither is the project's, so neither should
+	// ever show up in its git status: the exclusion is local to the clone,
+	// which is the right place for one tool's scratch.
+	r.repo.ExcludeOwnArtifacts(ctx)
 	if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err
@@ -304,7 +309,6 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 			n, humanize.List(changes.Untracked, 3))
 	}
 	r.repo.PruneWorktrees(ctx)
-	r.repo.ExcludeWorktreeRoot(ctx)
 	return nil
 }
 
@@ -1064,4 +1068,4 @@ func AgentLabels(specs []agent.Spec) []string {
 }
 
 // LockPath is the per-directory lock file that keeps two runs apart.
-func LockPath(dir string) string { return filepath.Join(dir, ".gauntlet.lock") }
+func LockPath(dir string) string { return filepath.Join(dir, gitx.LockName) }

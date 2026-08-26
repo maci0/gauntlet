@@ -24,6 +24,10 @@ type Worktree struct {
 	repo   *Repo
 }
 
+// LockName is the run lock gauntlet writes in the directory it reviews. It
+// lives here so the ignore rules and the runner agree on one spelling.
+const LockName = ".gauntlet.lock"
+
 // worktreeRoot is where per-review checkouts live, relative to the repo.
 // Keeping them inside the repo means one .git object store and no cross-device
 // rename; keeping them under one directory means one line in info/exclude.
@@ -79,7 +83,7 @@ func (r *Repo) Tip(ctx context.Context, ref string) (string, error) {
 // ExcludeWorktreeRoot adds the worktree directory to .git/info/exclude, so the
 // checkouts never show up as untracked files in the repo being reviewed. It is
 // idempotent and best effort: a failure only means noisier git status output.
-func (r *Repo) ExcludeWorktreeRoot(ctx context.Context) {
+func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	out, err := r.run(ctx, 10*time.Second, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return
@@ -90,8 +94,13 @@ func (r *Repo) ExcludeWorktreeRoot(ctx context.Context) {
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
 	body, _ := os.ReadFile(path)
-	entry := "/" + worktreeRoot + "/"
-	if strings.Contains(string(body), entry) {
+	var missing []string
+	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
+		if !strings.Contains(string(body), entry) {
+			missing = append(missing, entry)
+		}
+	}
+	if len(missing) == 0 {
 		return
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -106,7 +115,8 @@ func (r *Repo) ExcludeWorktreeRoot(ctx context.Context) {
 	if len(body) > 0 && !strings.HasSuffix(string(body), "\n") {
 		prefix = "\n"
 	}
-	fmt.Fprintf(f, "%s# gauntlet per-review worktrees\n%s\n", prefix, entry)
+	fmt.Fprintf(f, "%s# gauntlet's own scratch: per-review worktrees and the run lock\n%s\n",
+		prefix, strings.Join(missing, "\n"))
 }
 
 // AddWorktree creates a checkout of base on a fresh branch. The name is the

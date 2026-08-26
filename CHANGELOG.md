@@ -81,6 +81,11 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- gauntlet's own scratch is excluded from the repository it reviews: the run
+  lock (`.gauntlet.lock`) joins the worktree root in `.git/info/exclude`, in
+  every run rather than only in `--jobs` mode, so it can never be committed by
+  a review, a commit step, or a person running `git add -A`. The exclusion is
+  local to the clone, which is where one tool's scratch belongs.
 - Worktree runs leave a history that looks like the project's. Review branches
   are squashed rather than merged, so a loop of forty reviews leaves forty
   commits and not forty merge nodes; the commits are authored with your git

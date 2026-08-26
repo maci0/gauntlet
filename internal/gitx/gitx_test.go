@@ -342,18 +342,30 @@ func TestDirtyPathsNonASCIIFilename(t *testing.T) {
 	}
 }
 
-func TestExcludeWorktreeRootIsIdempotent(t *testing.T) {
+// gauntlet's own scratch never belongs in a project's git status, and the
+// exclusion is written once however often a run asks for it.
+func TestExcludeOwnArtifactsIsIdempotent(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
-	r.ExcludeWorktreeRoot(ctx)
-	r.ExcludeWorktreeRoot(ctx)
+	r.ExcludeOwnArtifacts(ctx)
+	r.ExcludeOwnArtifacts(ctx)
 
 	body, err := os.ReadFile(filepath.Join(r.Dir, ".git", "info", "exclude"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := strings.Count(string(body), "/"+worktreeRoot+"/"); n != 1 {
-		t.Fatalf("exclude entry written %d times:\n%s", n, body)
+	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
+		if n := strings.Count(string(body), entry); n != 1 {
+			t.Fatalf("%q written %d times:\n%s", entry, n, body)
+		}
+	}
+
+	// And git agrees: a lock file in the tree is ignored, not untracked work.
+	if err := os.WriteFile(filepath.Join(r.Dir, LockName), []byte("held\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if ignored := r.CheckIgnore(ctx, []string{LockName}); !ignored[LockName] {
+		t.Fatal("the run lock must be ignored by the repository it runs in")
 	}
 }
 
