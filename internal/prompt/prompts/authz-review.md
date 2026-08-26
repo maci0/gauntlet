@@ -99,4 +99,4 @@ Important:
 - Base findings on actual reachable request paths, not on the existence of a pattern elsewhere in the code.
 - The deny side is the product: every check that exists for the happy path and is missing for the hostile path is the finding.
 - If the repository is large, prioritize mutation endpoints, tenant-scoped queries, and export/search surfaces first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

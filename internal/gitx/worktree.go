@@ -10,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // Worktree is one review's private checkout: its own directory, its own
@@ -47,7 +46,7 @@ func (r *Repo) IsClean(ctx context.Context, ownArtifacts map[string]bool) (bool,
 
 // CurrentBranch returns the checked-out branch name, or "" on a detached HEAD.
 func (r *Repo) CurrentBranch(ctx context.Context) string {
-	out, err := r.run(ctx, 10*time.Second, "symbolic-ref", "--quiet", "--short", "HEAD")
+	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		return ""
 	}
@@ -57,7 +56,7 @@ func (r *Repo) CurrentBranch(ctx context.Context) string {
 // Branches lists local branch names, excluding gauntlet's own review
 // branches: those are a run's scratch space, never a merge target.
 func (r *Repo) Branches(ctx context.Context) []string {
-	out, err := r.run(ctx, 10*time.Second, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
 	if err != nil {
 		return nil
 	}
@@ -73,18 +72,19 @@ func (r *Repo) Branches(ctx context.Context) []string {
 
 // Tip returns the commit the given ref points at.
 func (r *Repo) Tip(ctx context.Context, ref string) (string, error) {
-	out, err := r.run(ctx, 10*time.Second, "rev-parse", ref)
+	out, err := r.run(ctx, gitQuick, "rev-parse", ref)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
-// ExcludeWorktreeRoot adds the worktree directory to .git/info/exclude, so the
-// checkouts never show up as untracked files in the repo being reviewed. It is
+// ExcludeOwnArtifacts adds what a run writes into the reviewed tree, the
+// per-review checkouts and the run lock, to .git/info/exclude, so neither ever
+// shows up as an untracked file in the repository being reviewed. It is
 // idempotent and best effort: a failure only means noisier git status output.
 func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
-	out, err := r.run(ctx, 10*time.Second, "rev-parse", "--git-common-dir")
+	out, err := r.run(ctx, gitQuick, "rev-parse", "--git-common-dir")
 	if err != nil {
 		return
 	}
@@ -133,7 +133,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
-	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
+	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
 	// A leftover branch would fail the add too: a hot reload continues the
 	// same run id while the successor's loop numbering restarts, so tags and
 	// their branches recur. One still pointing at base carries no committed
@@ -145,12 +145,12 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 			return nil, fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
 				branch, tip[:min(12, len(tip))], base[:min(12, len(base))])
 		}
-		_, _ = r.run(ctx, 30*time.Second, "branch", "-D", branch)
+		_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, err
 	}
-	if _, err := r.run(ctx, 120*time.Second, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -167,14 +167,14 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 // the message (the same rule the commit-step prompt enforces).
 func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) {
 	sub := &Repo{Dir: w.Dir}
-	if _, err := sub.run(ctx, 60*time.Second, "add", "-A"); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "add", "-A"); err != nil {
 		return false, fmt.Errorf("git add: %w", err)
 	}
 	// diff --cached --quiet exits 1 when something is staged.
-	if _, err := sub.run(ctx, 30*time.Second, "diff", "--cached", "--quiet"); err == nil {
+	if _, err := sub.run(ctx, gitNormal, "diff", "--cached", "--quiet"); err == nil {
 		return false, nil
 	}
-	if _, err := sub.run(ctx, 60*time.Second,
+	if _, err := sub.run(ctx, gitNormal,
 		"commit", "--no-verify", "--quiet", "-m", message); err != nil {
 		return false, fmt.Errorf("git commit: %w", err)
 	}
@@ -196,10 +196,10 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 // git-visible debris is the retry's problem.
 func (w *Worktree) ResetToBase(ctx context.Context) error {
 	sub := &Repo{Dir: w.Dir}
-	if _, err := sub.run(ctx, 60*time.Second, "reset", "--hard", w.base); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "reset", "--hard", w.base); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
 	}
-	if _, err := sub.run(ctx, 60*time.Second, "clean", "-fd"); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {
 		return fmt.Errorf("git clean -fd: %w", err)
 	}
 	return nil
@@ -229,7 +229,7 @@ type MergeResult struct {
 // inspected or merged by hand. Dropping it silently would lose a review's
 // entire output.
 func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
-	out, err := r.run(ctx, 120*time.Second, "merge", "--squash", "--no-verify", branch)
+	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
 	if err != nil {
 		// A conflicted merge narrates on stdout; other failures explain on
 		// stderr, which run folds into the error. Either way keep the cause.
@@ -242,10 +242,10 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	}
 	// A squash stages; it never commits. Nothing staged means the branch held
 	// nothing this tree does not already have.
-	if _, clean := r.run(ctx, 30*time.Second, "diff", "--cached", "--quiet"); clean == nil {
+	if _, clean := r.run(ctx, gitNormal, "diff", "--cached", "--quiet"); clean == nil {
 		return MergeResult{Merged: true}
 	}
-	out, err = r.run(ctx, 60*time.Second,
+	out, err = r.run(ctx, gitNormal,
 		"commit", "--no-verify", "--quiet", "-m", message)
 	if err != nil {
 		detail := strings.TrimSpace(string(out))
@@ -263,8 +263,8 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 // progress, which `merge --abort` does not know about: the hard reset is what
 // covers both.
 func (r *Repo) abortMerge(ctx context.Context) {
-	_, _ = r.run(ctx, 60*time.Second, "merge", "--abort")
-	_, _ = r.run(ctx, 60*time.Second, "reset", "--hard", "HEAD")
+	_, _ = r.run(ctx, gitNormal, "merge", "--abort")
+	_, _ = r.run(ctx, gitNormal, "reset", "--hard", "HEAD")
 }
 
 // MergeInto merges branch into target, in a scratch checkout of target rather
@@ -289,21 +289,21 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	defer r.wtMu.Unlock()
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
-	_, _ = r.run(ctx, 30*time.Second, "worktree", "remove", "--force", dir)
+	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return MergeResult{Detail: err.Error()}
 	}
-	if _, err := r.run(ctx, 120*time.Second, "worktree", "add", "--quiet", dir, target); err != nil {
+	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", dir, target); err != nil {
 		// A target already checked out elsewhere is the common cause, and it
 		// is the user's own checkout: say so rather than the raw git error.
 		return MergeResult{Detail: fmt.Sprintf("cannot check out %s to merge into: %v", target, err)}
 	}
 	defer func() {
-		_, _ = r.run(context.WithoutCancel(ctx), 30*time.Second, "worktree", "remove", "--force", dir)
+		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "worktree", "remove", "--force", dir)
 	}()
 
 	sub := &Repo{Dir: dir}
-	out, err := sub.run(ctx, 120*time.Second,
+	out, err := sub.run(ctx, gitSlow,
 		"merge", "--no-ff", "--no-verify", "-m", message, branch)
 	if err == nil {
 		return MergeResult{Merged: true}
@@ -312,7 +312,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	if detail == "" {
 		detail = err.Error()
 	}
-	_, _ = sub.run(context.WithoutCancel(ctx), 60*time.Second, "merge", "--abort")
+	_, _ = sub.run(context.WithoutCancel(ctx), gitNormal, "merge", "--abort")
 	return MergeResult{Conflict: true, Detail: detail}
 }
 
@@ -321,7 +321,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 // until the end, and a failure is reported rather than fatal: the work is
 // committed either way, and the next push will carry it.
 func (r *Repo) Push(ctx context.Context) error {
-	if out, err := r.run(ctx, 300*time.Second, "push"); err != nil {
+	if out, err := r.run(ctx, gitPush, "push"); err != nil {
 		detail := firstLine(strings.TrimSpace(string(out)))
 		if detail == "" {
 			detail = err.Error()
@@ -339,7 +339,7 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
-	if _, err := w.repo.run(ctx, 60*time.Second, "worktree", "remove", "--force", w.Dir); err != nil {
+	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err != nil {
 		return fmt.Errorf("git worktree remove: %w", err)
 	}
 	return nil
@@ -360,7 +360,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	// concerned, though its content is in the commit that just landed. This
 	// is only ever called after that commit succeeded, or for a branch that
 	// never left its base.
-	_, _ = r.run(ctx, 30*time.Second, "branch", "-D", branch)
+	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 }
 
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
@@ -368,7 +368,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 func (r *Repo) PruneWorktrees(ctx context.Context) {
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
-	_, _ = r.run(ctx, 60*time.Second, "worktree", "prune")
+	_, _ = r.run(ctx, gitNormal, "worktree", "prune")
 }
 
 // CleanWorktreeRoot removes the per-review checkout directory when nothing is

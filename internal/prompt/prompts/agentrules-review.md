@@ -27,7 +27,7 @@ Review the following:
 
 4. Instruction quality
 - Hedged or ambiguous rules where the agent needs a command ("try to prefer X" vs "use X, never Y")
-- Documentation-taxonomy rules that misstate the industry-standard roles: PRD = product requirements (what and why), RFC = request for comments (the proposal before the decision), ADR = a decision that has been made. A rule telling agents to write a "proposed ADR", or to use an RFC as a settled spec, is a defect — an unmade decision belongs in an RFC
+- Documentation-taxonomy rules that misstate the industry-standard roles: PRD = product requirements (what and why), RFC = request for comments (the proposal before the decision), ADR = a decision that has been made. A rule telling agents to write a "proposed ADR", or to use an RFC as a settled spec, is a defect: an unmade decision belongs in an RFC
 - Rules without the why where the why prevents misapplication
 - Contradictions within the file or between rule files consumed by the same agent
 - Vague quantities where thresholds are needed

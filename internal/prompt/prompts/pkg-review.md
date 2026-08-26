@@ -78,7 +78,7 @@ Instructions:
 - Be concrete: name the spec field, the manifest line, the scriptlet, the layer.
 - Distinguish policy violations (format rules) from packaging bugs (breaks install/upgrade) from hygiene (bloat, stray files).
 - Least privilege is the default judgment for all permissions; every broad grant needs a named reason.
-- Do not restructure the build system, CI/CD, or version scheme — those belong to build-, infra-, and release-review.
+- Do not restructure the build system, CI/CD, or version scheme: those belong to build-, infra-, and release-review.
 - Prefer fewer high-value findings over many weak ones.
 - Call out formats that are packaged cleanly and should not be disturbed.
 
@@ -119,4 +119,4 @@ Important:
 - Base findings on the actual packaging files, not assumptions about how the project is probably packaged.
 - Packaging bugs surface on other people's machines; treat "works here" as no evidence.
 - If the repository is large, prioritize the formats users actually install from (check README/releases).
-- Optimize for actionable feedback a team could turn into packaging tickets immediately.
+- Optimize for feedback a team could turn into packaging tickets immediately.

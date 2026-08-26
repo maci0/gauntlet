@@ -28,7 +28,7 @@ Review the following:
 3. Status codes and error handling
 (sec-review owns leaks that reveal internals to untrusted clients; here own status-code correctness and error-envelope consistency.)
 - Incorrect HTTP status codes for the operation outcome
-- Generic error responses without actionable detail
+- Generic error responses with no detail a caller can act on
 - Inconsistent error response format across endpoints
 - Missing validation error details (which field, what constraint)
 - 500 errors returned for client mistakes

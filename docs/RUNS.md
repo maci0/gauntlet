@@ -145,7 +145,7 @@ replaces anything; a mismatch leaves the running binary untouched.
 
 Hot reload is on by default (`--hot-reload=false` disables it). When the
 executable on disk changes, by `gauntlet update`, `make install`, or a fresh
-`go build`, the swap is seamless:
+`go build`, the swap costs the run nothing:
 
 - **No agent is killed.** Reviews already running finish normally, including
   their commit and merge. Only then does the process hand over.

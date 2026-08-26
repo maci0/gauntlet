@@ -96,4 +96,4 @@ Important:
 - Base findings on the actual code and the project's own support claims, not on a maximal portability ideal.
 - "Works in CI" only covers the platforms CI runs; absence of a platform from CI is evidence of nothing.
 - If the repository is large, prioritize install/bootstrap scripts, filesystem code, and binary I/O first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

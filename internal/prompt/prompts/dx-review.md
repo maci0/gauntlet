@@ -40,7 +40,7 @@ Review the following:
 - Review-blocking generated files (lockfiles, snapshots, generated code) with no documented regeneration command
 
 6. Error-message quality on the dev path
-- Common misconfigurations (missing env var, service not running, stale dependencies) producing stack traces instead of a named, actionable message
+- Common misconfigurations (missing env var, service not running, stale dependencies) producing stack traces instead of a named message saying what to do
 - Failure output burying the actual error under framework noise, with no documented way to get the useful form
 - Silent fallbacks in dev setup (using a wrong default, skipping a step) that defer the failure to a confusing distance
 
@@ -88,4 +88,4 @@ Important:
 - Base findings on commands actually run or traced, not on how the docs say it should go.
 - The maintainer's machine is not the baseline; the clean clone is.
 - If the repository is large, prioritize the bootstrap and the single-test loop first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

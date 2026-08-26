@@ -95,4 +95,4 @@ Important:
 - Base findings on the actual write paths and key schemes, not on caching folklore.
 - A cache that has never served wrong data may simply never have raced its write path under load.
 - If the repository is large, prioritize caches holding permissions, prices, and per-user data first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

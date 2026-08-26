@@ -183,7 +183,7 @@ Important:
 - Base findings on the actual code, not assumptions about what might exist.
 - If a surface looks low-risk but has complex input handling, flag it anyway.
 - Prefer structure-aware fuzzing over purely random byte mutation where schemas exist.
-- Do not recommend fuzzing everything — focus on surfaces where bugs have real consequences.
+- Do not recommend fuzzing everything: focus on surfaces where bugs have real consequences.
 - Consider that a good fuzz test is worth more than many unit tests for parser robustness.
 - Call out when existing input validation is strong enough to reduce fuzzing priority.
 - Recommend generating regression tests from every crash artifact.

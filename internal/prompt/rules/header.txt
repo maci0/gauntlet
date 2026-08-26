@@ -1,1 +1,1 @@
-MODE: AUTO_FIX — apply fixes directly to files. Do NOT write a report.
+MODE: AUTO_FIX. Apply fixes directly to files. Do NOT write a report.

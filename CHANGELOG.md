@@ -14,6 +14,20 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- The prompt library and the docs follow the writing rules the project sets
+  for the code it reviews: no em dashes (49 of them, rewritten as the comma,
+  colon, or sentence break each one was standing in for), and none of the
+  weasel words the style rules ban, of which "actionable" alone appeared 27
+  times in one boilerplate line that read better without it.
+- Tuning constants that were sitting inline are named where they are set: the
+  flag defaults the docs quote (`--timeout`, `--retries`, `runs --limit`), the
+  dashboard's thinking-glyph timings, and the four budgets every git command
+  now picks from instead of carrying a bare duration.
+- `scripts/shots.sh` no longer writes Python from shell or works in `/tmp`:
+  the renderer is `scripts/shots/render.py`, a uv script with inline
+  dependencies, and the working directory is `.scratch/`, which is on disk
+  rather than in RAM.
+
 - The README shows the dashboard and the launcher as screenshots rather than
   an ASCII transcript. Both are the renderer's own output: `scripts/shots.sh`
   writes the frames from `internal/ui`, exports them as a terminal, and
@@ -580,7 +594,7 @@ Changed:
 
 ### Changed
 
-- `code-review` now flags fabricated or discarded type evidence — code that
+- `code-review` now flags fabricated or discarded type evidence: code that
   makes a value look safer to the compiler than it is (a frequent tell of
   machine-generated code): chained/widen-then assertions, `unknown`/`any`/
   `object` concealing a real contract, ad-hoc `typeof` narrowing instead of
@@ -597,7 +611,7 @@ Changed:
 - A hostile target repo can no longer execute code in the runner process.
   Its `.git/config` could set `core.fsmonitor` (or other config-as-command
   keys) to any program, which git ran during the runner's ordinary
-  read-only calls — during discovery (so even `--list`/`--dry-run`), in the
+  read-only calls, during discovery (so even `--list`/`--dry-run`), in the
   lines-changed stats before the first agent, and in the commit step. Every
   git call now forces those keys empty and resolves the git binary on a
   cwd-independent PATH.
@@ -612,7 +626,7 @@ Changed:
 
 - `--show-prompt REVIEW` prints the exact composed prompt an agent would
   receive (after stripping and the auto-fix suffix; honors `--yolo` and
-  `--timeout`), then exits — for debugging project-local prompts.
+  `--timeout`), then exits, for debugging project-local prompts.
 - `-V` as a short alias for `--version`.
 - Lines-changed stats now count new (untracked) files and attribute a
   review that reverts another's lines as deletions, so the final summary
@@ -813,7 +827,7 @@ Changed:
 - `container-review` audits container-native readiness of Kubernetes
   workloads declared in Deployment/StatefulSet/DaemonSet manifests, Helm
   charts, and Kustomize overlays. Covers health probes (liveness, readiness,
-  startup — including dependency checks in the readiness probe), graceful
+  startup, including dependency checks in the readiness probe), graceful
   shutdown (SIGTERM handling, shell-form CMD, preStop hook,
   terminationGracePeriodSeconds), observability wiring (ServiceMonitor/
   PodMonitor presence, stdout log delivery, OTel annotation injection),

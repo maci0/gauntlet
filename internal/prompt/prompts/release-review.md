@@ -122,4 +122,4 @@ Important:
 - Base findings on the actual exported surface, version history, and notes, not assumptions.
 - When you cannot tell whether a change is public API, skip it.
 - If the repository is large, prioritize the public API and the most recent release delta.
-- Optimize for actionable feedback a team could turn into release-blocking tickets immediately.
+- Optimize for feedback a team could turn into release-blocking tickets immediately.

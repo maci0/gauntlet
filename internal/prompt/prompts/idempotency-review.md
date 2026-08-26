@@ -81,7 +81,7 @@ Instructions:
 - Prefer fixes in this order: make the operation naturally idempotent > add a unique constraint the database enforces > add an application-level dedup ledger > add an advisory lock. Application-level checks that read-then-write are the weakest and can fail under concurrency.
 - In auto-fix mode make one operation naturally idempotent or add a unique constraint / idempotency-key check at one proven retry site. Do not introduce an outbox, saga, or dedup ledger in one pass.
 - Never add a dedup mechanism whose state can grow without bound; a retention window is part of the fix.
-- Do not report retry policy, race conditions, or schema design themselves — those belong to error-, concurrency-, and db-review.
+- Do not report retry policy, race conditions, or schema design themselves: those belong to error-, concurrency-, and db-review.
 - Prefer fewer high-value findings; call out operations that are already provably idempotent so they are left alone.
 
 For each finding include:
@@ -121,4 +121,4 @@ Important:
 - Base findings on the actual code paths and the delivery/retry mechanisms in use, not assumptions about them.
 - "It has not happened yet" is not evidence of safety: retries and redeliveries are rare until the day they are not.
 - If the repository is large, prioritize anything touching money, messaging, provisioning, and stored counters.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

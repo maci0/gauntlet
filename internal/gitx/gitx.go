@@ -40,6 +40,17 @@ var safeConfig = []string{
 // the mutexes around Sample, Merge, and the worktree calls, forever past the
 // deadline. A var only so tests can shrink it; production always sees the
 // default.
+// How long one git command may take, by what it has to do. A query answers
+// from the index or a ref; a normal command writes one; a slow one walks the
+// tree (a worktree add, a merge); a push waits on a network nobody here
+// controls. Every call names one of these rather than carrying a number.
+const (
+	gitQuick  = 10 * time.Second
+	gitNormal = 60 * time.Second
+	gitSlow   = 120 * time.Second
+	gitPush   = 300 * time.Second
+)
+
 var waitGrace = 10 * time.Second
 
 var gitPath = sync.OnceValue(func() string {
@@ -116,7 +127,7 @@ func Open(dir string) *Repo {
 	if !Available() {
 		return r
 	}
-	if out, err := r.run(context.Background(), 10*time.Second, "rev-parse", "HEAD"); err == nil {
+	if out, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD"); err == nil {
 		r.baseline = strings.TrimSpace(string(out))
 	}
 	return r
@@ -225,11 +236,11 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		return r.lastVal, true
 	}
 
-	diff, err := r.run(ctx, 10*time.Second, "diff", "--shortstat", r.baseline)
+	diff, err := r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline)
 	if err != nil {
 		return Stats{}, false
 	}
-	untracked, err := r.run(ctx, 10*time.Second, "ls-files", "--others", "--exclude-standard", "-z")
+	untracked, err := r.run(ctx, gitQuick, "ls-files", "--others", "--exclude-standard", "-z")
 	if err != nil {
 		return Stats{}, false
 	}
@@ -357,7 +368,7 @@ func countLinesFrom(f *os.File) int {
 // the range covers one review's own commit and nothing else.
 func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int, ok bool) {
 	sub := &Repo{Dir: dir}
-	out, err := sub.run(ctx, 30*time.Second, "diff", "--shortstat", from, to)
+	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", from, to)
 	if err != nil {
 		return 0, 0, false
 	}
@@ -380,7 +391,7 @@ type Changes struct {
 // Status reports the working tree's changes, excluding the runner's own
 // artifacts, split by whether git tracks them.
 func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Changes, error) {
-	out, err := r.run(ctx, 10*time.Second,
+	out, err := r.run(ctx, gitQuick,
 		"-c", "core.quotePath=false",
 		"status", "--porcelain")
 	if err != nil {
@@ -408,7 +419,7 @@ func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Change
 }
 
 func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]string, error) {
-	out, err := r.run(ctx, 10*time.Second,
+	out, err := r.run(ctx, gitQuick,
 		"-c", "core.quotePath=false",
 		"status", "--porcelain")
 	if err != nil {
@@ -444,7 +455,7 @@ func (r *Repo) CheckIgnore(ctx context.Context, paths []string) map[string]bool 
 		return out
 	}
 	data, err := r.runIn(ctx, strings.NewReader(strings.Join(paths, "\x00")),
-		10*time.Second, "check-ignore", "--stdin", "-z")
+		gitQuick, "check-ignore", "--stdin", "-z")
 	if err != nil {
 		var ee *exec.ExitError
 		if !(errors.As(err, &ee) && ee.ExitCode() == 1) {

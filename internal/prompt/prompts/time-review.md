@@ -96,4 +96,4 @@ Important:
 - Base findings on actual code paths and the zones/units they demonstrably use, not assumptions.
 - Code that "has always worked" may simply not have crossed a DST transition or year boundary under load yet.
 - If the repository is large, prioritize billing, scheduling, expiry, and anything that persists timestamps.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

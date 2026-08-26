@@ -95,4 +95,4 @@ Important:
 - Base findings on the actual types and value ranges the code handles, not worst cases it can never see.
 - Tests almost never cover DST-style numeric edges: overflow thresholds, NaN, and negative modulo are wrong silently until production finds them.
 - If the repository is large, prioritize money paths, ID generation, and anything persisted or sent to another system.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

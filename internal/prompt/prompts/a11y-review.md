@@ -83,12 +83,12 @@ Review the following:
 Instructions:
 - Fix order: keyboard traps and missing focus management (users stuck) > missing accessible names on interactive elements (controls invisible to AT) > contrast and text-alternative gaps > ARIA misuse and semantic issues > missing live regions and status announcements.
 - In auto-fix mode fix markup, names, labels, contrast tokens, and keyboard/focus handlers in the UI you can see. Section 10 is note-only.
-- If available, use: `axe` (axe-core CLI)/`pa11y`/`lighthouse` (WCAG scans), `vnu` (offline W3C validation: invalid markup breaks assistive-tech parsing). Run scanners only against static HTML or an already-listening local URL; never start a server to obtain one, and never hit a remote host. `eslint-plugin-jsx-a11y` is an ESLint plugin, not a binary: use it only if the project already runs it. Automated scans catch at most a third of barriers — a floor, not the review. Never install tools.
+- If available, use: `axe` (axe-core CLI)/`pa11y`/`lighthouse` (WCAG scans), `vnu` (offline W3C validation: invalid markup breaks assistive-tech parsing). Run scanners only against static HTML or an already-listening local URL; never start a server to obtain one, and never hit a remote host. `eslint-plugin-jsx-a11y` is an ESLint plugin, not a binary: use it only if the project already runs it. Automated scans catch at most a third of barriers, which is a floor, not the review. Never install tools.
 - Be concrete. Point at the component/element and the specific barrier, and cite the WCAG success criterion (e.g. 2.1.1 Keyboard, 1.4.3 Contrast) where it applies.
 - State who is blocked and how (keyboard user cannot dismiss dialog; screen reader announces button as unlabeled).
 - Prefer native HTML/platform fixes over ARIA; call out ARIA misuse explicitly.
 - Distinguish confirmed barriers from likely ones from those needing manual AT testing to confirm.
-- Do not report general visual polish or copy tone — that belongs to ux-review.
+- Do not report general visual polish or copy tone: that belongs to ux-review.
 - Prefer fewer high-value findings over many weak ones.
 - Call out where accessibility is handled well and should not be disturbed.
 
@@ -128,6 +128,6 @@ Grouped by category, using the finding template above.
 
 Important:
 - Base findings on the actual markup/components, not assumptions; note where dynamic behavior can't be judged from static code.
-- Some criteria (announcement, focus behavior, real AT output) require manual testing — flag these rather than guessing.
+- Some criteria (announcement, focus behavior, real AT output) require manual testing: flag these rather than guessing.
 - If the repository is large, prioritize shared components and the primary user flows.
-- Optimize for actionable feedback a team could turn into a11y tickets immediately.
+- Optimize for feedback a team could turn into a11y tickets immediately.

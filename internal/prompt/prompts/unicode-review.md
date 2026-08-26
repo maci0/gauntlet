@@ -91,4 +91,4 @@ Important:
 - Base findings on the actual boundaries and inputs the code can receive, not on exotic inputs it never will.
 - ASCII-only test suites prove nothing here; absence of Unicode bugs in tests is absence of Unicode in tests.
 - If the repository is large, prioritize identity-bearing text (usernames, keys, filenames) and storage boundaries first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

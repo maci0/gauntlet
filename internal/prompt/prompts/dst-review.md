@@ -81,7 +81,7 @@ Instructions:
 - Frame findings as "this blocks deterministic simulation because ..." with the specific nondeterminism it introduces.
 - Distinguish confirmed determinism leaks from likely ones. If deciding requires maintainer intent, skip.
 - Separate "not simulable yet" (architectural gap) from "simulable but not simulated" (missing harness/CI).
-- Do not report generic test-coverage, input-fuzzing, or race-detection concerns — those belong to test-, fuzz-, and concurrency-review.
+- Do not report generic test-coverage, input-fuzzing, or race-detection concerns: those belong to test-, fuzz-, and concurrency-review.
 - Prefer fewer high-value findings; the biggest wins are usually the central clock, the single seeded RNG, and the I/O seam.
 - Call out where determinism is already handled well and should not be disturbed.
 
@@ -121,4 +121,4 @@ Important:
 - Base findings on the actual code and its concurrency/I/O model, not assumptions.
 - If the system is not a fit for DST, print the skip result and stop instead of forcing findings.
 - Prioritize the few central seams that unlock everything else over many scattered small leaks.
-- Optimize for actionable feedback a team could turn into simulation-enablement tickets immediately.
+- Optimize for feedback a team could turn into simulation-enablement tickets immediately.

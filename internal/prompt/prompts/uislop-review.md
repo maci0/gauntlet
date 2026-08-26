@@ -77,7 +77,7 @@ Instructions:
 - Fixes must be small and token-level: replace a palette, set a type scale, remove decoration, rewrite microcopy. Never redesign whole pages in one pass; change tokens and the worst instances only.
 - Never trade away accessibility: any color or type change keeps or improves contrast and readability.
 - Fabricated content (fake testimonials, placeholder stats presented as real) is the one medium-severity item: remove or clearly mark it.
-- Do not report usability, interaction design, or a11y findings — those belong to ux-review and a11y-review.
+- Do not report usability, interaction design, or a11y findings: those belong to ux-review and a11y-review.
 - Prefer fewer, well-argued findings over a taste rant. Every finding names the cluster and the specific deliberate alternative.
 
 For each finding include:
@@ -99,7 +99,7 @@ Output format:
 ## Executive Summary
 - The 5 to 10 strongest genericness clusters
 - Overall verdict: does this interface have an identity?
-- The single highest-leverage change (usually: tokens — palette, type scale, radius — chosen on purpose)
+- The single change that carries the most (usually the tokens: palette, type scale, radius, chosen on purpose)
 
 ## Detailed Findings
 Grouped by category, using the finding template above.

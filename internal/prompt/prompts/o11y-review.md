@@ -14,7 +14,7 @@ Review the following:
 - Sensitive data logged (credentials, PII, tokens, session data) (note only; privacy-review owns PII redaction, sec-review owns credentials)
 - Missing logging at critical decision points or state transitions
 - Excessive logging that creates noise and increases cost (volume and level; a proven hot-path throughput hit belongs to perf-review)
-- Log messages that are not actionable or useful for debugging
+- Log messages that do not help anyone debugging
 - Inconsistent log format across services or modules
 - Missing correlation IDs for tracing requests across components
 - Logging that swallows context from caught exceptions
@@ -192,7 +192,7 @@ Small changes that significantly improve debuggability or incident response.
 Important:
 - Base findings on actual logging calls, metric definitions, trace instrumentation, and alert rules in the code.
 - If you are not sure whether an observability gap matters for this system, skip it.
-- Prefer adding targeted, high-value observability over comprehensive but noisy instrumentation.
+- Prefer targeted, high-value observability over broad but noisy instrumentation.
 - Do not recommend enterprise observability platforms for simple services.
 - Consider the performance and cost overhead of every recommendation.
 - The goal is not maximum observability but sufficient observability to operate reliably.

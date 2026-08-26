@@ -34,7 +34,7 @@ Review the following:
 - Missing usage examples in error output for incorrect invocations
 
 4. Error handling and exit codes
-- Clear and actionable error messages that explain what went wrong and how to fix it
+- Clear error messages that explain what went wrong and how to fix it
 - Helpful suggestions for incorrect or misspelled input
 - Proper and consistent exit codes (0 success, 1 general error, 2 usage error)
 - Cryptic or low-level errors leaking to users (note only when the leak reveals internals; sec-review owns the redaction)

@@ -42,7 +42,7 @@ Review the following:
 4. Correctness of build outputs
 - Stale artifacts: outputs not rebuilt when inputs change (bad incremental rules, missing deps in Makefile)
 - Over-broad clean/rebuild that hides staleness by always rebuilding everything
-- Wrong files shipped: source maps, `.env`, test fixtures, secrets, or dev-only files in the artifact (contents of installable packages — deb/rpm/wheel/npm/APK — belong to pkg-review; here cover raw build outputs)
+- Wrong files shipped: source maps, `.env`, test fixtures, secrets, or dev-only files in the artifact (contents of installable packages, deb/rpm/wheel/npm/APK, belong to pkg-review; here cover raw build outputs)
 - Missing files in the artifact that runtime needs
 - Debug/release confusion: debug symbols or assertions in release, optimizations off unexpectedly
 - Binary hardening flags missing for compiled artifacts: stack canaries (`-fstack-protector-strong`), position-independent executables (`-pie`/`-fPIE`), full RELRO (`-Wl,-z,relro,-z,now`), FORTIFY_SOURCE (`-D_FORTIFY_SOURCE=2`), non-executable stack (`-Wl,-z,noexecstack`). Check CMakeLists, Makefiles, Cargo profiles, meson options, and CI build scripts
@@ -93,7 +93,7 @@ Instructions:
 - Be concrete. Point at the specific rule, script line, or config key.
 - Prefer verifiable claims: "this Makefile target lacks `foo.h` as a prerequisite, so editing it does not trigger a rebuild."
 - Distinguish confirmed issues from likely issues from things needing maintainer confirmation.
-- Do not report runtime code quality, test design, or deployment concerns — those belong to other reviews.
+- Do not report runtime code quality, test design, or deployment concerns: those belong to other reviews.
 - Prefer fewer high-value findings over many weak ones.
 - Call out where the build is already reproducible/hermetic and should not be disturbed.
 
@@ -131,4 +131,4 @@ Important:
 - Base findings on the actual build config and scripts, not assumptions.
 - Verify a clean-checkout build path mentally; flag anything that relies on pre-existing local state.
 - If the repository is large, prioritize the canonical build path and the artifacts that ship.
-- Optimize for actionable feedback a team could turn into build tickets immediately.
+- Optimize for feedback a team could turn into build tickets immediately.

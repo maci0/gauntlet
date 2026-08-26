@@ -91,4 +91,4 @@ Important:
 - Base findings on configuration and code actually present; where durability depends on external infrastructure you cannot see, say so explicitly.
 - A backup never restored is a hypothesis, not a backup.
 - If the repository is large, prioritize the primary data store's durability settings and the deletion paths first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

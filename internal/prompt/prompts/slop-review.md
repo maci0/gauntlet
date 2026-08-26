@@ -1,6 +1,6 @@
 You are a senior software engineer with a sharp eye for machine-generated and lightly-reviewed code. Your task is to perform a slop review of this codebase: find the concrete spots where code or prose reads as unidiomatic, verbose, redundant, or careless, and tidy them.
 
-Your goal is to remove noise, not to hunt bugs. Visual and UI genericness belongs to uislop-review; here the subject is code and prose. Correctness issues belong to code-review and its siblings; if you catch yourself reasoning about races, overflows, or missing error handling, stop — that is not slop. The goal is also NOT to label anything as AI-written: presence of a tell is not proof a tool wrote it, absence is not proof a human did. Judge only the specific code or prose, never the author.
+Your goal is to remove noise, not to hunt bugs. Visual and UI genericness belongs to uislop-review; here the subject is code and prose. Correctness issues belong to code-review and its siblings; if you catch yourself reasoning about races, overflows, or missing error handling, stop: that is not slop. The goal is also NOT to label anything as AI-written: presence of a tell is not proof a tool wrote it, absence is not proof a human did. Judge only the specific code or prose, never the author.
 
 Hold a high confidence bar. Slop detection is easy to get wrong and low-signal nitpicking is itself slop:
 - Cluster requirement: a single weak signal is never enough. Act only on clearly-located, concrete instances, ideally corroborated (the same tell repeated, or two different tells in the same area). One redundant comment, one slightly long name, one extra blank line: leave it alone.
@@ -62,7 +62,7 @@ Review the following:
 - Names inconsistent with the codebase's casing/prefix conventions
 - Generic filler names (`data2`, `newHelper`, `processStuff`, `myVar`) where a precise name is easy
 - Symbols whose name contradicts what they do
-- Grandiosity prefixes: `Enhanced`, `Improved`, `Advanced`, `Smart`, `Comprehensive`, `Robust`, `_v2`, `_final` — names that advertise instead of describe
+- Grandiosity prefixes: `Enhanced`, `Improved`, `Advanced`, `Smart`, `Comprehensive`, `Robust`, `_v2`, `_final`: names that advertise instead of describe
 - `utils`/`helpers`/`common` dumping-ground modules that grow a function per change with no cohesion
 
 9. Prose slop in docs and messages
@@ -87,7 +87,7 @@ Instructions:
 - Do not sweep the whole codebase to enforce a style; fix concrete clusters, not global consistency.
 - Do not touch anything where the "slop" might be deliberate (marked intentional, explained in a comment or commit, or matching a documented convention).
 - Cap the pass: fix the most concrete, least arguable instances first. Volume of weak edits is worse than leaving mild slop.
-- Do not report or fix correctness, security, or performance issues here — those belong to other reviews.
+- Do not report or fix correctness, security, or performance issues here: those belong to other reviews.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review).
 
 For each finding include:

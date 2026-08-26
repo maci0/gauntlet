@@ -151,5 +151,5 @@ Important:
 - Base conclusions on the actual code.
 - If uncertain, skip it.
 - Prioritize issues that could mislead developers or cause misuse of APIs.
-- Focus on actionable improvements rather than stylistic nitpicks.
+- Focus on improvements a writer can act on rather than stylistic nitpicks.
 - Call out when documentation is already clear and sufficient.

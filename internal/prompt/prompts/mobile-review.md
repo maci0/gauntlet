@@ -39,7 +39,7 @@ Review the following:
 - One platform's idioms transplanted to the other (iOS-style sheets on Android and vice versa without a reason)
 - Dark mode, notches/cutouts/safe areas ignored (font scaling and Dynamic Type belong to a11y-review)
 - Non-standard controls where platform controls exist (custom date pickers, custom share sheets)
-(Deeper accessibility — TalkBack/VoiceOver traversal — belongs to a11y-review.)
+(Deeper accessibility, TalkBack/VoiceOver traversal, belongs to a11y-review.)
 
 6. App size and startup
 (webperf-review owns web delivery; here cover native app artifacts and cold start.)
@@ -81,8 +81,8 @@ Instructions:
 - Be concrete: name the screen, the manifest key, the lifecycle callback, the call site.
 - Test claims against both platforms when the app is cross-platform; parity gaps are findings.
 - If available, use: `swiftlint` (Swift), `ktlint`/`detekt` (Kotlin). Never install tools.
-- Distinguish confirmed issues from likely ones from those needing a device to verify — flag device-only checks rather than guessing.
-- Do not report general UX, accessibility, security, or packaging findings — those belong to their own reviews.
+- Distinguish confirmed issues from likely ones from those needing a device to verify: flag device-only checks rather than guessing.
+- Do not report general UX, accessibility, security, or packaging findings: those belong to their own reviews.
 - Prefer fewer high-value findings over many weak ones.
 - Call out flows that already handle lifecycle/offline/permissions well and should not be disturbed.
 
@@ -124,4 +124,4 @@ Important:
 - Base findings on the actual project files, manifests, and code, not assumptions.
 - Emulator-clean is not device-clean; flag what needs real hardware.
 - If the repository is large, prioritize the critical user flows and anything touching battery, data, or permissions.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.

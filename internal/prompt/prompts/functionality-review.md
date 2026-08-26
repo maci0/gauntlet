@@ -59,7 +59,7 @@ Review the following:
 - Failures that are swallowed so the operation appears to succeed
 - Validation that is documented or expected but missing
 - Recovery paths that do not actually recover
-- User-facing failures with no actionable signal about what went wrong
+- User-facing failures with no signal about what went wrong
 
 Instructions:
 - Fix order: confirmed behavioral defects (wrong output for valid input) > broken end-to-end flows > edge cases that crash or corrupt > incomplete features with partial implementations.
@@ -120,5 +120,5 @@ Important:
 - Base findings on the actual code and documented intent, not assumptions.
 - If you cannot determine what the correct behavior should be, skip it.
 - If the repository is large, prioritize core flows, public entrypoints, and the most-used features.
-- Optimize for actionable feedback a team could turn into bug tickets immediately.
+- Optimize for feedback a team could turn into bug tickets immediately.
 - Call out when functionality is complete and correct and should not be changed.

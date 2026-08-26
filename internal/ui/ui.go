@@ -709,14 +709,23 @@ func (m *model) renderLanes(w, h int) string {
 	return strings.Join(rows, "\n")
 }
 
+// thinkingStill is how long after the last growth in reasoning the glyph stops
+// turning, and thinkingFrame is how fast it turns while it does. Long enough
+// that a pause between tokens does not stop it, short enough that a finished
+// thought does.
+const (
+	thinkingStill = 3 * time.Second
+	thinkingFrame = 200 * time.Millisecond
+)
+
 // thinkGlyph animates only while reasoning is actively growing: a still glyph
 // means the agent thought earlier, a turning one means it is thinking now.
 func thinkGlyph(now, last time.Time) string {
-	if last.IsZero() || now.Sub(last) > 3*time.Second {
+	if last.IsZero() || now.Sub(last) > thinkingStill {
 		return "◌"
 	}
 	frames := []string{"◐", "◓", "◑", "◒"}
-	return frames[(now.UnixNano()/int64(200*time.Millisecond))%int64(len(frames))]
+	return frames[(now.UnixNano()/int64(thinkingFrame))%int64(len(frames))]
 }
 
 func failStyle(n int) lipgloss.Style {

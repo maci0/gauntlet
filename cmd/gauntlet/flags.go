@@ -164,11 +164,26 @@ func (f seedFlag) Set(v string) error {
 	return nil
 }
 
+// Flag defaults the documentation quotes. They live here so docs/CLI.md, the
+// help table, and the parser cannot drift apart.
+const (
+	// defaultTimeout bounds one review, and the suggest step that precedes
+	// it: long enough for a real review of a large tree, short enough that a
+	// wedged agent does not hold a loop for an hour.
+	defaultTimeout = 30 * time.Minute
+	// defaultRetries reruns a review whose agent failed to launch or exited
+	// nonzero, before falling back to another agent.
+	defaultRetries = 2
+	// defaultRunsLimit is how many past runs `gauntlet runs` prints.
+	defaultRunsLimit = 20
+)
+
 func parseFlags(argv []string) (*options, error) {
 	o := &options{
-		bin: map[string]string{}, timeout: 30 * time.Minute,
-		suggestTimeout: 30 * time.Minute, jobs: 1, retries: 2, hotReload: true, stream: true,
-		runsLimit: 20, width: terminalWidth(),
+		bin: map[string]string{}, timeout: defaultTimeout,
+		suggestTimeout: defaultTimeout, jobs: 1, retries: defaultRetries,
+		hotReload: true, stream: true,
+		runsLimit: defaultRunsLimit, width: terminalWidth(),
 	}
 
 	// Subcommands come first and take their own small flag sets.

@@ -7,7 +7,7 @@ First decide if this review applies. It needs code that acquires releasable reso
 Review the following:
 
 1. File descriptors and OS handles
-(error-review owns the error-path slice — cleanup skipped specifically when a failure interrupts the flow; here own the whole lifecycle and the bound.)
+(error-review owns the error-path slice, cleanup skipped specifically when a failure interrupts the flow; here own the whole lifecycle and the bound.)
 - Files, pipes, and directory handles opened without a guaranteed close (missing defer/with/using/finally, early returns and exceptions skipping the close)
 - Close paths that exist but are conditional: only on success, only in one branch, or in a callback that can be skipped
 - Descriptors inherited by child processes unintentionally (close-on-exec unset), keeping files and ports alive past their owner
@@ -95,4 +95,4 @@ Important:
 - Base findings on traced exit paths, not on the absence of a familiar cleanup idiom.
 - A leak invisible in tests is normal: tests exit before accumulation matters. Reason about rates, not observed symptoms.
 - If the repository is large, prioritize per-request paths in servers and workers first.
-- Optimize for actionable feedback a team could turn into tickets immediately.
+- Optimize for feedback a team could turn into tickets immediately.
