@@ -923,6 +923,69 @@ git -c user.name=t -c user.email=t@e commit -qm "work" >/dev/null 2>&1`)
 	}
 }
 
+// What a run writes into a project's history is the project's, not this
+// tool's. This is the regression guard for a repository that once carried 125
+// commits authored by "gauntlet <gauntlet@localhost>", every one of them
+// subjected "X-review: automated review fixes" and threaded through a merge
+// node saying which run produced it. None of that may come back.
+func TestRunLeavesNoTraceOfItselfInTheHistory(t *testing.T) {
+	repo := testRepo(t)
+	before := gitOut(t, repo, "rev-parse", "HEAD")
+	set, _ := promptSet(t, "sec-review", "doc-review", "perf-review")
+	// Each review touches its own file, so all three land, and prints the
+	// subject the protocol asks for.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+name=$(echo "$*" | grep -o '[a-z]*-review' | head -1)
+echo "package x" > "${name}.go"
+echo "PATH: ${name}.go: new"
+echo "SUBJECT: feat(${name}): add the ${name} helper"
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review", "doc-review", "perf-review"}, bin)
+	cfg.Jobs = 3
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	log := gitOut(t, repo, "log", "--format=%an <%ae>%n%B", before+"..HEAD")
+	if log == "" {
+		t.Fatal("nothing landed, so this proves nothing")
+	}
+	for _, banned := range []string{
+		"gauntlet", "automated review fixes", "from gauntlet run", "Merge ",
+	} {
+		if strings.Contains(log, banned) {
+			t.Fatalf("%q reached the project's history:\n%s", banned, log)
+		}
+	}
+	// The repository's own identity signs the commits, the same as a commit
+	// typed by hand.
+	for _, line := range strings.Split(gitOut(t, repo, "log", "--format=%an <%ae>", before+"..HEAD"), "\n") {
+		if line != "test <test@example.invalid>" {
+			t.Fatalf("commit authored by %q, want the repository's configured identity", line)
+		}
+	}
+	// And the subjects are the reviews' own, in conventional form.
+	subjects := gitOut(t, repo, "log", "--format=%s", before+"..HEAD")
+	for _, want := range []string{"feat(sec-review)", "feat(doc-review)", "feat(perf-review)"} {
+		if !strings.Contains(subjects, want) {
+			t.Fatalf("missing %q in:\n%s", want, subjects)
+		}
+	}
+	// One commit per review, and no merge nodes at all.
+	if n := len(strings.Split(strings.TrimSpace(subjects), "\n")); n != 3 {
+		t.Fatalf("%d commits for 3 reviews:\n%s", n, subjects)
+	}
+	if merges := gitOut(t, repo, "log", "--merges", "--format=%h", before+"..HEAD"); merges != "" {
+		t.Fatalf("merge commits reached the history: %s", merges)
+	}
+}
+
 func countKind(events []Event, kind Kind) int {
 	n := 0
 	for _, ev := range events {

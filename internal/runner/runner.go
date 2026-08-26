@@ -670,6 +670,11 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 		// entire review, silently.
 		res.Status = StatusConflict
 		r.log("MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
+		// Merging it by hand would otherwise write "Merge branch
+		// 'gauntlet/<run>/<review>'" into the project's history, which is the
+		// one place this tool's scratch names must never appear.
+		r.log("To land it after resolving: git merge --squash %s && git commit -m %q",
+			wt.Branch, commitSubject(res.Subject, review))
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: StatusConflict, Text: mr.Detail,
@@ -1009,7 +1014,7 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 
 	r.mergeMu.Lock()
 	mr := r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
-		fmt.Sprintf("Merge %s from gauntlet run %s", from, r.cfg.RunID))
+		fmt.Sprintf("Merge branch '%s'", from))
 	r.mergeMu.Unlock()
 
 	ev := Event{
