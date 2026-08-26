@@ -86,8 +86,9 @@ Review the following:
 - DNS configuration managed manually instead of through code
 
 8. Reliability and disaster recovery
-- Missing automated backups for databases or persistent storage
-- No documented or tested restore procedure
+(dr-review owns the durability posture in depth: state inventory, backup coverage, restore reality, failover semantics, RPO/RTO targets; here cover reliability of the deployment platform this repo defines: redundancy, rollback wiring, failure detection.)
+- Missing automated backups for databases or persistent storage (note only; dr-review owns coverage)
+- No documented or tested restore procedure (note only; dr-review)
 - Missing redundancy for single points of failure
 - No defined RTO or RPO targets (organizational: note only)
 - Missing chaos engineering or failure testing (note only; do not add a chaos framework)
