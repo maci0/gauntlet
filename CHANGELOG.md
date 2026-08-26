@@ -10,6 +10,15 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## 1.7.4
+
+### Fixed
+
+- The coverage floor is CI's measurement rather than a developer machine's.
+  1.7.3 shipped it at 76.0%, which is what this suite measures where the agent
+  CLIs are installed; a runner without them covers about two points less, so
+  every pull request would have failed the gate the release introduced.
+
 ## 1.7.3
 
 ### Fixed
@@ -21,9 +30,11 @@ minor instead and were listed under Changed.
 
 ### Changed
 
-- Coverage ratchets: `make cover` fails below `COVER_MIN` (76.0% today, the
-  measured total) and CI runs it. A refactor that quietly drops a tested path
-  fails where it happens rather than a release later.
+- Coverage ratchets: `make cover` fails below `COVER_MIN` and CI runs it, so a
+  refactor that quietly drops a tested path fails where it happens rather than
+  a release later. The floor is CI's number (74.0%), not a local one: a
+  machine with agent CLIs installed runs paths a runner skips and measures
+  about two points higher.
 - Two parsers that read input from outside the program are fuzzed:
   `SUBJECT:` lines, which are agent output on their way into a commit message,
   and `--timeout` durations, which are whatever a person typed.

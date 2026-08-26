@@ -88,10 +88,12 @@ cover: ## test coverage summary, gated by COVER_MIN
 				printf "coverage fell to %s%%, below the %s%% floor\n", got, min > "/dev/stderr"; exit 1 \
 			} }' 
 
-# The coverage floor. It ratchets: raise it when a change carries coverage up,
-# never lower it to make a change fit. `make cover` fails below it, so a
-# refactor that quietly drops a tested path is caught where it happens.
-COVER_MIN ?= 76.0
+# The coverage floor, measured where it is enforced: a developer machine with
+# agent CLIs installed runs paths a CI runner skips, so a number taken locally
+# reads about two points high and would fail every pull request. This is CI's
+# figure, kept a little under it to absorb the shuffle. It ratchets: raise it
+# when CI reports higher, never lower it to make a change fit.
+COVER_MIN ?= 74.0
 
 .PHONY: vet
 vet: ## run go vet

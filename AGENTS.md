@@ -16,8 +16,10 @@ library.
   committing if the fix step reports anything.
 - `make test`: the suite with the race detector and shuffled order.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
-  in the Makefile. The floor ratchets: raise it when a change carries coverage
-  up, never lower it to make a change fit.
+  in the Makefile. The floor is CI's number, not a local one: a machine with
+  agent CLIs installed covers paths a runner skips and reads about two points
+  high. It ratchets: raise it when CI reports higher, never lower it to make a
+  change fit.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
   ignored. `TMPDIR` is set by the Makefile for that reason.
