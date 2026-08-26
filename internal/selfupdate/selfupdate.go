@@ -37,6 +37,12 @@ const defaultRepo = "maci0/gauntlet"
 // an attack, and either way should not fill the disk.
 const maxAssetBytes = 256 << 20
 
+// staleTempAge is how old a leftover .gauntlet-update-* file must be before
+// the next update removes it. The window that creates one closes when the
+// process does, so anything a day old belongs to an update that never
+// finished; the age keeps a concurrent updater's in-flight download safe.
+const staleTempAge = 24 * time.Hour
+
 // Release is the subset of a GitHub release that matters here.
 type Release struct {
 	TagName string `json:"tag_name"`
@@ -147,6 +153,7 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	}
 
 	dir := filepath.Dir(self)
+	sweepStaleTemps(dir, ".gauntlet-update-", staleTempAge)
 	tmp, err := os.CreateTemp(dir, ".gauntlet-update-*")
 	if err != nil {
 		return "", fmt.Errorf("cannot write next to %s: %w", self, err)
@@ -174,6 +181,29 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 		return "", fmt.Errorf("cannot replace %s: %w", self, err)
 	}
 	return self, nil
+}
+
+// sweepStaleTemps removes the temp files of updates that died before their
+// rename: a kill, an OOM, or a power cut skips every defer, so without this
+// each interrupted download leaves up to maxAssetBytes beside the binary.
+// Best effort by design; a sweep that cannot run must not block the update.
+func sweepStaleTemps(dir, prefix string, age time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-age)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || fi.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }
 
 func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
