@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func demoPicker() *picker {
@@ -387,6 +388,21 @@ func TestPickFooterKeepsCriticalKeysVisible(t *testing.T) {
 	for _, want := range []string{":pane", ":toggle", ":open/close", ":filter"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("a wide terminal should document more than the essentials (%q missing):\n%s", want, footer)
+		}
+	}
+}
+
+// The launcher's narrow fallback clips like the dashboard's does: a wrapped
+// fallback is a taller broken screen, not a smaller one.
+func TestNarrowLauncherClipsToThePane(t *testing.T) {
+	for _, w := range []int{10, 20, 30, 49} {
+		p := demoPicker()
+		p.w, p.h, p.ready = w, 10, true
+		p.optByFlag("--commit").on = true // the widest argv the demo can compose
+		for i, ln := range strings.Split(p.View(), "\n") {
+			if got := lipgloss.Width(ln); got > w {
+				t.Fatalf("w=%d: row %d is %d columns wide: %q", w, i, got, stripANSI(ln))
+			}
 		}
 	}
 }

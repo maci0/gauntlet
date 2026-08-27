@@ -78,6 +78,35 @@ func TestStaticFrameFitsItsPane(t *testing.T) {
 	}
 }
 
+// The frame is exactly the pane: every terminal size and lane count must
+// leave room for all four panels and the footer, or the last panel runs off
+// the bottom of the screen and its border is left open.
+func TestFrameFitsAtEverySize(t *testing.T) {
+	for _, agents := range []int{1, 2, 5, 8, 12} {
+		for _, h := range []int{18, 20, 22, 24, 26, 30, 40, 50} {
+			cfg := demoConfig()
+			cfg.Agents = nil
+			for i := range agents {
+				cfg.Agents = append(cfg.Agents, fmt.Sprintf("agent%02d", i))
+			}
+			frame := staticFrame(cfg, demoEvents(), 100, h)
+			opened, closed := strings.Count(frame, "╭"), strings.Count(frame, "╰")
+			if opened != closed {
+				t.Fatalf("%d agents at %d rows: %d panels opened, %d closed, "+
+					"the frame ran off the pane:\n%s", agents, h, opened, closed, stripANSI(frame))
+			}
+			// The full view is exactly the pane; the minimal fallback is
+			// deliberately short.
+			if h >= 22 {
+				if lines := strings.Split(frame, "\n"); len(lines) != h {
+					t.Fatalf("%d agents at %d rows: frame is %d rows, pane is %d",
+						agents, h, len(lines), h)
+				}
+			}
+		}
+	}
+}
+
 func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 40, 10)
 	if !strings.Contains(frame, "too small") {
@@ -93,6 +122,25 @@ func TestMinimalViewKeepsStateTallyAndKeys(t *testing.T) {
 	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "s finish", "too small"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("minimal view lost %q:\n%s", want, frame)
+		}
+	}
+}
+
+// The fallback must not wrap: a narrow terminal renders what it cannot hold
+// as a taller broken screen, and the fallback exists to be the smaller one.
+func TestMinimalViewClipsToThePane(t *testing.T) {
+	for _, w := range []int{20, 30, 40, 49} {
+		m := newModel(demoConfig())
+		m.w, m.h, m.ready = w, 10, true
+		for _, ev := range demoEvents() {
+			m.apply(ev)
+		}
+		m.haveLines = true
+		m.ins, m.del = 1234567, 234567
+		for i, ln := range strings.Split(m.View(), "\n") {
+			if got := lipgloss.Width(ln); got > w {
+				t.Fatalf("w=%d: row %d is %d columns wide: %q", w, i, got, stripANSI(ln))
+			}
 		}
 	}
 }

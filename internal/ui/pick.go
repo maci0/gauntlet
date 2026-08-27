@@ -797,14 +797,20 @@ func (p *picker) renderKeys() string {
 }
 
 // renderNarrow is the fallback for a terminal too small for the panels: the
-// choices still matter, so the command line is what survives.
+// choices still matter, so the command line is what survives. Rows clip to
+// the pane for the same reason the dashboard's fallback does: a wrapped
+// fallback is a taller broken screen, not a smaller one.
 func (p *picker) renderNarrow() string {
-	return strings.Join([]string{
+	rows := []string{
 		wordmark() + styleDim.Render("  compose a run"),
 		styleDim.Render("terminal too small for the launcher"),
-		clip(styleValue.Render("gauntlet "+strings.Join(p.argv(), " ")), p.w),
+		styleValue.Render("gauntlet " + strings.Join(p.argv(), " ")),
 		styleDim.Render("⏎ run  q cancel"),
-	}, "\n")
+	}
+	for i, r := range rows {
+		rows[i] = clip(r, p.w)
+	}
+	return strings.Join(rows, "\n")
 }
 
 // window keeps the cursor inside the visible slice of a pane, scrolling only

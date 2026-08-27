@@ -519,7 +519,12 @@ func (m *model) View() string {
 	if m.help {
 		return m.renderHelp()
 	}
-	if m.w < 60 || m.h < 18 {
+	// Four titled panels cost twelve rows of chrome around their content,
+	// the header and footer one each, and the sections never shrink below
+	// two activity, one agent, one grid, and three feed rows: twenty-two is
+	// the smallest terminal the full view can actually hold. Below that the
+	// fallback answers what matters instead of a frame with its bottom open.
+	if m.w < 60 || m.h < 22 {
 		return m.renderMinimal()
 	}
 
@@ -560,6 +565,13 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 		take := 3 - feed
 		act = max(act-take, 2)
 		feed = 3
+	}
+	// Whatever the four floors still overdraw comes out of the lanes: their
+	// panel announces hidden agents, so fewer rows never hides one silently.
+	// Without this the overflow runs the feed panel off the pane and leaves
+	// its border open.
+	if over := act + lanes + grid + feed - free; over > 0 {
+		lanes = max(lanes-over, 1)
 	}
 	return act, lanes, grid, feed
 }
@@ -979,6 +991,8 @@ func (m *model) renderFooter() string {
 // renderMinimal is the small-terminal fallback. It keeps what answers "is it
 // done, did anything break": the run state, elapsed time, the full tally, and
 // the keys, because a fallback that hides how to quit is its own dead end.
+// Every row clips to the pane: a narrow terminal wraps what it cannot hold,
+// and a wrapped fallback is a taller broken screen, not a smaller one.
 func (m *model) renderMinimal() string {
 	c := m.counts
 	var tally strings.Builder
@@ -989,15 +1003,36 @@ func (m *model) renderMinimal() string {
 		}
 	}
 	stateTxt, stateStyle := m.stateLabel()
-	return strings.Join([]string{
+	// The keys degrade the way the launcher's footer does: whole segments
+	// drop from the right rather than clipping mid-word, and the ones that
+	// keep a reader oriented (quit, help, pause) come first.
+	keys := []struct{ k, d string }{
+		{"q", "quit"}, {"?", "help"}, {"space", "pause"}, {"s", "finish"}, {"j/k", "scroll"},
+	}
+	var hint strings.Builder
+	for _, k := range keys {
+		seg := k.k + " " + k.d
+		if hint.Len() > 0 && hint.Len()+2+len(seg) > m.w {
+			break
+		}
+		if hint.Len() > 0 {
+			hint.WriteString("  ")
+		}
+		hint.WriteString(seg)
+	}
+	rows := []string{
 		fmt.Sprintf("gauntlet %s  loop %d  %s  %s",
 			m.cfg.Version, m.loop,
 			styleDim.Render(humanize.Duration(m.now.Sub(m.cfg.Started))),
 			stateStyle.Render(stateTxt)),
 		tally.String(),
 		styleDim.Render("terminal too small for the dashboard"),
-		styleDim.Render("q quit  s finish  space pause  j/k scroll  ? help"),
-	}, "\n")
+		styleDim.Render(hint.String()),
+	}
+	for i, r := range rows {
+		rows[i] = clip(r, m.w)
+	}
+	return strings.Join(rows, "\n")
 }
 
 func (m *model) renderHelp() string {

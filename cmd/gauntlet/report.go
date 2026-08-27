@@ -137,7 +137,10 @@ func (r *reporter) paint(k normalize.Kind, text string) string {
 	case normalize.Thinking:
 		return r.pal.think(text)
 	case normalize.Error:
-		return r.pal.yellow(text)
+		// Errors are red everywhere else this program renders them (the
+		// dashboard's feed, doctor's failures, the summary's tally); yellow
+		// here would read as a warning, one degree softer than what it is.
+		return r.pal.red(text)
 	default:
 		return text
 	}
