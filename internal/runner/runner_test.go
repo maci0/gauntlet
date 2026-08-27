@@ -90,6 +90,29 @@ func drain(bus *Bus) {
 	}()
 }
 
+// onFirstEvent subscribes and calls fire when an event of kind kind flows,
+// then keeps draining so later publishes never block. Tests interrupt a run
+// through this instead of a timed sleep: a sleep races process startup and
+// fires before any review began, where the after-effects it claims to judge
+// hold vacuously.
+func onFirstEvent(bus *Bus, kind Kind, fire func()) {
+	events := bus.Subscribe(256)
+	go func() {
+		fired := false
+		defer func() {
+			for range events {
+			}
+		}()
+		for ev := range events {
+			if !fired && ev.Kind == kind {
+				fired = true
+				fire()
+				continue
+			}
+		}
+	}()
+}
+
 // collect drains a bus subscription into a slice until it closes.
 func collect(ch <-chan Event, done chan<- []Event) {
 	var got []Event
@@ -611,10 +634,11 @@ func TestCancelStopsTheRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(300 * time.Millisecond)
-		cancel()
-	}()
+	defer cancel()
+	// Cancel only once a review is genuinely in flight: cancelling from a
+	// timer could land before any review started, where "it stopped the run"
+	// holds for the wrong reason.
+	onFirstEvent(bus, EvReviewStart, cancel)
 	start := time.Now()
 	r.Run(ctx)
 	bus.Close()
@@ -630,21 +654,19 @@ func TestCancelStopsTheRun(t *testing.T) {
 func TestRequestStopFinishesInFlightWork(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "a-review")
-	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+	// The agent has to still be working when the stop request lands, or the
+	// test passes without ever exercising a stop during a review.
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 2; echo "RESULT: no-changes"`)
 
 	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
 	cfg.MaxLoops = 0
 
 	bus := NewBus()
-	drain(bus)
 	r, err := New(context.Background(), cfg, bus)
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		time.Sleep(200 * time.Millisecond)
-		r.RequestStop()
-	}()
+	onFirstEvent(bus, EvReviewStart, r.RequestStop)
 	r.Run(context.Background())
 	bus.Close()
 
@@ -654,6 +676,11 @@ func TestRequestStopFinishesInFlightWork(t *testing.T) {
 	// A soft stop never kills an agent, so nothing may be interrupted.
 	if c := r.Stats().Counts(); c.Interrupted != 0 {
 		t.Fatalf("soft stop killed a review: %+v", c)
+	}
+	// The in-flight agent ran to its own end and was recorded as done.
+	res := r.Stats().Results()
+	if len(res) != 1 || res[0].Status != StatusOK {
+		t.Fatalf("in-flight work did not finish: %+v", res)
 	}
 }
 
@@ -958,11 +985,10 @@ sleep 0.2`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		// Let the first review start, then ask for the graceful quit.
-		time.Sleep(150 * time.Millisecond)
-		r.RequestFinish()
-	}()
+	// Ask for the graceful quit once a review is in flight; a timer could
+	// fire before any review started and the drain assertions would hold on
+	// an empty run.
+	onFirstEvent(bus, EvReviewStart, r.RequestFinish)
 	r.Run(context.Background())
 	bus.Close()
 	got := <-done
@@ -1187,10 +1213,9 @@ func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		time.Sleep(500 * time.Millisecond)
-		first.RequestStop() // as a hot reload does
-	}()
+	// Stop after the first review has ended, so the handover provably carries
+	// at least one finished review; a timer races the agents instead.
+	onFirstEvent(bus, EvReviewEnd, first.RequestStop)
 	first.Run(context.Background())
 	bus.Close()
 
@@ -1254,10 +1279,9 @@ func TestSoftStopInParallelModeHandsOverTheQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		first.RequestStop() // as a hot reload does
-	}()
+	// Stop once a review has ended: whatever never got a lane is pending
+	// without depending on a timer racing two busy agents.
+	onFirstEvent(bus, EvReviewEnd, first.RequestStop)
 	first.Run(context.Background())
 	bus.Close()
 
@@ -1372,10 +1396,10 @@ func TestCancelDuringParallelLeavesNoWorktrees(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		cancel()
-	}()
+	defer cancel()
+	// Cancel while worktrees are live: a timer could fire before any review
+	// began, where the cleanup contract passes over an untouched repo.
+	onFirstEvent(bus, EvReviewStart, cancel)
 	r.Run(ctx)
 	bus.Close()
 
@@ -1419,10 +1443,10 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		cancel()
-	}()
+	defer cancel()
+	// Cancel with lanes busy and a queue behind them; firing from a timer
+	// could land before dispatch began and leave nothing to account for.
+	onFirstEvent(bus, EvReviewStart, cancel)
 	r.Run(ctx)
 	bus.Close()
 

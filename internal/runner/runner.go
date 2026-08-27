@@ -613,7 +613,15 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	wt, err := r.repo.AddWorktree(ctx, review, tag, base)
 	if err != nil {
 		r.log("Cannot create worktree for %s: %v", review, err)
-		return Result{Review: review, Agent: r.pickAgent(review, nil), Status: StatusSkipped}
+		agent := r.pickAgent(review, nil)
+		// The outcome belongs in the stream like every other one: a consumer
+		// rebuilding a run from its journal would wait forever on an event
+		// that never came.
+		r.bus.Publish(Event{
+			Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
+			Agent: agent.Label(), Loop: loopNo, Status: StatusSkipped,
+		})
+		return Result{Review: review, Agent: agent, Status: StatusSkipped}
 	}
 	removed := false
 	// The checkout is disposable once its commit exists; the branch is what

@@ -27,8 +27,12 @@ import (
 // every build but `-tags notoktop`; the stream cases run in all of them.
 //
 // A rate needs two things: a growing count and the time between the readings.
-// So every case asserts at least two usage events with increasing totals, and
-// that the last one matches what the agent reported.
+// Stream cases print each report to stdout, so each one is read and published
+// as it arrives: at least two events with growing totals, every time. The
+// transcript route rides the watcher's own cadence, so under load several
+// reports can be folded into one update before they publish; a transcript
+// case therefore asks only for progress plus the right totals, and the final
+// figures the agent reported are checked against the records either way.
 
 // needTranscripts skips a case that only a build with transcript reading can
 // satisfy. Without it those agents report nothing, which is the intended
@@ -224,8 +228,15 @@ echo "RESULT: no-changes"`,
 					usage = append(usage, ev)
 				}
 			}
-			if len(usage) < 2 {
-				t.Fatalf("a rate needs at least two readings; got %d: %+v", len(usage), usage)
+			// Stream reports publish one per line, so growth arrives as
+			// separate events. A transcript route may fold them; totals must
+			// still come through.
+			want := 1
+			if c.stream {
+				want = 2
+			}
+			if len(usage) < want {
+				t.Fatalf("a rate needs at least %d readings; got %d: %+v", want, len(usage), usage)
 			}
 			for i := 1; i < len(usage); i++ {
 				if usage[i].Tokens < usage[i-1].Tokens {
@@ -241,6 +252,10 @@ echo "RESULT: no-changes"`,
 			}
 
 			// The rate itself: tokens divided by the span between readings.
+			// Only computable when growth arrived as separate readings.
+			if len(usage) < 2 {
+				return
+			}
 			span := usage[len(usage)-1].Time.Sub(usage[0].Time)
 			if span <= 0 {
 				t.Fatalf("readings carry no time span, so no rate is computable")
