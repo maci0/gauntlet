@@ -173,7 +173,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		parent, parentTip, recovered, err = r.recoverStackLayer(
 			ctx, i, r.cfg.Reviews[i], parent, parentTip, false, true)
 		if err != nil {
-			r.recordStackFailure(loopNo, r.cfg.Reviews[i],
+			r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
 				gitx.StackBranchName(r.stackBaseTip, i, r.cfg.Reviews[i]), parent,
 				"recover completed stack", err)
 			return false
@@ -223,7 +223,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		parent, parentTip, handled, err = r.recoverStackLayer(
 			ctx, i, review, parent, parentTip, true, false)
 		if err != nil {
-			r.recordStackFailure(loopNo, review,
+			r.recordStackFailure(ctx, loopNo, review,
 				gitx.StackBranchName(r.stackBaseTip, i, review), parent, "recover stack layer", err)
 			return false
 		}
@@ -237,7 +237,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			err = wt.StartBranch(ctx, branch, parentTip)
 		}
 		if err != nil {
-			r.recordStackFailure(loopNo, review, branch, parent, "create stack branch", err)
+			r.recordStackFailure(ctx, loopNo, review, branch, parent, "create stack branch", err)
 			return false
 		}
 
@@ -416,9 +416,20 @@ func (r *Runner) publishStackFailure(loop int, review, branch, base string, err 
 		Loop: loop, Branch: branch, Base: base, Status: StatusFail, Text: err.Error()})
 }
 
-func (r *Runner) recordStackFailure(loop int, review, branch, base, step string, err error) {
+func (r *Runner) recordStackFailure(ctx context.Context, loop int, review, branch, base, step string, err error) {
 	detail := fmt.Errorf("%s: %w", step, err)
-	r.st.Add(Result{Review: review, Agent: r.pickAgent(review, nil), Status: StatusFail,
-		ExitCode: -1, Branch: branch, Base: base, Detail: detail.Error()})
+	res := Result{Review: review, Agent: r.pickAgent(review, nil),
+		ExitCode: -1, Branch: branch, Base: base, Detail: detail.Error()}
+	// A cancel kills the git and gh commands that build a layer, so the step
+	// reports its own failure. The review was interrupted, not failed: calling
+	// it a failure inflates the failure count on a Ctrl-C and publishes a
+	// pull_request failure for a layer nobody attempted.
+	if ctx.Err() != nil {
+		res.Status = StatusInterrupted
+		r.st.Add(res)
+		return
+	}
+	res.Status = StatusFail
+	r.st.Add(res)
 	r.publishStackFailure(loop, review, branch, base, detail)
 }

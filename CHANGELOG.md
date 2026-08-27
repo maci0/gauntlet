@@ -10,6 +10,17 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Fixed
+
+- Cancelling a stacked run while it sets up a layer records that review as
+  interrupted instead of failed. The cancel kills the git or gh command
+  building the layer, and the step reported its own failure, so a Ctrl-C
+  counted a failed review and published a `pull_request` failure event for a
+  layer no agent had touched. Only reachable on a slow enough machine to be
+  mid-setup when the cancel lands, which is why it showed up on macOS first.
+
 ## 1.12.0
 
 ### Added
