@@ -101,7 +101,7 @@ Review the following:
   - Ad-hoc `typeof`/`instanceof` narrowing scattered through business logic instead of validating/parsing once at the boundary (error-review owns the boundary validation; here own the type-level smell)
   - Reflection (`Reflect.get`/`apply`, `getattr`, `[]`-string access) standing in for direct typed access on a shape that is actually known
   - Type assertions with no stated reason: a non-`const` cast that the reader cannot verify. Require a one-line justification next to it, or replace it with a check
-  (Where the stack has a tool for this, `oxlint`/`eslint` with a strict type-safety ruleset, flag what it would; test doubles via module mocking instead of a dependency seam belong to test-review.)
+  (Where the stack has a linter for this, run its type-safety ruleset (`oxlint`, `eslint`) and flag what it reports; test doubles via module mocking instead of a dependency seam belong to test-review.)
 
 9. Risky areas
 (functionality-review owns intended-vs-actual and documented edge cases. Here only a local logic error you can prove from the function body without consulting docs: inverted condition, swapped arguments, off-by-one.)
