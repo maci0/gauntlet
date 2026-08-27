@@ -616,16 +616,10 @@ func (m *model) reviewCellWidth() int {
 
 func (m *model) renderHeader() string {
 	elapsed := m.now.Sub(m.cfg.Started)
-	left := []string{
-		wordmark(),
-		styleDim.Render("v" + m.cfg.Version),
-		styleDim.Render(m.cfg.RunID),
-	}
 	mode := "sequential"
 	if m.cfg.Jobs > 1 {
 		mode = fmt.Sprintf("%d×worktree", m.cfg.Jobs)
 	}
-	left = append(left, styleInfo.Render(mode))
 	loop := fmt.Sprintf("loop %d", m.loop)
 	stateTxt, stateStyle := m.stateLabel()
 	right := strings.Join([]string{
@@ -634,14 +628,35 @@ func (m *model) renderHeader() string {
 		stateStyle.Render(stateTxt),
 	}, "  ")
 
+	// The right side is orientation: the loop, the elapsed time, and the run
+	// state. Dim chrome yields to it piece by piece, so a narrow terminal
+	// loses the version or the run id before it loses where the run stands.
+	left := []string{wordmark()}
+	fits := func(piece string) bool {
+		joined := strings.Join(left, "  ") + "  " + piece
+		return lipgloss.Width(joined)+lipgloss.Width(right)+2 <= m.w
+	}
+	for _, piece := range []string{
+		styleDim.Render("v" + m.cfg.Version),
+		styleDim.Render(m.cfg.RunID),
+		styleInfo.Render(mode),
+	} {
+		if fits(piece) {
+			left = append(left, piece)
+		}
+	}
+
 	// The tree being reviewed, as a path rather than a basename: several
 	// checkouts of one project share a basename, and a run is not the same run
 	// in each of them. It takes the room the rest of the header leaves, and no
-	// more: the loop and the run state are never pushed off the line.
+	// more: when there is none, it goes rather than pushing the state off the
+	// line.
 	if len(m.cfg.Dirs) == 1 {
 		room := m.w - lipgloss.Width(strings.Join(left, "  ")) - lipgloss.Width(right) - 4
-		left = append(left, styleDim.Render(dirLabel(m.cfg.Dirs[0], room)))
-	} else {
+		if room >= 4 {
+			left = append(left, styleDim.Render(dirLabel(m.cfg.Dirs[0], room)))
+		}
+	} else if fits(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))) {
 		left = append(left, styleDim.Render(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))))
 	}
 	return spread(strings.Join(left, "  "), right, m.w)
@@ -1005,9 +1020,11 @@ func (m *model) renderMinimal() string {
 	stateTxt, stateStyle := m.stateLabel()
 	// The keys degrade the way the launcher's footer does: whole segments
 	// drop from the right rather than clipping mid-word, and the ones that
-	// keep a reader oriented (quit, help, pause) come first.
+	// keep a reader oriented (quit, help, pause) come first. Only keys this
+	// view can show the effect of are listed: scroll acts on a feed the
+	// fallback does not draw, so advertising it would name a dead key.
 	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"?", "help"}, {"space", "pause"}, {"s", "finish"}, {"j/k", "scroll"},
+		{"q", "quit"}, {"?", "help"}, {"space", "pause"}, {"s", "finish"},
 	}
 	var hint strings.Builder
 	for _, k := range keys {

@@ -686,11 +686,7 @@ func (p *picker) View() string {
 // renderHeader is the dashboard's header at rest: the same wordmark, version,
 // and spread, saying what this run would be rather than what it is doing.
 func (p *picker) renderHeader() string {
-	left := []string{
-		wordmark(),
-		styleDim.Render("v" + p.cfg.Version),
-		styleInfo.Render("compose a run"),
-	}
+	left := []string{wordmark()}
 	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.known()))
 	switch {
 	case p.suggest && p.chosen() > 0:
@@ -710,9 +706,29 @@ func (p *picker) renderHeader() string {
 		styleValue.Render(scope),
 		styleDim.Render(agents),
 	}, "  ")
-	// The directory takes what the rest of the header leaves.
+
+	// The right side is what this run would be: the scope changes with every
+	// toggle and is the header's reason to exist. Dim chrome yields to it
+	// piece by piece, so a narrow terminal loses the version or the title
+	// before it loses what the run would cover.
+	fits := func(piece string) bool {
+		joined := strings.Join(left, "  ") + "  " + piece
+		return lipgloss.Width(joined)+lipgloss.Width(right)+2 <= p.w
+	}
+	for _, piece := range []string{
+		styleDim.Render("v" + p.cfg.Version),
+		styleInfo.Render("compose a run"),
+	} {
+		if fits(piece) {
+			left = append(left, piece)
+		}
+	}
+	// The directory takes what the rest of the header leaves, and none of it
+	// when there is none to take.
 	room := p.w - lipgloss.Width(strings.Join(left, "  ")) - lipgloss.Width(right) - 4
-	left = append(left, styleDim.Render(dirLabel(p.cfg.Dir, room)))
+	if room >= 4 {
+		left = append(left, styleDim.Render(dirLabel(p.cfg.Dir, room)))
+	}
 	return spread(strings.Join(left, "  "), right, p.w)
 }
 
@@ -805,8 +821,14 @@ func (p *picker) renderNarrow() string {
 		wordmark() + styleDim.Render("  compose a run"),
 		styleDim.Render("terminal too small for the launcher"),
 		styleValue.Render("gauntlet " + strings.Join(p.argv(), " ")),
-		styleDim.Render("⏎ run  q cancel"),
 	}
+	// Enter is dead while the run is blocked, and the reason is the only
+	// thing here that says so: the wide view carries it on the status line,
+	// but this view has no status line to carry it.
+	if why := p.blocked(); why != "" {
+		rows = append(rows, styleWarn.Render("⚠ "+why))
+	}
+	rows = append(rows, styleDim.Render("⏎ run  q cancel"))
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)
 	}

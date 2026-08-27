@@ -573,6 +573,36 @@ func lastLine(s string) string {
 	return lines[len(lines)-1]
 }
 
+// The header's right side is orientation: the loop, the elapsed time, and
+// the run state. A narrow terminal must lose dim chrome (version, run id,
+// the tree) before it loses any of that; a wide one keeps all of it.
+func TestHeaderKeepsTheRunStateAtNarrowWidths(t *testing.T) {
+	m := newModel(demoConfig())
+	m.now = m.cfg.Started.Add(2 * time.Minute)
+	for _, w := range []int{60, 65, 70, 80} {
+		m.w = w
+		header := stripANSI(m.renderHeader())
+		for _, want := range []string{"loop", "2m00s", "RUNNING"} {
+			if !strings.Contains(header, want) {
+				t.Fatalf("a %d-column header lost %q:\n%s", w, want, header)
+			}
+		}
+	}
+	m.w = 120
+	if header := stripANSI(m.renderHeader()); !strings.Contains(header, "20260825T000000Z-abcd") {
+		t.Fatalf("a wide header dropped the run id:\n%s", header)
+	}
+}
+
+// The fallback advertises only keys whose effect it can show: scrolling acts
+// on a feed it does not draw, so naming j/k there would be a dead key.
+func TestMinimalViewAdvertisesOnlyKeysItCanShow(t *testing.T) {
+	frame := stripANSI(staticFrame(demoConfig(), demoEvents(), 40, 10))
+	if strings.Contains(frame, "scroll") {
+		t.Fatalf("the minimal view advertises scroll with no feed to scroll:\n%s", frame)
+	}
+}
+
 func stripANSI(s string) string {
 	var b strings.Builder
 	inEsc := false

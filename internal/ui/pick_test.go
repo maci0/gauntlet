@@ -39,6 +39,41 @@ func press(p *picker, keys ...string) {
 	}
 }
 
+// The launcher header's right side is what the run would cover, and it
+// changes with every toggle: a narrow terminal must lose dim chrome (the
+// version, the title, the tree) before it loses the scope, and a wide one
+// keeps all of it.
+func TestLauncherHeaderKeepsScopeAtNarrowWidths(t *testing.T) {
+	p := demoPicker()
+	p.w = 50
+	header := stripANSI(p.renderHeader())
+	for _, want := range []string{"all 4 reviews", "all installed"} {
+		if !strings.Contains(header, want) {
+			t.Fatalf("a %d-column header lost %q:\n%s", p.w, want, header)
+		}
+	}
+	p.w = 100
+	if header := stripANSI(p.renderHeader()); !strings.Contains(header, "compose a run") {
+		t.Fatalf("a wide header dropped the title:\n%s", header)
+	}
+}
+
+// The narrow fallback has no status line, so the blocked reason must ride on
+// its rows: enter is dead there too, and without the reason the only thing
+// the view offers is a command that cannot run.
+func TestNarrowLauncherSaysWhyItCannotRun(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Dirty = true
+	p.concurrency().n = 2
+	p.w, p.h = 40, 10
+	if got := stripANSI(p.renderNarrow()); !strings.Contains(got, "concurrency above 1") {
+		t.Fatalf("the narrow fallback hides why enter does nothing:\n%s", got)
+	}
+	if got := stripANSI(demoPicker().renderNarrow()); strings.Contains(got, "⚠") {
+		t.Fatalf("an unblocked narrow fallback grew a warning:\n%s", got)
+	}
+}
+
 // The launcher's whole output is an argv, so that is what the tests pin: what
 // it composes must be a command a person could have typed.
 func TestPickComposesTheCommandItShows(t *testing.T) {
