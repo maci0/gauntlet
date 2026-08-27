@@ -28,6 +28,7 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"github.com/maci0/gauntlet/internal/ui"
+	"golang.org/x/term"
 )
 
 // version is stamped at build time: go build -ldflags "-X main.version=1.2.3".
@@ -887,14 +888,15 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 
 // confirmCommit asks whether to hand the tree to an agent. Unattended runs
 // keep the error: this writes a commit, which is not something to do to a
-// tree nobody is watching unless the flags already said to.
+// tree nobody is watching unless the flags already said to. term.IsTerminal,
+// like confirm's: /dev/null is a character device, and prompting there would
+// only read EOF.
 func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
 	if opts.yes || opts.yolo {
 		fmt.Fprintf(out, "Committing with %s first (--yes).\n", spec.Label())
 		return true
 	}
-	fi, err := os.Stdin.Stat()
-	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return false
 	}
 	fmt.Fprintf(out, "Commit them with %s first? [y/N] ", spec.Label())

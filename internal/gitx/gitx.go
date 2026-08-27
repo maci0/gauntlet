@@ -40,6 +40,8 @@ var safeConfig = []string{
 // the mutexes around Sample, Merge, and the worktree calls, forever past the
 // deadline. A var only so tests can shrink it; production always sees the
 // default.
+var waitGrace = 10 * time.Second
+
 // How long one git command may take, by what it has to do. A query answers
 // from the index or a ref; a normal command writes one; a slow one walks the
 // tree (a worktree add, a merge); a push waits on a network nobody here
@@ -50,8 +52,6 @@ const (
 	gitSlow   = 120 * time.Second
 	gitPush   = 300 * time.Second
 )
-
-var waitGrace = 10 * time.Second
 
 // gitPath resolves git once per PATH. The memo is keyed by the PATH it was
 // built from for the same reason the agent resolver's is: a cache that
@@ -389,9 +389,6 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 	return st.Ins, st.Del, true
 }
 
-// DirtyPaths returns worktree paths with uncommitted changes, excluding the
-// runner's own artifacts (matched by real path, so a repo file merely named
-// like one is still seen as a real change).
 // Changes splits what git status reports by whether git is tracking the path.
 // The distinction decides what may block worktree isolation: a modification
 // git tracks is work a review would neither see nor merge, while an untracked
@@ -401,16 +398,18 @@ type Changes struct {
 	Untracked []string
 }
 
-// Status reports the working tree's changes, excluding the runner's own
-// artifacts, split by whether git tracks them.
-func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Changes, error) {
+// statusPorcelain runs `git status --porcelain` and hands every nonempty
+// entry to visit as (raw line, path), skipping entries this run owns. Both
+// readers of git status share it so their parse cannot drift apart.
+func (r *Repo) statusPorcelain(ctx context.Context, ownArtifacts map[string]bool,
+	visit func(line, path string)) error {
+
 	out, err := r.run(ctx, gitQuick,
 		"-c", "core.quotePath=false",
 		"status", "--porcelain")
 	if err != nil {
-		return Changes{}, err
+		return err
 	}
-	var ch Changes
 	for line := range strings.SplitSeq(string(out), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -422,37 +421,37 @@ func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Change
 		if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
 			continue
 		}
+		visit(line, p)
+	}
+	return nil
+}
+
+// Status reports the working tree's changes, excluding the runner's own
+// artifacts, split by whether git tracks them.
+func (r *Repo) Status(ctx context.Context, ownArtifacts map[string]bool) (Changes, error) {
+	var ch Changes
+	err := r.statusPorcelain(ctx, ownArtifacts, func(line, p string) {
 		if strings.HasPrefix(line, "??") {
 			ch.Untracked = append(ch.Untracked, p)
-			continue
+		} else {
+			ch.Tracked = append(ch.Tracked, p)
 		}
-		ch.Tracked = append(ch.Tracked, p)
+	})
+	if err != nil {
+		return Changes{}, err
 	}
 	return ch, nil
 }
 
+// DirtyPaths returns worktree paths with uncommitted changes, excluding the
+// runner's own artifacts (matched by real path, so a repo file merely named
+// like one is still seen as a real change).
 func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]string, error) {
-	out, err := r.run(ctx, gitQuick,
-		"-c", "core.quotePath=false",
-		"status", "--porcelain")
-	if err != nil {
-		return nil, err
-	}
 	var dirty []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		p := porcelainPath(line)
-		if p == "" {
-			continue
-		}
-		if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
-			continue
-		}
+	err := r.statusPorcelain(ctx, ownArtifacts, func(_, p string) {
 		dirty = append(dirty, p)
-	}
-	return dirty, nil
+	})
+	return dirty, err
 }
 
 // exitsWith reports whether err is git exiting with the given status. The

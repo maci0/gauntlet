@@ -665,7 +665,7 @@ func (p *picker) View() string {
 	// The tree takes what it needs and no more; the panels beside it are
 	// sized by the terminal, not by how many groups happen to be open.
 	reviewRows := len(p.rows())
-	if p.filter != "" && reviewRows == 1 {
+	if p.filterMissed(p.rows()) {
 		reviewRows++ // the fruitless-filter notice needs its own row
 	}
 	reviewH := clampi(reviewRows, 1, free)
@@ -820,6 +820,14 @@ func (p *picker) window(which pane, n, h int) (from, to int) {
 	return top, min(n, top+h)
 }
 
+// filterMissed reports whether the current filter matches nothing: rows then
+// holds only the suggest row, since every surviving match contributes at
+// least its group header. View reserves the notice's row from this, and
+// reviewPanel renders the notice from it, so the two cannot drift.
+func (p *picker) filterMissed(rows []row) bool {
+	return p.filter != "" && len(rows) == 1
+}
+
 func (p *picker) reviewPanel(w, h int) string {
 	inner := w - 4 // the panel border and its padding
 	rows := p.rows()
@@ -877,10 +885,8 @@ func (p *picker) reviewPanel(w, h int) string {
 	}
 	// A filter that matches nothing hides the whole tree: without a word,
 	// silence reads as an empty prompt set rather than a search that missed.
-	// Every surviving match contributes at least its group header, so the
-	// suggest row alone means nothing matched. The dashboard's feed carries
-	// the same message for the same reason.
-	if p.filter != "" && len(rows) == 1 {
+	// The dashboard's feed carries the same message for the same reason.
+	if p.filterMissed(rows) {
 		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
 	}
 	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.known()))

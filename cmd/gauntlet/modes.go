@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -89,10 +91,10 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			fmt.Fprintf(out, "  %-*s%s\n", col+1, n, origin)
 		}
 		fmt.Fprintln(out)
-		weighted := len(d.reviews) - len(uniq(d.reviews))
+		repeats := len(d.reviews) - len(uniq(d.reviews))
 		extra := ""
-		if weighted > 0 {
-			extra = fmt.Sprintf(" (%d extra from repeats)", weighted)
+		if repeats > 0 {
+			extra = fmt.Sprintf(" (%d extra from repeats)", repeats)
 		}
 		fmt.Fprintf(out, "Reviews per loop: %d%s\n", len(d.reviews), extra)
 	}
@@ -346,8 +348,10 @@ func confirm(out io.Writer, opts *options, n int) bool {
 		fmt.Fprintln(out, "Proceeding without confirmation.")
 		return true
 	}
-	fi, err := os.Stdin.Stat()
-	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+	// term.IsTerminal, not a ModeCharDevice check: /dev/null is a character
+	// device, and a run under cron would otherwise prompt, read EOF, and
+	// abort. The same answer cmdPick's tty gate gives.
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		fmt.Fprintln(out, "stdin is not a terminal: proceeding without confirmation.")
 		return true
 	}

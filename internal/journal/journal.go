@@ -169,7 +169,9 @@ func (j *Journal) Close(s Summary) error {
 		return j.err
 	}
 	if !j.closed {
-		if err := j.w.Flush(); err != nil {
+		// The same keep-the-first-error rule Flush and CloseQuiet follow: a
+		// mid-run write failure must not be eclipsed by a later flush result.
+		if err := j.w.Flush(); err != nil && j.err == nil {
 			j.err = err
 		}
 		if err := j.f.Close(); err != nil && j.err == nil {

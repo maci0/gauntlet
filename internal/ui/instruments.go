@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // brailleBits maps (sub-row, sub-column) inside a braille cell to its Unicode
@@ -121,21 +123,21 @@ func meter(frac float64, w int, on lipgloss.TerminalColor) string {
 func sparkline(vals []float64, w int) string { return chart(vals, w, 1) }
 
 // statusGlyph is the review grid's cell: one column, one meaning.
-func statusGlyph(s string) (string, lipgloss.TerminalColor) {
+func statusGlyph(s runner.Status) (string, lipgloss.TerminalColor) {
 	switch s {
-	case "running":
+	case statusRunning:
 		return "▸", cCyan
-	case "ok":
+	case runner.StatusOK:
 		return "✓", cGreen
-	case "fail":
+	case runner.StatusFail:
 		return "✗", cRed
-	case "timeout":
+	case runner.StatusTimeout:
 		return "⧖", cYellow
-	case "conflict":
+	case runner.StatusConflict:
 		return "⑂", cPeach
-	case "skipped":
+	case runner.StatusSkipped:
 		return "–", cDim
-	case "interrupted":
+	case runner.StatusInterrupted:
 		return "␘", cYellow
 	default:
 		// Pending is real state, not chrome: the glyph reads at text

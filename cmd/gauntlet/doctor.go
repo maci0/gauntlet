@@ -210,7 +210,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			msg = "No auto-detectable agent CLI found: install one, or name an opt-in agent with --agents."
 		}
 		fmt.Fprintln(out, pal.red(msg))
-		return 1
+		return exitFail
 	}
 	if len(missingRec) > 0 {
 		fmt.Fprintln(out, pal.dim("Worth installing: ")+wrapIndent(strings.Join(missingRec, " "), width, 2))
@@ -225,7 +225,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	fmt.Fprintln(out, pal.dim(tokenSourceLine))
 	fmt.Fprintln(out, pal.dim("Stack-specific tools only matter for the languages you review."))
-	return 0
+	return exitOK
 }
 
 // binRunnable reports whether an explicit --bin path names a file that could

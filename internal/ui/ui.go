@@ -58,9 +58,17 @@ const feedMax = 2000
 // activitySamples is the width of the activity history ring.
 const activitySamples = 600
 
+// statusPending and statusRunning are the dashboard's own states: a review
+// the runner has not started, and one currently in flight. Everything past
+// them is the runner's vocabulary (runner.Status), carried through typed.
+const (
+	statusPending runner.Status = "pending"
+	statusRunning runner.Status = "running"
+)
+
 type reviewState struct {
 	name     string
-	status   string
+	status   runner.Status
 	agentLbl string
 	start    time.Time
 	elapsed  time.Duration
@@ -198,7 +206,7 @@ func newModel(cfg Config) *model {
 		if _, dup := m.reviews[r]; dup {
 			continue // repeats are weight, not extra rows
 		}
-		m.reviews[r] = &reviewState{name: r, status: "pending"}
+		m.reviews[r] = &reviewState{name: r, status: statusPending}
 		m.order = append(m.order, r)
 	}
 	// Pre-seed the lanes so the panel shows its structure before the first
@@ -350,8 +358,8 @@ func (m *model) apply(ev runner.Event) {
 		m.loop = ev.Loop
 		// A new loop resets the grid: pending again, results kept in counters.
 		for _, r := range m.reviews {
-			if r.status != "running" {
-				r.status = "pending"
+			if r.status != statusRunning {
+				r.status = statusPending
 			}
 		}
 	case runner.EvLoopEnd:
@@ -363,7 +371,7 @@ func (m *model) apply(ev runner.Event) {
 		}
 	case runner.EvReviewStart:
 		r := m.review(ev.Review)
-		r.status, r.agentLbl, r.start, r.flash = "running", ev.Agent, ev.Time, ev.Time
+		r.status, r.agentLbl, r.start, r.flash = statusRunning, ev.Agent, ev.Time, ev.Time
 		if l := m.lane(m.laneKey(ev)); l != nil {
 			l.review, l.start, l.attempt = ev.Review, ev.Time, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
@@ -398,7 +406,7 @@ func (m *model) apply(ev runner.Event) {
 		}
 	case runner.EvReviewEnd:
 		r := m.review(ev.Review)
-		r.status = string(ev.Status)
+		r.status = ev.Status
 		r.agentLbl = ev.Agent
 		r.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
 		r.tokens = ev.Tokens
@@ -454,7 +462,7 @@ func (m *model) review(name string) *reviewState {
 	if r, ok := m.reviews[name]; ok {
 		return r
 	}
-	r := &reviewState{name: name, status: "pending"}
+	r := &reviewState{name: name, status: statusPending}
 	m.reviews[name] = r
 	m.order = append(m.order, name)
 	m.orderDirty = true
@@ -797,8 +805,10 @@ func (m *model) renderGrid(w, h int) string {
 
 	capacity, hidden := cols*h, 0
 	if extra := len(names) - capacity; extra > 0 {
-		names = names[:capacity-1] // keep one slot for the marker
-		hidden = extra
+		// One slot goes to the marker itself, so what stays hidden is
+		// everything beyond the capacity-1 cells drawn.
+		names = names[:capacity-1]
+		hidden = extra + 1
 	}
 
 	var rows []string
@@ -810,9 +820,9 @@ func (m *model) renderGrid(w, h int) string {
 		short := trim(strings.TrimSuffix(name, "-review"), cellW-3)
 		cell := styled(col, glyph) + " "
 		switch r.status {
-		case "running":
+		case statusRunning:
 			cell += styled(m.hues.get(r.agentLbl), short)
-		case "pending":
+		case statusPending:
 			cell += styleFaint.Render(short)
 		default:
 			cell += styled(col, short)
