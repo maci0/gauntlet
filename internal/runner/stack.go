@@ -14,75 +14,116 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 )
 
-// prepareStackMode validates every local and remote precondition before an
-// agent starts. In particular, the dry-run push proves new stack branches can
-// be published without creating a probe ref on the remote.
-func (r *Runner) prepareStackMode(ctx context.Context) error {
+// StackPrep is what stacked mode proves before any agent starts, the
+// suggestion agent included: the resolved base branch, the exact base commit
+// the whole stack is pinned to, and a gh client already past authentication,
+// repository access, and a dry-run new-branch push.
+type StackPrep struct {
+	Base    string
+	BaseTip string
+	GH      ghx.Client
+}
+
+// PrepareStack validates every local and remote precondition of a stacked
+// run and pins its base commit. It runs before any agent starts, and its
+// order is deliberate: local checks and the dirty-checkout boundary come
+// first (returning StackDirtyError before consent), the remote and its URL
+// are validated next, and only then does anything touch the network. The
+// dry-run push proves new stack branches can be published without creating a
+// probe ref on the remote.
+func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
+	if cfg.PushRemote == "" {
+		cfg.PushRemote = "origin"
+	}
 	if !gitx.Available() {
-		return errors.New("--stacked-prs needs git")
+		return nil, errors.New("--stacked-prs needs git")
 	}
-	if !r.repo.HasBaseline() {
-		return fmt.Errorf("--stacked-prs needs a git repository with at least one commit: %s", r.cfg.Dir)
+	repo := gitx.Open(cfg.Dir)
+	if !repo.HasBaseline() {
+		return nil, fmt.Errorf("--stacked-prs needs a git repository with at least one commit: %s", cfg.Dir)
 	}
-	base := r.cfg.PRBase
+	base := cfg.PRBase
 	if base == "" {
-		base = r.repo.CurrentBranch(ctx)
+		base = repo.CurrentBranch(ctx)
 	}
 	if base == "" {
-		return errors.New("--stacked-prs needs --pr-base when HEAD is detached")
+		return nil, errors.New("--stacked-prs needs --pr-base when HEAD is detached")
 	}
-	if err := r.repo.ValidateBranchName(ctx, base); err != nil {
-		return fmt.Errorf("--pr-base: %w", err)
+	if err := repo.ValidateBranchName(ctx, base); err != nil {
+		return nil, fmt.Errorf("--pr-base: %w", err)
 	}
-	remoteURL, err := r.repo.RemoteURL(ctx, r.cfg.PushRemote)
+	remoteURL, err := repo.RemoteURL(ctx, cfg.PushRemote)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
+	// The dirty boundary surfaces before the fetch: consent is about what a
+	// run is going to do, so nothing has happened yet when the user is asked.
+	changes, err := repo.Status(ctx, cfg.OwnArtifacts)
 	if err != nil {
-		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
+		return nil, fmt.Errorf("cannot read git status in %s: %w", cfg.Dir, err)
 	}
-	if len(changes.Tracked)+len(changes.Untracked) > 0 && !r.cfg.AllowDirtyStack {
-		return &StackDirtyError{Dir: r.cfg.Dir, Remote: r.cfg.PushRemote, Base: base,
+	if len(changes.Tracked)+len(changes.Untracked) > 0 && !cfg.AllowDirtyStack {
+		return nil, &StackDirtyError{Dir: cfg.Dir, Remote: cfg.PushRemote, Base: base,
 			Tracked: changes.Tracked, Untracked: changes.Untracked}
 	}
 
-	// Fetch, rather than pull: the remote base object enters the shared Git
-	// object store, while the branch and files checked out by the user do not
-	// move. The isolated worktree is cut directly from this returned commit.
-	//
-	// ponytail: the tip is re-fetched on every invocation, a hot reload
-	// included. A remote base that advances mid-run renames every layer, so a
-	// reload then starts a fresh stack instead of recovering the published
-	// prefix; carrying the fetched tip through the reload handoff is the
-	// upgrade if that ever bites.
-	baseTip, err := r.repo.FetchRemoteBranchTip(ctx, r.cfg.PushRemote, base)
-	if err != nil {
-		return fmt.Errorf("cannot fetch %s/%s: %w", r.cfg.PushRemote, base, err)
-	}
-	repoName, host := r.cfg.PRRepo, r.cfg.PRHost
+	// The base repository comes from where fetches read; the PR head owner
+	// from where pushes actually land. Both URLs are validated here, before
+	// the first network operation, so a remote gh cannot address is refused
+	// instead of half-used.
+	repoName, host := cfg.PRRepo, cfg.PRHost
+	headOwner := ""
 	if repoName == "" {
 		repoName, host, err = ghx.ParseRemote(remoteURL)
 		if err != nil {
-			return fmt.Errorf("cannot infer the GitHub repository from %s: %w", r.cfg.PushRemote, err)
+			return nil, fmt.Errorf("cannot infer the GitHub repository from %s: %w", cfg.PushRemote, err)
+		}
+		pushURL, err := repo.RemotePushURL(ctx, cfg.PushRemote)
+		if err != nil {
+			return nil, err
+		}
+		if pushURL != remoteURL {
+			headRepo, _, err := ghx.ParseRemote(pushURL)
+			if err != nil {
+				return nil, fmt.Errorf("cannot infer the PR head repository from the push URL of %s: %w",
+					cfg.PushRemote, err)
+			}
+			headOwner, _, _ = strings.Cut(headRepo, "/")
+			if baseOwner, _, _ := strings.Cut(repoName, "/"); headOwner == baseOwner {
+				headOwner = ""
+			}
 		}
 	}
 	if host == "" {
 		host = "github.com"
 	}
-	r.gh = ghx.Client{Dir: r.cfg.Dir, Repo: repoName, Host: host}
-	if err := r.gh.Preflight(ctx); err != nil {
-		return err
-	}
-	probe := fmt.Sprintf("gauntlet/preflight/%s-%s", shortTip(baseTip), safeTag(r.cfg.RunID))
-	if err := r.repo.CanPushBranch(ctx, r.cfg.PushRemote, baseTip, probe); err != nil {
-		return fmt.Errorf("cannot push stack branches to %s: %w", r.cfg.PushRemote, err)
+
+	// Fetch, rather than pull: the remote base object enters the shared Git
+	// object store, while the branch and files checked out by the user do not
+	// move. The isolated worktree is cut directly from this commit. A
+	// hot-reload successor keeps the tip its predecessor pinned instead of
+	// fetching again: a remote base that advances mid-run would rename every
+	// layer and split the resumed run into a new stack.
+	var baseTip string
+	if cfg.ResumeStackTip != "" && repo.HasCommit(ctx, cfg.ResumeStackTip) {
+		baseTip = cfg.ResumeStackTip
+	} else {
+		baseTip, err = repo.FetchRemoteBranchTip(ctx, cfg.PushRemote, base)
+		if err != nil {
+			return nil, fmt.Errorf("cannot fetch %s/%s: %w", cfg.PushRemote, base, err)
+		}
 	}
 
-	r.cfg.PRBase = base
-	r.stackBase, r.stackBaseTip = base, baseTip
-	r.repo.PruneWorktrees(ctx)
-	return nil
+	gh := ghx.Client{Dir: cfg.Dir, Repo: repoName, Host: host, HeadOwner: headOwner}
+	if err := gh.Preflight(ctx); err != nil {
+		return nil, err
+	}
+	probe := fmt.Sprintf("gauntlet/preflight/%s-%s", shortTip(baseTip), safeTag(cfg.RunID))
+	if err := repo.CanPushBranch(ctx, cfg.PushRemote, baseTip, probe); err != nil {
+		return nil, fmt.Errorf("cannot push stack branches to %s: %w", cfg.PushRemote, err)
+	}
+	repo.PruneWorktrees(ctx)
+	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh}, nil
 }
 
 func shortTip(tip string) string {

@@ -91,7 +91,11 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 	for _, want := range []string{
 		"Directories: 2",
 		"Completed loops: 3",
-		"a-review              gauntlet/stack/a -> main  https://github.com/owner/repo/pull/1",
+		"PULL REQUESTS",
+		"  a-review\n",
+		"    branch  gauntlet/stack/a\n",
+		"    base    main\n",
+		"    url     https://github.com/owner/repo/pull/1\n",
 		"Total reviews run: 2",
 		"Passed: 1",
 		"Failed: 1",

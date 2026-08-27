@@ -19,8 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/term"
-
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -194,7 +192,9 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 	for i, d := range runs {
 		wg.Go(func() {
 			picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
-				Dir: d.dir, Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
+				// scanDir, not dir: a stacked run's suggestion signals come
+				// from the fetched base snapshot, never the dirty checkout.
+				Dir: d.scanDir(), Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
 				Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
 				Log: func(f string, a ...any) { logf(d.dir, f, a...) },
 			})
@@ -352,10 +352,10 @@ func confirm(out io.Writer, opts *options, n int) bool {
 		fmt.Fprintln(out, "Proceeding without confirmation.")
 		return true
 	}
-	// term.IsTerminal, not a ModeCharDevice check: /dev/null is a character
-	// device, and a run under cron would otherwise prompt, read EOF, and
-	// abort. The same answer cmdPick's tty gate gives.
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	// A real terminal check, not a ModeCharDevice one: /dev/null is a
+	// character device, and a run under cron would otherwise prompt, read
+	// EOF, and abort. The same answer cmdPick's tty gate gives.
+	if !stdinIsTerminal() {
 		fmt.Fprintln(out, "stdin is not a terminal: proceeding without confirmation.")
 		return true
 	}

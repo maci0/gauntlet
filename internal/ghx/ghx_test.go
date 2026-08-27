@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -83,5 +84,43 @@ func TestClientRejectsForeignOrNonHTTPSPRURL(t *testing.T) {
 		if _, err := c.validateURL(raw); err == nil {
 			t.Errorf("accepted PR URL %q", raw)
 		}
+	}
+}
+
+// A fork workflow pushes heads into another account. Both PR discovery and
+// creation must qualify the head as OWNER:BRANCH, or GitHub looks for the
+// branch in the base repository and never finds it.
+func TestClientQualifiesCrossForkHead(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "args")
+	script := `#!/bin/sh
+printf '<%s>\n' "$@" >> "$GH_TEST_LOG"
+case "$1 $2" in
+  "pr list") echo '[]'; exit 0 ;;
+  "pr create") echo 'https://github.com/owner/repo/pull/9'; exit 0 ;;
+esac
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("GH_TEST_LOG", logPath)
+	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com", HeadOwner: "fork"}
+	if _, err := c.Find(context.Background(), "child", "base"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Create(context.Background(), "child", "base", "t", "b"); err != nil {
+		t.Fatal(err)
+	}
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(string(logBody), "<--head>\n<fork:child>"); got != 2 {
+		t.Fatalf("qualified head appeared %d times, want in both list and create:\n%s", got, logBody)
+	}
+	if strings.Contains(string(logBody), "<child>") {
+		t.Fatalf("an unqualified head reached gh:\n%s", logBody)
 	}
 }

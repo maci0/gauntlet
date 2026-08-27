@@ -483,3 +483,208 @@ func TestStackedPRsPreflightChecksGitHubAuthenticationBeforeAgent(t *testing.T) 
 		}
 	})
 }
+
+// A hot reload hands its successor the exact base commit the run was pinned
+// to. If the remote base advances in the reload window, the successor must
+// keep building the same stack from the pinned commit, not start a new one
+// named after the moved tip.
+func TestStackedPRsReloadKeepsPinnedBaseWhenRemoteAdvances(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo first > first.txt ;;
+  *second-review*) echo second > second.txt ;;
+esac
+echo 'RESULT: changed=1'`)
+	pinned := gitOut(t, repo, "rev-parse", "main")
+
+	bus := NewBus()
+	events := bus.Subscribe(0)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() {
+		stopped := false
+		for ev := range events {
+			if !stopped && ev.Kind == EvPullRequest {
+				stopped = true
+				r.RequestStop()
+			}
+		}
+	}()
+	go func() { r.Run(context.Background()); close(done) }()
+	<-done
+	bus.Close()
+
+	// The remote base advances while no gauntlet is running, without moving
+	// the local checkout: a new commit object pushed straight to the remote.
+	tree := gitOut(t, repo, "rev-parse", "main^{tree}")
+	advanced := gitOut(t, repo, "commit-tree", "-p", "main", "-m", "advance", tree)
+	gitOut(t, repo, "push", "-q", "origin", advanced+":refs/heads/main")
+
+	cfg.ResumeQueue = r.Pending()
+	cfg.ResumeStackTip = pinned
+	runQuiet(t, cfg)
+
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("resume reran or skipped reviews: %q", started)
+	}
+	b1 := gitx.StackBranchName(pinned, 0, "first-review")
+	b2 := gitx.StackBranchName(pinned, 1, "second-review")
+	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != gitOut(t, repo, "rev-parse", "refs/heads/"+b1) {
+		t.Fatalf("resumed layer parent = %s, want the pinned stack's first layer", got)
+	}
+	moved := gitx.StackBranchName(advanced, 1, "second-review")
+	cmd := exec.Command("git", "show-ref", "--verify", "refs/heads/"+moved)
+	cmd.Dir = repo
+	if cmd.Run() == nil {
+		t.Fatal("resume followed the advanced remote base into a new stack")
+	}
+}
+
+// A hard-killed process leaves a registered stack worktree and possibly a
+// branch behind. The next run reuses or removes only that gauntlet-owned
+// state; a user's own worktree and branch survive untouched.
+func TestStackedPRsRecoverStaleWorktreeWithoutTouchingUnrelatedState(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	userWt := filepath.Join(t.TempDir(), "user-wt")
+	gitOut(t, repo, "worktree", "add", "-q", "-b", "user-branch", userWt, "main")
+	staleDir := filepath.Join(repo, ".gauntlet", "worktrees", "stack-test")
+	gitOut(t, repo, "worktree", "add", "-q", "--detach", staleDir, "main")
+
+	cfg := stackConfig(t, repo, []string{"sec-review"},
+		`echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("counts after stale recovery: %+v", got)
+	}
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/user-branch")
+	list := gitOut(t, repo, "worktree", "list", "--porcelain")
+	if !strings.Contains(list, userWt) {
+		t.Fatalf("unrelated worktree was removed:\n%s", list)
+	}
+	if strings.Contains(list, staleDir) {
+		t.Fatalf("stale gauntlet worktree survived the run:\n%s", list)
+	}
+}
+
+// A rejected push stops the stack: the failure is recorded, the committed
+// branch is kept locally for a human, and no later review starts on a base
+// that never became a usable remote PR head.
+func TestStackedPRsPushFailureStopsTheStack(t *testing.T) {
+	repo, remote := stackRepo(t)
+	_, statePath := fakeGH(t)
+	if err := os.WriteFile(filepath.Join(remote, "hooks", "pre-receive"),
+		[]byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+echo changed > changed.txt
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 1 {
+		t.Fatalf("push failure counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("a review started after the push failed: %q", started)
+	}
+	base := gitOut(t, repo, "rev-parse", "main")
+	b1 := gitx.StackBranchName(base, 0, "first-review")
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b1)
+	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", b1); err != nil || found {
+		t.Fatalf("rejected push left a remote branch: found=%v err=%v", found, err)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.Contains(string(state), b1) {
+		t.Fatalf("unpushed branch got a PR:\n%s", state)
+	}
+}
+
+// A failed commit stops the stack the same way: recorded, published as a
+// failure, nothing half-made left in the worktree or on the remote.
+func TestStackedPRsCommitFailureStopsTheStack(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	// Signing is demanded but the signer does not exist, so every commit in
+	// this clone (the stack worktree included) fails deterministically.
+	gitOut(t, repo, "config", "commit.gpgsign", "true")
+	gitOut(t, repo, "config", "gpg.program", filepath.Join(t.TempDir(), "no-such-gpg"))
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+echo changed > changed.txt
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 1 {
+		t.Fatalf("commit failure counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("a review started after the commit failed: %q", started)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.Contains(string(state), "pull") {
+		t.Fatalf("failed commit produced a PR:\n%s", state)
+	}
+	if got := gitOut(t, repo, "rev-parse", "main"); got != gitOut(t, repo, "rev-parse", "origin/main") {
+		t.Fatal("commit failure moved a branch")
+	}
+}
+
+// A remote with distinct fetch and push URLs is a fork workflow: the base
+// repository comes from where fetches read, the PR head owner from where
+// pushes land, and the PR is created with the OWNER:BRANCH qualified head.
+func TestStackedPRsSeparateFetchAndPushURLsCrossForkHead(t *testing.T) {
+	repo := testRepo(t)
+	upstream := filepath.Join(t.TempDir(), "upstream.git")
+	fork := filepath.Join(t.TempDir(), "fork.git")
+	for _, bare := range []string{upstream, fork} {
+		if out, err := exec.Command("git", "init", "--bare", "-q", bare).CombinedOutput(); err != nil {
+			t.Fatalf("init bare: %v: %s", err, out)
+		}
+	}
+	gitOut(t, repo, "remote", "add", "origin", "https://github.com/upstream/proj.git")
+	gitOut(t, repo, "config", "remote.origin.pushurl", "https://github.com/fork/proj.git")
+	// insteadOf redirects transport to the local bares; the configured URLs
+	// stay what PrepareStack reads and infers the repositories from.
+	gitOut(t, repo, "config", "url."+upstream+".insteadOf", "https://github.com/upstream/proj.git")
+	gitOut(t, repo, "config", "url."+fork+".insteadOf", "https://github.com/fork/proj.git")
+	gitOut(t, repo, "push", "-q", upstream, "main")
+	logPath, _ := fakeGH(t)
+
+	cfg := stackConfig(t, repo, []string{"sec-review"},
+		`echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
+	cfg.PRRepo, cfg.PRHost = "", "" // force inference from the remote URLs
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("cross-fork counts: %+v", got)
+	}
+	base := gitOut(t, repo, "rev-parse", "main")
+	branch := gitx.StackBranchName(base, 0, "sec-review")
+	if out, err := exec.Command("git", "-C", fork, "rev-parse", "refs/heads/"+branch).CombinedOutput(); err != nil {
+		t.Fatalf("stack branch missing from the push destination: %v: %s", err, out)
+	}
+	if err := exec.Command("git", "-C", upstream, "rev-parse", "--verify", "refs/heads/"+branch).Run(); err == nil {
+		t.Fatal("stack branch leaked into the fetch-side repository")
+	}
+	logBody, _ := os.ReadFile(logPath)
+	if !strings.Contains(string(logBody), "repo view upstream/proj") {
+		t.Fatalf("base repository was not inferred from the fetch URL:\n%s", logBody)
+	}
+	if !strings.Contains(string(logBody), "--head fork:"+branch) {
+		t.Fatalf("PR head was not qualified with the push owner:\n%s", logBody)
+	}
+}

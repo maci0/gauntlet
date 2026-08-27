@@ -186,9 +186,14 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 	}
 	fmt.Fprintf(out, "Completed loops: %d\n", loops)
 	if len(pullRequests) > 0 {
-		fmt.Fprintln(out, "Pull requests:")
+		// One field per line: branch names and URLs are reference detail, and
+		// cramming them onto one row makes none of the three readable.
+		fmt.Fprintln(out, "PULL REQUESTS")
 		for _, pr := range pullRequests {
-			fmt.Fprintf(out, "  %-20s  %s -> %s  %s\n", pr.Review, pr.Branch, pr.Base, pr.URL)
+			fmt.Fprintf(out, "  %s\n", pr.Review)
+			fmt.Fprintf(out, "    branch  %s\n", pr.Branch)
+			fmt.Fprintf(out, "    base    %s\n", pr.Base)
+			fmt.Fprintf(out, "    url     %s\n", pr.URL)
 		}
 	}
 	fmt.Fprintf(out, "Total reviews run: %d\n", agg.Total())

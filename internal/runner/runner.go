@@ -66,6 +66,15 @@ type Config struct {
 	// tests can pair a local fake Git remote with a fake gh endpoint.
 	PRRepo string
 	PRHost string
+	// ResumeStackTip pins a resumed stacked run to the base commit its
+	// predecessor fetched. PrepareStack keeps it when the object is still in
+	// the store, so a remote base that advanced during the reload cannot
+	// rename the layers and split the run into a new stack.
+	ResumeStackTip string
+	// StackPrep carries a preflight the CLI already ran (before the suggest
+	// step and the dirty-checkout consent it fronts). Nil makes New run
+	// PrepareStack itself.
+	StackPrep *StackPrep
 	// MergeInto is a branch this run's work is merged into after each loop,
 	// once the commit step has left the tree clean. Empty leaves the work
 	// where the reviews put it, on the branch that was checked out.
@@ -279,9 +288,16 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	// which is the right place for one tool's scratch.
 	r.repo.ExcludeOwnArtifacts(ctx)
 	if cfg.StackedPRs {
-		if err := r.prepareStackMode(ctx); err != nil {
-			return nil, err
+		prep := cfg.StackPrep
+		if prep == nil {
+			var err error
+			if prep, err = PrepareStack(ctx, cfg); err != nil {
+				return nil, err
+			}
 		}
+		r.cfg.PRBase = prep.Base
+		r.gh = prep.GH
+		r.stackBase, r.stackBaseTip = prep.Base, prep.BaseTip
 	} else if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err

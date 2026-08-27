@@ -21,14 +21,16 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/term"
+
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"github.com/maci0/gauntlet/internal/ui"
-	"golang.org/x/term"
 )
 
 // version is stamped at build time: go build -ldflags "-X main.version=1.2.3".
@@ -91,6 +93,22 @@ type dirRun struct {
 	// carriedLoops are the loops this directory finished in an earlier
 	// process, before a hot reload handed the run over.
 	carriedLoops int
+	// prep and snapshot exist only in stacked mode: the preflight already run
+	// for this directory, and the checkout of its pinned base commit that
+	// prompt discovery and the suggest step read instead of the user's tree.
+	prep     *runner.StackPrep
+	repo     *gitx.Repo
+	snapshot *gitx.Worktree
+}
+
+// scanDir is where this directory's prompts and suggestion signals are read.
+// A stacked run reads the snapshot of the fetched remote base, so uncommitted
+// or local-only files cannot steer a run that publishes remote-based work.
+func (d *dirRun) scanDir() string {
+	if d.snapshot != nil {
+		return d.snapshot.Dir
+	}
+	return d.dir
 }
 
 // handoff is the state a hot reload carries across the exec. It holds the
@@ -117,6 +135,12 @@ type dirHandoff struct {
 	CommitRuns  int             `json:"commit_runs,omitempty"`
 	CommitFails int             `json:"commit_fails,omitempty"`
 	Results     []runner.Result `json:"results,omitempty"`
+	// StackBase and StackBaseTip pin a stacked run to the exact remote base
+	// commit its first process fetched. The successor resumes from this
+	// commit rather than fetching a tip that may have advanced, which would
+	// rename every layer and split the run into a new stack.
+	StackBase    string `json:"stack_base,omitempty"`
+	StackBaseTip string `json:"stack_base_tip,omitempty"`
 }
 
 // Loops totals the loops finished before the reload.
@@ -233,35 +257,15 @@ func run(argv []string) int {
 		}
 	}
 
-	// Discovery and selection happen per directory: a project can carry its
-	// own *-review.md files, so the available set differs per tree.
 	runs := make([]*dirRun, 0, len(dirs))
 	for _, dir := range dirs {
-		set, warnings, err := prompt.Discover(ctx, opts.promptDir, dir)
-		if err != nil {
-			if opts.promptDir != "" {
-				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
-			}
-			fmt.Fprintln(os.Stderr, err)
-			return exitUsage
-		}
-		for _, w := range warnings {
-			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
-		}
-		if set.Len() == 0 {
-			fmt.Fprintf(os.Stderr, "No reviews found for %s\n", dir)
-			return exitUsage
-		}
-		runs = append(runs, &dirRun{dir: dir, set: set})
+		runs = append(runs, &dirRun{dir: dir})
 	}
-
-	// Informational modes act on the first directory, then exit.
-	if opts.showPrompt != "" {
-		return cmdShowPrompt(stdout, runs[0].set, opts)
-	}
+	defer releaseAll(runs)
 
 	// Continue a run that a hot reload interrupted, so counters and the
-	// journal survive the swap.
+	// journal survive the swap. Loaded before discovery: a resumed stacked
+	// run must pin its predecessor's base commit before anything is read.
 	var prior handoff
 	resumed := selfupdate.LoadState(&prior)
 	if prior.Dirs == nil {
@@ -276,6 +280,84 @@ func run(argv []string) int {
 	if !resumed || runID == "" {
 		runID = journal.NewRunID(now)
 		startedAt = now
+	}
+
+	ownArtifacts := map[string]bool{}
+	if opts.logFile != "" {
+		ownArtifacts[runner.RealPath(opts.logFile)] = true
+	}
+	locked := false
+	lockAll := func() int {
+		for _, d := range runs {
+			lockPath := runner.LockPath(d.dir)
+			lock, err := runner.Acquire(lockPath)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				if errors.Is(err, runner.ErrLocked) {
+					return exitLocked
+				}
+				return exitUsage
+			}
+			d.lock = lock
+			ownArtifacts[runner.RealPath(lockPath)] = true
+		}
+		locked = true
+		return -1
+	}
+
+	// Stacked mode fronts every check before any agent, the suggestion agent
+	// included: the dirty-checkout consent, remote and gh validation, the
+	// pinned base fetch, and the snapshot worktree that discovery reads. The
+	// locks come first, so the fetch and the snapshot never race another
+	// gauntlet in the same clone. Informational modes stay on the local tree
+	// and touch no network.
+	informational := opts.showPrompt != "" || opts.list || opts.dryRun
+	if opts.stackedPRs && !informational {
+		if code := lockAll(); code >= 0 {
+			return code
+		}
+		stdin := bufio.NewReader(os.Stdin)
+		interactive := stdinIsTerminal()
+		for _, d := range runs {
+			err := stackPreflight(ctx, d, opts, prior.Dirs[d.dir], resumed, runID,
+				ownArtifacts, stdin, interactive, stdout)
+			if errors.Is(err, errAborted) {
+				fmt.Fprintln(stdout, "Aborted.")
+				return exitOK
+			}
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return exitUsage
+			}
+		}
+		defer cleanupSnapshots(runs)
+	}
+
+	// Discovery and selection happen per directory: a project can carry its
+	// own *-review.md files, so the available set differs per tree. A stacked
+	// run discovers in its base snapshot rather than the user's checkout.
+	for _, d := range runs {
+		set, warnings, err := prompt.Discover(ctx, opts.promptDir, d.scanDir())
+		if err != nil {
+			if opts.promptDir != "" {
+				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
+			}
+			fmt.Fprintln(os.Stderr, err)
+			return exitUsage
+		}
+		for _, w := range warnings {
+			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+		}
+		if set.Len() == 0 {
+			fmt.Fprintf(os.Stderr, "No reviews found for %s\n", d.dir)
+			return exitUsage
+		}
+		d.set = set
+	}
+
+	// Informational modes act on the first directory, then exit.
+	if opts.showPrompt != "" {
+		return cmdShowPrompt(stdout, runs[0].set, opts)
 	}
 
 	if err := planReviews(ctx, needPlanning(runs, prior, resumed), opts, agents, stdout, pal); err != nil {
@@ -299,26 +381,12 @@ func run(argv []string) int {
 	}
 
 	// From here the run is real: take the locks before doing anything an agent
-	// could observe.
-	ownArtifacts := map[string]bool{}
-	if opts.logFile != "" {
-		ownArtifacts[runner.RealPath(opts.logFile)] = true
-	}
-	for _, d := range runs {
-		lockPath := runner.LockPath(d.dir)
-		lock, err := runner.Acquire(lockPath)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			releaseAll(runs)
-			if errors.Is(err, runner.ErrLocked) {
-				return exitLocked
-			}
-			return exitUsage
+	// could observe. A stacked run already took them, before its preflight.
+	if !locked {
+		if code := lockAll(); code >= 0 {
+			return code
 		}
-		d.lock = lock
-		ownArtifacts[runner.RealPath(lockPath)] = true
 	}
-	defer releaseAll(runs)
 
 	// The index describes the tree, not this process: a reload inherits the
 	// one its predecessor built rather than spending another half hour.
@@ -429,9 +497,10 @@ func run(argv []string) int {
 			Started: startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
 			StackedPRs: opts.stackedPRs, PRBase: opts.prBase, PushRemote: opts.pushRemote,
-			// A hot-reload successor continues an isolation decision already made
-			// by the original process; prompting again could strand the run.
-			AllowDirtyStack:  resumed,
+			// The stacked preflight (dirty consent included) already ran,
+			// before the suggest step; New reuses its result instead of
+			// checking or fetching again.
+			StackPrep:        d.prep,
 			MergeInto:        opts.mergeInto,
 			ResolveConflicts: opts.resolveConflicts,
 			Seed:             opts.seed,
@@ -442,22 +511,6 @@ func run(argv []string) int {
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
 		}
 		r, err := runner.New(ctx, cfg, bus)
-		if stackDirty, ok := errors.AsType[*runner.StackDirtyError](err); ok {
-			proceed, confirmErr := confirmStackIsolation(stdout, opts, stackDirty)
-			switch {
-			case confirmErr != nil:
-				err = confirmErr
-			case !proceed:
-				fmt.Fprintln(stdout, "Aborted.")
-				bus.Close()
-				consumers.Wait()
-				jrnl.CloseQuiet()
-				return exitOK
-			default:
-				cfg.AllowDirtyStack = true
-				r, err = runner.New(ctx, cfg, bus)
-			}
-		}
 		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
 			commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
 			r, err = runner.New(ctx, cfg, bus)
@@ -562,17 +615,71 @@ func run(argv []string) int {
 	return code
 }
 
-// confirmStackIsolation makes the omission boundary explicit. A stacked run
-// is safe beside a dirty checkout because it starts from a fetched remote
-// commit, but silently reviewing a different tree from the one on screen is
-// surprising. Unattended callers must opt in with --yes.
-func confirmStackIsolation(out io.Writer, opts *options, dirty *runner.StackDirtyError) (bool, error) {
-	fi, statErr := os.Stdin.Stat()
-	interactive := statErr == nil && fi.Mode()&os.ModeCharDevice != 0
-	return confirmStackIsolationWith(out, os.Stdin, interactive, opts, dirty)
+// stackPreflight runs one directory's stacked-mode checks before any agent
+// (the suggestion agent included) can start: the dirty-checkout consent, the
+// remote and gh validation, the pinned base fetch, and the snapshot worktree
+// that prompt discovery and the suggest step read instead of the checkout.
+func stackPreflight(ctx context.Context, d *dirRun, opts *options, carried dirHandoff,
+	resumed bool, runID string, ownArtifacts map[string]bool,
+	in *bufio.Reader, interactive bool, out io.Writer) error {
+
+	cfg := runner.Config{
+		Dir: d.dir, StackedPRs: true, PRBase: opts.prBase, PushRemote: opts.pushRemote,
+		OwnArtifacts: ownArtifacts, RunID: runID,
+		// A hot-reload successor continues an isolation decision already made
+		// by the original process, and keeps the base commit it pinned:
+		// prompting again could strand the run, and fetching again could hand
+		// it a base that moved, splitting the resumed stack into a new one.
+		AllowDirtyStack: resumed,
+		ResumeStackTip:  carried.StackBaseTip,
+	}
+	if resumed && carried.StackBase != "" {
+		cfg.PRBase = carried.StackBase
+	}
+	prep, err := runner.PrepareStack(ctx, cfg)
+	if dirty, ok := errors.AsType[*runner.StackDirtyError](err); ok {
+		proceed, confirmErr := confirmStackIsolationWith(out, in, interactive, opts, dirty)
+		if confirmErr != nil {
+			return confirmErr
+		}
+		if !proceed {
+			return errAborted
+		}
+		cfg.AllowDirtyStack = true
+		prep, err = runner.PrepareStack(ctx, cfg)
+	}
+	if err != nil {
+		return err
+	}
+	d.prep = prep
+	d.repo = gitx.Open(d.dir)
+	snap, err := d.repo.AddSnapshotWorktree(ctx, runID, prep.BaseTip)
+	if err != nil {
+		return fmt.Errorf("cannot create the base snapshot worktree in %s: %w", d.dir, err)
+	}
+	d.snapshot = snap
+	return nil
 }
 
-func confirmStackIsolationWith(out io.Writer, in io.Reader, interactive bool, opts *options,
+// cleanupSnapshots removes the base snapshot checkouts a stacked run read its
+// prompts from. They outlive the runners on purpose: prompt bodies are read
+// from them for as long as reviews launch.
+func cleanupSnapshots(runs []*dirRun) {
+	for _, d := range runs {
+		if d.snapshot == nil {
+			continue
+		}
+		if err := d.snapshot.Remove(context.Background()); err == nil {
+			d.repo.CleanWorktreeRoot()
+		}
+	}
+}
+
+// confirmStackIsolationWith makes the omission boundary explicit. A stacked
+// run is safe beside a dirty checkout because it starts from a fetched remote
+// commit, but silently reviewing a different tree from the one on screen is
+// surprising. Unattended callers must opt in with --yes.
+func confirmStackIsolationWith(out io.Writer, in *bufio.Reader, interactive bool, opts *options,
 	dirty *runner.StackDirtyError) (bool, error) {
 	paths := dirty.DisplayPaths()
 	fmt.Fprintf(out, "\nUNCOMMITTED FILES (%d)\n", len(paths))
@@ -588,8 +695,10 @@ func confirmStackIsolationWith(out io.Writer, in io.Reader, interactive bool, op
 	fmt.Fprintln(out, "They will not be reviewed or included in the PRs.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "STACK BASE")
-	fmt.Fprintf(out, "  %s/%s  latest fetched commit\n", dirty.Remote, dirty.Base)
-	fmt.Fprintln(out, "  The isolated worktree starts from this commit.")
+	fmt.Fprintf(out, "  remote  %s\n", dirty.Remote)
+	fmt.Fprintf(out, "  branch  %s\n", dirty.Base)
+	fmt.Fprintln(out, "  After confirmation, gauntlet fetches this remote branch and starts")
+	fmt.Fprintln(out, "  the isolated worktree from the fetched commit.")
 	if opts.yes || opts.yolo {
 		flag := "--yes"
 		if opts.yolo {
@@ -602,7 +711,7 @@ func confirmStackIsolationWith(out io.Writer, in io.Reader, interactive bool, op
 		return false, errors.New("stacked PRs need confirmation to exclude uncommitted changes; rerun with --yes")
 	}
 	fmt.Fprint(out, "Continue? [y/N] ")
-	line, err := bufio.NewReader(in).ReadString('\n')
+	line, err := in.ReadString('\n')
 	if err != nil {
 		fmt.Fprintln(out)
 		return false, nil
@@ -614,6 +723,13 @@ func confirmStackIsolationWith(out io.Writer, in io.Reader, interactive bool, op
 		return false, nil
 	}
 }
+
+// stdinIsTerminal reports whether stdin is a real terminal. A character
+// device check is not enough: /dev/null is a character device, and treating
+// it as interactive would park an unattended run on a prompt nobody answers.
+func stdinIsTerminal() bool { return isTerminal(os.Stdin) }
+
+func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
 
 // exitCode maps the run's outcome onto the documented codes.
 func exitCode(ctx context.Context, runs []*dirRun) int {
@@ -885,7 +1001,7 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 			loops = d.carriedLoops + d.r.Loops()
 		}
 		pending := carriedPending(d)
-		h.Dirs[d.dir] = dirHandoff{
+		dh := dirHandoff{
 			Loops:       loops,
 			Pending:     pending,
 			Reviews:     d.reviews,
@@ -895,6 +1011,10 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 			// is the whole run's history, not just this process's slice.
 			Results: d.stats.Results(),
 		}
+		if d.prep != nil {
+			dh.StackBase, dh.StackBaseTip = d.prep.Base, d.prep.BaseTip
+		}
+		h.Dirs[d.dir] = dh
 	}
 	statePath, err := selfupdate.SaveState(journal.StateDir(), runID, h)
 	if err != nil {
@@ -983,7 +1103,7 @@ func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
 		fmt.Fprintf(out, "Committing with %s first (--yes).\n", spec.Label())
 		return true
 	}
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	if !stdinIsTerminal() {
 		return false
 	}
 	fmt.Fprintf(out, "Commit them with %s first? [y/N] ", spec.Label())

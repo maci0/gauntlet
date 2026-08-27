@@ -24,8 +24,22 @@ const commandTimeout = 2 * time.Minute
 // Client is a GitHub repository reached through gh.
 type Client struct {
 	Dir  string
-	Repo string // OWNER/REPO
+	Repo string // OWNER/REPO of the base repository (the fetch destination)
 	Host string
+	// HeadOwner is the account the head branches actually land in, inferred
+	// from the remote's push URL. Empty means the base repository itself;
+	// set, it qualifies every PR head as OWNER:BRANCH, which is how GitHub
+	// addresses a cross-fork head.
+	HeadOwner string
+}
+
+// head qualifies a branch the way the GitHub API expects it: bare within the
+// base repository, OWNER:BRANCH when the pushes go to a fork.
+func (c Client) head(branch string) string {
+	if c.HeadOwner == "" {
+		return branch
+	}
+	return c.HeadOwner + ":" + branch
 }
 
 // ParseRemote turns a GitHub HTTPS or SSH remote into the repository and
@@ -101,7 +115,7 @@ type pull struct {
 // retry, hot reload, or repeated invocation.
 func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 	out, err := c.run(ctx, "pr", "list", "--repo", c.selector(), "--state", "all",
-		"--head", head, "--base", base, "--limit", "100",
+		"--head", c.head(head), "--base", base, "--limit", "100",
 		"--json", "url,headRefName,baseRefName")
 	if err != nil {
 		return "", fmt.Errorf("find PR %s -> %s: %w", head, base, err)
@@ -121,7 +135,7 @@ func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 // Create opens a pull request and returns its URL. Every value is an argv
 // element; repository text is never evaluated by a shell.
 func (c Client) Create(ctx context.Context, head, base, title, body string) (string, error) {
-	out, err := c.run(ctx, "pr", "create", "--repo", c.selector(), "--head", head,
+	out, err := c.run(ctx, "pr", "create", "--repo", c.selector(), "--head", c.head(head),
 		"--base", base, "--title", title, "--body", body)
 	if err != nil {
 		return "", fmt.Errorf("create PR %s -> %s: %w", head, base, err)
