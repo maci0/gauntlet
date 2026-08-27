@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -177,9 +178,15 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 	if _, err := sub.run(ctx, gitNormal, "add", "-A"); err != nil {
 		return false, fmt.Errorf("git add: %w", err)
 	}
-	// diff --cached --quiet exits 1 when something is staged.
-	if _, err := sub.run(ctx, gitNormal, "diff", "--cached", "--quiet"); err == nil {
+	// diff --cached --quiet exits 1 when something is staged. Any other
+	// outcome means the answer was not read off healthy plumbing: committing
+	// then would decide on broken state rather than on what is staged.
+	_, derr := sub.run(ctx, gitNormal, "diff", "--cached", "--quiet")
+	switch {
+	case derr == nil:
 		return false, nil
+	case !exitsWith(derr, 1):
+		return false, fmt.Errorf("git diff --cached --quiet: %w", derr)
 	}
 	if _, err := sub.run(ctx, gitNormal,
 		"commit", "--no-verify", "--quiet", "-m", message); err != nil {
@@ -212,13 +219,13 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 	}
 	if len(paths) == 0 {
 		// The merge failed for a reason no editing can fix (a bad ref, a
-		// checkout git refused). Report git's own words rather than a
-		// resolution nobody can perform.
+		// checkout git refused). Report git's own words alongside the cause,
+		// so a caller matching on the failure type still sees the narration.
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
-			detail = err.Error()
+			return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
 		}
-		return nil, fmt.Errorf("git merge --squash %s: %s", branch, firstLine(detail))
+		return nil, fmt.Errorf("git merge --squash %s: %w: %s", branch, err, firstLine(detail))
 	}
 	return paths, nil
 }
@@ -229,22 +236,29 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 // put markers into the project's history.
 //
 // A path that is gone is resolved: deleting the file is a valid answer to a
-// delete/modify conflict.
-func (w *Worktree) Unresolved(ctx context.Context, paths []string) []string {
+// delete/modify conflict. A path that cannot be read at all is evidence of
+// nothing, and reporting nothing would read as "resolved": a permissions
+// problem on a half-edited file must fail the scan rather than authorize the
+// commit. The paths inspected so far come back either way, with an error that
+// tells the caller the resolution is unverified.
+func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, error) {
 	var left []string
 	for _, p := range paths {
-		if ctx.Err() != nil {
-			return left
+		if err := ctx.Err(); err != nil {
+			return left, fmt.Errorf("conflict-marker scan stopped early: %w", err)
 		}
 		body, err := os.ReadFile(filepath.Join(w.Dir, filepath.FromSlash(p)))
 		if err != nil {
-			continue
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return left, fmt.Errorf("cannot read %s for conflict markers: %w", p, err)
 		}
 		if bytes.Contains(body, []byte(conflictMarker)) {
 			left = append(left, p)
 		}
 	}
-	return left
+	return left, nil
 }
 
 // ResetToBase restores the checkout to the commit it was cut from, undoing
@@ -294,17 +308,28 @@ type MergeResult struct {
 // On conflict nothing lands and the branch is kept, so the work can be
 // inspected or merged by hand. Dropping it silently would lose a review's
 // entire output.
+//
+// A merge failure that leaves nothing unmerged is reported as neither merged
+// nor conflicted: a bad ref or a refused checkout cannot be edited past, and
+// labeling it a conflict would send a resolver to fix what no edit fixes and
+// count the review as MERGE CONFLICT instead of failed.
 func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
 	if err != nil {
-		// A conflicted merge narrates on stdout; other failures explain on
-		// stderr, which run folds into the error. Either way keep the cause.
+		// A conflicted merge narrates on stdout and leaves unmerged entries in
+		// the index; other failures explain on stderr and leave the index
+		// alone. Classification asks git which it was (as SquashIn does), so
+		// the answer comes from the index rather than from parsing narration.
+		// Either way keep the cause's words; the check must run before abort,
+		// which throws away exactly this state.
+		unmerged, uErr := r.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
+		conflicted := uErr == nil && strings.TrimSpace(string(unmerged)) != ""
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
 			detail = err.Error()
 		}
 		r.abortMerge(ctx)
-		return MergeResult{Conflict: true, Detail: firstLine(detail)}
+		return MergeResult{Conflict: conflicted, Detail: firstLine(detail)}
 	}
 	// A squash stages; it never commits. Nothing staged means the branch held
 	// nothing this tree does not already have.
@@ -314,12 +339,14 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	out, err = r.run(ctx, gitNormal,
 		"commit", "--no-verify", "--quiet", "-m", message)
 	if err != nil {
+		// The squash applied cleanly, so whatever failed is bookkeeping and
+		// not a conflict for anyone to resolve.
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
 			detail = err.Error()
 		}
 		r.abortMerge(ctx)
-		return MergeResult{Conflict: true, Detail: firstLine(detail)}
+		return MergeResult{Detail: firstLine(detail)}
 	}
 	return MergeResult{Merged: true}
 }
@@ -376,12 +403,17 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	if err == nil {
 		return MergeResult{Merged: true}
 	}
+	// Classify the same way Merge does, by what the index still holds, before
+	// the abort throws that state away: runMergeStep reports a genuine
+	// conflict differently from a merge git could not even start.
+	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
+	conflicted := uErr == nil && strings.TrimSpace(string(unmerged)) != ""
 	detail := strings.TrimSpace(string(out))
 	if detail == "" {
 		detail = err.Error()
 	}
 	_, _ = sub.run(context.WithoutCancel(ctx), gitNormal, "merge", "--abort")
-	return MergeResult{Conflict: true, Detail: detail}
+	return MergeResult{Conflict: conflicted, Detail: detail}
 }
 
 // Push sends the current branch to its upstream. It is used after a review
@@ -390,11 +422,13 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 // committed either way, and the next push will carry it.
 func (r *Repo) Push(ctx context.Context) error {
 	if out, err := r.run(ctx, gitPush, "push"); err != nil {
-		detail := firstLine(strings.TrimSpace(string(out)))
+		detail := strings.TrimSpace(string(out))
 		if detail == "" {
-			detail = err.Error()
+			return fmt.Errorf("git push: %w", err)
 		}
-		return errors.New(detail)
+		// The cause stays attached so callers can still match on it; the
+		// narration is kept beside it because git splits it across streams.
+		return fmt.Errorf("git push: %w: %s", err, firstLine(detail))
 	}
 	return nil
 }

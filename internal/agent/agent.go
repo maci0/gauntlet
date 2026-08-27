@@ -443,14 +443,17 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		if spec.Model != "" {
 			provider, model := splitProvider(spec.Model)
 			if provider == "" {
-				provider, _ = dshDefaultProvider(base)
-			}
-			if provider == "" {
-				_, perr := dshDefaultProvider(base)
+				// One probe keeps the provider and its failure together:
+				// re-invoking to recover a dropped error is only safe while
+				// the memo holds, and pairs two outcomes with one condition.
+				p, perr := dshDefaultProvider(base)
 				if perr != nil {
 					return nil, fmt.Errorf("cannot determine the dsh provider for model %q: %w; "+
 						"use dsh:<provider>/<model>", spec.Model, perr)
 				}
+				provider = p
+			}
+			if provider == "" {
 				return nil, fmt.Errorf("cannot determine the dsh provider for model %q; use dsh:<provider>/<model>", spec.Model)
 			}
 			patch, err := dshModelPatch(provider, model)

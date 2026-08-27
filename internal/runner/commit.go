@@ -70,11 +70,14 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	case pr.ExitCode != 0:
 		return fmt.Errorf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode)
 	}
-	// The agent says it committed; git decides whether it did.
-	repo := gitx.Open(o.Dir)
-	if repo == nil {
-		return errors.New("commit step finished but the repository could not be read")
+	// The agent says it committed; git decides whether it did. Open never
+	// fails, so git being absent is what the verification actually hits, and
+	// saying so beats letting exec.ErrNotFound surface as "cannot read git
+	// status".
+	if !gitx.Available() {
+		return errors.New("commit step finished but git is unavailable, so the commit could not be verified")
 	}
+	repo := gitx.Open(o.Dir)
 	// The same rule the worktree precondition uses: what had to be committed
 	// is what git tracks. An agent that leaves untracked scratch behind has
 	// still done the job asked of it.
@@ -100,7 +103,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		return // nothing to commit
 	}
 	if err != nil {
-		r.log("Warning: could not check git status before the commit step")
+		r.log("Warning: could not check git status before the commit step: %v", err)
 	}
 
 	// The commit step is one launch per loop, not tied to a review, so it

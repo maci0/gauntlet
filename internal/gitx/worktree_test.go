@@ -260,19 +260,61 @@ func TestSquashInNamesTheConflictedPaths(t *testing.T) {
 	if len(paths) != 1 || paths[0] != "main.go" {
 		t.Fatalf("conflicted paths = %q, want [main.go]", paths)
 	}
-	if left := second.Unresolved(ctx, paths); len(left) != 1 {
+	left, err := second.Unresolved(ctx, paths)
+	if err != nil {
+		t.Fatalf("Unresolved: %v", err)
+	}
+	if len(left) != 1 {
 		t.Fatalf("Unresolved = %q, want the file that still has markers", left)
 	}
 
 	// Resolving means the markers are gone, whoever removed them.
 	write(second, "package main\n\nfunc main() { a(); b() }\n")
-	if left := second.Unresolved(ctx, paths); len(left) != 0 {
+	left, err = second.Unresolved(ctx, paths)
+	if err != nil {
+		t.Fatalf("Unresolved: %v", err)
+	}
+	if len(left) != 0 {
 		t.Fatalf("Unresolved = %q after the markers were removed", left)
 	}
 	// A path that no longer exists counts as resolved: deleting the file is a
 	// valid answer to a delete/modify conflict.
-	if left := second.Unresolved(ctx, []string{"gone.go"}); len(left) != 0 {
+	left, err = second.Unresolved(ctx, []string{"gone.go"})
+	if err != nil {
+		t.Fatalf("Unresolved: %v", err)
+	}
+	if len(left) != 0 {
 		t.Fatalf("Unresolved = %q for a file that is not there", left)
+	}
+}
+
+// A path that cannot be read proves nothing either way. Silently reading it
+// as "resolved" is how markers reach history behind a permissions problem, so
+// the scan must fail instead and the caller must keep the branch.
+func TestUnresolvedFailsOnAnUnreadablePath(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	// A directory named like a conflicted file is readable by nobody:
+	// os.ReadFile fails with something other than not-exist.
+	if err := os.Mkdir(filepath.Join(wt.Dir, "blocked.go"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	left, err := wt.Unresolved(ctx, []string{"blocked.go"})
+	if err == nil {
+		t.Fatal("Unresolved reported success for a path it could not read")
+	}
+	if len(left) != 0 {
+		t.Fatalf("Unresolved = %q along with the error; want nothing claimed either way", left)
 	}
 }
 

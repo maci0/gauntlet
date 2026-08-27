@@ -455,6 +455,14 @@ func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]
 	return dirty, nil
 }
 
+// exitsWith reports whether err is git exiting with the given status. The
+// wrapper runIn builds still unwraps down to the *exec.ExitError, so the
+// status survives the stderr that gets folded into the message.
+func exitsWith(err error, code int) bool {
+	var ee *exec.ExitError
+	return errors.As(err, &ee) && ee.ExitCode() == code
+}
+
 // CheckIgnore returns the subset of paths git ignores in this tree. Without
 // git, or outside a repository, nothing counts as ignored: prompt discovery
 // then treats every candidate as legitimate instead of failing the run.
@@ -469,11 +477,8 @@ func (r *Repo) CheckIgnore(ctx context.Context, paths []string) map[string]bool 
 	}
 	data, err := r.runIn(ctx, strings.NewReader(strings.Join(paths, "\x00")),
 		gitQuick, "check-ignore", "--stdin", "-z")
-	if err != nil {
-		var ee *exec.ExitError
-		if !(errors.As(err, &ee) && ee.ExitCode() == 1) {
-			return out // not a repository, or git broke: ignore nothing
-		}
+	if err != nil && !exitsWith(err, 1) {
+		return out // not a repository, or git broke: ignore nothing
 	}
 	for p := range strings.SplitSeq(string(data), "\x00") {
 		if p != "" {

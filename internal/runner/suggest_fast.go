@@ -543,12 +543,10 @@ func scan(dir string) signals {
 	// Git listed the tree, so it can also say which part of it is alive.
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
-	if repo := gitx.Open(root); repo != nil {
-		if changed, err := repo.ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
-			s.churn = true
-			for _, rel := range changed {
-				s.hot[strings.ToLower(filepath.Ext(rel))]++
-			}
+	if changed, err := gitx.Open(root).ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
+		s.churn = true
+		for _, rel := range changed {
+			s.hot[strings.ToLower(filepath.Ext(rel))]++
 		}
 	}
 	return s
@@ -583,10 +581,8 @@ func record(s *signals, rel string) {
 func listTree(root string) ([]string, bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
-	if repo := gitx.Open(root); repo != nil {
-		if paths, err := repo.ListFiles(ctx); err == nil && len(paths) > 0 {
-			return paths, true
-		}
+	if paths, err := gitx.Open(root).ListFiles(ctx); err == nil && len(paths) > 0 {
+		return paths, true
 	}
 	var out []string
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {

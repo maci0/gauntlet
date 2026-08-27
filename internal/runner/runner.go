@@ -669,7 +669,7 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	r.mergeMu.Lock()
 	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
 	resolved := false
-	if !mr.Merged && r.cfg.ResolveConflicts && ctx.Err() == nil {
+	if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
 		// Still under the lock: the conflict step cuts its checkout from the
 		// tip and merges the result back, and neither survives the tip moving.
 		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
@@ -699,16 +699,23 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 		})
 	default:
 		// The branch survives on purpose: dropping it would throw away the
-		// entire review, silently.
-		res.Status = StatusConflict
-		r.log("MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
-		// Merging it by hand would otherwise write "Merge branch
-		// 'gauntlet/<run>/<review>'" into the project's history, which is the
-		// one place this tool's scratch names must never appear.
-		r.log("To land it after resolving: %s", conflictHint(wt.Branch, msg))
+		// entire review, silently. A genuine conflict and a merge git could
+		// not even start are kept apart, because only the first is worth a
+		// resolver or a human sitting down with it.
+		if mr.Conflict {
+			res.Status = StatusConflict
+			r.log("MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
+			// Merging it by hand would otherwise write "Merge branch
+			// 'gauntlet/<run>/<review>'" into the project's history, which is
+			// the one place this tool's scratch names must never appear.
+			r.log("To land it after resolving: %s", conflictHint(wt.Branch, msg))
+		} else {
+			res.Status = StatusFail
+			r.log("MERGE FAILED: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
+		}
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
-			Branch: wt.Branch, Status: StatusConflict, Text: mr.Detail,
+			Branch: wt.Branch, Status: res.Status, Text: mr.Detail,
 		})
 	}
 	return res

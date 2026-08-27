@@ -61,7 +61,14 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 	if len(paths) > 0 && !r.runConflictAgent(ctx, review, paths, wt) {
 		return gitx.MergeResult{}
 	}
-	if left := wt.Unresolved(ctx, paths); len(left) > 0 {
+	left, err := wt.Unresolved(ctx, paths)
+	if err != nil {
+		// The scan could not vouch for every path: neither markers nor a
+		// clean tree is proven here, so nothing is committed from this state.
+		r.log("Cannot verify the %s conflict resolution: %v", review, err)
+		return gitx.MergeResult{}
+	}
+	if len(left) > 0 {
 		r.log("%s still has conflict markers in %s, leaving the branch for a human",
 			review, humanize.List(safePaths(left), 3))
 		return gitx.MergeResult{}
