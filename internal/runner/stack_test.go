@@ -51,15 +51,19 @@ case "$1 $2" in
         *) shift ;;
       esac
     done
-    # GitHub accepts an OWNER:BRANCH head filter but reports headRefName as
-    # the bare branch name; the fake stores and answers the bare name too.
-    head="${head##*:}"
-    found=""
-    while IFS='|' read -r h b u; do
-      if [ "$h" = "$head" ] && [ "$b" = "$base" ]; then found="$u"; fi
+    # Real gh documents that --head does not support OWNER:BRANCH, and
+    # matches nothing when given it. Refusing it here is what keeps a
+    # cross-fork run from silently failing to find its own PRs.
+    case "$head" in
+      *:*) echo 'the "<owner>:<branch>" syntax is not supported for --head' >&2; exit 1 ;;
+    esac
+    found="" owner=""
+    while IFS='|' read -r h b u o; do
+      if [ "$h" = "$head" ] && [ "$b" = "$base" ]; then found="$u"; owner="$o"; fi
     done < "$GAUNTLET_GH_STATE"
     if [ -n "$found" ]; then
-      printf '[{"url":"%s","headRefName":"%s","baseRefName":"%s"}]\n' "$found" "$head" "$base"
+      printf '[{"url":"%s","headRefName":"%s","baseRefName":"%s","headRepositoryOwner":{"login":"%s"}}]\n' \
+        "$found" "$head" "$base" "$owner"
     else
       printf '[]\n'
     fi
@@ -74,9 +78,15 @@ case "$1 $2" in
       esac
     done
     if [ "${GAUNTLET_GH_FAIL_CREATE:-}" = 1 ]; then echo refused >&2; exit 1; fi
+    # gh pr create does accept OWNER:BRANCH; the PR records the bare branch
+    # name and the owner of the repository the head lives in.
+    owner="owner"
+    case "$head" in
+      *:*) owner="${head%%:*}" ;;
+    esac
     head="${head##*:}"
     url="https://github.com/owner/repo/pull/$(($(wc -l < "$GAUNTLET_GH_STATE") + 1))"
-    printf '%s|%s|%s\n' "$head" "$base" "$url" >> "$GAUNTLET_GH_STATE"
+    printf '%s|%s|%s|%s\n' "$head" "$base" "$url" "$owner" >> "$GAUNTLET_GH_STATE"
     printf '%s\n' "$url"
     exit 0 ;;
 esac
@@ -140,8 +150,8 @@ echo 'RESULT: changed=1'`)
 		gitOut(t, repo, "show-ref", "--verify", "refs/remotes/origin/"+branch)
 	}
 	state, _ := os.ReadFile(statePath)
-	wantState := b1 + "|main|https://github.com/owner/repo/pull/1\n" +
-		b2 + "|" + b1 + "|https://github.com/owner/repo/pull/2\n"
+	wantState := b1 + "|main|https://github.com/owner/repo/pull/1|owner\n" +
+		b2 + "|" + b1 + "|https://github.com/owner/repo/pull/2|owner\n"
 	if string(state) != wantState {
 		t.Fatalf("PR stack:\n%s\nwant:\n%s", state, wantState)
 	}
@@ -709,5 +719,43 @@ echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
 	state, _ := os.ReadFile(statePath)
 	if strings.Count(string(state), "https://") != 1 {
 		t.Fatalf("fork-side recovery duplicated the PR:\n%s", state)
+	}
+}
+
+// A hard cancel has no successor, so reviews the stack never reached are
+// recorded as interrupted rather than dropped from the stats, the summary,
+// and the journal, which is the rule the sequential and parallel loops
+// already follow.
+func TestStackedPRsHardCancelRecordsStrandedReviews(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	cfg := stackConfig(t, repo, []string{"slow-review", "never-review", "also-never-review"}, `
+echo partial > partial.txt
+sleep 10`)
+	cfg.Timeout = 30 * time.Second
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { r.Run(ctx); close(done) }()
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	<-done
+	bus.Close()
+
+	counts := r.Stats().Counts()
+	if counts.Total() != 3 {
+		t.Fatalf("counts = %+v, want all three reviews accounted for", counts)
+	}
+	if counts.Interrupted != 3 {
+		t.Fatalf("interrupted = %d, want the canceled review and both it stranded",
+			counts.Interrupted)
+	}
+	if got := r.Pending(); len(got) != 0 {
+		t.Fatalf("queue left behind with no successor to take it: %v", got)
 	}
 }

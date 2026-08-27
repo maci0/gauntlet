@@ -193,7 +193,15 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	}()
 
 	for i := start; i < len(r.cfg.Reviews); i++ {
-		if ctx.Err() != nil || r.soft.Load() {
+		if ctx.Err() != nil {
+			// A hard cancel has no successor, so what it strands is recorded
+			// rather than dropped from the stats, summary, and journal, the
+			// same rule the sequential and parallel loops follow. A soft stop
+			// hands its queue over instead, so it leaves the queue alone.
+			r.abandonQueue(loopNo)
+			return false
+		}
+		if r.soft.Load() {
 			return false
 		}
 		if r.finish.Load() {
@@ -234,12 +242,17 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		res := r.runReview(ctx, review, loopNo, wt)
 		res.Branch, res.Base = branch, parent
 		if res.Status != StatusOK {
+			// Recorded before anything that can fail below it: a discard that
+			// breaks must not also erase the failure that led to it, or the
+			// run reports no failed review and exits 0.
+			r.st.Add(res)
 			if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
-				r.log("Cannot discard failed %s layer: %v", review, err)
+				r.publishStackFailure(loopNo, review, branch, parent,
+					fmt.Errorf("discard failed layer: %w", err))
 				return false
 			}
-			r.st.Add(res)
 			if res.Status == StatusInterrupted {
+				r.abandonQueue(loopNo)
 				return false
 			}
 			continue

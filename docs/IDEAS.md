@@ -70,7 +70,7 @@ with its own file. The parts that do not fit are the interesting ones:
   advisory mode: report and justify, change nothing. Today that means a prompt
   that forbids edits, which is a rule the agent could break; a real
   `--no-edit` (snapshot the tree, refuse the run's commits, diff at the end)
-  would enforce it. The PR-per-review idea above is the other half: a
+  would enforce it. `--stacked-prs` is the other half, and it already ships: a
   traceable change, reviewed by a human, is the only kind such a project can
   take.
 - **Traceability is already there.** The run journal records which agent,

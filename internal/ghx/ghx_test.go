@@ -93,10 +93,19 @@ func TestClientRejectsForeignOrNonHTTPSPRURL(t *testing.T) {
 func TestClientQualifiesCrossForkHead(t *testing.T) {
 	dir := t.TempDir()
 	logPath := filepath.Join(dir, "args")
+	// gh accepts OWNER:BRANCH for `pr create --head` and documents that
+	// `pr list --head` does not support it, answering nothing when given it.
+	// This fake enforces both, so sending the qualified form to the filter
+	// fails the test instead of silently finding no PR.
 	script := `#!/bin/sh
 printf '<%s>\n' "$@" >> "$GH_TEST_LOG"
 case "$1 $2" in
-  "pr list") echo '[]'; exit 0 ;;
+  "pr list")
+    for a in "$@"; do
+      case "$a" in *:*) echo 'owner:branch not supported for --head' >&2; exit 1 ;; esac
+    done
+    printf '[{"url":"https://github.com/owner/repo/pull/7","headRefName":"child","baseRefName":"base","headRepositoryOwner":{"login":"%s"}}]\n' "$GH_TEST_HEAD_OWNER"
+    exit 0 ;;
   "pr create") echo 'https://github.com/owner/repo/pull/9'; exit 0 ;;
 esac
 exit 2
@@ -106,9 +115,15 @@ exit 2
 	}
 	t.Setenv("PATH", dir)
 	t.Setenv("GH_TEST_LOG", logPath)
+	t.Setenv("GH_TEST_HEAD_OWNER", "fork")
 	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com", HeadOwner: "fork"}
-	if _, err := c.Find(context.Background(), "child", "base"); err != nil {
+
+	got, err := c.Find(context.Background(), "child", "base")
+	if err != nil {
 		t.Fatal(err)
+	}
+	if got != "https://github.com/owner/repo/pull/7" {
+		t.Fatalf("cross-fork Find = %q, want the fork's own PR", got)
 	}
 	if _, err := c.Create(context.Background(), "child", "base", "t", "b"); err != nil {
 		t.Fatal(err)
@@ -117,10 +132,18 @@ exit 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Count(string(logBody), "<--head>\n<fork:child>"); got != 2 {
-		t.Fatalf("qualified head appeared %d times, want in both list and create:\n%s", got, logBody)
+	if !strings.Contains(string(logBody), "<pr>\n<list>") ||
+		!strings.Contains(string(logBody), "<--head>\n<child>") {
+		t.Fatalf("the head filter must be the bare branch name:\n%s", logBody)
 	}
-	if strings.Contains(string(logBody), "<child>") {
-		t.Fatalf("an unqualified head reached gh:\n%s", logBody)
+	if !strings.Contains(string(logBody), "<--head>\n<fork:child>") {
+		t.Fatalf("pr create must qualify the head with the push owner:\n%s", logBody)
+	}
+
+	// Another fork carrying the same branch name against the same base is a
+	// different pull request; reusing it would publish into someone else's.
+	t.Setenv("GH_TEST_HEAD_OWNER", "stranger")
+	if got, err := c.Find(context.Background(), "child", "base"); err != nil || got != "" {
+		t.Fatalf("Find matched a foreign fork's PR: %q, %v", got, err)
 	}
 }

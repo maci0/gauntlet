@@ -584,11 +584,13 @@ func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 	out, err := r.run(ctx, gitPush, "push", "--set-upstream", "--", remote,
 		"refs/heads/"+branch+":refs/heads/"+branch)
 	if err != nil {
-		detail := firstLine(strings.TrimSpace(string(out)))
-		if detail == "" {
-			detail = err.Error()
+		// Like Push: the cause stays attached so callers can still match on
+		// it, with git's narration beside it because git splits the two
+		// across streams.
+		if detail := firstLine(strings.TrimSpace(string(out))); detail != "" {
+			return fmt.Errorf("%w: %s", err, detail)
 		}
-		return errors.New(detail)
+		return err
 	}
 	return nil
 }
@@ -598,11 +600,10 @@ func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string)
 	out, err := r.run(ctx, gitPush, "push", "--dry-run", "--", remote,
 		source+":refs/heads/"+branch)
 	if err != nil {
-		detail := firstLine(strings.TrimSpace(string(out)))
-		if detail == "" {
-			detail = err.Error()
+		if detail := firstLine(strings.TrimSpace(string(out))); detail != "" {
+			return fmt.Errorf("%w: %s", err, detail)
 		}
-		return errors.New(detail)
+		return err
 	}
 	return nil
 }

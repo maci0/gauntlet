@@ -108,15 +108,24 @@ type pull struct {
 	URL         string `json:"url"`
 	HeadRefName string `json:"headRefName"`
 	BaseRefName string `json:"baseRefName"`
+	HeadOwner   struct {
+		Login string `json:"login"`
+	} `json:"headRepositoryOwner"`
 }
 
 // Find returns the URL of an existing pull request with the exact head and
 // base, including a closed one. This makes publication idempotent across a
 // retry, hot reload, or repeated invocation.
+//
+// The head filter is the bare branch name even for a fork: `gh pr list --head`
+// documents that `<owner>:<branch>` is not supported, and passing the
+// qualified form matches nothing, which would make every cross-fork run
+// believe its PR does not exist and try to open a second one. The owner is
+// confirmed from each candidate's head repository instead.
 func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 	out, err := c.run(ctx, "pr", "list", "--repo", c.selector(), "--state", "all",
-		"--head", c.head(head), "--base", base, "--limit", "100",
-		"--json", "url,headRefName,baseRefName")
+		"--head", head, "--base", base, "--limit", "100",
+		"--json", "url,headRefName,baseRefName,headRepositoryOwner")
 	if err != nil {
 		return "", fmt.Errorf("find PR %s -> %s: %w", head, base, err)
 	}
@@ -125,11 +134,23 @@ func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 		return "", fmt.Errorf("decode gh PR list: %w", err)
 	}
 	for _, pr := range prs {
-		if pr.HeadRefName == head && pr.BaseRefName == base && pr.URL != "" {
+		if pr.HeadRefName == head && pr.BaseRefName == base && pr.URL != "" &&
+			c.ownsHead(pr) {
 			return c.validateURL(pr.URL)
 		}
 	}
 	return "", nil
+}
+
+// ownsHead reports whether a candidate PR's head branch lives where this
+// client's pushes land. Filtering by a bare branch name returns matches from
+// every fork that happens to carry it, so a cross-fork client keeps only the
+// PR whose head is in the repository it actually pushed to.
+func (c Client) ownsHead(p pull) bool {
+	if c.HeadOwner == "" {
+		return true
+	}
+	return strings.EqualFold(p.HeadOwner.Login, c.HeadOwner)
 }
 
 // Create opens a pull request and returns its URL. Every value is an argv
