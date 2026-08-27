@@ -745,18 +745,26 @@ func (p *picker) renderStatus() string {
 	return clip(styleDim.Render(p.hint()), p.w)
 }
 
+// renderKeys names the keys, most important first, and drops from the right
+// end when the terminal is narrow: a keyboard user who cannot find how to
+// move between rows or leave is stranded, so those come before niceties like
+// bulk selection. What fits is what is shown, never clipped mid-name.
 func (p *picker) renderKeys() string {
 	keys := []struct{ k, v string }{
-		{"tab", "pane"}, {"space", "toggle"}, {"←/→", "open, adjust"},
-		{"a", "all/none"}, {"/", "filter"}, {"+/-", "concurrency"},
-		{"⏎", "run"}, {"q", "cancel"},
+		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
+		{"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
+		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 	}
 	var b strings.Builder
-	for i, k := range keys {
-		if i > 0 {
+	for _, k := range keys {
+		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.v)
+		if w := lipgloss.Width(seg); b.Len() > 0 && lipgloss.Width(b.String())+2+w > p.w {
+			break
+		}
+		if b.Len() > 0 {
 			b.WriteString("  ")
 		}
-		b.WriteString(styleValue.Render(k.k) + styleDim.Render(":"+k.v))
+		b.WriteString(seg)
 	}
 	return clip(b.String(), p.w)
 }

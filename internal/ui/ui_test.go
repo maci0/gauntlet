@@ -499,6 +499,32 @@ func wcagLuminance(t *testing.T, hex string) float64 {
 	return 0.2126*lin[0] + 0.7152*lin[1] + 0.0722*lin[2]
 }
 
+// The footer clips from its right end once the counters are wide, so the
+// keys that keep a reader oriented must outlast the ones only the data
+// hungry need: quit, help, and pause survive; filter is the first to go.
+func TestFooterKeepsHelpAndPauseWhileStatsGrow(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 61, 30, true
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	m.haveLines = true
+	m.ins, m.del = 1234567, 234567 // every right-side segment at full width
+	m.tokens, m.thinking = 98765432, 43210987
+	m.liveRate = 8888.8
+	footer := lastLine(stripANSI(m.View()))
+	for _, want := range []string{"q:quit", "?:help", "space:pause", "j/k:scroll"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("a wide-stats footer lost %q:\n%s", want, footer)
+		}
+	}
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(s, "\n")
+	return lines[len(lines)-1]
+}
+
 func stripANSI(s string) string {
 	var b strings.Builder
 	inEsc := false

@@ -53,7 +53,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// are as real as the compiled-in ones and belong in the inventory.
 	agents := agent.AllNames()
 
-	fmt.Fprintln(out, pal.bold("Agent CLIs")+pal.dim("  (at least one required)"))
+	fmt.Fprintln(out, pal.bold("Agent CLIs")+
+		pal.dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
 		ok := found[a] != ""

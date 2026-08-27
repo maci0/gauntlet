@@ -888,9 +888,13 @@ func lineStyle(k normalize.Kind) lipgloss.Style {
 }
 
 func (m *model) renderFooter() string {
+	// Order matters under width pressure: the footer clips from its right
+	// end once the token counters grow, so the keys that keep a reader
+	// oriented (quit, help, pause) come before the ones only the data
+	// hungry need. The full pause semantics live in help; here one word.
 	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"s", "finish"}, {"space", "pause feed"}, {"j/k", "scroll"},
-		{"f", "filter"}, {"?", "help"},
+		{"q", "quit"}, {"?", "help"}, {"space", "pause"},
+		{"j/k", "scroll"}, {"s", "finish"}, {"f", "filter"},
 	}
 	var b strings.Builder
 	for _, k := range keys {

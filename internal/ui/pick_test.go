@@ -364,3 +364,29 @@ func TestPickEmptyAgentsPaneKeepsFocusVisible(t *testing.T) {
 		}
 	}
 }
+
+// A narrow terminal clips the key list from its right end, so the keys that
+// strand a keyboard user who cannot find them must come first: how to run,
+// leave, and move between rows are visible even at the launcher's own
+// minimum size, and row movement is documented wherever the panels are.
+func TestPickFooterKeepsCriticalKeysVisible(t *testing.T) {
+	for _, w := range []int{104, 80, 50} {
+		p := demoPicker()
+		p.w, p.h, p.ready = w, 30, true
+		footer := lastLine(p.View())
+		if !strings.Contains(footer, ":run") || !strings.Contains(footer, ":cancel") {
+			t.Fatalf("at %d columns the footer lost launch or quit:\n%s", w, footer)
+		}
+		if !strings.Contains(footer, ":move") {
+			t.Fatalf("at %d columns the footer lost row movement:\n%s", w, footer)
+		}
+	}
+	p := demoPicker()
+	p.w, p.h, p.ready = 104, 30, true
+	footer := lastLine(p.View())
+	for _, want := range []string{":pane", ":toggle", ":open/close", ":filter"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("a wide terminal should document more than the essentials (%q missing):\n%s", want, footer)
+		}
+	}
+}
