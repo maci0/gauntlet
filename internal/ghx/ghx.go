@@ -29,8 +29,10 @@ type Client struct {
 }
 
 // ParseRemote turns a GitHub HTTPS or SSH remote into the repository and
-// hostname gh expects. Other forges are rejected instead of accidentally
-// opening a pull request in whichever repository gh infers from cwd.
+// hostname gh expects. Remotes without an OWNER/REPO shape (local paths,
+// nested forge paths) are rejected here; a well-formed URL on a non-GitHub
+// host parses but then fails Preflight's gh authentication check. Either way
+// the repository is always passed to gh explicitly, never inferred from cwd.
 func ParseRemote(raw string) (repo, host string, err error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
