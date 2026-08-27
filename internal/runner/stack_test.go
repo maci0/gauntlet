@@ -51,6 +51,9 @@ case "$1 $2" in
         *) shift ;;
       esac
     done
+    # GitHub accepts an OWNER:BRANCH head filter but reports headRefName as
+    # the bare branch name; the fake stores and answers the bare name too.
+    head="${head##*:}"
     found=""
     while IFS='|' read -r h b u; do
       if [ "$h" = "$head" ] && [ "$b" = "$base" ]; then found="$u"; fi
@@ -71,6 +74,7 @@ case "$1 $2" in
       esac
     done
     if [ "${GAUNTLET_GH_FAIL_CREATE:-}" = 1 ]; then echo refused >&2; exit 1; fi
+    head="${head##*:}"
     url="https://github.com/owner/repo/pull/$(($(wc -l < "$GAUNTLET_GH_STATE") + 1))"
     printf '%s|%s|%s\n' "$head" "$base" "$url" >> "$GAUNTLET_GH_STATE"
     printf '%s\n' "$url"
@@ -662,10 +666,12 @@ func TestStackedPRsSeparateFetchAndPushURLsCrossForkHead(t *testing.T) {
 	gitOut(t, repo, "config", "url."+upstream+".insteadOf", "https://github.com/upstream/proj.git")
 	gitOut(t, repo, "config", "url."+fork+".insteadOf", "https://github.com/fork/proj.git")
 	gitOut(t, repo, "push", "-q", upstream, "main")
-	logPath, _ := fakeGH(t)
+	logPath, statePath := fakeGH(t)
 
+	marker := filepath.Join(t.TempDir(), "reviews")
 	cfg := stackConfig(t, repo, []string{"sec-review"},
-		`echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
+		`echo x >> "`+marker+`"
+echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
 	cfg.PRRepo, cfg.PRHost = "", "" // force inference from the remote URLs
 
 	r := runQuiet(t, cfg)
@@ -686,5 +692,22 @@ func TestStackedPRsSeparateFetchAndPushURLsCrossForkHead(t *testing.T) {
 	}
 	if !strings.Contains(string(logBody), "--head fork:"+branch) {
 		t.Fatalf("PR head was not qualified with the push owner:\n%s", logBody)
+	}
+
+	// Recovery must read stack branches from the push side, where they were
+	// actually published: with the local branch gone, a rerun fetches the
+	// layer back from the fork and reuses its PR without launching the agent.
+	gitOut(t, repo, "branch", "-D", branch)
+	runQuiet(t, cfg)
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("fork-side recovery reran the agent: %q", started)
+	}
+	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+branch+"^"); got != base {
+		t.Fatalf("recovered branch parent = %s, want base %s", got, base)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.Count(string(state), "https://") != 1 {
+		t.Fatalf("fork-side recovery duplicated the PR:\n%s", state)
 	}
 }

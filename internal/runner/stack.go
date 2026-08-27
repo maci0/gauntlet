@@ -22,6 +22,11 @@ type StackPrep struct {
 	Base    string
 	BaseTip string
 	GH      ghx.Client
+	// ReadRemote is what ls-remote and fetch are pointed at to inspect stack
+	// branches: the raw push URL when it differs from the fetch URL (a fork
+	// workflow pushes there, and git's read operations follow the fetch URL),
+	// the remote name otherwise.
+	ReadRemote string
 }
 
 // PrepareStack validates every local and remote precondition of a stacked
@@ -73,14 +78,21 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	// instead of half-used.
 	repoName, host := cfg.PRRepo, cfg.PRHost
 	headOwner := ""
+	// Stack branches are pushed to the remote's push URL, while ls-remote and
+	// fetch follow its fetch URL. When the two differ, recovery must read the
+	// branches from where the pushes actually landed.
+	readRemote := cfg.PushRemote
+	pushURL, pushErr := repo.RemotePushURL(ctx, cfg.PushRemote)
+	if pushErr == nil && pushURL != remoteURL {
+		readRemote = pushURL
+	}
 	if repoName == "" {
 		repoName, host, err = ghx.ParseRemote(remoteURL)
 		if err != nil {
 			return nil, fmt.Errorf("cannot infer the GitHub repository from %s: %w", cfg.PushRemote, err)
 		}
-		pushURL, err := repo.RemotePushURL(ctx, cfg.PushRemote)
-		if err != nil {
-			return nil, err
+		if pushErr != nil {
+			return nil, pushErr
 		}
 		if pushURL != remoteURL {
 			headRepo, _, err := ghx.ParseRemote(pushURL)
@@ -123,7 +135,7 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 		return nil, fmt.Errorf("cannot push stack branches to %s: %w", cfg.PushRemote, err)
 	}
 	repo.PruneWorktrees(ctx)
-	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh}, nil
+	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh, ReadRemote: readRemote}, nil
 }
 
 func shortTip(tip string) string {
@@ -313,12 +325,12 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 		return parent, parentTip, false, err
 	}
 	localTip, localErr := r.repo.Tip(ctx, "refs/heads/"+branch)
-	remoteTip, remoteFound, remoteErr := r.repo.RemoteBranchTip(ctx, r.cfg.PushRemote, branch)
+	remoteTip, remoteFound, remoteErr := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, branch)
 	if remoteErr != nil {
 		return parent, parentTip, false, remoteErr
 	}
 	if localErr != nil && remoteFound {
-		if err := r.repo.FetchBranch(ctx, r.cfg.PushRemote, branch); err != nil {
+		if err := r.repo.FetchBranch(ctx, r.stackReadRemote, branch); err != nil {
 			return parent, parentTip, false, err
 		}
 		localTip, localErr = r.repo.Tip(ctx, "refs/heads/"+branch)

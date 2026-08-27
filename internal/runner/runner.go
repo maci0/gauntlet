@@ -129,6 +129,10 @@ type Runner struct {
 
 	stackBase    string
 	stackBaseTip string
+	// stackReadRemote is where stack branches are read back from (ls-remote,
+	// fetch): the push URL when it differs from the fetch URL, else the
+	// remote name. Pushes keep using the remote name.
+	stackReadRemote string
 
 	mu             sync.Mutex // guards sessionStarted
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
@@ -298,6 +302,10 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		r.cfg.PRBase = prep.Base
 		r.gh = prep.GH
 		r.stackBase, r.stackBaseTip = prep.Base, prep.BaseTip
+		r.stackReadRemote = prep.ReadRemote
+		if r.stackReadRemote == "" {
+			r.stackReadRemote = r.cfg.PushRemote
+		}
 	} else if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err

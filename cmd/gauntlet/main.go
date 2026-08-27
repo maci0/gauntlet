@@ -318,6 +318,10 @@ func run(argv []string) int {
 		}
 		stdin := bufio.NewReader(os.Stdin)
 		interactive := stdinIsTerminal()
+		// Registered before the loop: with several directories, a decline or
+		// failure on a later one must still remove the snapshots the earlier
+		// ones already created.
+		defer cleanupSnapshots(runs)
 		for _, d := range runs {
 			err := stackPreflight(ctx, d, opts, prior.Dirs[d.dir], resumed, runID,
 				ownArtifacts, stdin, interactive, stdout)
@@ -330,7 +334,6 @@ func run(argv []string) int {
 				return exitUsage
 			}
 		}
-		defer cleanupSnapshots(runs)
 	}
 
 	// Discovery and selection happen per directory: a project can carry its
