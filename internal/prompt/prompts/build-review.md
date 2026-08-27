@@ -88,6 +88,7 @@ Review the following:
 
 Instructions:
 - Fix order: builds that produce wrong output (missing files, wrong contents, contamination) > non-reproducible builds (timestamps, paths, ordering leaking into artifacts) > unpinned or unverified toolchains > build speed and caching issues.
+- In auto-fix mode make one-line build-config edits: a hardening or reproducibility flag, a toolchain pin, an explicit sort, `set -euo pipefail`. Do not replace glue scripts, migrate build systems, or wire new CI verification in one pass; record those as findings.
 - If available, use: `diffoscope` (diff two builds of the same source for reproducibility), `shellcheck` (build scripts). The strongest reproducibility evidence is building twice (ideally varying path, time, and locale) and diffing the artifacts. Skip the double-build if a single build already takes more than 2 minutes; do not burn the pass on a rebuild. Never install tools.
 - Follow reproducible-builds.org practice for fixes: honor `SOURCE_DATE_EPOCH`, map build paths out, normalize archive metadata, pin locale/timezone, sort explicitly.
 - Be concrete. Point at the specific rule, script line, or config key.
