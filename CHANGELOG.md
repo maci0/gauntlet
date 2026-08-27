@@ -10,6 +10,19 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- Every review's fixing rules gained two checks around proving a finding.
+  After proving one real, the agent now argues the author's side, and that
+  counterargument only retires the finding when it can name the code backing
+  it, so a plausible-sounding excuse no longer discards a true positive. The
+  second check bars the opposite failure: "unlikely in practice" is not
+  grounds to drop a deadlock, crash, or data-corruption finding, only
+  "structurally impossible" is, so a wait with no timeout still gets fixed
+  when the trigger needs bad timing.
+
 ## 1.11.0
 
 ### Added
