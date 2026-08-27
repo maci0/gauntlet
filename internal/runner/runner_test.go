@@ -1686,3 +1686,38 @@ func readTree(t *testing.T, dir, name string) string {
 	}
 	return string(body)
 }
+
+// A merged review's line counts ride on the merge event, measured against the
+// review's own commit. They must appear exactly when they were measured: the
+// journal turns a missing count into "changed nothing", so the event may
+// fabricate neither.
+func TestMergedEventCarriesTheMeasuredLines(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "one
+two
+three" > added.txt
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Jobs = 2
+
+	_, got := runRecorded(t, cfg)
+
+	var merged *Event
+	for i := range got {
+		if got[i].Kind == EvMerge && got[i].Status == StatusOK {
+			merged = &got[i]
+		}
+	}
+	if merged == nil {
+		t.Fatal("no successful merge event was published")
+	}
+	if merged.Ins == nil || merged.Del == nil {
+		t.Fatal("a merged review with a measured diff published no line counts")
+	}
+	if *merged.Ins != 3 || *merged.Del != 0 {
+		t.Fatalf("merge event = +%d/-%d, want +3/-0", *merged.Ins, *merged.Del)
+	}
+}

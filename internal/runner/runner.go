@@ -700,11 +700,17 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 		} else {
 			r.log("Merged %s%s", review, linesNote(res))
 		}
-		r.bus.Publish(Event{
+		ev := Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: StatusOK,
-			Ins: new(res.Ins), Del: new(res.Del),
-		})
+		}
+		// Lines ride along only when they were measured: a diff stat that
+		// could not be read is missing, not zero, and the journal must not
+		// turn an unknown into "changed nothing".
+		if res.HaveLines {
+			ev.Ins, ev.Del = new(res.Ins), new(res.Del)
+		}
+		r.bus.Publish(ev)
 	default:
 		// The branch survives on purpose: dropping it would throw away the
 		// entire review, silently. A genuine conflict and a merge git could

@@ -430,10 +430,24 @@ const (
 // prefilter, not a parse, so a stray occurrence elsewhere only costs a decode.
 var reviewEndJSON = []byte(`"review_end"`)
 
+// mergeJSON gates for merge events the same way. An isolated review (--jobs)
+// publishes its review_end before its own commit exists, so the line counts
+// it measured against that commit ride on the merge event instead; without
+// this gate, every review that ever ran in worktree mode would look like it
+// never changed a line, and the history signal would demote exactly the
+// reviews that keep landing work.
+var mergeJSON = []byte(`"merge"`)
+
 // History reports, per review, how a directory's own past runs went: how often
 // each review ran there and how often it actually changed something. It is the
 // only signal that improves with use, and it costs one pass over the recent
 // journals.
+//
+// Runs are counted on review_end, which every finished review publishes once.
+// Changed comes from either event that carries the review's measured lines:
+// a sequential review's review_end, or the merge event an isolated review's
+// work lands through. A merge that did not land (conflict, failure) carries no
+// counts and changes nothing, exactly like a review that changed nothing.
 //
 // Runs that cannot be read are skipped: this is a convenience log, and a
 // suggestion is not worth failing over.
@@ -453,13 +467,12 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		}
 		// A run journal records one line per output event, so it holds an
 		// order of magnitude more output than history events. The gate skips
-		// their decode; a line without the marker cannot be a review_end.
+		// their decode; a line without either marker cannot be one of the two
+		// events counted here.
 		_ = events(run.RunID, func(line []byte) bool {
-			return bytes.Contains(line, reviewEndJSON)
+			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON)
 		}, func(e map[string]any) {
-			if s, _ := e["ev"].(string); s != "review_end" {
-				return
-			}
+			kind, _ := e["ev"].(string)
 			if d, _ := e["dir"].(string); d != dir {
 				return
 			}
@@ -467,14 +480,31 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			if name == "" {
 				return
 			}
-			h := out[name]
-			h.Runs++
 			ins, _ := e["ins"].(float64)
 			del, _ := e["del"].(float64)
-			if ins+del > 0 {
-				h.Changed++
+			switch kind {
+			case "review_end":
+				h := out[name]
+				h.Runs++
+				if ins+del > 0 {
+					h.Changed++
+				}
+				out[name] = h
+			case "merge":
+				// The run itself is already counted by this review's
+				// review_end; the merge only ever adds whether it landed
+				// measured work. The loop-step merge into --merge-into
+				// carries no counts and names a branch, not a review, so it
+				// falls out on both.
+				if s, _ := e["status"].(string); s != "ok" {
+					return
+				}
+				if ins+del > 0 {
+					h := out[name]
+					h.Changed++
+					out[name] = h
+				}
 			}
-			out[name] = h
 		})
 	}
 	return out, nil

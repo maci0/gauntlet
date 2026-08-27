@@ -598,3 +598,53 @@ func TestHistoryCountsPerDirectory(t *testing.T) {
 		t.Fatalf("a directory with no runs got %v, %v", none, err)
 	}
 }
+
+// A worktree-mode review journals its lines on the merge event, not on
+// review_end: the review_end publishes before the review's own commit exists.
+// History must read the counts where the run actually wrote them, or every
+// isolated review looks like it never changed a line.
+func TestHistoryCountsAMergedReviewsLines(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []map[string]any{
+		// An isolated review: review_end without counts, then the merge that
+		// carried its work into the main tree.
+		{"ev": "review_end", "dir": "/w/iso", "review": "sec-review", "status": "ok"},
+		{"ev": "merge", "dir": "/w/iso", "review": "sec-review", "status": "ok",
+			"branch": "gauntlet/r/sec-review", "ins": 7, "del": 2},
+		// A review whose branch did not merge: no counts, nothing changed.
+		{"ev": "review_end", "dir": "/w/iso", "review": "perf-review", "status": "ok"},
+		{"ev": "merge", "dir": "/w/iso", "review": "perf-review", "status": "conflict",
+			"branch": "gauntlet/r/perf-review"},
+		// The loop-step merge into --merge-into names a branch and carries no
+		// counts; it is not a review.
+		{"ev": "merge", "dir": "/w/iso", "review": "main", "status": "ok"},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	if err := j.Close(Summary{Dirs: []string{"/w/iso"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/iso")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("sec-review in /w/iso = %+v, want one run whose merge landed lines", h)
+	}
+	if h := got["perf-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("perf-review in /w/iso = %+v, want one run that never merged", h)
+	}
+	if h, ok := got["main"]; ok {
+		t.Fatalf("the loop-step merge was counted as a review: %+v", h)
+	}
+}
