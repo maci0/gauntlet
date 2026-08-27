@@ -75,6 +75,9 @@ type options struct {
 	seed             uint64
 	commit           bool
 	push             bool
+	stackedPRs       bool
+	prBase           string
+	pushRemote       string
 	yolo             bool
 	yes              bool
 	semcode          bool
@@ -314,6 +317,12 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
+	fs.BoolVar(&o.stackedPRs, "stacked-prs", false,
+		"run reviews sequentially in one worktree and open a linear PR stack")
+	fs.StringVar(&o.prBase, "pr-base", "",
+		"initial base branch for --stacked-prs (default: current branch)")
+	fs.StringVar(&o.pushRemote, "push-remote", "origin",
+		"Git remote that receives --stacked-prs branches")
 	fs.BoolVar(&o.resolveConflicts, "resolve-conflicts", true,
 		"hand a review branch that will not merge to an agent to resolve "+
 			"(--resolve-conflicts=false keeps it for a human)")
@@ -504,6 +513,28 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.retries < 0 {
 		return nil, errors.New("--retries must be >= 0")
+	}
+	if o.stackedPRs {
+		if o.commit || o.push {
+			return nil, errors.New("--stacked-prs owns its commits and pushes; drop --commit/--push")
+		}
+		if o.mergeInto != "" {
+			return nil, errors.New("--stacked-prs creates unmerged PRs and conflicts with --merge-into")
+		}
+		if o.maxLoops > 1 {
+			return nil, errors.New("--stacked-prs runs one ordered review pass; --max-loops cannot exceed 1")
+		}
+		o.jobs, o.maxLoops = 1, 1
+		if !gitx.Available() {
+			return nil, errors.New("--stacked-prs needs git")
+		}
+	} else {
+		if isFlagSet(fs, "pr-base") {
+			return nil, errors.New("--pr-base requires --stacked-prs")
+		}
+		if isFlagSet(fs, "push-remote") {
+			return nil, errors.New("--push-remote requires --stacked-prs")
+		}
 	}
 	if o.mergeInto != "" {
 		// Only committed work can be merged, so the flag that produces the

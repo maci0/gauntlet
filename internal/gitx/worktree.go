@@ -171,6 +171,73 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
 }
 
+// AddStackWorktree creates the one checkout a stacked-PR run advances through
+// its review branches. Unlike AddWorktree, the caller supplies the complete,
+// deterministic branch name so a later invocation can recover the same stack.
+func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (*Worktree, error) {
+	if !Available() {
+		return nil, errors.New("git is required for stacked PRs")
+	}
+	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
+		return nil, fmt.Errorf("invalid stack branch %q", branch)
+	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+branchSlug(tag))
+	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
+	if tip, err := r.Tip(ctx, branch); err == nil {
+		if tip != base {
+			return nil, fmt.Errorf("branch %s already carries unpublished work", branch)
+		}
+		_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
+	}
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return nil, err
+	}
+	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+		return nil, fmt.Errorf("git worktree add: %w", err)
+	}
+	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
+}
+
+// StartBranch advances a stack worktree onto a fresh child of base. The old
+// branch remains: an open pull request still needs it locally and remotely.
+func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
+	if w == nil || w.repo == nil {
+		return errors.New("nil stack worktree")
+	}
+	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
+		return fmt.Errorf("invalid stack branch %q", branch)
+	}
+	sub := &Repo{Dir: w.Dir}
+	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "-c", branch, base); err != nil {
+		return fmt.Errorf("git switch -c %s: %w", branch, err)
+	}
+	w.Branch, w.base = branch, base
+	return nil
+}
+
+// DiscardCurrent resets an unpublished layer, detaches the checkout at its
+// base, and deletes only that empty gauntlet branch. The next review can then
+// start another child without any failed or no-change branch in the stack.
+func (w *Worktree) DiscardCurrent(ctx context.Context) error {
+	if w == nil || w.repo == nil || w.Branch == "" {
+		return nil
+	}
+	branch, base := w.Branch, w.base
+	if err := w.ResetToBase(ctx); err != nil {
+		return err
+	}
+	sub := &Repo{Dir: w.Dir}
+	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "--detach", base); err != nil {
+		return fmt.Errorf("git switch --detach: %w", err)
+	}
+	w.Branch = ""
+	w.repo.DeleteBranch(ctx, branch)
+	return nil
+}
+
 // CommitAll stages everything in the worktree and commits it. It reports
 // whether there was anything to commit.
 //
@@ -445,6 +512,97 @@ func (r *Repo) Push(ctx context.Context) error {
 	return nil
 }
 
+// PushBranch publishes one stack layer under the same local and remote name.
+// It never force-pushes: a divergent remote branch is preserved and reported.
+func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
+	out, err := r.run(ctx, gitPush, "push", "--set-upstream", "--", remote,
+		branch+":refs/heads/"+branch)
+	if err != nil {
+		detail := firstLine(strings.TrimSpace(string(out)))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return errors.New(detail)
+	}
+	return nil
+}
+
+// CanPushBranch checks new-branch permission without changing the remote.
+func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string) error {
+	out, err := r.run(ctx, gitPush, "push", "--dry-run", "--", remote,
+		source+":refs/heads/"+branch)
+	if err != nil {
+		detail := firstLine(strings.TrimSpace(string(out)))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return errors.New(detail)
+	}
+	return nil
+}
+
+// RemoteURL returns the configured URL for remote.
+func (r *Repo) RemoteURL(ctx context.Context, remote string) (string, error) {
+	out, err := r.run(ctx, gitQuick, "remote", "get-url", "--", remote)
+	if err != nil {
+		return "", fmt.Errorf("no Git remote %s", remote)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// RemoteBranchTip reports a remote branch's object id without updating local
+// refs. Missing is a normal answer used by stack resumption.
+func (r *Repo) RemoteBranchTip(ctx context.Context, remote, branch string) (tip string, found bool, err error) {
+	out, runErr := r.run(ctx, gitPush, "ls-remote", "--heads", "--", remote, "refs/heads/"+branch)
+	if runErr != nil {
+		return "", false, runErr
+	}
+	fields := strings.Fields(string(out))
+	if len(fields) == 0 {
+		return "", false, nil
+	}
+	return fields[0], true, nil
+}
+
+// FetchBranch restores a stack branch into local refs for a resumed run.
+func (r *Repo) FetchBranch(ctx context.Context, remote, branch string) error {
+	if _, err := r.run(ctx, gitPush, "fetch", "--quiet", "--", remote,
+		"refs/heads/"+branch+":refs/heads/"+branch); err != nil {
+		return fmt.Errorf("fetch branch %s: %w", branch, err)
+	}
+	return nil
+}
+
+// ValidateBranchName rejects revision expressions and option-shaped input
+// before a user-supplied base is joined into refs/heads or a refspec.
+func (r *Repo) ValidateBranchName(ctx context.Context, branch string) error {
+	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
+		return fmt.Errorf("invalid branch name %q", branch)
+	}
+	return nil
+}
+
+// CommitSubject returns the subject at ref, for completing publication after
+// a previous process committed or pushed but stopped before creating its PR.
+func (r *Repo) CommitSubject(ctx context.Context, ref string) (string, error) {
+	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%s", ref)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// ParentTip returns a commit's first parent. Stack layers are deliberately one
+// commit each, so this proves a recovered branch is based on the expected
+// preceding layer rather than merely sharing some older ancestor.
+func (r *Repo) ParentTip(ctx context.Context, ref string) (string, error) {
+	out, err := r.run(ctx, gitQuick, "rev-parse", ref+"^")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // Remove deletes the checkout. The branch is left alone: Merge decides
 // whether it is still needed.
 func (w *Worktree) Remove(ctx context.Context) error {
@@ -510,6 +668,17 @@ func branchSlug(s string) string {
 		return "review"
 	}
 	return out
+}
+
+// StackBranchName is stable for one base commit, schedule position, and
+// review. That stability is how a repeated invocation recognizes layers it
+// already published without making unrelated stacks collide.
+func StackBranchName(baseTip string, index int, review string) string {
+	tip := branchSlug(baseTip)
+	if len(tip) > 12 {
+		tip = tip[:12]
+	}
+	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, branchSlug(review))
 }
 
 func firstLine(s string) string {

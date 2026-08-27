@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -52,6 +53,15 @@ type Config struct {
 
 	Commit bool
 	Push   bool
+	// StackedPRs runs the configured review order in one isolated worktree,
+	// publishing each changed review as a child PR of the previous one.
+	StackedPRs bool
+	PRBase     string // initial local and remote base branch; empty means current
+	PushRemote string // remote receiving stack branches; empty means origin
+	// PRRepo and PRHost are normally inferred from PushRemote. They exist so
+	// tests can pair a local fake Git remote with a fake gh endpoint.
+	PRRepo string
+	PRHost string
 	// MergeInto is a branch this run's work is merged into after each loop,
 	// once the commit step has left the tree clean. Empty leaves the work
 	// where the reviews put it, on the branch that was checked out.
@@ -102,6 +112,10 @@ type Runner struct {
 	st  *Stats
 
 	repo *gitx.Repo
+	gh   ghx.Client
+
+	stackBase    string
+	stackBaseTip string
 
 	mu             sync.Mutex // guards sessionStarted
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
@@ -128,7 +142,7 @@ type Runner struct {
 	// reload waiting for in-flight reviews, or a runtime budget that expired.
 	soft atomic.Bool
 	// finish is the graceful quit: like soft, no new review starts, but what
-	// is in flight is drained and its work is committed, pushed, and merged
+	// is in flight is drained and its work is committed, published, or merged
 	// before the run ends. A reload hands its unfinished reviews to a
 	// successor; a graceful quit has no successor, so it must not leave the
 	// loop's output uncommitted.
@@ -137,7 +151,8 @@ type Runner struct {
 
 // RequestStop asks the runner to finish the reviews already in flight and then
 // return. Unlike canceling the context, it never kills a running agent: the
-// reviews now running finish normally, including their commit and merge.
+// reviews now running finish normally, including their commit and publication
+// or merge work.
 func (r *Runner) RequestStop() { r.soft.Store(true) }
 
 // RequestFinish asks the runner to stop starting reviews and end the run once
@@ -199,6 +214,13 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	if cfg.Jobs < 1 {
 		cfg.Jobs = 1
 	}
+	if cfg.StackedPRs {
+		cfg.Jobs = 1
+		cfg.MaxLoops = 1
+		if cfg.PushRemote == "" {
+			cfg.PushRemote = "origin"
+		}
+	}
 	start := cfg.Started
 	if start.IsZero() {
 		start = time.Now()
@@ -219,7 +241,11 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	// ever show up in its git status: the exclusion is local to the clone,
 	// which is the right place for one tool's scratch.
 	r.repo.ExcludeOwnArtifacts(ctx)
-	if cfg.Jobs > 1 {
+	if cfg.StackedPRs {
+		if err := r.prepareStackMode(ctx); err != nil {
+			return nil, err
+		}
+	} else if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err
 		}
@@ -366,7 +392,7 @@ func (r *Runner) Run(ctx context.Context) {
 		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
-	if r.cfg.Jobs > 1 {
+	if r.cfg.Jobs > 1 || r.cfg.StackedPRs {
 		defer r.repo.CleanWorktreeRoot()
 	}
 
@@ -383,9 +409,15 @@ func (r *Runner) Run(ctx context.Context) {
 
 		start := time.Now()
 		before, haveBefore := r.sample(ctx)
+		beforeIns, beforeDel := 0, 0
+		if r.cfg.StackedPRs {
+			beforeIns, beforeDel, _, _, _, _ = r.st.Totals()
+		}
 
 		var completed bool
-		if r.cfg.Jobs > 1 {
+		if r.cfg.StackedPRs {
+			completed = r.runLoopStack(ctx, loopNo)
+		} else if r.cfg.Jobs > 1 {
 			completed = r.runLoopParallel(ctx, loopNo)
 		} else {
 			completed = r.runLoopSequential(ctx, loopNo)
@@ -403,7 +435,13 @@ func (r *Runner) Run(ctx context.Context) {
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
 			Elapsed: time.Since(start).Seconds(),
 		}
-		if after, ok := r.sample(ctx); ok && haveBefore {
+		if r.cfg.StackedPRs {
+			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
+			if haveLines {
+				ins, del := afterIns-beforeIns, afterDel-beforeDel
+				ev.Ins, ev.Del = new(ins), new(del)
+			}
+		} else if after, ok := r.sample(ctx); ok && haveBefore {
 			ins, del := delta(before, after)
 			ev.Ins, ev.Del = new(ins), new(del)
 		}

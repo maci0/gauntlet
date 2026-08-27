@@ -135,6 +135,15 @@ privilege transition:
   (`worktree.go:176-196`, called at `runner.go:922`): more runner-side git
   authority, exercised only inside gauntlet-created worktrees, never the
   user's checkout.
+- **`--stacked-prs` (worktree isolation plus publication):** the runner has
+  the same staging, commit, and retry-reset authority inside one scratch
+  worktree, then invokes Git to push each committed child branch and `gh` to
+  create its PR. Startup verifies a clean tracked tree, equal local/remote
+  base tips, `gh` authentication and repository access, and a dry-run
+  new-branch push before any agent starts. A publication failure stops later
+  reviews, so no agent runs on a branch that does not exist as a usable remote
+  PR base. Git and `gh` receive fixed argv elements rather than shell text;
+  review names, commit subjects, and PR bodies cannot become commands.
 - **Sequential in-place with `--commit`/`--push`:** the commit step is itself
   an agent launch. `runCommitStep` (`commit.go:94`) execs one agent with
   `prompt.CommitPrompt` (`compose.go:147`), which instructs it to run
@@ -153,7 +162,8 @@ outcomes, and the prompt fingerprint each launch ran under
 (`internal/runner/event.go`, DESIGN.md "Run journal"), the
 commit step is journaled as its own event with the chosen agent
 (`commit.go:156-159`, kind at `event.go:23`), and worktree-mode commits carry
-the runner as author.
+the runner as author. Stacked publication adds a `pull_request` event carrying
+the exact head, base, status, and URL; the terminal summary repeats every URL.
 
 **B3.** Terminal escape injection and log spoofing from agent output:
 mitigated end to end; the composed prompt shown by `--show-prompt`

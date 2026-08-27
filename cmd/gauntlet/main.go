@@ -358,15 +358,16 @@ func run(argv []string) int {
 	var dash *ui.Dashboard
 	if opts.tui {
 		dash = ui.New(ui.Config{
-			Version: version,
-			RunID:   runID,
-			Dirs:    dirs,
-			Agents:  runner.AgentLabels(agents),
-			Reviews: allReviews(runs),
-			Jobs:    opts.jobs,
-			Timeout: opts.timeout,
-			Budget:  opts.runtime,
-			Started: startedAt,
+			Version:    version,
+			RunID:      runID,
+			Dirs:       dirs,
+			Agents:     runner.AgentLabels(agents),
+			Reviews:    allReviews(runs),
+			Jobs:       opts.jobs,
+			StackedPRs: opts.stackedPRs,
+			Timeout:    opts.timeout,
+			Budget:     opts.runtime,
+			Started:    startedAt,
 			// `s` on the dashboard is the same request SIGQUIT makes.
 			OnFinish: func() { graceful.request(nil) },
 		}, bus.Subscribe(4096))
@@ -385,6 +386,8 @@ func run(argv []string) int {
 		}
 		if opts.jobs > 1 {
 			rep.logf("Parallel mode: %d reviews at a time, each in its own git worktree", opts.jobs)
+		} else if opts.stackedPRs {
+			rep.logf("Stacked PR mode: sequential reviews in one isolated worktree")
 		}
 	}
 	if opts.tui {
@@ -425,6 +428,7 @@ func run(argv []string) int {
 			Timeout: opts.timeout, Jobs: opts.jobs, Retries: opts.retries, MaxLoops: maxLoops,
 			Started: startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
+			StackedPRs: opts.stackedPRs, PRBase: opts.prBase, PushRemote: opts.pushRemote,
 			MergeInto:        opts.mergeInto,
 			ResolveConflicts: opts.resolveConflicts,
 			Seed:             opts.seed,
@@ -435,7 +439,8 @@ func run(argv []string) int {
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
 		}
 		r, err := runner.New(ctx, cfg, bus)
-		if errors.Is(err, runner.ErrDirtyTree) && commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
+		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
+			commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
 			r, err = runner.New(ctx, cfg, bus)
 		}
 		if err != nil {
@@ -709,7 +714,7 @@ func (g *gracefulStop) request(out io.Writer) {
 	}
 	if first && out != nil {
 		fmt.Fprintln(out, "\nFinishing: no new reviews will start. "+
-			"The ones running will end, commit, and merge as configured. Ctrl-C to stop now.")
+			"The ones running will end, commit, publish or merge as configured. Ctrl-C to stop now.")
 	}
 }
 

@@ -20,6 +20,7 @@ const (
 	EvReviewStart Kind = "review_start"
 	EvReviewEnd   Kind = "review_end"
 	EvMerge       Kind = "merge"
+	EvPullRequest Kind = "pull_request"
 	EvCommit      Kind = "commit"
 	EvLoopEnd     Kind = "loop_end"
 	EvRunEnd      Kind = "run_end"
@@ -86,6 +87,8 @@ type Event struct {
 	Thinking int `json:"thinking,omitempty"`
 
 	Branch string `json:"branch,omitempty"`
+	Base   string `json:"base,omitempty"`
+	URL    string `json:"url,omitempty"`
 
 	// Text carries narration (EvLog), agent output (EvOutput), or a detail
 	// string on other events.

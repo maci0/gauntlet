@@ -95,6 +95,11 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- `--stacked-prs` runs the selected reviews sequentially in one isolated
+  worktree. Each changed review is committed and pushed on a child branch,
+  then opened as a pull request against the preceding changed review; the
+  original checkout is never changed and no pull request is merged. `--pr-base`
+  selects the first base and `--push-remote` selects the publishing remote.
 - A review can declare what it keys on with a `Signals: ext:.zig, name:build.zig`
   line, which is what makes a project's own prompt reachable by the file-signal
   suggester: the built-in rules only know built-in names. The line comes from

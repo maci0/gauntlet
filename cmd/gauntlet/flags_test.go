@@ -173,6 +173,12 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"garbage seed", []string{"--seed", "soon"}, "must be a nonnegative integer"},
 		{"hex seed", []string{"--seed", "0x10"}, ""},
 		{"zero jobs", []string{"-j", "0"}, "must be >= 1"},
+		{"stack owns commits", []string{"--stacked-prs", "--commit"}, "owns its commits"},
+		{"stack owns pushes", []string{"--stacked-prs", "--push"}, "owns its commits"},
+		{"stack never merges", []string{"--stacked-prs", "--merge-into", "main"}, "conflicts"},
+		{"stack is one pass", []string{"--stacked-prs", "--max-loops", "2"}, "one ordered review pass"},
+		{"base needs stack", []string{"--pr-base", "main"}, "requires --stacked-prs"},
+		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs"},
 		{"negative limit", []string{"runs", "--limit", "-3"}, "--limit must be >= 1"},
 		{"zero limit", []string{"runs", "--limit", "0"}, "--limit must be >= 1"},
 		{"dirs with dir", []string{"--dirs", "a", "-C", "b"}, "conflicts"},
@@ -219,6 +225,19 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 				t.Fatalf("error %q does not mention %q", err, c.want)
 			}
 		})
+	}
+}
+
+func TestStackedPRFlagsForceOneSequentialPass(t *testing.T) {
+	o, err := parseFlags([]string{"--stacked-prs", "--pr-base", "main", "--push-remote", "fork", "-j", "8"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !o.stackedPRs || o.prBase != "main" || o.pushRemote != "fork" {
+		t.Fatalf("stack options were not retained: %+v", o)
+	}
+	if o.jobs != 1 || o.maxLoops != 1 {
+		t.Fatalf("stack mode must be one sequential pass: jobs=%d loops=%d", o.jobs, o.maxLoops)
 	}
 }
 

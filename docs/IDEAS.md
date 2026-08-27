@@ -16,15 +16,6 @@ before the agent starts (symlink `node_modules`, copy `.env`, warm a cache).
 Needs a timeout of its own and a clear failure mode: a setup that fails should
 skip that review, not run it in a broken tree.
 
-## PR-per-review workflow
-
-The worktree machinery already produces one branch per review. Stopping before
-the merge and pushing instead gives one PR per review: `gh pr create` with a
-body generated from the review's own `RESULT:`/`PATH:` protocol lines, a label
-per review name, and a `--pr-base` flag. Open question: what happens when 50
-reviews open 50 PRs on a busy repo. Batching by review set, or one PR with all
-branches merged into it, may be the better shape.
-
 ## Cross-run learning from the journal
 
 Every run already writes JSONL to `~/.gauntlet/runs/`. That is enough history

@@ -33,15 +33,16 @@ func SetMonochrome() {
 
 // Config describes the run the dashboard is watching.
 type Config struct {
-	Version string
-	RunID   string
-	Dirs    []string
-	Agents  []string
-	Reviews []string
-	Jobs    int
-	Timeout time.Duration
-	Budget  time.Duration
-	Started time.Time
+	Version    string
+	RunID      string
+	Dirs       []string
+	Agents     []string
+	Reviews    []string
+	Jobs       int
+	StackedPRs bool
+	Timeout    time.Duration
+	Budget     time.Duration
+	Started    time.Time
 
 	// OnFinish is the graceful quit: stop starting reviews, let the ones
 	// running land their work, then end the run. Nil disables the key.
@@ -618,7 +619,9 @@ func (m *model) reviewCellWidth() int {
 func (m *model) renderHeader() string {
 	elapsed := m.now.Sub(m.cfg.Started)
 	mode := "sequential"
-	if m.cfg.Jobs > 1 {
+	if m.cfg.StackedPRs {
+		mode = "stacked PRs"
+	} else if m.cfg.Jobs > 1 {
 		mode = fmt.Sprintf("%d×worktree", m.cfg.Jobs)
 	}
 	loop := fmt.Sprintf("loop %d", m.loop)
@@ -1078,7 +1081,7 @@ func (m *model) renderHelp() string {
 		styleTitle.Render("gauntlet dashboard"),
 		"",
 		"  q, esc      quit (stops the run, killing what is running)",
-		"  s           finish: no new reviews, then commit, merge, and exit",
+		"  s           finish: no new reviews, then commit, publish or merge, and exit",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
 		"  g / G       jump to oldest / newest",

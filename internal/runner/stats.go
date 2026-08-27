@@ -33,6 +33,9 @@ type Result struct {
 	// report one.
 	Thinking int
 	Branch   string // set in worktree mode
+	Base     string // pull request base in stacked-PR mode
+	URL      string // pull request URL in stacked-PR mode
+	Detail   string // infrastructure failure detail when no agent exit explains it
 }
 
 // Stats accumulates results across a run. Safe for concurrent use: parallel
@@ -148,6 +151,9 @@ func (c Counts) Failures() int { return c.Fail + c.Timeout + c.Skipped + c.Confl
 func (s *Stats) Counts() Counts {
 	var c Counts
 	for _, r := range s.Results() {
+		if r.Status == "" {
+			continue // publication metadata recovered without launching an agent
+		}
 		c.tally(r.Status)
 	}
 	return c
@@ -191,6 +197,9 @@ func (a AgentSummary) TokensPerSec() float64 {
 func (s *Stats) ByAgent() []AgentSummary {
 	byLabel := map[string]*AgentSummary{}
 	for _, r := range s.Results() {
+		if r.Status == "" {
+			continue
+		}
 		label := r.Agent.Label()
 		a, ok := byLabel[label]
 		if !ok {

@@ -157,6 +157,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 	var agentTime time.Duration
 	var timed int
 	haveLines := false
+	var pullRequests []runner.Result
 
 	for _, d := range results {
 		if d.stats == nil {
@@ -168,6 +169,9 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		ins, del, tokens = ins+i, del+dl, tokens+t
 		for _, r := range d.stats.Results() {
 			thinking += r.Thinking
+			if r.URL != "" {
+				pullRequests = append(pullRequests, r)
+			}
 		}
 		agentTime += at
 		timed += tm
@@ -181,6 +185,12 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		fmt.Fprintf(out, "Directories: %d\n", len(results))
 	}
 	fmt.Fprintf(out, "Completed loops: %d\n", loops)
+	if len(pullRequests) > 0 {
+		fmt.Fprintln(out, "Pull requests:")
+		for _, pr := range pullRequests {
+			fmt.Fprintf(out, "  %-20s  %s -> %s  %s\n", pr.Review, pr.Branch, pr.Base, pr.URL)
+		}
+	}
 	fmt.Fprintf(out, "Total reviews run: %d\n", agg.Total())
 	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(agg.OK)))
 	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(agg.Fail+agg.Timeout)))
@@ -281,7 +291,9 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			case runner.StatusSkipped:
 				detail = "skipped: never ran (unknown name or unreadable prompt)"
 			case runner.StatusFail:
-				if f.ExitCode >= 0 {
+				if f.Detail != "" {
+					detail = normalize.Sanitize(f.Detail)
+				} else if f.ExitCode >= 0 {
 					detail = fmt.Sprintf("exit %d", f.ExitCode)
 				} else {
 					detail = "launch failed"

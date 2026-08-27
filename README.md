@@ -29,6 +29,9 @@ to an agent CLI you already have installed, and applies what it finds.
 - **Isolation when it runs in parallel.** `--jobs N` gives every review its own
   `git worktree` on its own branch, merged back one at a time. Concurrent
   agents never share a working tree.
+- **Unmerged review stacks.** `--stacked-prs` runs reviews in one isolated
+  worktree and opens each changed review as a child PR of the previous one.
+  The branch in your editor is never changed.
 - **Many repositories at once.** `--dirs a,b,c` reviews several trees, each
   with its own lock, baseline, and lane. `--jobs` applies within each.
 - **A dashboard.** `--tui` puts lanes, throughput, the review grid, and a
@@ -44,20 +47,45 @@ to an agent CLI you already have installed, and applies what it finds.
 - **Self-updating, hot-reloading.** A running loop takes a new binary between
   reviews without losing its counters.
 
-## Install
+## Quick start
+
+Check which installed agents gauntlet can use, then compose a run:
 
 ```sh
-# a release binary (linux/darwin, amd64/arm64)
+gauntlet doctor
+gauntlet pick
+```
+
+Run one isolated, unmerged PR stack from `main`:
+
+```sh
+gauntlet -r quick --stacked-prs --pr-base main
+```
+
+Everything below is detail: installation, execution modes, and references.
+
+## Install
+
+Install the latest release binary:
+
+```sh
 mkdir -p ~/.local/bin
 ver=$(curl -fsSL https://api.github.com/repos/maci0/gauntlet/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
 curl -fsSL "https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)" -o ~/.local/bin/gauntlet
 chmod +x ~/.local/bin/gauntlet
+```
 
-# or from source
-make install            # builds and installs into ~/.local/bin
+Or build and install from source:
 
-gauntlet doctor         # check which agent CLIs and helper tools you have
-gauntlet update         # replace this binary with the latest verified release
+```sh
+make install
+```
+
+Check or update the installation:
+
+```sh
+gauntlet doctor
+gauntlet update
 ```
 
 Upgrading from the Python version: the flags are the same, `--target-dirs` is
@@ -79,25 +107,18 @@ Any other agent can be added without a new binary: `--agent-cmd` for one run,
 knows, defined ones included. See
 [docs/CLI.md](docs/CLI.md#defining-an-agent-gauntlet-does-not-ship).
 
-## Quick start
-
-```sh
-gauntlet pick                     # compose a run on screen: reviews, agents, jobs
-gauntlet --list                   # every review and set, and what is scheduled
-gauntlet --dry-run                # the plan, without running anything
-gauntlet -a claude --once         # one pass over everything, then stop
-gauntlet -r quick -x test-review  # a named set, minus one review
-gauntlet -a mixed                 # sample from every installed agent, forever
-gauntlet --suggest --yes          # let an agent pick the relevant reviews
-gauntlet --tui                    # same run, live dashboard
-```
-
 ## How a run works
 
 Reviews run one at a time against your working tree, forever, until you stop
 them. `--jobs N` buys parallelism with isolation instead: every review gets
 its own `git worktree` on its own branch, and the runner (never the agent)
 commits each one and merges them back one at a time.
+
+Stack mode is sequential for a different reason: every review must see the
+commits below it. From base `main`, changed reviews produce `review-1 → main`,
+then `review-2 → review-1`, and so on. The PRs stay open; gauntlet removes only
+the scratch checkout. See [stacked pull requests](docs/RUNS.md#stacked-pull-requests)
+for the branch lifecycle and recovery rules.
 
 ```mermaid
 flowchart LR
@@ -139,7 +160,7 @@ you do:
 | Key | Action |
 |---|---|
 | `q`, `esc` | quit (stops the run, killing what is running) |
-| `s` | finish: no new reviews, then commit, merge, and exit |
+| `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `f` | narrow the feed to results, errors, and diffs, and back |
