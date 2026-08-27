@@ -50,6 +50,12 @@ func (r *Runner) prepareStackMode(ctx context.Context) error {
 	// Fetch, rather than pull: the remote base object enters the shared Git
 	// object store, while the branch and files checked out by the user do not
 	// move. The isolated worktree is cut directly from this returned commit.
+	//
+	// ponytail: the tip is re-fetched on every invocation, a hot reload
+	// included. A remote base that advances mid-run renames every layer, so a
+	// reload then starts a fresh stack instead of recovering the published
+	// prefix; carrying the fetched tip through the reload handoff is the
+	// upgrade if that ever bites.
 	baseTip, err := r.repo.FetchRemoteBranchTip(ctx, r.cfg.PushRemote, base)
 	if err != nil {
 		return fmt.Errorf("cannot fetch %s/%s: %w", r.cfg.PushRemote, base, err)
