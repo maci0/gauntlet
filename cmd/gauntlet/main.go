@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -30,7 +31,36 @@ import (
 )
 
 // version is stamped at build time: go build -ldflags "-X main.version=1.2.3".
+// A build that stamps nothing keeps the source default, and then the version
+// the Go toolchain embedded is read instead, so `go install ...@v1.2.3`
+// reports 1.2.3 rather than dev. Resolution happens in main, not here: -X
+// can only replace variables whose initializer is a constant, and this file
+// must stay one for release stamping to reach every display surface.
 var version = "dev"
+
+func main() {
+	version = resolveVersion(version)
+	os.Exit(run(os.Args[1:]))
+}
+
+// resolveVersion returns the stamped version unless nothing was stamped, in
+// which case it falls back to the module version the build recorded.
+func resolveVersion(stamped string) string {
+	bi, _ := debug.ReadBuildInfo()
+	return resolveStamped(stamped, bi)
+}
+
+// resolveStamped keeps an explicit -ldflags stamp untouched. A toolchain build
+// without one records "(devel)" for an out-of-module build, possibly nothing,
+// and since go1.27 its own tag plus "+dirty" for a working-tree build; the
+// first two stay dev, everything else names the tag honestly rather than
+// inventing a number an update check could act on.
+func resolveStamped(stamped string, bi *debug.BuildInfo) string {
+	if stamped != "dev" || bi == nil || bi.Main.Version == "" || bi.Main.Version == "(devel)" {
+		return stamped
+	}
+	return strings.TrimPrefix(bi.Main.Version, "v")
+}
 
 // Exit codes, matching the Python original so scripts keep working.
 const (
@@ -47,8 +77,6 @@ const autoUpdateEvery = 6 * time.Hour
 // autoUpdateDelay is how long --auto-update waits before its first check, so
 // the network never delays the first review.
 const autoUpdateDelay = 30 * time.Second
-
-func main() { os.Exit(run(os.Args[1:])) }
 
 // dirRun is one directory's slice of a run.
 type dirRun struct {

@@ -10,6 +10,18 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- A binary that was not stamped reports the version the Go toolchain embedded
+  rather than `dev`: `go install github.com/maci0/gauntlet/cmd/gauntlet@latest`
+  names its release, so `gauntlet update --check` compares against it, and a
+  build from a source tree one tag behind the working tree says so
+  (`1.10.0+dirty`). Builds that do stamp (`make dist`, `release.yml`) report
+  exactly the value `-ldflags` put there; only `(devel)` and absent module
+  versions stay `dev`.
+
 ## 1.10.0
 
 ### Changed
@@ -95,9 +107,9 @@ minor instead and were listed under Changed.
 
 - Coverage ratchets: `make cover` fails below `COVER_MIN` and CI runs it, so a
   refactor that quietly drops a tested path fails where it happens rather than
-  a release later. The floor is CI's number (74.0%), not a local one: a
-  machine with agent CLIs installed runs paths a runner skips and measures
-  about two points higher.
+  a release later. This release carries 76.0%, a measurement taken where agent
+  CLIs are installed; CI measures about two points lower, so pull requests
+  fail until 1.7.4 lowers the floor to CI's own 74.0%.
 - Two parsers that read input from outside the program are fuzzed:
   `SUBJECT:` lines, which are agent output on their way into a commit message,
   and `--timeout` durations, which are whatever a person typed.
