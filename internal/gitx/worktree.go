@@ -159,6 +159,13 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+		// A failure can leave the add half-done: a cancel or a kill lands
+		// mid-write, the command dies, but the registration it already wrote
+		// and the branch it already created do not. Clear both while the lock
+		// is still held, on a live context, so the caller gets the error and
+		// moves on while the repo stays as it was found.
+		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "worktree", "remove", "--force", dir)
+		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "branch", "-D", branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil

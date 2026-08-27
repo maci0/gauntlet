@@ -1551,6 +1551,65 @@ func TestCancelRecordsQueuedReviewsSequential(t *testing.T) {
 	}
 }
 
+// TestFailedWorktreeAddReportsAndKeepsRepo pins two contracts for a lane
+// whose checkout cannot be cut. In loaded runs that is usually a cancel
+// racing the `git worktree add`; any cause must end the same way: the repo is
+// left as it was found, and the review's outcome reaches the event stream
+// rather than vanishing from it while the stats still carry it.
+func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Jobs = 2
+	cfg.Seed = 1
+
+	// A branch squatting on this lane's name, pointing at a commit that is
+	// not the base: AddWorktree refuses it rather than destroying it. The
+	// refusal is the deterministic stand-in for every cause of a failed add.
+	tree := gitOut(t, repo, "rev-parse", "HEAD^{tree}")
+	squat := gitOut(t, repo, "commit-tree", tree, "-p", "HEAD", "-m", "squat")
+	gitOut(t, repo, "branch", "gauntlet/test-l1-00/a-review", squat)
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	results := r.Stats().Results()
+	if len(results) != 1 || results[0].Status != StatusSkipped {
+		t.Fatalf("failed add recorded as %+v, want one skipped result", results)
+	}
+
+	var ends []Event
+	for _, ev := range <-done {
+		if ev.Kind == EvReviewEnd && ev.Review == "a-review" {
+			ends = append(ends, ev)
+		}
+	}
+	if len(ends) != 1 || ends[0].Status != StatusSkipped {
+		t.Fatalf("a failed add published %d review_end events (%+v), want exactly one skipped",
+			len(ends), ends)
+	}
+
+	// The squatting branch keeps its commit: a failed review must not take
+	// out a branch it did not create.
+	if tip := gitOut(t, repo, "rev-parse", "gauntlet/test-l1-00/a-review"); tip != squat {
+		t.Fatalf("squatting branch moved: %s, want %s", tip, squat)
+	}
+	if out := gitOut(t, repo, "worktree", "list"); strings.Count(out, "\n") != 0 {
+		t.Errorf("checkouts appeared:\n%s", out)
+	}
+}
+
 // readTree reads one file from a checkout.
 func readTree(t *testing.T, dir, name string) string {
 	t.Helper()

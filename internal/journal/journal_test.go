@@ -12,6 +12,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -106,6 +107,94 @@ func TestWriteAndReplay(t *testing.T) {
 	}
 	if runs[0].Path != want {
 		t.Fatalf("index should point at the journal: %q", runs[0].Path)
+	}
+}
+
+// Journal's contract is concurrent writers: parallel review lanes publish
+// from their own goroutines while the loop end flushes from the consumer.
+// Under that interleave every event must still land whole — one JSON object
+// per line, none torn or interleaved mid-line by a racing encoder — and the
+// close must write exactly one index row.
+func TestJournalSurvivesConcurrentWriters(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		lanes   = 8
+		perLane = 200
+	)
+	type ev struct {
+		Kind string `json:"ev"`
+		Lane int    `json:"lane"`
+		Seq  int    `json:"seq"`
+		Pad  string `json:"pad"`
+	}
+	// Pad enough bytes that a lane's write crosses the bufio boundary: a torn
+	// encode would land here as an unparseable line and surface as a miss.
+	pad := strings.Repeat("x", 512)
+
+	var wg sync.WaitGroup
+	for lane := range lanes {
+		wg.Go(func() {
+			for seq := range perLane {
+				j.Write(ev{Kind: "review_end", Lane: lane, Seq: seq, Pad: pad})
+			}
+		})
+	}
+	wg.Go(func() {
+		for range 20 {
+			j.Flush()
+			time.Sleep(time.Millisecond)
+		}
+	})
+	wg.Wait()
+
+	if err := j.Close(Summary{
+		Version: "test", Start: now, End: now.Add(time.Minute),
+		Reviews: lanes * perLane, OK: lanes * perLane,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	events, err := collect(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != lanes*perLane {
+		t.Fatalf("lost events: got %d of %d", len(events), lanes*perLane)
+	}
+	seqs := make([][]int, lanes)
+	for _, e := range events {
+		if e["ev"] != "review_end" || e["pad"] != pad {
+			t.Fatalf("torn event: %+v", e)
+		}
+		lane := int(e["lane"].(float64))
+		seqs[lane] = append(seqs[lane], int(e["seq"].(float64)))
+	}
+	for lane, want := range seqs {
+		if len(want) != perLane {
+			t.Fatalf("lane %d recorded %d of %d events", lane, len(want), perLane)
+		}
+		for seq, n := range want {
+			if n != seq {
+				t.Fatalf("lane %d order broken at %d: %d", lane, seq, n)
+			}
+		}
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].Reviews != lanes*perLane {
+		t.Fatalf("index wrong after concurrent writers: %+v", runs)
 	}
 }
 
