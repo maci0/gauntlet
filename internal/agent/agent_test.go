@@ -800,11 +800,10 @@ func TestDshStreamAsksForReadableSessions(t *testing.T) {
 	}
 }
 
-// dsh pins its model through a generated --patch overlay rather than a model
-// flag, so a pinned model must produce an overlay file naming both provider
-// and model while the prompt stays last. Everything before the last slash is
-// the provider, so org-scoped models keep their namespace.
-func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
+// isolateDshPatches points UserCacheDir at a fresh temp dir and empties the
+// patched-overlay table, restoring whatever was there when the test ends.
+func isolateDshPatches(t *testing.T) string {
+	t.Helper()
 	cache := t.TempDir()
 	t.Setenv("XDG_CACHE_HOME", cache)
 	if got, err := os.UserCacheDir(); err != nil || got != cache {
@@ -815,12 +814,21 @@ func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
 	saved := maps.Clone(dshPatches)
 	clear(dshPatches)
 	dshPatchMu.Unlock()
-	defer func() {
+	t.Cleanup(func() {
 		dshPatchMu.Lock()
 		clear(dshPatches)
 		maps.Copy(dshPatches, saved)
 		dshPatchMu.Unlock()
-	}()
+	})
+	return cache
+}
+
+// dsh pins its model through a generated --patch overlay rather than a model
+// flag, so a pinned model must produce an overlay file naming both provider
+// and model while the prompt stays last. Everything before the last slash is
+// the provider, so org-scoped models keep their namespace.
+func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
+	cache := isolateDshPatches(t)
 
 	modelPatch := func(model string) string {
 		t.Helper()
@@ -864,22 +872,7 @@ func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
 }
 
 func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
-	if got, err := os.UserCacheDir(); err != nil || got != cache {
-		t.Skip("UserCacheDir does not follow XDG_CACHE_HOME here")
-	}
-
-	dshPatchMu.Lock()
-	saved := maps.Clone(dshPatches)
-	clear(dshPatches)
-	dshPatchMu.Unlock()
-	defer func() {
-		dshPatchMu.Lock()
-		clear(dshPatches)
-		maps.Copy(dshPatches, saved)
-		dshPatchMu.Unlock()
-	}()
+	cache := isolateDshPatches(t)
 
 	dir := filepath.Join(cache, "gauntlet", "dsh")
 	// Callers slug the key first (dshModelPatch), so it is always one path
