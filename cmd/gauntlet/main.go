@@ -507,10 +507,12 @@ func run(argv []string) int {
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
 		if code := doReload(*path, runID, startedAt, runs, prior, argv, stdout); code >= 0 {
-			// The exec failed, so no successor is coming: finish the run here.
-			// Returning without the summary would orphan the whole journal,
-			// because the quiet close already skipped this process's index row
-			// and the successor that was to write it will never exist.
+			// The exec failed, or the handoff could not be saved and the
+			// reload was aborted: no successor is coming, so finish the run
+			// here. Returning without the summary would orphan the whole
+			// journal, because the quiet close already skipped this process's
+			// index row and the successor that was to write it will never
+			// exist.
 			reloadFailed = true
 		}
 	}
@@ -819,7 +821,15 @@ func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff
 	}
 	statePath, err := selfupdate.SaveState(journal.StateDir(), runID, h)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: cannot save reload state: %v\n", err)
+		// Without the handoff the successor would start a fresh run: a new
+		// run id, every loop restarted, and this process's journal already
+		// quiet-closed with no index row, so the run would vanish from
+		// `gauntlet runs` and the history weighting while its reviews ran a
+		// second time. Stay in this process instead: the caller finishes the
+		// run normally (summary, index row, lock release), and the new binary
+		// is picked up at the next start.
+		fmt.Fprintf(os.Stderr, "Reload aborted: cannot save reload state: %v\n", err)
+		return exitFail
 	}
 	// Locks are released here, before the exec: the successor takes them.
 	releaseAll(runs)
