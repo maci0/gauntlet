@@ -1423,6 +1423,70 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 	}
 }
 
+// TestCancelRecordsQueuedReviewsSequential pins the same accounting for the
+// sequential loop: an interrupt strands every review still queued behind the
+// one that was running, and each must be recorded as interrupted rather than
+// vanish from the stats, the summary, and any journal replay.
+func TestCancelRecordsQueuedReviewsSequential(t *testing.T) {
+	repo := testRepo(t)
+	names := []string{"a-review", "b-review", "c-review", "d-review", "e-review"}
+	set, _ := promptSet(t, names...)
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
+
+	cfg := baseConfig(t, repo, set, names, bin)
+	cfg.Jobs = 1
+	cfg.Seed = 1
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(400 * time.Millisecond)
+		cancel()
+	}()
+	r.Run(ctx)
+	bus.Close()
+
+	results := r.Stats().Results()
+	got := map[string]Result{}
+	for _, res := range results {
+		if prev, dup := got[res.Review]; dup {
+			t.Fatalf("review %s recorded twice (%s and %s)", res.Review, prev.Status, res.Status)
+		}
+		got[res.Review] = res
+		switch res.Status {
+		case StatusInterrupted:
+		default:
+			t.Errorf("review %s recorded as %s after cancel, want interrupted",
+				res.Review, res.Status)
+		}
+	}
+	for _, name := range names {
+		if _, ok := got[name]; !ok {
+			t.Errorf("review %s vanished: no result was recorded for it", name)
+		}
+	}
+
+	published := map[string]bool{}
+	for _, ev := range <-done {
+		if ev.Kind == EvReviewEnd {
+			published[ev.Review] = true
+		}
+	}
+	for _, name := range names {
+		if !published[name] {
+			t.Errorf("review %s has no review_end event: its outcome was never published", name)
+		}
+	}
+}
+
 // readTree reads one file from a checkout.
 func readTree(t *testing.T, dir, name string) string {
 	t.Helper()

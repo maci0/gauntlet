@@ -428,7 +428,15 @@ func (r *Runner) budgetExhausted() bool {
 func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 	r.schedule(loopNo)
 	for {
-		if ctx.Err() != nil || r.soft.Load() {
+		if r.soft.Load() {
+			return false
+		}
+		if ctx.Err() != nil {
+			// A hard cancel strands whatever never started: no successor will
+			// ever start it, so each is recorded as interrupted rather than
+			// let vanish from the stats, the summary, and the journal, exactly
+			// as the parallel loop records its stranded lanes.
+			r.abandonQueue(loopNo)
 			return false
 		}
 		if r.finish.Load() {
@@ -448,7 +456,11 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 		}
 		res := r.runReview(ctx, review, loopNo, nil)
 		r.st.Add(res)
-		if ctx.Err() != nil && res.Status == StatusInterrupted {
+		if ctx.Err() != nil {
+			// The cancel landed while this review ran or right after it; the
+			// rest of the loop's queue dies with this process, so it is
+			// recorded, not dropped.
+			r.abandonQueue(loopNo)
 			return false
 		}
 		if r.cfg.Commit || r.cfg.Push {
@@ -544,10 +556,10 @@ loop:
 	return ctx.Err() == nil
 }
 
-// abandonQueue records every queued review a hard cancel will never start.
-// There is no successor to hand them to, so letting them vanish would drop
-// them from the stats, the summary, and the journal alike. Soft stops never
-// call this: their queue is the handoff.
+// abandonQueue records every queued review a hard cancel will never start,
+// in either loop. There is no successor to hand them to, so letting them
+// vanish would drop them from the stats, the summary, and the journal alike.
+// Soft stops never call this: their queue is the handoff.
 func (r *Runner) abandonQueue(loopNo int) {
 	for {
 		review, ok := r.takeNext()
