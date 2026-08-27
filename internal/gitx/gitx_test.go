@@ -4,7 +4,6 @@
 package gitx
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -459,15 +458,16 @@ func hookChildPID(t *testing.T, r *Repo) int {
 	return 0
 }
 
-// procAlive reports whether pid names a live process. A zombie counts as gone:
-// its parent is dead and only reaping remains.
-func procAlive(pid int) bool {
-	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
-	if err != nil {
-		return false
-	}
-	i := bytes.LastIndexByte(b, ')')
-	return i >= 0 && i+2 < len(b) && b[i+2] != 'Z'
+// processAlive probes one pid with a zero signal: nil or EPERM means something
+// is still there, ESRCH means it is gone. kill(pid, 0) works on every POSIX
+// target this project ships for; a /proc walk would make this probe answer
+// "gone" unconditionally on macOS, where the assertion below could never fire.
+// The killed group's parents died in the same sweep, so a dead pid is reaped
+// by init rather than lingering as an unreapable zombie holding the probe
+// green.
+func processAlive(pid int) bool {
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // The deadline kill must take down the whole process group, not just the git
@@ -496,10 +496,10 @@ func TestRunDeadlineKillsTheProcessGroup(t *testing.T) {
 	}
 	pid := hookChildPID(t, r)
 	deadline := time.Now().Add(10 * time.Second)
-	for procAlive(pid) && time.Now().Before(deadline) {
+	for processAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if procAlive(pid) {
+	if processAlive(pid) {
 		t.Errorf("grandchild %d survived the group kill", pid)
 	}
 	syscall.Kill(pid, syscall.SIGKILL) // belt and braces; nothing outlives the test
