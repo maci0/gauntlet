@@ -244,7 +244,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		r.st.Add(res)
 		r.publishPullRequest(loopNo, review, branch, parent, prURL, false)
 		parent = branch
-		parentTip, err = r.repo.Tip(ctx, branch)
+		parentTip, err = r.repo.Tip(ctx, "refs/heads/"+branch)
 		if err != nil {
 			r.st.addCommitFail()
 			r.publishStackFailure(loopNo, review, branch, res.Base, err)
@@ -303,7 +303,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 		r.repo.DeleteBranch(context.WithoutCancel(ctx), branch)
 		return parent, parentTip, absentDone, nil
 	}
-	actualParent, err := r.repo.ParentTip(ctx, branch)
+	actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+branch)
 	if err != nil || actualParent != parentTip {
 		return parent, parentTip, false,
 			fmt.Errorf("existing branch is not a one-commit child of %s", parent)
@@ -317,7 +317,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 		}
 	}
 	if prURL == "" {
-		title, err := r.repo.CommitSubject(ctx, branch)
+		title, err := r.repo.CommitSubject(ctx, "refs/heads/"+branch)
 		if err != nil {
 			return parent, parentTip, false, err
 		}

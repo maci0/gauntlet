@@ -102,6 +102,11 @@ func TestStackedPRsBuildLinearRemoteGraphWithoutTouchingCheckout(t *testing.T) {
 	repo, _ := stackRepo(t)
 	logPath, statePath := fakeGH(t)
 	base := gitOut(t, repo, "rev-parse", "main")
+	b1 := gitx.StackBranchName(base, 0, "first-review")
+	b2 := gitx.StackBranchName(base, 1, "second-review")
+	// A tag carrying a stack branch's exact name must not shadow the branch:
+	// bare-ref resolution prefers tags, which would re-parent the stack.
+	gitOut(t, repo, "tag", b1)
 	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
 case "$*" in
   *first-review*) printf 'first\n' > first.txt; echo 'SUBJECT: fix: add first layer' ;;
@@ -121,12 +126,10 @@ echo 'RESULT: changed=1'`)
 			t.Fatalf("%s reached the original checkout", name)
 		}
 	}
-	b1 := gitx.StackBranchName(base, 0, "first-review")
-	b2 := gitx.StackBranchName(base, 1, "second-review")
-	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != gitOut(t, repo, "rev-parse", b1) {
+	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != gitOut(t, repo, "rev-parse", "refs/heads/"+b1) {
 		t.Fatalf("second layer parent = %s, want first layer", got)
 	}
-	if got := gitOut(t, repo, "diff", "--name-only", b1+".."+b2); got != "second.txt" {
+	if got := gitOut(t, repo, "diff", "--name-only", "refs/heads/"+b1+"..refs/heads/"+b2); got != "second.txt" {
 		t.Fatalf("second PR incremental diff = %q", got)
 	}
 	for _, branch := range []string{b1, b2} {

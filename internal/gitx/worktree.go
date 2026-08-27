@@ -146,7 +146,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	// work (a review commits before its branch matters), so dropping it lets a
 	// rerun converge. One pointing anywhere else holds real output, and the
 	// same rule that keeps conflicted branches applies: fail rather than destroy.
-	if tip, err := r.Tip(ctx, branch); err == nil {
+	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
 		if tip != base {
 			return nil, fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
 				branch, tip[:min(12, len(tip))], base[:min(12, len(base))])
@@ -186,7 +186,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+branchSlug(tag))
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if tip, err := r.Tip(ctx, branch); err == nil {
+	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
 		if tip != base {
 			return nil, fmt.Errorf("branch %s already carries unpublished work", branch)
 		}
@@ -516,7 +516,7 @@ func (r *Repo) Push(ctx context.Context) error {
 // It never force-pushes: a divergent remote branch is preserved and reported.
 func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 	out, err := r.run(ctx, gitPush, "push", "--set-upstream", "--", remote,
-		branch+":refs/heads/"+branch)
+		"refs/heads/"+branch+":refs/heads/"+branch)
 	if err != nil {
 		detail := firstLine(strings.TrimSpace(string(out)))
 		if detail == "" {

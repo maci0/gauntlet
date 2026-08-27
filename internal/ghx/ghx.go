@@ -165,6 +165,9 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 		}
 		return nil
 	}
+	// Like gitx: a child that escapes the process group must not keep Run
+	// blocked on the output pipes past the kill.
+	cmd.WaitDelay = 10 * time.Second
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
