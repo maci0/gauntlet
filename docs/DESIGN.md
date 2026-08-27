@@ -250,10 +250,16 @@ the download before verification. Every release also ships `sbom.txt`, a
 module inventory produced by `go version -m` over each built binary: anyone
 auditing a release can read which module versions and hashes shipped without
 rebuilding it. The binaries themselves are bit-reproducible: `-trimpath`
-strips build paths and nothing embeds a timestamp, so the same source built
-from a different directory under a different locale and timezone yields
-identical bytes, which `make repro` proves on every CI run by building twice
-and comparing.
+strips build paths, `-buildvcs=false` keeps git metadata (revision, commit
+time, dirty flag) out, and nothing embeds a timestamp, so the same source
+built from a clone, a source tarball, or a dirty tree — in a different
+directory, under a different locale and timezone — yields identical bytes.
+The one input that cannot be normalized is the toolchain: a binary records
+the compiler version, so reproducing a release byte-for-byte means checking
+out the tag with a clean tree and the Go version the `go` line in `go.mod`
+names. `make repro` proves the rest on every CI run by building twice and
+comparing; the second build strips the locale the Makefile pins, so it runs
+under the host's ambient one.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 few seconds, and requires two identical readings before acting so a

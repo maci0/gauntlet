@@ -53,9 +53,17 @@ help: ## show available targets
 # host binary without the pin would let an ambient C toolchain flip net and
 # os/user onto the cgo path, so `make install` could ship a dynamically
 # linked flavor that no release ever produced.
+#
+# -buildvcs=false keeps git metadata (revision, commit time, dirty flag) out
+# of the artifact: the bytes then depend only on the source and the toolchain,
+# the same from a clone, a tarball, or a dirty tree. It also removes a
+# refusal-to-build edge: with the default -buildvcs=auto, `go build` inside a
+# checkout whose `git status` fails (a container running as another uid) dies
+# instead of building. Nothing at runtime reads those fields; the version
+# string comes from main.version, and sbom.txt is the inventory.
 .PHONY: build
 build: ## build the gauntlet binary for this host
-	CGO_ENABLED=0 $(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
+	CGO_ENABLED=0 $(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
 .PHONY: run
 run: build ## build, then run one loop here with the dashboard
@@ -161,7 +169,7 @@ dist: ## build every release platform into dist/
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		echo "building $$name"; \
 		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
-			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
+			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
 	done
 
 .PHONY: release
@@ -181,11 +189,14 @@ release: test dist ## build every platform and write dist/checksums.txt and dist
 	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.txt)"
 
 # The same source must produce the same bytes wherever it is built: -trimpath
-# strips build paths and nothing in a Go binary embeds a timestamp, so two
-# builds from different directories under different locale and timezone are
-# byte-identical. This target proves it instead of asserting it: two full
-# copies of the tree, one built pinned to C/UTC, one under the ambient
-# environment, then cmp. CI runs it on every push.
+# strips build paths, nothing in a Go binary embeds a timestamp, and
+# -buildvcs=false keeps git metadata out, so two builds from different
+# directories, locale, timezone, and git state are byte-identical. This
+# target proves it instead of asserting it: two full copies of the tree, one
+# built pinned to C/UTC, one under the ambient environment, then cmp. Side b
+# strips LC_ALL rather than inheriting the C this Makefile exports, so the
+# second build really does see the host's locale; TZ is genuinely ambient
+# either way. CI runs it on every push.
 REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
@@ -198,9 +209,9 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		done && \
 		echo "repro: copy a (LC_ALL=C TZ=UTC)" && \
 		(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 TZ=UTC LC_ALL=C \
-			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
+			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
 		echo "repro: copy b (ambient locale and TZ)" && \
-		(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-			$(GO) build $(GOTAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
+		(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 env -u LC_ALL \
+			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
 		cmp "$(REPRO_DIR)/a/$(BINARY)_linux_amd64" "$(REPRO_DIR)/b/$(BINARY)_linux_amd64" && \
 		echo "repro: identical bytes from different paths, locales, and timezones"
