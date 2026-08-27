@@ -14,6 +14,11 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- Each launch journals the SHA-256 of the prompt text it ran under
+  (`prompt_sha256` on `review_start` and `review_end`), so an output stays
+  attributable to the exact words that produced it after the prompt file has
+  changed or disappeared. Bundled prompts have the run's version line for
+  identity; project prompts and `--prompt-dir` files had none at all.
 - `TERM` is documented as part of the environment surface it always was:
   `TERM=dumb` disables color, even with `CLICOLOR_FORCE` or `FORCE_COLOR` set.
   The help screen's environment section now lists it beside the other color
@@ -28,6 +33,42 @@ minor instead and were listed under Changed.
   (`1.10.0+dirty`). Builds that do stamp (`make dist`, `release.yml`) report
   exactly the value `-ldflags` put there; only `(devel)` and absent module
   versions stay `dev`.
+- A repeated `--agent-cmd` giving one agent two different definitions refuses
+  the run instead of letting the later one silently win; an exact repeat stays
+  idempotent. Scripts that stacked definitions unnoticed now see the error,
+  the way `--bin` has always refused its own duplicates.
+- The agent output tail is a ring buffer instead of an unbounded transcript,
+  journal history is filtered on the way in rather than after it is read, and
+  the launcher and dashboard redraw from cached frames when nothing changed,
+  so watching a long run does not get slower as it grows.
+
+### Fixed
+
+- A merge failure that leaves nothing unmerged is reported as failed rather
+  than MERGE CONFLICT: the conflict resolver is no longer sent to fix what no
+  edit fixes, the summary does not call a broken merge a conflict, and the
+  branch-keeping rule keeps its meaning for real conflicts. A file that
+  cannot be read fails the conflict-marker scan instead of silently counting
+  as resolved.
+- Reviews a hard cancel will never start are recorded as interrupted in the
+  sequential loop, the way the parallel loop already recorded its stranded
+  lanes, so the summary, the stats, and the journal no longer drop them.
+- A review whose worktree add loses a cancel race is cleaned up (the
+  half-written worktree registration and its branch) and reported like any
+  other skipped review instead of leaving both behind.
+- A review skipped because its worktree could not be created journals its
+  `review_end` like every other outcome, so a consumer rebuilding a run from
+  the journal no longer waits on an event that never came.
+- A run whose stdin is a character device that is not a terminal (`/dev/null`
+  under cron) proceeds without confirmation, instead of prompting, reading
+  EOF, and aborting. The tty check is `term.IsTerminal`, the same answer the
+  launcher's gate gives.
+- The dashboard, the launcher, and their non-interactive fallbacks render
+  inside the terminal's width and height instead of scrolling it, and the
+  keys that matter stay visible when a narrow terminal clips the footers.
+- The help screen documents the defaults it was omitting: `--timeout` and
+  `--suggest-timeout` name their 30 minutes, `--limit` its 20 entries, and
+  `--runtime` its `0 = unlimited`.
 
 ## 1.10.0
 
