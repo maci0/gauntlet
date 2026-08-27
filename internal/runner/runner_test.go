@@ -1265,13 +1265,18 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
-func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
+// softStopHandsOverTheLoop requests a stop partway through a loop and checks
+// the handoff: in-flight agents finish undisturbed, exactly what did not run
+// stays pending, and a successor seeded with that queue runs it and counts
+// the resumed loop as complete.
+func softStopHandsOverTheLoop(t *testing.T, jobs int, agentScript string) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
-	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"; sleep 0.4`)
+	bin := fakeAgent(t, t.TempDir(), "claude", agentScript)
 
 	reviews := []string{"a-review", "b-review", "c-review", "d-review"}
 	cfg := baseConfig(t, repo, set, reviews, bin)
+	cfg.Jobs = jobs
 	cfg.MaxLoops = 1
 
 	bus := NewBus()
@@ -1326,70 +1331,16 @@ func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
 	}
 }
 
+func TestSoftStopHandsOverTheRestOfTheLoop(t *testing.T) {
+	softStopHandsOverTheLoop(t, 0, `echo "RESULT: no-changes"; sleep 0.4`)
+}
+
 // The parallel twin of TestSoftStopHandsOverTheRestOfTheLoop. With more
 // reviews than lanes, whatever never got a lane must still be pending after a
 // soft stop: a dispatch loop that empties the queue up front would run the
 // whole loop behind the stop and hand the successor nothing.
 func TestSoftStopInParallelModeHandsOverTheQueue(t *testing.T) {
-	repo := testRepo(t)
-	set, _ := promptSet(t, "a-review", "b-review", "c-review", "d-review")
-	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"; sleep 1.2`)
-
-	reviews := []string{"a-review", "b-review", "c-review", "d-review"}
-	cfg := baseConfig(t, repo, set, reviews, bin)
-	cfg.Jobs = 2
-	cfg.MaxLoops = 1
-
-	bus := NewBus()
-	drain(bus)
-	first, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Stop once a review has ended: whatever never got a lane is pending
-	// without depending on a timer racing two busy agents.
-	onFirstEvent(bus, EvReviewEnd, first.RequestStop)
-	first.Run(context.Background())
-	bus.Close()
-
-	done := first.Stats().Counts().Total()
-	pending := first.Pending()
-	if done == 0 || done == len(reviews) {
-		t.Fatalf("test needs a partial loop: %d done", done)
-	}
-	if len(pending) != len(reviews)-done {
-		t.Fatalf("pending %v does not match %d finished reviews", pending, done)
-	}
-	// Nothing was killed: a soft stop lets in-flight agents finish.
-	if c := first.Stats().Counts(); c.Interrupted != 0 || c.Failures() != 0 {
-		t.Fatalf("soft stop disturbed a review: %+v", c)
-	}
-
-	// The successor picks up exactly what never started, and finishes the loop.
-	bus2 := NewBus()
-	drain(bus2)
-	cfg2 := cfg
-	cfg2.ResumeQueue = pending
-	second, err := New(context.Background(), cfg2, bus2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second.Run(context.Background())
-	bus2.Close()
-
-	var ran []string
-	for _, r := range second.Stats().Results() {
-		ran = append(ran, r.Review)
-	}
-	sort.Strings(ran)
-	want := append([]string(nil), pending...)
-	sort.Strings(want)
-	if strings.Join(ran, ",") != strings.Join(want, ",") {
-		t.Fatalf("successor ran %v, want exactly the pending %v", ran, want)
-	}
-	if second.Loops() != 1 {
-		t.Fatalf("the resumed loop should count as complete, got %d", second.Loops())
-	}
+	softStopHandsOverTheLoop(t, 2, `echo "RESULT: no-changes"; sleep 1.2`)
 }
 
 func TestLiveUsageIsReportedWhileTheAgentRuns(t *testing.T) {
@@ -1490,14 +1441,20 @@ func TestCancelDuringParallelLeavesNoWorktrees(t *testing.T) {
 	}
 }
 
-func TestCancelRecordsQueuedReviews(t *testing.T) {
+// testCancelAccounting cancels mid-flight with the given lane count while an
+// agent that never finishes runs, then checks every dispatched review is
+// accounted for: the lanes that were running are interrupted, and reviews
+// still queued behind the semaphore are recorded as interrupted or skipped
+// per wantSkipped rather than vanishing from the stats, the summary, and any
+// reload handoff.
+func testCancelAccounting(t *testing.T, jobs int, wantSkipped bool) {
 	repo := testRepo(t)
 	names := []string{"a-review", "b-review", "c-review", "d-review", "e-review"}
 	set, _ := promptSet(t, names...)
 	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
 
 	cfg := baseConfig(t, repo, set, names, bin)
-	cfg.Jobs = 2
+	cfg.Jobs = jobs
 	cfg.Seed = 1
 
 	bus := NewBus()
@@ -1517,10 +1474,6 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 	r.Run(ctx)
 	bus.Close()
 
-	// Every dispatched review must be accounted for: the two lanes that were
-	// running are interrupted, and the ones still queued behind the semaphore
-	// are recorded as interrupted or skipped rather than vanishing from the
-	// stats, the summary, and any reload handoff.
 	results := r.Stats().Results()
 	got := map[string]Result{}
 	for _, res := range results {
@@ -1528,11 +1481,20 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 			t.Fatalf("review %s recorded twice (%s and %s)", res.Review, prev.Status, res.Status)
 		}
 		got[res.Review] = res
+		valid := false
 		switch res.Status {
-		case StatusInterrupted, StatusSkipped:
-		default:
-			t.Errorf("review %s recorded as %s after cancel, want interrupted or skipped",
-				res.Review, res.Status)
+		case StatusInterrupted:
+			valid = true
+		case StatusSkipped:
+			valid = wantSkipped
+		}
+		if !valid {
+			statuses := "interrupted"
+			if wantSkipped {
+				statuses = "interrupted or skipped"
+			}
+			t.Errorf("review %s recorded as %s after cancel, want %s",
+				res.Review, res.Status, statuses)
 		}
 	}
 	for _, name := range names {
@@ -1554,68 +1516,17 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 	}
 }
 
+func TestCancelRecordsQueuedReviews(t *testing.T) {
+	testCancelAccounting(t, 2, true)
+}
+
 // TestCancelRecordsQueuedReviewsSequential pins the same accounting for the
-// sequential loop: an interrupt strands every review still queued behind the
-// one that was running, and each must be recorded as interrupted rather than
-// vanish from the stats, the summary, and any journal replay.
+// sequential loop, where a queued review may only ever record as interrupted:
+// an interrupt strands every review still queued behind the one that was
+// running, and each must survive in the stats, the summary, and any journal
+// replay.
 func TestCancelRecordsQueuedReviewsSequential(t *testing.T) {
-	repo := testRepo(t)
-	names := []string{"a-review", "b-review", "c-review", "d-review", "e-review"}
-	set, _ := promptSet(t, names...)
-	bin := fakeAgent(t, t.TempDir(), "claude", `echo "working"; sleep 10`)
-
-	cfg := baseConfig(t, repo, set, names, bin)
-	cfg.Jobs = 1
-	cfg.Seed = 1
-
-	bus := NewBus()
-	events := bus.Subscribe(256)
-	done := make(chan []Event, 1)
-	go collect(events, done)
-
-	r, err := New(context.Background(), cfg, bus)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		cancel()
-	}()
-	r.Run(ctx)
-	bus.Close()
-
-	results := r.Stats().Results()
-	got := map[string]Result{}
-	for _, res := range results {
-		if prev, dup := got[res.Review]; dup {
-			t.Fatalf("review %s recorded twice (%s and %s)", res.Review, prev.Status, res.Status)
-		}
-		got[res.Review] = res
-		switch res.Status {
-		case StatusInterrupted:
-		default:
-			t.Errorf("review %s recorded as %s after cancel, want interrupted",
-				res.Review, res.Status)
-		}
-	}
-	for _, name := range names {
-		if _, ok := got[name]; !ok {
-			t.Errorf("review %s vanished: no result was recorded for it", name)
-		}
-	}
-
-	published := map[string]bool{}
-	for _, ev := range <-done {
-		if ev.Kind == EvReviewEnd {
-			published[ev.Review] = true
-		}
-	}
-	for _, name := range names {
-		if !published[name] {
-			t.Errorf("review %s has no review_end event: its outcome was never published", name)
-		}
-	}
+	testCancelAccounting(t, 1, false)
 }
 
 // TestFailedWorktreeAddReportsAndKeepsRepo pins two contracts for a lane
