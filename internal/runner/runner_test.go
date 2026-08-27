@@ -758,6 +758,46 @@ echo "RESULT: no-changes"`)
 	}
 }
 
+// Every launch is journaled with the fingerprint of the prompt text it was
+// composed from, so a run's output stays attributable to exact words after
+// the prompt file has changed or disappeared.
+func TestReviewEventsCarryThePromptFingerprint(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review", "doc-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	_, got := runRecorded(t, baseConfig(t, repo, set, []string{"sec-review", "doc-review"}, bin))
+
+	want := make(map[string]string)
+	for _, name := range []string{"sec-review", "doc-review"} {
+		rev, ok := set.Get(name)
+		if !ok {
+			t.Fatalf("%s not discovered", name)
+		}
+		body, err := rev.Body()
+		if err != nil {
+			t.Fatal(err)
+		}
+		want[name] = prompt.Fingerprint(body)
+	}
+	starts := 0
+	for _, ev := range got {
+		if ev.Kind != EvReviewStart && ev.Kind != EvReviewEnd {
+			continue
+		}
+		if ev.PromptSHA != want[ev.Review] {
+			t.Errorf("%s for %s: prompt_sha256 = %q, want the body's fingerprint",
+				ev.Kind, ev.Review, ev.PromptSHA)
+		}
+		if ev.Kind == EvReviewStart {
+			starts++
+		}
+	}
+	if starts != 2 {
+		t.Fatalf("saw %d review_start events, want one per review", starts)
+	}
+}
+
 // Retries are bounded: with none configured, one failure is one failure.
 func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	repo := testRepo(t)

@@ -278,6 +278,23 @@ func TestBodyStripsLeadingBOM(t *testing.T) {
 	}
 }
 
+func TestFingerprintPinsThePromptText(t *testing.T) {
+	a := Fingerprint("Your goal is to test one thing.\n")
+	b := Fingerprint("Your goal is to test one thing.\n")
+	if a != b {
+		t.Fatalf("same body produced different fingerprints: %q vs %q", a, b)
+	}
+	changed := Fingerprint("Your goal is to test one thing? \n")
+	if changed == a {
+		t.Fatal("a one-rune edit did not change the fingerprint")
+	}
+	for _, got := range []string{a, changed} {
+		if len(got) != 64 {
+			t.Fatalf("fingerprint %q is not 64 hex characters", got)
+		}
+	}
+}
+
 func TestParseSuggestions(t *testing.T) {
 	out := strings.Join([]string{
 		"thinking...",

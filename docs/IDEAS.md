@@ -82,10 +82,11 @@ with its own file. The parts that do not fit are the interesting ones:
   would enforce it. The PR-per-review idea above is the other half: a
   traceable change, reviewed by a human, is the only kind such a project can
   take.
-- **Traceability is already there.** The run journal records which prompt,
-  which agent, which model, which commit, and what changed. That is the
-  skeleton of an audit record; what it lacks is a stable prompt version to
-  cite (a hash of the prompt file would do).
+- **Traceability is already there.** The run journal records which agent,
+  which model, which commit, and what changed, and each launch carries the
+  SHA-256 of the exact prompt text it ran under (`prompt_sha256` on
+  `review_start`/`review_end`), so a bundled or project prompt can be cited
+  by content even after its file moves on.
 
 **What would need deciding.** Whether "conformance" outcomes deserve their own
 result kind next to ok/fail/timeout (a review that finds 40 violations is not

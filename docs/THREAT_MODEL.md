@@ -149,7 +149,8 @@ privilege transition:
   talk its way into `git push`: with `--push` it is told to.
 
 Repudiation is covered elsewhere: every run journals seed, schedule,
-and outcomes (`internal/runner/event.go`, DESIGN.md "Run journal"), the
+outcomes, and the prompt fingerprint each launch ran under
+(`internal/runner/event.go`, DESIGN.md "Run journal"), the
 commit step is journaled as its own event with the chosen agent
 (`commit.go:156-159`, kind at `event.go:23`), and worktree-mode commits carry
 the runner as author.

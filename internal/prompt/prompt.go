@@ -7,7 +7,9 @@
 package prompt
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -60,6 +62,18 @@ func (r Review) Body() (string, error) {
 	}
 	b, err := readNoFollow(r.Path)
 	return stripBOM(b), err
+}
+
+// Fingerprint is the stable identity of one review's effective text: the
+// SHA-256 of the body exactly as read, hex-encoded. Compose wraps a body in
+// rules and a suffix compiled into the binary, which the run's own version
+// line already identifies; the body is the part that can change underneath
+// them, and project prompts and --prompt-dir files carry no other version
+// than this. Journaling it per launch ties an agent's output to the exact
+// words that produced it even after the file has moved on.
+func Fingerprint(body string) string {
+	sum := sha256.Sum256([]byte(body))
+	return hex.EncodeToString(sum[:])
 }
 
 // stripBOM removes a leading UTF-8 byte-order mark. The BOM declares the

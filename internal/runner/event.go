@@ -61,6 +61,12 @@ type Event struct {
 	Agent  string `json:"agent,omitempty"`
 	Loop   int    `json:"loop,omitempty"`
 
+	// PromptSHA is the SHA-256, hex-encoded, of the review prompt text this
+	// launch was composed from. It sits on review_start and review_end: the
+	// journal then answers "which words produced this output" without the
+	// prompt file still existing or matching what ran.
+	PromptSHA string `json:"prompt_sha256,omitempty"`
+
 	// Attempt is which try this is, from 1. Above 1 it says a retry is under
 	// way, which is otherwise invisible: the review looks like it restarted.
 	Attempt int `json:"attempt,omitempty"`

@@ -756,6 +756,9 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		res.Status = StatusSkipped
 		return res
 	}
+	// Recorded on both of this attempt's events: a prompt edited mid-run makes
+	// its later attempts carry a different fingerprint, and the journal says so.
+	promptSHA := prompt.Fingerprint(body)
 
 	dir := r.cfg.Dir
 	if wt != nil {
@@ -789,6 +792,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	r.bus.Publish(Event{
 		Kind: EvReviewStart, Dir: r.cfg.Dir, Review: review,
 		Agent: spec.Label(), Loop: loopNo, Attempt: attempt + 1,
+		PromptSHA: promptSHA,
 	})
 
 	before, haveBefore := gitx.Stats{}, false
@@ -893,6 +897,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review, Agent: spec.Label(),
 		Loop: loopNo, Status: res.Status, ExitCode: new(res.ExitCode),
 		Elapsed: res.Elapsed.Seconds(), Tokens: res.Tokens, Thinking: res.Thinking,
+		PromptSHA: promptSHA,
 	}
 	if res.HaveLines {
 		ev.Ins, ev.Del = new(res.Ins), new(res.Del)
