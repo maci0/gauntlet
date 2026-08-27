@@ -125,6 +125,36 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 		prefix, strings.Join(missing, "\n"))
 }
 
+// ensureWorktreeRoot proves the scratch directory is the repository's own
+// before anything is created or force-removed under it. A hostile tree can
+// plant `.gauntlet` (or `worktrees` below it) as a symlink pointing anywhere;
+// following it would hand `git worktree add` and `worktree remove --force` a
+// path outside the repository. Each existing component must therefore be a
+// real directory, and the resolved root must stay inside the resolved repo.
+// Callers hold wtMu, like every other worktree-bookkeeping step.
+func (r *Repo) ensureWorktreeRoot() error {
+	repoReal, err := filepath.EvalSymlinks(r.Dir)
+	if err != nil {
+		return err
+	}
+	dir := repoReal
+	for part := range strings.SplitSeq(worktreeRoot, "/") {
+		dir = filepath.Join(dir, part)
+		fi, err := os.Lstat(dir)
+		if os.IsNotExist(err) {
+			continue // MkdirAll creates the rest as real directories
+		}
+		if err != nil {
+			return err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+			return fmt.Errorf("%s is not a real directory inside the repository; "+
+				"refusing to write gauntlet worktrees through it", dir)
+		}
+	}
+	return nil
+}
+
 // AddWorktree creates a checkout of base on a fresh branch. The name is the
 // review it belongs to; the tag (run id plus loop and lane) keeps concurrent
 // and repeated runs from colliding on branch names.
@@ -134,6 +164,9 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
+	if err := r.ensureWorktreeRoot(); err != nil {
+		return nil, err
+	}
 
 	slug := branchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
@@ -183,6 +216,9 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
+	if err := r.ensureWorktreeRoot(); err != nil {
+		return nil, err
+	}
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+branchSlug(tag))
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
@@ -199,6 +235,33 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
+}
+
+// AddSnapshotWorktree cuts a read-only view of one commit, detached so no
+// branch is created or moved. Stacked runs discover project prompts and
+// compute suggestions from this snapshot of the fetched remote base, never
+// from the user's checkout: an uncommitted or local-only *-review.md must not
+// steer a run that publishes only remote-based work.
+func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Worktree, error) {
+	if !Available() {
+		return nil, errors.New("git is required for stacked PRs")
+	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+	if err := r.ensureWorktreeRoot(); err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+branchSlug(tag))
+	// A leftover snapshot from a killed run sits at this same deterministic
+	// path; it is gauntlet's own and carries nothing, so it is replaced.
+	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return nil, err
+	}
+	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
+		return nil, fmt.Errorf("git worktree add: %w", err)
+	}
+	return &Worktree{Dir: dir, base: base, repo: r}, nil
 }
 
 // StartBranch advances a stack worktree onto a fresh child of base. The old
@@ -459,6 +522,9 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
+	if err := r.ensureWorktreeRoot(); err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
 	// Clearing a checkout a killed run left here; if it fails, the add below
@@ -541,13 +607,48 @@ func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string)
 	return nil
 }
 
-// RemoteURL returns the configured URL for remote.
+// RemoteURL returns the remote's configured fetch URL, as written, before any
+// url.<base>.insteadOf rewriting: the rewrite redirects transport, while what
+// the user configured is what names the repository.
 func (r *Repo) RemoteURL(ctx context.Context, remote string) (string, error) {
-	out, err := r.run(ctx, gitQuick, "remote", "get-url", "--", remote)
+	out, err := r.run(ctx, gitQuick, "config", "--get", "remote."+remote+".url")
 	if err != nil {
 		return "", fmt.Errorf("no Git remote %s", remote)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// RemotePushURL returns where `git push` sends this remote's branches: the
+// configured push URL when one exists, the fetch URL otherwise. Raw like
+// RemoteURL, for the same reason.
+func (r *Repo) RemotePushURL(ctx context.Context, remote string) (string, error) {
+	if out, err := r.run(ctx, gitQuick, "config", "--get", "remote."+remote+".pushurl"); err == nil {
+		return strings.TrimSpace(string(out)), nil
+	}
+	return r.RemoteURL(ctx, remote)
+}
+
+// HasCommit reports whether the object store already holds sha as a commit.
+// A hot-reload successor uses it to keep a pinned stack base that its
+// predecessor fetched, instead of fetching a tip that may have moved.
+func (r *Repo) HasCommit(ctx context.Context, sha string) bool {
+	if !isHex(sha) {
+		return false // never a revision expression or an option
+	}
+	_, err := r.run(ctx, gitQuick, "cat-file", "-e", sha+"^{commit}")
+	return err == nil
+}
+
+func isHex(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // RemoteBranchTip reports a remote branch's object id without updating local

@@ -31,6 +31,10 @@ var safeConfig = []string{
 	"-c", "core.hooksPath=/dev/null",
 	"-c", "core.pager=cat",
 	"-c", "diff.external=",
+	// An ext:: remote is a command line: fetching from one executes it. No
+	// gauntlet operation needs transport helpers, so a hostile repo config or
+	// remote URL shaped that way is refused instead of run.
+	"-c", "protocol.ext.allow=never",
 }
 
 // waitGrace is how long Run may outlive its process before the output pipes
@@ -175,6 +179,14 @@ func (r *Repo) runIn(ctx context.Context, stdin io.Reader, timeout time.Duration
 	cmd := exec.CommandContext(ctx, g, argv...)
 	cmd.Dir = r.Dir
 	cmd.Stdin = stdin
+	// core.sshCommand is executed for every ssh fetch, ls-remote, and push,
+	// and a reviewed repository's own .git/config can set it. The environment
+	// variable outranks every config scope, so exporting plain ssh neutralizes
+	// a repo-local command while a value the user exported themselves is kept.
+	cmd.Env = os.Environ()
+	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
+		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh")
+	}
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	// The deadline kill takes the whole process group down, not just the git
