@@ -320,7 +320,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.stackedPRs, "stacked-prs", false,
 		"run reviews sequentially in one worktree and open a linear PR stack")
 	fs.StringVar(&o.prBase, "pr-base", "",
-		"initial base branch for --stacked-prs (default: current branch)")
+		"remote base branch fetched for --stacked-prs (default: current branch name)")
 	fs.StringVar(&o.pushRemote, "push-remote", "origin",
 		"Git remote that receives --stacked-prs branches")
 	fs.BoolVar(&o.resolveConflicts, "resolve-conflicts", true,
