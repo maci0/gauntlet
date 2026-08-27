@@ -29,7 +29,7 @@ library.
 
 `cmd/gauntlet` is flags and dispatch only. Everything real lives in
 `internal/`, and dependencies point one way: `runner` uses `agent`,
-`prompt`, `normalize`, `gitx`, `streamjson`, `humanize`, and
+`prompt`, `normalize`, `gitx`, `ghx`, `streamjson`, `humanize`, and
 `journal`; `ui` uses the runner's event
 types plus the shared `normalize`, `humanize`, and `fuzzy`; `cmd` wires it all
 together, including `journal` and `selfupdate`. No package inside
@@ -38,8 +38,10 @@ together, including `journal` and `selfupdate`. No package inside
 ## Rules that are not style preferences
 
 - **Concurrency in one repository requires isolation.** Reviews run
-  sequentially in place, or in a `git worktree` per review with a merge step.
-  There is no third mode, and no flag that lets two agents share a tree.
+  sequentially in place, in a `git worktree` per review with a merge step, or
+  as a stacked-PR pass (`--stacked-prs`) that advances one isolated worktree
+  sequentially. Those are the only modes, and every one keeps the invariant:
+  no flag lets two agents share a tree.
 - **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
   unlit meter shows its remainder, and no series is smoothed or interpolated.
   See `docs/DESIGN.md`.

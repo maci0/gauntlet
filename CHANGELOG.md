@@ -14,6 +14,19 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- `--stacked-prs` runs the selected reviews sequentially in one isolated
+  worktree. Each changed review is committed and pushed on a child branch,
+  then opened as a pull request against the preceding changed review; the
+  original checkout is never changed and no pull request is merged. The base
+  commit is fetched directly from the publishing remote after every preflight
+  check passes, the dirty-checkout consent included and before any agent
+  starts, the suggestion agent too. That commit is then pinned for the whole
+  run: a hot reload resumes the same stack even when the remote base has
+  advanced. Project prompts and suggestion signals are read from a snapshot
+  of that fetched base, never from uncommitted files in the checkout. A
+  remote with distinct fetch and push URLs opens cross-fork PRs with the head
+  qualified by the push-side owner. `--pr-base` selects the first base and
+  `--push-remote` selects the publishing remote.
 - A prompt may declare a `Summary:` line, the short form of what the review
   looks for, joining `Signals:` as a line a project's own review can carry. It
   is what `--list` and the launcher's picker now print, so the catalog reads as

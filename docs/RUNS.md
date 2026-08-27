@@ -60,6 +60,65 @@ its own loop, its own lock, and its own pool of `N`. `--dirs a,b,c -j 4` is up
 to 12 agents at once, so size it against your CPU count and your API limits,
 not against the review list.
 
+## Stacked pull requests
+
+Stack mode keeps the original checkout fixed and advances one separate
+worktree through a linear series of branches. Run it against a repository
+where the selected remote accepts your branch pushes:
+
+```sh
+gauntlet -r quick --stacked-prs --pr-base main
+```
+
+The first changed review branches from `main` and opens a PR to `main`. The
+next changed review branches from that commit and opens a PR to the preceding
+review branch. Every agent therefore sees all earlier fixes, while every PR's
+comparison contains only that review's commit.
+
+| Layer | Branch starts at | PR base |
+|---|---|---|
+| first changed review | `main` | `main` |
+| second changed review | first review branch | first review branch |
+| third changed review | second review branch | second review branch |
+
+The mode is one ordered, sequential pass; it does not shuffle reviews or use
+extra `--jobs` lanes. One persistent checkout lives under
+`.gauntlet/worktrees/` for the run, then is removed. Local and remote review
+branches survive because open PRs need them. The branch checked out in the
+original directory never moves and no stack branch is merged automatically.
+
+Every check runs before any agent starts, the `--suggest` agent included.
+When the original checkout has tracked or untracked changes, gauntlet names
+them, explains that they will not be reviewed or included in the PRs, and
+asks before doing anything else; `--yes` provides the same consent for an
+unattended run, and a stdin that is not a real terminal (a pipe, `/dev/null`)
+requires it. Only after that consent does gauntlet fetch the selected branch
+from `--push-remote` and cut the isolated worktree directly from the fetched
+commit. It does not pull, update a local branch, or read uncommitted files
+from the original checkout: project prompts and `--suggest` signals come from
+a snapshot of the fetched base, so a prompt file that exists only in the
+dirty checkout cannot steer the run. It also requires Git, `gh`
+authentication, repository access, and a successful dry-run new-branch push.
+The remote's configured fetch URL selects the GitHub repository the PRs open
+in; when the remote pushes somewhere else (a fork workflow with a separate
+push URL), the PR heads are qualified with the push-side owner.
+
+A review with no file changes leaves no branch or PR; the next review stays on
+the last changed layer. A failed agent is reset to its layer's base before a
+retry, and an exhausted failure is discarded before the next review starts.
+A commit, push, or PR failure is different: publication stops the stack, keeps
+any committed branch, and starts no later review.
+
+Branch names are deterministic from the initial base commit, schedule
+position, and review name. That base commit is fetched once per logical run
+and pinned: a hot reload hands it to the successor, so a remote base that
+advances mid-run cannot rename the layers and split the resumed run into a
+new stack. Before creating a PR gauntlet searches all PR states for that
+exact head/base pair. A repeated run reuses it; a hot reload walks the
+published prefix and resumes from the unfinished suffix. A branch that was
+committed or pushed before a stopped PR call is published on the next
+invocation instead of rerunning its agent.
+
 ## Several directories at once
 
 `--dirs a,b,c` (also `--target-dirs`) reviews each tree in its own goroutine,
@@ -99,7 +158,7 @@ them.
 
 ## Committing, and where the work lands
 
-Reviews edit the working tree. What happens to those edits is three separate
+Reviews edit a checkout. What happens to those edits is four separate
 choices:
 
 - `--commit` has an agent write a message and commit **on the branch you are
@@ -117,6 +176,9 @@ choices:
   refuses (rather than reporting a merge that moved nothing) if the tree is
   still dirty. A conflict aborts the merge and leaves both branches where they
   were, for a human to resolve.
+- `--stacked-prs` never edits or merges into the checked-out branch. It owns
+  one separate worktree, commits and pushes each changed review branch, and
+  opens the linear PR chain described above.
 
 If `--jobs` refuses because the tree is dirty, gauntlet offers the step rather
 than only naming it: it asks whether to commit the changes with an agent
@@ -133,13 +195,13 @@ Three ways, and they mean different things:
 
 | How | What happens |
 |---|---|
-| `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) | Graceful: no new review starts, the ones running finish, their work is committed, pushed, and merged as the flags ask, and the run then exits normally. Reviews not yet started are dropped. |
+| `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
 | `Ctrl-C`, `SIGINT`, `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. A second one force-kills. |
 | `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
 
 The graceful stop is the one to reach for when a loop is halfway through and
 the tree should not be left with uncommitted agent edits: it is the only stop
-that still runs the commit and merge steps.
+that still runs the configured commit, publication, and merge steps.
 
 ## Run journal
 
@@ -183,7 +245,7 @@ executable on disk changes, by `gauntlet update`, `make install`, or a fresh
 `go build`, the swap costs the run nothing:
 
 - **No agent is killed.** Reviews already running finish normally, including
-  their commit and merge. Only then does the process hand over.
+  their commit, publication, and merge work. Only then does the process hand over.
 - **No work is repeated.** The unfinished part of the current loop is handed
   to the successor, which finishes that loop rather than starting it over.
 - **Nothing is lost.** Run id, start time, per-review results, per-agent

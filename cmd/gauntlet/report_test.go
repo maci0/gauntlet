@@ -78,7 +78,8 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 	d1 := &dirRun{dir: "/repo/a", loops: 1, stats: &runner.Stats{}}
 	d1.stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
 		Status: runner.StatusOK, Tokens: 100, Thinking: 25, Elapsed: 4 * time.Second,
-		Ins: 5, Del: 2, HaveLines: true})
+		Ins: 5, Del: 2, HaveLines: true, Branch: "gauntlet/stack/a", Base: "main",
+		URL: "https://github.com/owner/repo/pull/1"})
 	d2 := &dirRun{dir: "/repo/b", loops: 2, stats: &runner.Stats{}}
 	d2.stats.Add(runner.Result{Review: "z-review", Agent: agent.Spec{Tool: "codex"},
 		Status: runner.StatusFail, ExitCode: 7, Tokens: 300, Elapsed: 2 * time.Second})
@@ -90,6 +91,11 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 	for _, want := range []string{
 		"Directories: 2",
 		"Completed loops: 3",
+		"PULL REQUESTS",
+		"  a-review\n",
+		"    branch  gauntlet/stack/a\n",
+		"    base    main\n",
+		"    url     https://github.com/owner/repo/pull/1\n",
 		"Total reviews run: 2",
 		"Passed: 1",
 		"Failed: 1",

@@ -19,8 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/term"
-
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -77,7 +75,9 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		}
 		fmt.Fprintln(out, "DRY RUN: planned schedule for one loop:")
 		names := append([]string(nil), d.reviews...)
-		sort.Strings(names)
+		if !opts.stackedPRs {
+			sort.Strings(names)
+		}
 		col := 0
 		for _, n := range names {
 			col = max(col, len(n))
@@ -99,7 +99,9 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		fmt.Fprintf(out, "Reviews per loop: %d%s\n", len(d.reviews), extra)
 	}
 	mode := "sequential, in place"
-	if opts.jobs > 1 {
+	if opts.stackedPRs {
+		mode = "sequential, one worktree, linear PR stack"
+	} else if opts.jobs > 1 {
 		mode = fmt.Sprintf("%d at a time, one git worktree per review, merged back", opts.jobs)
 	}
 	yolo := ""
@@ -190,7 +192,9 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 	for i, d := range runs {
 		wg.Go(func() {
 			picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
-				Dir: d.dir, Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
+				// scanDir, not dir: a stacked run's suggestion signals come
+				// from the fetched base snapshot, never the dirty checkout.
+				Dir: d.scanDir(), Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
 				Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
 				Log: func(f string, a ...any) { logf(d.dir, f, a...) },
 			})
@@ -348,10 +352,10 @@ func confirm(out io.Writer, opts *options, n int) bool {
 		fmt.Fprintln(out, "Proceeding without confirmation.")
 		return true
 	}
-	// term.IsTerminal, not a ModeCharDevice check: /dev/null is a character
-	// device, and a run under cron would otherwise prompt, read EOF, and
-	// abort. The same answer cmdPick's tty gate gives.
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	// A real terminal check, not a ModeCharDevice one: /dev/null is a
+	// character device, and a run under cron would otherwise prompt, read
+	// EOF, and abort. The same answer cmdPick's tty gate gives.
+	if !stdinIsTerminal() {
 		fmt.Fprintln(out, "stdin is not a terminal: proceeding without confirmation.")
 		return true
 	}

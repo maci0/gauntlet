@@ -4,10 +4,11 @@ The Go implementation of gauntlet: run ~50 specialized review prompts through in
 AI coding agents, which apply fixes directly to the working tree.
 
 The Python original is a single 2700-line sequential script. This port keeps
-its trust model and prompt semantics, and changes four things: reviews can run
+its trust model and prompt semantics, and changes five things: reviews can run
 in parallel with git-level isolation, agent output is normalized into
 structured events instead of raw bytes, every run is journaled, and the binary
-can replace and reload itself while a loop is running.
+can replace and reload itself while a loop is running; an ordered pass can
+also publish its changes as a linear, unmerged PR stack.
 
 ## Goals
 
@@ -36,6 +37,7 @@ can replace and reload itself while a loop is running.
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
+| `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
@@ -47,7 +49,7 @@ can replace and reload itself while a loop is running.
 | `internal/runner/usage*.go` | the bridge to toktop's transcript reading, on unless `-tags notoktop` |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`prompt`, `normalize`, `gitx`, and `streamjson`; `ui` imports
+`prompt`, `normalize`, `gitx`, `ghx`, and `streamjson`; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing
 else. `prompt` imports `gitx`, so project discovery's
@@ -120,6 +122,7 @@ the unit of safe parallelism is **the directory**, not the agent.
 - Inside one directory, reviews run **one at a time** by default, exactly as
   the Python original does, editing the working tree in place.
 - `--jobs N` (N > 1) turns on **isolated parallel reviews**, described below.
+- `--stacked-prs` turns on one **isolated sequential stack**, described below.
 - A review that fails to launch or exits non-zero is retried on a different
   agent, and again on further agents until the pool is exhausted. Timeouts are
   not retried.
@@ -179,6 +182,46 @@ Rules the runner enforces:
    carries conflict markers; and every failure path leaves exactly what a
    plain conflict leaves. The agent sees only the conflicted files and is
    forbidden to run git, like every other agent this tool launches.
+
+### Isolated stacked pull requests (`--stacked-prs`)
+
+Stack mode separates three decisions that parallel mode couples: reviews are
+sequential, execution is isolated from the original checkout, and publication
+opens PRs instead of merging branches. One worktree advances through the
+selected review order. A changed review contributes exactly one commit and
+becomes the base of the next changed review.
+
+```mermaid
+flowchart LR
+    M[main] --> B1[review 1 branch]
+    B1 --> B2[review 2 branch]
+    B2 --> B3[review 3 branch]
+    B1 -. PR .-> M
+    B2 -. PR .-> B1
+    B3 -. PR .-> B2
+```
+
+The invariants are:
+
+1. The initial commit is fetched directly from the selected remote base,
+   once per logical run: a hot reload hands the pinned commit to its
+   successor rather than fetching a tip that may have advanced. Every later
+   branch is a direct, one-commit child of the preceding changed layer. No
+   local branch needs to point at that commit.
+2. The original worktree is read only to surface files the stack will exclude.
+   Dirty files require interactive consent or `--yes` before the fetch;
+   prompt discovery and suggestion signals read a snapshot of the fetched
+   base; agents, staging, commits, and retry resets operate inside the
+   scratch worktree.
+3. A layer is not eligible as the next base until its push succeeds and an
+   exact head/base PR exists. Publication failure therefore stops scheduling.
+4. No-change and exhausted agent failures reset and delete their unpublished
+   layer, leaving the preceding successful layer as the next base.
+5. Branch names derive from the initial base object id, review position, and
+   review name. Existing branches and PRs are checked before an agent starts,
+   which makes hot reload and repeated invocation convergent.
+6. The worktree is disposable; local and remote branches are durable because
+   they are the graph open PRs refer to. Nothing in this mode calls merge.
 
 ## Speed
 
@@ -267,7 +310,8 @@ half-written binary is never executed. When it changes (self-update,
 `make install`, a fresh `go build`) the swap proceeds like this:
 
 1. Every runner is asked to stop softly. A soft stop never signals an agent:
-   reviews in flight run to completion, including their commit and merge.
+   reviews in flight run to completion, including their commit, publication,
+   and merge work.
 2. Each directory's unfinished queue, results, loop count, and commit tallies
    are written to `~/.gauntlet/state/<run-id>.json`.
 3. The journal is flushed and closed **without** an index row, and the

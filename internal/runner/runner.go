@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -52,6 +53,28 @@ type Config struct {
 
 	Commit bool
 	Push   bool
+	// StackedPRs runs the configured review order in one isolated worktree,
+	// publishing each changed review as a child PR of the previous one.
+	StackedPRs bool
+	PRBase     string // initial remote base branch; empty means current branch name
+	PushRemote string // remote receiving stack branches; empty means origin
+	// AllowDirtyStack confirms that changes in the original checkout may be
+	// excluded. Stack mode never reads them: its worktree starts at the fetched
+	// remote base. The CLI sets this only after explicit consent (or on resume).
+	AllowDirtyStack bool
+	// PRRepo and PRHost are normally inferred from PushRemote. They exist so
+	// tests can pair a local fake Git remote with a fake gh endpoint.
+	PRRepo string
+	PRHost string
+	// ResumeStackTip pins a resumed stacked run to the base commit its
+	// predecessor fetched. PrepareStack keeps it when the object is still in
+	// the store, so a remote base that advanced during the reload cannot
+	// rename the layers and split the run into a new stack.
+	ResumeStackTip string
+	// StackPrep carries a preflight the CLI already ran (before the suggest
+	// step and the dirty-checkout consent it fronts). Nil makes New run
+	// PrepareStack itself.
+	StackPrep *StackPrep
 	// MergeInto is a branch this run's work is merged into after each loop,
 	// once the commit step has left the tree clean. Empty leaves the work
 	// where the reviews put it, on the branch that was checked out.
@@ -102,6 +125,14 @@ type Runner struct {
 	st  *Stats
 
 	repo *gitx.Repo
+	gh   ghx.Client
+
+	stackBase    string
+	stackBaseTip string
+	// stackReadRemote is where stack branches are read back from (ls-remote,
+	// fetch): the push URL when it differs from the fetch URL, else the
+	// remote name. Pushes keep using the remote name.
+	stackReadRemote string
 
 	mu             sync.Mutex // guards sessionStarted
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
@@ -128,7 +159,7 @@ type Runner struct {
 	// reload waiting for in-flight reviews, or a runtime budget that expired.
 	soft atomic.Bool
 	// finish is the graceful quit: like soft, no new review starts, but what
-	// is in flight is drained and its work is committed, pushed, and merged
+	// is in flight is drained and its work is committed, published, or merged
 	// before the run ends. A reload hands its unfinished reviews to a
 	// successor; a graceful quit has no successor, so it must not leave the
 	// loop's output uncommitted.
@@ -137,7 +168,8 @@ type Runner struct {
 
 // RequestStop asks the runner to finish the reviews already in flight and then
 // return. Unlike canceling the context, it never kills a running agent: the
-// reviews now running finish normally, including their commit and merge.
+// reviews now running finish normally, including their commit and publication
+// or merge work.
 func (r *Runner) RequestStop() { r.soft.Store(true) }
 
 // RequestFinish asks the runner to stop starting reviews and end the run once
@@ -187,6 +219,39 @@ func (r *Runner) takeNext() (string, bool) {
 // a person offer the commit step rather than stopping.
 var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
 
+// StackDirtyError asks the caller to surface the isolation boundary before a
+// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
+// technical blocker: they stay in the original checkout and the stack starts
+// from the selected remote branch. They are still important enough that an
+// interactive CLI must not silently omit them from review.
+type StackDirtyError struct {
+	Dir       string
+	Remote    string
+	Base      string
+	Tracked   []string
+	Untracked []string
+}
+
+func (e *StackDirtyError) Error() string {
+	if e == nil {
+		return "stacked PR confirmation required"
+	}
+	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
+		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
+		humanize.List(e.DisplayPaths(), 3))
+}
+
+// DisplayPaths returns sanitized tracked paths followed by sanitized
+// untracked paths, ready for terminal output. The exact paths remain in the
+// fields for programmatic handling; only their display form is altered.
+func (e *StackDirtyError) DisplayPaths() []string {
+	if e == nil {
+		return nil
+	}
+	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
+	return safePaths(paths)
+}
+
 // New prepares a runner. It opens the repository (if any) and validates the
 // preconditions for the requested concurrency.
 func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
@@ -198,6 +263,13 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	}
 	if cfg.Jobs < 1 {
 		cfg.Jobs = 1
+	}
+	if cfg.StackedPRs {
+		cfg.Jobs = 1
+		cfg.MaxLoops = 1
+		if cfg.PushRemote == "" {
+			cfg.PushRemote = "origin"
+		}
 	}
 	start := cfg.Started
 	if start.IsZero() {
@@ -219,7 +291,22 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	// ever show up in its git status: the exclusion is local to the clone,
 	// which is the right place for one tool's scratch.
 	r.repo.ExcludeOwnArtifacts(ctx)
-	if cfg.Jobs > 1 {
+	if cfg.StackedPRs {
+		prep := cfg.StackPrep
+		if prep == nil {
+			var err error
+			if prep, err = PrepareStack(ctx, cfg); err != nil {
+				return nil, err
+			}
+		}
+		r.cfg.PRBase = prep.Base
+		r.gh = prep.GH
+		r.stackBase, r.stackBaseTip = prep.Base, prep.BaseTip
+		r.stackReadRemote = prep.ReadRemote
+		if r.stackReadRemote == "" {
+			r.stackReadRemote = r.cfg.PushRemote
+		}
+	} else if cfg.Jobs > 1 {
 		if err := r.prepareWorktreeMode(ctx); err != nil {
 			return nil, err
 		}
@@ -366,7 +453,7 @@ func (r *Runner) Run(ctx context.Context) {
 		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
-	if r.cfg.Jobs > 1 {
+	if r.cfg.Jobs > 1 || r.cfg.StackedPRs {
 		defer r.repo.CleanWorktreeRoot()
 	}
 
@@ -383,9 +470,15 @@ func (r *Runner) Run(ctx context.Context) {
 
 		start := time.Now()
 		before, haveBefore := r.sample(ctx)
+		beforeIns, beforeDel := 0, 0
+		if r.cfg.StackedPRs {
+			beforeIns, beforeDel, _, _, _, _ = r.st.Totals()
+		}
 
 		var completed bool
-		if r.cfg.Jobs > 1 {
+		if r.cfg.StackedPRs {
+			completed = r.runLoopStack(ctx, loopNo)
+		} else if r.cfg.Jobs > 1 {
 			completed = r.runLoopParallel(ctx, loopNo)
 		} else {
 			completed = r.runLoopSequential(ctx, loopNo)
@@ -403,7 +496,13 @@ func (r *Runner) Run(ctx context.Context) {
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
 			Elapsed: time.Since(start).Seconds(),
 		}
-		if after, ok := r.sample(ctx); ok && haveBefore {
+		if r.cfg.StackedPRs {
+			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
+			if haveLines {
+				ins, del := afterIns-beforeIns, afterDel-beforeDel
+				ev.Ins, ev.Del = new(ins), new(del)
+			}
+		} else if after, ok := r.sample(ctx); ok && haveBefore {
 			ins, del := delta(before, after)
 			ev.Ins, ev.Del = new(ins), new(del)
 		}
