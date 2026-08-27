@@ -17,8 +17,8 @@ import (
 // where each CLI keeps them, whose counters are cumulative, and which field
 // means output is a monitoring concern that belongs to a monitoring tool.
 //
-// So it lives in toktop, and gauntlet reaches for it only when built with
-// `-tags toktop`. Without that tag the methods below are a no-op and the
+// So it lives in toktop, and gauntlet links it in a default build; the
+// `-tags notoktop` build drops it, the methods below become no-ops, and the
 // stdout reading stands alone: fewer numbers for the quietest agents, no
 // dependency, and nothing that pretends to a measurement it does not have.
 type transcriptReader interface {

@@ -94,7 +94,7 @@ approximately right:
    hold thousands of old sessions), and a file whose mtime has not moved is not
    reopened.
 
-An agent with no adapter (`gemini`, `grok`, `opencode`, …) simply has
+An agent with no adapter (`gemini`, `grok`, `agy`, …) simply has
 no watcher, and its lane shows no rate. Adding one is a `parse` function plus a
 table entry, and the tests carry real record shapes as fixtures so a format
 change fails loudly instead of silently returning zero.
@@ -120,6 +120,7 @@ makes an agent exit instead of run:
 | kimi | `--output-format stream-json` |
 | cursor-agent | `--output-format stream-json` |
 | grok | `--output-format streaming-messages-json` |
+| clanker | `--stream` |
 
 `--stream` turns this on for whichever agents in the pool support it; the rest
 are launched exactly as before. The stream gives three things text mode hides:
@@ -158,10 +159,10 @@ from its own `--help`, transcript layouts from its own session files.
 | cursor-agent | with `--stream` | if reported | stream only: sessions are opaque SQLite blobs |
 | grok | with `--stream` | yes (`reasoning_delta`) | stream only: its transcript records a context total, not output |
 | omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
-| clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in |
+| clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
 | dsh | with `--stream` | yes | its session log, once `--stream` asks for it uncompressed (below) |
-| crush | no | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
-| opencode | no | no | its binary builds `storage/session/{info,message,part}` under an XDG data root, but nothing is materialized on the machine checked, so an adapter would be guesswork |
+| crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
+| opencode | with `--opencode-db` | with `--opencode-db` | sessions in `~/.local/share/opencode/opencode.db` (XDG_DATA_HOME honored), one row per message with usage in a JSON column; the store holds every project on the machine, so reading it is opt-in |
 | agy | only if it prints a counter | no | no machine-readable mode and no transcript store found |
 
 Every agent, including the last row, still contributes the always-available
