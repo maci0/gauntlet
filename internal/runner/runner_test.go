@@ -347,7 +347,8 @@ func TestParallelModeResolvesAConflict(t *testing.T) {
 case "$*" in
 *"Conflicted files:"*)
 	echo ran >> "$GAUNTLET_TEST_CONFLICTS"
-	sed -i -e '/^<<<<<<</d' -e '/^=======$/d' -e '/^>>>>>>>/d' main.go
+	grep -v -e '^<<<<<<<' -e '^=======$' -e '^>>>>>>>' main.go > merged.tmp
+	mv merged.tmp main.go
 	echo "RESOLVE: done" ;;
 *a-review*)
 	printf 'package main\n\nfunc main() { a() }\n' > main.go
