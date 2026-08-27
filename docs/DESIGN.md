@@ -58,7 +58,7 @@ Nothing imports `ui`, so the loop runs headless with zero TUI cost.
 
 ## External dependencies
 
-Six direct modules and one deliberate transitive; everything else is
+Seven direct modules and one deliberate transitive; everything else is
 standard library. The default is no
 new dependency: each row earns its place by doing something the standard
 library cannot, and each was kept small on purpose.
@@ -67,6 +67,7 @@ library cannot, and each was kept small on purpose.
 |---|---|---|
 | `charmbracelet/bubbletea` | dashboard event loop | imported by `internal/ui` only |
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
+| `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
 | `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | pulled in through toktop; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji render in alignment | display paths in `internal/ui` only |
