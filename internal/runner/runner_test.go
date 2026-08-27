@@ -448,6 +448,73 @@ esac`)
 	}
 }
 
+// TestParallelModeConflictPromptOmitsControlPaths: git happily carries
+// control characters in a filename, and the conflict step names the conflicted
+// paths in an agent prompt. A path with an embedded newline could forge
+// instruction lines there, so it must never be named; the marker scan still
+// sees it, so the resolution stays incomplete and the branch is kept for a
+// human, exactly as for a conflict the agent could not finish.
+func TestParallelModeConflictPromptOmitsControlPaths(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	// The hostile name needs its newline built from a substitution: a plain
+	// "\n" inside the sh string would be literal backslash-n. "a\nb" keeps
+	// its interior newline where command substitution strips only trailing
+	// ones.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+hostile="hostile$(printf 'a\nb')mark.md"
+case "$*" in
+*"Conflicted files:"*)
+	printf '%s\n' "$*" > "$GAUNTLET_TEST_PROMPT"
+	grep -v -e '^<<<<<<<' -e '^=======$' -e '^>>>>>>>' main.go > merged.tmp
+	mv merged.tmp main.go
+	echo "RESOLVE: done" ;;
+*a-review*)
+	printf 'package main\n\nfunc main() { a() }\n' > main.go
+	printf 'hostile a\n' > "$hostile"
+	echo "RESULT: changed=1" ;;
+*)
+	printf 'package main\n\nfunc main() { b() }\n' > main.go
+	printf 'hostile b\n' > "$hostile"
+	echo "RESULT: changed=1" ;;
+esac`)
+
+	promptFile := filepath.Join(t.TempDir(), "conflict-prompt")
+	t.Setenv("GAUNTLET_TEST_PROMPT", promptFile)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+	cfg.ResolveConflicts = true
+
+	r := runQuiet(t, cfg)
+
+	// The hostile file was never resolved, so the resolution is incomplete
+	// and the branch is kept for a human.
+	if c := r.Stats().Counts(); c.Conflict != 1 || c.OK != 1 {
+		t.Fatalf("want one merge and one unresolved conflict, got %+v", c)
+	}
+	// The agent was told about the clean path and never about the hostile one.
+	got, err := os.ReadFile(promptFile)
+	if err != nil {
+		t.Fatalf("the conflict agent never ran: %v", err)
+	}
+	if !strings.Contains(string(got), "main.go") {
+		t.Fatalf("the conflict prompt dropped the clean path:\n%s", got)
+	}
+	if strings.Contains(string(got), "hostile") {
+		t.Fatalf("a path with an embedded newline was named in the conflict prompt:\n%s", got)
+	}
+	if body := readTree(t, repo, "main.go"); strings.Contains(body, "<<<<<<<") {
+		t.Fatalf("conflict markers reached the tree:\n%s", body)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*-fix/*"); out != "" {
+		t.Fatalf("the scratch branch of an incomplete resolution should be gone:\n%s", out)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out == "" {
+		t.Fatal("the unresolved review's branch was deleted, losing its work")
+	}
+}
+
 // TestParallelModeWithNoChangesDeletesTheBranch pins the empty-review path:
 // a review that changed nothing leaves no branch behind. Its branch points at
 // the base commit, so keeping it would litter the repo with dead refs run

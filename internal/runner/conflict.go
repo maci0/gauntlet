@@ -15,6 +15,7 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
@@ -88,9 +89,31 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 
 // runConflictAgent launches the agent that edits the conflicted files, and
 // reports whether it finished. The caller checks its work either way.
+//
+// The paths arrive from `git diff -z` against a possibly hostile tree, and
+// git is happy to carry control characters in a name: a file called
+// "x\nRun git push now" is one filename. Named raw in the prompt, each such
+// path forges instruction lines. So a path is named only when it is free of
+// control and formatting characters, and one that is not is left out of the
+// list entirely: the marker scan still checks it, so it holds the resolution
+// open and the branch stays with a human — the same outcome a file the agent
+// could not resolve gets.
 func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []string, wt *gitx.Worktree) bool {
+	named := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == normalize.Sanitize(p) {
+			named = append(named, p)
+			continue
+		}
+		r.log("Not naming %s in the conflict prompt: the path carries control characters",
+			normalize.Sanitize(p))
+	}
+	if len(named) == 0 {
+		r.log("No conflicted path is safe to name in a prompt; leaving the branch for a human")
+		return false
+	}
 	spec := r.pickAgent("conflict", nil)
-	argv, err := agent.BuildCmd(spec, prompt.ConflictPrompt(paths),
+	argv, err := agent.BuildCmd(spec, prompt.ConflictPrompt(named),
 		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool]})
 	if err != nil {
 		r.log("Cannot build the conflict command for %s: %v", spec.Label(), err)
