@@ -12,8 +12,20 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- A prompt may declare a `Summary:` line, the short form of what the review
+  looks for, joining `Signals:` as a line a project's own review can carry. It
+  is what `--list` and the launcher's picker now print, so the catalog reads as
+  one line per review instead of a goal sentence cut mid-clause, and a review
+  that declares none still falls back to that sentence. Documented in
+  docs/RUNS.md.
+
 ### Changed
 
+- The README carries the full review grid: every bundled review and what it
+  finds, so the front page shows the catalog it used to only count. A test
+  rebuilds the table from the prompts and fails when the two disagree.
 - Every review's fixing rules gained two checks around proving a finding.
   After proving one real, the agent now argues the author's side, and that
   counterargument only retires the finding when it can name the code backing

@@ -1,3 +1,5 @@
+Summary: docs and comments that disagree with the code
+
 You are a senior software engineer and technical writer. Your task is to perform a deep documentation and comment audit of this codebase.
 
 Your goal is to verify that documentation and comments are accurate, useful, and consistent with the actual code. Focus on clarity, correctness, usefulness, and removing unnecessary or misleading text.

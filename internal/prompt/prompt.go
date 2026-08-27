@@ -102,6 +102,45 @@ func (r Review) Desc() string {
 	return ""
 }
 
+// summaryPrefix introduces the short form of a review's subject, for places
+// that show the whole catalog at once and have one line per review: --list,
+// the launcher's review picker, and the README grid.
+//
+//	Summary: stale reads, cross-tenant bleed, stampedes
+//
+// Desc is a full sentence and often several, so those places had to truncate
+// it mid-clause. It stays the long form; this is what fits a cell.
+const (
+	summaryPrefix  = "Summary:"
+	summaryRuneMax = 60
+)
+
+// Summary is the review's declared short subject, falling back to Desc when a
+// prompt declares none (every project prompt written before the line existed).
+// It is display text from a possibly untrusted file, so it is sanitized and
+// bounded like every other value read out of one.
+func (r Review) Summary() string {
+	body, err := r.Body()
+	if err != nil {
+		return ""
+	}
+	for line := range strings.SplitSeq(body, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, summaryPrefix) {
+			continue
+		}
+		s := strings.TrimSpace(sanitize(strings.TrimPrefix(line, summaryPrefix)))
+		if s == "" {
+			break
+		}
+		if utf8.RuneCountInString(s) > summaryRuneMax {
+			s = string([]rune(s)[:summaryRuneMax])
+		}
+		return s
+	}
+	return r.Desc()
+}
+
 // Signal tokens a review may declare, so the file-signal suggester can
 // propose it. A project's own review is otherwise unreachable there: the
 // built-in rules only know built-in names.
