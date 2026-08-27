@@ -87,15 +87,21 @@ extra `--jobs` lanes. One persistent checkout lives under
 branches survive because open PRs need them. The branch checked out in the
 original directory never moves and no stack branch is merged automatically.
 
-Before launching an agent, gauntlet fetches the selected branch from
-`--push-remote` and cuts the isolated worktree directly from that commit. It
-does not pull, update a local branch, or read uncommitted files from the
-original checkout. When that checkout has tracked or untracked changes,
-gauntlet names them, explains that they will not be reviewed or included in
-the PRs, and asks before continuing; `--yes` provides the same consent for an
-unattended run. It also requires Git, `gh` authentication, repository access,
-and a successful dry-run new-branch push. The remote URL selects the GitHub
-repository in which `gh` creates the PRs.
+Every check runs before any agent starts, the `--suggest` agent included.
+When the original checkout has tracked or untracked changes, gauntlet names
+them, explains that they will not be reviewed or included in the PRs, and
+asks before doing anything else; `--yes` provides the same consent for an
+unattended run, and a stdin that is not a real terminal (a pipe, `/dev/null`)
+requires it. Only after that consent does gauntlet fetch the selected branch
+from `--push-remote` and cut the isolated worktree directly from the fetched
+commit. It does not pull, update a local branch, or read uncommitted files
+from the original checkout: project prompts and `--suggest` signals come from
+a snapshot of the fetched base, so a prompt file that exists only in the
+dirty checkout cannot steer the run. It also requires Git, `gh`
+authentication, repository access, and a successful dry-run new-branch push.
+The remote's configured fetch URL selects the GitHub repository the PRs open
+in; when the remote pushes somewhere else (a fork workflow with a separate
+push URL), the PR heads are qualified with the push-side owner.
 
 A review with no file changes leaves no branch or PR; the next review stays on
 the last changed layer. A failed agent is reset to its layer's base before a
@@ -104,11 +110,14 @@ A commit, push, or PR failure is different: publication stops the stack, keeps
 any committed branch, and starts no later review.
 
 Branch names are deterministic from the initial base commit, schedule
-position, and review name. Before creating a PR gauntlet searches all PR
-states for that exact head/base pair. A repeated run reuses it; a hot reload
-walks the published prefix and resumes from the unfinished suffix. A branch
-that was committed or pushed before a stopped PR call is published on the
-next invocation instead of rerunning its agent.
+position, and review name. That base commit is fetched once per logical run
+and pinned: a hot reload hands it to the successor, so a remote base that
+advances mid-run cannot rename the layers and split the resumed run into a
+new stack. Before creating a PR gauntlet searches all PR states for that
+exact head/base pair. A repeated run reuses it; a hot reload walks the
+published prefix and resumes from the unfinished suffix. A branch that was
+committed or pushed before a stopped PR call is published on the next
+invocation instead of rerunning its agent.
 
 ## Several directories at once
 

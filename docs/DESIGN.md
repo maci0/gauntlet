@@ -203,12 +203,16 @@ flowchart LR
 
 The invariants are:
 
-1. The initial commit is fetched directly from the selected remote base;
-   every later branch is a direct, one-commit child of the preceding changed
-   layer. No local branch needs to point at that commit.
+1. The initial commit is fetched directly from the selected remote base,
+   once per logical run: a hot reload hands the pinned commit to its
+   successor rather than fetching a tip that may have advanced. Every later
+   branch is a direct, one-commit child of the preceding changed layer. No
+   local branch needs to point at that commit.
 2. The original worktree is read only to surface files the stack will exclude.
-   Dirty files require interactive consent or `--yes`; agents, staging,
-   commits, and retry resets operate inside the scratch worktree.
+   Dirty files require interactive consent or `--yes` before the fetch;
+   prompt discovery and suggestion signals read a snapshot of the fetched
+   base; agents, staging, commits, and retry resets operate inside the
+   scratch worktree.
 3. A layer is not eligible as the next base until its push succeeds and an
    exact head/base PR exists. Publication failure therefore stops scheduling.
 4. No-change and exhausted agent failures reset and delete their unpublished

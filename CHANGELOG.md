@@ -74,6 +74,22 @@ minor instead and were listed under Changed.
   `--suggest-timeout` name their 30 minutes, `--limit` its 20 entries, and
   `--runtime` its `0 = unlimited`.
 
+### Added
+
+- `--stacked-prs` runs the selected reviews sequentially in one isolated
+  worktree. Each changed review is committed and pushed on a child branch,
+  then opened as a pull request against the preceding changed review; the
+  original checkout is never changed and no pull request is merged. The base
+  commit is fetched directly from the publishing remote after every preflight
+  check passes, the dirty-checkout consent included and before any agent
+  starts, the suggestion agent too. That commit is then pinned for the whole
+  run: a hot reload resumes the same stack even when the remote base has
+  advanced. Project prompts and suggestion signals are read from a snapshot
+  of that fetched base, never from uncommitted files in the checkout. A
+  remote with distinct fetch and push URLs opens cross-fork PRs with the head
+  qualified by the push-side owner. `--pr-base` selects the first base and
+  `--push-remote` selects the publishing remote.
+
 ## 1.10.0
 
 ### Changed
@@ -95,14 +111,6 @@ minor instead and were listed under Changed.
 
 ### Added
 
-- `--stacked-prs` runs the selected reviews sequentially in one isolated
-  worktree. Each changed review is committed and pushed on a child branch,
-  then opened as a pull request against the preceding changed review; the
-  original checkout is never changed and no pull request is merged. The base
-  is fetched directly from the publishing remote, so local branches may be
-  stale and a dirty checkout can remain in place after the user confirms its
-  files will be excluded. `--pr-base` selects the first base and
-  `--push-remote` selects the publishing remote.
 - A review can declare what it keys on with a `Signals: ext:.zig, name:build.zig`
   line, which is what makes a project's own prompt reachable by the file-signal
   suggester: the built-in rules only know built-in names. The line comes from

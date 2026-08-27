@@ -27,8 +27,8 @@ organizational decisions; none is assigned here.
   uncommitted user work, which is why `--jobs N>1` demands a clean tree
   (DESIGN.md "Isolated parallel reviews", rule 1), and why the runner rewinds
   only its own worktrees between retry attempts (`git reset --hard` +
-  `git clean -fd`, `internal/gitx/worktree.go:176-196`; never the user's
-  checkout).
+  `git clean -fd`, `ResetToBase` in `internal/gitx/worktree.go`; never the
+  user's checkout).
 - **Credentials reachable by the user account**: cloud keys, SSH keys,
   `GITHUB_TOKEN`, every agent's own API-key store (`~/.claude`, `~/.gemini`,
   and peers). Agents run with full user privileges.
@@ -129,24 +129,37 @@ Who authors the commits depends on the mode, and the difference is a real
 privilege transition:
 
 - **`--jobs > 1` (worktree isolation):** the runner stages and commits each
-  worktree itself (`internal/runner/runner.go:629`); agents stay forbidden to
-  run git (DESIGN.md rule 3). Between retry attempts the runner alone rewinds
-  its worktree to the base commit so attempt N+1 starts where N did
-  (`worktree.go:176-196`, called at `runner.go:922`): more runner-side git
-  authority, exercised only inside gauntlet-created worktrees, never the
+  worktree itself (`Worktree.CommitAll`, called from `runIsolated` in
+  `internal/runner/runner.go`); agents stay forbidden to run git (DESIGN.md
+  rule 3). Between retry attempts the runner alone rewinds its worktree to
+  the base commit so attempt N+1 starts where N did (`ResetToBase` in
+  `internal/gitx/worktree.go`, called from `resetForRetry`): more runner-side
+  git authority, exercised only inside gauntlet-created worktrees, never the
   user's checkout.
 - **`--stacked-prs` (worktree isolation plus publication):** the runner has
   the same staging, commit, and retry-reset authority inside one scratch
   worktree, then invokes Git to push each committed child branch and `gh` to
-  create its PR. Startup fetches the named remote base without moving the
-  original checkout. If that checkout is dirty, the CLI names the excluded
-  files and requires interactive consent or `--yes`; the worktree never sees
-  them. Startup also verifies `gh` authentication and repository access, and
-  a dry-run new-branch push before any agent starts. A publication failure
-  stops later
-  reviews, so no agent runs on a branch that does not exist as a usable remote
-  PR base. Git and `gh` receive fixed argv elements rather than shell text;
-  review names, commit subjects, and PR bodies cannot become commands.
+  create its PR. `PrepareStack` (`internal/runner/stack.go`) runs every check
+  before any agent starts, the suggestion agent included, in a fixed order:
+  local validation, then the dirty-checkout boundary (interactive consent or
+  `--yes` before anything touches the network), then remote-URL validation
+  (the base repository from the configured fetch URL, the PR head owner from
+  the configured push URL, so a fork workflow opens its PRs with an
+  OWNER:BRANCH head), and only then the fetch of the named remote base, `gh`
+  authentication and repository access, and a dry-run new-branch push. The
+  fetched base commit is pinned for the whole run and carried across a hot
+  reload, and project prompts and suggestion signals are read from a snapshot
+  worktree of that commit, never from uncommitted files in the checkout. A
+  publication failure stops later reviews, so no agent runs on a branch that
+  does not exist as a usable remote PR base. Git and `gh` receive fixed argv
+  elements rather than shell text; review names, commit subjects, and PR
+  bodies cannot become commands. Git itself runs hardened against the
+  reviewed repository's own config: hooks, fsmonitor, and external diff are
+  disabled, `ext::` transports are refused, and `GIT_SSH_COMMAND=ssh` outranks
+  a repo-local `core.sshCommand` (`safeConfig` and `runIn` in
+  `internal/gitx/gitx.go`). Gauntlet's scratch worktrees are refused when
+  `.gauntlet` or `.gauntlet/worktrees` is a symlink or not a real directory
+  inside the repository (`ensureWorktreeRoot` in `internal/gitx/worktree.go`).
 - **Sequential in-place with `--commit`/`--push`:** the commit step is itself
   an agent launch. `runCommitStep` (`commit.go:94`) execs one agent with
   `prompt.CommitPrompt` (`compose.go:147`), which instructs it to run
