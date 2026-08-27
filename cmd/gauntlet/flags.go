@@ -376,7 +376,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, errors.New("--limit requires 'gauntlet runs'")
 		}
 	}
-	if err := rejectStrayFlags(o, fs); err != nil {
+	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
 		return nil, err
 	}
 
@@ -575,6 +575,9 @@ var subcommandFlags = map[string][]string{
 	"update": {"check", "update-repo"},
 	"runs":   {"limit"},
 	"show":   {},
+	// The -V flag form keeps its "wins over scoping" reading below; the
+	// subcommand word is held to the same discipline as the rest.
+	"version": {},
 }
 
 // globalFlags are honored no matter the command: help, version, color, and
@@ -585,7 +588,14 @@ var globalFlags = []string{"h", "help", "V", "version", "log", "no-color"}
 // drop: `gauntlet runs --jobs 4` must fail loudly rather than print its
 // table while ignoring the concurrency it was given. The flag is named the
 // way it was spelled, so `-j 4` reads as -j.
-func rejectStrayFlags(o *options, fs *flag.FlagSet) error {
+//
+// The -V flag form is exempt: it means "print the version and exit" and wins
+// over scoping the way help does, so `gauntlet -V --limit 5` still prints the
+// version. The `version` subcommand word gets no such pass.
+func rejectStrayFlags(o *options, fs *flag.FlagSet, showVersion bool) error {
+	if showVersion {
+		return nil
+	}
 	allowed, known := subcommandFlags[o.command]
 	if !known {
 		return nil // the default run path reads every flag
