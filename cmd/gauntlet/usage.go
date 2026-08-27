@@ -65,7 +65,7 @@ var helpGroups = []flagGroup{
 		{"t", "timeout", "DUR", "per-review timeout: 90s, 30m, 1h, 2d"},
 		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
 		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true)"},
-		{"", "retries", "N", "reruns of a failed review on the same agent, waiting longer each time (default 2)"},
+		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent, waiting longer each time (default %d)", defaultRetries)},
 		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
 		{"1", "once", "", "run a single loop and exit"},
 		{"n", "max-loops", "N", "stop after N loops (0 means unlimited)"},

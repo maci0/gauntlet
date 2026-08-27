@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -83,11 +84,36 @@ func TestParseFlagsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.timeout != 30*time.Minute || o.jobs != 1 || !o.hotReload {
+	if o.timeout != defaultTimeout || o.suggestTimeout != defaultTimeout ||
+		o.jobs != 1 || o.retries != defaultRetries || o.runsLimit != defaultRunsLimit || !o.hotReload {
 		t.Fatalf("unexpected defaults: %+v", o)
 	}
 	if o.reviewsSet {
 		t.Fatal("an omitted --reviews must not count as explicit")
+	}
+}
+
+// The defaults const block exists so docs/CLI.md, the help table, and the
+// parser cannot drift apart; these assertions make that hold for the flag
+// package's own bookkeeping too. IntVar writes its value through on
+// registration, so a literal here would silently override what the options
+// struct initialized from the const.
+func TestRegisteredDefaultsMatchTheConsts(t *testing.T) {
+	fs, _ := buildFlagSet(&options{})
+	for _, c := range []struct {
+		name string
+		want int
+	}{
+		{"retries", defaultRetries},
+		{"limit", defaultRunsLimit},
+	} {
+		f := fs.Lookup(c.name)
+		if f == nil {
+			t.Fatalf("flag -%s is not registered", c.name)
+		}
+		if f.DefValue != strconv.Itoa(c.want) {
+			t.Errorf("-%s registers default %q, want %d (the const)", c.name, f.DefValue, c.want)
+		}
 	}
 }
 
