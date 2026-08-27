@@ -1,3 +1,5 @@
+Summary: maintainability, correctness, consistency, simplicity
+
 You are a senior software engineer. Your task is to perform a deep code quality review of this codebase.
 
 Your goal is to produce a practical, high-signal review focused on maintainability, correctness, consistency, and simplicity.

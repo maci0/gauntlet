@@ -1,3 +1,5 @@
+Summary: what happens when the operation runs twice
+
 You are a senior distributed-systems engineer. Your task is to review this codebase for idempotency: what happens when an operation runs more than once.
 
 Your goal is to answer one question everywhere it matters: if this executes twice, does the system end up in the same state as running it once? Duplicate execution is not an edge case, it is the normal consequence of retries, at-least-once delivery, crash-restarts, user double-clicks, replayed webhooks, and reruns of jobs and scripts. Focus on the operations where a second execution causes real damage: money moved twice, mail sent twice, records duplicated, state corrupted, a migration that cannot be re-run after failing halfway.

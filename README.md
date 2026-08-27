@@ -92,6 +92,67 @@ gauntlet --suggest --yes          # let an agent pick the relevant reviews
 gauntlet --tui                    # same run, live dashboard
 ```
 
+## The reviews
+
+Every review is one prompt file. Run all of them, a named set (`-r quick`,
+`-r security`, `-r backend`, `-r frontend`, `-r shipping`, `-r agents`), or any
+list you like. `gauntlet --list` prints this table with what is scheduled.
+
+<!-- BEGIN REVIEWS: generated from internal/prompt/prompts, checked by TestReadmeGridMatchesBundled -->
+| Review | Finds |
+| --- | --- |
+| `a11y-review` | keyboard, screen readers, contrast, motion, WCAG 2.2 AA |
+| `agentrules-review` | the CLAUDE.md and AGENTS.md files every session pays for |
+| `api-review` | REST, GraphQL, and gRPC surfaces: consistency, correctness |
+| `arch-review` | module boundaries, dependency direction, layering |
+| `authz-review` | IDOR, unprotected admin routes, cross-tenant leakage |
+| `build-review` | reproducible, hermetic builds and a pinned toolchain |
+| `cache-review` | stale reads, cross-tenant bleed, stampedes, growth |
+| `cli-review` | exit codes, stdout vs stderr, piping, --help |
+| `code-review` | maintainability, correctness, consistency, simplicity |
+| `compat-review` | path separators, bashisms, endianness, musl vs glibc |
+| `concurrency-review` | races, deadlocks, and corruption under load |
+| `config-review` | precedence, validation, secrets in the wrong place |
+| `container-review` | probes, graceful shutdown, image hygiene on Kubernetes |
+| `db-review` | schema, queries, migrations, data integrity |
+| `deps-review` | necessity, supply-chain risk, maintenance burden |
+| `design-review` | tradeoffs, alternatives, data modeling, fit to scale |
+| `doc-review` | docs and comments that disagree with the code |
+| `dr-review` | what is backed up, and has restore ever been proven |
+| `dst-review` | can a single seed replay the whole run byte-for-byte |
+| `dx-review` | clone to passing tests without losing an afternoon |
+| `error-review` | silent data loss, misleading behavior, cascading failure |
+| `functionality-review` | the gap between intended and actual behavior |
+| `fuzz-review` | untrusted-input surfaces with no fuzz harness |
+| `i18n-review` | translations, locale formatting, layout in other scripts |
+| `idempotency-review` | what happens when the operation runs twice |
+| `infra-review` | CI/CD, IaC, deployment, environment wiring |
+| `lint-review` | linters present, strict enough, and blocking CI |
+| `llm-review` | prompt injection, cost, and unvalidated model output |
+| `minimalism-review` | prove every line is needed, or delete it |
+| `mobile-review` | lifecycle, offline, battery, permissions, store readiness |
+| `numerics-review` | money in floats, truncating casts, negative modulo |
+| `o11y-review` | logs, metrics, traces, alerts, and whether they connect |
+| `perf-review` | algorithms, memory, I/O, startup: measured, not guessed |
+| `pkg-review` | deb, rpm, Flatpak, wheels, images: what actually ships |
+| `privacy-review` | personal data collected, shared, retained, deleted |
+| `prompt-review` | whether these prompts work as instructions to an agent |
+| `release-review` | semver honesty, breaking changes, changelog, migration |
+| `resource-review` | handles, goroutines, listeners, maps that only grow |
+| `sdk-review` | the integrating developer's experience of the surface |
+| `sec-review` | exploitable vulnerabilities and missing controls |
+| `skills-review` | does the skill fire, teach, and stay cheap when loaded |
+| `slop-review` | machine-written noise: dead code, restating comments |
+| `specs-review` | requirements and decision records the code contradicts |
+| `test-review` | tests that give false confidence or miss real bugs |
+| `threat-review` | attack surface, trust boundaries, a living threat model |
+| `time-review` | DST, leap days, wall-clock durations, cron that misfires |
+| `uislop-review` | the interchangeable generated look, no visual identity |
+| `unicode-review` | encodings, NFC/NFD, length in the wrong units |
+| `ux-review` | friction and confusion from the user's side |
+| `webperf-review` | bytes on the wire, blocking the first paint |
+<!-- END REVIEWS -->
+
 ## How a run works
 
 Reviews run one at a time against your working tree, forever, until you stop

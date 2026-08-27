@@ -74,7 +74,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 func pickGroups(set prompt.Set) []ui.PickGroup {
 	describe := func(name string) ui.PickReview {
 		rev, _ := set.Get(name)
-		return ui.PickReview{Name: name, Desc: rev.Desc(), Project: rev.IsProject()}
+		return ui.PickReview{Name: name, Desc: rev.Summary(), Project: rev.IsProject()}
 	}
 	claimed := map[string]bool{}
 	var groups []ui.PickGroup

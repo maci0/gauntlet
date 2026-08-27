@@ -1,3 +1,5 @@
+Summary: tests that give false confidence or miss real bugs
+
 You are a senior software engineer specializing in testing strategy and quality assurance. Your task is to perform a deep audit of the test suite in this codebase.
 
 Your goal is to evaluate test quality, coverage, reliability, and maintainability. Focus on tests that give false confidence, miss real bugs, or slow down development. Fuzz harnesses belong to fuzz-review; simulation and seed-replay tests to dst-review.

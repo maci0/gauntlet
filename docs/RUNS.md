@@ -79,6 +79,17 @@ line comes from the reviewed tree, so it is parsed strictly: those four kinds,
 at most 12 tokens, 40 characters each, and a charset with no room for
 structure. Anything else on the line is dropped.
 
+A `Summary:` line is the short form of what the review looks for, for the
+places that show the whole catalog one line at a time: `--list`, the launcher's
+picker, and the README grid:
+
+    Summary: stale reads, cross-tenant bleed, stampedes, growth
+
+Every bundled review declares one. A project review that does not falls back to
+its `Your goal` sentence, which those places then have to cut mid-clause. The
+line is display text from the reviewed tree, so it is sanitized and cut to 60
+characters.
+
 Review discovery is per directory too: a tree carrying its own `*-review.md`
 files has a different set from its neighbor. `--suggest` follows from that, so
 the suggest step runs once per directory, and those steps run together rather

@@ -325,7 +325,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			origin = "[project]"
 		}
 		prefix := fmt.Sprintf("  %-2s %-*s%-10s ", mark, nameCol, name, origin)
-		desc := rev.Desc()
+		desc := rev.Summary()
 		if desc == "" {
 			desc = "(no description)"
 		}

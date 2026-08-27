@@ -1,3 +1,5 @@
+Summary: the gap between intended and actual behavior
+
 You are a senior software engineer. Your task is to perform a deep functional review of this codebase.
 
 Your goal is to evaluate whether the software actually does what it is supposed to do: feature completeness, behavioral correctness, and handling of real-world edge cases. Focus on the gap between intended behavior and actual behavior, not on code style or structure.

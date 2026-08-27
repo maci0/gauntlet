@@ -4,6 +4,9 @@
 package prompt
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -109,4 +112,45 @@ func quoteAll(names []string) string {
 		quoted[i] = strconv.Quote(n)
 	}
 	return strings.Join(quoted, ", ")
+}
+
+// The README's review grid is the front page's only complete list of what
+// gauntlet ships, so a prompt added, renamed, or resummarized without it goes
+// out as a README that undersells or lies. Nothing generates the table at
+// build time; this rebuilds it and diffs, and the failure prints the block to
+// paste back between the markers.
+func TestReadmeGridMatchesBundled(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const begin, end = "<!-- BEGIN REVIEWS", "<!-- END REVIEWS -->"
+	_, rest, ok := strings.Cut(string(readme), begin)
+	if !ok {
+		t.Fatalf("README.md has no %q marker", begin)
+	}
+	if _, rest, ok = strings.Cut(rest, "\n"); !ok {
+		t.Fatalf("README.md %q marker has no line after it", begin)
+	}
+	got, _, ok := strings.Cut(rest, end)
+	if !ok {
+		t.Fatalf("README.md has no %q marker", end)
+	}
+
+	set, _, err := Discover(t.Context(), "", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var want strings.Builder
+	want.WriteString("| Review | Finds |\n| --- | --- |\n")
+	for _, name := range BundledNames() {
+		r, found := set.Get(name)
+		if !found {
+			t.Fatalf("bundled review %q is not in the discovered set", name)
+		}
+		fmt.Fprintf(&want, "| `%s` | %s |\n", name, r.Summary())
+	}
+	if strings.TrimSpace(got) != strings.TrimSpace(want.String()) {
+		t.Errorf("README.md review grid is stale; replace it between the markers with:\n\n%s", want.String())
+	}
 }
