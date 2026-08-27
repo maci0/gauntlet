@@ -612,7 +612,7 @@ func listTree(root string) ([]string, bool) {
 			case p == root:
 				return nil
 			case skipDirs[strings.ToLower(d.Name())],
-				len(strings.Split(filepath.ToSlash(rel), "/")) > scanMaxDepth:
+				strings.Count(filepath.ToSlash(rel), "/")+1 > scanMaxDepth:
 				return fs.SkipDir
 			}
 			return nil
@@ -629,11 +629,17 @@ func listTree(root string) ([]string, bool) {
 // peek reads the head of source files and records what they import and call.
 // Heads only: what a file talks to is declared at the top, and a bounded read
 // keeps this a scan rather than an indexing pass.
+//
+// Marks are checked for presence, not counted: every consumer treats a kind
+// as seen or unseen, so a kind already observed stops being searched for and
+// the scan ends early once all kinds are.
 func peek(root string, paths []string, s *signals) {
 	buf := make([]byte, peekBytes)
+	scratch := make([]byte, peekBytes)
+	seenAll := len(s.mark) == markKinds
 	read := 0
 	for _, rel := range paths {
-		if read >= peekMaxFiles {
+		if read >= peekMaxFiles || seenAll {
 			return
 		}
 		if !sourceExts[strings.ToLower(filepath.Ext(rel))] {
@@ -646,11 +652,38 @@ func peek(root string, paths []string, s *signals) {
 		n, _ := f.Read(buf)
 		f.Close()
 		read++
-		head := bytes.ToLower(buf[:n])
+		head := asciiFold(scratch[:0], buf[:n])
 		for _, m := range marks {
+			if s.mark[m.says] > 0 {
+				continue
+			}
 			if bytes.Contains(head, []byte(m.text)) {
 				s.mark[m.says]++
+				seenAll = len(s.mark) == markKinds
 			}
 		}
 	}
+}
+
+// markKinds is how many distinct things any mark can say, the point at which
+// peek's answer can no longer change.
+var markKinds = func() int {
+	says := map[string]bool{}
+	for _, m := range marks {
+		says[m.says] = true
+	}
+	return len(says)
+}()
+
+// asciiFold appends b lowercased to dst, ASCII-only. Source heads are
+// overwhelmingly ASCII and bytes.ToLower would allocate a fresh buffer per
+// file; folding in place keeps the peek allocation-free after startup.
+func asciiFold(dst, b []byte) []byte {
+	for _, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		dst = append(dst, c)
+	}
+	return dst
 }

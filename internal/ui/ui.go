@@ -143,6 +143,15 @@ type model struct {
 	lanes   map[string]*laneState
 	laneOrd []string
 
+	// Everything below is a view of the state above, rebuilt only when that
+	// state changes: the frame runs ten times a second, and recomputing
+	// constants each frame would buy nothing but jitter.
+	sorted     []string       // order, sorted; stale while orderDirty
+	orderDirty bool           // order grew and sorted must be rebuilt
+	cellWidths map[string]int // review name -> terminal cells, names never change
+	feedView   []feedLine     // feed through the current filter, while feedDirty is false
+	feedDirty  bool           // the feed or the filter changed; feedView must be rebuilt
+
 	feed      []feedLine
 	scroll    int
 	filter    feedFilter
@@ -209,6 +218,7 @@ func newModel(cfg Config) *model {
 			m.hues.get(k)
 		}
 	}
+	m.orderDirty = len(m.order) > 0 // pre-seeded rows are not in sorted yet
 	return m
 }
 
@@ -294,7 +304,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scroll = 0
 		case "f":
 			m.filter = (m.filter + 1) % feedFilters
-			m.scroll = 0 // the line count changed under the scrollback
+			m.feedDirty = true // the line count changed under the scrollback
+			m.scroll = 0
 		case "s":
 			// Asking twice changes nothing, so the screen says it once and
 			// keeps saying it in the header until the run ends.
@@ -446,6 +457,7 @@ func (m *model) review(name string) *reviewState {
 	r := &reviewState{name: name, status: "pending"}
 	m.reviews[name] = r
 	m.order = append(m.order, name)
+	m.orderDirty = true
 	return r
 }
 
@@ -483,6 +495,7 @@ func (m *model) pushFeed(l feedLine) {
 	if len(m.feed) > feedMax {
 		m.feed = m.feed[len(m.feed)-feedMax:]
 	}
+	m.feedDirty = true
 	// A paused or scrolled-back reader holds their place: the viewport stays
 	// anchored to the lines it shows while history grows underneath, and
 	// nothing printed during a pause is discarded.
@@ -543,6 +556,18 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 	return act, lanes, grid, feed
 }
 
+// sortedOrder is the review order alphabetically, rebuilt only when a review
+// is scheduled. The grid shows it every frame; sorting there would spend the
+// frame budget re-deriving a constant.
+func (m *model) sortedOrder() []string {
+	if m.orderDirty {
+		m.sorted = append(m.sorted[:0], m.order...)
+		sort.Strings(m.sorted)
+		m.orderDirty = false
+	}
+	return m.sorted
+}
+
 func (m *model) gridCols() int {
 	cell := m.reviewCellWidth()
 	return max((m.w-4)/cell, 1)
@@ -550,11 +575,21 @@ func (m *model) gridCols() int {
 
 // reviewCellWidth is the width of one review cell: glyph, space, name. The
 // longest name is measured in terminal cells, not bytes or runes, so a
-// non-ASCII name budgets the space it will actually occupy.
+// non-ASCII name budgets the space it will actually occupy. Names are fixed
+// for the life of a run, so each is segmented once.
 func (m *model) reviewCellWidth() int {
 	longest := 8
 	for _, n := range m.order {
-		longest = max(longest, uniseg.StringWidth(strings.TrimSuffix(n, "-review")))
+		if w, ok := m.cellWidths[n]; ok {
+			longest = max(longest, w)
+			continue
+		}
+		w := uniseg.StringWidth(strings.TrimSuffix(n, "-review"))
+		if m.cellWidths == nil {
+			m.cellWidths = map[string]int{}
+		}
+		m.cellWidths[n] = w
+		longest = max(longest, w)
 	}
 	return min(longest+4, 22)
 }
@@ -758,8 +793,7 @@ func (m *model) gridTitle() string {
 func (m *model) renderGrid(w, h int) string {
 	cols := m.gridCols()
 	cellW := m.reviewCellWidth()
-	names := append([]string(nil), m.order...)
-	sort.Strings(names)
+	names := m.sortedOrder()
 
 	capacity, hidden := cols*h, 0
 	if extra := len(names) - capacity; extra > 0 {
@@ -808,10 +842,16 @@ func (m *model) renderGrid(w, h int) string {
 }
 
 // visibleFeed is the feed as the current filter leaves it. The filter never
-// drops a line from the model: widening it brings the history back.
+// drops a line from the model: widening it brings the history back. The view
+// is rebuilt when the feed or the filter changes, not each frame: at ten
+// frames a second the scan would re-read every retained line for the same
+// answer.
 func (m *model) visibleFeed() []feedLine {
 	if m.filter == feedAll {
 		return m.feed
+	}
+	if !m.feedDirty {
+		return m.feedView
 	}
 	out := make([]feedLine, 0, len(m.feed))
 	for _, l := range m.feed {
@@ -819,6 +859,8 @@ func (m *model) visibleFeed() []feedLine {
 			out = append(out, l)
 		}
 	}
+	m.feedView = out
+	m.feedDirty = false
 	return out
 }
 

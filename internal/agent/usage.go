@@ -106,31 +106,61 @@ func maxMatch(pats []*regexp.Regexp, text string) int {
 
 // Tail is a fixed-size ring that keeps only the last TailBytes of a stream.
 type Tail struct {
-	buf  []byte
-	size int
+	buf   []byte
+	size  int
+	off   int // index in buf of the first retained byte
+	valid int // bytes currently retained, capped at size
 }
 
 // NewTail returns a tail buffer holding at most size bytes.
 func NewTail(size int) *Tail { return &Tail{size: size} }
 
-// WriteString appends s and keeps only the last size bytes.
+// WriteString appends s and keeps only the last size bytes. Cost is
+// O(len(s)): the oldest bytes are abandoned behind a moving offset, never
+// shifted, so a chatty stream pays per byte written rather than per byte kept.
 func (t *Tail) WriteString(s string) (int, error) {
 	n := len(s)
+	if n == 0 {
+		return 0, nil
+	}
+	if t.buf == nil {
+		t.buf = make([]byte, t.size)
+	}
 	if n >= t.size {
-		t.buf = append(t.buf[:0], s[n-t.size:]...)
+		copy(t.buf, s[n-t.size:])
+		t.off = 0
+		t.valid = t.size
 		return n, nil
 	}
-	if len(t.buf)+n > t.size {
-		drop := len(t.buf) + n - t.size
-		t.buf = append(t.buf[:0], t.buf[drop:]...)
+	pos := (t.off + t.valid) % t.size
+	if room := t.size - t.valid; n > room {
+		t.off = (t.off + n - room) % t.size
+		t.valid = t.size
+	} else {
+		t.valid += n
 	}
-	t.buf = append(t.buf, s...)
+	first := min(t.size-pos, n)
+	copy(t.buf[pos:], s[:first])
+	copy(t.buf, s[first:])
 	return n, nil
 }
 
-// Bytes returns the retained tail. The slice aliases the ring: copy before
-// holding it past the next Write.
-func (t *Tail) Bytes() []byte { return t.buf }
+// Bytes returns the retained tail. It aliases the ring until the retained
+// bytes wrap; when they do it is a fresh copy assembled from both ends.
+// Either way: copy before holding past the next Write.
+func (t *Tail) Bytes() []byte {
+	if t.valid == 0 {
+		return nil
+	}
+	end := t.off + t.valid
+	if end <= t.size {
+		return t.buf[t.off:end]
+	}
+	out := make([]byte, t.valid)
+	copied := copy(out, t.buf[t.off:])
+	copy(out[copied:], t.buf[:end-t.size])
+	return out
+}
 
 // subjectRe finds the commit subject a review prints for the change it made.
 // The runner writes the commit in worktree mode, and only the agent knows

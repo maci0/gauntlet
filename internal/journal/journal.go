@@ -18,6 +18,7 @@ package journal
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -301,6 +302,14 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 // consumer prints one line at a time anyway. Lines that do not parse are
 // skipped, matching the index reader's tolerance for a killed process.
 func Events(runID string, visit func(map[string]any)) error {
+	return events(runID, nil, visit)
+}
+
+// events replays a journal like Events, but when gate is non-nil it is applied
+// to each raw line first and only passing lines are decoded. A gate is a
+// conservative prefilter, not an authority: a line that slips past it is
+// decoded and decided normally.
+func events(runID string, gate func([]byte) bool, visit func(map[string]any)) error {
 	path, err := findRun(runID)
 	if err != nil {
 		return err
@@ -313,8 +322,12 @@ func Events(runID string, visit func(map[string]any)) error {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	for sc.Scan() {
+		line := sc.Bytes()
+		if gate != nil && !gate(line) {
+			continue
+		}
 		var m map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &m); err == nil {
+		if err := json.Unmarshal(line, &m); err == nil {
 			visit(m)
 		}
 	}
@@ -410,6 +423,11 @@ const (
 	historyMatches = 8
 )
 
+// reviewEndJSON is the byte form of the one event kind History cares about,
+// as the journal encoder writes it: quoted, unescaped ASCII. The gate is a
+// prefilter, not a parse, so a stray occurrence elsewhere only costs a decode.
+var reviewEndJSON = []byte(`"review_end"`)
+
 // History reports, per review, how a directory's own past runs went: how often
 // each review ran there and how often it actually changed something. It is the
 // only signal that improves with use, and it costs one pass over the recent
@@ -431,7 +449,12 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		if matched++; matched > historyMatches {
 			break
 		}
-		_ = Events(run.RunID, func(e map[string]any) {
+		// A run journal records one line per output event, so it holds an
+		// order of magnitude more output than history events. The gate skips
+		// their decode; a line without the marker cannot be a review_end.
+		_ = events(run.RunID, func(line []byte) bool {
+			return bytes.Contains(line, reviewEndJSON)
+		}, func(e map[string]any) {
 			if s, _ := e["ev"].(string); s != "review_end" {
 				return
 			}

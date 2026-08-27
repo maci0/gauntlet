@@ -250,14 +250,15 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	}
 
 	tailMu.Lock()
-	final := agent.ParseUsage(tail.Bytes())
-	res.Subject = agent.ParseSubject(tail.Bytes())
+	final := tail.Bytes()
+	res.Subject = agent.ParseSubject(final)
+	finalUsage := agent.ParseUsage(final)
 	tailMu.Unlock()
 	usageMu.Lock()
 	res.Usage = agent.Usage{
-		Output:   max(final.Output, live.Output),
-		Thinking: max(final.Thinking, live.Thinking),
-		Total:    max(final.Total, live.Total),
+		Output:   max(finalUsage.Output, live.Output),
+		Thinking: max(finalUsage.Thinking, live.Thinking),
+		Total:    max(finalUsage.Total, live.Total),
 	}
 	usageMu.Unlock()
 	return res

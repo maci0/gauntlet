@@ -136,6 +136,12 @@ type picker struct {
 
 	cursor [paneCount]int
 	scroll [paneCount]int
+
+	// The config is fixed for the life of a session, so two derived views of
+	// it are computed once instead of per render: every distinct review, and
+	// the folded form each name and description is matched against.
+	knownReviews []string
+	folds        map[string][2]string
 }
 
 // optSuggestAgent is the index of the run-pane row that names the agent for
@@ -143,12 +149,24 @@ type picker struct {
 const optSuggestAgent = 1
 
 func newPicker(cfg PickConfig) *picker {
+	seen := map[string]bool{}
+	knownReviews := []string{}
+	for _, g := range cfg.Groups {
+		for _, rev := range g.Reviews {
+			if !seen[rev.Name] {
+				seen[rev.Name] = true
+				knownReviews = append(knownReviews, rev.Name)
+			}
+		}
+	}
 	p := &picker{
-		cfg:      cfg,
-		hues:     newHueMap(),
-		open:     make([]bool, len(cfg.Groups)),
-		selected: map[string]bool{},
-		agents:   make([]bool, len(cfg.Agents)),
+		cfg:          cfg,
+		hues:         newHueMap(),
+		open:         make([]bool, len(cfg.Groups)),
+		selected:     map[string]bool{},
+		agents:       make([]bool, len(cfg.Agents)),
+		knownReviews: knownReviews,
+		folds:        map[string][2]string{},
 		opts: []option{
 			{kind: optCount, label: "concurrency", n: 1,
 				help: "reviews at a time (-j), each in its own git worktree"},
@@ -462,6 +480,10 @@ func (p *picker) groupOn(i int) int {
 // not lowercased, so one spelling of a letter (final and ordinary sigma)
 // finds the other; the same convention guides the "did you mean" hints
 // (see fuzzy.Closest).
+//
+// The haystack side never changes during a session, so its folded forms are
+// cached: folding walks unicode.SimpleFold orbits per rune, and doing that
+// for every review on every keystroke would buy nothing.
 func (p *picker) matching(g PickGroup) []PickReview {
 	if p.filter == "" {
 		return g.Reviews
@@ -469,18 +491,32 @@ func (p *picker) matching(g PickGroup) []PickReview {
 	needle := fuzzy.Fold(norm.NFC.String(p.filter))
 	var out []PickReview
 	for _, rev := range g.Reviews {
-		if strings.Contains(fuzzy.Fold(norm.NFC.String(rev.Name)), needle) ||
-			strings.Contains(fuzzy.Fold(norm.NFC.String(rev.Desc)), needle) {
+		fn, fd := p.folded(rev)
+		if strings.Contains(fn, needle) || strings.Contains(fd, needle) {
 			out = append(out, rev)
 		}
 	}
 	return out
 }
 
+// folded returns the cached folded name and description of one review.
+func (p *picker) folded(rev PickReview) (string, string) {
+	key := rev.Name + "\x00" + rev.Desc
+	if f, ok := p.folds[key]; ok {
+		return f[0], f[1]
+	}
+	f := [2]string{
+		fuzzy.Fold(norm.NFC.String(rev.Name)),
+		fuzzy.Fold(norm.NFC.String(rev.Desc)),
+	}
+	p.folds[key] = f
+	return f[0], f[1]
+}
+
 // chosen counts distinct selected reviews: a review in two sets is one review.
 func (p *picker) chosen() int {
 	n := 0
-	for _, name := range p.known() {
+	for _, name := range p.knownReviews {
 		if p.selected[name] {
 			n++
 		}
@@ -488,19 +524,10 @@ func (p *picker) chosen() int {
 	return n
 }
 
-// known is every review the launcher offers, deduplicated.
+// known is every review the launcher offers, deduplicated, fixed at
+// construction because the config does not change mid-session.
 func (p *picker) known() []string {
-	seen := map[string]bool{}
-	out := []string{}
-	for _, g := range p.cfg.Groups {
-		for _, rev := range g.Reviews {
-			if !seen[rev.Name] {
-				seen[rev.Name] = true
-				out = append(out, rev.Name)
-			}
-		}
-	}
-	return out
+	return p.knownReviews
 }
 
 // pickedAgents is the agent pool as chosen, empty meaning auto-detect.

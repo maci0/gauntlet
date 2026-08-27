@@ -5,6 +5,7 @@ package agent
 
 import (
 	"maps"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"slices"
@@ -360,6 +361,37 @@ func TestTailKeepsLastBytes(t *testing.T) {
 	tl.WriteString("0123456789")
 	if got := string(tl.Bytes()); got != "6789" {
 		t.Fatalf("oversized write: got %q", got)
+	}
+}
+
+// TestTailRingManyWrites drives the tail through hundreds of small writes
+// with every chunking a pump might produce, checking it against the same
+// reference model as FuzzUsageTail: exactly the last size bytes written.
+// Two writes cannot reach steady state, so this is where wrap-around,
+// offsets past the end, and repeated oversized writes get pinned.
+func TestTailRingManyWrites(t *testing.T) {
+	for _, size := range []int{1, 2, 3, 7, 64, 1000} {
+		rng := rand.New(rand.NewSource(int64(size)))
+		data := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+		tl := NewTail(size)
+		var written []byte
+		for range 500 {
+			chunk := make([]byte, rng.Intn(3*size+10))
+			for i := range chunk {
+				chunk[i] = byte(data[rng.Intn(len(data))])
+			}
+			written = append(written, chunk...)
+			if _, err := tl.WriteString(string(chunk)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		want := string(written)
+		if len(want) > size {
+			want = want[len(want)-size:]
+		}
+		if got := string(tl.Bytes()); got != want {
+			t.Fatalf("size %d: tail %q, want last %d bytes %q", size, got, size, want)
+		}
 	}
 }
 
