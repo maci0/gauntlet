@@ -50,6 +50,13 @@ together, including `journal` and `selfupdate`. No package inside
 - **Untrusted input** is anything from the reviewed repository: prompt names,
   descriptions, agent output. Sanitize before display, never interpolate into
   a prompt without fencing.
+- **Nothing git-visible names this tool.** Commit subjects, merge messages, PR
+  titles and bodies, and branch names say what changed, never "gauntlet", the
+  review pass, or the automation behind it. Write "the CLI", "the dashboard",
+  or the package. `internal/prompt/rules/commit.md` states the rule for
+  agents, `runner_test.go` pins it for a reviewed repository, and it holds for
+  commits written by hand here too. The one exception is a literal identifier
+  the message is about: `GAUNTLET_HOME`, `gauntlet pick`, `.gauntlet.lock`.
 - **A conflicting merge is resolved or keeps its branch.** The conflict step
   may hand it to an agent in a scratch checkout; what comes back unresolved
   stays on its branch. Losing a review's entire output silently is worse than
