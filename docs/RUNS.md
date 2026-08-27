@@ -87,10 +87,15 @@ extra `--jobs` lanes. One persistent checkout lives under
 branches survive because open PRs need them. The branch checked out in the
 original directory never moves and no stack branch is merged automatically.
 
-Before launching an agent, gauntlet requires Git, `gh` authentication, a clean
-tracked tree, an initial base whose local and remote tips match, and a
-successful dry-run push of a new branch to `--push-remote`. The remote URL
-selects the GitHub repository in which `gh` creates the PRs.
+Before launching an agent, gauntlet fetches the selected branch from
+`--push-remote` and cuts the isolated worktree directly from that commit. It
+does not pull, update a local branch, or read uncommitted files from the
+original checkout. When that checkout has tracked or untracked changes,
+gauntlet names them, explains that they will not be reviewed or included in
+the PRs, and asks before continuing; `--yes` provides the same consent for an
+unattended run. It also requires Git, `gh` authentication, repository access,
+and a successful dry-run new-branch push. The remote URL selects the GitHub
+repository in which `gh` creates the PRs.
 
 A review with no file changes leaves no branch or PR; the next review stays on
 the last changed layer. A failed agent is reset to its layer's base before a

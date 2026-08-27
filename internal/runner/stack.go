@@ -12,7 +12,6 @@ import (
 
 	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
-	"github.com/maci0/gauntlet/internal/humanize"
 )
 
 // prepareStackMode validates every local and remote precondition before an
@@ -25,19 +24,6 @@ func (r *Runner) prepareStackMode(ctx context.Context) error {
 	if !r.repo.HasBaseline() {
 		return fmt.Errorf("--stacked-prs needs a git repository with at least one commit: %s", r.cfg.Dir)
 	}
-	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
-	if err != nil {
-		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
-	}
-	if len(changes.Tracked) > 0 {
-		return fmt.Errorf("%w: commit or stash your changes before building a PR stack (%s)",
-			ErrDirtyTree, humanize.List(safePaths(changes.Tracked), 3))
-	}
-	if n := len(changes.Untracked); n > 0 {
-		r.log("%d untracked file(s) stay put and are not reviewed: %s",
-			n, humanize.List(changes.Untracked, 3))
-	}
-
 	base := r.cfg.PRBase
 	if base == "" {
 		base = r.repo.CurrentBranch(ctx)
@@ -48,26 +34,26 @@ func (r *Runner) prepareStackMode(ctx context.Context) error {
 	if err := r.repo.ValidateBranchName(ctx, base); err != nil {
 		return fmt.Errorf("--pr-base: %w", err)
 	}
-	baseTip, err := r.repo.Tip(ctx, "refs/heads/"+base)
-	if err != nil {
-		return fmt.Errorf("--pr-base %s is not a local branch", base)
-	}
 	remoteURL, err := r.repo.RemoteURL(ctx, r.cfg.PushRemote)
 	if err != nil {
 		return err
 	}
-	remoteTip, found, err := r.repo.RemoteBranchTip(ctx, r.cfg.PushRemote, base)
+	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
 	if err != nil {
-		return fmt.Errorf("cannot read %s/%s: %w", r.cfg.PushRemote, base, err)
+		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
 	}
-	if !found {
-		return fmt.Errorf("--pr-base %s does not exist on remote %s", base, r.cfg.PushRemote)
-	}
-	if remoteTip != baseTip {
-		return fmt.Errorf("local %s and %s/%s differ; synchronize the base before building a stack",
-			base, r.cfg.PushRemote, base)
+	if len(changes.Tracked)+len(changes.Untracked) > 0 && !r.cfg.AllowDirtyStack {
+		return &StackDirtyError{Dir: r.cfg.Dir, Remote: r.cfg.PushRemote, Base: base,
+			Tracked: changes.Tracked, Untracked: changes.Untracked}
 	}
 
+	// Fetch, rather than pull: the remote base object enters the shared Git
+	// object store, while the branch and files checked out by the user do not
+	// move. The isolated worktree is cut directly from this returned commit.
+	baseTip, err := r.repo.FetchRemoteBranchTip(ctx, r.cfg.PushRemote, base)
+	if err != nil {
+		return fmt.Errorf("cannot fetch %s/%s: %w", r.cfg.PushRemote, base, err)
+	}
 	repoName, host := r.cfg.PRRepo, r.cfg.PRHost
 	if repoName == "" {
 		repoName, host, err = ghx.ParseRemote(remoteURL)

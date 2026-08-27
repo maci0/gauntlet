@@ -404,39 +404,68 @@ echo 'RESULT: changed=1'`)
 	}
 }
 
-func TestStackedPRsPreflightRejectsDirtyOrDivergedBase(t *testing.T) {
-	t.Run("dirty tracked file", func(t *testing.T) {
-		repo, _ := stackRepo(t)
-		fakeGH(t)
-		if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("changed\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		cfg := stackConfig(t, repo, []string{"sec-review"}, `echo 'RESULT: no-changes'`)
-		bus := NewBus()
-		drain(bus)
-		if _, err := New(context.Background(), cfg, bus); !errors.Is(err, ErrDirtyTree) {
-			t.Fatalf("dirty stack preflight = %v", err)
-		}
-		bus.Close()
-	})
+func TestStackedPRsDirtyCheckoutNeedsConsentAndUsesRemoteBase(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	remoteBase := gitOut(t, repo, "rev-parse", "refs/remotes/origin/main")
+	if err := os.WriteFile(filepath.Join(repo, "local-only.txt"), []byte("committed locally\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, repo, "add", "local-only.txt")
+	gitOut(t, repo, "commit", "-qm", "local only")
+	localTip := gitOut(t, repo, "rev-parse", "main")
+	if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("dirty tracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "untracked.txt"), []byte("dirty untracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("local and remote base differ", func(t *testing.T) {
-		repo, _ := stackRepo(t)
-		fakeGH(t)
-		if err := os.WriteFile(filepath.Join(repo, "local.txt"), []byte("local\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		gitOut(t, repo, "add", "local.txt")
-		gitOut(t, repo, "commit", "-qm", "local only")
-		cfg := stackConfig(t, repo, []string{"sec-review"}, `echo 'RESULT: no-changes'`)
-		bus := NewBus()
-		drain(bus)
-		if _, err := New(context.Background(), cfg, bus); err == nil || !strings.Contains(err.Error(), "differ") {
-			t.Fatalf("diverged stack preflight = %v", err)
-		}
-		bus.Close()
-	})
+	cfg := stackConfig(t, repo, []string{"sec-review"},
+		`printf 'reviewed\n' > reviewed.txt; echo 'RESULT: changed=1'`)
+	bus := NewBus()
+	drain(bus)
+	_, err := New(context.Background(), cfg, bus)
+	bus.Close()
+	var dirty *StackDirtyError
+	if !errors.As(err, &dirty) {
+		t.Fatalf("dirty stack preflight = %v, want StackDirtyError", err)
+	}
+	if dirty.Remote != "origin" || dirty.Base != "main" ||
+		!strings.Contains(dirty.Error(), "main.go") || !strings.Contains(dirty.Error(), "untracked.txt") {
+		t.Fatalf("dirty stack detail = %+v (%v)", dirty, dirty)
+	}
 
+	cfg.AllowDirtyStack = true
+	r, _ := runRecorded(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	if got := gitOut(t, repo, "rev-parse", "main"); got != localTip {
+		t.Fatalf("original branch moved: %s != %s", got, localTip)
+	}
+	for path, want := range map[string]string{
+		"main.go": "dirty tracked\n", "untracked.txt": "dirty untracked\n",
+	} {
+		body, readErr := os.ReadFile(filepath.Join(repo, path))
+		if readErr != nil || string(body) != want {
+			t.Fatalf("original %s = %q, %v", path, body, readErr)
+		}
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, "reviewed.txt")); !os.IsNotExist(statErr) {
+		t.Fatal("review output reached the original checkout")
+	}
+	branch := gitx.StackBranchName(remoteBase, 0, "sec-review")
+	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+branch+"^"); got != remoteBase {
+		t.Fatalf("stack parent = %s, want fetched remote base %s", got, remoteBase)
+	}
+	if out, cmdErr := exec.Command("git", "-C", repo, "cat-file", "-e",
+		"refs/heads/"+branch+":local-only.txt").CombinedOutput(); cmdErr == nil {
+		t.Fatalf("local-only commit leaked into remote-based stack: %s", out)
+	}
+}
+
+func TestStackedPRsPreflightChecksGitHubAuthenticationBeforeAgent(t *testing.T) {
 	t.Run("gh authentication before agent", func(t *testing.T) {
 		repo, _ := stackRepo(t)
 		fakeGH(t)

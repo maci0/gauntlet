@@ -429,6 +429,9 @@ func run(argv []string) int {
 			Started: startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
 			StackedPRs: opts.stackedPRs, PRBase: opts.prBase, PushRemote: opts.pushRemote,
+			// A hot-reload successor continues an isolation decision already made
+			// by the original process; prompting again could strand the run.
+			AllowDirtyStack:  resumed,
 			MergeInto:        opts.mergeInto,
 			ResolveConflicts: opts.resolveConflicts,
 			Seed:             opts.seed,
@@ -439,6 +442,22 @@ func run(argv []string) int {
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
 		}
 		r, err := runner.New(ctx, cfg, bus)
+		if stackDirty, ok := errors.AsType[*runner.StackDirtyError](err); ok {
+			proceed, confirmErr := confirmStackIsolation(stdout, opts, stackDirty)
+			switch {
+			case confirmErr != nil:
+				err = confirmErr
+			case !proceed:
+				fmt.Fprintln(stdout, "Aborted.")
+				bus.Close()
+				consumers.Wait()
+				jrnl.CloseQuiet()
+				return exitOK
+			default:
+				cfg.AllowDirtyStack = true
+				r, err = runner.New(ctx, cfg, bus)
+			}
+		}
 		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
 			commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
 			r, err = runner.New(ctx, cfg, bus)
@@ -541,6 +560,59 @@ func run(argv []string) int {
 	}
 	writeSummary(jrnl, runID, startedAt, dirs, agents, runs, code)
 	return code
+}
+
+// confirmStackIsolation makes the omission boundary explicit. A stacked run
+// is safe beside a dirty checkout because it starts from a fetched remote
+// commit, but silently reviewing a different tree from the one on screen is
+// surprising. Unattended callers must opt in with --yes.
+func confirmStackIsolation(out io.Writer, opts *options, dirty *runner.StackDirtyError) (bool, error) {
+	fi, statErr := os.Stdin.Stat()
+	interactive := statErr == nil && fi.Mode()&os.ModeCharDevice != 0
+	return confirmStackIsolationWith(out, os.Stdin, interactive, opts, dirty)
+}
+
+func confirmStackIsolationWith(out io.Writer, in io.Reader, interactive bool, opts *options,
+	dirty *runner.StackDirtyError) (bool, error) {
+	paths := dirty.DisplayPaths()
+	fmt.Fprintf(out, "\nUNCOMMITTED FILES (%d)\n", len(paths))
+	const displayLimit = 20
+	for _, path := range paths[:min(len(paths), displayLimit)] {
+		fmt.Fprintf(out, "  %s\n", path)
+	}
+	if len(paths) > displayLimit {
+		fmt.Fprintf(out, "  ... and %d more\n", len(paths)-displayLimit)
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "These files stay in the original checkout.")
+	fmt.Fprintln(out, "They will not be reviewed or included in the PRs.")
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, "STACK BASE")
+	fmt.Fprintf(out, "  %s/%s  latest fetched commit\n", dirty.Remote, dirty.Base)
+	fmt.Fprintln(out, "  The isolated worktree starts from this commit.")
+	if opts.yes || opts.yolo {
+		flag := "--yes"
+		if opts.yolo {
+			flag = "--yolo"
+		}
+		fmt.Fprintf(out, "Proceeding (%s).\n", flag)
+		return true, nil
+	}
+	if !interactive {
+		return false, errors.New("stacked PRs need confirmation to exclude uncommitted changes; rerun with --yes")
+	}
+	fmt.Fprint(out, "Continue? [y/N] ")
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil {
+		fmt.Fprintln(out)
+		return false, nil
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	default:
+		return false, nil
+	}
 }
 
 // exitCode maps the run's outcome onto the documented codes.

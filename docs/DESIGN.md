@@ -203,10 +203,11 @@ flowchart LR
 
 The invariants are:
 
-1. The initial local branch and its remote counterpart point at the same
-   commit; every later branch is a direct, one-commit child of the preceding
-   changed layer.
-2. The original worktree is read for status and refs only. Agents, staging,
+1. The initial commit is fetched directly from the selected remote base;
+   every later branch is a direct, one-commit child of the preceding changed
+   layer. No local branch needs to point at that commit.
+2. The original worktree is read only to surface files the stack will exclude.
+   Dirty files require interactive consent or `--yes`; agents, staging,
    commits, and retry resets operate inside the scratch worktree.
 3. A layer is not eligible as the next base until its push succeeds and an
    exact head/base PR exists. Publication failure therefore stops scheduling.

@@ -327,7 +327,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		"hand a review branch that will not merge to an agent to resolve "+
 			"(--resolve-conflicts=false keeps it for a human)")
 	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules: bigger, more ambitious changes")
-	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "skip the suggest confirmation") })
+	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "answer yes to confirmation prompts") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
 	fs.BoolVar(&o.continueSessions, "continue-sessions", false, "resume each agent's session between reviews")
 

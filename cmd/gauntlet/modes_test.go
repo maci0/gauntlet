@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // promptPair builds a two-review set like a discovered project would have.
@@ -32,6 +33,37 @@ func promptPair(t *testing.T) prompt.Set {
 		t.Fatal(err)
 	}
 	return set
+}
+
+func TestConfirmStackIsolationExplainsExcludedCheckout(t *testing.T) {
+	dirty := &runner.StackDirtyError{Dir: "/repo", Remote: "origin", Base: "main",
+		Tracked: []string{"changed.go"}, Untracked: []string{"notes.txt"}}
+
+	var out bytes.Buffer
+	ok, err := confirmStackIsolationWith(&out, strings.NewReader("yes\n"), true, &options{}, dirty)
+	if err != nil || !ok {
+		t.Fatalf("interactive yes = %v, %v", ok, err)
+	}
+	for _, want := range []string{
+		"UNCOMMITTED FILES (2)", "  changed.go\n", "  notes.txt\n",
+		"will not be reviewed or included", "STACK BASE",
+		"origin/main  latest fetched commit", "isolated worktree",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("confirmation is missing %q:\n%s", want, out.String())
+		}
+	}
+
+	out.Reset()
+	if ok, err := confirmStackIsolationWith(&out, strings.NewReader("n\n"), true, &options{}, dirty); err != nil || ok {
+		t.Fatalf("interactive no = %v, %v", ok, err)
+	}
+	if ok, err := confirmStackIsolationWith(io.Discard, strings.NewReader(""), false, &options{}, dirty); err == nil || ok || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("unattended confirmation = %v, %v", ok, err)
+	}
+	if ok, err := confirmStackIsolationWith(io.Discard, strings.NewReader(""), false, &options{yes: true}, dirty); err != nil || !ok {
+		t.Fatalf("--yes confirmation = %v, %v", ok, err)
+	}
 }
 
 // TestScheduleForTurnsFlagsIntoASchedule pins the decision of what runs:

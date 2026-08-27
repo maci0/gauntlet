@@ -56,8 +56,12 @@ type Config struct {
 	// StackedPRs runs the configured review order in one isolated worktree,
 	// publishing each changed review as a child PR of the previous one.
 	StackedPRs bool
-	PRBase     string // initial local and remote base branch; empty means current
+	PRBase     string // initial remote base branch; empty means current branch name
 	PushRemote string // remote receiving stack branches; empty means origin
+	// AllowDirtyStack confirms that changes in the original checkout may be
+	// excluded. Stack mode never reads them: its worktree starts at the fetched
+	// remote base. The CLI sets this only after explicit consent (or on resume).
+	AllowDirtyStack bool
 	// PRRepo and PRHost are normally inferred from PushRemote. They exist so
 	// tests can pair a local fake Git remote with a fake gh endpoint.
 	PRRepo string
@@ -201,6 +205,39 @@ func (r *Runner) takeNext() (string, bool) {
 // about: the work is there, it simply is not committed. Callers that can ask
 // a person offer the commit step rather than stopping.
 var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
+
+// StackDirtyError asks the caller to surface the isolation boundary before a
+// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
+// technical blocker: they stay in the original checkout and the stack starts
+// from the selected remote branch. They are still important enough that an
+// interactive CLI must not silently omit them from review.
+type StackDirtyError struct {
+	Dir       string
+	Remote    string
+	Base      string
+	Tracked   []string
+	Untracked []string
+}
+
+func (e *StackDirtyError) Error() string {
+	if e == nil {
+		return "stacked PR confirmation required"
+	}
+	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
+		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
+		humanize.List(e.DisplayPaths(), 3))
+}
+
+// DisplayPaths returns sanitized tracked paths followed by sanitized
+// untracked paths, ready for terminal output. The exact paths remain in the
+// fields for programmatic handling; only their display form is altered.
+func (e *StackDirtyError) DisplayPaths() []string {
+	if e == nil {
+		return nil
+	}
+	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
+	return safePaths(paths)
+}
 
 // New prepares a runner. It opens the repository (if any) and validates the
 // preconditions for the requested concurrency.

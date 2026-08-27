@@ -77,7 +77,7 @@ var helpGroups = []flagGroup{
 		{"c", "commit", "", "after each review, an agent commits the changes"},
 		{"p", "push", "", "like --commit, and pushes"},
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
-		{"y", "yes", "", "skip the suggest confirmation"},
+		{"y", "yes", "", "answer yes to confirmation prompts"},
 		{"", "semcode", "", "build a semcode index before the loop"},
 	}},
 	{"Modes", []flagDoc{

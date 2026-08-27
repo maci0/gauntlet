@@ -564,6 +564,22 @@ func (r *Repo) RemoteBranchTip(ctx context.Context, remote, branch string) (tip 
 	return fields[0], true, nil
 }
 
+// FetchRemoteBranchTip downloads the selected remote branch and returns the
+// fetched commit without moving any local branch or checkout. FETCH_HEAD is a
+// process-local staging ref here: the repository lock prevents another
+// gauntlet in the same clone from racing this preparation step.
+func (r *Repo) FetchRemoteBranchTip(ctx context.Context, remote, branch string) (string, error) {
+	if _, err := r.run(ctx, gitPush, "fetch", "--quiet", "--no-tags", "--", remote,
+		"refs/heads/"+branch); err != nil {
+		return "", err
+	}
+	tip, err := r.Tip(ctx, "FETCH_HEAD")
+	if err != nil || tip == "" {
+		return "", errors.New("fetch returned no branch tip")
+	}
+	return tip, nil
+}
+
 // FetchBranch restores a stack branch into local refs for a resumed run.
 func (r *Repo) FetchBranch(ctx context.Context, remote, branch string) error {
 	if _, err := r.run(ctx, gitPush, "fetch", "--quiet", "--", remote,

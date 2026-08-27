@@ -117,8 +117,11 @@ commits each one and merges them back one at a time.
 Stack mode is sequential for a different reason: every review must see the
 commits below it. From base `main`, changed reviews produce `review-1 → main`,
 then `review-2 → review-1`, and so on. The PRs stay open; gauntlet removes only
-the scratch checkout. See [stacked pull requests](docs/RUNS.md#stacked-pull-requests)
-for the branch lifecycle and recovery rules.
+the scratch checkout. It fetches the remote base without moving your local
+branch. If the original checkout has uncommitted files, gauntlet names them
+and asks before leaving them out of the review. See
+[stacked pull requests](docs/RUNS.md#stacked-pull-requests) for the branch
+lifecycle and recovery rules.
 
 ```mermaid
 flowchart LR

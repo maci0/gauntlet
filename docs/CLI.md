@@ -99,10 +99,10 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
 | `--stacked-prs` | off | Run the selected reviews once, in their configured order, using one isolated worktree. Every changed review is committed, pushed, and opened as a PR against the preceding changed review. Nothing is merged and the original checkout is untouched. This mode owns commits and pushes, forces `--jobs 1` and one loop, and conflicts with `--commit`, `--push`, and `--merge-into`. |
-| `--pr-base BRANCH` | current branch | Initial local and remote base for `--stacked-prs`. The two tips must match before the run starts. Requires `--stacked-prs`. |
+| `--pr-base BRANCH` | current branch name | Remote base for `--stacked-prs`. Gauntlet fetches `REMOTE/BRANCH` and starts the isolated worktree at that commit; the local branch and checkout do not move or need to match it. Requires `--stacked-prs`. |
 | `--push-remote REMOTE` | `origin` | Remote receiving stack branches and identifying the GitHub PR repository. Gauntlet verifies a dry-run new-branch push before launching an agent. Requires `--stacked-prs`. |
-| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes when a `--jobs` run offers to commit a dirty tree. |
-| `-y, --yes` | off | Skip the suggest confirmation. |
+| `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
+| `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop. |
 
 **Output and modes**

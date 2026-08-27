@@ -138,9 +138,12 @@ privilege transition:
 - **`--stacked-prs` (worktree isolation plus publication):** the runner has
   the same staging, commit, and retry-reset authority inside one scratch
   worktree, then invokes Git to push each committed child branch and `gh` to
-  create its PR. Startup verifies a clean tracked tree, equal local/remote
-  base tips, `gh` authentication and repository access, and a dry-run
-  new-branch push before any agent starts. A publication failure stops later
+  create its PR. Startup fetches the named remote base without moving the
+  original checkout. If that checkout is dirty, the CLI names the excluded
+  files and requires interactive consent or `--yes`; the worktree never sees
+  them. Startup also verifies `gh` authentication and repository access, and
+  a dry-run new-branch push before any agent starts. A publication failure
+  stops later
   reviews, so no agent runs on a branch that does not exist as a usable remote
   PR base. Git and `gh` receive fixed argv elements rather than shell text;
   review names, commit subjects, and PR bodies cannot become commands.
