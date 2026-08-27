@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // flagDoc is one row of the help screen.
@@ -48,7 +49,7 @@ var helpGroups = []flagGroup{
 		{"x", "exclude", "LIST", "reviews and/or sets to skip (repeatable)"},
 		{"s", "suggest", "", "an agent picks the reviews; any named with --reviews are scheduled as well"},
 		{"", "suggest-agent", "AGENT", "agent to run the suggest step, or 'gauntlet' to choose from file signals with no agent at all (default: sample from --agents)"},
-		{"", "suggest-timeout", "DUR", "timeout for the suggest step"},
+		{"", "suggest-timeout", "DUR", fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "prompt-dir", "DIR", "use *-review.md files from DIR instead of the embedded set"},
 	}},
 	{"Agents", []flagDoc{
@@ -62,11 +63,11 @@ var helpGroups = []flagGroup{
 		{"", "dirs", "LIST", "review several directories in parallel, each with its own --jobs pool; globs are expanded (repeatable)"},
 		{"", "target-dirs", "LIST", "alias of --dirs, kept for scripts from the Python tool; takes a comma-separated list"},
 		{"j", "jobs", "N", "reviews at a time per directory; above 1, each gets its own git worktree and is merged back"},
-		{"t", "timeout", "DUR", "per-review timeout: 90s, 30m, 1h, 2d"},
+		{"t", "timeout", "DUR", fmt.Sprintf("per-review timeout: 90s, 30m, 1h, 2d (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
 		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true)"},
 		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent, waiting longer each time (default %d)", defaultRetries)},
-		{"", "runtime", "DUR", "wall-clock budget for the whole run"},
+		{"", "runtime", "DUR", "wall-clock budget for the whole run (0 = unlimited)"},
 		{"1", "once", "", "run a single loop and exit"},
 		{"n", "max-loops", "N", "stop after N loops (0 means unlimited)"},
 		{"", "seed", "N", "RNG seed for review order and agent picks, recorded in the journal (default: random)"},
@@ -99,7 +100,7 @@ var helpGroups = []flagGroup{
 		{"", "check", "", "update: report the latest release without installing"},
 	}},
 	{"History", []flagDoc{
-		{"", "limit", "N", "runs: how many entries to list"},
+		{"", "limit", "N", fmt.Sprintf("runs: how many entries to list (default %d)", defaultRunsLimit)},
 	}},
 }
 

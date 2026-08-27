@@ -283,7 +283,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	})
 	fs.StringVar(suggestAgent, "suggest-agent", "",
 		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
-	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout", "timeout for the suggest step")
+	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout",
+		fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute)))
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
 	alias("a", "agents", func(n string) {
@@ -297,7 +298,10 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	// The name the Python tool used. Scripts that pass it keep working, but it
 	// takes a comma-separated list here rather than space-separated arguments.
 	fs.Var(dirs, "target-dirs", "alias of --dirs")
-	alias("t", "timeout", func(n string) { fs.Var(durationFlag{d: &o.timeout}, n, "per-review timeout") })
+	alias("t", "timeout", func(n string) {
+		fs.Var(durationFlag{d: &o.timeout}, n,
+			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
+	})
 	fs.Var(durationFlag{&o.runtime, true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
 	alias("j", "jobs", func(n string) {
 		fs.IntVar(&o.jobs, n, 1, "reviews to run at once per directory; >1 gives each its own git worktree and merges back")

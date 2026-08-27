@@ -5,6 +5,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"slices"
@@ -59,6 +60,10 @@ func TestUsageRendersEverySection(t *testing.T) {
 		"USAGE", "REVIEWS", "AGENTS", "EXECUTION", "MODES", "OUTPUT",
 		"UPDATES", "HISTORY", "EXAMPLES", "EXIT CODES", "ENVIRONMENT",
 		"gauntlet doctor", "--jobs", "GAUNTLET_HOME", "FORCE_COLOR", "gauntlet version",
+		// Defaults the help screen promises must track the parser's consts.
+		fmt.Sprintf("(default %dm)", int(defaultTimeout/time.Minute)),
+		fmt.Sprintf("(default %d)", defaultRunsLimit),
+		"(0 = unlimited)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help screen is missing %q", want)
