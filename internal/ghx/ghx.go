@@ -143,14 +143,22 @@ func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 }
 
 // ownsHead reports whether a candidate PR's head branch lives where this
-// client's pushes land. Filtering by a bare branch name returns matches from
-// every fork that happens to carry it, so a cross-fork client keeps only the
-// PR whose head is in the repository it actually pushed to.
+// client's pushes land: the fork for a cross-fork client, the base repository
+// itself otherwise. Filtering by a bare branch name returns matches from every
+// fork that happens to carry it, and stack branch names are derived from a
+// public base commit, so without this check anyone could open a PR from their
+// own fork under a name a run is about to use and have it taken for that run's
+// own layer. A candidate whose head repository is gone reports no owner and
+// stays eligible: the branch checks that follow are what reject it.
 func (c Client) ownsHead(p pull) bool {
-	if c.HeadOwner == "" {
+	owner := c.HeadOwner
+	if owner == "" {
+		owner, _, _ = strings.Cut(c.Repo, "/")
+	}
+	if owner == "" || p.HeadOwner.Login == "" {
 		return true
 	}
-	return strings.EqualFold(p.HeadOwner.Login, c.HeadOwner)
+	return strings.EqualFold(p.HeadOwner.Login, owner)
 }
 
 // Create opens a pull request and returns its URL. Every value is an argv

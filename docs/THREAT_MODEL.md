@@ -151,9 +151,13 @@ privilege transition:
   reload, and project prompts and suggestion signals are read from a snapshot
   worktree of that commit, never from uncommitted files in the checkout. A
   publication failure stops later reviews, so no agent runs on a branch that
-  does not exist as a usable remote PR base. Git and `gh` receive fixed argv
-  elements rather than shell text; review names, commit subjects, and PR
-  bodies cannot become commands. Git itself runs hardened against the
+  does not exist as a usable remote PR base. Stack branch names are derived
+  from a public base commit, so a pull request is only reused as a run's own
+  layer when its head branch lives in the repository gauntlet pushes to
+  (`ownsHead` in `internal/ghx/ghx.go`): a PR opened from someone else's fork
+  under a name a run is about to use is ignored, not adopted. Git and `gh`
+  receive fixed argv elements rather than shell text; review names, commit
+  subjects, and PR bodies cannot become commands. Git itself runs hardened against the
   reviewed repository's own config: hooks, fsmonitor, and external diff are
   disabled, `ext::` transports are refused, and `GIT_SSH_COMMAND=ssh` outranks
   a repo-local `core.sshCommand` (`safeConfig` and `runIn` in

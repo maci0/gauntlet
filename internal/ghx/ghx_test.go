@@ -147,3 +147,40 @@ exit 2
 		t.Fatalf("Find matched a foreign fork's PR: %q, %v", got, err)
 	}
 }
+
+// A same-repo run filters by a bare branch name too, and stack branch names
+// are derived from a public base commit. A PR opened from a stranger's fork
+// under such a name must not be taken for the run's own layer.
+func TestClientIgnoresForeignHeadWithoutAFork(t *testing.T) {
+	dir := t.TempDir()
+	script := `#!/bin/sh
+case "$1 $2" in
+  "pr list")
+    printf '[{"url":"https://github.com/owner/repo/pull/3","headRefName":"child","baseRefName":"base","headRepositoryOwner":{"login":"%s"}}]\n' "$GH_TEST_HEAD_OWNER"
+    exit 0 ;;
+esac
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com"} // pushes to the base repo
+
+	t.Setenv("GH_TEST_HEAD_OWNER", "stranger")
+	if got, err := c.Find(context.Background(), "child", "base"); err != nil || got != "" {
+		t.Fatalf("Find adopted a stranger's fork PR: %q, %v", got, err)
+	}
+	t.Setenv("GH_TEST_HEAD_OWNER", "owner")
+	if got, err := c.Find(context.Background(), "child", "base"); err != nil ||
+		got != "https://github.com/owner/repo/pull/3" {
+		t.Fatalf("Find missed the run's own PR: %q, %v", got, err)
+	}
+	// A deleted head repository reports no owner; the branch checks that
+	// follow decide, so Find must not filter it out here.
+	t.Setenv("GH_TEST_HEAD_OWNER", "")
+	if got, err := c.Find(context.Background(), "child", "base"); err != nil ||
+		got != "https://github.com/owner/repo/pull/3" {
+		t.Fatalf("Find dropped an owner-less candidate: %q, %v", got, err)
+	}
+}

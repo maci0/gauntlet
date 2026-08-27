@@ -185,6 +185,16 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	var wt *gitx.Worktree
 	var err error
 	defer func() {
+		// A hard cancel has no successor, so whatever is still queued is
+		// recorded rather than dropped from the stats, summary, and journal,
+		// the same rule the sequential and parallel loops follow. Every exit
+		// runs through here, so a cancel that lands mid-publication counts its
+		// stranded reviews too; abandonQueue drains the queue, so reaching
+		// this twice is a no-op. A soft stop leaves ctx alone and hands its
+		// queue to the successor instead.
+		if ctx.Err() != nil {
+			r.abandonQueue(loopNo)
+		}
 		if wt != nil {
 			if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
 				r.log("Cannot remove stack worktree: %v", err)
@@ -193,15 +203,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	}()
 
 	for i := start; i < len(r.cfg.Reviews); i++ {
-		if ctx.Err() != nil {
-			// A hard cancel has no successor, so what it strands is recorded
-			// rather than dropped from the stats, summary, and journal, the
-			// same rule the sequential and parallel loops follow. A soft stop
-			// hands its queue over instead, so it leaves the queue alone.
-			r.abandonQueue(loopNo)
-			return false
-		}
-		if r.soft.Load() {
+		if ctx.Err() != nil || r.soft.Load() {
 			return false
 		}
 		if r.finish.Load() {
@@ -252,8 +254,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 				return false
 			}
 			if res.Status == StatusInterrupted {
-				r.abandonQueue(loopNo)
-				return false
+				return false // the defer records what the cancel stranded
 			}
 			continue
 		}
