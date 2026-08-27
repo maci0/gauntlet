@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -253,22 +254,44 @@ func TestSquashInNamesTheConflictedPaths(t *testing.T) {
 	}
 	write(second, "package main\n\nfunc main() { b() }\n")
 
+	// A conflicted non-ASCII filename must come back with its bytes intact:
+	// git's default core.quotePath turns é into C escapes, a form neither
+	// Unresolved nor the conflict prompt can match to the real file.
+	cafe := filepath.Join(first.Dir, "café-notes.md")
+	if err := os.WriteFile(cafe, []byte("from first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := first.CommitAll(ctx, "café change"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(second.Dir, "café-notes.md"), []byte("from second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := second.CommitAll(ctx, "café counterchange"); err != nil {
+		t.Fatal(err)
+	}
+
 	paths, err := second.SquashIn(ctx, first.Branch)
 	if err != nil {
 		t.Fatalf("SquashIn: %v", err)
 	}
-	if len(paths) != 1 || paths[0] != "main.go" {
-		t.Fatalf("conflicted paths = %q, want [main.go]", paths)
+	slices.Sort(paths)
+	wantPaths := []string{"café-notes.md", "main.go"}
+	if !slices.Equal(paths, wantPaths) {
+		t.Fatalf("conflicted paths = %q, want %q", paths, wantPaths)
 	}
 	left, err := second.Unresolved(ctx, paths)
 	if err != nil {
 		t.Fatalf("Unresolved: %v", err)
 	}
-	if len(left) != 1 {
-		t.Fatalf("Unresolved = %q, want the file that still has markers", left)
+	if len(left) != 2 {
+		t.Fatalf("Unresolved = %q, want both files that still carry markers", left)
 	}
 
 	// Resolving means the markers are gone, whoever removed them.
+	if err := os.WriteFile(filepath.Join(second.Dir, "café-notes.md"), []byte("merged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	write(second, "package main\n\nfunc main() { a(); b() }\n")
 	left, err = second.Unresolved(ctx, paths)
 	if err != nil {

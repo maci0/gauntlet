@@ -15,6 +15,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -546,7 +548,7 @@ func scan(dir string) signals {
 	if changed, err := gitx.Open(root).ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
 		s.churn = true
 		for _, rel := range changed {
-			s.hot[strings.ToLower(filepath.Ext(rel))]++
+			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++
 		}
 	}
 	return s
@@ -556,9 +558,21 @@ func scan(dir string) signals {
 // repository with a decade of commits.
 const churnTimeout = 10 * time.Second
 
+// nfcPath slashes and NFC-normalizes one path received from outside (git
+// output or a directory walk). ASCII input passes through untouched at
+// no cost; only a path with combining marks pays.
+func nfcPath(p string) string {
+	return norm.NFC.String(filepath.ToSlash(p))
+}
+
 // record files one path into the signal sets.
+//
+// nfcPath first: a tree's filenames arrive in whatever bytes the filesystem
+// and git carry (macOS hands out NFD), while the values a review declares in
+// its Signals: line are author-typed, usually NFC. Both sides store NFC so
+// the two forms meet byte-exactly when matchDeclared compares them.
 func record(s *signals, rel string) {
-	rel = filepath.ToSlash(rel)
+	rel = nfcPath(rel)
 	lower := strings.ToLower(rel)
 	base := path.Base(lower)
 	if isTestFile(base) {

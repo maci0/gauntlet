@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestParseSpecs(t *testing.T) {
@@ -198,6 +199,24 @@ func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
 	long := "SUBJECT: " + strings.Repeat("x", 500) + "\n"
 	if n := len(ParseSubject([]byte(long))); n > subjectMax {
 		t.Fatalf("subject is %d bytes, want at most %d", n, subjectMax)
+	}
+}
+
+// A byte-counted cut would land mid-rune and put mojibake into git history.
+func TestParseSubjectTruncatesOnARuneBoundary(t *testing.T) {
+	subject := strings.Repeat("café ", 30)
+	if got := len(subject); got <= subjectMax || subjectMax%6 == 0 {
+		t.Fatalf("fixture no longer exercises a mid-rune cut: %d bytes", got)
+	}
+	got := ParseSubject([]byte("SUBJECT: " + subject + "\n"))
+	if !utf8.ValidString(got) {
+		t.Fatalf("subject truncation produced invalid UTF-8: %q", got)
+	}
+	if n := utf8.RuneCountInString(got); n > subjectMax {
+		t.Fatalf("subject is %d runes, want at most %d", n, subjectMax)
+	}
+	if !strings.HasPrefix(subject, got) {
+		t.Fatalf("truncated subject is not a rune-clean prefix: %q", got)
 	}
 }
 

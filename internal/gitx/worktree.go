@@ -207,13 +207,18 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 	if err == nil {
 		return nil, nil
 	}
-	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
+	// -z names each path on its own NUL-terminated record and leaves bytes
+	// like é raw. Without it git quotes non-ASCII into C escapes
+	// ("r\303\251sum\303\251.tex"), a string Unresolved cannot open back up,
+	// so markers in that file would go unnoticed and get committed.
+	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "-z",
+		"--diff-filter=U")
 	if uErr != nil {
 		return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
 	}
 	var paths []string
-	for line := range strings.SplitSeq(string(unmerged), "\n") {
-		if p := strings.TrimSpace(line); p != "" {
+	for p := range strings.SplitSeq(string(unmerged), "\x00") {
+		if p != "" {
 			paths = append(paths, p)
 		}
 	}

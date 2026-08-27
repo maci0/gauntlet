@@ -161,11 +161,28 @@ func ParseSubject(tail []byte) string {
 		}, m[1])
 		s = strings.TrimSpace(s)
 		if len(s) > subjectMax {
-			s = strings.TrimSpace(s[:subjectMax])
+			s = strings.TrimSpace(truncateRunes(s, subjectMax))
 		}
 		if s != "" {
 			return s
 		}
 	}
 	return ""
+}
+
+// truncateRunes cuts s to at most max runes. A commit subject survives an
+// agent's output verbatim, and a byte count would land the cut inside the
+// UTF-8 encoding of anything past ASCII: fifty CJK characters measure one
+// hundred bytes in runes and one hundred and fifty in bytes, so a byte cut
+// writes mojibake into permanent history. Like every other display limit
+// here (compose's catalog budget, --list's columns), it counts runes.
+func truncateRunes(s string, max int) string {
+	n := 0
+	for i := range s {
+		if n == max {
+			return s[:i]
+		}
+		n++
+	}
+	return s
 }

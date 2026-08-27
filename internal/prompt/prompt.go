@@ -141,8 +141,12 @@ func (r Review) Signals() []string {
 		}
 		for field := range strings.SplitSeq(strings.TrimPrefix(line, signalPrefix), ",") {
 			kind, value, ok := strings.Cut(strings.TrimSpace(field), ":")
-			kind = strings.ToLower(strings.TrimSpace(kind))
-			value = strings.ToLower(strings.TrimSpace(value))
+			// Values name files a tree carries, and macOS hands out NFD
+			// spellings while an author types NFC into the Signals: line;
+			// normalizing here mirrors what discovery does to prompt stems
+			// (see nfc) so the two forms meet byte-exactly.
+			kind = strings.ToLower(strings.TrimSpace(nfc(kind)))
+			value = strings.ToLower(strings.TrimSpace(nfc(value)))
 			switch {
 			case !ok, !signalKinds[kind], value == "":
 			case utf8.RuneCountInString(value) > signalValMax:

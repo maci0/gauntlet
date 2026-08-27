@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
@@ -219,6 +221,43 @@ func TestFastSuggestHonorsSignalsAPromptDeclares(t *testing.T) {
 		t.Fatal("a review that declared its own signals was not proposed")
 	}
 	if !strings.Contains(reason, "ext:.zig") {
+		t.Errorf("evidence was %q, which does not name the signal that matched", reason)
+	}
+}
+
+// A macOS tree hands out NFD filenames while an author types NFC into the
+// Signals: line of a prompt. Both sides are stored NFC (record normalizes
+// what it receives, prompt.Signals normalizes what the author declared), so
+// the same word spelled in two forms still matches.
+func TestFastSuggestMatchesSignalsAcrossNormalizationForms(t *testing.T) {
+	dir := t.TempDir()
+	nfd := "cafe\u0301-notes.md" // decomposed é, as a Mac filesystem spells it
+	if norm.NFC.String(nfd) == nfd {
+		t.Fatal("fixture is not decomposed; it proves nothing")
+	}
+	if err := os.WriteFile(filepath.Join(dir, nfd), []byte("hi\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	promptDir := t.TempDir()
+	body := "Signals: name:caf\u00e9-notes.md\n\nYour goal is to review caf\u00e9 notes.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, promptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var reason string
+	for _, s := range fastSuggest(dir, []string{"cafe-review"}, set) {
+		if s.Name == "cafe-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("an NFD filename never matched its NFC-declared signal")
+	}
+	if !strings.Contains(reason, "name:") {
 		t.Errorf("evidence was %q, which does not name the signal that matched", reason)
 	}
 }
