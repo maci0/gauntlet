@@ -759,3 +759,34 @@ sleep 10`)
 		t.Fatalf("queue left behind with no successor to take it: %v", got)
 	}
 }
+
+// A cancel kills the git and gh commands that build a layer, so the setup step
+// reports its own failure. That review was interrupted, not failed: counting it
+// as a failure inflates the failure count on a Ctrl-C and publishes a
+// pull_request failure for a layer nobody attempted.
+func TestStackSetupFailureAfterCancelCountsAsInterrupted(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	cfg := stackConfig(t, repo, []string{"a-review"}, `echo "RESULT: no-changes"`)
+	bus := NewBus()
+	sub := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(sub, done)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	r.recordStackFailure(canceled, 1, "a-review", "branch", "main",
+		"create stack branch", errors.New("signal: killed"))
+	bus.Close()
+
+	if got := r.Stats().Counts(); got.Interrupted != 1 || got.Failures() != 0 {
+		t.Fatalf("counts = %+v, want the canceled setup recorded as interrupted", got)
+	}
+	if n := countKind(<-done, EvPullRequest); n != 0 {
+		t.Fatalf("published %d pull_request events for a layer nobody attempted", n)
+	}
+}
