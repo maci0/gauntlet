@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -453,7 +454,7 @@ func (p *picker) toggleAll() {
 			}
 		}
 	case paneAgents:
-		want := !slicesAny(p.agents)
+		want := !slices.Contains(p.agents, true)
 		for i := range p.agents {
 			p.agents[i] = want
 		}
@@ -524,12 +525,6 @@ func (p *picker) chosen() int {
 	return n
 }
 
-// known is every review the launcher offers, deduplicated, fixed at
-// construction because the config does not change mid-session.
-func (p *picker) known() []string {
-	return p.knownReviews
-}
-
 // pickedAgents is the agent pool as chosen, empty meaning auto-detect.
 func (p *picker) pickedAgents() []string {
 	var out []string
@@ -590,7 +585,7 @@ func (p *picker) argv() []string {
 // everything is selected, set names where a set is selected whole, and the
 // leftovers by name with the -review suffix dropped, as the flag allows.
 func (p *picker) reviewArgs() string {
-	all := p.known()
+	all := p.knownReviews
 	if p.chosen() == 0 || p.chosen() == len(all) {
 		return ""
 	}
@@ -687,7 +682,7 @@ func (p *picker) View() string {
 // and spread, saying what this run would be rather than what it is doing.
 func (p *picker) renderHeader() string {
 	left := []string{wordmark()}
-	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.known()))
+	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.knownReviews))
 	switch {
 	case p.suggest && p.chosen() > 0:
 		scope = fmt.Sprintf("agent-picked, %d weighted", p.chosen())
@@ -696,7 +691,7 @@ func (p *picker) renderHeader() string {
 	case p.chosen() == 0:
 		// Nothing picked is not an empty run: it is every review, which is
 		// what the composed command says by saying nothing.
-		scope = fmt.Sprintf("all %d reviews", len(p.known()))
+		scope = fmt.Sprintf("all %d reviews", len(p.knownReviews))
 	}
 	agents := "all installed"
 	if picked := p.pickedAgents(); len(picked) > 0 {
@@ -917,9 +912,9 @@ func (p *picker) reviewPanel(w, h int) string {
 	if p.filterMissed(rows) {
 		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
 	}
-	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.known()))
+	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.knownReviews))
 	if p.chosen() == 0 {
-		title = fmt.Sprintf("REVIEWS  all %d", len(p.known()))
+		title = fmt.Sprintf("REVIEWS  all %d", len(p.knownReviews))
 	}
 	if p.filter != "" {
 		title += styleInfo.Render("   /" + p.filter)
@@ -1034,15 +1029,6 @@ func checkbox(on bool) string {
 		return styleOK.Render("[x]")
 	}
 	return styleDim.Render("[ ]")
-}
-
-func slicesAny(b []bool) bool {
-	for _, v := range b {
-		if v {
-			return true
-		}
-	}
-	return false
 }
 
 // pickLine lays one row out: left text, right text, and the cursor bar that

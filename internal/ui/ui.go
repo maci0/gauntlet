@@ -1093,14 +1093,8 @@ func pad(s string, w int) string {
 
 // trim cuts s to at most w terminal cells, ellipsis included, cutting
 // between grapheme clusters: names come from the reviewed repository and
-// are neither always ASCII nor single-width.
+// are neither always ASCII nor single-width. It is clip without the styling.
 func trim(s string, w int) string {
-	return truncateWidth(s, w)
-}
-
-// truncateWidth is clip without the styling: at most w cells of s, cut
-// between grapheme clusters, marked with an ellipsis when anything was cut.
-func truncateWidth(s string, w int) string {
 	if w <= 1 {
 		return s
 	}
