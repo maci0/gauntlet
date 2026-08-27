@@ -60,10 +60,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-      - run: uvx ruff check scripts
-      - run: uvx ruff format --check scripts
+        with:
+          # Pin uv itself, not just the tools it runs: this job's verdict must
+          # depend on the commit, not on what uv released this week.
+          version: "0.12.6"
+      # ruff, mypy, and rich are pinned for the same reason every other
+      # toolchain in the repository is: a new upstream release must not turn
+      # a green tree red with no code change, and the two ruff steps must
+      # never resolve different versions within one run. Bump these pins
+      # deliberately in one commit, running all three steps locally first;
+      # dependabot does not track versions inside `run:` steps.
+      - run: uvx ruff@0.16.4 check scripts
+      - run: uvx ruff@0.16.4 format --check scripts
       # rich has type information, so mypy needs it installed to see it.
-      - run: uvx --with rich mypy --strict scripts
+      - run: uvx --with rich==15.0.0 mypy@2.3.1 --strict scripts
 
   dist:
     runs-on: ubuntu-latest
