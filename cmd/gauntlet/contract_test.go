@@ -75,6 +75,7 @@ var goldenEnvVars = []string{
 	"CLICOLOR_FORCE",
 	"FORCE_COLOR",
 	"GAUNTLET_HOME",
+	"GAUNTLET_NO_ANIMATION",
 	"GITHUB_TOKEN",
 	"NO_COLOR",
 	"TERM",

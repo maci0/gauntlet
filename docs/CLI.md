@@ -130,6 +130,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | Variable | Effect |
 |---|---|
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. |
+| `GAUNTLET_NO_ANIMATION` | Anything but empty or `0`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. |
 | `GITHUB_TOKEN` | Optional. Sent only to api.github.com by `gauntlet update` and `--auto-update`, for a higher API rate limit. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
 | `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty or `0`: force color on, so piping through `less -R` keeps its palette. |

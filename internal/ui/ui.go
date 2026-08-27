@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -788,11 +789,31 @@ const (
 	thinkingFrame = 200 * time.Millisecond
 )
 
+// motionStill is the frame a frozen reasoning glyph holds: mid-turn, from the
+// same set the animation uses, so "thinking now" stays readable without
+// anything moving.
+const motionStill = "◐"
+
+// motionOff reports whether the run asked for a still screen. Terminals have
+// no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION:
+// anything but empty or "0" freezes the dashboard's one animated glyph, whose
+// cycling otherwise starts on its own and outlives five seconds of reasoning
+// (WCAG 2.2.2: such motion must be stoppable).
+func motionOff() bool {
+	v, ok := os.LookupEnv("GAUNTLET_NO_ANIMATION")
+	return ok && v != "" && v != "0"
+}
+
 // thinkGlyph animates only while reasoning is actively growing: a still glyph
 // means the agent thought earlier, a turning one means it is thinking now.
+// Under GAUNTLET_NO_ANIMATION the turning glyph holds one frame instead, so
+// the state it carries survives the freeze.
 func thinkGlyph(now, last time.Time) string {
 	if last.IsZero() || now.Sub(last) > thinkingStill {
 		return "◌"
+	}
+	if motionOff() {
+		return motionStill
 	}
 	frames := []string{"◐", "◓", "◑", "◒"}
 	return frames[(now.UnixNano()/int64(thinkingFrame))%int64(len(frames))]

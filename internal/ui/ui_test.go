@@ -547,6 +547,37 @@ func wcagLuminance(t *testing.T, hex string) float64 {
 	return 0.2126*lin[0] + 0.7152*lin[1] + 0.0722*lin[2]
 }
 
+// The reasoning glyph is the dashboard's one animation: it starts on its own
+// and turns for as long as an agent keeps reasoning. GAUNTLET_NO_ANIMATION
+// freezes it to one held frame, so the actively-thinking state stays readable
+// without motion; the resting glyphs are not motion and do not change.
+func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
+	now := time.Now()
+	last := now.Add(-time.Second) // reasoning is actively growing
+
+	t.Setenv("GAUNTLET_NO_ANIMATION", "1")
+	frozen := thinkGlyph(now, last)
+	if frozen != motionStill {
+		t.Fatalf("frozen glyph %q, want the held frame %q", frozen, motionStill)
+	}
+	if thinkGlyph(now.Add(thinkingFrame), last) != frozen {
+		t.Fatal("the glyph still moves under GAUNTLET_NO_ANIMATION")
+	}
+
+	t.Setenv("GAUNTLET_NO_ANIMATION", "")
+	if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {
+		t.Fatal("the glyph does not turn without the variable")
+	}
+
+	// The freeze must not touch the states that are already still.
+	if got := thinkGlyph(now, time.Time{}); got != "◌" {
+		t.Fatalf("a never-thinking lane reads %q, want the resting glyph", got)
+	}
+	if got := thinkGlyph(now.Add(thinkingStill+time.Second), last); got != "◌" {
+		t.Fatalf("a finished thought reads %q, want the resting glyph", got)
+	}
+}
+
 // The footer clips from its right end once the counters are wide, so the
 // keys that keep a reader oriented must outlast the ones only the data
 // hungry need: quit, help, and pause survive; filter is the first to go.

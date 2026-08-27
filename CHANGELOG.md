@@ -19,6 +19,10 @@ minor instead and were listed under Changed.
   attributable to the exact words that produced it after the prompt file has
   changed or disappeared. Bundled prompts have the run's version line for
   identity; project prompts and `--prompt-dir` files had none at all.
+- `GAUNTLET_NO_ANIMATION` joins the environment surface: set it to anything
+  but empty or `0` and the dashboard's animated reasoning glyph holds one
+  frame instead of cycling, for motion sensitivity. The token count beside it
+  keeps updating, so an active agent still reads as one.
 - `TERM` is documented as part of the environment surface it always was:
   `TERM=dumb` disables color, even with `CLICOLOR_FORCE` or `FORCE_COLOR` set.
   The help screen's environment section now lists it beside the other color

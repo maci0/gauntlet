@@ -138,6 +138,7 @@ var helpExitCodes = []struct{ Code, Meaning string }{
 // report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []struct{ Name, Help string }{
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)"},
+	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion)"},
 	{"NO_COLOR", "disable color, however it is set"},
 	{"CLICOLOR_FORCE", "keep color when the output is piped"},
 	{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
