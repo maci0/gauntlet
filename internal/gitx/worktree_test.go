@@ -221,3 +221,73 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 		t.Fatalf("a repeated merge stacked commits on main-line: %s != %s", got, commits)
 	}
 }
+
+// SquashIn is the conflict step's first move: it must land what merges and
+// name what does not, without either state escaping into the main tree.
+func TestSquashInNamesTheConflictedPaths(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Two checkouts of the same base rewrite the same line differently.
+	write := func(w *Worktree, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(w.Dir, "main.go"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.CommitAll(ctx, "change"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(first, "package main\n\nfunc main() { a() }\n")
+	second, err := r.AddWorktree(ctx, "b-review", "t2", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(second, "package main\n\nfunc main() { b() }\n")
+
+	paths, err := second.SquashIn(ctx, first.Branch)
+	if err != nil {
+		t.Fatalf("SquashIn: %v", err)
+	}
+	if len(paths) != 1 || paths[0] != "main.go" {
+		t.Fatalf("conflicted paths = %q, want [main.go]", paths)
+	}
+	if left := second.Unresolved(ctx, paths); len(left) != 1 {
+		t.Fatalf("Unresolved = %q, want the file that still has markers", left)
+	}
+
+	// Resolving means the markers are gone, whoever removed them.
+	write(second, "package main\n\nfunc main() { a(); b() }\n")
+	if left := second.Unresolved(ctx, paths); len(left) != 0 {
+		t.Fatalf("Unresolved = %q after the markers were removed", left)
+	}
+	// A path that no longer exists counts as resolved: deleting the file is a
+	// valid answer to a delete/modify conflict.
+	if left := second.Unresolved(ctx, []string{"gone.go"}); len(left) != 0 {
+		t.Fatalf("Unresolved = %q for a file that is not there", left)
+	}
+}
+
+func TestSquashInReportsAMergeNobodyCanResolve(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.SquashIn(ctx, "refs/heads/does-not-exist"); err == nil {
+		t.Fatal("merging a branch that does not exist should fail, not report a conflict")
+	}
+}

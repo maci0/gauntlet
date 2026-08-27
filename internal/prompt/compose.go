@@ -158,6 +158,18 @@ func CommitPrompt(push, yolo bool) string {
 		Replace(rule("commit.md"))
 }
 
+// ConflictPrompt is the instruction for the step that resolves a review's
+// merge conflict. The paths are the ones git could not merge on its own; the
+// prompt names them so the agent has no reason to wander into the rest of the
+// tree.
+func ConflictPrompt(files []string) string {
+	list := "(none)"
+	if len(files) > 0 {
+		list = "- " + strings.Join(files, "\n- ")
+	}
+	return strings.NewReplacer("{files}", list).Replace(rule("conflict.md"))
+}
+
 // catalogDescMax bounds one suggest-catalog description.
 const catalogDescMax = 200
 

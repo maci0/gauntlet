@@ -10,6 +10,26 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Added
+
+- `--resolve-conflicts` (on by default): a review branch the main tree refuses
+  is handed to an agent, which resolves the conflict in a scratch checkout cut
+  from the current tip; the result is merged and the branch deleted. The merge
+  lock is held for the whole step, nothing carrying conflict markers is
+  committed, and every failure path leaves what a plain conflict left, the
+  branch kept for a human. `--resolve-conflicts=false` restores that older
+  behavior.
+
+### Fixed
+
+- Parallel reviews cut their worktree from the tree's current tip instead of
+  the commit the loop started on. Lanes refill for as long as a loop runs, so
+  a review that waited hours had to merge against everything that landed
+  meanwhile: in real runs the first merge of a loop never conflicted and half
+  the later ones did.
+
 ## 1.8.0
 
 ### Changed

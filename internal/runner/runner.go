@@ -56,8 +56,13 @@ type Config struct {
 	// once the commit step has left the tree clean. Empty leaves the work
 	// where the reviews put it, on the branch that was checked out.
 	MergeInto string
-	Yolo      bool
-	Raw       bool
+	// ResolveConflicts hands a review branch that will not merge to an agent,
+	// which resolves it in a scratch checkout so the work lands. Off leaves
+	// the branch for a human, which is what a run does when the tree it
+	// merges into is not one an agent should be editing blind.
+	ResolveConflicts bool
+	Yolo             bool
+	Raw              bool
 	// Stream asks agents that support it for machine-readable output, which
 	// carries token usage and separates reasoning from visible text.
 	Stream           bool
@@ -586,6 +591,13 @@ func (r *Runner) pushLanded(ctx context.Context, review string) {
 // runIsolated runs one review in a private worktree and merges its commit.
 func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int, base string) Result {
 	tag := fmt.Sprintf("%s-l%d-%02d", r.cfg.RunID, loopNo, idx)
+	// Branch from where the tree is now, not from where the loop began. Lanes
+	// refill for as long as the loop runs, and a review cut from an hours-old
+	// base has to merge against everything that landed while it waited: the
+	// first merge of a loop never conflicts, and every later one used to.
+	if tip, err := r.repo.Tip(ctx, "HEAD"); err == nil && tip != "" {
+		base = tip
+	}
 	wt, err := r.repo.AddWorktree(ctx, review, tag, base)
 	if err != nil {
 		r.log("Cannot create worktree for %s: %v", review, err)
@@ -643,7 +655,15 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	// One merge at a time: git allows one per worktree, and a conflicting
 	// merge must be aborted before the next one starts.
 	r.mergeMu.Lock()
-	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, commitSubject(res.Subject, review))
+	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
+	resolved := false
+	if !mr.Merged && r.cfg.ResolveConflicts && ctx.Err() == nil {
+		// Still under the lock: the conflict step cuts its checkout from the
+		// tip and merges the result back, and neither survives the tip moving.
+		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
+			mr, resolved = fixed, true
+		}
+	}
 	if mr.Merged && r.cfg.Push {
 		// Push while the merge lock is held: two pushes racing on one branch
 		// is one rejection and one wasted round trip. A run of forty reviews
@@ -655,7 +675,11 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	switch {
 	case mr.Merged:
 		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
-		r.log("Merged %s%s", review, linesNote(res))
+		if resolved {
+			r.log("Merged %s after resolving a conflict%s", review, linesNote(res))
+		} else {
+			r.log("Merged %s%s", review, linesNote(res))
+		}
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: StatusOK,
@@ -669,8 +693,7 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 		// Merging it by hand would otherwise write "Merge branch
 		// 'gauntlet/<run>/<review>'" into the project's history, which is the
 		// one place this tool's scratch names must never appear.
-		r.log("To land it after resolving: git merge --squash %s && git commit -m %q",
-			wt.Branch, commitSubject(res.Subject, review))
+		r.log("To land it after resolving: %s", conflictHint(wt.Branch, msg))
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: StatusConflict, Text: mr.Detail,

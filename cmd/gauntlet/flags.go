@@ -70,6 +70,7 @@ type options struct {
 	jobs             int
 	retries          int
 	mergeInto        string
+	resolveConflicts bool
 	maxLoops         int
 	seed             uint64
 	commit           bool
@@ -309,6 +310,9 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
+	fs.BoolVar(&o.resolveConflicts, "resolve-conflicts", true,
+		"hand a review branch that will not merge to an agent to resolve "+
+			"(--resolve-conflicts=false keeps it for a human)")
 	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules: bigger, more ambitious changes")
 	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "skip the suggest confirmation") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")

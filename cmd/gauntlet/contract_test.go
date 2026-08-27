@@ -42,7 +42,7 @@ var goldenFlagNames = []string{
 	"once", "opencode-db",
 	"p", "prompt-dir", "push",
 	"q", "quiet",
-	"r", "raw", "retries", "reviews", "runtime",
+	"r", "raw", "resolve-conflicts", "retries", "reviews", "runtime",
 	"s", "seed", "semcode", "show-prompt", "stream", "suggest",
 	"suggest-agent", "suggest-timeout",
 	"t", "target-dirs", "timeout", "tui",

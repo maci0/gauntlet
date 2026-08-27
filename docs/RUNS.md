@@ -34,9 +34,17 @@ gauntlet -j 4 -a mixed --once
   findings`.
 - With `--push`, each review is pushed as it lands rather than all of them at
   the end, so a long run publishes as it goes.
-- A conflicting merge is **aborted, and its branch is kept**, named after the
-  review, so the work can be inspected or merged by hand. Conflicts are
-  reported as their own outcome and make the run exit nonzero.
+- Each worktree is cut from the tree's **current tip**, not from where the
+  loop began, so a review that waited hours for a lane still starts on what
+  has landed since.
+- A conflicting merge is **handed to an agent**: the conflict is replayed in a
+  scratch checkout cut from the tip, one agent launch resolves the marked
+  files, and the result is merged. The merge lock is held throughout, so the
+  tip cannot move under it. `--resolve-conflicts=false` skips this.
+- What the agent does not resolve (markers left in place, a launch that
+  failed, a timeout) leaves the merge **aborted and the branch kept**, named
+  after the review, so the work can be inspected or merged by hand. Unresolved
+  conflicts are reported as their own outcome and make the run exit nonzero.
 - A review that is retried (`--retries`, after a launch failure or a nonzero
   exit) starts over from the commit its worktree was cut from: whatever the
   failed attempt left behind is reset away, so attempt N+1 sees exactly what
@@ -75,7 +83,7 @@ choices:
   neither merges anything.
 - `--jobs N` is the only thing that branches: each review works on
   `gauntlet/<run>/<review>`, and the runner merges those back into **the
-  branch you are on**, one at a time, `--no-ff`. Nothing here targets `main`
+  branch you are on**, one at a time, squashed. Nothing here targets `main`
   by name; if you are on `feature-x`, the work lands on `feature-x`.
 - `--merge-into BRANCH` is the step after that: once a loop's work is
   committed, the branch you are on is merged into BRANCH. It runs in a scratch

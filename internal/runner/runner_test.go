@@ -315,6 +315,7 @@ echo "RESULT: changed=1"`)
 
 	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
 	cfg.Jobs = 2
+	cfg.ResolveConflicts = false // the branch is the human's to merge
 
 	r := runQuiet(t, cfg)
 
@@ -329,6 +330,97 @@ echo "RESULT: changed=1"`)
 	// And the tree is left usable, not mid-merge.
 	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
 		t.Fatalf("aborted merge left the tree dirty:\n%s", out)
+	}
+}
+
+// TestParallelModeResolvesAConflict pins the conflict step: two reviews
+// rewrite the same line, and the branch that will not merge is handed to an
+// agent, resolved in a scratch checkout, and landed. Nothing is left for a
+// human to merge by hand.
+func TestParallelModeResolvesAConflict(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	// One script, three jobs: each review rewrites the same line its own way,
+	// and the conflict prompt is answered by dropping the marker lines, which
+	// keeps both sides.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in
+*"Conflicted files:"*)
+	echo ran >> "$GAUNTLET_TEST_CONFLICTS"
+	sed -i -e '/^<<<<<<</d' -e '/^=======$/d' -e '/^>>>>>>>/d' main.go
+	echo "RESOLVE: done" ;;
+*a-review*)
+	printf 'package main\n\nfunc main() { a() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+*)
+	printf 'package main\n\nfunc main() { b() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+esac`)
+
+	ran := filepath.Join(t.TempDir(), "conflicts")
+	t.Setenv("GAUNTLET_TEST_CONFLICTS", ran)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+	cfg.ResolveConflicts = true
+
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.OK != 2 || c.Conflict != 0 {
+		t.Fatalf("both reviews should have landed, got %+v", c)
+	}
+	if _, err := os.Stat(ran); err != nil {
+		t.Fatal("no conflict to resolve: the test proved nothing")
+	}
+	body := readTree(t, repo, "main.go")
+	if !strings.Contains(body, "a()") || !strings.Contains(body, "b()") {
+		t.Fatalf("the resolution dropped a side:\n%s", body)
+	}
+	if strings.Contains(body, "<<<<<<<") {
+		t.Fatalf("conflict markers reached the tree:\n%s", body)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
+		t.Fatalf("a resolved conflict should leave no branch behind:\n%s", out)
+	}
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Fatalf("the tree should be clean after the resolution:\n%s", out)
+	}
+}
+
+// TestParallelModeKeepsWhatTheAgentDidNotResolve: an agent that leaves the
+// markers in place must not have them committed. The branch stays for a human.
+func TestParallelModeKeepsWhatTheAgentDidNotResolve(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in
+*"Conflicted files:"*)
+	echo "RESOLVE: I could not tell which side was right" ;;
+*a-review*)
+	printf 'package main\n\nfunc main() { a() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+*)
+	printf 'package main\n\nfunc main() { b() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+esac`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+	cfg.ResolveConflicts = true
+
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.Conflict != 1 || c.OK != 1 {
+		t.Fatalf("want one merge and one unresolved conflict, got %+v", c)
+	}
+	if body := readTree(t, repo, "main.go"); strings.Contains(body, "<<<<<<<") {
+		t.Fatalf("an unresolved conflict was committed:\n%s", body)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*-fix/*"); out != "" {
+		t.Fatalf("the scratch branch of a failed resolution should be gone:\n%s", out)
+	}
+	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out == "" {
+		t.Fatal("the unresolved review's branch was deleted, losing its work")
 	}
 }
 
@@ -1328,4 +1420,14 @@ func TestCancelRecordsQueuedReviews(t *testing.T) {
 			t.Errorf("review %s has no review_end event: its outcome was never published", name)
 		}
 	}
+}
+
+// readTree reads one file from a checkout.
+func readTree(t *testing.T, dir, name string) string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(body)
 }

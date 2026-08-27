@@ -143,7 +143,7 @@ baseline commit
    ↓
    one commit per review (runner-authored, no AI attribution)
    ↓
-   serialized merge --no-ff back into the original branch
+   serialized merge --squash back into the original branch
 ```
 
 Rules the runner enforces:
@@ -157,10 +157,10 @@ Rules the runner enforces:
    (unchanged containment). After a review, the runner stages and commits its
    worktree in one commit. Nothing to commit means nothing merged.
 4. **Merges are serialized** on the main tree, in completion order. A
-   conflicting merge is aborted and its branch is kept, named after the
-   review, so the work can be inspected or merged by hand. Conflicts are
-   reported as their own outcome in the summary and the journal, never
-   silently dropped.
+   conflicting merge goes to the conflict step (below) and, if that does not
+   land it, is aborted with its branch kept, named after the review, so the
+   work can be inspected or merged by hand. Conflicts are reported as their
+   own outcome in the summary and the journal, never silently dropped.
 5. **Cleanup on the way out**: worktree removed, merged branches deleted,
    `git worktree prune` run. Unmerged branches survive on purpose.
 6. Per-review line stats come from the review's own commit, so they stay
@@ -168,6 +168,16 @@ Rules the runner enforces:
    attributed).
 7. `--commit`/`--push` still forces a quiescent point: all lanes drain and
    merge before the commit step runs.
+8. **Worktrees are cut from the current tip**, not from the loop's starting
+   commit: lanes refill for as long as the loop runs, and a stale base turns
+   every later merge in a loop into a conflict.
+9. **The conflict step** (`--resolve-conflicts`, on by default) replays a
+   refused branch into a scratch checkout of the tip, hands the marked files
+   to one agent launch, and merges what comes back. It runs under the merge
+   lock, so the tip is fixed for its duration; it commits nothing that still
+   carries conflict markers; and every failure path leaves exactly what a
+   plain conflict leaves. The agent sees only the conflicted files and is
+   forbidden to run git, like every other agent this tool launches.
 
 ## Speed
 

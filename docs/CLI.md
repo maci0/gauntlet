@@ -94,6 +94,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
 | `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any integer literal (`0x…` included); `0` derives one from the clock. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
+| `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes when a `--jobs` run offers to commit a dirty tree. |
 | `-y, --yes` | off | Skip the suggest confirmation. |

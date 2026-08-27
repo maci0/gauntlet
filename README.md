@@ -108,15 +108,19 @@ flowchart LR
     W1 --> C1[runner commits]
     W2 --> C2[runner commits]
     W3 --> C3[runner commits]
-    C1 --> M[merge --no-ff<br/>one at a time]
+    C1 --> M[merge --squash<br/>one at a time]
     C2 --> M
     C3 --> M
     M --> T2[your branch]
-    M -. conflict .-> K[branch kept<br/>run exits nonzero]
+    M -. conflict .-> R[agent resolves<br/>in a scratch checkout]
+    R -. merged .-> T2
+    R -. unresolved .-> K[branch kept<br/>run exits nonzero]
 ```
 
 `--jobs` counts per directory, so `--dirs a,b,c -j 4` is up to 12 agents at
-once. Conflicts abort the merge and keep the branch for you. Everything lands
+once. A branch that will not merge is handed to an agent, which resolves it in
+a scratch checkout; what it cannot resolve stays on its branch for you
+(`--resolve-conflicts=false` skips the attempt). Everything lands
 on the branch you are already on; `--merge-into BRANCH` is what carries a
 loop's committed work anywhere else. The details, plus the run journal and hot
 reload, are in [docs/RUNS.md](docs/RUNS.md).

@@ -4,6 +4,7 @@
 package gitx
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -31,6 +32,10 @@ const LockName = ".gauntlet.lock"
 // Keeping them inside the repo means one .git object store and no cross-device
 // rename; keeping them under one directory means one line in info/exclude.
 const worktreeRoot = ".gauntlet/worktrees"
+
+// conflictMarker opens a conflict region. git writes seven characters and then
+// the branch name, so the marker alone is what a search looks for.
+const conflictMarker = "<<<<<<<"
 
 // IsClean reports whether the working tree has no uncommitted changes beyond
 // the runner's own artifacts. Worktree mode requires a clean tree: a branch is
@@ -181,6 +186,65 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 		return false, fmt.Errorf("git commit: %w", err)
 	}
 	return true, nil
+}
+
+// SquashIn stages another branch's work in this checkout without committing
+// it, and reports the paths git could not merge on its own. An empty list with
+// a nil error means the merge applied cleanly and is staged.
+//
+// It is how a conflict gets somewhere private to be resolved: the conflicted
+// state lives in a scratch checkout, never in the tree the user is working in.
+func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error) {
+	sub := &Repo{Dir: w.Dir}
+	out, err := sub.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
+	if err == nil {
+		return nil, nil
+	}
+	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
+	if uErr != nil {
+		return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
+	}
+	var paths []string
+	for line := range strings.SplitSeq(string(unmerged), "\n") {
+		if p := strings.TrimSpace(line); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	if len(paths) == 0 {
+		// The merge failed for a reason no editing can fix (a bad ref, a
+		// checkout git refused). Report git's own words rather than a
+		// resolution nobody can perform.
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			detail = err.Error()
+		}
+		return nil, fmt.Errorf("git merge --squash %s: %s", branch, firstLine(detail))
+	}
+	return paths, nil
+}
+
+// Unresolved lists which of the given paths still carry conflict markers. It
+// is the check on a resolution: an agent that stopped halfway leaves a file
+// that looks edited and still has `<<<<<<<` in it, and committing that would
+// put markers into the project's history.
+//
+// A path that is gone is resolved: deleting the file is a valid answer to a
+// delete/modify conflict.
+func (w *Worktree) Unresolved(ctx context.Context, paths []string) []string {
+	var left []string
+	for _, p := range paths {
+		if ctx.Err() != nil {
+			return left
+		}
+		body, err := os.ReadFile(filepath.Join(w.Dir, filepath.FromSlash(p)))
+		if err != nil {
+			continue
+		}
+		if bytes.Contains(body, []byte(conflictMarker)) {
+			left = append(left, p)
+		}
+	}
+	return left
 }
 
 // ResetToBase restores the checkout to the commit it was cut from, undoing

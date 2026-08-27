@@ -16,13 +16,6 @@ before the agent starts (symlink `node_modules`, copy `.env`, warm a cache).
 Needs a timeout of its own and a clear failure mode: a setup that fails should
 skip that review, not run it in a broken tree.
 
-## Conflict resolution by agent
-
-Today a merge conflict aborts the merge and keeps the branch for a human. The
-alternative is to hand the conflict to an agent as its own task, with its own
-prompt, containment rules, and timeout. Worth doing only once there is data on
-how often conflicts actually happen across real runs (the journal will tell).
-
 ## PR-per-review workflow
 
 The worktree machinery already produces one branch per review. Stopping before
