@@ -46,7 +46,7 @@ func suggestFixture(t *testing.T, agentBody string) (*dirRun, *options) {
 
 	d := &dirRun{dir: dir, set: set}
 	opts := &options{
-		reviews:        "suggest",
+		suggest:        true,
 		bin:            map[string]string{"claude": bin},
 		suggestTimeout: 30 * time.Second,
 		yes:            true, // stdin is not interactive under go test anyway; be explicit
@@ -70,6 +70,36 @@ func TestSelectReviewsRunsTheSuggestStep(t *testing.T) {
 	if !strings.Contains(out.String(), "suggests 1 of 2") ||
 		!strings.Contains(out.String(), "has auth code") {
 		t.Fatalf("the choice and its reason were not reported:\n%s", out.String())
+	}
+}
+
+// A review named beside --suggest is scheduled as well as what the agent
+// picks, and one that appears on both lists is scheduled twice: repeats are
+// weight, which is how a person says "and lean on this one".
+func TestSuggestAddsWhatWasNamed(t *testing.T) {
+	d, opts := suggestFixture(t, `echo "RELEVANT: sec-review: has auth code"`)
+	opts.reviews, opts.reviewsSet = "sec,doc", true
+	var out bytes.Buffer
+
+	if err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}); err != nil {
+		t.Fatal(err)
+	}
+	got := d.reviews
+	if len(got) != 3 {
+		t.Fatalf("schedule %v, want the suggestion plus both named reviews", got)
+	}
+	sec := 0
+	for _, n := range got {
+		if n == "sec-review" {
+			sec++
+		}
+	}
+	if sec != 2 {
+		t.Fatalf("sec-review appears %d times in %v, want twice: suggested and named", sec, got)
+	}
+	if !strings.Contains(out.String(), "named on the command line") {
+		t.Fatalf("the report hides what was named:\n%s", out.String())
 	}
 }
 

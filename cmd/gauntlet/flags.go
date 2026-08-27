@@ -46,8 +46,13 @@ type options struct {
 	command string // "", doctor, update, runs, show, version
 
 	// selection
-	reviews        string
-	reviewsSet     bool // an explicit (possibly empty) --reviews was given
+	reviews    string
+	reviewsSet bool // an explicit (possibly empty) --reviews was given
+	// suggest runs the triage step. It composes with --reviews rather than
+	// replacing it: what an agent picks and what a person named are one
+	// schedule, and a review named on both sides is scheduled twice, which is
+	// how this tool has always spelled "weight this more".
+	suggest        bool
 	exclude        string
 	suggestAgent   *agent.Spec
 	suggestTimeout time.Duration
@@ -216,7 +221,7 @@ func parseFlags(argv []string) (*options, error) {
 	}
 
 	fs, raw := buildFlagSet(o)
-	if err := fs.Parse(argv); err != nil {
+	if err := fs.Parse(expandAttachedValues(fs, argv)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, errHelp
 		}
@@ -269,10 +274,12 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 
 	alias("r", "reviews", func(n string) {
 		fs.Var(reviews, n, "reviews and/or sets to run (comma-separated, repeatable); "+
-			"'suggest' has an agent pick them")
+			"repeats add weight, 'suggest' adds an agent's picks")
 	})
 	alias("x", "exclude", func(n string) { fs.Var(exclude, n, "reviews and/or sets to skip") })
-	alias("s", "suggest", func(n string) { fs.BoolVar(suggest, n, false, "shorthand for --reviews suggest") })
+	alias("s", "suggest", func(n string) {
+		fs.BoolVar(suggest, n, false, "have an agent pick the reviews, beside any named with --reviews")
+	})
 	fs.StringVar(suggestAgent, "suggest-agent", "",
 		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
 	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout", "timeout for the suggest step")
@@ -434,17 +441,19 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	o.exclude = strings.Join(exclude, ",")
 	o.dirs = dirs
 
-	if suggest {
-		if o.reviewsSet {
-			return nil, errors.New("--suggest conflicts with --reviews")
-		}
-		o.reviews, o.reviewsSet = prompt.Suggest, true
-	}
+	// "suggest" is a request, not a review name: it can arrive as --suggest or
+	// inside --reviews, and either way the rest of the list survives it.
+	o.suggest = suggest
 	if named := splitNames(o.reviews); slices.Contains(named, prompt.Suggest) {
-		if len(named) > 1 {
-			return nil, fmt.Errorf("%q must be the only --reviews value", prompt.Suggest)
+		o.suggest = true
+		kept := make([]string, 0, len(named))
+		for _, n := range named {
+			if n != prompt.Suggest {
+				kept = append(kept, n)
+			}
 		}
-		o.reviews = prompt.Suggest
+		o.reviews = strings.Join(kept, ",")
+		o.reviewsSet = len(kept) > 0
 	}
 	if slices.Contains(splitNames(o.exclude), prompt.Suggest) {
 		return nil, fmt.Errorf("%q is not a review name; it cannot be excluded", prompt.Suggest)
@@ -607,4 +616,43 @@ func terminalWidth() int {
 		return w
 	}
 	return 100
+}
+
+// expandAttachedValues rewrites `-j3` into `-j 3`. The flag package takes only
+// `-j 3` and `-j=3`, but every tool that has ever had a `-j` also takes it glued
+// on, so the habit carried in from make or tar reads as an unknown flag here.
+// Only single-letter flags that want a value are split; booleans, long forms,
+// and anything past `--` or the first positional arrive as they were typed.
+func expandAttachedValues(fs *flag.FlagSet, argv []string) []string {
+	out := make([]string, 0, len(argv))
+	for i := 0; i < len(argv); i++ {
+		arg := argv[i]
+		if arg == "--" || len(arg) < 2 || arg[0] != '-' {
+			return append(out, argv[i:]...)
+		}
+		name := strings.TrimLeft(arg, "-")
+		if strings.ContainsRune(name, '=') {
+			out = append(out, arg)
+			continue
+		}
+		if arg[1] != '-' && len(name) > 1 {
+			if f := fs.Lookup(name[:1]); f != nil && !isBoolFlag(f) {
+				out = append(out, arg[:2], arg[2:])
+				continue
+			}
+		}
+		out = append(out, arg)
+		// A flag that takes a value owns the next argument, whatever it
+		// looks like: it is not the positional that ends the flags.
+		if f := fs.Lookup(name); f != nil && !isBoolFlag(f) && i+1 < len(argv) {
+			i++
+			out = append(out, argv[i])
+		}
+	}
+	return out
+}
+
+func isBoolFlag(f *flag.Flag) bool {
+	b, ok := f.Value.(interface{ IsBoolFlag() bool })
+	return ok && b.IsBoolFlag()
 }

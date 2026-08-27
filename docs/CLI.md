@@ -53,13 +53,16 @@ what it should offer.
 Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use.
 
+A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
+`-j 3`, and `-j=3` are the same flag.
+
 **Choosing reviews**
 
 | Flag | Default | Purpose |
 |---|---|---|
 | `-r, --reviews LIST` | all | Reviews and/or set names to run. The `-review` suffix is optional (`sec` means `sec-review`). Naming one twice runs it twice per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
-| `-s, --suggest` | off | Shorthand for `--reviews suggest`: an agent inspects the repo and proposes the relevant reviews. |
+| `-s, --suggest` | off | An agent inspects the repo and proposes the relevant reviews. It composes with `--reviews` rather than replacing it: anything named there is scheduled as well, and a review the agent also picks is scheduled twice, which is how repeats have always asked for more weight. `--reviews suggest,sec` says the same thing. |
 | `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step, or `gauntlet` to choose from file signals instead of asking a model: it reads extensions, well-known filenames, and directory names, costs no tokens, and answers in milliseconds. It cannot tell a toy HTTP handler from a payment path; an agent can. |
 | `--suggest-timeout DUR` | `30m` | Timeout for the suggest step. |
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |

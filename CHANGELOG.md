@@ -10,6 +10,21 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- `--suggest` composes with `--reviews` instead of refusing to run beside it.
+  The triage step picks, and every review named on the command line is
+  scheduled as well; one that appears on both lists is scheduled twice, which
+  is what repeats in `--reviews` have always meant. `--reviews suggest,sec`
+  says the same thing, so "suggest" is no longer required to be the only value
+  in the list. The proposal prints what rode along with it, and the launcher
+  keeps its review tree live when suggest is ticked, weighting what you tick
+  rather than greying it out.
+- Single-letter flags accept their value glued on, so `-j3` means `-j 3` the
+  way it does in make and tar. The spaced and `=` forms are unchanged.
+
 ## 1.7.4
 
 ### Fixed

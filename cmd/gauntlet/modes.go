@@ -138,7 +138,7 @@ var (
 func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []agent.Spec,
 	out io.Writer, pal palette) error {
 
-	suggesting := strings.TrimSpace(opts.reviews) == prompt.Suggest
+	suggesting := opts.suggest
 	pools := make([][]string, len(runs))
 	for i, d := range runs {
 		excluded, err := excludedIn(d, opts)
@@ -224,6 +224,11 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			fmt.Fprintf(out, "  %-*s %s\n", col+1, p.Name, pal.dim(reason))
 		}
 		total += len(r.picked)
+		if named, err := namedIn(d, opts, map[string]bool{}); err == nil && len(named) > 0 {
+			fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
+				"and %s, named on the command line", weighted(named))))
+			total += len(named)
+		}
 	}
 	if !confirm(out, opts, total) {
 		fmt.Fprintln(out, "Aborted.")
@@ -234,12 +239,66 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		for _, p := range results[i].picked {
 			scheduled = append(scheduled, p.Name)
 		}
+		// What the person named rides along with what the agent picked, and a
+		// review on both lists lands twice: repeats are weight to the
+		// scheduler, so naming one is how you ask for more of it.
+		excluded, err := excludedIn(d, opts)
+		if err != nil {
+			return err
+		}
+		named, err := namedIn(d, opts, excluded)
+		if err != nil {
+			return err
+		}
+		scheduled = append(scheduled, named...)
 		if len(scheduled) == 0 {
 			return fmt.Errorf("%s: the suggest step picked no reviews", d.dir)
 		}
 		d.reviews = scheduled
 	}
 	return nil
+}
+
+// namedIn expands the reviews a person named on the command line, minus the
+// exclusions. Empty when --reviews was not given: then the suggestion stands
+// on its own.
+func namedIn(d *dirRun, opts *options, excluded map[string]bool) ([]string, error) {
+	if !opts.reviewsSet || strings.TrimSpace(opts.reviews) == "" {
+		return nil, nil
+	}
+	names, err := d.set.Expand(opts.reviews, "--reviews", false)
+	if err != nil {
+		return nil, err
+	}
+	kept := names[:0]
+	for _, n := range names {
+		if !excluded[n] {
+			kept = append(kept, n)
+		}
+	}
+	return kept, nil
+}
+
+// weighted names a schedule the way a person reads it: one entry per review,
+// with the repeats that give it weight spelled out.
+func weighted(names []string) string {
+	counts := map[string]int{}
+	order := make([]string, 0, len(names))
+	for _, n := range names {
+		if counts[n] == 0 {
+			order = append(order, n)
+		}
+		counts[n]++
+	}
+	parts := make([]string, 0, len(order))
+	for _, n := range order {
+		if counts[n] > 1 {
+			parts = append(parts, fmt.Sprintf("%s (x%d)", n, counts[n]))
+			continue
+		}
+		parts = append(parts, n)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // excludedIn expands --exclude against one directory's discovered set.

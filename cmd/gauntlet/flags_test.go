@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +91,40 @@ func TestParseFlagsDefaults(t *testing.T) {
 	}
 }
 
+// --suggest composes with --reviews rather than fighting it: the triage step
+// picks, and what a person names rides along, wherever the request arrives.
+func TestSuggestComposesWithNamedReviews(t *testing.T) {
+	cases := []struct {
+		name    string
+		argv    []string
+		reviews string
+		set     bool
+	}{
+		{"the flag alone", []string{"--suggest"}, "", false},
+		{"the flag beside a set", []string{"--suggest", "-r", "quick"}, "quick", true},
+		{"named inside the list", []string{"-r", "suggest,sec"}, "sec", true},
+		{"named alone in the list", []string{"-r", "suggest"}, "", false},
+		{"repeats survive, they are weight", []string{"-s", "-r", "sec,sec,doc"}, "sec,sec,doc", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			o, err := parseFlags(c.argv)
+			if err != nil {
+				t.Fatalf("%v: %v", c.argv, err)
+			}
+			if !o.suggest {
+				t.Fatal("the suggest step was not requested")
+			}
+			if o.reviews != c.reviews {
+				t.Fatalf("reviews = %q, want %q", o.reviews, c.reviews)
+			}
+			if o.reviewsSet != c.set {
+				t.Fatalf("reviewsSet = %v, want %v", o.reviewsSet, c.set)
+			}
+		})
+	}
+}
+
 func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 	cases := []struct {
 		name string
@@ -98,8 +133,8 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 	}{
 		{"once implies one loop", []string{"--once"}, ""},
 		{"push implies commit", []string{"--push"}, ""},
-		{"suggest with reviews", []string{"-s", "-r", "quick"}, "conflicts"},
-		{"suggest mixed in", []string{"-r", "suggest,sec"}, "must be the only"},
+		{"suggest with reviews", []string{"-s", "-r", "quick"}, ""},
+		{"suggest mixed in", []string{"-r", "suggest,sec"}, ""},
 		{"exclude suggest", []string{"-x", "suggest"}, "not a review name"},
 		{"once with max-loops", []string{"-1", "-n", "3"}, "conflicts"},
 		{"negative loops", []string{"-n", "-2"}, "must be >= 0"},
@@ -368,4 +403,66 @@ func TestValueErrorsNameTheFlag(t *testing.T) {
 			t.Errorf("error %q does not name %s", err, c.flag)
 		}
 	}
+}
+
+func TestShorthandValuesMayBeGluedOn(t *testing.T) {
+	o, err := parseFlags([]string{"-j3", "-r", "sec", "-t45m", "-C.", "-n2"})
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if o.jobs != 3 {
+		t.Fatalf("jobs = %d, want 3", o.jobs)
+	}
+	if o.timeout != 45*time.Minute {
+		t.Fatalf("timeout = %v, want 45m", o.timeout)
+	}
+	if o.dir != "." {
+		t.Fatalf("dir = %q, want %q", o.dir, ".")
+	}
+	if o.retries != 2 {
+		t.Fatalf("retries = %d, want 2", o.retries)
+	}
+}
+
+func TestGluedExpansionLeavesTheRestAlone(t *testing.T) {
+	fs, _ := buildFlagSet(&options{})
+	cases := []struct {
+		argv, want []string
+	}{
+		{[]string{"-j3"}, []string{"-j", "3"}},
+		{[]string{"-j=3"}, []string{"-j=3"}},               // the flag package's own form
+		{[]string{"-j", "3"}, []string{"-j", "3"}},         // already separate
+		{[]string{"-sy"}, []string{"-sy"}},                 // booleans do not cluster
+		{[]string{"-1"}, []string{"-1"}},                   // a boolean shorthand
+		{[]string{"-zz"}, []string{"-zz"}},                 // unknown: let the parser say so
+		{[]string{"--jobs3"}, []string{"--jobs3"}},         // long form, untouched
+		{[]string{"--", "-j3"}, []string{"--", "-j3"}},     // after the terminator
+		{[]string{"show", "-j3"}, []string{"show", "-j3"}}, // positional ends the flags
+	}
+	for _, c := range cases {
+		got := expandAttachedValues(fs, c.argv)
+		if !slices.Equal(got, c.want) {
+			t.Errorf("expandAttachedValues(%q) = %q, want %q", c.argv, got, c.want)
+		}
+	}
+}
+
+// FuzzExpandAttachedValues: argv is untrusted, and the expansion runs before
+// the flag package sees it. It must never panic, never lose or invent an
+// argument's bytes, and never touch anything after a positional.
+func FuzzExpandAttachedValues(f *testing.F) {
+	for _, seed := range []string{"-j3", "-j=3", "-r sec", "-- -j3", "-\x00\x00", "show -j3", "-"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, line string) {
+		argv := strings.Fields(line)
+		fs, _ := buildFlagSet(&options{})
+		got := expandAttachedValues(fs, argv)
+		if len(got) < len(argv) {
+			t.Fatalf("expandAttachedValues(%q) dropped arguments: %q", argv, got)
+		}
+		if strings.Join(got, "") != strings.Join(argv, "") {
+			t.Fatalf("expandAttachedValues(%q) = %q, which is not a resplit of it", argv, got)
+		}
+	})
 }

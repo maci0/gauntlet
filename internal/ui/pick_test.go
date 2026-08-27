@@ -52,9 +52,12 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.cursor[paneReviews] = 1 // past the suggest row, on the first group
 			p.toggle()
 		}, "-C /home/dev/project -r quick --once --tui"},
-		{"suggest replaces the review list", func(p *picker) {
+		{"suggest rides with what is ticked, which weights it", func(p *picker) {
 			p.selected["ux-review"] = true
 			p.toggle() // the cursor starts on the suggest row
+		}, "-C /home/dev/project --suggest -r ux --once --tui"},
+		{"suggest alone names no reviews", func(p *picker) {
+			p.toggle()
 		}, "-C /home/dev/project --suggest --once --tui"},
 		{"a suggest agent is only passed for a suggested run", func(p *picker) {
 			p.opts[optSuggestAgent].idx = 3 // codex:gpt-5

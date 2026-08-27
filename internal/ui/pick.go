@@ -529,7 +529,11 @@ func (p *picker) argv() []string {
 		if a := p.suggestAgent(); a != "" {
 			out = append(out, p.opts[optSuggestAgent].flag, a)
 		}
-	} else if r := p.reviewArgs(); r != "" {
+	}
+	// Reviews ticked here ride along with a suggested run: the agent picks,
+	// and what is named is scheduled as well, which is how weight is asked
+	// for. Only a run picking nothing at all leaves --reviews off entirely.
+	if r := p.reviewArgs(); r != "" {
 		out = append(out, "-r", r)
 	}
 	if agents := p.pickedAgents(); len(agents) > 0 {
@@ -662,6 +666,8 @@ func (p *picker) renderHeader() string {
 	}
 	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.known()))
 	switch {
+	case p.suggest && p.chosen() > 0:
+		scope = fmt.Sprintf("agent-picked, %d weighted", p.chosen())
 	case p.suggest:
 		scope = "agent-picked reviews"
 	case p.chosen() == 0:
@@ -817,10 +823,6 @@ func (p *picker) reviewPanel(w, h int) string {
 			on := p.groupOn(r.group)
 			count := styleDim.Render(fmt.Sprintf("%d/%d", on, len(g.Reviews)))
 			name := styleValue.Render(g.Name)
-			if p.suggest {
-				name = styleFaint.Render(g.Name)
-				count = styleFaint.Render(fmt.Sprintf("%d/%d", on, len(g.Reviews)))
-			}
 			lines = append(lines, pickLine(cur, inner,
 				styleDim.Render(mark)+" "+name,
 				count+" "+meter(float64(on)/float64(max(len(g.Reviews), 1)), 6, cTeal)))
@@ -828,9 +830,6 @@ func (p *picker) reviewPanel(w, h int) string {
 			rev := r.review
 			name := reviewLabel(rev)
 			box := checkbox(p.selected[rev.Name])
-			if p.suggest {
-				box, name = checkboxPlain(p.selected[rev.Name]), styleFaint.Render(name)
-			}
 			row := "   " + box + " " + pad(name, nameW)
 			// The description is what makes a name mean something. It sits in
 			// one column so the eye can run down it, and is the first thing to
@@ -858,6 +857,10 @@ func (p *picker) reviewPanel(w, h int) string {
 	}
 	if p.suggest {
 		title = "REVIEWS  " + styleInfo.Render("chosen by an agent at run time")
+		if n := p.chosen(); n > 0 {
+			title = fmt.Sprintf("REVIEWS  %s", styleInfo.Render(
+				fmt.Sprintf("agent-picked, plus %d weighted here", n)))
+		}
 	}
 	if hidden := len(rows) - (to - from); hidden > 0 {
 		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
@@ -962,15 +965,6 @@ func checkbox(on bool) string {
 		return styleOK.Render("[x]")
 	}
 	return styleDim.Render("[ ]")
-}
-
-// checkboxPlain is the same mark without color, for rows the current choices
-// have made inert.
-func checkboxPlain(on bool) string {
-	if on {
-		return "[x]"
-	}
-	return "[ ]"
 }
 
 func slicesAny(b []bool) bool {
