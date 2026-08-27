@@ -168,6 +168,8 @@ handoff file passed across the exec.)
 `argv` is required and must contain `{prompt}`. `stream` is the argument list
 that asks the CLI for machine-readable output (`--stream`), and `usage` says
 where it keeps session transcripts, which is what gives a defined agent live
-token counts. The file is plain JSON: comments, trailing commas, and unknown
+token counts. On the same run, a `--agent-cmd` for a name the file also
+defines wins over the file's entry; the file is what survives for later runs.
+The file is plain JSON: comments, trailing commas, and unknown
 keys are refused at startup rather than half-read. `gauntlet doctor` lists
 every agent it knows, defined ones included, and the file it read them from.

@@ -386,13 +386,33 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, err
 		}
 	}
+	// A repeated --agent-cmd with a different definition is a typo, not a
+	// choice: the last one would silently win, which is how --bin came to
+	// refuse its own duplicates. The file loaded above is still overridden on
+	// purpose — the command line wins for its run — so this counts only what
+	// the command line itself said. Checking every entry before registering
+	// any also keeps a bad list from half-defining agents.
+	type namedDef struct {
+		raw  string
+		def  agent.Custom
+		name string
+	}
+	defs := make([]namedDef, 0, len(agentCmds))
+	cmdDefs := map[string]string{}
 	for _, c := range agentCmds {
 		name, def, err := agent.ParseAgentCmd(c)
 		if err != nil {
 			return nil, fmt.Errorf("--agent-cmd %s: %w", c, err)
 		}
-		if err := agent.Register(name, def); err != nil {
-			return nil, fmt.Errorf("--agent-cmd %s: %w", c, err)
+		if prev, dup := cmdDefs[name]; dup && prev != c {
+			return nil, fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
+		}
+		cmdDefs[name] = c
+		defs = append(defs, namedDef{raw: c, def: def, name: name})
+	}
+	for _, d := range defs {
+		if err := agent.Register(d.name, d.def); err != nil {
+			return nil, fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
 		}
 	}
 	if o.openCodeDB && !enableOpenCodeDB() {

@@ -77,6 +77,7 @@ var goldenEnvVars = []string{
 	"GAUNTLET_HOME",
 	"GITHUB_TOKEN",
 	"NO_COLOR",
+	"TERM",
 }
 
 func TestFlagNamesMatchTheContract(t *testing.T) {

@@ -12,6 +12,13 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- `TERM` is documented as part of the environment surface it always was:
+  `TERM=dumb` disables color, even with `CLICOLOR_FORCE` or `FORCE_COLOR` set.
+  The help screen's environment section now lists it beside the other color
+  variables, matching docs/CLI.md.
+
 ### Changed
 
 - A binary that was not stamped reports the version the Go toolchain embedded

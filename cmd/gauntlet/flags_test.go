@@ -436,6 +436,30 @@ func TestValueErrorsNameTheFlag(t *testing.T) {
 	}
 }
 
+// A repeated --agent-cmd with a different definition must refuse the way
+// --bin refuses a repeated tool, rather than let the later one silently win.
+// Both cases here use a built-in name, which Register refuses anyway: the
+// error that comes back tells which check fired, and the registry is never
+// touched.
+func TestAgentCmdDuplicateDefinitions(t *testing.T) {
+	_, err := parseFlags([]string{
+		"--agent-cmd", "claude=x {prompt}",
+		"--agent-cmd", "claude=y {prompt}",
+	})
+	if err == nil || !strings.Contains(err.Error(), "given twice for claude") {
+		t.Fatalf("conflicting --agent-cmd definitions should refuse, got %v", err)
+	}
+	// An exact repeat is idempotent, not a conflict: it falls through to
+	// Register, whose built-in refusal is the error instead.
+	_, err = parseFlags([]string{
+		"--agent-cmd", "claude=x {prompt}",
+		"--agent-cmd", "claude=x {prompt}",
+	})
+	if err == nil || strings.Contains(err.Error(), "given twice") {
+		t.Fatalf("an identical --agent-cmd repeat is not a conflict, got %v", err)
+	}
+}
+
 func TestShorthandValuesMayBeGluedOn(t *testing.T) {
 	o, err := parseFlags([]string{"-j3", "-r", "sec", "-t45m", "-C.", "-n2"})
 	if err != nil {
