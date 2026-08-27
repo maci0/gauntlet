@@ -71,7 +71,7 @@ library cannot, and each was kept small on purpose.
 | `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
 | `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | pulled in through toktop; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji render in alignment | display paths in `internal/ui` only |
-| `golang.org/x/text` | NFC normalization under fuzzy matching and prompt-name handling | `internal/fuzzy`, `internal/prompt` |
+| `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, and the picker's filter | `internal/fuzzy`, `internal/prompt`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 
 What the hand-rolled packages replace: `humanize`, `streamjson`, and `fuzzy`

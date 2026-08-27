@@ -114,7 +114,6 @@ escape hatch (`--yes` to take the defaults without a screen).
 Smaller pieces left out of the shipped launcher, each worth having once the
 default question is settled:
 
-- `/` filters review names across groups.
 - Agents are shown with their model field and unavailable ones greyed with
   the reason.
 - A directories pane: add paths and globs, mark trees that are dirty (a

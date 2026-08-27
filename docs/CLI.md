@@ -92,7 +92,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `-1, --once` | off | One loop, then stop. |
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
-| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any integer literal (`0x…` included); `0` derives one from the clock. |
+| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any nonnegative integer literal (`0x…` included); `0` derives one from the clock. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
 | `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
@@ -109,7 +109,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. |
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
-| `--stream` | Ask agents for machine-readable output where they support it: live token counts, and the reasoning/output split shown separately in the feed. |
+| `--stream` | On by default: agents that have a machine-readable mode are asked for it, giving live token counts and the reasoning/output split shown separately in the feed (`--stream=false` launches them as before). |
 | `--no-color` | Disable color everywhere, the plain log and the dashboard/launcher both. The `NO_COLOR` environment variable does the same. |
 | `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. |
@@ -133,7 +133,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | `GITHUB_TOKEN` | Optional. Sent only to api.github.com by `gauntlet update` and `--auto-update`, for a higher API rate limit. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
 | `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty or `0`: force color on, so piping through `less -R` keeps its palette. |
-| `TERM=dumb` | Disables color unless forced. |
+| `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. |
 
 (`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
 handoff file passed across the exec.)
