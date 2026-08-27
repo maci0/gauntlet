@@ -24,6 +24,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -392,4 +393,64 @@ func locateRun(runID string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
+}
+
+// ReviewHistory is what past runs did with one review in one directory.
+type ReviewHistory struct {
+	Runs    int // times the review finished there
+	Changed int // times it left lines behind
+}
+
+// How far back History looks: far enough for a repeat pattern to show, near
+// enough that it follows a project that has moved on. Journals are read whole,
+// so the number of matching runs is capped as well: the answer is a weighting,
+// not an audit, and a machine with a year of runs must not pay for all of them.
+const (
+	historyRuns    = 30
+	historyMatches = 8
+)
+
+// History reports, per review, how a directory's own past runs went: how often
+// each review ran there and how often it actually changed something. It is the
+// only signal that improves with use, and it costs one pass over the recent
+// journals.
+//
+// Runs that cannot be read are skipped: this is a convenience log, and a
+// suggestion is not worth failing over.
+func History(dir string) (map[string]ReviewHistory, error) {
+	runs, err := Recent(historyRuns)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]ReviewHistory{}
+	matched := 0
+	for _, run := range runs {
+		if !slices.Contains(run.Dirs, dir) {
+			continue
+		}
+		if matched++; matched > historyMatches {
+			break
+		}
+		_ = Events(run.RunID, func(e map[string]any) {
+			if s, _ := e["ev"].(string); s != "review_end" {
+				return
+			}
+			if d, _ := e["dir"].(string); d != dir {
+				return
+			}
+			name, _ := e["review"].(string)
+			if name == "" {
+				return
+			}
+			h := out[name]
+			h.Runs++
+			ins, _ := e["ins"].(float64)
+			del, _ := e["del"].(float64)
+			if ins+del > 0 {
+				h.Changed++
+			}
+			out[name] = h
+		})
+	}
+	return out, nil
 }

@@ -14,10 +14,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"syscall"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -84,6 +86,63 @@ func (r Review) Desc() string {
 		}
 	}
 	return ""
+}
+
+// Signal tokens a review may declare, so the file-signal suggester can
+// propose it. A project's own review is otherwise unreachable there: the
+// built-in rules only know built-in names.
+//
+//	Signals: ext:.zig, name:build.zig, path:src/plugins, mark:comptime
+//
+// A prompt found in a reviewed tree is untrusted input, so the line is parsed
+// strictly: known kinds, a restricted value charset, bounded counts and
+// lengths. Anything else in the line is dropped rather than guessed at.
+const (
+	signalPrefix = "Signals:"
+	signalMax    = 12 // tokens honored per review
+	signalValMax = 40 // runes per value
+)
+
+// signalKinds are the observations a review may key on: a file extension, a
+// base name, a path fragment, and a substring found in source.
+var signalKinds = map[string]bool{"ext": true, "name": true, "path": true, "mark": true}
+
+// signalValueRe is the charset a value may use: what file names, paths, and
+// short code markers are made of, and nothing that could carry structure.
+var signalValueRe = regexp.MustCompile(`^[\p{L}\p{M}\p{N}._/+-]+$`)
+
+// Signals returns the file signals this review declares, lowercased, as
+// "kind:value" tokens. An undeclared or unparseable line yields none, which
+// leaves the review to the built-in rules.
+func (r Review) Signals() []string {
+	body, err := r.Body()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for line := range strings.SplitSeq(body, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, signalPrefix) {
+			continue
+		}
+		for field := range strings.SplitSeq(strings.TrimPrefix(line, signalPrefix), ",") {
+			kind, value, ok := strings.Cut(strings.TrimSpace(field), ":")
+			kind = strings.ToLower(strings.TrimSpace(kind))
+			value = strings.ToLower(strings.TrimSpace(value))
+			switch {
+			case !ok, !signalKinds[kind], value == "":
+			case utf8.RuneCountInString(value) > signalValMax:
+			case !signalValueRe.MatchString(value):
+			default:
+				out = append(out, kind+":"+value)
+			}
+			if len(out) == signalMax {
+				return out
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // Set is an ordered, name-indexed collection of reviews.

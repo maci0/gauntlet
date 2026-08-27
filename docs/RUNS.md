@@ -66,6 +66,19 @@ not against the review list.
 with its own lock, its own baseline, and its own `--jobs` pool, so the agents
 running at once are `jobs x directories`.
 
+A review a project carries can say what it keys on, which is what makes it
+reachable by `--suggest-agent gauntlet`: the built-in rules only know built-in
+names. One line anywhere in the prompt does it, and any single match proposes
+the review:
+
+    Signals: ext:.zig, name:build.zig, path:src/plugins, mark:comptime
+
+`ext` is a file extension, `name` a file's base name, `path` a directory or
+relative path, and `mark` a substring found near the top of a source file. The
+line comes from the reviewed tree, so it is parsed strictly: those four kinds,
+at most 12 tokens, 40 characters each, and a charset with no room for
+structure. Anything else on the line is dropped.
+
 Review discovery is per directory too: a tree carrying its own `*-review.md`
 files has a different set from its neighbor. `--suggest` follows from that, so
 the suggest step runs once per directory, and those steps run together rather

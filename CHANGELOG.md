@@ -10,6 +10,34 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- `--suggest-agent gauntlet` weighs evidence instead of matching filenames. It
+  now counts how much of a tree each language is (one stylesheet no longer
+  proposes five frontend reviews), reads the head of source files for what they
+  import and call, asks git which files have changed in the last 90 days,
+  treats absence as evidence (no tests, no docs, no CI argue for the reviews
+  that would fix that), and demotes reviews that have finished in a directory
+  several times without changing a line. Proposals are ranked by that evidence
+  and the weakest are dropped. Against the reviews agents picked in this
+  install's own journals, recall went from 0.62 to 0.82 at the same precision.
+- The tree is listed with `git ls-files` where there is a repository, so the
+  project's own ignore rules decide what counts as source. The walk with a
+  built-in skip list stays as the fallback.
+- Five bundled reviews (`arch`, `dr`, `functionality`, `idempotency`, `lint`)
+  could not be proposed by any rule. They can now.
+
+### Added
+
+- A review can declare what it keys on with a `Signals: ext:.zig, name:build.zig`
+  line, which is what makes a project's own prompt reachable by the file-signal
+  suggester: the built-in rules only know built-in names. The line comes from
+  the reviewed tree, so it is parsed strictly and bounded.
+- `scripts/suggest-calibrate.py` scores the suggester against the picks agents
+  made in past runs, so a rule change is measured rather than argued about.
+
 ## 1.9.0
 
 ### Added

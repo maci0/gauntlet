@@ -561,3 +561,46 @@ func unquoteC(s string) string {
 	}
 	return b.String()
 }
+
+// ListFiles returns the repository's files, relative to its root and in git's
+// own idea of what belongs: tracked files plus untracked ones that are not
+// ignored. It is what a tree scan should walk, since the repo already declares
+// which directories are build output and which are dependencies.
+func (r *Repo) ListFiles(ctx context.Context) ([]string, error) {
+	if r == nil || !Available() {
+		return nil, errors.New("git is not available")
+	}
+	out, err := r.run(ctx, gitSlow, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if err != nil {
+		return nil, err
+	}
+	return splitNUL(out), nil
+}
+
+// ChangedSince returns the files touched by commits in the given window, as
+// git accepts it for --since ("90 days ago"). It says which parts of a tree
+// are alive: a directory nobody has edited in a quarter is not where the next
+// review should look.
+func (r *Repo) ChangedSince(ctx context.Context, since string) ([]string, error) {
+	if r == nil || !Available() {
+		return nil, errors.New("git is not available")
+	}
+	out, err := r.run(ctx, gitSlow, "log", "--since="+since, "--name-only",
+		"--no-renames", "--pretty=format:", "-z")
+	if err != nil {
+		return nil, err
+	}
+	return splitNUL(out), nil
+}
+
+// splitNUL splits git's -z output, dropping the empty records its formats
+// leave between entries.
+func splitNUL(out []byte) []string {
+	var paths []string
+	for field := range strings.SplitSeq(string(out), "\x00") {
+		if p := strings.TrimSpace(field); p != "" {
+			paths = append(paths, p)
+		}
+	}
+	return paths
+}

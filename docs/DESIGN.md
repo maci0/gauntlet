@@ -276,6 +276,41 @@ The result is one run, one run id, one index row, one summary, spanning both
 binaries. What a reload costs is latency: it waits for the reviews in flight,
 which can take up to `--timeout`.
 
+## Choosing reviews without an agent
+
+`--suggest-agent gauntlet` answers the triage question from evidence on disk,
+in milliseconds and for no tokens. What it collects in one pass:
+
+- **What the tree is made of**, by count rather than presence. A language earns
+  its reviews at three files or a twentieth of the tree, so one stray
+  stylesheet in a Go repository is not a frontend.
+- **What the files say inside.** The head of each source file (4 KB, up to
+  2000 files) is searched for a fixed table of markers: `net/http`, `asyncio`,
+  `sqlalchemy`, `prometheus`, `bcrypt`, `argparse`, `bubbletea`. What a
+  codebase imports is a fact about it; a directory name is a guess.
+- **What is missing.** No tests, no documentation, no CI: absence is the
+  strongest argument for the review that would fix it, and presence-only rules
+  said the opposite.
+- **What is alive.** `git log --since=90.days --name-only` weights a language
+  by whether anyone is still editing it. Without commit history the weighting
+  is skipped rather than guessed.
+- **What happened here before.** The journal already records each review's outcome
+  per directory. A review that has finished here several times without changing
+  a line is demoted; one that keeps landing changes is promoted. It is the only
+  signal that improves with use.
+- **What a prompt declares.** A `Signals:` line in a project's own review makes
+  it reachable at all (see RUNS.md); the built-in rules only know built-in
+  names.
+
+Each rule contributes weight rather than a yes, the reviews are ranked by the
+total, and what does not clear the floor is not proposed. The tree is listed by
+`git ls-files` when there is a repository, so the project's own ignore rules
+decide what counts as source; a plain walk with a skip list is the fallback.
+
+`scripts/suggest-calibrate.py` scores the result against what agents picked in
+past runs. It is a reference, not ground truth: several of these rules are
+meant to diverge from a model's opinion.
+
 ## Run journal
 
 Every run writes JSONL under `~/.gauntlet` (`GAUNTLET_HOME` overrides):

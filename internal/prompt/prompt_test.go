@@ -693,3 +693,69 @@ func TestComposeNamesTheToolsThisMachineHas(t *testing.T) {
 		t.Fatalf("an empty toolbox is not reported:\n%s", none)
 	}
 }
+
+// A review found in a reviewed tree is untrusted input, so the signal line is
+// parsed strictly: known kinds only, a restricted charset, bounded counts.
+func TestSignalsAreParsedStrictly(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{"no line at all", "You are a reviewer.\n", nil},
+		{"the kinds it knows", "Signals: ext:.zig, name:build.zig, path:src/plugins, mark:comptime\n",
+			[]string{"ext:.zig", "name:build.zig", "path:src/plugins", "mark:comptime"}},
+		{"case and spacing do not matter", "Signals:  EXT:.ZIG ,name:Build.zig\n",
+			[]string{"ext:.zig", "name:build.zig"}},
+		{"unknown kinds are dropped", "Signals: ext:.zig, tool:zig, :x, name:\n", []string{"ext:.zig"}},
+		{"structure in a value is dropped", "Signals: mark:rm -rf /, ext:.zig\n", []string{"ext:.zig"}},
+		{"an oversized value is dropped", "Signals: name:" + strings.Repeat("a", 41) + ", ext:.zig\n",
+			[]string{"ext:.zig"}},
+		{"the first line wins", "Signals: ext:.zig\nSignals: ext:.c\n", []string{"ext:.zig"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "x-review.md")
+			if err := os.WriteFile(path, []byte(c.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			got := Review{Name: "x-review", Path: path, Origin: Project}.Signals()
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("Signals() = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+// A signal line comes from a file in the reviewed tree: whatever it holds, the
+// parse must terminate, stay inside its bounds, and emit only tokens the
+// suggester can act on.
+func FuzzSignals(f *testing.F) {
+	for _, seed := range []string{
+		"Signals: ext:.zig\n", "Signals:\n", "Signals: " + strings.Repeat("a:b,", 50),
+		"Signals: mark:\x00\x00\n", "signals: ext:.go\n", "Signals: path:../../etc\n",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, body string) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "x-review.md")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Skip()
+		}
+		got := Review{Name: "x-review", Path: path, Origin: Project}.Signals()
+		if len(got) > signalMax {
+			t.Fatalf("%d tokens, over the %d cap", len(got), signalMax)
+		}
+		for _, token := range got {
+			kind, value, ok := strings.Cut(token, ":")
+			switch {
+			case !ok, !signalKinds[kind], value == "":
+				t.Fatalf("emitted an unusable token: %q", token)
+			case !signalValueRe.MatchString(value):
+				t.Fatalf("emitted a value outside the charset: %q", token)
+			}
+		}
+	})
+}

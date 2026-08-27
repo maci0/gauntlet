@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -632,5 +633,61 @@ func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
 		t.Fatal(err)
 	} else if strings.Count(string(list), "\n") != 1 {
 		t.Errorf("checkouts survived:\n%s", list)
+	}
+}
+
+// The tree scan asks git what belongs to the project, so ListFiles must be
+// exactly that: tracked files plus untracked ones git does not ignore.
+func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	write := func(name, body string) {
+		t.Helper()
+		full := filepath.Join(r.Dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".gitignore", "build/\n")
+	write("build/artifact.o", "x")
+	write("untracked.py", "x")
+
+	files, err := r.ListFiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f] = true
+	}
+	if !got["main.go"] || !got["untracked.py"] {
+		t.Fatalf("ListFiles missed the project's own files: %v", files)
+	}
+	if got["build/artifact.o"] {
+		t.Fatalf("ListFiles returned an ignored build artifact: %v", files)
+	}
+}
+
+func TestChangedSinceNamesRecentWork(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	changed, err := r.ChangedSince(ctx, "90 days ago")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(changed, "main.go") {
+		t.Fatalf("the only commit's file is missing from %v", changed)
+	}
+	// A window wide enough to cover the whole history still reports it, so a
+	// caller reading "no churn" knows it means no commits, not a parse slip.
+	old, err := r.ChangedSince(ctx, "2000-01-01")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(old) == 0 {
+		t.Fatal("a window covering the whole history reported no files")
 	}
 }

@@ -456,3 +456,56 @@ func TestEventsRejectsTraversalIDs(t *testing.T) {
 		t.Errorf("generated id rejected: %v", err)
 	}
 }
+
+// History is what a directory's own past runs said about each review: how
+// often it ran there, and how often it left lines behind. It is per directory,
+// so a run over several trees does not credit one with another's work.
+func TestHistoryCountsPerDirectory(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, del := 12, 3
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w/one", "review": "sec-review", "ins": ins, "del": del},
+		{"ev": "review_end", "dir": "/w/one", "review": "sec-review"},
+		{"ev": "review_end", "dir": "/w/one", "review": "doc-review"},
+		{"ev": "review_end", "dir": "/w/two", "review": "sec-review", "ins": ins},
+		{"ev": "loop_end", "dir": "/w/one"},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	if err := j.Close(Summary{Dirs: []string{"/w/one", "/w/two"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 2 || h.Changed != 1 {
+		t.Fatalf("sec-review in /w/one = %+v, want 2 runs and 1 that changed something", h)
+	}
+	if h := got["doc-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("doc-review in /w/one = %+v, want one run that changed nothing", h)
+	}
+	if _, ok := got["loop_end"]; ok {
+		t.Fatal("History counted an event that is not a review")
+	}
+	other, err := History("/w/two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := other["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("sec-review in /w/two = %+v, want only that directory's own run", h)
+	}
+	if none, err := History("/w/three"); err != nil || len(none) != 0 {
+		t.Fatalf("a directory with no runs got %v, %v", none, err)
+	}
+}
