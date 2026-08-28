@@ -87,6 +87,45 @@ extra `--jobs` lanes. One persistent checkout lives under
 branches survive because open PRs need them. The branch checked out in the
 original directory never moves and no stack branch is merged automatically.
 
+### What a PR says
+
+The title is the commit subject the agent wrote for its change. The body adds
+what the title has no room for, and only what can be read back from the
+branch itself:
+
+```markdown
+## Summary
+
+fix(cache): drop the stale entry before the refill
+
+Scope: stale reads, cross-tenant bleed, stampedes.
+
+## Changes
+
+- `internal/cache/store.go`
+- `internal/cache/store_test.go`
+
+2 files changed, 41 insertions, 12 deletions.
+
+## Stack
+
+Layer 3 of a stack, targeting `gauntlet/stack/ab12cd34ef56/02-sec-review`
+rather than `main`, so this comparison holds only this change. The base
+merges first.
+```
+
+`Scope` is the review's own `Summary:` line, or its goal sentence when it
+declares none; a prompt with neither leaves the line out. The path list stops
+at ten and counts the rest. The layer number counts published branches, not
+schedule positions, so a review that changed nothing does not leave a gap in
+the numbering. No body names the agent that wrote the change or the pass it
+came from, for the same reason commit subjects do not; the one place
+`gauntlet` appears is inside a ref name, which a reader needs to check the
+branch out and which GitHub already prints above the diff. Every value read
+out of the reviewed repository -- an agent's subject, a prompt's summary, a
+path -- is flattened to one line and length-bounded before it becomes
+Markdown.
+
 Every check runs before any agent starts, the `--suggest` agent included.
 When the original checkout has tracked or untracked changes, gauntlet names
 them, explains that they will not be reviewed or included in the PRs, and

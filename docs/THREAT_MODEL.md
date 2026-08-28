@@ -157,7 +157,15 @@ privilege transition:
   (`ownsHead` in `internal/ghx/ghx.go`): a PR opened from someone else's fork
   under a name a run is about to use is ignored, not adopted. Git and `gh`
   receive fixed argv elements rather than shell text; review names, commit
-  subjects, and PR bodies cannot become commands. Git itself runs hardened against the
+  subjects, and PR bodies cannot become commands. A PR body is assembled from
+  values that originate in the reviewed repository -- the agent's commit
+  subject, the review prompt's own summary line, the paths its commit touched
+  -- so each is stripped of control characters, flattened to a single line, and
+  length-bounded before it is rendered, and a path is escaped into a code span
+  that a backtick in it cannot close (`internal/runner/prbody.go`). Markdown
+  posted to GitHub is display, not execution, but a forged heading or an
+  unbounded path list is still a reviewer reading something the run did not
+  say. Git itself runs hardened against the
   reviewed repository's own config: hooks, fsmonitor, and external diff are
   disabled, `ext::` transports are refused, and `GIT_SSH_COMMAND=ssh` outranks
   a repo-local `core.sshCommand` (`safeConfig` and `runIn` in
