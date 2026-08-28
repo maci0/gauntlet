@@ -12,6 +12,15 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.14.1
+
+### Fixed
+
+- A cancel during `git worktree add` no longer leaves a locked,
+  half-created worktree behind. All three worktree creation paths
+  (lanes, stacked PRs, snapshot) now unlock and remove on failure.
+  `Worktree.Remove` retries after unlocking when the first attempt fails.
+
 ## 1.14.0
 
 ### Changed
