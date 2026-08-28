@@ -151,7 +151,8 @@ handoff file passed across the exec.)
 | Signal | Effect |
 |---|---|
 | `SIGQUIT` (`Ctrl-\`) | Finish gracefully: no new review starts, the ones running end and land their work, then the run exits normally. `s` on the dashboard does the same. |
-| `SIGINT` (`Ctrl-C`), `SIGTERM` | Terminate the running reviews and exit 130. A second one force-kills. |
+| `SIGINT` (`Ctrl-C`) | Staged. The first finishes gracefully, exactly like `SIGQUIT` — the review in flight lands its work, commit, push and PR included. The second terminates the running reviews and exits 130. The third force-kills. A `Ctrl-C` after any finish request skips straight to terminating. |
+| `SIGTERM` | Terminate the running reviews and exit 130. A second one force-kills. Not staged: a supervisor's `SIGTERM` means stop now. |
 
 ## Exit codes
 

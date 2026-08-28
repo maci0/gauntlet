@@ -829,13 +829,20 @@ func writeSummary(j *journal.Journal, runID string, start time.Time, dirs []stri
 	}
 }
 
-// watchSignals stops the run on the first signal and kills the process on the
-// second, matching the original's two-stage Ctrl+C.
+// watchSignals maps process signals onto the two kinds of stop.
+//
+// Ctrl-C (SIGINT) is staged: the first one is the graceful quit -- the review
+// in flight finishes and lands its work, commit, push, PR and merge included,
+// exactly as SIGQUIT, `s` on the dashboard, and a tripped usage limit stop a
+// run -- the second terminates the running reviews, and the third force-kills
+// the process. An agent mid-review never sees the terminal's SIGINT at all
+// (every agent runs in its own process group, whichever CLI it is), so what
+// Ctrl-C means is decided entirely here, and a review that is seconds from
+// committing is worth one more Ctrl-C to kill. SIGTERM is not staged: it
+// comes from a supervisor or a kill, both of which mean "stop now", and a
+// service manager that escalates to SIGKILL on its own schedule must not be
+// met with a run that decided to finish an agent launch first.
 func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, graceful *gracefulStop) {
-	// SIGQUIT (Ctrl-\) is the graceful one: stop starting reviews, let the
-	// ones running finish and land their work, then exit. Interrupt and
-	// SIGTERM keep meaning "stop now", because that is what they mean
-	// everywhere else and a run is not the place to be clever about it.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGQUIT)
 	go func() {
@@ -849,20 +856,38 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 		}
 	}()
 
-	ch := make(chan os.Signal, 2)
+	ch := make(chan os.Signal, 3)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go func() {
+	go watchInterrupts(ctx, ch, stop, out, graceful, os.Exit)
+}
+
+// watchInterrupts is watchSignals' Interrupt/SIGTERM stage machine, split out
+// so a test can drive it through an ordinary channel: signal.Notify fans every
+// delivery out to all registered channels and never unregisters, so a test
+// that signals the process leaves handlers behind for the next one.
+func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.CancelFunc,
+	out io.Writer, graceful *gracefulStop, exit func(int)) {
+	for {
+		var sig os.Signal
 		select {
-		case sig := <-ch:
-			fmt.Fprintf(out, "\nSignal received (%s), terminating running reviews. Again to force-kill.\n", sig)
-			stop()
+		case sig = <-ch:
 		case <-ctx.Done():
 			return
 		}
+		// The first Ctrl-C asks for the graceful quit -- unless one was
+		// already asked for by any path, in which case the operator has
+		// seen the "finishing" message and this press means "stop now".
+		if sig == os.Interrupt && !graceful.asking() {
+			graceful.request(out)
+			continue
+		}
+		fmt.Fprintf(out, "\nSignal received (%s), terminating running reviews. Again to force-kill.\n", sig)
+		stop()
 		<-ch
 		fmt.Fprintln(out, "\nForce-killing.")
-		os.Exit(128 + int(syscall.SIGINT))
-	}()
+		exit(128 + int(syscall.SIGINT))
+		return
+	}
 }
 
 // gracefulStop carries the "finish and quit" request from whoever asks for it
