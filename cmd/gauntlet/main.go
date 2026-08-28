@@ -498,7 +498,8 @@ func run(argv []string) int {
 			Dir: d.dir, Set: d.set, Reviews: d.reviews, Agents: agents, Bin: opts.bin,
 			Timeout: opts.timeout, Jobs: opts.jobs, Retries: opts.retries, MaxLoops: maxLoops,
 			Started: startedAt, ResumeQueue: carried.Pending,
-			Runtime: opts.runtime, Commit: opts.commit, Push: opts.push,
+			Runtime: opts.runtime, UsageCmd: opts.usageArgv, UsageLimit: opts.usageLimit,
+			Commit: opts.commit, Push: opts.push,
 			StackedPRs: opts.stackedPRs, PRBase: opts.prBase, PushRemote: opts.pushRemote,
 			// The stacked preflight (dirty consent included) already ran,
 			// before the suggest step; New reuses its result instead of

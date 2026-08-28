@@ -23,6 +23,17 @@ minor instead and were listed under Changed.
   new `effort` argument list (or an `{effort}` placeholder) in
   `agents.json` / `--agent-cmd`; every other agent refuses `@effort` at
   startup instead of guessing a flag.
+- `--usage-limit PCT` with `--usage-cmd CMD` ends a run gracefully when a
+  provider's usage window is nearly spent, rather than letting the next review
+  hit the wall. Between reviews the runner asks the command what percentage is
+  gone; at or above the limit it stops starting reviews, and the one in flight
+  finishes normally — commit, push, PR, merge all still happen. The percentage
+  has to come from a command because no agent CLI reports it to a headless
+  launch: Claude Code, for instance, reads it from an API response header and
+  passes it to a status line, which does not run under `--print`. A probe that
+  fails or answers with something other than a percentage is reported once and
+  then ignored for the rest of the run, so a broken probe cannot end a run
+  early.
 
 ### Changed
 

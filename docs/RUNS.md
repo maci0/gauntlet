@@ -237,10 +237,51 @@ Three ways, and they mean different things:
 | `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
 | `Ctrl-C`, `SIGINT`, `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. A second one force-kills. |
 | `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
+| `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
 
 The graceful stop is the one to reach for when a loop is halfway through and
 the tree should not be left with uncommitted agent edits: it is the only stop
 that still runs the configured commit, publication, and merge steps.
+
+### Stopping on a provider usage limit
+
+A subscription's rolling window runs out mid-loop, and the review that hits
+the wall fails for a reason that has nothing to do with the code. Given a
+command that reports how much of the window is gone, the run can end itself
+before that happens:
+
+```sh
+gauntlet -r quick --stacked-prs --usage-cmd 'my-usage-probe' --usage-limit 85
+```
+
+Between reviews -- never during one -- the runner asks the command for a
+percentage. At or above the limit it takes the graceful stop from the table
+above: the review in flight finishes, its layer is committed, pushed and
+published as a PR, the commit and merge steps still run, and no further review
+starts. Both flags are needed; either alone is refused at startup, since a
+limit with no probe never trips and a probe with no limit spawns a process per
+review to no effect.
+
+The command is the operator's, not the agent's. It is split on whitespace and
+executed directly, so no shell parses it, and it runs in the directory
+gauntlet was started from rather than the tree under review. It has to print
+one number, optionally with a trailing `%`; anything else -- a label, an empty
+answer from a failed lookup, a value outside 0-100 -- is an error rather than
+a guess, because reading a bad answer as "plenty left" would spend the rest of
+the window and reading it as "full" would end the run for nothing. The first
+failure is reported and the limit is then ignored for the rest of the run: a
+probe that breaks must not be able to end a run early.
+
+**Why a command, and not a number gauntlet reads itself.** The figure lives in
+the provider's API response headers -- for Anthropic,
+`anthropic-ratelimit-unified-5h-utilization` -- and no supported agent CLI
+passes it to a headless launch. Claude Code, for instance, turns that header
+into the `rate_limits.five_hour.used_percentage` field it hands to a status
+line, and status lines do not run under `--print`, which is how every agent
+here is launched. Its headless JSON stream carries only a coarser
+`rate_limit_event` (`allowed`, `allowed_warning`, `rejected`) with no
+percentage. Reading the header directly would mean holding the provider
+credential, which is not something this tool does.
 
 ## Run journal
 

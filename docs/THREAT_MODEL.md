@@ -184,6 +184,18 @@ privilege transition:
   this is gauntlet deliberately handing one permission-bypassed agent
   git-write and remote-push authority. A compromised agent does not need to
   talk its way into `git push`: with `--push` it is told to.
+- **`--usage-cmd` (the usage-limit probe):** a command the operator names, run
+  between reviews to decide whether to stop starting them. It is split on
+  whitespace and handed to exec as argv, so no shell parses it and nothing in
+  it is expanded; it runs with gauntlet's own working directory rather than the
+  tree under review, so a reviewed repository cannot supply the executable it
+  resolves to, and its output is parsed as one number and nothing else
+  (`probeUsage` and `parseUsagePercent` in `internal/runner/usagelimit.go`).
+  The reviewed repository has no channel into it. Its failure mode is chosen
+  deliberately: a probe that errors or answers unparseably is reported once and
+  then ignored, so the worst a broken probe does is leave the limit
+  unenforced -- it cannot end a run early, and it cannot extend one, because a
+  missing answer is never read as headroom.
 
 Repudiation is covered elsewhere: every run journals seed, schedule,
 outcomes, and the prompt fingerprint each launch ran under
