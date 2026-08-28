@@ -190,6 +190,7 @@ Anyone can add another, without a new binary. In `~/.gauntlet/agents.json`
   "myagent": {
     "argv": ["myagent", "-p", "{prompt}"],
     "model": ["--model", "{model}"],
+    "effort": ["--effort", "{effort}"],
     "stream": ["--mode", "json"],
     "continue": ["-c"],
     "usage": {"roots": ["~/.myagent/sessions"]}

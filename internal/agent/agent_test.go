@@ -81,6 +81,21 @@ func TestParseSpecsEffortRejects(t *testing.T) {
 	}
 }
 
+func TestParseSpecsMixedTakesNoPin(t *testing.T) {
+	// The keyword names a set, not one CLI; the error must not fall through
+	// to "unknown tool", which would call mixed unknown and valid at once.
+	for _, in := range []string{"mixed@high", "mixed:opus", "all@x", "mixed@"} {
+		_, err := ParseSpecs(in)
+		if err == nil {
+			t.Errorf("%q should be rejected", in)
+			continue
+		}
+		if strings.Contains(err.Error(), "unknown tool") {
+			t.Errorf("%q: want the every-installed-agent error, got %v", in, err)
+		}
+	}
+}
+
 func TestParseSpecsSuggestsClosest(t *testing.T) {
 	_, err := ParseSpecs("claud")
 	if err == nil || !strings.Contains(err.Error(), "claude") {
