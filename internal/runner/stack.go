@@ -215,6 +215,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		if ctx.Err() != nil || r.soft.Load() {
 			return false
 		}
+		r.checkUsageLimit(ctx)
 		if r.finish.Load() {
 			r.dropPending()
 			return true

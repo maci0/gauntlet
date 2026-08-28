@@ -39,6 +39,14 @@ type Config struct {
 	MaxLoops int
 	Runtime  time.Duration
 
+	// UsageCmd is a command whose stdout is the percentage of the provider's
+	// usage window already spent, and UsageLimit is the percentage at which
+	// the run stops starting reviews. Both are needed for either to apply.
+	// The runner cannot read that figure itself: it lives in the provider's
+	// API response headers, and no agent CLI reports it to a headless launch.
+	UsageCmd   []string
+	UsageLimit float64
+
 	// Retries is how many times a review is rerun on the same agent after a
 	// launch failure or a nonzero exit, with a growing delay between tries.
 	// The failures worth waiting out are transient: a rate limit, a dropped
@@ -163,6 +171,9 @@ type Runner struct {
 	// successor; a graceful quit has no successor, so it must not leave the
 	// loop's output uncommitted.
 	finish atomic.Bool
+	// usageProbeFailed keeps a broken usage probe from narrating once per
+	// review. The first failure is worth a line; the rest are the same line.
+	usageProbeFailed atomic.Bool
 }
 
 // RequestStop asks the runner to finish the reviews already in flight and then
@@ -537,6 +548,7 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 			r.abandonQueue(loopNo)
 			return false
 		}
+		r.checkUsageLimit(ctx)
 		if r.finish.Load() {
 			// No new review starts, and what was never started is dropped:
 			// there is no successor to hand it to. What this loop did still
@@ -685,6 +697,11 @@ func (r *Runner) pushLanded(ctx context.Context, review string) {
 // prompt cache hits after the first review in this lane.
 func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx int) {
 	for reviewIdx := 0; ; reviewIdx++ {
+		// Each lane asks before it starts another review, so a limit reached
+		// mid-loop is noticed by whichever lane frees up first rather than
+		// waiting for the whole loop to drain. Once the answer has tripped the
+		// graceful quit, the probe stops running.
+		r.checkUsageLimit(ctx)
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
 			return
 		}

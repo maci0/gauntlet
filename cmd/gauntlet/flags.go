@@ -67,6 +67,9 @@ type options struct {
 	dirs             []string
 	timeout          time.Duration
 	runtime          time.Duration
+	usageCmd         string
+	usageArgv        []string
+	usageLimit       float64
 	jobs             int
 	retries          int
 	mergeInto        string
@@ -306,6 +309,10 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
 	})
 	fs.Var(durationFlag{&o.runtime, true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
+	fs.StringVar(&o.usageCmd, "usage-cmd", "",
+		"command printing the percentage of the provider's usage window already spent, for --usage-limit")
+	fs.Float64Var(&o.usageLimit, "usage-limit", 0,
+		"stop starting reviews at this percentage of the provider's usage window, per --usage-cmd (0 = unlimited)")
 	alias("j", "jobs", func(n string) {
 		fs.IntVar(&o.jobs, n, 1, "reviews to run at once per directory; >1 gives each its own git worktree and merges back")
 	})
@@ -437,6 +444,19 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if err := registerTranscript(name, def.Usage); err != nil {
 			return nil, err
 		}
+	}
+
+	// Either flag alone is a misconfiguration worth refusing rather than
+	// silently ignoring: a limit with no probe never trips, and a probe with
+	// no limit spawns a process per review to no effect.
+	if (o.usageCmd == "") != (o.usageLimit == 0) {
+		return nil, errors.New("--usage-cmd and --usage-limit are used together, or not at all")
+	}
+	if o.usageLimit < 0 || o.usageLimit > 100 {
+		return nil, fmt.Errorf("--usage-limit %g: want a percentage between 0 and 100", o.usageLimit)
+	}
+	if fields := strings.Fields(o.usageCmd); len(fields) > 0 {
+		o.usageArgv = fields
 	}
 
 	for _, b := range bins {
