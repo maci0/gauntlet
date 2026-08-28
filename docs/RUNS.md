@@ -234,14 +234,25 @@ Three ways, and they mean different things:
 
 | How | What happens |
 |---|---|
-| `s` on the dashboard, or `SIGQUIT` (`Ctrl-\`) | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
-| `Ctrl-C`, `SIGINT`, `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. A second one force-kills. |
+| `s` on the dashboard, `SIGQUIT` (`Ctrl-\`), or the first `Ctrl-C` | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
+| A second `Ctrl-C`, or `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. One more force-kills. |
 | `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
 | `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
 
 The graceful stop is the one to reach for when a loop is halfway through and
 the tree should not be left with uncommitted agent edits: it is the only stop
 that still runs the configured commit, publication, and merge steps.
+
+`Ctrl-C` reaches it first because the hard stop is rarely what an interactive
+operator means. An agent mid-review never sees the terminal's `SIGINT` at all
+-- every agent runs in its own process group, whichever CLI it is -- so what
+`Ctrl-C` means is decided by gauntlet, and a review that is seconds from
+committing is worth one more `Ctrl-C` to kill. Once any finish request is
+already draining (`s`, `SIGQUIT`, a tripped usage limit), the next `Ctrl-C`
+skips straight to terminating: the "finishing" message has been seen, and
+pressing again means stop now. `SIGTERM` is never staged, because a
+supervisor's `SIGTERM` means stop now and is usually followed by a `SIGKILL`
+on a schedule gauntlet does not control.
 
 ### Stopping on a provider usage limit
 

@@ -12,6 +12,17 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Changed
+
+- `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
+  flight finishes and lands its work, commit, push and PR included, exactly as
+  `SIGQUIT`, `s` on the dashboard, and a tripped usage limit end a run -- the
+  second terminates the running reviews and exits 130, and the third
+  force-kills. A `Ctrl-C` arriving while any finish request is already
+  draining skips straight to terminating. `SIGTERM` is unchanged and never
+  staged: a supervisor's `SIGTERM` means stop now. The dashboard's `Ctrl-C`
+  follows the same stages; `q` and `esc` still quit immediately.
+
 ### Added
 
 - `--usage-limit PCT` with `--usage-cmd CMD` ends a run gracefully when a

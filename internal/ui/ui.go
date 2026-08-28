@@ -300,7 +300,17 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		switch msg.String() {
-		case "q", "ctrl+c", "esc":
+		case "q", "esc":
+			return m, tea.Quit
+		case "ctrl+c":
+			// Staged like the terminal's Ctrl-C: the first asks for the
+			// graceful quit the `s` key makes, the second closes the
+			// dashboard, which stops the run.
+			if m.cfg.OnFinish != nil && !m.finishing {
+				m.finishing = true
+				m.cfg.OnFinish()
+				return m, nil
+			}
 			return m, tea.Quit
 		case " ":
 			m.paused = !m.paused
@@ -1081,7 +1091,8 @@ func (m *model) renderHelp() string {
 		styleTitle.Render("gauntlet dashboard"),
 		"",
 		"  q, esc      quit (stops the run, killing what is running)",
-		"  s           finish: no new reviews, then commit, publish or merge, and exit",
+		"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
+		"  ctrl+c x2   quit while a finish is draining (stops the run)",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
 		"  g / G       jump to oldest / newest",
