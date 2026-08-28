@@ -12,19 +12,28 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
-### Added
+## 1.13.0
+
+### Changed
+
+- `--jobs N` now creates N persistent lane worktrees reused across reviews
+  instead of a throwaway worktree per review. Within a lane, reviews run
+  sequentially in the same directory, so the agent's system prompt prefix is
+  byte-identical and the provider's prompt cache hits after the first review.
+  Cache cold starts scale with the lane count, not the review count: a
+  15-review run with `--jobs 3` pays 3 cold starts and gets 12 cache hits,
+  compared to 15 cold starts and 0 hits previously. Falls back to sequential
+  mode if lane creation fails.
 
 - An `--agents` entry can pin a reasoning effort alongside the model:
   `claude:opus-5@xhigh`, `opencode:anthropic/claude-sonnet-5@medium`, or
   `claude@max` with no model. The part after the last `@` is the effort, and
   like a model id it is passed to the CLI verbatim. It is wired only for
-  agents whose flag was verified from the CLI's own help — `claude`
-  (`--effort`) and `opencode` (`--variant`) — and for defined agents via a
+  agents whose flag was verified from the CLI's own help, `claude`
+  (`--effort`) and `opencode` (`--variant`), and for defined agents via a
   new `effort` argument list (or an `{effort}` placeholder) in
   `agents.json` / `--agent-cmd`; every other agent refuses `@effort` at
   startup instead of guessing a flag.
-
-### Changed
 
 - Custom agent names may no longer contain `@`, which now separates the
   effort. A definition in `agents.json` or `--agent-cmd` that uses one is
