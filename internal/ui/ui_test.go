@@ -56,7 +56,7 @@ func TestStaticFrameHasEveryInstrument(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 120, 40)
 	for _, want := range []string{
 		"GAUNTLET", "ACTIVITY", "AGENTS", "REVIEWS", "FEED",
-		"sec-review", "claude", "2×worktree", "1.0.0",
+		"sec-review", "claude", "2×lane", "1.0.0",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("frame is missing %q", want)

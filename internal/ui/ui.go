@@ -622,7 +622,7 @@ func (m *model) renderHeader() string {
 	if m.cfg.StackedPRs {
 		mode = "stacked PRs"
 	} else if m.cfg.Jobs > 1 {
-		mode = fmt.Sprintf("%d×worktree", m.cfg.Jobs)
+		mode = fmt.Sprintf("%d×lane", m.cfg.Jobs)
 	}
 	loop := fmt.Sprintf("loop %d", m.loop)
 	stateTxt, stateStyle := m.stateLabel()
