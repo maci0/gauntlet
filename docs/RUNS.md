@@ -30,8 +30,8 @@ gauntlet -j 4 -a mixed --once
   nodes. The commit is authored by you, with your git identity, and its
   subject is the one the review printed for its own change (`SUBJECT: fix: …`
   in the output protocol), so the history reads like the project's, not like a
-  tool's. A review that prints none gets `chore(<review>): apply review
-  findings`.
+  tool's. A review that prints none gets a subject naming the files it
+  touched (`chore: add helper.go`), never a line about the review itself.
 - With `--push`, each review is pushed as it lands rather than all of them at
   the end, so a long run publishes as it goes.
 - Each worktree is cut from the tree's **current tip**, not from where the
