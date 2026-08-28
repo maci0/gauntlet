@@ -25,6 +25,9 @@ type Worktree struct {
 	repo   *Repo
 }
 
+// Base returns the commit this worktree was cut from (or advanced to).
+func (w *Worktree) Base() string { return w.base }
+
 // LockName is the run lock gauntlet writes in the directory it reviews. It
 // lives here so the ignore rules and the runner agree on one spelling.
 const LockName = ".gauntlet.lock"
@@ -168,7 +171,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		return nil, err
 	}
 
-	slug := branchSlug(name)
+	slug := BranchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
@@ -220,7 +223,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+branchSlug(tag))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+BranchSlug(tag))
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
 	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
 		if tip != base {
@@ -251,7 +254,7 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 	if err := r.ensureWorktreeRoot(); err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+branchSlug(tag))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+BranchSlug(tag))
 	// A leftover snapshot from a killed run sits at this same deterministic
 	// path; it is gauntlet's own and carries nothing, so it is replaced.
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
@@ -427,6 +430,24 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 	return nil
 }
 
+// Advance moves a persistent lane worktree to a new base, detaching from
+// whatever branch the previous review used so it can be deleted by the
+// caller. Uncommitted changes and untracked files from the previous review
+// are cleaned up. After Advance the worktree is detached at newBase with
+// Branch == ""; the next review calls StartBranch to begin its own work.
+func (w *Worktree) Advance(ctx context.Context, newBase string) error {
+	sub := &Repo{Dir: w.Dir}
+	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--detach", newBase); err != nil {
+		return fmt.Errorf("git checkout --detach: %w", err)
+	}
+	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {
+		return fmt.Errorf("git clean -fd: %w", err)
+	}
+	w.Branch = ""
+	w.base = newBase
+	return nil
+}
+
 // MergeResult says what happened when a review's branch met the main tree.
 type MergeResult struct {
 	Merged   bool
@@ -526,7 +547,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 		return MergeResult{Detail: err.Error()}
 	}
 
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+BranchSlug(target))
 	// Clearing a checkout a killed run left here; if it fails, the add below
 	// reports it rather than this line.
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
@@ -770,8 +791,8 @@ func (r *Repo) CleanWorktreeRoot() {
 	_ = os.Remove(filepath.Dir(root))
 }
 
-// branchSlug keeps a review name safe for a git ref.
-func branchSlug(s string) string {
+// BranchSlug keeps a review name safe for a git ref.
+func BranchSlug(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
@@ -792,11 +813,11 @@ func branchSlug(s string) string {
 // review. That stability is how a repeated invocation recognizes layers it
 // already published without making unrelated stacks collide.
 func StackBranchName(baseTip string, index int, review string) string {
-	tip := branchSlug(baseTip)
+	tip := BranchSlug(baseTip)
 	if len(tip) > 12 {
 		tip = tip[:12]
 	}
-	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, branchSlug(review))
+	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, BranchSlug(review))
 }
 
 func firstLine(s string) string {

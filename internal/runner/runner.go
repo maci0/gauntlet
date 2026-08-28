@@ -570,8 +570,10 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 	return true
 }
 
-// runLoopParallel runs up to Jobs reviews at once, each in its own worktree on
-// its own branch, then merges them back one at a time.
+// runLoopParallel runs up to Jobs reviews at once using persistent lane
+// worktrees. Each lane is a stable directory reused across reviews, so agent
+// system prompts (which embed the working directory) share a prefix and hit
+// the provider's prompt cache after the first review in each lane.
 func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	base, err := r.repo.Tip(ctx, "HEAD")
 	if err != nil {
@@ -584,69 +586,54 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		return r.runLoopSequential(ctx, loopNo)
 	}
 
-	sem := make(chan struct{}, r.cfg.Jobs)
-	var wg sync.WaitGroup
+	tag := fmt.Sprintf("%s-l%d", r.cfg.RunID, loopNo)
+	lanes := make([]*gitx.Worktree, r.cfg.Jobs)
+	for i := range lanes {
+		wt, err := r.repo.AddWorktree(ctx, fmt.Sprintf("lane-%d", i), tag, base)
+		if err != nil {
+			r.log("Cannot create lane %d: %v", i, err)
+			for j := range i {
+				if lanes[j] != nil {
+					_ = lanes[j].Remove(context.WithoutCancel(ctx))
+					r.repo.DeleteBranch(context.WithoutCancel(ctx), lanes[j].Branch)
+				}
+			}
+			return r.runLoopSequential(ctx, loopNo)
+		}
+		lanes[i] = wt
+	}
+	defer func() {
+		for _, wt := range lanes {
+			if wt == nil {
+				continue
+			}
+			_ = wt.Remove(context.WithoutCancel(ctx))
+			if wt.Branch != "" {
+				r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
+			}
+		}
+	}()
+
 	r.schedule(loopNo)
-	// A lane is claimed before a review comes off the queue. Popping first
-	// and waiting for a lane second would empty the queue at dispatch speed
-	// while every review still waited minutes for its turn, and a stop could
-	// no longer tell never-started work from in-flight work: a hot reload
-	// would report nothing pending and lose the loop's remainder, and a
-	// graceful quit or an expired budget would keep launching everything
-	// already popped. Claiming first leaves the unstarted half on the queue,
-	// where the stop handling below already knows what to do with it.
-loop:
-	for i := 0; ; i++ {
-		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
-			break
-		}
-		if r.budgetExhausted() {
-			r.log("Runtime budget exhausted, finishing up")
-			break
-		}
-		select {
-		case sem <- struct{}{}:
-		case <-ctx.Done():
-			break loop
-		}
-		if ctx.Err() != nil {
-			// Cancel landed while both select cases were ready: give the lane
-			// back rather than dispatch into a dead context.
-			<-sem
-			break loop
-		}
-		review, ok := r.takeNext()
-		if !ok {
-			<-sem
-			break
-		}
+	var wg sync.WaitGroup
+	for i, wt := range lanes {
 		wg.Go(func() {
-			defer func() { <-sem }()
-			r.st.Add(r.runIsolated(ctx, review, loopNo, i, base))
+			r.runLane(ctx, wt, loopNo, i)
 		})
 	}
 	wg.Wait()
 
-	// A hard cancel strands whatever never got a lane: no successor will
-	// ever start it, so each is recorded as interrupted rather than let
-	// vanish from the stats, the summary, and the journal. Soft stops and
-	// budget stops leave the queue alone instead: the handoff or the caller
-	// decides, exactly as the sequential loop does.
 	if ctx.Err() != nil {
 		r.abandonQueue(loopNo)
 	}
 
 	if len(r.Pending()) > 0 && !r.finish.Load() {
-		return false // stopped early: this loop is unfinished
+		return false
 	}
 	if r.finish.Load() {
-		// A graceful quit drops what it never started: there is no successor
-		// to hand the queue to, and the work that did run must still land.
 		r.dropPending()
 	}
 	if r.cfg.Commit || r.cfg.Push {
-		// All lanes have drained and merged: the tree is quiescent, which is
-		// the only safe moment to hand it to a commit agent.
 		r.runCommitStep(ctx)
 	}
 	r.runMergeStep(ctx, loopNo)
@@ -697,57 +684,80 @@ func (r *Runner) pushLanded(ctx context.Context, review string) {
 	r.log("Pushed %s", review)
 }
 
-// runIsolated runs one review in a private worktree and merges its commit.
-func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int, base string) Result {
-	tag := fmt.Sprintf("%s-l%d-%02d", r.cfg.RunID, loopNo, idx)
-	// Branch from where the tree is now, not from where the loop began. Lanes
-	// refill for as long as the loop runs, and a review cut from an hours-old
-	// base has to merge against everything that landed while it waited: the
-	// first merge of a loop never conflicts, and every later one used to.
+// runLane pulls reviews from the shared queue and runs them sequentially in
+// one persistent worktree. The directory path stays constant across reviews,
+// so the agent's system prompt prefix is byte-identical and the provider's
+// prompt cache hits after the first review in this lane.
+func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx int) {
+	for reviewIdx := 0; ; reviewIdx++ {
+		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
+			return
+		}
+		if r.budgetExhausted() {
+			return
+		}
+		review, ok := r.takeNext()
+		if !ok {
+			return
+		}
+		r.st.Add(r.runLaneReview(ctx, wt, review, loopNo, laneIdx, reviewIdx))
+	}
+}
+
+// runLaneReview runs one review in a persistent lane worktree, commits the
+// result, and merges it into the main tree. Between reviews the lane advances
+// to the current HEAD so the next review sees all prior work.
+func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review string,
+	loopNo, laneIdx, reviewIdx int) Result {
+
+	tag := fmt.Sprintf("%s-l%d-lane%d-%02d", r.cfg.RunID, loopNo, laneIdx, reviewIdx)
+
+	// Start from the latest HEAD so the review sees work merged by other
+	// lanes, not the stale tip from when the loop (or the last review) began.
+	base := wt.Base()
 	if tip, err := r.repo.Tip(ctx, "HEAD"); err == nil && tip != "" {
 		base = tip
 	}
-	wt, err := r.repo.AddWorktree(ctx, review, tag, base)
-	if err != nil {
-		r.log("Cannot create worktree for %s: %v", review, err)
-		agent := r.pickAgent(review, nil)
-		// The outcome belongs in the stream like every other one: a consumer
-		// rebuilding a run from its journal would wait forever on an event
-		// that never came.
+
+	// Switch the lane to a review-specific branch from the current tip.
+	oldBranch := wt.Branch
+	branch := fmt.Sprintf("gauntlet/%s/%s", tag, gitx.BranchSlug(review))
+	if err := wt.StartBranch(ctx, branch, base); err != nil {
+		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
+		a := r.pickAgent(review, nil)
 		r.bus.Publish(Event{
 			Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
-			Agent: agent.Label(), Loop: loopNo, Status: StatusSkipped,
+			Agent: a.Label(), Loop: loopNo, Status: StatusSkipped,
 		})
-		return Result{Review: review, Agent: agent, Status: StatusSkipped}
+		return Result{Review: review, Agent: a, Status: StatusSkipped}
 	}
-	removed := false
-	// The checkout is disposable once its commit exists; the branch is what
-	// carries the work. Removing it early also frees the branch, which git
-	// refuses to delete while a worktree has it checked out.
-	release := func() {
-		if removed {
-			return
+	if oldBranch != "" && oldBranch != branch {
+		r.repo.DeleteBranch(context.WithoutCancel(ctx), oldBranch)
+	}
+
+	// advance resets the lane to the current HEAD so it is ready for the next
+	// review. Called on every exit path after the review branch is no longer
+	// needed in the worktree (merged, discarded, or conflict-kept).
+	advance := func(deleteBranch bool) {
+		branchToDelete := wt.Branch
+		tip := base
+		if t, err := r.repo.Tip(ctx, "HEAD"); err == nil && t != "" {
+			tip = t
 		}
-		removed = true
-		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
-			r.log("Cannot remove worktree for %s: %v", review, err)
+		if err := wt.Advance(context.WithoutCancel(ctx), tip); err != nil {
+			r.log("Cannot advance lane %d after %s: %v", laneIdx, review, err)
+		}
+		if deleteBranch && branchToDelete != "" {
+			r.repo.DeleteBranch(context.WithoutCancel(ctx), branchToDelete)
 		}
 	}
-	defer release()
 
 	res := r.runReview(ctx, review, loopNo, wt)
 	res.Branch = wt.Branch
-	// A worktree that produced nothing keeps no branch: it still points at
-	// base, and leaving it behind would litter the repo with one empty branch
-	// per failed review. The checkout must go first; git refuses to delete a
-	// branch its worktree still has checked out.
-	discard := func() {
-		release()
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
-		res.Branch = ""
-	}
+
 	if res.Status != StatusOK {
-		discard()
+		advance(true)
+		res.Branch = ""
 		return res
 	}
 
@@ -756,42 +766,35 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)
 		res.Status = StatusFail
-		discard()
+		advance(true)
+		res.Branch = ""
 		return res
 	}
 	if !changed {
 		res.Ins, res.Del, res.HaveLines = 0, 0, true
-		discard()
+		advance(true)
+		res.Branch = ""
 		return res
 	}
 	if ins, del, ok := r.repo.DiffStat(ctx, wt.Dir, base, "HEAD"); ok {
 		res.Ins, res.Del, res.HaveLines = ins, del, true
 	}
-	release()
 
-	// One merge at a time: git allows one per worktree, and a conflicting
-	// merge must be aborted before the next one starts.
 	r.mergeMu.Lock()
 	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
 	resolved := false
 	if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
-		// Still under the lock: the conflict step cuts its checkout from the
-		// tip and merges the result back, and neither survives the tip moving.
 		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
 			mr, resolved = fixed, true
 		}
 	}
 	if mr.Merged && r.cfg.Push {
-		// Push while the merge lock is held: two pushes racing on one branch
-		// is one rejection and one wasted round trip. A run of forty reviews
-		// publishes as it goes rather than holding everything to the end.
 		r.pushLanded(ctx, review)
 	}
 	r.mergeMu.Unlock()
 
 	switch {
 	case mr.Merged:
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
 		if resolved {
 			r.log("Merged %s after resolving a conflict%s", review, linesNote(res))
 		} else {
@@ -801,24 +804,15 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: StatusOK,
 		}
-		// Lines ride along only when they were measured: a diff stat that
-		// could not be read is missing, not zero, and the journal must not
-		// turn an unknown into "changed nothing".
 		if res.HaveLines {
 			ev.Ins, ev.Del = new(res.Ins), new(res.Del)
 		}
 		r.bus.Publish(ev)
+		advance(true)
 	default:
-		// The branch survives on purpose: dropping it would throw away the
-		// entire review, silently. A genuine conflict and a merge git could
-		// not even start are kept apart, because only the first is worth a
-		// resolver or a human sitting down with it.
 		if mr.Conflict {
 			res.Status = StatusConflict
 			r.log("MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
-			// Merging it by hand would otherwise write "Merge branch
-			// 'gauntlet/<run>/<review>'" into the project's history, which is
-			// the one place this tool's scratch names must never appear.
 			r.log("To land it after resolving: %s", conflictHint(wt.Branch, msg))
 		} else {
 			res.Status = StatusFail
@@ -828,6 +822,8 @@ func (r *Runner) runIsolated(ctx context.Context, review string, loopNo, idx int
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
 			Branch: wt.Branch, Status: res.Status, Text: mr.Detail,
 		})
+		// Branch kept for human inspection; advance the lane without deleting it.
+		advance(false)
 	}
 	return res
 }

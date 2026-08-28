@@ -1543,12 +1543,13 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 	cfg.Jobs = 2
 	cfg.Seed = 1
 
-	// A branch squatting on this lane's name, pointing at a commit that is
-	// not the base: AddWorktree refuses it rather than destroying it. The
-	// refusal is the deterministic stand-in for every cause of a failed add.
+	// A branch squatting on the review's lane branch name, pointing at a
+	// commit that is not the base: StartBranch refuses it rather than
+	// destroying it. The refusal is the deterministic stand-in for every
+	// cause of a failed branch creation within a lane.
 	tree := gitOut(t, repo, "rev-parse", "HEAD^{tree}")
 	squat := gitOut(t, repo, "commit-tree", tree, "-p", "HEAD", "-m", "squat")
-	gitOut(t, repo, "branch", "gauntlet/test-l1-00/a-review", squat)
+	gitOut(t, repo, "branch", "gauntlet/test-l1-lane0-00/a-review", squat)
 
 	bus := NewBus()
 	events := bus.Subscribe(256)
@@ -1580,7 +1581,7 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 
 	// The squatting branch keeps its commit: a failed review must not take
 	// out a branch it did not create.
-	if tip := gitOut(t, repo, "rev-parse", "gauntlet/test-l1-00/a-review"); tip != squat {
+	if tip := gitOut(t, repo, "rev-parse", "gauntlet/test-l1-lane0-00/a-review"); tip != squat {
 		t.Fatalf("squatting branch moved: %s, want %s", tip, squat)
 	}
 	if out := gitOut(t, repo, "worktree", "list"); strings.Count(out, "\n") != 0 {

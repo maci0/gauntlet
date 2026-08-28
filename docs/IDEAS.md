@@ -113,3 +113,23 @@ default question is settled:
 - Recent runs from `~/.gauntlet/index.jsonl`, which already records the argv,
   offered as one-key presets.
 - A key that copies the composed command line.
+
+## ~~Persistent isolated worktree (`--worktree`)~~ Implemented
+
+Implemented as persistent lanes in `--jobs N` mode. See DESIGN.md,
+"API-level cache reuse across reviews" for the full description.
+
+`--jobs N` creates N persistent lane worktrees at loop start, distributes
+reviews across them from a shared queue, and destroys them at loop end.
+Within a lane, reviews run sequentially in the same directory (cache hits).
+Across lanes, reviews run in parallel (N cold starts total). Conflict
+handling uses `Advance` to detach and reset the lane, keeping the review
+branch for human resolution.
+
+Decisions resolved during implementation:
+
+- Conflicts advance the lane to HEAD and keep the review branch for the user.
+- Lanes own their commits like `--stacked-prs`, merged under `mergeMu`.
+- Lanes are recreated per loop (not reused across loops).
+- Lane assignment is queue-based (first-free-lane pulls next review), not
+  round-robin or weighted.
