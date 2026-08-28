@@ -39,6 +39,8 @@ func (p palette) dim(s string) string    { return p.wrap("2", s) }
 func (p palette) red(s string) string    { return p.wrap("31", s) }
 func (p palette) green(s string) string  { return p.wrap("32", s) }
 func (p palette) yellow(s string) string { return p.wrap("33", s) }
+func (p palette) blue(s string) string   { return p.wrap("34", s) }
+func (p palette) cyan(s string) string   { return p.wrap("36", s) }
 
 // Consumer-facing environment variables this package reads. One definition,
 // so the help screen's environment section (helpEnvVars in usage.go) cannot
@@ -182,13 +184,13 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 	}
 
 	if len(results) > 1 {
-		fmt.Fprintf(out, "Directories: %d\n", len(results))
+		fmt.Fprintf(out, "%s %d\n", pal.blue("Directories:"), len(results))
 	}
-	fmt.Fprintf(out, "Completed loops: %d\n", loops)
+	fmt.Fprintf(out, "%s %d\n", pal.blue("Completed loops:"), loops)
 	if len(pullRequests) > 0 {
 		// One field per line: branch names and URLs are reference detail, and
 		// cramming them onto one row makes none of the three readable.
-		fmt.Fprintln(out, "PULL REQUESTS")
+		fmt.Fprintln(out, pal.bold("Pull requests"))
 		for _, pr := range pullRequests {
 			fmt.Fprintf(out, "  %s\n", pr.Review)
 			fmt.Fprintf(out, "    branch  %s\n", pr.Branch)
@@ -196,7 +198,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			fmt.Fprintf(out, "    url     %s\n", pr.URL)
 		}
 	}
-	fmt.Fprintf(out, "Total reviews run: %d\n", agg.Total())
+	fmt.Fprintf(out, "%s %d\n", pal.blue("Total reviews run:"), agg.Total())
 	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(agg.OK)))
 	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(agg.Fail+agg.Timeout)))
 	// A fixed order, not a map range: the same run must summarize the same
@@ -213,9 +215,9 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			fmt.Fprintf(out, "%s: %d\n", row.label, row.n)
 		}
 	}
-	fmt.Fprintf(out, "Total time: %s\n", humanize.Duration(wall))
+	fmt.Fprintf(out, "%s %s\n", pal.blue("Total time:"), humanize.Duration(wall))
 	if timed > 0 {
-		fmt.Fprintf(out, "Agent time: %s across %d reviews (avg %s)\n",
+		fmt.Fprintf(out, "%s %s across %d reviews (avg %s)\n", pal.blue("Agent time:"),
 			humanize.Duration(agentTime), timed, humanize.Duration(agentTime/time.Duration(timed)))
 	}
 	if tokens > 0 {
@@ -229,17 +231,17 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			// a floor on reasoning, not a measurement of every agent.
 			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(thinking), 100*thinking/tokens)
 		}
-		fmt.Fprintf(out, "Tokens: %s reported%s%s\n", humanize.Count(tokens), rate, note)
+		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"), humanize.Count(tokens), rate, note)
 	}
 	if haveLines {
-		fmt.Fprintf(out, "Lines changed: +%d -%d\n", ins, del)
+		fmt.Fprintf(out, "%s +%d -%d\n", pal.blue("Lines changed:"), ins, del)
 	}
 	if commitRuns > 0 {
 		note := ""
 		if commitFails > 0 {
 			note = fmt.Sprintf(", %d failed (changes may be uncommitted)", commitFails)
 		}
-		fmt.Fprintf(out, "Commit steps: %d%s\n", commitRuns, note)
+		fmt.Fprintf(out, "%s %d%s\n", pal.blue("Commit steps:"), commitRuns, note)
 	}
 
 	// Per-agent breakdown, merged across directories.
@@ -264,7 +266,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		}
 		sort.Strings(labels)
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Per-agent stats:")
+		fmt.Fprintln(out, pal.bold("Per-agent stats"))
 		for _, l := range labels {
 			a := byAgent[l]
 			rate := ""
@@ -285,7 +287,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 	if len(failures) > 0 {
 		sort.Slice(failures, func(i, j int) bool { return failures[i].Review < failures[j].Review })
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, "Failed reviews:")
+		fmt.Fprintln(out, pal.bold("Failed reviews"))
 		for _, f := range failures {
 			detail := ""
 			switch f.Status {

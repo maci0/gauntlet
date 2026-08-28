@@ -73,7 +73,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		if len(runs) > 1 {
 			fmt.Fprintf(out, "\n%s\n", pal.bold(d.dir))
 		}
-		fmt.Fprintln(out, "DRY RUN: planned schedule for one loop:")
+		fmt.Fprintln(out, pal.bold("Dry run")+pal.dim(": planned schedule for one loop"))
 		names := append([]string(nil), d.reviews...)
 		if !opts.stackedPRs {
 			sort.Strings(names)
@@ -102,7 +102,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	if opts.stackedPRs {
 		mode = "sequential, one worktree, linear PR stack"
 	} else if opts.jobs > 1 {
-		mode = fmt.Sprintf("%d at a time, one git worktree per review, merged back", opts.jobs)
+		mode = fmt.Sprintf("%d lanes, worktree-isolated and merged back", opts.jobs)
 	}
 	yolo := ""
 	if opts.yolo {

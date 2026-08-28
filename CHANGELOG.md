@@ -12,6 +12,18 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.14.0
+
+### Changed
+
+- Plain reporter summary uses blue stat labels and bold section headers
+  (Pull requests, Per-agent stats, Failed reviews) for visual structure.
+  Two new palette codes: blue, cyan.
+
+- All user-facing text now says "lane" instead of "worktree" when describing
+  `--jobs N` parallel mode: dashboard header, dry-run output, startup log,
+  `--jobs` help text, and the pick TUI.
+
 ## 1.13.0
 
 ### Changed
