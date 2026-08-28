@@ -474,27 +474,54 @@ func processAlive(pid int) bool {
 // pid: a helper git spawns that outlives it must be reaped too, or every
 // timed-out call leaks an orphan still holding the output pipes. This is the
 // same rule runProc and runIndexer enforce on their own children.
+//
+// The kill is triggered by canceling the caller's context rather than by a
+// short fixed timeout, for the same reason the indexer's twin test waits on
+// its fixture: runIn derives its deadline context from the caller's, so both
+// paths fire the identical group-kill Cancel, but a timeout short enough to
+// keep the test quick also loses a race the test is not about. On macOS the
+// first exec of a freshly written hook script pays a one-time security check,
+// and under a loaded suite a one-second deadline landed before the hook had
+// backgrounded anything -- no grandchild, no pid file, and a failure that
+// reads as the hook never running.
 func TestRunDeadlineKillsTheProcessGroup(t *testing.T) {
 	r := newRepo(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// The hook blocks on its background sleeper, so git is alive when the
-	// deadline fires and the group kill has something to reach.
+	// cancel fires and the group kill has something to reach.
 	hooks := installHook(t, r,
 		"sleep 60 &\necho $! > \"$GAUNTLET_HOOK_PIDFILE\"\nwait\n")
 	t.Setenv("GAUNTLET_HOOK_PIDFILE", filepath.Join(hooks, "child.pid"))
 
-	start := time.Now()
-	_, err := r.run(ctx, time.Second,
-		"-c", "core.hooksPath="+hooks,
-		"commit", "--allow-empty", "-m", "hooked")
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Fatalf("the deadline took %s to land on the whole group", elapsed)
-	}
-	if err == nil {
-		t.Fatal("a killed commit must report failure")
-	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := r.run(ctx, time.Minute,
+			"-c", "core.hooksPath="+hooks,
+			"commit", "--allow-empty", "-m", "hooked")
+		done <- err
+	}()
+
+	// Only once the grandchild exists is there anything for the kill to miss.
 	pid := hookChildPID(t, r)
+	canceled := time.Now()
+	cancel()
+
+	select {
+	case err := <-done:
+		// From the cancel, the run must come back promptly: a grandchild
+		// holding the output pipes is bounded by WaitDelay, not by its own
+		// sleep. This is what the old start-to-finish bound really checked.
+		if elapsed := time.Since(canceled); elapsed > 5*time.Second {
+			t.Fatalf("the kill took %s to land on the whole group", elapsed)
+		}
+		if err == nil {
+			t.Fatal("a killed commit must report failure")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the canceled commit never returned")
+	}
 	deadline := time.Now().Add(10 * time.Second)
 	for processAlive(pid) && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
