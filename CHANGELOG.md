@@ -12,6 +12,18 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- An `--agents` entry can pin a reasoning effort alongside the model:
+  `claude:opus-5@xhigh`, `opencode:anthropic/claude-sonnet-5@medium`, or
+  `claude@max` with no model. The part after the last `@` is the effort, and
+  like a model id it is passed to the CLI verbatim. It is wired only for
+  agents whose flag was verified from the CLI's own help — `claude`
+  (`--effort`) and `opencode` (`--variant`) — and for defined agents via a
+  new `effort` argument list (or an `{effort}` placeholder) in
+  `agents.json` / `--agent-cmd`; every other agent refuses `@effort` at
+  startup instead of guessing a flag.
+
 ### Changed
 
 - A stacked run's pull requests describe themselves. The body was the commit

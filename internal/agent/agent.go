@@ -20,18 +20,25 @@ import (
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
-// Spec is one agent, optionally pinned to a model. The zero value is invalid.
+// Spec is one agent, optionally pinned to a model and a reasoning effort.
+// The zero value is invalid.
 type Spec struct {
-	Tool  string
-	Model string // empty means the CLI picks its own default
+	Tool   string
+	Model  string // empty means the CLI picks its own default
+	Effort string // empty means the CLI picks its own default
 }
 
-// Label is the display and map-key form of a spec.
+// Label is the display and map-key form of a spec. It round-trips through
+// ParseSpecs: "tool", "tool:model", "tool@effort", "tool:model@effort".
 func (s Spec) Label() string {
-	if s.Model == "" {
-		return s.Tool
+	l := s.Tool
+	if s.Model != "" {
+		l += ":" + s.Model
 	}
-	return s.Tool + ":" + s.Model
+	if s.Effort != "" {
+		l += "@" + s.Effort
+	}
+	return l
 }
 
 // Valid lists every supported agent CLI.
@@ -107,6 +114,24 @@ func takesModel(tool string) bool {
 		return len(d.Model) > 0 || containsPlaceholder(d.Argv, modelPlaceholder)
 	}
 	return !noModel[tool]
+}
+
+// effortFlags is the per-CLI flag that pins a reasoning effort. Every entry
+// was read from that CLI's own --help, like streamFlags: an unverified flag
+// makes the agent exit instead of run, so CLIs that could not be checked on a
+// real installation have no entry and refuse @effort at parse time.
+var effortFlags = map[string]string{
+	"claude":   "--effort",  // low, medium, high, xhigh, max
+	"opencode": "--variant", // provider-specific: high, max, minimal, ...
+}
+
+// takesEffort reports whether the agent accepts a reasoning effort on the
+// command line.
+func takesEffort(tool string) bool {
+	if d, ok := CustomDef(tool); ok {
+		return len(d.Effort) > 0 || containsPlaceholder(d.Argv, effortPlaceholder)
+	}
+	return effortFlags[tool] != ""
 }
 
 func containsPlaceholder(argv []string, want string) bool {
@@ -269,8 +294,17 @@ var mixedKeywords = map[string]bool{"mixed": true, "random": true, "all": true}
 
 var dshModelRe = regexp.MustCompile(`^[A-Za-z0-9._/:-]+$`)
 
+// effortRe bounds what an @effort may look like. Values are not enumerated —
+// levels are provider-specific (opencode's "minimal" is not in Anthropic's
+// set), so like a model id the value travels verbatim and the CLI rejects
+// what it does not serve — but the charset is pinned because the value lands
+// on an argv: no separators, no whitespace, nothing flag-shaped.
+var effortRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
 // ParseSpecs parses a comma-separated agent list ("claude", "mixed",
-// "claude:opus,codex:gpt-5-codex"), preserving order and dropping duplicates.
+// "claude:opus,codex:gpt-5-codex,claude:opus@xhigh"), preserving order and
+// dropping duplicates. The part after the last "@" is a reasoning effort;
+// ":" and "/" both occur inside model ids, so "@" is the one separator left.
 func ParseSpecs(s string) ([]Spec, error) {
 	var specs []Spec
 	seen := map[Spec]bool{}
@@ -296,9 +330,16 @@ func ParseSpecs(s string) ([]Spec, error) {
 			}
 			continue
 		}
-		tool, model, _ := strings.Cut(entry, ":")
+		tool, model, hasModel := strings.Cut(entry, ":")
+		var effort string
+		if hasModel {
+			model, effort = cutEffort(model)
+		} else {
+			tool, effort = cutEffort(tool)
+		}
 		tool = strings.ToLower(strings.TrimSpace(tool))
 		model = strings.TrimSpace(model)
+		effort = strings.TrimSpace(effort)
 		if !isValid(tool) {
 			hint := ""
 			if c := fuzzy.Closest(tool, AllNames()); c != "" {
@@ -310,17 +351,38 @@ func ParseSpecs(s string) ([]Spec, error) {
 		if !takesModel(tool) && model != "" {
 			return nil, fmt.Errorf("%s does not support specifying a model: %q", tool, entry)
 		}
+		if effort != "" {
+			if !takesEffort(tool) {
+				return nil, fmt.Errorf("%s does not support specifying a reasoning effort: %q", tool, entry)
+			}
+			if !effortRe.MatchString(effort) {
+				return nil, fmt.Errorf("invalid effort in %q: %q (letters, digits, . _ -)", entry, effort)
+			}
+		} else if strings.Contains(entry, "@") {
+			return nil, fmt.Errorf("empty effort after %q in %q", "@", entry)
+		}
 		// The dsh model is spliced into a generated YAML overlay; keep the
 		// charset too narrow to escape the quoted scalar.
 		if tool == "dsh" && model != "" && !dshModelRe.MatchString(model) {
 			return nil, fmt.Errorf("invalid dsh model name: %q (letters, digits, . _ / : -)", model)
 		}
-		add(Spec{Tool: tool, Model: model})
+		add(Spec{Tool: tool, Model: model, Effort: effort})
 	}
 	if len(specs) == 0 {
 		return nil, errors.New("no agents specified")
 	}
 	return specs, nil
+}
+
+// cutEffort splits "model@effort" (or "tool@effort") on the last "@". Model
+// ids can carry "@" themselves (Vertex-style version pins), which is why the
+// last one wins: the effort level itself never contains one.
+func cutEffort(s string) (base, effort string) {
+	base, effort, ok := strings.CutLast(s, "@")
+	if !ok {
+		return s, ""
+	}
+	return base, effort
 }
 
 func sortedValid() []string {
@@ -387,6 +449,9 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = []string{"claude", "--dangerously-skip-permissions"}
 		if spec.Model != "" {
 			cmd = append(cmd, "--model", spec.Model)
+		}
+		if spec.Effort != "" {
+			cmd = append(cmd, effortFlags["claude"], spec.Effort)
 		}
 		cmd = append(cmd, "-p", prompt)
 	case "gemini", "qwen":
@@ -469,6 +534,10 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = []string{"opencode", "run", "--auto"}
 		if spec.Model != "" {
 			cmd = append(cmd, "-m", spec.Model)
+		}
+		if spec.Effort != "" {
+			// opencode calls it a model variant; it is the same knob.
+			cmd = append(cmd, effortFlags["opencode"], spec.Effort)
 		}
 		cmd = append(cmd, prompt)
 	case "crush":

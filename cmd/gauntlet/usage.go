@@ -53,7 +53,7 @@ var helpGroups = []flagGroup{
 		{"", "prompt-dir", "DIR", "use *-review.md files from DIR instead of the embedded set"},
 	}},
 	{"Agents", []flagDoc{
-		{"a", "agents", "LIST", "agent CLIs, optionally agent:model; 'mixed' means every installed agent (repeatable, default: auto-detect)"},
+		{"a", "agents", "LIST", "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent (repeatable, default: auto-detect)"},
 		{"", "bin", "TOOL=PATH", "run an agent from a specific executable (repeatable)"},
 		{"", "agent-cmd", "NAME=ARGV", "define an agent gauntlet does not know, e.g. pi='pi -p {prompt}' (repeatable)"},
 		{"", "continue-sessions", "", "resume each agent's session between reviews"},
