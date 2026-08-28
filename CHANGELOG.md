@@ -10,6 +10,19 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- A stacked run's pull requests describe themselves. The body was the commit
+  subject under a `## Summary` heading, which repeated the title and said
+  nothing else; it now adds the review's declared subject area, the paths the
+  layer's commit touched (ten, then a count), its diff stat, and where the
+  branch sits in the chain, so a PR can be triaged without opening the diff. A
+  value git or the prompt will not answer is left out rather than guessed at,
+  and everything read out of the reviewed repository is flattened to one line
+  and length-bounded before it becomes Markdown.
+
 ## 1.12.2
 
 ### Changed

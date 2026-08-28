@@ -163,6 +163,11 @@ func safeTag(tag string) string {
 func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	start := r.stackResumeIndex()
 	parent, parentTip := r.stackBase, r.stackBaseTip
+	// Layer numbers count what was actually published, not schedule position:
+	// a review that changed nothing leaves no branch, so the two diverge as
+	// soon as one does, and a body claiming to be layer 5 of a three-branch
+	// chain sends its reader looking for branches that do not exist.
+	published := 0
 
 	// A hot-reload successor receives only the unfinished suffix. Walk the
 	// completed prefix to recover the last published branch; an absent branch
@@ -170,8 +175,12 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	for i := range start {
 		var recovered bool
 		var err error
+		previous := parent
 		parent, parentTip, recovered, err = r.recoverStackLayer(
-			ctx, i, r.cfg.Reviews[i], parent, parentTip, false, true)
+			ctx, i, r.cfg.Reviews[i], parent, parentTip, false, true, published+1)
+		if parent != previous {
+			published++
+		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
 				gitx.StackBranchName(r.stackBaseTip, i, r.cfg.Reviews[i]), parent,
@@ -220,8 +229,12 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 
 		var handled bool
+		previous := parent
 		parent, parentTip, handled, err = r.recoverStackLayer(
-			ctx, i, review, parent, parentTip, true, false)
+			ctx, i, review, parent, parentTip, true, false, published+1)
+		if parent != previous {
+			published++
+		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, review,
 				gitx.StackBranchName(r.stackBaseTip, i, review), parent, "recover stack layer", err)
@@ -281,8 +294,13 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			r.st.Add(res)
 			continue
 		}
-		if ins, del, ok := r.repo.DiffStat(ctx, wt.Dir, parentTip, "HEAD"); ok {
-			res.Ins, res.Del, res.HaveLines = ins, del, true
+		body := r.stackBody(ctx, review, title, wt.Dir, parentTip, "HEAD", parent, published+1)
+		// The layer's own commit range is the exact measurement, so it replaces
+		// whatever the shared-tree sample estimated -- but only when git
+		// answered. An unreadable range leaves the estimate standing rather
+		// than reporting the change as zero lines.
+		if body.HaveLines {
+			res.Ins, res.Del, res.HaveLines = body.Ins, body.Del, true
 		}
 		if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
 			res.Status = StatusFail
@@ -291,7 +309,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			r.publishStackFailure(loopNo, review, branch, parent, fmt.Errorf("push: %w", err))
 			return false
 		}
-		prURL, err := r.ensurePullRequest(ctx, review, branch, parent, title)
+		prURL, err := r.ensurePullRequest(ctx, branch, parent, body)
 		if err != nil {
 			res.Status = StatusFail
 			res.Detail = err.Error()
@@ -302,7 +320,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		res.URL = prURL
 		r.st.Add(res)
 		r.publishPullRequest(loopNo, review, branch, parent, prURL, false)
-		parent = branch
+		parent, published = branch, published+1
 		parentTip, err = r.repo.Tip(ctx, "refs/heads/"+branch)
 		if err != nil {
 			r.st.addCommitFail()
@@ -331,7 +349,7 @@ func (r *Runner) stackResumeIndex() int {
 // recoverStackLayer finishes or reuses a deterministic layer left by an
 // earlier process. It returns handled=false only when the agent must run.
 func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, parent string,
-	parentTip string, record, absentDone bool) (next, nextTip string, handled bool, recoverErr error) {
+	parentTip string, record, absentDone bool, layer int) (next, nextTip string, handled bool, recoverErr error) {
 
 	branch := gitx.StackBranchName(r.stackBaseTip, index, review)
 	prURL, err := r.gh.Find(ctx, branch, parent)
@@ -380,7 +398,8 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 		if err != nil {
 			return parent, parentTip, false, err
 		}
-		prURL, err = r.ensurePullRequest(ctx, review, branch, parent, title)
+		body := r.stackBody(ctx, review, title, r.cfg.Dir, parentTip, localTip, parent, layer)
+		prURL, err = r.ensurePullRequest(ctx, branch, parent, body)
 		if err != nil {
 			return parent, parentTip, false, err
 		}
@@ -392,12 +411,30 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 	return branch, localTip, true, nil
 }
 
-func (r *Runner) ensurePullRequest(ctx context.Context, review, branch, base, title string) (string, error) {
+func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, body prBody) (string, error) {
 	if prURL, err := r.gh.Find(ctx, branch, base); err != nil || prURL != "" {
 		return prURL, err
 	}
-	body := "## Summary\n\n" + title
-	return r.gh.Create(ctx, branch, base, title, body)
+	return r.gh.Create(ctx, branch, base, body.Title, body.render())
+}
+
+// stackBody assembles what a layer's PR says about itself: the subject area
+// the review declared, the paths its commit touched, how big it is, and where
+// it sits in the chain. Anything git will not answer is left out rather than
+// guessed at; a body missing its file list still orients a reader, while one
+// naming the wrong files misleads them.
+func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, base string, layer int) prBody {
+	b := prBody{Title: title, Base: base, Root: r.stackBase, Layer: layer}
+	if rev, ok := r.cfg.Set.Get(review); ok {
+		b.Scope = rev.Summary()
+	}
+	if files, err := r.repo.ChangedFiles(ctx, dir, from, to); err == nil {
+		b.Files = files
+	}
+	if ins, del, ok := r.repo.DiffStat(ctx, dir, from, to); ok {
+		b.Ins, b.Del, b.HaveLines = ins, del, true
+	}
+	return b
 }
 
 func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool) {

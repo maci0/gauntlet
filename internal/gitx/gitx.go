@@ -401,6 +401,24 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 	return st.Ins, st.Del, true
 }
 
+// ChangedFiles lists the paths a commit range touches, measured inside dir (a
+// worktree of this repo). DiffStat says how much a layer changed; this says
+// where, which is what a reader needs to tell what a change is about before
+// opening the diff. Renames are not followed: both names are places someone
+// has to look. Output is NUL-separated, so a path git would otherwise quote
+// arrives intact.
+func (r *Repo) ChangedFiles(ctx context.Context, dir, from, to string) ([]string, error) {
+	if !Available() {
+		return nil, errors.New("git is not available")
+	}
+	sub := &Repo{Dir: dir}
+	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", from, to)
+	if err != nil {
+		return nil, err
+	}
+	return splitNUL(out), nil
+}
+
 // Changes splits what git status reports by whether git is tracking the path.
 // The distinction decides what may block worktree isolation: a modification
 // git tracks is work a review would neither see nor merge, while an untracked

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/prompt"
 )
 
 func stackRepo(t *testing.T) (repo, remote string) {
@@ -788,5 +789,82 @@ func TestStackSetupFailureAfterCancelCountsAsInterrupted(t *testing.T) {
 	}
 	if n := countKind(<-done, EvPullRequest); n != 0 {
 		t.Fatalf("published %d pull_request events for a layer nobody attempted", n)
+	}
+}
+
+// promptSetWithSummaries writes prompts that declare a `Summary:` line, which
+// is what a shipped prompt carries and what a PR body quotes as its scope.
+// promptSet's fixtures declare none, so they exercise only the fallback.
+func promptSetWithSummaries(t *testing.T, summaries map[string]string) prompt.Set {
+	t.Helper()
+	dir := t.TempDir()
+	for name, summary := range summaries {
+		body := "Summary: " + summary + "\n\nYour goal is to test " + name + ".\n"
+		if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set, _, err := Discover(t, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
+}
+
+func TestStackedPRBodyDescribesItsLayer(t *testing.T) {
+	// A published PR is read by someone who did not watch the run. The body
+	// has to say what area the change came from, which files it touched, and
+	// that the comparison is against the layer below rather than the root.
+	repo, _ := stackRepo(t)
+	logPath, _ := fakeGH(t)
+	reviews := []string{"first-review", "empty-review", "second-review"}
+	cfg := stackConfig(t, repo, reviews, `
+case "$*" in
+  *first-review*) printf 'first\n' > first.txt; echo 'SUBJECT: fix: add the first layer' ;;
+  *empty-review*) echo 'RESULT: no-changes' ;;
+  *second-review*) printf 'second\n' > second.txt; echo 'SUBJECT: fix: add the second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+	cfg.Set = promptSetWithSummaries(t, map[string]string{
+		"first-review":  "what the first one looks at",
+		"empty-review":  "nothing at all",
+		"second-review": "what the second one looks at",
+	})
+
+	runQuiet(t, cfg)
+	logBody, _ := os.ReadFile(logPath)
+	created := strings.Split(string(logBody), "pr create")
+	if len(created) != 3 {
+		t.Fatalf("want 2 PR creations, log:\n%s", logBody)
+	}
+	first, second := created[1], created[2]
+
+	for _, want := range []string{
+		"fix: add the first layer",
+		"Scope: what the first one looks at.",
+		"- `first.txt`",
+		"1 file changed, 1 insertion, 0 deletions.",
+		"First layer of a stack, cut from `main`.",
+	} {
+		if !strings.Contains(first, want) {
+			t.Fatalf("the first PR body is missing %q:\n%s", want, first)
+		}
+	}
+	for _, want := range []string{
+		"Scope: what the second one looks at.",
+		"- `second.txt`",
+		// The review that changed nothing left no branch, so the layer below
+		// this one is the first review's, and this is layer 2 of 2 -- not 3,
+		// which is where its position in the schedule would have put it.
+		"Layer 2 of a stack",
+	} {
+		if !strings.Contains(second, want) {
+			t.Fatalf("the second PR body is missing %q:\n%s", want, second)
+		}
+	}
+	// Every PR's comparison holds one commit, and so must every PR's body: a
+	// file list that carried the layer below would describe the wrong diff.
+	if strings.Contains(second, "first.txt") {
+		t.Fatalf("the second PR body claims the first layer's file:\n%s", second)
 	}
 }

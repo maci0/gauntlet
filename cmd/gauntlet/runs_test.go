@@ -23,6 +23,15 @@ import (
 // child. The fixture backgrounds a sleeper and records its pid, so without
 // the group kill the grandchild outlives the killed parent and answers a
 // liveness probe.
+//
+// The cancel waits for that pid rather than firing on a fixed timeout. A
+// timeout short enough to keep the test quick is also short enough to lose a
+// race the test is not about: on macOS the first exec of a freshly written
+// script pays a one-time security check, and a 300ms deadline landed before
+// the shell had backgrounded anything at all. What that produced was not a
+// failure of the group kill but an empty temp directory, and the "did it exit
+// nonzero" assertion could not tell the difference, since a launch that never
+// happened exits nonzero too.
 func TestRunIndexerKillsProcessGroup(t *testing.T) {
 	dir := t.TempDir()
 
@@ -32,19 +41,20 @@ func TestRunIndexerKillsProcessGroup(t *testing.T) {
 	tree := filepath.Join(dir, "tree")
 	writeScript(t, tree, "#!/bin/sh\n\""+sleeper+"\" &\necho $! > \""+pidFile+"\"\nwait\n")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if code := runIndexer(ctx, tree, nil, dir); code == 0 {
-		t.Fatal("the indexer reported success after its deadline killed it")
-	}
+	exited := make(chan int, 1)
+	go func() { exited <- runIndexer(ctx, tree, nil, dir) }()
 
-	data, err := os.ReadFile(pidFile)
-	if err != nil {
-		t.Fatal(err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil || pid <= 1 {
-		t.Fatalf("fixture wrote no usable sleeper pid: %q", data)
+	pid := waitForPid(t, pidFile)
+	cancel()
+	select {
+	case code := <-exited:
+		if code == 0 {
+			t.Fatal("the indexer reported success after the cancel killed it")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the indexer outlived its cancel")
 	}
 
 	// kill(pid, 0) reports whether anything still answers at that pid, on
@@ -59,6 +69,26 @@ func TestRunIndexerKillsProcessGroup(t *testing.T) {
 			t.Fatal("a grandchild of the killed indexer is still alive")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// waitForPid blocks until the fixture has a grandchild to report. The file is
+// truncated before it is written, so an unparseable read is "not yet", not a
+// broken fixture; only the wait running out says that.
+func waitForPid(t *testing.T, path string) int {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			if pid, convErr := strconv.Atoi(strings.TrimSpace(string(data))); convErr == nil && pid > 1 {
+				return pid
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the fixture never recorded a sleeper pid in %s", path)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
