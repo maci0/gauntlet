@@ -148,8 +148,8 @@ func TestBranchSlug(t *testing.T) {
 		"unicodeéé":  "unicode",
 	}
 	for in, want := range cases {
-		if got := branchSlug(in); got != want {
-			t.Errorf("branchSlug(%q) = %q, want %q", in, got, want)
+		if got := BranchSlug(in); got != want {
+			t.Errorf("BranchSlug(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
