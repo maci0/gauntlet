@@ -441,8 +441,8 @@ func TestStackedPRsDirtyCheckoutNeedsConsentAndUsesRemoteBase(t *testing.T) {
 	drain(bus)
 	_, err := New(context.Background(), cfg, bus)
 	bus.Close()
-	var dirty *StackDirtyError
-	if !errors.As(err, &dirty) {
+	dirty, ok := errors.AsType[*StackDirtyError](err)
+	if !ok {
 		t.Fatalf("dirty stack preflight = %v, want StackDirtyError", err)
 	}
 	if dirty.Remote != "origin" || dirty.Base != "main" ||

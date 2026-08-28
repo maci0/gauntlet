@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/text/unicode/norm"
@@ -628,12 +629,18 @@ func listTree(root string) ([]string, bool) {
 
 // peek reads the head of source files and records what they import and call.
 // Heads only: what a file talks to is declared at the top, and a bounded read
-// keeps this a scan rather than an indexing pass.
+// keeps this a scan rather than an indexing pass. Opens are rooted at the
+// reviewed tree, so a symlink, FIFO, or path that escapes it is skipped.
 //
 // Marks are checked for presence, not counted: every consumer treats a kind
 // as seen or unseen, so a kind already observed stops being searched for and
 // the scan ends early once all kinds are.
 func peek(root string, paths []string, s *signals) {
+	dir, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer dir.Close()
 	buf := make([]byte, peekBytes)
 	scratch := make([]byte, peekBytes)
 	seenAll := len(s.mark) == markKinds
@@ -645,7 +652,7 @@ func peek(root string, paths []string, s *signals) {
 		if !sourceExts[strings.ToLower(filepath.Ext(rel))] {
 			continue
 		}
-		f, err := os.Open(filepath.Join(root, filepath.FromSlash(rel)))
+		f, err := openPeek(dir, rel)
 		if err != nil {
 			continue
 		}
@@ -663,6 +670,26 @@ func peek(root string, paths []string, s *signals) {
 			}
 		}
 	}
+}
+
+// openPeek opens rel under root for a bounded head read. The root is the
+// reviewed tree: a path that escapes it, a last-component symlink, or a
+// planted FIFO or device is skipped rather than followed or waited on.
+func openPeek(root *os.Root, rel string) (*os.File, error) {
+	f, err := root.OpenFile(filepath.ToSlash(rel), os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil || !fi.Mode().IsRegular() {
+		f.Close()
+		if err != nil {
+			return nil, err
+		}
+		return nil, os.ErrInvalid
+	}
+	_ = syscall.SetNonblock(int(f.Fd()), false)
+	return f, nil
 }
 
 // markKinds is how many distinct things any mark can say, the point at which

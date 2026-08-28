@@ -161,7 +161,6 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	}
 
 	pump := func(r io.Reader) {
-		defer wg.Done()
 		norm := normalize.New(normalize.Config{
 			MaxLinesPerSec: o.MaxLinesPerSec,
 			MaxWidth:       streamLineCols,
@@ -216,9 +215,8 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			emit(l)
 		}
 	}
-	wg.Add(2)
-	go pump(outR)
-	go pump(errR)
+	wg.Go(func() { pump(outR) })
+	wg.Go(func() { pump(errR) })
 
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- cmd.Wait() }()

@@ -84,13 +84,11 @@ func TestBusConcurrentClose(t *testing.T) {
 	// Non-output events block until delivered, so consumers run alongside the
 	// publishers, exactly as the journal, reporter, and TUI do during a run.
 	var drained sync.WaitGroup
-	drained.Add(len(subs))
 	for _, ch := range subs {
-		go func(ch <-chan Event) {
-			defer drained.Done()
+		drained.Go(func() {
 			for range ch {
 			}
-		}(ch)
+		})
 	}
 	time.Sleep(time.Millisecond)
 	bus.Close()

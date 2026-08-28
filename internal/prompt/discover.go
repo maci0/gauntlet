@@ -215,11 +215,12 @@ func fileSize(path string) (int64, bool) {
 	return fi.Size(), true
 }
 
-// readBounded reads at most limit bytes of path. ok is false on an error or
-// when the file holds limit bytes or more, so a caller that stats size n and
-// passes n+1 can tell a full read from truncation.
+// readBounded reads at most limit bytes of path. ok is false on an error, a
+// non-regular file (symlink, FIFO, device), or when the file holds limit
+// bytes or more, so a caller that stats size n and passes n+1 can tell a
+// full read from truncation.
 func readBounded(path string, limit int64) ([]byte, bool) {
-	f, err := os.Open(path)
+	f, err := openNoFollow(path)
 	if err != nil {
 		return nil, false
 	}

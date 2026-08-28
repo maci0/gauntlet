@@ -470,8 +470,8 @@ func (r *Repo) DirtyPaths(ctx context.Context, ownArtifacts map[string]bool) ([]
 // wrapper runIn builds still unwraps down to the *exec.ExitError, so the
 // status survives the stderr that gets folded into the message.
 func exitsWith(err error, code int) bool {
-	var ee *exec.ExitError
-	return errors.As(err, &ee) && ee.ExitCode() == code
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	return ok && ee.ExitCode() == code
 }
 
 // CheckIgnore returns the subset of paths git ignores in this tree. Without

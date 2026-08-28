@@ -10,6 +10,20 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- Source builds and `go install` need Go 1.27.
+
+### Fixed
+
+- The file-signal suggester no longer follows a last-component symlink out of
+  the reviewed tree, and no longer blocks on a planted FIFO, when it peeks at
+  source. Duplicate-prompt comparison uses the same open as prompt body reads
+  (`O_NOFOLLOW`, non-blocking), so a swap between lstat and read cannot pull
+  out-of-tree content into the comparison.
+
 ## 1.12.1
 
 ### Fixed

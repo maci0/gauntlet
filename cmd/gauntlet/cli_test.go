@@ -74,8 +74,8 @@ func captureParseStderr(t *testing.T, argv []string) (string, bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var pe parseError
-	return string(out), errors.As(perr, &pe)
+	_, ok := errors.AsType[parseError](perr)
+	return string(out), ok
 }
 
 // Every rejection from parsing reports itself the same way the flag package

@@ -8,7 +8,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -318,5 +320,51 @@ func writeHistory(t *testing.T, home, dir, review string, n, changed int) {
 		if _, err := index.Write(append(row, '\n')); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// peek reads heads from the reviewed tree. A symlink, a FIFO, or a path that
+// walks out of it must not contribute marks, and must not block the scan.
+func TestPeekStaysInsideTheTree(t *testing.T) {
+	dir := t.TempDir()
+	outsideDir := t.TempDir()
+	outside := filepath.Join(outsideDir, "secret.go")
+	if err := os.WriteFile(outside, []byte("package x\nimport \"net/http\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "http.go"), []byte("package main\nimport \"net/http\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	in := signals{mark: map[string]int{}}
+	peek(dir, []string{"http.go"}, &in)
+	if in.mark["http"] == 0 {
+		t.Fatal("peek missed an in-tree net/http import")
+	}
+
+	if err := os.Symlink(outside, filepath.Join(dir, "evil.go")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(dir, "pipe.go"), 0o644); err != nil {
+		t.Skipf("fifo unavailable: %v", err)
+	}
+
+	s := signals{mark: map[string]int{}}
+	escape := filepath.Join("..", filepath.Base(outsideDir), "secret.go")
+	done := make(chan struct{})
+	go func() {
+		peek(dir, []string{"main.go", "evil.go", "pipe.go", escape}, &s)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("peek blocked on a fifo or an escaping path")
+	}
+	if s.mark["http"] > 0 {
+		t.Fatal("peek followed a symlink or escaped the tree")
 	}
 }

@@ -200,9 +200,7 @@ func ResolveMany(names []string) map[string]string {
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 32)
 	for _, n := range names {
-		wg.Add(1)
-		go func(n string) {
-			defer wg.Done()
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if p := Resolve(n); p != "" {
@@ -210,7 +208,7 @@ func ResolveMany(names []string) map[string]string {
 				out[n] = p
 				mu.Unlock()
 			}
-		}(n)
+		})
 	}
 	wg.Wait()
 	return out
@@ -517,11 +515,11 @@ func splice(cmd []string, at int, flags []string) []string {
 }
 
 func splitProvider(model string) (provider, name string) {
-	i := strings.LastIndex(model, "/")
-	if i < 0 {
+	provider, name, ok := strings.CutLast(model, "/")
+	if !ok {
 		return "", model
 	}
-	return model[:i], model[i+1:]
+	return provider, name
 }
 
 // ParseBin parses a TOOL=PATH override into (tool, absolute executable).

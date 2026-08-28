@@ -257,22 +257,11 @@ func BundledNames() []string {
 // Hardlinks are not refused: a package manager legitimately hardlinks prompts
 // from its cache, so a link count above one is normal.
 func readNoFollow(path string) (string, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, err := openNoFollow(path)
 	if err != nil {
-		return "", &os.PathError{Op: "open", Path: path, Err: err}
+		return "", err
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return "", err
-	}
-	if !fi.Mode().IsRegular() {
-		return "", &os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}
-	}
-	if err := syscall.SetNonblock(fd, false); err != nil {
-		return "", err
-	}
 	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
 	if err != nil {
 		return "", err
@@ -281,6 +270,31 @@ func readNoFollow(path string) (string, error) {
 		return "", fmt.Errorf("prompt exceeds %d bytes: %s", maxBytes, path)
 	}
 	return string(data), nil
+}
+
+// openNoFollow opens a regular file, refusing a symlink at the last component
+// and returning immediately on a FIFO or device. Callers that already Lstat'd
+// still open this way: the file can be swapped between the check and the read.
+func openNoFollow(path string) (*os.File, error) {
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	f := os.NewFile(uintptr(fd), path)
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, &os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}
+	}
+	if err := syscall.SetNonblock(fd, false); err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // nfc is the review-name normalization form. Names are identity: they key
