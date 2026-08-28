@@ -774,6 +774,21 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 }
 
+// DeleteBranchesMatching deletes every branch whose name starts with prefix.
+// Used to sweep review branches that a cancelled lane may have left behind.
+func (r *Repo) DeleteBranchesMatching(ctx context.Context, prefix string) {
+	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/"+prefix)
+	if err != nil {
+		return
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			r.DeleteBranch(ctx, name)
+		}
+	}
+}
+
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
 // is what a killed run leaves behind.
 func (r *Repo) PruneWorktrees(ctx context.Context) {

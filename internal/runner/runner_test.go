@@ -6,6 +6,7 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1543,13 +1544,14 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 	cfg.Jobs = 2
 	cfg.Seed = 1
 
-	// A branch squatting on the review's lane branch name, pointing at a
-	// commit that is not the base: StartBranch refuses it rather than
-	// destroying it. The refusal is the deterministic stand-in for every
-	// cause of a failed branch creation within a lane.
+	// Squat on the review branch name for every lane so the review is
+	// skipped regardless of which lane pulls it from the queue.
 	tree := gitOut(t, repo, "rev-parse", "HEAD^{tree}")
 	squat := gitOut(t, repo, "commit-tree", tree, "-p", "HEAD", "-m", "squat")
-	gitOut(t, repo, "branch", "gauntlet/test-l1-lane0-00/a-review", squat)
+	for i := range cfg.Jobs {
+		name := fmt.Sprintf("gauntlet/test-l1-lane%d-00/a-review", i)
+		gitOut(t, repo, "branch", name, squat)
+	}
 
 	bus := NewBus()
 	events := bus.Subscribe(256)
@@ -1579,10 +1581,13 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 			len(ends), ends)
 	}
 
-	// The squatting branch keeps its commit: a failed review must not take
-	// out a branch it did not create.
-	if tip := gitOut(t, repo, "rev-parse", "gauntlet/test-l1-lane0-00/a-review"); tip != squat {
-		t.Fatalf("squatting branch moved: %s, want %s", tip, squat)
+	// Every squatting branch keeps its commit: a failed review must not
+	// take out a branch it did not create.
+	for i := range cfg.Jobs {
+		name := fmt.Sprintf("gauntlet/test-l1-lane%d-00/a-review", i)
+		if tip := gitOut(t, repo, "rev-parse", name); tip != squat {
+			t.Fatalf("squatting branch %s moved: %s, want %s", name, tip, squat)
+		}
 	}
 	if out := gitOut(t, repo, "worktree", "list"); strings.Count(out, "\n") != 0 {
 		t.Errorf("checkouts appeared:\n%s", out)

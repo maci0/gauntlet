@@ -603,15 +603,19 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		lanes[i] = wt
 	}
 	defer func() {
+		cleanCtx := context.WithoutCancel(ctx)
 		for _, wt := range lanes {
 			if wt == nil {
 				continue
 			}
-			_ = wt.Remove(context.WithoutCancel(ctx))
+			_ = wt.Remove(cleanCtx)
 			if wt.Branch != "" {
-				r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
+				r.repo.DeleteBranch(cleanCtx, wt.Branch)
 			}
 		}
+		// Sweep review branches that advance() may not have cleaned up
+		// when cancel raced a lane mid-review.
+		r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane")
 	}()
 
 	r.schedule(loopNo)
