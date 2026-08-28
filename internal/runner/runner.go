@@ -613,9 +613,12 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 				r.repo.DeleteBranch(cleanCtx, wt.Branch)
 			}
 		}
-		// Sweep review branches that advance() may not have cleaned up
-		// when cancel raced a lane mid-review.
-		r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane")
+		if ctx.Err() != nil {
+			// A cancel can race advance(), leaving review branches that
+			// no lane cleaned up. Conflict branches are not worth
+			// preserving from a cancelled run.
+			r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane*")
+		}
 	}()
 
 	r.schedule(loopNo)

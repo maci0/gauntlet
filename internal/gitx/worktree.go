@@ -774,10 +774,13 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 }
 
-// DeleteBranchesMatching deletes every branch whose name starts with prefix.
+// DeleteBranchesMatching deletes every branch matching a glob pattern.
 // Used to sweep review branches that a cancelled lane may have left behind.
-func (r *Repo) DeleteBranchesMatching(ctx context.Context, prefix string) {
-	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/"+prefix)
+// Prunes stale worktree registrations first so a branch is not rejected as
+// "checked out" in a worktree that was already removed from disk.
+func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
+	r.PruneWorktrees(ctx)
+	out, err := r.run(ctx, gitQuick, "branch", "--list", pattern)
 	if err != nil {
 		return
 	}
