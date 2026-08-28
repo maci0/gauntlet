@@ -319,17 +319,6 @@ func ParseSpecs(s string) ([]Spec, error) {
 		if entry == "" {
 			continue
 		}
-		if mixedKeywords[strings.ToLower(entry)] {
-			inst := Installed()
-			if len(inst) == 0 {
-				return nil, fmt.Errorf("%q matched no installed tools (supported: %s)",
-					entry, strings.Join(sortedValid(), ", "))
-			}
-			for _, sp := range inst {
-				add(sp)
-			}
-			continue
-		}
 		tool, model, hasModel := strings.Cut(entry, ":")
 		var effort string
 		if hasModel {
@@ -340,6 +329,23 @@ func ParseSpecs(s string) ([]Spec, error) {
 		tool = strings.ToLower(strings.TrimSpace(tool))
 		model = strings.TrimSpace(model)
 		effort = strings.TrimSpace(effort)
+		if mixedKeywords[tool] {
+			// The keyword names a set, not one CLI: there is nothing to pin a
+			// model or effort on, and falling through to the unknown-tool error
+			// would call "mixed" unknown and valid in the same sentence.
+			if hasModel || strings.Contains(entry, "@") {
+				return nil, fmt.Errorf("%q selects every installed agent and cannot pin a model or effort: %q", tool, entry)
+			}
+			inst := Installed()
+			if len(inst) == 0 {
+				return nil, fmt.Errorf("%q matched no installed tools (supported: %s)",
+					entry, strings.Join(sortedValid(), ", "))
+			}
+			for _, sp := range inst {
+				add(sp)
+			}
+			continue
+		}
 		if !isValid(tool) {
 			hint := ""
 			if c := fuzzy.Closest(tool, AllNames()); c != "" {

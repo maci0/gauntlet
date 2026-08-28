@@ -26,6 +26,10 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- Custom agent names may no longer contain `@`, which now separates the
+  effort. A definition in `agents.json` or `--agent-cmd` that uses one is
+  refused at startup, like the other reserved separators.
+
 - A stacked run's pull requests describe themselves. The body was the commit
   subject under a `## Summary` heading, which repeated the title and said
   nothing else; it now adds the review's declared subject area, the paths the
@@ -34,6 +38,13 @@ minor instead and were listed under Changed.
   value git or the prompt will not answer is left out rather than guessed at,
   and everything read out of the reviewed repository is flattened to one line
   and length-bounded before it becomes Markdown.
+
+### Fixed
+
+- `--agents mixed:opus` (or `mixed@high`) no longer falls through to an
+  error that calls `mixed` unknown and valid in the same sentence; it now
+  says the keyword selects every installed agent and cannot pin a model or
+  effort.
 
 ## 1.12.2
 
