@@ -291,7 +291,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
 	alias("a", "agents", func(n string) {
-		fs.Var(agents, n, "agent CLIs, optionally agent:model; 'mixed' means every installed agent")
+		fs.Var(agents, n, "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent")
 	})
 	fs.Var(bins, "bin", "run an agent from a specific executable, TOOL=PATH (repeatable)")
 	fs.Var(agentCmds, "agent-cmd", "define an agent: NAME=ARGV with a {prompt} placeholder (repeatable)")
@@ -465,7 +465,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, err
 		}
 		if len(specs) != 1 {
-			return nil, errors.New("--suggest-agent takes exactly one agent (tool or tool:model)")
+			return nil, errors.New("--suggest-agent takes exactly one agent (tool, tool:model, or tool:model@effort)")
 		}
 		o.suggestAgent = &specs[0]
 	}

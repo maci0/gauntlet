@@ -41,6 +41,46 @@ func TestParseSpecsRejects(t *testing.T) {
 	}
 }
 
+func TestParseSpecsEffort(t *testing.T) {
+	cases := map[string]Spec{
+		"claude:opus-5@xhigh": {Tool: "claude", Model: "opus-5", Effort: "xhigh"},
+		"claude@max":          {Tool: "claude", Model: "", Effort: "max"},
+		"opencode:anthropic/claude-sonnet-5@medium": {
+			Tool: "opencode", Model: "anthropic/claude-sonnet-5", Effort: "medium"},
+		// The last @ separates: a Vertex-style version pin stays in the model.
+		"claude:sonnet@20240620@xhigh": {Tool: "claude", Model: "sonnet@20240620", Effort: "xhigh"},
+	}
+	for in, want := range cases {
+		got, err := ParseSpecs(in)
+		if err != nil {
+			t.Errorf("%q: %v", in, err)
+			continue
+		}
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("%q: got %+v, want %+v", in, got, want)
+		}
+		if got[0].Label() != in {
+			t.Errorf("%q: label %q should round-trip", in, got[0].Label())
+		}
+	}
+}
+
+func TestParseSpecsEffortRejects(t *testing.T) {
+	cases := []string{
+		"gemini:flash@high", // no verified effort flag
+		"codex@high",        // no verified effort flag
+		"clanker@high",      // takes neither model nor effort
+		"claude@",           // empty effort
+		"claude:opus@",      // empty effort after a model
+		"claude@hi/gh",      // effort charset excludes separators
+	}
+	for _, in := range cases {
+		if _, err := ParseSpecs(in); err == nil {
+			t.Errorf("%q should be rejected", in)
+		}
+	}
+}
+
 func TestParseSpecsSuggestsClosest(t *testing.T) {
 	_, err := ParseSpecs("claud")
 	if err == nil || !strings.Contains(err.Error(), "claude") {
@@ -233,6 +273,26 @@ func TestParseSubjectTruncatesOnARuneBoundary(t *testing.T) {
 	}
 	if !strings.HasPrefix(subject, got) {
 		t.Fatalf("truncated subject is not a rune-clean prefix: %q", got)
+	}
+}
+
+func TestBuildCmdEffortFlags(t *testing.T) {
+	argv, err := BuildCmd(Spec{Tool: "claude", Model: "opus-5", Effort: "xhigh"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "claude --dangerously-skip-permissions --model opus-5 --effort xhigh -p P"
+	if strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	argv, err = BuildCmd(Spec{Tool: "opencode", Effort: "minimal"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = "opencode run --auto --variant minimal P"
+	if strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
 	}
 }
 
@@ -641,6 +701,60 @@ func TestCustomAgentModelPlaceholderInArgv(t *testing.T) {
 
 	if _, err := ParseSpecs("nomodel:m"); err == nil {
 		t.Error("an agent with nowhere to put a model should refuse one")
+	}
+}
+
+// A definition accepts a pinned effort through an Effort flag block or an
+// {effort} placeholder in argv, mirroring how Model works; one with neither
+// refuses @effort instead of dropping it silently.
+func TestCustomAgentEffort(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	if err := Register("witheffort", Custom{
+		Argv:   []string{"witheffort", "-p", "{prompt}"},
+		Model:  []string{"--model", "{model}"},
+		Effort: []string{"--reasoning", "{effort}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("inargv", Custom{
+		Argv: []string{"inargv", "--effort={effort}", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("noeffort", Custom{
+		Argv: []string{"noeffort", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	specs, err := ParseSpecs("witheffort:m1@high")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(specs) != 1 || specs[0].Effort != "high" {
+		t.Fatalf("parsed specs wrong: %+v", specs)
+	}
+	argv, err := BuildCmd(specs[0], "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "witheffort -p --model m1 --reasoning high PROMPT"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	if _, err := ParseSpecs("inargv@low"); err != nil {
+		t.Fatalf("an argv placeholder should accept an effort: %v", err)
+	}
+	argv, err = BuildCmd(Spec{Tool: "inargv", Effort: "low"}, "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "inargv --effort=low PROMPT"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	if _, err := ParseSpecs("noeffort@high"); err == nil {
+		t.Error("an agent with nowhere to put an effort should refuse one")
 	}
 }
 

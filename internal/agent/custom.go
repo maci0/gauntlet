@@ -38,6 +38,10 @@ type Custom struct {
 	// requiring a {model} placeholder inside Argv.
 	Model []string `json:"model,omitempty"`
 
+	// Effort, when set, is appended (with {effort} expanded) when a spec pins
+	// a reasoning effort, the way Model handles a pinned model.
+	Effort []string `json:"effort,omitempty"`
+
 	// Stream flags ask for machine-readable output, if the agent has such a
 	// mode. Inserted before the prompt, like the built-in agents' flags.
 	Stream []string `json:"stream,omitempty"`
@@ -74,6 +78,7 @@ type UsageSpec struct {
 const (
 	promptPlaceholder = "{prompt}"
 	modelPlaceholder  = "{model}"
+	effortPlaceholder = "{effort}"
 )
 
 // validate reports whether a definition can actually launch something.
@@ -81,8 +86,8 @@ func (c Custom) validate(name string) error {
 	if name == "" {
 		return fmt.Errorf("custom agent needs a name")
 	}
-	if strings.ContainsAny(name, " \t,:=") {
-		return fmt.Errorf("invalid agent name %q: no spaces, commas, colons, or equals signs", name)
+	if strings.ContainsAny(name, " \t,:=@") {
+		return fmt.Errorf("invalid agent name %q: no spaces, commas, colons, equals signs, or at signs", name)
 	}
 	if len(c.Argv) == 0 {
 		return fmt.Errorf("custom agent %q has no argv", name)
@@ -290,6 +295,8 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 				out = append(out, strings.ReplaceAll(a, promptPlaceholder, prompt))
 			case strings.Contains(a, modelPlaceholder):
 				out = append(out, strings.ReplaceAll(a, modelPlaceholder, spec.Model))
+			case strings.Contains(a, effortPlaceholder):
+				out = append(out, strings.ReplaceAll(a, effortPlaceholder, spec.Effort))
 			default:
 				out = append(out, a)
 			}
@@ -316,6 +323,9 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 	}
 	if spec.Model != "" && len(def.Model) > 0 {
 		argv = append(argv, def.Model...)
+	}
+	if spec.Effort != "" && len(def.Effort) > 0 {
+		argv = append(argv, def.Effort...)
 	}
 	argv = append(argv, head[promptAt:]...)
 

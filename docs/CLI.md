@@ -77,7 +77,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents LIST` | auto-detect | `tool` or `tool:model` entries; `mixed` means every installed agent. The model id is passed to the CLI verbatim. Repeatable. |
+| `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` means every installed agent. The model id and effort level are passed to the CLI verbatim: gauntlet cannot know which pairs a third-party CLI serves, so an unserved value fails at launch, by that CLI's own error. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only agents whose effort flag was verified accept one — currently `claude` (`--effort`) and `opencode` (`--variant`) — plus defined agents with an `effort` list; the rest refuse at startup. Repeatable. |
 | `--bin TOOL=PATH` | none | Run an agent from a specific executable. Repeatable. |
 | `--agent-cmd NAME=ARGV` | none | Define an agent gauntlet does not ship, e.g. `pi='pi -p {prompt}'`. Repeatable; `~/.gauntlet/agents.json` makes it permanent. |
 | `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Ignored in worktree modes (`--jobs > 1` and `--stacked-prs`). |
@@ -174,7 +174,11 @@ handoff file passed across the exec.)
 `argv` is required and must contain `{prompt}`. `stream` is the argument list
 that asks the CLI for machine-readable output (`--stream`), and `usage` says
 where it keeps session transcripts, which is what gives a defined agent live
-token counts. On the same run, a `--agent-cmd` for a name the file also
+token counts. `model` (e.g. `["--model", "{model}"]`) is appended when a spec
+pins a model, and `effort` (e.g. `["--effort", "{effort}"]`) likewise when a
+spec pins a reasoning effort; without an `effort` list (or an `{effort}`
+placeholder in `argv`), `name:model@effort` is refused at startup. On the
+same run, a `--agent-cmd` for a name the file also
 defines wins over the file's entry; the file is what survives for later runs.
 The file is plain JSON: comments, trailing commas, and unknown
 keys are refused at startup rather than half-read. `gauntlet doctor` lists

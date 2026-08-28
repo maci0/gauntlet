@@ -89,9 +89,10 @@ var brandHues = map[string]lipgloss.AdaptiveColor{
 }
 
 // brandHue returns the vendor color for an agent label ("claude",
-// "codex:gpt-5"), and reports whether there is one.
+// "codex:gpt-5", "claude@xhigh"), and reports whether there is one.
 func brandHue(label string) (lipgloss.AdaptiveColor, bool) {
 	tool, _, _ := strings.Cut(label, ":")
+	tool, _, _ = strings.Cut(tool, "@")
 	c, ok := brandHues[tool]
 	return c, ok
 }
