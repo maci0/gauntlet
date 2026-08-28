@@ -25,6 +25,9 @@ type Worktree struct {
 	repo   *Repo
 }
 
+// Base returns the commit this worktree was cut from (or advanced to).
+func (w *Worktree) Base() string { return w.base }
+
 // LockName is the run lock gauntlet writes in the directory it reviews. It
 // lives here so the ignore rules and the runner agree on one spelling.
 const LockName = ".gauntlet.lock"
@@ -168,7 +171,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		return nil, err
 	}
 
-	slug := branchSlug(name)
+	slug := BranchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
 	// A leftover checkout from a killed run would fail the add; clear it first.
@@ -197,8 +200,10 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		// and the branch it already created do not. Clear both while the lock
 		// is still held, on a live context, so the caller gets the error and
 		// moves on while the repo stays as it was found.
-		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "worktree", "remove", "--force", dir)
-		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "branch", "-D", branch)
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -220,7 +225,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+branchSlug(tag))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+BranchSlug(tag))
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
 	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
 		if tip != base {
@@ -232,6 +237,12 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+		// A cancel during the add can leave a half-created, locked entry.
+		// Clean it up here so callers do not need to know the path.
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		_, _ = r.run(cleanCtx, gitQuick, "branch", "-D", branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -251,7 +262,7 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 	if err := r.ensureWorktreeRoot(); err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+branchSlug(tag))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+BranchSlug(tag))
 	// A leftover snapshot from a killed run sits at this same deterministic
 	// path; it is gauntlet's own and carries nothing, so it is replaced.
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
@@ -259,6 +270,9 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
@@ -427,6 +441,24 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 	return nil
 }
 
+// Advance moves a persistent lane worktree to a new base, detaching from
+// whatever branch the previous review used so it can be deleted by the
+// caller. Uncommitted changes and untracked files from the previous review
+// are cleaned up. After Advance the worktree is detached at newBase with
+// Branch == ""; the next review calls StartBranch to begin its own work.
+func (w *Worktree) Advance(ctx context.Context, newBase string) error {
+	sub := &Repo{Dir: w.Dir}
+	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--detach", newBase); err != nil {
+		return fmt.Errorf("git checkout --detach: %w", err)
+	}
+	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {
+		return fmt.Errorf("git clean -fd: %w", err)
+	}
+	w.Branch = ""
+	w.base = newBase
+	return nil
+}
+
 // MergeResult says what happened when a review's branch met the main tree.
 type MergeResult struct {
 	Merged   bool
@@ -526,7 +558,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 		return MergeResult{Detail: err.Error()}
 	}
 
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+branchSlug(target))
+	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+BranchSlug(target))
 	// Clearing a checkout a killed run left here; if it fails, the add below
 	// reports it rather than this line.
 	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
@@ -730,7 +762,12 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
 	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err != nil {
-		return fmt.Errorf("git worktree remove: %w", err)
+		// A cancel during "git worktree add" can leave the entry locked;
+		// unlock it and retry before giving up.
+		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", w.Dir)
+		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err2 != nil {
+			return fmt.Errorf("git worktree remove: %w", err)
+		}
 	}
 	return nil
 }
@@ -753,6 +790,24 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
 }
 
+// DeleteBranchesMatching deletes every branch matching a glob pattern.
+// Used to sweep review branches that a cancelled lane may have left behind.
+// Prunes stale worktree registrations first so a branch is not rejected as
+// "checked out" in a worktree that was already removed from disk.
+func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
+	r.PruneWorktrees(ctx)
+	out, err := r.run(ctx, gitQuick, "branch", "--list", pattern)
+	if err != nil {
+		return
+	}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		name := strings.TrimSpace(line)
+		if name != "" {
+			r.DeleteBranch(ctx, name)
+		}
+	}
+}
+
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
 // is what a killed run leaves behind.
 func (r *Repo) PruneWorktrees(ctx context.Context) {
@@ -770,8 +825,8 @@ func (r *Repo) CleanWorktreeRoot() {
 	_ = os.Remove(filepath.Dir(root))
 }
 
-// branchSlug keeps a review name safe for a git ref.
-func branchSlug(s string) string {
+// BranchSlug keeps a review name safe for a git ref.
+func BranchSlug(s string) string {
 	var b strings.Builder
 	for _, r := range s {
 		switch {
@@ -792,11 +847,11 @@ func branchSlug(s string) string {
 // review. That stability is how a repeated invocation recognizes layers it
 // already published without making unrelated stacks collide.
 func StackBranchName(baseTip string, index int, review string) string {
-	tip := branchSlug(baseTip)
+	tip := BranchSlug(baseTip)
 	if len(tip) > 12 {
 		tip = tip[:12]
 	}
-	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, branchSlug(review))
+	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, BranchSlug(review))
 }
 
 func firstLine(s string) string {

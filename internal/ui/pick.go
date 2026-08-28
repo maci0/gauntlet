@@ -170,7 +170,7 @@ func newPicker(cfg PickConfig) *picker {
 		folds:        map[string][2]string{},
 		opts: []option{
 			{kind: optCount, label: "concurrency", n: 1,
-				help: "reviews at a time (-j), each in its own git worktree"},
+				help: "parallel lanes (-j), worktree-isolated and merged back"},
 			{kind: optCycle, label: "suggest agent", flag: "--suggest-agent",
 				// "gauntlet" is the suggester that is not an agent: it reads
 				// the tree for signals, costs nothing, and answers at once.

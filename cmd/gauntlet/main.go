@@ -456,7 +456,7 @@ func run(argv []string) int {
 			rep.logf("Auto-detected agents (name them with --agents to pin the pool)")
 		}
 		if opts.jobs > 1 {
-			rep.logf("Parallel mode: %d reviews at a time, each in its own git worktree", opts.jobs)
+			rep.logf("Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
 		} else if opts.stackedPRs {
 			rep.logf("Stacked PR mode: sequential reviews in one isolated worktree")
 		}

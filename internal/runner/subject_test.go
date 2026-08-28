@@ -1,0 +1,72 @@
+// Copyright (C) 2026 Marcel W. Wysocki
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package runner
+
+import (
+	"strings"
+	"testing"
+
+	"github.com/maci0/gauntlet/internal/gitx"
+)
+
+func TestCommitSubjectPrefersTheAgent(t *testing.T) {
+	got := commitSubject("fix: guard the nil map write", gitx.Changes{
+		Tracked: []string{"internal/foo.go"},
+	})
+	if got != "fix: guard the nil map write" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSubjectFromChanges(t *testing.T) {
+	cases := []struct {
+		name string
+		ch   gitx.Changes
+		want string
+	}{
+		{"nothing listed", gitx.Changes{}, "chore: update files"},
+		{"one file at the root", gitx.Changes{Tracked: []string{"parse.go"}}, "chore: update parse.go"},
+		{"new file", gitx.Changes{Untracked: []string{"parse.go"}}, "chore: add parse.go"},
+		{"scope from a shared directory", gitx.Changes{Tracked: []string{"internal/parser/parse.go"}},
+			"chore(parser): update parse.go"},
+		{"boring parent is not a scope", gitx.Changes{Tracked: []string{"internal/lock.go"}},
+			"chore: update lock.go"},
+		{"two files", gitx.Changes{Tracked: []string{"b.go", "a.go"}},
+			"chore: update a.go and b.go"},
+		{"more than two", gitx.Changes{Tracked: []string{"c.go", "a.go", "b.go"}},
+			"chore: update a.go and 2 other files"},
+		{"tests only", gitx.Changes{Tracked: []string{"foo_test.go", "bar_test.go"}},
+			"test: update bar_test.go and foo_test.go"},
+		{"docs only", gitx.Changes{Tracked: []string{"README.md", "docs/CLI.md"}},
+			"docs: update README.md and CLI.md"},
+		{"ci only", gitx.Changes{Tracked: []string{".github/workflows/ci.yml"}},
+			"ci: update ci.yml"},
+		{"mixed types stay chore", gitx.Changes{Tracked: []string{"foo.go", "foo_test.go"}},
+			"chore: update foo.go and foo_test.go"},
+		{"same basename keeps the path", gitx.Changes{Tracked: []string{"a/foo.go", "b/foo.go"}},
+			"chore: update a/foo.go and b/foo.go"},
+		{"different directories drop the scope", gitx.Changes{Tracked: []string{
+			"internal/parser/parse.go", "internal/lexer/lex.go",
+		}}, "chore: update lex.go and parse.go"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := subjectFromChanges(c.ch); got != c.want {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestSubjectFromChangesStripsControlsAndFits(t *testing.T) {
+	got := subjectFromChanges(gitx.Changes{Tracked: []string{"ok\x00.go"}})
+	if strings.ContainsRune(got, 0) {
+		t.Fatalf("control byte reached the subject: %q", got)
+	}
+	long := strings.Repeat("x", 80) + ".go"
+	got = subjectFromChanges(gitx.Changes{Tracked: []string{long}})
+	if n := len([]rune(got)); n > subjectMax {
+		t.Fatalf("subject is %d runes, want at most %d: %q", n, subjectMax, got)
+	}
+}

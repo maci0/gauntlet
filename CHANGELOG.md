@@ -14,15 +14,6 @@ minor instead and were listed under Changed.
 
 ### Added
 
-- An `--agents` entry can pin a reasoning effort alongside the model:
-  `claude:opus-5@xhigh`, `opencode:anthropic/claude-sonnet-5@medium`, or
-  `claude@max` with no model. The part after the last `@` is the effort, and
-  like a model id it is passed to the CLI verbatim. It is wired only for
-  agents whose flag was verified from the CLI's own help — `claude`
-  (`--effort`) and `opencode` (`--variant`) — and for defined agents via a
-  new `effort` argument list (or an `{effort}` placeholder) in
-  `agents.json` / `--agent-cmd`; every other agent refuses `@effort` at
-  startup instead of guessing a flag.
 - `--usage-limit PCT` with `--usage-cmd CMD` ends a run gracefully when a
   provider's usage window is nearly spent, rather than letting the next review
   hit the wall. Between reviews the runner asks the command what percentage is
@@ -35,8 +26,58 @@ minor instead and were listed under Changed.
   then ignored for the rest of the run, so a broken probe cannot end a run
   early.
 
+## 1.14.2
+
+### Fixed
+
+- A worktree commit whose review printed no `SUBJECT:` line names the files
+  it touched (`chore: add helper.go`) instead of `chore(<review>): apply
+  review findings`. The fallback is what git status shows, not the review
+  that produced the diff, so the history still reads as the project's.
+
+## 1.14.1
+
+### Fixed
+
+- A cancel during `git worktree add` no longer leaves a locked,
+  half-created worktree behind. All three worktree creation paths
+  (lanes, stacked PRs, snapshot) now unlock and remove on failure.
+  `Worktree.Remove` retries after unlocking when the first attempt fails.
+
+## 1.14.0
+
 ### Changed
 
+- Plain reporter summary uses blue stat labels and bold section headers
+  (Pull requests, Per-agent stats, Failed reviews) for visual structure.
+  Two new palette codes: blue, cyan.
+
+- All user-facing text now says "lane" instead of "worktree" when describing
+  `--jobs N` parallel mode: dashboard header, dry-run output, startup log,
+  `--jobs` help text, and the pick TUI.
+
+## 1.13.0
+
+### Changed
+
+- `--jobs N` now creates N persistent lane worktrees reused across reviews
+  instead of a throwaway worktree per review. Within a lane, reviews run
+  sequentially in the same directory, so the agent's system prompt prefix is
+  byte-identical and the provider's prompt cache hits after the first review.
+  Cache cold starts scale with the lane count, not the review count: a
+  15-review run with `--jobs 3` pays 3 cold starts and gets 12 cache hits,
+  compared to 15 cold starts and 0 hits previously. Falls back to sequential
+  mode if lane creation fails.
+
+- An `--agents` entry can pin a reasoning effort alongside the model:
+  `claude:opus-5@xhigh`, `opencode:anthropic/claude-sonnet-5@medium`, or
+  `claude@max` with no model. The part after the last `@` is the effort, and
+  like a model id it is passed to the CLI verbatim. It is wired only for
+  agents whose flag was verified from the CLI's own help, `claude`
+  (`--effort`) and `opencode` (`--variant`), and for defined agents via a
+  new `effort` argument list (or an `{effort}` placeholder) in
+  `agents.json` / `--agent-cmd`; every other agent refuses `@effort` at
+  startup instead of guessing a flag.
 - Custom agent names may no longer contain `@`, which now separates the
   effort. A definition in `agents.json` or `--agent-cmd` that uses one is
   refused at startup, like the other reserved separators.

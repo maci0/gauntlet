@@ -223,6 +223,60 @@ The invariants are:
 6. The worktree is disposable; local and remote branches are durable because
    they are the graph open PRs refer to. Nothing in this mode calls merge.
 
+### API-level cache reuse across reviews
+
+Agents backed by the Anthropic API (Claude) cache the rendered prompt prefix
+server-side: tools, system prompt, and the leading message history. A second
+request whose prefix is byte-identical reads the cached tokens at roughly a
+tenth of the input price. The cache entry lives for five minutes from the last
+read, so sequential requests that share a prefix keep it warm indefinitely.
+
+**Sequential mode (`--jobs 1`) gets this for free.** Every review launches in
+the same directory. Claude Code builds the same system prompt (same CLAUDE.md,
+same `Primary working directory:` path, same tool list), so review 1 warms the
+cache and reviews 2-N read it. The review-specific text is the user message,
+which sits after the cached system prefix and does not invalidate it.
+
+**Parallel mode (`--jobs N`) mitigates it with persistent lanes.** Instead of
+creating a throwaway worktree per review, parallel mode creates N stable lane
+worktrees at loop start (`lane-0/`, `lane-1/`, ...) and distributes reviews
+across them. Within a lane, reviews run sequentially in the same directory, so
+reviews 2..M in lane K all hit the cache that review 1 warmed. Across lanes,
+the N worktrees still have N distinct paths, so each lane pays one cold start.
+Cache cold starts scale with the lane count (N), not the review count.
+
+For a 15-review run with `--jobs 3`: 3 cold starts and 12 cache hits, compared
+to 15 cold starts and 0 hits with per-review worktrees.
+
+Stacked-PR mode already uses a single worktree advanced through the review
+order, so it gets the same cache reuse as `--jobs 1`.
+
+The remaining cost is N cold starts (one per lane) rather than zero. Fewer
+lanes means more cache reuse at the expense of wall-clock time. `--jobs 1`
+is the degenerate case: one lane, maximum reuse, zero parallelism.
+
+This is not Claude-specific. Every supported agent embeds the working
+directory in its system prompt, so worktree mode defeats API-level caching
+universally:
+
+| Agent | Provider caching | CWD in system prompt | Worktree impact |
+|---|---|---|---|
+| Claude | Automatic prefix match, 5-min TTL, 90% discount on reads | `Primary working directory: /path/…` | Full miss per worktree |
+| Gemini | Implicit on 2.5+/3, 90% discount, min 1024-2048 tokens | GEMINI.md resolved relative to CWD | Full miss per worktree |
+| Codex | Automatic prefix caching (OpenAI) | Sandbox/directory config from CWD, AGENTS.md aggregated | Full miss per worktree |
+| Grok | Automatic, routing-dependent (`x-grok-conv-id` header) | Working directory context embedded | Full miss per worktree; routing makes sequential hits unreliable too |
+| Qwen | Anthropic-style `cache_control` markers, 5-min TTL | QWEN.md resolved relative to CWD (forked from Gemini CLI) | Full miss per worktree |
+| Kimi | Automatic, ~10-20% of input cost on hit | Project context resolved from CWD | Full miss per worktree |
+| Cursor Agent | Inherits provider caching (GPT, Claude, etc.) | `.cursor/rules` and workspace root from CWD | Full miss per worktree |
+| OpenCode | Anthropic-style `cache_control` when using Claude | Project context from CWD | Full miss per worktree |
+| dsh | Undocumented (DeepSeek API) | YAML config and profile from CWD | Likely same |
+| agy, crush, clanker | Undocumented | Likely embed CWD | Likely same |
+
+Gauntlet does not call any API directly, so it cannot place cache-control
+breakpoints or send warmup requests. What it controls is launch ordering and
+directory layout, which is what determines whether the agent's own caching
+can engage.
+
 ## Speed
 
 Agent wall time dominates by three orders of magnitude, so "fast" means the
