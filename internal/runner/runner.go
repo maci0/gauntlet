@@ -620,12 +620,10 @@ loop:
 			<-sem
 			break
 		}
-		wg.Add(1)
-		go func(i int, review string) {
-			defer wg.Done()
+		wg.Go(func() {
 			defer func() { <-sem }()
 			r.st.Add(r.runIsolated(ctx, review, loopNo, i, base))
-		}(i, review)
+		})
 	}
 	wg.Wait()
 

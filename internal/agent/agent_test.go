@@ -5,7 +5,7 @@ package agent
 
 import (
 	"maps"
-	"math/rand"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"slices"
@@ -45,6 +45,21 @@ func TestParseSpecsSuggestsClosest(t *testing.T) {
 	_, err := ParseSpecs("claud")
 	if err == nil || !strings.Contains(err.Error(), "claude") {
 		t.Fatalf("want a suggestion for claude, got %v", err)
+	}
+}
+
+func TestSplitProvider(t *testing.T) {
+	p, n := splitProvider("openai/gpt-4")
+	if p != "openai" || n != "gpt-4" {
+		t.Fatalf("got provider %q name %q", p, n)
+	}
+	p, n = splitProvider("gpt-4")
+	if p != "" || n != "gpt-4" {
+		t.Fatalf("no slash: got provider %q name %q", p, n)
+	}
+	p, n = splitProvider("a/b/c")
+	if p != "a/b" || n != "c" {
+		t.Fatalf("last slash: got provider %q name %q", p, n)
 	}
 }
 
@@ -371,14 +386,14 @@ func TestTailKeepsLastBytes(t *testing.T) {
 // offsets past the end, and repeated oversized writes get pinned.
 func TestTailRingManyWrites(t *testing.T) {
 	for _, size := range []int{1, 2, 3, 7, 64, 1000} {
-		rng := rand.New(rand.NewSource(int64(size)))
+		rng := rand.New(rand.NewPCG(uint64(size), uint64(size)))
 		data := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 		tl := NewTail(size)
 		var written []byte
 		for range 500 {
-			chunk := make([]byte, rng.Intn(3*size+10))
+			chunk := make([]byte, rng.IntN(3*size+10))
 			for i := range chunk {
-				chunk[i] = byte(data[rng.Intn(len(data))])
+				chunk[i] = byte(data[rng.IntN(len(data))])
 			}
 			written = append(written, chunk...)
 			if _, err := tl.WriteString(string(chunk)); err != nil {

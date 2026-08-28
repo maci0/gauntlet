@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode"
@@ -621,6 +622,43 @@ func TestSameContentComparesAgainstTheShadowedBody(t *testing.T) {
 	missing := filepath.Join(dir, "gone-review.md")
 	if sameContent(mine, missing) {
 		t.Fatal("an unreadable file matched")
+	}
+}
+
+func TestReadBoundedRefusesSymlinkAndFIFO(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real-review.md")
+	body := "Your goal is to stay put.\n"
+	write(t, real, body)
+	got, ok := readBounded(real, 1024)
+	if !ok || string(got) != body {
+		t.Fatalf("regular file: ok=%v got %q", ok, got)
+	}
+
+	link := filepath.Join(dir, "link-review.md")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, ok := readBounded(link, 1024); ok {
+		t.Fatal("readBounded followed a symlink")
+	}
+
+	fifo := filepath.Join(dir, "pipe-review.md")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("fifo unavailable: %v", err)
+	}
+	done := make(chan bool, 1)
+	go func() {
+		_, ok := readBounded(fifo, 1024)
+		done <- ok
+	}()
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("readBounded read a fifo")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("readBounded blocked on a fifo")
 	}
 }
 

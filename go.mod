@@ -1,6 +1,6 @@
 module github.com/maci0/gauntlet
 
-go 1.26.6
+go 1.27.0
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10

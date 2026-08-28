@@ -549,12 +549,10 @@ func run(argv []string) int {
 		if d.r == nil {
 			continue // finished its loops before the reload
 		}
-		workers.Add(1)
-		go func(d *dirRun) {
-			defer workers.Done()
+		workers.Go(func() {
 			d.r.Run(ctx)
 			d.loops = d.carriedLoops + d.r.Loops()
-		}(d)
+		})
 	}
 
 	if dash != nil {
