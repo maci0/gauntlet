@@ -200,8 +200,10 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		// and the branch it already created do not. Clear both while the lock
 		// is still held, on a live context, so the caller gets the error and
 		// moves on while the repo stays as it was found.
-		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "worktree", "remove", "--force", dir)
-		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "branch", "-D", branch)
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -235,6 +237,12 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+		// A cancel during the add can leave a half-created, locked entry.
+		// Clean it up here so callers do not need to know the path.
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		_, _ = r.run(cleanCtx, gitQuick, "branch", "-D", branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -262,6 +270,9 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
@@ -751,7 +762,12 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
 	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err != nil {
-		return fmt.Errorf("git worktree remove: %w", err)
+		// A cancel during "git worktree add" can leave the entry locked;
+		// unlock it and retry before giving up.
+		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", w.Dir)
+		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err2 != nil {
+			return fmt.Errorf("git worktree remove: %w", err)
+		}
 	}
 	return nil
 }
