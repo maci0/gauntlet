@@ -1182,6 +1182,7 @@ echo "RESULT: changed=1"`)
 	}
 	for _, banned := range []string{
 		"gauntlet", "automated review fixes", "from gauntlet run", "Merge ",
+		"apply review findings",
 	} {
 		if strings.Contains(log, banned) {
 			t.Fatalf("%q reached the project's history:\n%s", banned, log)
@@ -1207,6 +1208,36 @@ echo "RESULT: changed=1"`)
 	}
 	if merges := gitOut(t, repo, "log", "--merges", "--format=%h", before+"..HEAD"); merges != "" {
 		t.Fatalf("merge commits reached the history: %s", merges)
+	}
+}
+
+// A review that skips SUBJECT: still has to leave a commit that names the
+// files it touched, not a placeholder about the review itself.
+func TestCommitWithoutSubjectNamesTheFiles(t *testing.T) {
+	repo := testRepo(t)
+	before := gitOut(t, repo, "rev-parse", "HEAD")
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "package x" > helper.go
+echo "PATH: helper.go: new"
+echo "RESULT: changed=1"`)
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Jobs = 2
+	bus := NewBus()
+	drain(bus)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Run(context.Background())
+	bus.Close()
+
+	subjects := gitOut(t, repo, "log", "--format=%s", before+"..HEAD")
+	if !strings.Contains(subjects, "helper.go") {
+		t.Fatalf("subject does not name the file:\n%s", subjects)
+	}
+	if strings.Contains(subjects, "apply review findings") || strings.Contains(subjects, "sec-review") {
+		t.Fatalf("the review leaked into the subject:\n%s", subjects)
 	}
 }
 

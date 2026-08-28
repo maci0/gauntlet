@@ -272,7 +272,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			continue
 		}
 
-		title := commitSubject(res.Subject, review)
+		title := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
 		changed, commitErr := wt.CommitAll(context.WithoutCancel(ctx), title)
 		if commitErr != nil {
 			res.Status = StatusFail

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -668,17 +667,6 @@ func (r *Runner) abandonQueue(loopNo int) {
 	}
 }
 
-// commitSubject is what the history will say about a review's change: what
-// the agent called it, or a plain fallback naming the review's subject area.
-// Neither mentions this tool, a run id, or a model: the commit is the
-// project's, not the machinery's.
-func commitSubject(fromAgent, review string) string {
-	if fromAgent != "" {
-		return fromAgent
-	}
-	return fmt.Sprintf("chore(%s): apply review findings", strings.TrimSuffix(review, "-review"))
-}
-
 // pushLanded publishes what just landed on this branch. A failure is logged
 // and counted, never fatal: the work is committed, and the next review's push
 // (or the commit step) carries it.
@@ -768,7 +756,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		return res
 	}
 
-	msg := commitSubject(res.Subject, review)
+	msg := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), msg)
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)

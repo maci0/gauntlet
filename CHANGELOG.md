@@ -12,6 +12,13 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- A worktree commit whose review printed no `SUBJECT:` line names the files
+  it touched (`chore: add helper.go`) instead of `chore(<review>): apply
+  review findings`. The fallback is what git status shows, not the review
+  that produced the diff, so the history still reads as the project's.
+
 ## 1.14.1
 
 ### Fixed
