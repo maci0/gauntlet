@@ -113,23 +113,40 @@ func TestUnknownCommandReportsLikeABadFlag(t *testing.T) {
 	}
 }
 
-func TestTruncateDescKeepsValidUTF8(t *testing.T) {
-	s := strings.Repeat("héllo wörld ", 20) // multibyte runes throughout
-	limit := utf8.RuneCountInString(s)
-	for max := 0; max < limit+4; max++ {
-		got := truncateDesc(s, max)
-		if !utf8.ValidString(got) {
-			t.Fatalf("truncateDesc(s, %d) split a rune: %q", max, got)
+// A row is laid out in terminal columns, so the cut has to stay inside a
+// column budget for text that is not one column per rune.
+func TestTrimCellsStaysInsideItsColumnBudget(t *testing.T) {
+	for _, s := range []string{
+		strings.Repeat("héllo wörld ", 20), // multibyte, one column each
+		strings.Repeat("日本語のテキスト ", 20),    // two columns each
+		strings.Repeat("aé日 ", 20),         // mixed
+	} {
+		limit := cells(s)
+		for w := 2; w < limit+4; w++ {
+			got := trimCells(s, w)
+			if !utf8.ValidString(got) {
+				t.Fatalf("trimCells(%d) split a rune: %q", w, got)
+			}
+			if cells(got) > w {
+				t.Fatalf("trimCells(%d) returned %d columns: %q", w, cells(got), got)
+			}
 		}
-		if utf8.RuneCountInString(got) > max {
-			t.Fatalf("truncateDesc(s, %d) returned %d runes", max, utf8.RuneCountInString(got))
+		if got := trimCells(s, limit); got != s {
+			t.Errorf("input already inside the budget must pass through unchanged")
 		}
 	}
-	if got := truncateDesc(s, limit); got != s {
-		t.Error("an input under the limit must pass through unchanged")
+}
+
+// padCells fills to a column count, which is what keeps a listing's second
+// column in one place regardless of what the first one holds.
+func TestPadCellsFillsToColumns(t *testing.T) {
+	for _, s := range []string{"abc", "héllo", "日本語", "aé日"} {
+		if got := cells(padCells(s, 12)); got != 12 {
+			t.Errorf("padCells(%q, 12) occupies %d columns, want 12", s, got)
+		}
 	}
-	if got := truncateDesc("abc", -1); got != "" {
-		t.Errorf("negative limit should give empty, got %q", got)
+	if got := padCells("日本語", 2); got != "日本語" {
+		t.Errorf("a value wider than the column must not be cut by padding: %q", got)
 	}
 }
 

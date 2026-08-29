@@ -80,7 +80,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		}
 		col := 0
 		for _, n := range names {
-			col = max(col, len(n))
+			col = max(col, cells(n))
 		}
 		for _, n := range names {
 			rev, _ := d.set.Get(n)
@@ -88,7 +88,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			if rev.IsProject() {
 				origin = " [project]"
 			}
-			fmt.Fprintf(out, "  %-*s%s\n", col+1, n, origin)
+			fmt.Fprintf(out, "  %s%s\n", padCells(n, col+1), origin)
 		}
 		fmt.Fprintln(out)
 		repeats := len(d.reviews) - len(uniq(d.reviews))
@@ -220,14 +220,14 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			r.spec.Label(), len(r.picked), len(pools[i]), where)
 		col := 0
 		for _, p := range r.picked {
-			col = max(col, len(p.Name))
+			col = max(col, cells(p.Name))
 		}
 		for _, p := range r.picked {
 			reason := p.Reason
 			if reason == "" {
 				reason = "(no reason given)"
 			}
-			fmt.Fprintf(out, "  %-*s %s\n", col+1, p.Name, pal.dim(reason))
+			fmt.Fprintf(out, "  %s %s\n", padCells(p.Name, col+1), pal.dim(reason))
 		}
 		total += len(r.picked)
 		if named, err := namedIn(d, opts, map[string]bool{}); err == nil && len(named) > 0 {

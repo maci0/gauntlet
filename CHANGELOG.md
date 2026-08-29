@@ -77,6 +77,14 @@ minor instead and were listed under Changed.
   keep their key order through decoding. A repeated key contributes both
   values rather than only the last, since both are text the agent emitted.
 
+- `--list` and `--dry-run` line their columns up for review names that are not
+  one column per character. The name column was budgeted in runes (`--list`)
+  or bytes (`--dry-run`) and padded by `fmt`, which counts runes; a terminal
+  lays out in cells, so a project prompt with a CJK name pushed the `[project]`
+  column three places out of line and could run its description past the right
+  edge. Widths, padding, wrapping, and the description cut are now measured in
+  terminal cells, as the dashboard already measured them.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
