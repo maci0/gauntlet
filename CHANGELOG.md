@@ -52,6 +52,14 @@ minor instead and were listed under Changed.
   the file-signal suggester keyed on a name the tree does not have. The
   records are now taken exactly as git wrote them, which is what `-z` is for.
 
+- `--stacked-prs` accepts a remote URL written with a trailing slash. Git
+  stores `remote.<name>.url` exactly as it was typed, and a browser address
+  bar copies `https://github.com/owner/project/`; the trailing slash left an
+  empty last path segment, so the OWNER/REPO check counted two separators and
+  a stacked run refused a remote every other git command works with. The same
+  slash also made `https://github.com/only-owner/` parse as a repository,
+  which it is not; both now resolve correctly.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

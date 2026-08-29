@@ -65,7 +65,13 @@ func ParseRemote(raw string) (repo, host string, err error) {
 		}
 		host, repo = u.Hostname(), strings.TrimPrefix(u.Path, "/")
 	}
-	repo = strings.TrimSuffix(repo, ".git")
+	// A trailing slash is a legal spelling of the same remote -- it is what a
+	// browser address bar copies -- and it reaches remote.<name>.url exactly
+	// as it was typed, since RemoteURL deliberately reports the raw value.
+	// Cut it before .git so both orders parse: left in place it makes an
+	// empty last path segment, the OWNER/REPO shape check counts two slashes,
+	// and a stacked run refuses a remote every other git command accepts.
+	repo = strings.TrimSuffix(strings.TrimSuffix(repo, "/"), ".git")
 	if host == "" || strings.Count(repo, "/") != 1 {
 		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", raw)
 	}
