@@ -25,6 +25,27 @@ minor instead and were listed under Changed.
   semantics on timeout and termination are unchanged, since a session leader's
   process group is its own.
 
+- A `--usage-cmd` probe that prints `NaN` no longer ends the run on its first
+  check. `NaN` parses as a float and compares false against every bound, so it
+  passed the 0-100 range check and then read as "at or past the limit": a run
+  configured with `--usage-limit` stopped before its first review, reporting a
+  graceful finish rather than the broken probe. Non-finite answers are now
+  rejected with the other unreadable ones, and the limit is ignored for the
+  run, which is what every other probe failure already did.
+
+- `--usage-cmd` is no longer accepted when it holds nothing but whitespace.
+  The value is split on whitespace into an argv, so a blank one produced no
+  command at all; the check that refuses `--usage-limit` without a probe
+  compared the raw string, so `--usage-cmd " " --usage-limit 80` passed it and
+  the run carried a limit that could never trip. It is now a usage error.
+
+- A defined agent's `argv` now expands every placeholder in an argument, not
+  just the first kind it mentions. An entry packing more than one into a
+  single option (`"--opts=model={model},effort={effort}"`) had the rest passed
+  through verbatim, so the CLI was launched with a literal `{effort}` on its
+  command line. A `{model}` or `{effort}` written inside the review prompt is
+  still left alone: the prompt is content, not a template.
+
 - File names keep their leading and trailing spaces. Git's NUL-separated
   output was trimmed record by record, so a file called ` notes.md` came back
   as `notes.md`: a stacked PR body listed a path the commit did not touch, and
