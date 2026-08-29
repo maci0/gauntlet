@@ -77,6 +77,14 @@ minor instead and were listed under Changed.
   keep their key order through decoding. A repeated key contributes both
   values rather than only the last, since both are text the agent emitted.
 
+- `gauntlet pick` no longer composes a run that selects different reviews than
+  were ticked. The launcher shortens a selection by dropping the `-review`
+  suffix, and `--reviews` resolves set names and the `suggest` keyword before
+  review names, so a tree carrying `security-review.md` was launched as
+  `-r security`: the eight-review security set ran and the ticked review did
+  not. A name whose short form is one of those words is now written out in
+  full.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
