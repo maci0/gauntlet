@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -30,8 +31,10 @@ type Event struct {
 	Text string
 	// Thinking is reasoning output, which agents mark separately.
 	Thinking string
-	// Usage is any token counters found on the line. Absent counters stay at
-	// zero, and Has reports whether anything was found at all.
+	// Usage is any token counters found on the line. A counter the line did
+	// not carry stays at zero, which is also what a zero counter reports:
+	// "none found" and "found, and it was nothing" are the same answer here,
+	// and the caller treats both as unknown (see runner.pick).
 	Usage Usage
 }
 
@@ -322,8 +325,17 @@ func asInt(v any) (int, bool) {
 		}
 		return int(n), true
 	case json.Number:
+		// Not reachable through Parse, which decodes without UseNumber, but
+		// the guard belongs next to the conversion rather than with whichever
+		// caller happens not to trigger it. int is 32 bits on some builds, so
+		// a bare int(i) would silently truncate a counter that does not fit
+		// and report 5 for 2^32+5 -- the platform-dependent lie the float64
+		// case above exists to avoid.
 		i, err := n.Int64()
-		return int(i), err == nil
+		if err != nil || i < 1 || i > math.MaxInt {
+			return 0, false
+		}
+		return int(i), true
 	}
 	return 0, false
 }

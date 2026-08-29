@@ -809,6 +809,64 @@ func TestCustomAgentExpandsEveryPlaceholderInOneArgument(t *testing.T) {
 	}
 }
 
+// A placeholder the spec never pinned must not reach the agent as an empty
+// value. The Model and Effort blocks are simply not appended when there is
+// nothing to put in them, and an {model} or {effort} written into argv has to
+// degrade the same way: "--model=" is not "no model", it is a model named the
+// empty string, which the CLI either rejects or takes.
+func TestCustomAgentDropsArgumentsWithNothingToPutInThem(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	if err := Register("inargv", Custom{
+		Argv: []string{"inargv", "--model={model}", "--effort={effort}", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("blocks", Custom{
+		Argv:   []string{"blocks", "-p", "{prompt}"},
+		Model:  []string{"--model", "{model}"},
+		Effort: []string{"--effort", "{effort}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// The two spellings agree with each other, pinned or not.
+	for _, c := range []struct {
+		spec       Spec
+		argv, want string
+	}{
+		{Spec{Tool: "inargv"}, "inargv", "inargv -p PROMPT"},
+		{Spec{Tool: "blocks"}, "blocks", "blocks -p PROMPT"},
+		{Spec{Tool: "inargv", Model: "m1"}, "inargv", "inargv --model=m1 -p PROMPT"},
+		{Spec{Tool: "inargv", Model: "m1", Effort: "high"}, "inargv",
+			"inargv --model=m1 --effort=high -p PROMPT"},
+		{Spec{Tool: "inargv", Effort: "high"}, "inargv", "inargv --effort=high -p PROMPT"},
+	} {
+		argv, err := BuildCmd(c.spec, "PROMPT", BuildOpts{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Join(argv, " "); got != c.want {
+			t.Errorf("BuildCmd(%+v):\n got %s\nwant %s", c.spec, got, c.want)
+		}
+	}
+
+	// The argument holding the prompt is the task. Dropping it would launch
+	// the agent with nothing to do, which is worse than an unexpanded token,
+	// so it survives whatever else it mentions.
+	if err := Register("packed", Custom{
+		Argv: []string{"packed", "-p", "{prompt} (model {model})"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := BuildCmd(Spec{Tool: "packed"}, "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"packed", "-p", "PROMPT (model )"}; !slices.Equal(argv, want) {
+		t.Fatalf("the prompt argument was not kept intact:\n got %q\nwant %q", argv, want)
+	}
+}
+
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
