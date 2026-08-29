@@ -186,6 +186,14 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"unknown agent", []string{"-a", "nope"}, "unknown tool"},
 		{"bad duration", []string{"-t", "5x"}, "invalid duration"},
 		{"zero timeout", []string{"-t", "0"}, "must be positive"},
+		{"usage limit without a probe", []string{"--usage-limit", "80"}, "used together"},
+		{"usage probe without a limit", []string{"--usage-cmd", "true"}, "used together"},
+		// The probe is split on whitespace, so a blank one is no probe at
+		// all: it used to pass the pairing check above and leave the limit
+		// set and inert for the whole run.
+		{"blank usage probe", []string{"--usage-cmd", "   ", "--usage-limit", "80"},
+			"--usage-cmd is blank"},
+		{"usage probe and limit together", []string{"--usage-cmd", "sh -c 'echo 1'", "--usage-limit", "80"}, ""},
 		{"trailing argument", []string{"extra"}, "unknown command"},
 		{"check outside update", []string{"--check"}, "--check requires 'gauntlet update'"},
 		{"limit outside runs", []string{"--limit", "5"}, "--limit requires 'gauntlet runs'"},

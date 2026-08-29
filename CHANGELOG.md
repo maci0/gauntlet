@@ -33,6 +33,12 @@ minor instead and were listed under Changed.
   rejected with the other unreadable ones, and the limit is ignored for the
   run, which is what every other probe failure already did.
 
+- `--usage-cmd` is no longer accepted when it holds nothing but whitespace.
+  The value is split on whitespace into an argv, so a blank one produced no
+  command at all; the check that refuses `--usage-limit` without a probe
+  compared the raw string, so `--usage-cmd " " --usage-limit 80` passed it and
+  the run carried a limit that could never trip. It is now a usage error.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
