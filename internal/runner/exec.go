@@ -79,10 +79,17 @@ type procOpts struct {
 
 // runProc launches one agent, streams its output, and enforces the timeout.
 //
-// The child runs in its own process group so a timeout can kill the whole
-// tree, not just the launcher. stdin is /dev/null: agents run headless and
-// must never read the terminal, since an agent that grabs it can put the
-// shared tty in raw mode and stop Ctrl+C from generating a signal at all.
+// The child runs in its own session (which is also its own process group, so
+// a timeout can kill the whole tree, not just the launcher). The session is
+// the part that matters: a new session has no controlling terminal, so the
+// agent cannot open /dev/tty at all. Closing its stdin is not enough --
+// nothing stops a CLI from opening /dev/tty itself and putting the shared
+// terminal into raw mode, at which point Ctrl+C stops generating SIGINT for
+// anyone and the operator cannot stop the run. The kernel's own guard against
+// this (SIGTTOU stops a background process that touches termios) only
+// restrains polite programs: a runtime that ignores SIGTTOU, as Node-style
+// CLIs routinely do, sails straight through it. stdin stays /dev/null:
+// agents run headless and must never read input.
 func runProc(ctx context.Context, o procOpts) procResult {
 	if len(o.Argv) == 0 {
 		return procResult{ExitCode: -1, Err: errors.New("empty command")}
@@ -90,7 +97,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	cmd := exec.Command(o.Argv[0], o.Argv[1:]...)
 	cmd.Dir = o.Dir
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	// Explicitly owned pipes, not cmd.StdoutPipe: Wait closes the pipes it
 	// created as soon as the process exits, which silently truncates whatever

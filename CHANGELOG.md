@@ -12,6 +12,19 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- An agent can no longer disable `Ctrl-C` for the whole run. Agents now start
+  in their own session, so they have no controlling terminal: previously an
+  agent CLI could open `/dev/tty` and put the shared terminal into raw mode,
+  after which `Ctrl-C` generated no signal for anyone and the run could not be
+  stopped from the keyboard at all. The kernel's SIGTTOU guard does not
+  prevent this -- a runtime that ignores SIGTTOU, as Node-style CLIs routinely
+  do, changes the terminal settings from a background process group without
+  breaking stride. Reproduced with an opencode-style agent; the group-kill
+  semantics on timeout and termination are unchanged, since a session leader's
+  process group is its own.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

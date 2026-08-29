@@ -62,7 +62,11 @@ organizational decisions; none is assigned here.
   with the user's authority inside the reviewed tree, with network access.
   Containment is prompt-level (embedded rules in `internal/prompt/rules/`,
   composed in `internal/prompt/compose.go`) plus process discipline (own
-  process group, no stdin, hard timeout with SIGKILL escalation;
+  session -- which detaches the controlling terminal, so an agent cannot open
+  /dev/tty and put the operator's terminal into a raw mode where Ctrl-C stops
+  generating SIGINT; the kernel's SIGTTOU guard does not cover a runtime that
+  ignores SIGTTOU, which Node-style CLIs routinely do -- no stdin, hard
+  timeout with SIGKILL escalation;
   `internal/runner/exec.go:83-258`). There is deliberately no OS sandbox
   (DESIGN.md non-goals). Anything crossing B1 that reaches the prompt crosses
   into B2 with this advisory fence as the only gate.
@@ -248,7 +252,7 @@ implies game over.
 | Hostile file names reaching messages or logs | C-quote decoding then sanitization of every git path before display | `gitx.go:462-489`, `runner.go:286-296`, `lock.go:17-23` |
 | Output-volume DoS from a chatty agent | 4 MiB line cap emitted in chunks, bounded tail buffers (1 MiB suggest tail) | `exec.go:33-41,268-326,404-434` |
 | Oversized prompt files | 1 MiB read cap; argv-length pre-check with named failure | `prompt.go:32`, `agent.go:321-360` |
-| Runaway/hung agents | per-review timeout, process group SIGTERM then SIGKILL, stdin `/dev/null`, drain grace for stuck grandchildren | `exec.go:24-31,83-258,350-372` |
+| Runaway/hung agents | per-review timeout, process group SIGTERM then SIGKILL, stdin `/dev/null`, own session (no controlling terminal, so Ctrl-C cannot be disabled from inside an agent), drain grace for stuck grandchildren | `exec.go:24-31,83-258,350-372` |
 | Commit step running away | separate 5-minute cap, same process discipline, journaled outcome; worktree mode takes commit authority back from the agent entirely | `commit.go:22-24,92-160` |
 | Unbounded downloads | 256 MiB asset, 4 MiB metadata, 1 MiB checksum caps; digest-shaped entries only; verify-before-rename, atomic replace | `selfupdate.go:38,86,140-173,225-254` |
 | Half-written binary executed by reload | two identical inode/size/mtime readings required | DESIGN.md "Hot reload", `selfupdate/reload.go:85-103` |

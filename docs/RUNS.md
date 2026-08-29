@@ -245,9 +245,14 @@ that still runs the configured commit, publication, and merge steps.
 
 `Ctrl-C` reaches it first because the hard stop is rarely what an interactive
 operator means. An agent mid-review never sees the terminal's `SIGINT` at all
--- every agent runs in its own process group, whichever CLI it is -- so what
+-- every agent runs in its own session, whichever CLI it is -- so what
 `Ctrl-C` means is decided by gauntlet, and a review that is seconds from
-committing is worth one more `Ctrl-C` to kill. Once any finish request is
+committing is worth one more `Ctrl-C` to kill. The session also means the
+agent has no controlling terminal: it cannot open `/dev/tty` and put the
+shared terminal into a raw mode where `Ctrl-C` stops generating a signal for
+anyone, which is what some terminal-aware CLIs otherwise do the moment they
+detect one, and which reads from the outside as a run that ignores `Ctrl-C`
+entirely. Once any finish request is
 already draining (`s`, `SIGQUIT`, a tripped usage limit), the next `Ctrl-C`
 skips straight to terminating: the "finishing" message has been seen, and
 pressing again means stop now. `SIGTERM` is never staged, because a

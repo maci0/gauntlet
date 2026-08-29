@@ -176,3 +176,45 @@ func TestRunProcPumpsEndWhenAGrandchildHoldsThePipe(t *testing.T) {
 	t.Fatalf("pump goroutines outlived runProc: %d goroutines now, %d before",
 		runtime.NumGoroutine(), before)
 }
+
+// An agent must run in its own session, not just its own process group. A
+// process group of the runner's session still shares its controlling
+// terminal, and an agent that opens /dev/tty can put it into raw mode, at
+// which point Ctrl-C stops generating SIGINT for anyone and the operator
+// cannot stop the run. The kernel's SIGTTOU guard does not cover this: a
+// runtime that ignores SIGTTOU (Node-style CLIs routinely do) changes the
+// termios from a background group without breaking stride. A new session has
+// no controlling terminal to grab.
+//
+// Session ids are read with python3's os.getsid because there is no portable
+// shell spelling: macOS ps prints 0 for the sess column.
+func TestAgentsRunInTheirOwnSession(t *testing.T) {
+	py, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 is required to read session ids")
+	}
+
+	// This test's own session, read via a plain child, which inherits it.
+	own, err := exec.Command(py, "-c", "import os; print(os.getsid(0))").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The agent's session, read from inside a runProc launch.
+	got, res := runFakeProc(t, py+` -c 'import os; print("SID=%d" % os.getsid(0))'`, nil)
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	agent := ""
+	for _, l := range got {
+		if _, sid, ok := strings.Cut(l.Text, "SID="); ok {
+			agent = strings.TrimSpace(sid)
+		}
+	}
+	if agent == "" {
+		t.Fatalf("the agent never reported a session id: %+v", got)
+	}
+	if agent == strings.TrimSpace(string(own)) {
+		t.Fatalf("the agent shares the runner's session (%s): it holds the controlling terminal and can disable Ctrl-C", agent)
+	}
+}
