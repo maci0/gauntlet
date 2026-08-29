@@ -83,6 +83,14 @@ minor instead and were listed under Changed.
   and ten agents drew seven lanes and reported two hidden rather than three.
   The review grid's own overflow marker already did this arithmetic right.
 
+- `--suggest`'s confirmation no longer offers reviews that `--exclude` has
+  already removed. The preview was built with no exclusions applied, so a run
+  with `--reviews sec --exclude sec` listed `sec-review` as "named on the
+  command line" and counted it in the total the prompt asks about, while the
+  schedule correctly dropped it. The preview and the schedule now share one
+  expansion, and a bad `--reviews` is reported before consent is asked for
+  rather than after it is given.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
