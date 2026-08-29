@@ -133,6 +133,40 @@ func TestSelectReviewsFiltersSuggestedReviewsThroughExclude(t *testing.T) {
 	}
 }
 
+// The confirmation is the consent gate, so it has to describe the run that
+// will actually happen. --exclude applies to what was named on the command
+// line as well as to what the agent picked, and the preview used to be built
+// with no exclusions at all: it listed a review the schedule then dropped, and
+// counted it in the total the prompt asks about.
+func TestSuggestPreviewHidesWhatExcludeRemoves(t *testing.T) {
+	d, opts := suggestFixture(t, `echo "RELEVANT: doc-review: y"`)
+	opts.reviews, opts.reviewsSet = "sec,doc", true
+	opts.exclude = "sec"
+	var out bytes.Buffer
+
+	if err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}); err != nil {
+		t.Fatal(err)
+	}
+	// The schedule is the control: it has always applied the exclusion, so a
+	// test that only read the preview could not tell which half was wrong.
+	if got := d.reviews; len(got) != 2 {
+		t.Fatalf("schedule %v, want the suggestion plus the one surviving named review", got)
+	}
+	for _, n := range d.reviews {
+		if n == "sec-review" {
+			t.Fatalf("excluded review reached the schedule: %v", d.reviews)
+		}
+	}
+	report := out.String()
+	if !strings.Contains(report, "doc-review") {
+		t.Fatalf("the preview lost what was named:\n%s", report)
+	}
+	if strings.Contains(report, "sec-review") {
+		t.Fatalf("the preview offers an excluded review for confirmation:\n%s", report)
+	}
+}
+
 // Every directory gets its own triage: their prompt sets differ, so one
 // directory's answer is not another's. They run together, because several
 // trees would otherwise be one suggest timeout after another.
