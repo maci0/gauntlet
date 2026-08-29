@@ -733,10 +733,17 @@ func (m *model) renderLanes(w, h int) string {
 	rows := make([]string, 0, h)
 	// A lane that does not fit is announced, not dropped: an agent missing
 	// from the panel reads as one that is not running.
-	maxRows, hiddenLanes := h, len(m.laneOrd)-h
-	if hiddenLanes > 0 {
+	//
+	// The marker occupies one of the h rows, so what stays hidden is
+	// everything past the rows actually drawn -- renderGrid does the same
+	// arithmetic for its own "+N more" cell and says so. Counting against h
+	// instead undercounts by exactly one, which drops an agent from the very
+	// tally that exists so none is dropped.
+	maxRows := h
+	if len(m.laneOrd) > maxRows {
 		maxRows = h - 1
 	}
+	hiddenLanes := max(len(m.laneOrd)-maxRows, 0)
 	for _, label := range m.laneOrd {
 		if len(rows) >= maxRows {
 			break
