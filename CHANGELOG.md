@@ -60,6 +60,14 @@ minor instead and were listed under Changed.
   slash also made `https://github.com/only-owner/` parse as a repository,
   which it is not; both now resolve correctly.
 
+- Agent output in a stream-mode run keeps the order the agent wrote it. JSON
+  lines were decoded into a map, and Go randomizes map iteration, so an
+  envelope carrying two text fields, or two sibling blocks each carrying text,
+  came out swapped roughly one line in ten: the dashboard feed reordered an
+  agent's sentences and the run journal recorded them that way. Objects now
+  keep their key order through decoding. A repeated key contributes both
+  values rather than only the last, since both are text the agent emitted.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

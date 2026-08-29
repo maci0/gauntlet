@@ -19,6 +19,8 @@ package streamjson
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"strings"
 )
 
@@ -71,14 +73,15 @@ var (
 // not JSON at all, which is how a caller knows to treat it as plain text.
 //
 // This runs once per output line, so nothing here copies the line: TrimSpace
-// slices it, and json.Unmarshal neither retains nor modifies its input.
+// slices it, and the decoder reads that slice in place. The strings it hands
+// back are the only allocations, as they were before.
 func Parse(line []byte) (Event, bool) {
 	trimmed := bytes.TrimSpace(line)
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return Event{}, false
 	}
-	var doc any
-	if err := json.Unmarshal(trimmed, &doc); err != nil {
+	doc, ok := decode(trimmed)
+	if !ok {
 		return Event{}, false
 	}
 	var ev Event
@@ -87,6 +90,138 @@ func Parse(line []byte) (Event, bool) {
 	ev.Text = strings.TrimRight(text.String(), "\n")
 	ev.Thinking = strings.TrimRight(thinking.String(), "\n")
 	return ev, true
+}
+
+// member is one key/value pair of a JSON object, kept where it was written.
+type member struct {
+	key string
+	val any
+}
+
+// object is a decoded JSON object that remembers the order of its keys.
+//
+// encoding/json decodes into map[string]any, and Go randomizes map iteration,
+// so walking that map concatenated an envelope's text fields in a different
+// order from one line to the next: two sibling blocks holding "FIRST" and
+// "SECOND" came out swapped about one line in ten. That is a feed that
+// reorders an agent's sentences and a transcript that does not match what the
+// agent said. The order belongs to the agent, so it is preserved rather than
+// replaced with an order of ours.
+type object struct{ members []member }
+
+// get returns the value written under key, last one wins, matching what
+// encoding/json does with a repeated key. Envelope records carry a handful of
+// fields and only one key is ever looked up, so a scan costs less than the map
+// it would replace.
+func (o *object) get(key string) any {
+	var out any
+	for _, m := range o.members {
+		if m.key == key {
+			out = m.val
+		}
+	}
+	return out
+}
+
+// errNotJSON marks input the decoder reached but cannot be a JSON value. It
+// never escapes decode, which reports the same "not JSON" the caller already
+// handles by falling back to text.
+var errNotJSON = errors.New("not a JSON value")
+
+// decodeDepth bounds the decoder's recursion. encoding/json's scanner has a
+// nesting limit of its own, but it is thousands deep; a line arriving from an
+// agent is untrusted, and this is per output line. Anything past the bound is
+// consumed without being built, iteratively, so a nested tool payload still
+// leaves the line valid JSON -- it just contributes nothing, which is already
+// true of everything below walk's own maxDepth.
+const decodeDepth = 64
+
+// decode reads one JSON value, building objects that keep their key order.
+func decode(data []byte) (any, bool) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	v, err := decodeValue(dec, 0)
+	if err != nil {
+		return nil, false
+	}
+	// Trailing bytes after the value mean the line is not one JSON document,
+	// which is the answer json.Unmarshal gave for the same input.
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return nil, false
+	}
+	return v, true
+}
+
+func decodeValue(dec *json.Decoder, depth int) (any, error) {
+	if depth > decodeDepth {
+		return nil, skipValue(dec)
+	}
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	delim, isDelim := tok.(json.Delim)
+	if !isDelim {
+		return tok, nil // string, float64, bool, or nil
+	}
+	switch delim {
+	case '{':
+		obj := &object{}
+		for dec.More() {
+			keyTok, err := dec.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, ok := keyTok.(string)
+			if !ok {
+				return nil, errNotJSON
+			}
+			val, err := decodeValue(dec, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			// A repeated key keeps both members rather than the last: the
+			// text of each is something the agent wrote, and dropping one
+			// would lose output. get is what resolves a lookup to one value.
+			obj.members = append(obj.members, member{key: key, val: val})
+		}
+		_, err := dec.Token() // the closing brace
+		return obj, err
+	case '[':
+		var arr []any
+		for dec.More() {
+			val, err := decodeValue(dec, depth+1)
+			if err != nil {
+				return nil, err
+			}
+			arr = append(arr, val)
+		}
+		_, err := dec.Token() // the closing bracket
+		return arr, err
+	}
+	return nil, errNotJSON // a closing delimiter where a value belongs
+}
+
+// skipValue consumes one value without building it, counting delimiters
+// rather than recursing: what it is called on is arbitrarily deep by
+// definition, so it must not add a stack frame per level.
+func skipValue(dec *json.Decoder) error {
+	open := 0
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if d, ok := tok.(json.Delim); ok {
+			if d == '{' || d == '[' {
+				open++
+			} else {
+				open--
+			}
+		}
+		if open == 0 {
+			return nil // a scalar, or the container just closed
+		}
+	}
 }
 
 // maxDepth bounds the walk. Agent envelopes nest a few levels; anything deeper
@@ -106,10 +241,11 @@ func walk(node any, ev *Event, text, thinking *strings.Builder, depth int, inThi
 		return
 	}
 	switch v := node.(type) {
-	case map[string]any:
+	case *object:
 		thinkingHere := inThinking || isThinkingBlock(v)
-		for k, child := range v {
-			lower := strings.ToLower(k)
+		for _, m := range v.members {
+			lower := strings.ToLower(m.key)
+			child := m.val
 			str, isString := child.(string)
 			switch {
 			case isString && thinkingTextKeys[lower]:
@@ -137,8 +273,8 @@ func walk(node any, ev *Event, text, thinking *strings.Builder, depth int, inThi
 
 // isThinkingBlock reports whether a record is a reasoning block, so the plain
 // text inside it is read as reasoning rather than as visible output.
-func isThinkingBlock(v map[string]any) bool {
-	t, _ := v["type"].(string)
+func isThinkingBlock(o *object) bool {
+	t, _ := o.get("type").(string)
 	t = strings.ToLower(t)
 	return strings.Contains(t, "thinking") || strings.Contains(t, "reasoning")
 }
