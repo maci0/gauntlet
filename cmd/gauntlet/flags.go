@@ -455,8 +455,18 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.usageLimit < 0 || o.usageLimit > 100 {
 		return nil, fmt.Errorf("--usage-limit %g: want a percentage between 0 and 100", o.usageLimit)
 	}
-	if fields := strings.Fields(o.usageCmd); len(fields) > 0 {
-		o.usageArgv = fields
+	if o.usageCmd != "" {
+		// The command is split on whitespace and executed directly, so a
+		// value made only of whitespace splits into no argv at all. The
+		// pairing check above compares the raw string and cannot see that:
+		// `--usage-cmd " " --usage-limit 80` passed it and left the run with
+		// a limit that could never trip, because there was no probe to run --
+		// the exact half-configured state that check exists to refuse.
+		o.usageArgv = strings.Fields(o.usageCmd)
+		if len(o.usageArgv) == 0 {
+			return nil, errors.New("--usage-cmd is blank: it is split on whitespace " +
+				"and executed directly, so it needs a command to run")
+		}
 	}
 
 	for _, b := range bins {
