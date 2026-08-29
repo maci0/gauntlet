@@ -172,10 +172,13 @@ the review:
     Signals: ext:.zig, name:build.zig, path:src/plugins, mark:comptime
 
 `ext` is a file extension, `name` a file's base name, `path` a directory or
-relative path, and `mark` a substring found near the top of a source file. The
-line comes from the reviewed tree, so it is parsed strictly: those four kinds,
-at most 12 tokens, 40 characters each, and a charset with no room for
-structure. Anything else on the line is dropped.
+relative path, and `mark` a substring found near the top of a source file: a
+declared `mark` is looked for in the same file heads the built-in rules read,
+so it sees what they see and no more. The line comes from the reviewed tree, so
+it is parsed strictly: those four kinds, at most 12 tokens, 40 characters each,
+and a charset with no room for structure. Anything else on the line is dropped.
+Across the whole prompt set at most 64 declared marks are searched for, since
+each one costs a pass over every head.
 
 A `Summary:` line is the short form of what the review looks for, for the
 places that show the whole catalog one line at a time: `--list`, the launcher's

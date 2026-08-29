@@ -5,6 +5,7 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -227,6 +228,84 @@ func TestFastSuggestHonorsSignalsAPromptDeclares(t *testing.T) {
 	}
 }
 
+// `mark:` is documented as "a substring found near the top of a source file",
+// and the example both docs/RUNS.md and prompt.Signals give is `mark:comptime`.
+// It could not work: peek only ever recorded the built-in table's category
+// labels, so a declared value matched only by colliding with one of those, and
+// `comptime` is not one. A review declaring it was silently unreachable
+// through --suggest-agent gauntlet, which is the one way a project's own
+// prompt gets proposed at all.
+func TestFastSuggestFindsASubstringAReviewDeclares(t *testing.T) {
+	dir := tree(t, "src/main.zig\x00const std = @import(\"std\");\n\ncomptime {}\n")
+	promptDir := t.TempDir()
+	body := "Signals: mark:comptime\n\nYour goal is to review comptime code.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "comptime-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, promptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var reason string
+	for _, s := range fastSuggest(dir, []string{"comptime-review"}, set) {
+		if s.Name == "comptime-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("a review declaring mark:comptime was not proposed for a tree containing it")
+	}
+	if !strings.Contains(reason, "mark:comptime") {
+		t.Errorf("evidence was %q, which does not name the signal that matched", reason)
+	}
+}
+
+// The control: a declared substring the tree does not carry proposes nothing.
+// Without this, a suggester that matched every declared mark would pass the
+// test above and be no better than the bug.
+func TestFastSuggestIgnoresASubstringTheTreeLacks(t *testing.T) {
+	dir := tree(t, "src/main.zig\x00const std = @import(\"std\");\n")
+	promptDir := t.TempDir()
+	body := "Signals: mark:comptime\n\nYour goal is to review comptime code.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "comptime-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, promptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range fastSuggest(dir, []string{"comptime-review"}, set) {
+		if s.Name == "comptime-review" && strings.Contains(s.Reason, "mark:comptime") {
+			t.Fatalf("claimed a mark the tree does not carry: %q", s.Reason)
+		}
+	}
+}
+
+// The built-in table keeps working beside the declared ones, and a declared
+// value that repeats one of its labels does not double-count.
+func TestMarkSearchAddsDeclaredWithoutDisturbingTheTable(t *testing.T) {
+	base := len(marks)
+	if got := markSearch(nil); len(got) != base {
+		t.Fatalf("no declared marks changed the table: %d entries, want %d", len(got), base)
+	}
+	got := markSearch([]string{"comptime", "comptime", "", "borrow"})
+	if len(got) != base+2 {
+		t.Fatalf("added %d entries for 2 distinct values", len(got)-base)
+	}
+	if len(marks) != base {
+		t.Fatal("markSearch wrote into the package-level table")
+	}
+	many := make([]string, declaredMarkMax*2)
+	for i := range many {
+		many[i] = fmt.Sprintf("m%03d", i)
+	}
+	if got := markSearch(many); len(got) != base+declaredMarkMax {
+		t.Fatalf("%d declared values became %d entries, want the %d cap",
+			len(many), len(got)-base, declaredMarkMax)
+	}
+}
+
 // A macOS tree hands out NFD filenames while an author types NFC into the
 // Signals: line of a prompt. Both sides are stored NFC (record normalizes
 // what it receives, prompt.Signals normalizes what the author declared), so
@@ -340,7 +419,7 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	}
 
 	in := signals{mark: map[string]int{}}
-	peek(dir, []string{"http.go"}, &in)
+	peek(dir, []string{"http.go"}, &in, nil)
 	if in.mark["http"] == 0 {
 		t.Fatal("peek missed an in-tree net/http import")
 	}
@@ -356,7 +435,7 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	escape := filepath.Join("..", filepath.Base(outsideDir), "secret.go")
 	done := make(chan struct{})
 	go func() {
-		peek(dir, []string{"main.go", "evil.go", "pipe.go", escape}, &s)
+		peek(dir, []string{"main.go", "evil.go", "pipe.go", escape}, &s, nil)
 		close(done)
 	}()
 	select {

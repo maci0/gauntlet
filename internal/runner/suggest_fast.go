@@ -113,10 +113,15 @@ var sourceExts = map[string]bool{
 	".sh": true, ".bash": true, ".sql": true, ".lua": true, ".dart": true, ".ex": true,
 }
 
+// markEntry is one substring to look for and what finding it says about the
+// code. A review's own `mark:` signal becomes one of these too, searching for
+// itself under its own name.
+type markEntry struct{ text, says string }
+
 // marks maps a substring found in source to what it says about the code. Names
 // on the left are lowercased before the search, so a match is case-insensitive
 // without a regex engine or a second pass over the text.
-var marks = []struct{ text, says string }{
+var marks = []markEntry{
 	{"net/http", "http"}, {"http.handle", "http"}, {"fastapi", "http"},
 	{"flask", "http"}, {"express(", "http"}, {"axum::", "http"}, {"gin.", "http"},
 	{"database/sql", "sql"}, {"psycopg", "sql"}, {"sqlalchemy", "sql"},
@@ -415,7 +420,7 @@ type scored struct {
 // reach minScore are left out: proposing everything would be the same as
 // proposing nothing.
 func fastSuggest(dir string, pool []string, set prompt.Set) []prompt.Suggestion {
-	s := scan(dir)
+	s := scan(dir, declaredMarks(pool, set))
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
 		rank[name] = i
@@ -524,8 +529,10 @@ func historyWeight(h journal.ReviewHistory) float64 {
 	}
 }
 
-// scan collects what the rules ask about, in one pass over the tree.
-func scan(dir string) signals {
+// scan collects what the rules ask about, in one pass over the tree. declared
+// are the `mark:` substrings the reviews in the pool asked for, looked for
+// while the heads are being read anyway.
+func scan(dir string, declared []string) signals {
 	s := signals{
 		ext: map[string]int{}, name: map[string]bool{},
 		path: map[string]bool{}, mark: map[string]int{}, hot: map[string]int{},
@@ -539,7 +546,7 @@ func scan(dir string) signals {
 		s.files++
 		record(&s, rel)
 	}
-	peek(root, paths, &s)
+	peek(root, paths, &s, declared)
 	if !fromGit {
 		return s
 	}
@@ -635,15 +642,17 @@ func listTree(root string) ([]string, bool) {
 // Marks are checked for presence, not counted: every consumer treats a kind
 // as seen or unseen, so a kind already observed stops being searched for and
 // the scan ends early once all kinds are.
-func peek(root string, paths []string, s *signals) {
+func peek(root string, paths []string, s *signals, declared []string) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return
 	}
 	defer dir.Close()
+	wanted := markSearch(declared)
+	kinds := markKinds(wanted)
 	buf := make([]byte, peekBytes)
 	scratch := make([]byte, peekBytes)
-	seenAll := len(s.mark) == markKinds
+	seenAll := len(s.mark) == kinds
 	read := 0
 	for _, rel := range paths {
 		if read >= peekMaxFiles || seenAll {
@@ -660,13 +669,13 @@ func peek(root string, paths []string, s *signals) {
 		f.Close()
 		read++
 		head := asciiFold(scratch[:0], buf[:n])
-		for _, m := range marks {
+		for _, m := range wanted {
 			if s.mark[m.says] > 0 {
 				continue
 			}
 			if bytes.Contains(head, []byte(m.text)) {
 				s.mark[m.says]++
-				seenAll = len(s.mark) == markKinds
+				seenAll = len(s.mark) == kinds
 			}
 		}
 	}
@@ -692,15 +701,72 @@ func openPeek(root *os.Root, rel string) (*os.File, error) {
 	return f, nil
 }
 
-// markKinds is how many distinct things any mark can say, the point at which
-// peek's answer can no longer change.
-var markKinds = func() int {
-	says := map[string]bool{}
-	for _, m := range marks {
+// declaredMarkMax bounds how many review-declared substrings are searched for.
+// Each one costs a scan of every file head, the prompts come from the reviewed
+// tree, and Signals already caps a single review at signalMax: this is the
+// ceiling across all of them, so a tree carrying fifty prompts cannot turn a
+// suggestion into a full-text search.
+const declaredMarkMax = 64
+
+// markSearch is the built-in table plus the substrings reviews declared with
+// `mark:`.
+//
+// A declared value searches for itself and is recorded under its own name,
+// which is the token matchDeclared then looks up. Without this the mark set
+// only ever held the built-in category labels, so a review's own `mark:` could
+// match only by colliding with one of those -- the documented example,
+// `mark:comptime`, could never fire at all.
+func markSearch(declared []string) []markEntry {
+	if len(declared) == 0 {
+		return marks
+	}
+	// A fresh slice: appending onto the package-level table would write into
+	// it the moment it had spare capacity.
+	out := make([]markEntry, 0, len(marks)+min(len(declared), declaredMarkMax))
+	out = append(out, marks...)
+	seen := make(map[string]bool, len(declared))
+	for _, d := range declared {
+		if d == "" || seen[d] || len(out)-len(marks) >= declaredMarkMax {
+			continue
+		}
+		seen[d] = true
+		out = append(out, markEntry{text: d, says: d})
+	}
+	return out
+}
+
+// markKinds is how many distinct things the given searches can say, the point
+// at which peek's answer can no longer change.
+func markKinds(wanted []markEntry) int {
+	says := make(map[string]bool, len(wanted))
+	for _, m := range wanted {
 		says[m.says] = true
 	}
 	return len(says)
-}()
+}
+
+// declaredMarks collects the `mark:` values the pool's reviews declare, in
+// pool order and without repeats, so peek can look for them in the same pass
+// it already makes over the file heads.
+func declaredMarks(pool []string, set prompt.Set) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, name := range pool {
+		rev, ok := set.Get(name)
+		if !ok {
+			continue
+		}
+		for _, token := range rev.Signals() {
+			kind, value, ok := strings.Cut(token, ":")
+			if !ok || kind != "mark" || value == "" || seen[value] {
+				continue
+			}
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	return out
+}
 
 // asciiFold appends b lowercased to dst, ASCII-only. Source heads are
 // overwhelmingly ASCII and bytes.ToLower would allocate a fresh buffer per
