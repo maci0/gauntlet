@@ -46,6 +46,12 @@ minor instead and were listed under Changed.
   command line. A `{model}` or `{effort}` written inside the review prompt is
   still left alone: the prompt is content, not a template.
 
+- File names keep their leading and trailing spaces. Git's NUL-separated
+  output was trimmed record by record, so a file called ` notes.md` came back
+  as `notes.md`: a stacked PR body listed a path the commit did not touch, and
+  the file-signal suggester keyed on a name the tree does not have. The
+  records are now taken exactly as git wrote them, which is what `-z` is for.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

@@ -698,6 +698,52 @@ func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
 	}
 }
 
+// git's -z output is raw bytes on purpose, and a file name may legitimately
+// begin or end with a space. Trimming the records would hand every caller a
+// name that no longer matches the file: a stacked PR body naming a path the
+// commit did not touch, and a tree listing whose signals key on the wrong
+// name.
+func TestNULOutputKeepsSpacesInNames(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	const spaced = " leading and trailing "
+	if err := os.WriteFile(filepath.Join(r.Dir, spaced), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := r.ListFiles(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(files, spaced) {
+		t.Fatalf("ListFiles renamed the file: %q", files)
+	}
+
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = r.Dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("add", "-A")
+	git("commit", "-qm", "add a file with spaces around its name")
+
+	changed, err := r.ChangedFiles(ctx, r.Dir, "HEAD~1", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(changed, spaced) {
+		t.Fatalf("ChangedFiles renamed the file: %q", changed)
+	}
+	if since, err := r.ChangedSince(ctx, "90 days ago"); err != nil {
+		t.Fatal(err)
+	} else if !slices.Contains(since, spaced) {
+		t.Fatalf("ChangedSince renamed the file: %q", since)
+	}
+}
+
 func TestChangedSinceNamesRecentWork(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

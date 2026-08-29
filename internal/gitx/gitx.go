@@ -628,12 +628,20 @@ func (r *Repo) ChangedSince(ctx context.Context, since string) ([]string, error)
 }
 
 // splitNUL splits git's -z output, dropping the empty records its formats
-// leave between entries.
+// leave between entries (`git log --pretty=format:` writes one at every
+// commit boundary).
+//
+// A record is taken exactly as git wrote it. -z exists so a path survives
+// byte for byte, and git carries a leading or trailing space in a file name
+// like any other character: trimming here would turn " notes.md" into
+// "notes.md", which names nothing on disk. A stacked PR body would then list
+// a file the commit did not touch, and the suggester's tree listing would key
+// its file signals on a name the tree does not have.
 func splitNUL(out []byte) []string {
 	var paths []string
 	for field := range strings.SplitSeq(string(out), "\x00") {
-		if p := strings.TrimSpace(field); p != "" {
-			paths = append(paths, p)
+		if field != "" {
+			paths = append(paths, field)
 		}
 	}
 	return paths
