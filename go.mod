@@ -5,7 +5,7 @@ go 1.27.0
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/maci0/toktop v0.4.5
+	github.com/maci0/toktop v0.5.0
 	github.com/muesli/termenv v0.16.0
 	github.com/rivo/uniseg v0.4.7
 	golang.org/x/term v0.45.0
