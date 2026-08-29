@@ -152,6 +152,52 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 
 // A group header toggles its members, and toggling a whole group off empties
 // it rather than filling it again.
+// The launcher drops the "-review" suffix to keep the composed command short,
+// and --reviews resolves set names and the suggest keyword before it looks at
+// review names. A tree carrying security-review.md would therefore be launched
+// as "-r security", which runs the eight-review security set and not the one
+// review that was ticked; "suggest" would turn on the triage agent instead.
+// Those names are written out in full.
+func TestPickNamesAReviewThatCollidesWithASetInFull(t *testing.T) {
+	newPickerWith := func(names ...string) *picker {
+		revs := make([]PickReview, 0, len(names))
+		for _, n := range names {
+			revs = append(revs, PickReview{Name: n, Desc: "d", Project: true})
+		}
+		p := newPicker(PickConfig{
+			Dir:      "/home/dev/project",
+			Groups:   []PickGroup{{Name: "project", Reviews: revs}},
+			Agents:   []string{"claude"},
+			CPUs:     8,
+			Reserved: []string{"quick", "security", "project", "all", "suggest"},
+		})
+		p.w, p.h, p.ready = 100, 30, true
+		return p
+	}
+
+	for _, c := range []struct{ pick, want string }{
+		{"security-review", "security-review"}, // a set name
+		{"suggest-review", "suggest-review"},   // the triage keyword
+		{"cache-review", "cache"},              // nothing reserved: still abbreviated
+	} {
+		p := newPickerWith("security-review", "suggest-review", "cache-review")
+		p.selected[c.pick] = true
+		if got := p.reviewArgs(); got != c.want {
+			t.Errorf("ticking %s composed -r %q, want %q", c.pick, got, c.want)
+		}
+	}
+
+	// A whole group still collapses to its set name: that spelling is the set
+	// on both sides, so it means what it says.
+	p := newPickerWith("security-review", "suggest-review", "cache-review")
+	for _, n := range []string{"security-review", "suggest-review", "cache-review"} {
+		p.selected[n] = true
+	}
+	if got := p.reviewArgs(); got != "" {
+		t.Errorf("selecting everything should name nothing, got %q", got)
+	}
+}
+
 func TestPickGroupHeaderTogglesItsMembers(t *testing.T) {
 	p := demoPicker()
 	p.cursor[paneReviews] = 1

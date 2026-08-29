@@ -39,6 +39,13 @@ type PickConfig struct {
 	Dirty   bool        // the tree has uncommitted changes, which worktrees refuse
 	CPUs    int         // the concurrency meter is drawn against this
 	Version string
+	// Reserved are the words --reviews reads as something other than a
+	// review name: the set names and the suggest keyword. The launcher
+	// abbreviates a selection by dropping the "-review" suffix, and the
+	// caller resolves sets before review names, so a stem that lands on one
+	// of these has to be written out in full. Passed in rather than looked
+	// up here: nothing under internal/ui imports the prompt catalog.
+	Reserved []string
 }
 
 // PickGroup is one collapsible category: a review set and the members of it
@@ -601,10 +608,29 @@ func (p *picker) reviewArgs() string {
 	}
 	for _, name := range all {
 		if p.selected[name] && !covered[name] {
-			parts = append(parts, strings.TrimSuffix(name, "-review"))
+			parts = append(parts, p.abbreviate(name))
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+// abbreviate drops the "-review" suffix the flag allows to be left off, unless
+// what remains is a word --reviews reads as something else.
+//
+// A tree carrying security-review.md would otherwise be named as "security",
+// which the parser resolves as the security set -- eight other reviews, and
+// not the one that was ticked. The same applies to "suggest", which would turn
+// on the triage agent. Sets and the keyword are resolved before review names,
+// so the full name is the only spelling that means what was selected.
+func (p *picker) abbreviate(name string) string {
+	short := strings.TrimSuffix(name, "-review")
+	if short == name {
+		return name
+	}
+	if slices.Contains(p.cfg.Reserved, short) {
+		return name
+	}
+	return short
 }
 
 // optByFlag finds a run-pane row by the flag it contributes.
