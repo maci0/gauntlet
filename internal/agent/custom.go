@@ -285,21 +285,25 @@ func CustomFilePath() string {
 
 // buildCustom expands a custom definition into an argv.
 func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string {
+	// One replacer over every placeholder, rather than a chain that stops at
+	// the first kind an argument mentions: nothing says an argument carries
+	// only one. A definition that packs its settings into a single option
+	// ("--opts=model={model},effort={effort}") used to have the first
+	// placeholder expanded and the rest handed to the agent verbatim, so the
+	// CLI was launched with a literal "{effort}" in its argv.
+	//
+	// A Replacer scans the input once and never rescans what it substituted,
+	// so a prompt that happens to contain "{model}" stays the text the review
+	// wrote; a sequence of ReplaceAll calls would not hold that.
+	rep := strings.NewReplacer(
+		promptPlaceholder, prompt,
+		modelPlaceholder, spec.Model,
+		effortPlaceholder, spec.Effort,
+	)
 	expand := func(in []string) []string {
 		out := make([]string, 0, len(in))
 		for _, a := range in {
-			switch {
-			case a == promptPlaceholder:
-				out = append(out, prompt)
-			case strings.Contains(a, promptPlaceholder):
-				out = append(out, strings.ReplaceAll(a, promptPlaceholder, prompt))
-			case strings.Contains(a, modelPlaceholder):
-				out = append(out, strings.ReplaceAll(a, modelPlaceholder, spec.Model))
-			case strings.Contains(a, effortPlaceholder):
-				out = append(out, strings.ReplaceAll(a, effortPlaceholder, spec.Effort))
-			default:
-				out = append(out, a)
-			}
+			out = append(out, rep.Replace(a))
 		}
 		return out
 	}

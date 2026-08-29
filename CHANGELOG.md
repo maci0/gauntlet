@@ -39,6 +39,13 @@ minor instead and were listed under Changed.
   compared the raw string, so `--usage-cmd " " --usage-limit 80` passed it and
   the run carried a limit that could never trip. It is now a usage error.
 
+- A defined agent's `argv` now expands every placeholder in an argument, not
+  just the first kind it mentions. An entry packing more than one into a
+  single option (`"--opts=model={model},effort={effort}"`) had the rest passed
+  through verbatim, so the CLI was launched with a literal `{effort}` on its
+  command line. A `{model}` or `{effort}` written inside the review prompt is
+  still left alone: the prompt is content, not a template.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

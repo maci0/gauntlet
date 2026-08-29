@@ -773,6 +773,42 @@ func TestCustomAgentEffort(t *testing.T) {
 	}
 }
 
+// An argument may carry more than one placeholder, and every one of them has
+// to expand. A definition that packs its settings into a single option had
+// only the first kind replaced, so the agent was launched with a literal
+// "{effort}" (or "{model}") on its command line.
+func TestCustomAgentExpandsEveryPlaceholderInOneArgument(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	if err := Register("packed", Custom{
+		Argv: []string{"packed", "--opts=model={model},effort={effort}", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := BuildCmd(Spec{Tool: "packed", Model: "m1", Effort: "high"}, "PROMPT", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "packed --opts=model=m1,effort=high -p PROMPT"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	// The prompt is review text, not a template: a placeholder inside it is
+	// content the review wrote and must reach the agent unchanged.
+	if err := Register("promptfirst", Custom{
+		Argv: []string{"promptfirst", "{prompt}", "--model={model}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	argv, err = BuildCmd(Spec{Tool: "promptfirst", Model: "m1"},
+		"describe {model} in the config", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"promptfirst", "describe {model} in the config", "--model=m1"}; !slices.Equal(argv, want) {
+		t.Fatalf("argv:\n got %q\nwant %q", argv, want)
+	}
+}
+
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
