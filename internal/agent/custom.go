@@ -300,9 +300,32 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 		modelPlaceholder, spec.Model,
 		effortPlaceholder, spec.Effort,
 	)
+	// An argument mentioning a placeholder the spec did not pin is dropped
+	// whole rather than expanded to nothing. That is what the Model and
+	// Effort blocks already do -- they are appended only when the value is
+	// there -- and the two spellings of "where the model goes" have to agree.
+	// They did not: a definition using the block ran as `myagent -p PROMPT`,
+	// while one writing {model} into its argv ran as `myagent --model= -p
+	// PROMPT`, handing the CLI an empty value to reject, or to take as one.
+	//
+	// The argument carrying the prompt is never dropped: it is the task, and
+	// validate guarantees exactly one argv entry holds it. A definition that
+	// packs a setting into that same argument keeps its unexpanded shape
+	// rather than losing the review; settings that vary independently belong
+	// in arguments of their own.
+	unset := func(a string) bool {
+		if strings.Contains(a, promptPlaceholder) {
+			return false
+		}
+		return (spec.Model == "" && strings.Contains(a, modelPlaceholder)) ||
+			(spec.Effort == "" && strings.Contains(a, effortPlaceholder))
+	}
 	expand := func(in []string) []string {
 		out := make([]string, 0, len(in))
 		for _, a := range in {
+			if unset(a) {
+				continue
+			}
 			out = append(out, rep.Replace(a))
 		}
 		return out
