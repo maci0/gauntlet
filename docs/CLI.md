@@ -180,7 +180,11 @@ where it keeps session transcripts, which is what gives a defined agent live
 token counts. `model` (e.g. `["--model", "{model}"]`) is appended when a spec
 pins a model, and `effort` (e.g. `["--effort", "{effort}"]`) likewise when a
 spec pins a reasoning effort; without an `effort` list (or an `{effort}`
-placeholder in `argv`), `name:model@effort` is refused at startup. The name
+placeholder in `argv`), `name:model@effort` is refused at startup. Every
+placeholder in an `argv` entry is expanded, so one argument may carry several
+(`"--opts=model={model},effort={effort}"`); the composed prompt is substituted
+as content, so a placeholder the review's own text happens to contain is left
+alone. The name
 itself cannot contain spaces, commas, colons, equals signs, or at signs:
 they are the separators `--agents`, `--bin`, and `--agent-cmd` parse by. On
 the same run, a `--agent-cmd` for a name the file also
