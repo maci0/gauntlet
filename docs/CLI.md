@@ -92,7 +92,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-j, --jobs N` | 1 | Reviews at a time **per directory**; >1 uses worktree isolation and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
-| `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it. Used only with `--usage-limit`. |
+| `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it; a value that splits into nothing is a usage error. Used only with `--usage-limit`. |
 | `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
 | `-1, --once` | off | One loop, then stop. |
 | `-n, --max-loops N` | unlimited | Stop after N loops. |
@@ -180,7 +180,11 @@ where it keeps session transcripts, which is what gives a defined agent live
 token counts. `model` (e.g. `["--model", "{model}"]`) is appended when a spec
 pins a model, and `effort` (e.g. `["--effort", "{effort}"]`) likewise when a
 spec pins a reasoning effort; without an `effort` list (or an `{effort}`
-placeholder in `argv`), `name:model@effort` is refused at startup. The name
+placeholder in `argv`), `name:model@effort` is refused at startup. Every
+placeholder in an `argv` entry is expanded, so one argument may carry several
+(`"--opts=model={model},effort={effort}"`); the composed prompt is substituted
+as content, so a placeholder the review's own text happens to contain is left
+alone. The name
 itself cannot contain spaces, commas, colons, equals signs, or at signs:
 they are the separators `--agents`, `--bin`, and `--agent-cmd` parse by. On
 the same run, a `--agent-cmd` for a name the file also
