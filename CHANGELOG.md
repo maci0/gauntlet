@@ -60,6 +60,15 @@ minor instead and were listed under Changed.
   slash also made `https://github.com/only-owner/` parse as a repository,
   which it is not; both now resolve correctly.
 
+- A defined agent no longer receives an empty `--model=` when the run pinned no
+  model. An `{model}` or `{effort}` placeholder written into a definition's
+  `argv` expanded to nothing, while the equivalent `model` block was simply not
+  appended, so the two spellings of the same setting behaved differently: one
+  launched `myagent -p PROMPT`, the other `myagent --model= -p PROMPT`, which
+  the CLI either rejects or takes as a model named the empty string. An
+  argument mentioning an unpinned placeholder is now left out whole. The
+  argument carrying `{prompt}` is always kept.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

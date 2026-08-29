@@ -184,7 +184,11 @@ placeholder in `argv`), `name:model@effort` is refused at startup. Every
 placeholder in an `argv` entry is expanded, so one argument may carry several
 (`"--opts=model={model},effort={effort}"`); the composed prompt is substituted
 as content, so a placeholder the review's own text happens to contain is left
-alone. The name
+alone. An argument mentioning a `{model}` or `{effort}` the run did not pin is
+left out whole, the way an unused `model` block is, so the agent is never
+handed `--model=`; put settings that vary independently in arguments of their
+own. The argument holding `{prompt}` is always kept, whatever else it
+mentions. The name
 itself cannot contain spaces, commas, colons, equals signs, or at signs:
 they are the separators `--agents`, `--bin`, and `--agent-cmd` parse by. On
 the same run, a `--agent-cmd` for a name the file also
