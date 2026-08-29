@@ -8,6 +8,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -181,6 +182,67 @@ func TestColorEnabledPrecedence(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A listing is a table, and a table only reads as one if its second column
+// starts in the same place on every row. Review names come from the reviewed
+// tree, so they are not all one column per character: a CJK name is two
+// columns per glyph, and a budget counted in runes or bytes puts its row out
+// of line with the rest.
+func TestListingColumnsLineUpForWideNames(t *testing.T) {
+	dir := t.TempDir()
+	for _, n := range []string{"aaaa-review", "café-review", "日本語-review"} {
+		body := "Your goal is to test " + n + ".\nSummary: a description\n"
+		if err := os.WriteFile(filepath.Join(dir, n+".md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set, _, err := prompt.Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Where the column after the names begins, measured in terminal columns,
+	// on every row that has one.
+	starts := func(text, marker string) map[int]bool {
+		at := map[int]bool{}
+		for _, line := range strings.Split(text, "\n") {
+			if i := strings.Index(line, marker); i >= 0 {
+				at[cells(line[:i])] = true
+			}
+		}
+		return at
+	}
+
+	var list bytes.Buffer
+	listReviews(&list, palette{}, set, set.Names, 100)
+	// The legend names [project] too and is not a row of the table.
+	rows := ""
+	for _, line := range strings.Split(list.String(), "\n") {
+		if strings.Contains(line, "-review") {
+			rows += line + "\n"
+		}
+	}
+	if got := starts(rows, "[project]"); len(got) != 1 {
+		t.Errorf("--list starts its origin column at %v, want one column:\n%s", keysOf(got), rows)
+	}
+
+	d := &dirRun{dir: dir, set: set, reviews: set.Names}
+	var dry bytes.Buffer
+	dryRun(&dry, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute})
+	if got := starts(dry.String(), "[project]"); len(got) != 1 {
+		t.Errorf("--dry-run starts its origin column at %v, want one column:\n%s",
+			keysOf(got), dry.String())
+	}
+}
+
+func keysOf(m map[int]bool) []int {
+	out := make([]int, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Ints(out)
+	return out
 }
 
 func TestListReviewsMarksWeightsAndLegend(t *testing.T) {

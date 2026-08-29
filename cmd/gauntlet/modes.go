@@ -80,7 +80,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		}
 		col := 0
 		for _, n := range names {
-			col = max(col, len(n))
+			col = max(col, cells(n))
 		}
 		for _, n := range names {
 			rev, _ := d.set.Get(n)
@@ -88,7 +88,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			if rev.IsProject() {
 				origin = " [project]"
 			}
-			fmt.Fprintf(out, "  %-*s%s\n", col+1, n, origin)
+			fmt.Fprintf(out, "  %s%s\n", padCells(n, col+1), origin)
 		}
 		fmt.Fprintln(out)
 		repeats := len(d.reviews) - len(uniq(d.reviews))
@@ -144,11 +144,17 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 
 	suggesting := opts.suggest
 	pools := make([][]string, len(runs))
+	// Expanded once per directory and kept. What the confirmation shows and
+	// what the schedule ends up holding have to be filtered by the same set:
+	// working it out twice is how they came to disagree, with the preview
+	// naming reviews --exclude had already removed.
+	excludes := make([]map[string]bool, len(runs))
 	for i, d := range runs {
 		excluded, err := excludedIn(d, opts)
 		if err != nil {
 			return err
 		}
+		excludes[i] = excluded
 		if !suggesting {
 			reviews, err := scheduleFor(d, opts, excluded)
 			if err != nil {
@@ -220,17 +226,24 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			r.spec.Label(), len(r.picked), len(pools[i]), where)
 		col := 0
 		for _, p := range r.picked {
-			col = max(col, len(p.Name))
+			col = max(col, cells(p.Name))
 		}
 		for _, p := range r.picked {
 			reason := p.Reason
 			if reason == "" {
 				reason = "(no reason given)"
 			}
-			fmt.Fprintf(out, "  %-*s %s\n", col+1, p.Name, pal.dim(reason))
+			fmt.Fprintf(out, "  %s %s\n", padCells(p.Name, col+1), pal.dim(reason))
 		}
 		total += len(r.picked)
-		if named, err := namedIn(d, opts, map[string]bool{}); err == nil && len(named) > 0 {
+		// The same exclusions the schedule below applies, and the error is
+		// raised rather than swallowed: a bad --reviews is worth reporting
+		// before consent is asked for, not after it is given.
+		named, err := namedIn(d, opts, excludes[i])
+		if err != nil {
+			return err
+		}
+		if len(named) > 0 {
 			fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
 				"and %s, named on the command line", weighted(named))))
 			total += len(named)
@@ -248,11 +261,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		// What the person named rides along with what the agent picked, and a
 		// review on both lists lands twice: repeats are weight to the
 		// scheduler, so naming one is how you ask for more of it.
-		excluded, err := excludedIn(d, opts)
-		if err != nil {
-			return err
-		}
-		named, err := namedIn(d, opts, excluded)
+		named, err := namedIn(d, opts, excludes[i])
 		if err != nil {
 			return err
 		}

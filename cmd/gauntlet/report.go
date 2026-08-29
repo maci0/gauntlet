@@ -11,12 +11,12 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/rivo/uniseg"
 )
 
 // ANSI styling for the plain (non-TUI) output. Kept to five codes: this is a
@@ -326,8 +326,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
 	for _, n := range set.Names {
-		// fmt pads %-*s by runes, so the column budget counts the same unit.
-		nameCol = max(nameCol, utf8.RuneCountInString(n))
+		nameCol = max(nameCol, cells(n))
 	}
 	nameCol++
 	for _, name := range set.Names {
@@ -343,16 +342,13 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		if rev.IsProject() {
 			origin = "[project]"
 		}
-		prefix := fmt.Sprintf("  %-2s %-*s%-10s ", mark, nameCol, name, origin)
+		prefix := "  " + padCells(mark, 2) + " " + padCells(name, nameCol) + padCells(origin, 10) + " "
 		desc := rev.Summary()
 		if desc == "" {
 			desc = "(no description)"
 		}
-		room := max(width-len(prefix), 20)
-		if utf8.RuneCountInString(desc) > room {
-			desc = truncateDesc(desc, room-1) + "…"
-		}
-		fmt.Fprintln(out, prefix+pal.dim(desc))
+		room := max(width-cells(prefix), 20)
+		fmt.Fprintln(out, prefix+pal.dim(trimCells(desc, room)))
 	}
 
 	fmt.Fprintln(out)
@@ -360,7 +356,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 	fmt.Fprintf(out, "Sets usable with --reviews/--exclude (%d):\n", len(names))
 	setCol := 0
 	for _, n := range names {
-		setCol = max(setCol, utf8.RuneCountInString(n))
+		setCol = max(setCol, cells(n))
 	}
 	setCol++
 	for _, name := range names {
@@ -369,7 +365,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			if name == "project" {
 				count = len(set.ProjectNames())
 			}
-			fmt.Fprintf(out, "  %-*s %s (%d)\n", setCol, name, desc, count)
+			fmt.Fprintf(out, "  %s %s (%d)\n", padCells(name, setCol), desc, count)
 			continue
 		}
 		var present []string
@@ -382,25 +378,47 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		if body == "" {
 			body = "(no members in this prompt dir)"
 		}
-		fmt.Fprintf(out, "  %-*s %s\n", setCol, name, wrapIndent(body, width, setCol+3))
+		fmt.Fprintf(out, "  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
 	}
 }
 
-// truncateDesc cuts s to at most max runes, marking nothing: the caller adds
-// the ellipsis. Cutting at a rune start keeps a multibyte description out of
-// mojibake.
-func truncateDesc(s string, max int) string {
-	if max < 0 {
-		return ""
-	}
-	n := 0
-	for i := range s {
-		if n == max {
-			return strings.TrimRight(s[:i], " ")
-		}
-		n++
+// cells is how many terminal columns s occupies.
+//
+// Neither bytes nor runes answer that. A CJK glyph is two columns wide and a
+// combining mark is none, so a column budget counted either way lets a review
+// name from the reviewed tree push everything after it out of line. The
+// dashboard already measures this way; these listings are the same text on
+// the same terminal, and were the last place still counting something else.
+func cells(s string) int { return uniseg.StringWidth(s) }
+
+// padCells right-pads s to w terminal columns. fmt's %-*s pads to a rune
+// count, which is the same number only for text that happens to be narrow.
+func padCells(s string, w int) string {
+	if gap := w - cells(s); gap > 0 {
+		return s + strings.Repeat(" ", gap)
 	}
 	return s
+}
+
+// trimCells cuts s to at most w terminal columns, ellipsis included, between
+// grapheme clusters so a cut never lands inside one.
+func trimCells(s string, w int) string {
+	if w <= 1 || cells(s) <= w {
+		return s
+	}
+	var b strings.Builder
+	used := 0
+	for len(s) > 0 {
+		cluster, rest, _, _ := uniseg.FirstGraphemeClusterInString(s, -1)
+		cw := cells(cluster)
+		if used+cw > w-1 { // one column is reserved for the ellipsis
+			break
+		}
+		used += cw
+		b.WriteString(cluster)
+		s = rest
+	}
+	return strings.TrimRight(b.String(), " ") + "…"
 }
 
 // wrapIndent wraps a comma-separated list under a hanging indent. Columns
@@ -412,7 +430,7 @@ func wrapIndent(s string, width, indent int) string {
 	var b strings.Builder
 	col := indent
 	for i, word := range strings.Split(s, " ") {
-		n := utf8.RuneCountInString(word)
+		n := cells(word)
 		if i > 0 {
 			if col+n+1 > width {
 				b.WriteString("\n" + strings.Repeat(" ", indent))
