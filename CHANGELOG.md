@@ -32,6 +32,7 @@ minor instead and were listed under Changed.
   graceful finish rather than the broken probe. Non-finite answers are now
   rejected with the other unreadable ones, and the limit is ignored for the
   run, which is what every other probe failure already did.
+
 - `--usage-cmd` is no longer accepted when it holds nothing but whitespace.
   The value is split on whitespace into an argv, so a blank one produced no
   command at all; the check that refuses `--usage-limit` without a probe
