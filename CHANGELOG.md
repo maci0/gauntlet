@@ -25,6 +25,14 @@ minor instead and were listed under Changed.
   semantics on timeout and termination are unchanged, since a session leader's
   process group is its own.
 
+- `--stacked-prs` accepts a remote URL written with a trailing slash. Git
+  stores `remote.<name>.url` exactly as it was typed, and a browser address
+  bar copies `https://github.com/owner/project/`; the trailing slash left an
+  empty last path segment, so the OWNER/REPO check counted two separators and
+  a stacked run refused a remote every other git command works with. The same
+  slash also made `https://github.com/only-owner/` parse as a repository,
+  which it is not; both now resolve correctly.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in

@@ -18,13 +18,22 @@ func TestParseRemote(t *testing.T) {
 		{"https://github.com/owner/project.git", "owner/project", "github.com"},
 		{"git@github.com:owner/project.git", "owner/project", "github.com"},
 		{"ssh://git@git.example.com/owner/project.git", "owner/project", "git.example.com"},
+		// A trailing slash is the spelling a browser address bar hands over,
+		// and git stores a remote URL exactly as it was typed. It used to
+		// leave an empty last path segment, so the OWNER/REPO check counted
+		// two slashes and a stacked run refused the remote outright.
+		{"https://github.com/owner/project", "owner/project", "github.com"},
+		{"https://github.com/owner/project/", "owner/project", "github.com"},
+		{"https://github.com/owner/project.git/", "owner/project", "github.com"},
+		{"git@github.com:owner/project/", "owner/project", "github.com"},
 	} {
 		repo, host, err := ParseRemote(c.raw)
 		if err != nil || repo != c.repo || host != c.host {
 			t.Errorf("ParseRemote(%q) = %q, %q, %v", c.raw, repo, host, err)
 		}
 	}
-	for _, raw := range []string{"", "/tmp/repo.git", "https://github.com/only-owner"} {
+	for _, raw := range []string{"", "/tmp/repo.git", "https://github.com/only-owner",
+		"https://github.com/only-owner/", "https://github.com/owner/group/project"} {
 		if _, _, err := ParseRemote(raw); err == nil {
 			t.Errorf("ParseRemote(%q) accepted a non-GitHub repository", raw)
 		}
