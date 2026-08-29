@@ -25,6 +25,13 @@ minor instead and were listed under Changed.
   semantics on timeout and termination are unchanged, since a session leader's
   process group is its own.
 
+- A `--usage-cmd` probe that prints `NaN` no longer ends the run on its first
+  check. `NaN` parses as a float and compares false against every bound, so it
+  passed the 0-100 range check and then read as "at or past the limit": a run
+  configured with `--usage-limit` stopped before its first review, reporting a
+  graceful finish rather than the broken probe. Non-finite answers are now
+  rejected with the other unreadable ones, and the limit is ignored for the
+  run, which is what every other probe failure already did.
 - `--usage-cmd` is no longer accepted when it holds nothing but whitespace.
   The value is split on whitespace into an argv, so a blank one produced no
   command at all; the check that refuses `--usage-limit` without a probe

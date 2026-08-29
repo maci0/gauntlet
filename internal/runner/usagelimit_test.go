@@ -33,6 +33,14 @@ func TestParseUsagePercent(t *testing.T) {
 		{in: "usage: 42", bad: true},
 		{in: "-1", bad: true},
 		{in: "101", bad: true},
+		// ParseFloat takes these, and a range check cannot reject NaN: every
+		// comparison against it is false, so it would pass as a percentage
+		// and then read as "at or past the limit" at the call site.
+		{in: "NaN", bad: true},
+		{in: "nan", bad: true},
+		{in: "Inf", bad: true},
+		{in: "+Inf", bad: true},
+		{in: "-Inf", bad: true},
 	} {
 		got, err := parseUsagePercent(tc.in)
 		if tc.bad {
@@ -128,6 +136,11 @@ func TestBrokenUsageProbeCannotEndTheRun(t *testing.T) {
 		"prints no number":    {"/bin/sh", "-c", "echo unavailable"},
 		"does not exist":      {filepath.Join(t.TempDir(), "absent")},
 		"prints out of range": {"/bin/sh", "-c", "echo 4000"},
+		// NaN is the one bad answer a range check cannot see: it compares
+		// false against every bound, so it used to pass validation and then
+		// end the run on the first check.
+		"prints NaN":      {"/bin/sh", "-c", "echo NaN"},
+		"prints infinity": {"/bin/sh", "-c", "echo Inf"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			set, _ := promptSet(t, "first-review", "second-review")
