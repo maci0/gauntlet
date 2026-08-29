@@ -187,15 +187,40 @@ func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
 }
 
 // Lanes past the panel's cap are announced the same way.
+//
+// The count is checked against the lanes actually drawn rather than against a
+// number worked out here: the marker takes one of the panel's rows, so an
+// assertion that recomputes "total minus panel height" reproduces the same
+// off-by-one the panel could have, and agrees with it.
 func TestHiddenAgentsAreAnnouncedNotSilent(t *testing.T) {
+	const total = 10
 	cfg := demoConfig()
 	cfg.Agents = nil
-	for i := range 10 {
+	for i := range total {
 		cfg.Agents = append(cfg.Agents, fmt.Sprintf("agent%02d", i))
 	}
 	frame := stripANSI(staticFrame(cfg, nil, 120, 40))
-	if !strings.Contains(frame, "+2 more agents") {
-		t.Fatalf("10 lanes in an 8-row panel must announce the 2 hidden:\n%s", frame)
+
+	drawn := 0
+	for i := range total {
+		if strings.Contains(frame, fmt.Sprintf("agent%02d ", i)) {
+			drawn++
+		}
+	}
+	if drawn == 0 || drawn == total {
+		t.Fatalf("want some lanes drawn and some hidden, drew %d of %d:\n%s", drawn, total, frame)
+	}
+	m := regexp.MustCompile(`\+(\d+) more agents`).FindStringSubmatch(frame)
+	if m == nil {
+		t.Fatalf("%d of %d lanes were dropped without announcing it:\n%s", total-drawn, total, frame)
+	}
+	announced, err := strconv.Atoi(m[1])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := total - drawn; announced != want {
+		t.Fatalf("announced %d hidden agents, but %d of %d are not on screen:\n%s",
+			announced, want, total, frame)
 	}
 }
 

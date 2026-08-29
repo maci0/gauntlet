@@ -77,6 +77,12 @@ minor instead and were listed under Changed.
   keep their key order through decoding. A repeated key contributes both
   values rather than only the last, since both are text the agent emitted.
 
+- The dashboard's agent panel counts hidden agents correctly. The "+N more
+  agents" line spends one of the panel's rows, which the count did not
+  subtract, so it always named one agent fewer than it was hiding: eight rows
+  and ten agents drew seven lanes and reported two hidden rather than three.
+  The review grid's own overflow marker already did this arithmetic right.
+
 - `--suggest`'s confirmation no longer offers reviews that `--exclude` has
   already removed. The preview was built with no exclusions applied, so a run
   with `--reviews sec --exclude sec` listed `sec-review` as "named on the
