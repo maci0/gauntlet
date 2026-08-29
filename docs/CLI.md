@@ -64,7 +64,7 @@ A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 |---|---|---|
 | `-r, --reviews LIST` | all | Reviews and/or set names to run. The `-review` suffix is optional (`sec` means `sec-review`). Naming one twice runs it twice per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
-| `-s, --suggest` | off | An agent inspects the repo and proposes the relevant reviews. It composes with `--reviews` rather than replacing it: anything named there is scheduled as well, and a review the agent also picks is scheduled twice, which is how repeats have always asked for more weight. `--reviews suggest,sec` says the same thing. |
+| `-s, --suggest` | off | An agent inspects the repo and proposes the relevant reviews. It composes with `--reviews` rather than replacing it: anything named there is scheduled as well, and a review the agent also picks is scheduled twice, which is how repeats have always asked for more weight. `--reviews suggest,sec` says the same thing. The step runs before the schedule exists, so it runs under `--list` and `--dry-run` too. |
 | `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step, or `gauntlet` to choose from file signals instead of asking a model: it costs no tokens and answers in milliseconds. It weighs how much of the tree each language is, reads the head of source files for what they import and call, asks git which files have changed in the last 90 days, counts what is missing (no tests, no docs, no CI) as evidence of its own, and demotes reviews that have finished in this directory several times without changing a line. Reviews are ranked by that evidence and the weakest are not proposed. It still cannot tell a toy HTTP handler from a payment path; an agent can. |
 | `--suggest-timeout DUR` | `30m` | Timeout for the suggest step. |
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |
@@ -112,7 +112,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | Flag | Purpose |
 |---|---|
 | `doctor` | Report installed agent CLIs and helper tools. Exits 1 if no agent is usable. |
-| `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. |
+| `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. |
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
