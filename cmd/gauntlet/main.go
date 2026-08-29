@@ -309,8 +309,10 @@ func run(argv []string) int {
 	// included: the dirty-checkout consent, remote and gh validation, the
 	// pinned base fetch, and the snapshot worktree that discovery reads. The
 	// locks come first, so the fetch and the snapshot never race another
-	// gauntlet in the same clone. Informational modes stay on the local tree
-	// and touch no network.
+	// gauntlet in the same clone. Informational modes skip all of it: they
+	// read the local tree and open no remote of their own. They are not
+	// silent, though -- the suggest step below runs before --list and
+	// --dry-run print, because the schedule they print is what it decides.
 	informational := opts.showPrompt != "" || opts.list || opts.dryRun
 	if opts.stackedPRs && !informational {
 		if code := lockAll(); code >= 0 {
