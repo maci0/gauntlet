@@ -250,6 +250,62 @@ func TestNumberCountersAreRangeChecked(t *testing.T) {
 	}
 }
 
+// The text an agent wrote comes out in the order it wrote it. Decoding into
+// map[string]any could not promise that: Go randomizes map iteration, so two
+// text-bearing keys, or two sibling blocks each holding text, swapped places
+// from one parse to the next.
+//
+// Parsed many times on purpose. One parse of the old code agreed with the
+// document order about nine times in ten, so a single assertion would have
+// passed nearly always and failed in someone else's run instead.
+func TestTextKeepsTheOrderTheAgentWroteIt(t *testing.T) {
+	for _, c := range []struct{ name, line, text, thinking string }{
+		{"two text keys in one record", `{"text":"FIRST","content":"SECOND"}`,
+			"FIRST\nSECOND", ""},
+		{"reversed", `{"content":"FIRST","text":"SECOND"}`, "FIRST\nSECOND", ""},
+		{"two sibling records", `{"a":{"text":"FIRST"},"b":{"text":"SECOND"}}`,
+			"FIRST\nSECOND", ""},
+		{"reasoning beside output", `{"thinking":"THINK","text":"SAY"}`, "SAY", "THINK"},
+		// Repeating a key is malformed, and encoding/json would have kept only
+		// the last value. Both are text the agent emitted, so both are kept.
+		{"a repeated key keeps both", `{"text":"ONE","text":"TWO"}`, "ONE\nTWO", ""},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			for range 200 {
+				ev, ok := Parse([]byte(c.line))
+				if !ok {
+					t.Fatalf("%s should parse as JSON", c.line)
+				}
+				if ev.Text != c.text || ev.Thinking != c.thinking {
+					t.Fatalf("out of order: text=%q thinking=%q, want text=%q thinking=%q",
+						ev.Text, ev.Thinking, c.text, c.thinking)
+				}
+			}
+		})
+	}
+}
+
+// A line is JSON or it is not, and that answer decides whether the caller
+// shows it as text. Depth is not part of it: an agent that embeds a deeply
+// nested tool result still emitted one JSON line, and the decoder stops
+// building past its own bound without changing that answer. Trailing bytes
+// are the case that really is not one document.
+func TestDecoderAcceptsDepthAndRejectsTrailingBytes(t *testing.T) {
+	deep := `{"tool":` + strings.Repeat("[", 300) + strings.Repeat("]", 300) + `,"text":"visible"}`
+	ev, ok := Parse([]byte(deep))
+	if !ok {
+		t.Fatal("a deeply nested payload stopped the line from reading as JSON")
+	}
+	if ev.Text != "visible" {
+		t.Fatalf("text beside the deep payload was lost: %q", ev.Text)
+	}
+	for _, line := range []string{`{"text":"x"} trailing`, `{"text":"x"}{"text":"y"}`} {
+		if _, ok := Parse([]byte(line)); ok {
+			t.Errorf("%q is not one JSON document and should not read as one", line)
+		}
+	}
+}
+
 // BenchmarkParse measures the per-line cost every stream-mode output line and
 // every transcript record pays.
 func BenchmarkParse(b *testing.B) {
