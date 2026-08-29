@@ -107,6 +107,14 @@ minor instead and were listed under Changed.
   edge. Widths, padding, wrapping, and the description cut are now measured in
   terminal cells, as the dashboard already measured them.
 
+- A review's `mark:` signal now matches. `Signals: mark:comptime` is the
+  example both `docs/RUNS.md` and the prompt reference give, and it could never
+  fire: the file-signal suggester recorded only the built-in table's category
+  labels (`http`, `sql`, `concurrent`, ...), so a declared value matched only by
+  colliding with one of those. Declared substrings are now searched for in the
+  same file heads the built-in rules read, bounded to 64 across the prompt set.
+  A tree whose reviews declare no `mark:` is scanned exactly as before.
+
 ### Changed
 
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
