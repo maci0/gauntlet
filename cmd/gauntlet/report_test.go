@@ -206,9 +206,9 @@ func TestListingColumnsLineUpForWideNames(t *testing.T) {
 	// on every row that has one.
 	starts := func(text, marker string) map[int]bool {
 		at := map[int]bool{}
-		for _, line := range strings.Split(text, "\n") {
-			if i := strings.Index(line, marker); i >= 0 {
-				at[cells(line[:i])] = true
+		for line := range strings.SplitSeq(text, "\n") {
+			if before, _, ok := strings.Cut(line, marker); ok {
+				at[cells(before)] = true
 			}
 		}
 		return at
@@ -218,7 +218,7 @@ func TestListingColumnsLineUpForWideNames(t *testing.T) {
 	listReviews(&list, palette{}, set, set.Names, 100)
 	// The legend names [project] too and is not a row of the table.
 	rows := ""
-	for _, line := range strings.Split(list.String(), "\n") {
+	for line := range strings.SplitSeq(list.String(), "\n") {
 		if strings.Contains(line, "-review") {
 			rows += line + "\n"
 		}

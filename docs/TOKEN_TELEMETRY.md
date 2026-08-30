@@ -160,7 +160,7 @@ from its own `--help`, transcript layouts from its own session files.
 | grok | with `--stream` | yes (`reasoning_delta`) | stream only: its transcript records a context total, not output |
 | omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
-| dsh | with `--stream` | yes | its session log, once `--stream` asks for it uncompressed (below) |
+| dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | with `--opencode-db` | with `--opencode-db` | sessions in `~/.local/share/opencode/opencode.db` (XDG_DATA_HOME honored), one row per message with usage in a JSON column; the store holds every project on the machine, so reading it is opt-in |
 | agy | only if it prints a counter | no | no machine-readable mode and no transcript store found |
@@ -206,25 +206,23 @@ how `pi`, `prime-agent`, and `feynman` get live tokens with no agent-specific
 code: their records differ (`usage.output`, `usage.totalTokens`,
 `usage.reasoning`) and all three are read correctly.
 
-### dsh: asking for a readable session log
+### dsh: the default session log is zstd
 
 dsh (`@deepseek-ai/dsh`) is a plugin harness. Reading its packages shows the
 shape exactly:
 
 - `dsh-session-persistence-jsonl` writes
   `<root>/--<normalized-cwd>--/<session-id>/session.jsonl.zstd`, where the
-  first record is a header carrying `cwd`.
+  first record is a header carrying `cwd`. Uncompressed `.jsonl` is the
+  same records when compression is off.
 - `dsh-base` configures that plugin with `root: dshHomePath('sessions')`, so
   the root is `~/.dsh/sessions`.
-- Its LLM layer carries the provider's own `prompt_tokens`,
-  `completion_tokens`, `reasoning_tokens`, and `cached_tokens`.
+- Completed `assistant/message` records carry the provider's
+  `inputTokens`, `outputTokens`, and `reasoningTokens` (the streaming
+  `assistant/chunk` usage event repeats those numbers).
 
-The obstacle is the default `compression: 'zstd'`, which no reader here can
-follow. Rather than add a decompressor, `--stream` passes dsh one more
-`--patch` overlay (the same mechanism that already pins its model) setting
-`compression: 'none'` for that plugin. The log is then plain JSONL, the header
-attributes it to the review, and the counts are the provider's own, not an
-estimate. It applies only to runs gauntlet launches.
+toktop 0.7.0 reads the concatenated zstd frames. Gauntlet does not ask dsh
+to write uncompressed JSONL.
 
 Note that dsh's own `ctx.tokenMeter` is deliberately a heuristic (four
 characters per token). That number is never used here: an estimate presented
@@ -256,9 +254,9 @@ so a monitor does not have to repeat the archaeology above:
 ```go
 // One agent working in one directory.
 w := agentusage.Watch("claude", "/home/dev/project", time.Now())
-first := w.Read()
+first := w.Poll()
 // …later…
-if rate, ok := agentusage.Rate(first, w.Read()); ok {
+if rate, ok := agentusage.Rate(first, w.Poll()); ok {
     fmt.Printf("%.0f tok/s\n", rate)
 }
 
@@ -322,7 +320,7 @@ import "github.com/maci0/toktop/agentusage"
 
 for _, p := range agentusage.Discover() {      // agents running right now
     w := agentusage.Watch(p.Tool, p.Dir, time.Now())
-    // w.Read() returns cumulative usage; agentusage.Rate turns two into tok/s
+    // w.Poll() returns cumulative usage; agentusage.Rate turns two into tok/s
 }
 ```
 

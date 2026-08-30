@@ -50,8 +50,7 @@ type usageCase struct {
 	// tool is the agent name gauntlet knows it by.
 	tool string
 	// stream launches the agent in its machine-readable mode, which is how
-	// the counts reach stdout, and for dsh also what makes it write a
-	// readable session log.
+	// the counts reach stdout.
 	stream bool
 	// transcript says the counts come from a session file rather than
 	// stdout, so the case needs a build with transcript reading.
@@ -141,7 +140,7 @@ printf '{"type":"assistant","cwd":"%s","usageMetadata":{"candidatesTokenCount":1
 echo "RESULT: no-changes"`,
 		},
 		{
-			name: "dsh session log", tool: "dsh", stream: true, transcript: true, wantFinal: 260, wantThinking: 90,
+			name: "dsh session log", tool: "dsh", transcript: true, wantFinal: 260, wantThinking: 90,
 			script: `
 d="$HOME/.dsh/sessions/--proj--/sess"; mkdir -p "$d"; f="$d/session.jsonl"
 printf '{"type":"session","version":1,"id":"s","cwd":"%s"}\n' "$PWD" >> "$f"

@@ -91,17 +91,6 @@ func dshDefaultProvider(base []string) (string, error) {
 	return dshProvider, dshProbeErr
 }
 
-// dshPlainSessionsPatch writes the overlay that turns off session compression.
-//
-// dsh stores its session log as zstd frames by default, which no reader here
-// can follow. The uncompressed spelling is the same JSONL, so asking for it is
-// what makes live token counts possible for dsh at all. It applies only to the
-// runs gauntlet launches, since the overlay is passed per invocation.
-func dshPlainSessionsPatch() (string, error) {
-	return writeDshPatch("plain-sessions", "- id: session-persistence-jsonl\n"+
-		"  config:\n    compression: 'none'\n")
-}
-
 // dshModelPatch writes (once per provider/model pair) the YAML overlay that
 // pins dsh's model, and returns its path. It lives in the user cache dir, not
 // a temp filesystem: it is small, reusable across runs, and never secret.

@@ -1051,10 +1051,9 @@ func resetCustom(t *testing.T) func() {
 	}
 }
 
-func TestDshStreamAsksForReadableSessions(t *testing.T) {
-	// dsh compresses its session log by default, which no reader can follow.
-	// Stream mode passes an overlay that turns compression off; without it the
-	// command must be untouched.
+func TestDshStreamDoesNotPatchCompression(t *testing.T) {
+	// toktop reads the default zstd session log, so --stream must not add a
+	// compression overlay. A model pin is the only --patch dsh takes.
 	plain, err := BuildCmd(Spec{Tool: "dsh"}, "P", BuildOpts{})
 	if err != nil {
 		t.Fatal(err)
@@ -1064,28 +1063,10 @@ func TestDshStreamAsksForReadableSessions(t *testing.T) {
 		t.Fatal(err)
 	}
 	if slices.Contains(plain, "--patch") {
-		t.Fatalf("no overlay should be passed without --stream: %v", plain)
+		t.Fatalf("no overlay without a model pin: %v", plain)
 	}
-	if !slices.Contains(streamed, "--patch") {
-		t.Fatalf("stream mode should pass the overlay: %v", streamed)
-	}
-	if streamed[len(streamed)-1] != "P" {
-		t.Fatalf("prompt must stay last: %v", streamed)
-	}
-	// The overlay must actually say what we think it says.
-	var patch string
-	for i, a := range streamed {
-		if a == "--patch" && i+1 < len(streamed) {
-			patch = streamed[i+1]
-		}
-	}
-	body, err := os.ReadFile(patch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(body), "session-persistence-jsonl") ||
-		!strings.Contains(string(body), "compression: 'none'") {
-		t.Fatalf("overlay does not disable compression:\n%s", body)
+	if !slices.Equal(plain, streamed) {
+		t.Fatalf("--stream changed the argv:\n plain %v\nstream %v", plain, streamed)
 	}
 }
 
