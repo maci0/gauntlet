@@ -117,6 +117,10 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- Transcript reading requires toktop v0.7.0, which follows dsh's default
+  zstd session logs (`session.jsonl.zstd`). `--stream` no longer patches
+  dsh to write uncompressed JSONL.
+
 - `Ctrl-C` is staged. The first one is now the graceful quit -- the review in
   flight finishes and lands its work, commit, push and PR included, exactly as
   `SIGQUIT`, `s` on the dashboard, and a tripped usage limit end a run -- the

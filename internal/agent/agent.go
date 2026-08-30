@@ -500,15 +500,6 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 			base = []string{bunx, "@deepseek-ai/dsh"}
 		}
 		cmd = append(append([]string{}, base...), "--profile", "headless")
-		if opts.Stream {
-			// dsh has no stdout event mode; what it has is a session log, and
-			// this overlay is what makes that log readable (see dsh.go).
-			patch, err := dshPlainSessionsPatch()
-			if err != nil {
-				return nil, err
-			}
-			cmd = append(cmd, "--patch", patch)
-		}
 		if spec.Model != "" {
 			provider, model := splitProvider(spec.Model)
 			if provider == "" {

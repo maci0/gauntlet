@@ -31,6 +31,6 @@ func (t watcher) Run(ctx context.Context, onChange func(output, thinking int)) {
 }
 
 func (t watcher) Final() (int, int) {
-	s := t.w.Read()
+	s := t.w.Poll()
 	return s.Output, s.Thinking
 }
