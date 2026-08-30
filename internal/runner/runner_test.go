@@ -915,6 +915,39 @@ func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	}
 }
 
+// In worktree mode the lane a review lands in is a race between goroutines
+// pulling from the shared queue, so the seed alone cannot say which directory
+// an agent saw. The review branch is that record: every review_start and
+// review_end in a --jobs > 1 run names the gauntlet/... branch of the lane
+// that ran it, which is what lets a replay diff a divergent run.
+func TestReviewEventsCarryTheLaneBranch(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+
+	_, got := runRecorded(t, cfg)
+
+	starts := 0
+	for _, ev := range got {
+		if ev.Kind != EvReviewStart && ev.Kind != EvReviewEnd {
+			continue
+		}
+		if !strings.HasPrefix(ev.Branch, "gauntlet/") {
+			t.Errorf("%s for %s: branch = %q, want a gauntlet/... lane branch",
+				ev.Kind, ev.Review, ev.Branch)
+		}
+		if ev.Kind == EvReviewStart {
+			starts++
+		}
+	}
+	if starts != 2 {
+		t.Fatalf("saw %d review_start events, want one per review", starts)
+	}
+}
+
 // A retried isolated review must start from the same commit the first attempt
 // did: the failed attempt's half-applied fixes are reset out of the worktree,
 // so the retry converges to what one successful attempt would have produced.

@@ -7,7 +7,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"path/filepath"
 	"time"
 
@@ -61,8 +60,15 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		order = append(order, *cfg.Only)
 	} else {
 		order = append(order, cfg.Agents...)
-		rng := rand.New(rand.NewSource(int64(seedOrClock(cfg.Seed))))
-		rng.Shuffle(len(order), func(i, j int) { order[i], order[j] = order[j], order[i] })
+		// The same keyed-draw shuffle the runner's review schedule uses, so the
+		// suggest step is driven by the one seed the journal records and its
+		// order is a pure function of seed and pool size, stable across builds
+		// (math/rand's Shuffle is not pinned by anything in-tree).
+		seed := seedOrClock(cfg.Seed)
+		for i := len(order) - 1; i > 0; i-- {
+			j := drawIndex(seed, fmt.Sprintf("suggest-shuffle\x00%d", i), i+1)
+			order[i], order[j] = order[j], order[i]
+		}
 	}
 
 	text := prompt.SuggestPrompt(cfg.Set, cfg.Pool)

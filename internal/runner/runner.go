@@ -887,8 +887,14 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	promptSHA := prompt.Fingerprint(body)
 
 	dir := r.cfg.Dir
+	lane := ""
 	if wt != nil {
 		dir = wt.Dir
+		// The lane's review branch is the journal's record of which worktree
+		// this review ran in: with --jobs > 1 the lane a review lands in is
+		// whichever goroutine won the queue race, so only the branch captured
+		// here tells a replay which working directory the agent saw.
+		lane = wt.Branch
 	}
 
 	// Session resume targets an agent CLI's most recent session in a
@@ -918,7 +924,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	r.bus.Publish(Event{
 		Kind: EvReviewStart, Dir: r.cfg.Dir, Review: review,
 		Agent: spec.Label(), Loop: loopNo, Attempt: attempt + 1,
-		PromptSHA: promptSHA,
+		PromptSHA: promptSHA, Branch: lane,
 	})
 
 	before, haveBefore := gitx.Stats{}, false
@@ -1023,7 +1029,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review, Agent: spec.Label(),
 		Loop: loopNo, Status: res.Status, ExitCode: new(res.ExitCode),
 		Elapsed: res.Elapsed.Seconds(), Tokens: res.Tokens, Thinking: res.Thinking,
-		PromptSHA: promptSHA,
+		PromptSHA: promptSHA, Branch: lane,
 	}
 	if res.HaveLines {
 		ev.Ins, ev.Del = new(res.Ins), new(res.Del)
