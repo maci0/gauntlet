@@ -115,10 +115,16 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // previous state or none, never a truncated file. LoadState cannot parse a
 // torn blob, and an unparseable handoff silently restarts every loop from
 // zero.
+//
+// Handoffs whose successor never ran are swept here: a handoff is meant to be
+// read moments after it is written, and one that outlives the retention window
+// belongs to a reload that died between the save and the exec, which nothing
+// will ever pick up again.
 func SaveState(dir, runID string, v any) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	sweepStaleHandoffs(dir)
 	path := filepath.Join(dir, runID+".json")
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -146,6 +152,31 @@ func SaveState(dir, runID string, v any) (string, error) {
 		return "", err
 	}
 	return path, nil
+}
+
+// sweepStaleHandoffs removes handoff files whose successor never ran. The same
+// crash shape as sweepStaleTemps in selfupdate.go: a kill, an OOM, a power cut,
+// or an exec failure skips every defer, and a handoff no future process will
+// ever read is garbage. The state dir is gauntlet's own, so every regular file
+// in it is a handoff or the temp of one that died mid-write; anything older
+// than the shared retention window is a corpse. Best effort by design, like
+// the temp sweep: one that cannot run must not block the reload.
+func sweepStaleHandoffs(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleTempAge)
+	for _, e := range entries {
+		if !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || fi.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, e.Name()))
+	}
 }
 
 // LoadState reads and removes the handoff blob named by GAUNTLET_STATE. It

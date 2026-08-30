@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // handoffBlob mirrors what a reload carries: counters plus the unfinished
@@ -45,6 +46,49 @@ func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 	}
 	if LoadState(&got) {
 		t.Fatal("the same handoff was served twice")
+	}
+}
+
+func TestSaveStateSweepsStaleHandoffs(t *testing.T) {
+	dir := t.TempDir()
+
+	// A handoff whose reload died between the save and the exec: old enough
+	// that no live reload could still be carrying it.
+	stale := filepath.Join(dir, "dead-run.json")
+	if err := os.WriteFile(stale, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-(staleTempAge + time.Hour))
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	// The temp a killed SaveState left behind, from the same crashed reload.
+	staleTmp := filepath.Join(dir, ".dead-run.json-123456")
+	if err := os.WriteFile(staleTmp, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(staleTmp, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	// A fresh handoff another live process wrote moments ago must survive.
+	fresh := filepath.Join(dir, "live-run.json")
+	if err := os.WriteFile(fresh, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := SaveState(dir, "current-run", handoffBlob{Loops: 1}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, gone := range []string{stale, staleTmp} {
+		if _, err := os.Stat(gone); !os.IsNotExist(err) {
+			t.Fatalf("stale handoff %s survived the sweep", gone)
+		}
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("a live handoff was swept away: %v", err)
 	}
 }
 
