@@ -10,6 +10,30 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## 1.16.0
+
+### Added
+
+- Journal `review_start` and `review_end` events carry the worktree's `branch`
+  in worktree mode. With `--jobs` above one the lane a review lands in is
+  whichever goroutine won the queue race, so the branch is the only record of
+  which working directory the agent actually saw.
+
+### Changed
+
+- `gauntlet suggest` orders its agent pool with the same keyed draw the review
+  schedule uses, so the order is a pure function of the recorded seed and the
+  pool size. It was `math/rand`'s `Shuffle`, whose sequence nothing in-tree
+  pins, so the same seed could pick a different agent after a toolchain update.
+
+### Fixed
+
+- Reload handoff files whose successor never ran are swept on the next save.
+  A kill, an OOM, a power cut, or a failed exec between the save and the
+  re-exec skips every defer and leaves a blob no process will ever read; they
+  accumulated in the state directory. Files older than the retention window
+  the temp sweep already uses are removed, best effort.
+
 ## 1.15.0
 
 ### Fixed
