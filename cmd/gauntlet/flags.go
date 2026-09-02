@@ -60,6 +60,9 @@ type options struct {
 	suggestAgent   *agent.Spec
 	suggestTimeout time.Duration
 	promptDir      string
+	// paths scopes review prompts to these files/dirs/globs, relative to the
+	// reviewed directory. Prompt-enforced: the agent keeps the whole tree.
+	paths []string
 
 	// agents
 	agents []agent.Spec
@@ -251,7 +254,7 @@ func parseFlags(argv []string) (*options, error) {
 // options: repeatable lists, and the shorthands that rewrite other fields.
 type rawFlags struct {
 	reviews, exclude, agents, bins, dirs listFlag
-	agentCmds                            listFlag
+	agentCmds, paths                     listFlag
 	suggestAgent                         string
 	suggest, once, showVersion, help     bool
 }
@@ -285,6 +288,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 			"repeats add weight, 'suggest' adds an agent's picks")
 	})
 	alias("x", "exclude", func(n string) { fs.Var(exclude, n, "reviews and/or sets to skip") })
+	fs.Var(&raw.paths, "paths", "scope reviews to these files, directories, or globs, "+
+		"relative to the reviewed directory (comma-separated, repeatable)")
 	alias("s", "suggest", func(n string) {
 		fs.BoolVar(suggest, n, false, "have an agent pick the reviews, beside any named with --reviews")
 	})
@@ -515,6 +520,14 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	o.reviews = strings.Join(reviews, ",")
 	o.exclude = strings.Join(exclude, ",")
 	o.dirs = dirs
+
+	// An omitted --paths means the whole tree. An explicit empty one would
+	// silently mean the same thing, the opposite of the narrowing whoever
+	// typed it asked for: refuse it, in the spirit of --reviews ''.
+	if isFlagSet(fs, "paths") && len(raw.paths) == 0 {
+		return nil, errors.New("--paths is empty: name at least one file, directory, or glob, or drop the flag")
+	}
+	o.paths = raw.paths
 
 	// "suggest" is a request, not a review name: it can arrive as --suggest or
 	// inside --reviews, and either way the rest of the list survives it.

@@ -65,7 +65,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	// agent still receives the exact bytes; Display strips only what could
 	// drive or spoof the terminal.
 	fmt.Fprintln(out, normalize.Display(
-		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name))))
+		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths)))
 	return exitOK
 }
 

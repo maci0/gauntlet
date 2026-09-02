@@ -91,7 +91,13 @@ type Config struct {
 	// merges into is not one an agent should be editing blind.
 	ResolveConflicts bool
 	Yolo             bool
-	Raw              bool
+	// Paths is the operator's --paths scope: files, directories, or globs,
+	// relative to Dir, that review prompts tell the agent to confine findings
+	// and edits to. The agent still works from the whole tree; the scope is
+	// prompt-enforced, not mechanical. Empty means unscoped, and only review
+	// prompts carry it: suggest, commit, and conflict prompts are unchanged.
+	Paths []string
+	Raw   bool
 	// Stream asks agents that support it for machine-readable output, which
 	// carries token usage and separates reasoning from visible text.
 	Stream           bool
@@ -943,7 +949,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// review runs in a different directory anyway.
 	resume := r.shouldResume(spec, wt)
 
-	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review))
+	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review), r.cfg.Paths)
 	argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
 		Continue: resume,
 		Binary:   r.cfg.Bin[spec.Tool],

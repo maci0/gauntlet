@@ -12,6 +12,16 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- `--paths LIST` scopes every review to the named files, directories, or
+  globs, relative to the reviewed directory (comma-separated, repeatable).
+  The agent still works from the whole repository for context; the composed
+  review prompt tells it to report findings on and modify only the listed
+  paths, so the scope is prompt-enforced, not mechanical. Without the flag,
+  prompts are byte-identical to before. Suggest, commit, and conflict
+  prompts are unchanged, and an explicit empty `--paths` is refused.
+
 ## 1.17.0
 
 ### Added
