@@ -93,16 +93,56 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 		return nil
 	}
 	cmd.WaitDelay = usageProbeWait
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
+	// The probe is supposed to print one number. Without a cap, a command
+	// that dumps until the timeout fills RAM once per review.
+	out := &cappedWriter{limit: usageProbeMaxBytes}
+	errOut := &cappedWriter{limit: usageProbeMaxBytes}
+	cmd.Stdout, cmd.Stderr = out, errOut
 	if err := cmd.Run(); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {
 			return 0, fmt.Errorf("%w: %s", err, firstLine(detail))
 		}
 		return 0, err
 	}
+	if out.hit || errOut.hit {
+		return 0, fmt.Errorf("probe printed more than %d bytes", usageProbeMaxBytes)
+	}
 	return parseUsagePercent(out.String())
 }
+
+// usageProbeMaxBytes is plenty for a percentage and a line or two of
+// narration. A var so tests can shrink it; production always sees this.
+var usageProbeMaxBytes = 4 << 10
+
+// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
+// does not back-pressure the child into a hang. hit is set once the cap is
+// exceeded, so the caller can refuse a truncated answer.
+type cappedWriter struct {
+	buf   bytes.Buffer
+	limit int
+	hit   bool
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	if w.limit <= 0 {
+		return w.buf.Write(p)
+	}
+	if w.hit {
+		return len(p), nil
+	}
+	room := w.limit - w.buf.Len()
+	if len(p) <= room {
+		return w.buf.Write(p)
+	}
+	if room > 0 {
+		_, _ = w.buf.Write(p[:room])
+	}
+	w.hit = true
+	return len(p), nil
+}
+
+func (w *cappedWriter) String() string { return w.buf.String() }
+func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
 
 // parseUsagePercent reads the probe's answer. Anything that is not a single
 // number in range is an error rather than a guess: a probe whose output drifts

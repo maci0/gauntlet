@@ -258,8 +258,9 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	// Like gitx: a child that escapes the process group must not keep Run
 	// blocked on the output pipes past the kill.
 	cmd.WaitDelay = waitGrace
-	var out, errOut bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errOut
+	out := &cappedWriter{limit: ghOutputMax}
+	errOut := &cappedWriter{limit: ghOutputMax}
+	cmd.Stdout, cmd.Stderr = out, errOut
 	if err := cmd.Run(); err != nil {
 		detail := strings.TrimSpace(errOut.String())
 		if detail != "" {
@@ -267,8 +268,45 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 		}
 		return out.Bytes(), err
 	}
+	if out.hit || errOut.hit {
+		return out.Bytes(), fmt.Errorf("gh output exceeded %d bytes", ghOutputMax)
+	}
 	return out.Bytes(), nil
 }
+
+// ghOutputMax bounds stdout and stderr of one gh command. PR JSON lives far
+// below this; a hung or hostile listing must not fill RAM.
+const ghOutputMax = 8 << 20
+
+// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
+// does not back-pressure the child into a hang. hit is set once the cap is
+// exceeded, so the caller can refuse a truncated answer.
+type cappedWriter struct {
+	buf   bytes.Buffer
+	limit int
+	hit   bool
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	if w.limit <= 0 {
+		return w.buf.Write(p)
+	}
+	if w.hit {
+		return len(p), nil
+	}
+	room := w.limit - w.buf.Len()
+	if len(p) <= room {
+		return w.buf.Write(p)
+	}
+	if room > 0 {
+		_, _ = w.buf.Write(p[:room])
+	}
+	w.hit = true
+	return len(p), nil
+}
+
+func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
+func (w *cappedWriter) String() string { return w.buf.String() }
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")

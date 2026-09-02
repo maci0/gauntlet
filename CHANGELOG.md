@@ -117,6 +117,13 @@ minor instead and were listed under Changed.
   keys that work there (`enter` keeps it, `esc` clears it). The legend used
   to keep advertising `run` and `cancel`, which those keys do not do until
   the filter is closed.
+- A `--usage-limit` probe that prints more than 4 KiB is ignored, the same
+  as any other broken probe, instead of filling memory until the timeout.
+- One git or `gh` command's captured output is capped (32 MiB and 8 MiB)
+  so a hostile tree or a runaway listing cannot grow without bound.
+- Closing `--log` reports a write error instead of dropping it.
+- The dashboard feed's scroll offset stays inside the retained ring, so a
+  long pause cannot claim thousands of lines back after history is trimmed.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal

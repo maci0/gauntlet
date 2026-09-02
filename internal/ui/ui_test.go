@@ -393,6 +393,23 @@ func TestScrollAnchorSurvivesRingTrim(t *testing.T) {
 	}
 }
 
+// A long pause used to increment scroll for every arriving line even after
+// the ring had trimmed, so the offset outran the retained feed.
+func TestScrollStaysInsideTheFeedRing(t *testing.T) {
+	m := newModel(demoConfig())
+	m.paused = true
+	for i := range feedMax * 2 {
+		m.apply(runner.Event{Kind: runner.EvOutput, Review: "sec-review",
+			Agent: "claude", Text: fmt.Sprintf("line %04d", i), Time: m.cfg.Started})
+	}
+	if len(m.feed) != feedMax {
+		t.Fatalf("feed grew to %d, cap is %d", len(m.feed), feedMax)
+	}
+	if m.scroll > len(m.feed)-1 {
+		t.Fatalf("scroll %d outran the %d-line ring", m.scroll, len(m.feed))
+	}
+}
+
 // The feed mixes pre-normalized agent output with log lines carrying
 // fragments of a possibly hostile repository (git stderr, merge output).
 // Nothing may reach the screen able to drive or spoof the terminal, and

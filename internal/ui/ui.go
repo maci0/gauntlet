@@ -536,6 +536,9 @@ func (m *model) pushFeed(l feedLine) {
 	// nothing printed during a pause is discarded.
 	if m.paused || m.scroll > 0 {
 		m.scroll++
+		if maxBack := len(m.feed) - 1; m.scroll > maxBack {
+			m.scroll = max(maxBack, 0)
+		}
 	}
 }
 

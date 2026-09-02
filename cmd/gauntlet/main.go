@@ -208,7 +208,11 @@ func run(argv []string) int {
 			fmt.Fprintf(os.Stderr, "cannot write log file %s: %v\n", opts.logFile, err)
 			return exitUsage
 		}
-		defer f.Close()
+		defer func() {
+			if err := f.Close(); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: closing log file %s: %v\n", opts.logFile, err)
+			}
+		}()
 		logWriter = f
 		stdout = io.MultiWriter(os.Stdout, f)
 		pal.on = false // escape codes would land in the file too
@@ -507,10 +511,10 @@ func run(argv []string) int {
 				fileRep.Consume(reportEvents)
 			})
 		} else {
-			go func() {
+			consumers.Go(func() {
 				for range reportEvents {
 				}
-			}()
+			})
 		}
 	}
 
@@ -885,6 +889,7 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGQUIT)
 	go func() {
+		defer signal.Stop(quit)
 		for {
 			select {
 			case <-quit:
@@ -897,13 +902,17 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 
 	ch := make(chan os.Signal, 3)
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
-	go watchInterrupts(ctx, ch, stop, out, graceful, os.Exit)
+	go func() {
+		defer signal.Stop(ch)
+		watchInterrupts(ctx, ch, stop, out, graceful, os.Exit)
+	}()
 }
 
 // watchInterrupts is watchSignals' Interrupt/SIGTERM stage machine, split out
 // so a test can drive it through an ordinary channel: signal.Notify fans every
-// delivery out to all registered channels and never unregisters, so a test
-// that signals the process leaves handlers behind for the next one.
+// delivery out to all registered channels, so a test that signals the process
+// would leave handlers behind for the next one. watchSignals itself unregisters
+// on ctx.Done.
 func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.CancelFunc,
 	out io.Writer, graceful *gracefulStop, exit func(int)) {
 	for {

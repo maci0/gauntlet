@@ -317,8 +317,9 @@ func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Durati
 	// looks up ssh on PATH, and a relative entry (notably ".") would pick up
 	// a planted executable in the reviewed tree.
 	cmd.Env = gitEnv()
-	var out, errBuf bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &errBuf
+	out := &cappedWriter{limit: gitOutputMax}
+	errBuf := &cappedWriter{limit: gitOutputMax}
+	cmd.Stdout, cmd.Stderr = out, errBuf
 	// The deadline kill takes the whole process group down, not just the git
 	// pid: git's own children (a hook, a merge driver) must not survive it as
 	// orphans. WaitDelay then bounds the wait on the output pipes such a
@@ -343,8 +344,48 @@ func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Durati
 			return out.Bytes(), fmt.Errorf("%w: %s", err, msg)
 		}
 	}
+	if out.hit || errBuf.hit {
+		if err == nil {
+			err = fmt.Errorf("git output exceeded %d bytes", gitOutputMax)
+		}
+	}
 	return out.Bytes(), err
 }
+
+// gitOutputMax bounds stdout and stderr of one git command. Listings and
+// short answers live far below this; a hostile tree or a runaway hook must
+// not fill RAM. A var so tests can shrink it; production always sees this.
+var gitOutputMax = 32 << 20
+
+// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
+// does not back-pressure the child into a hang. hit is set once the cap is
+// exceeded, so the caller can refuse a truncated listing.
+type cappedWriter struct {
+	buf   bytes.Buffer
+	limit int
+	hit   bool
+}
+
+func (w *cappedWriter) Write(p []byte) (int, error) {
+	if w.limit <= 0 {
+		return w.buf.Write(p)
+	}
+	if w.hit {
+		return len(p), nil
+	}
+	room := w.limit - w.buf.Len()
+	if len(p) <= room {
+		return w.buf.Write(p)
+	}
+	if room > 0 {
+		_, _ = w.buf.Write(p[:room])
+	}
+	w.hit = true
+	return len(p), nil
+}
+
+func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
+func (w *cappedWriter) String() string { return w.buf.String() }
 
 // userinfoRe matches the userinfo of a URL (the "alice:token@" in
 // https://alice:token@host/...), including ssh:// and git:// spellings git

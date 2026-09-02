@@ -870,3 +870,32 @@ func TestRedactUserinfo(t *testing.T) {
 		}
 	}
 }
+
+func TestCappedWriterKeepsThenDiscards(t *testing.T) {
+	w := &cappedWriter{limit: 8}
+	n, err := w.Write([]byte("hello world"))
+	if err != nil || n != 11 {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	if !w.hit || w.String() != "hello wo" {
+		t.Fatalf("got %q hit=%v", w.String(), w.hit)
+	}
+	n, err = w.Write([]byte("more"))
+	if err != nil || n != 4 || w.String() != "hello wo" {
+		t.Fatalf("discarded write: %d %v %q", n, err, w.String())
+	}
+}
+
+func TestExecGitCapsOutput(t *testing.T) {
+	r := newRepo(t)
+	old := gitOutputMax
+	gitOutputMax = 1
+	t.Cleanup(func() { gitOutputMax = old })
+	_, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD")
+	if err == nil {
+		t.Fatal("git output over the cap succeeded")
+	}
+	if !strings.Contains(err.Error(), "exceeded") {
+		t.Fatalf("got %v, want an exceeded-size error", err)
+	}
+}

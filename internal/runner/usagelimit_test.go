@@ -9,6 +9,21 @@ import (
 	"testing"
 )
 
+func TestCappedWriterKeepsThenDiscards(t *testing.T) {
+	w := &cappedWriter{limit: 8}
+	n, err := w.Write([]byte("hello world"))
+	if err != nil || n != 11 {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	if !w.hit || w.String() != "hello wo" {
+		t.Fatalf("got %q hit=%v", w.String(), w.hit)
+	}
+	n, err = w.Write([]byte("more"))
+	if err != nil || n != 4 || w.String() != "hello wo" {
+		t.Fatalf("discarded write: %d %v %q", n, err, w.String())
+	}
+}
+
 func TestParseUsagePercent(t *testing.T) {
 	// The probe's answer decides whether a run keeps spending. Reading a bad
 	// answer as a low number would spend the rest of the window; reading it as
@@ -145,6 +160,9 @@ func TestBrokenUsageProbeCannotEndTheRun(t *testing.T) {
 		// end the run on the first check.
 		"prints NaN":      {"/bin/sh", "-c", "echo NaN"},
 		"prints infinity": {"/bin/sh", "-c", "echo Inf"},
+		// A probe that dumps until the timeout used to fill RAM once per
+		// review. The cap fails it open, like any other broken probe.
+		"prints too much": {"/bin/sh", "-c", "printf '%8192s\\n' x; echo 10"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			set, _ := promptSet(t, "first-review", "second-review")
