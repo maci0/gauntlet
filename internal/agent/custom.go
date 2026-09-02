@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
@@ -279,8 +280,15 @@ func unmarshalStrict(data []byte, v any) error {
 	if err := dec.Decode(v); err != nil {
 		return err
 	}
-	if dec.More() {
-		return errors.New("unexpected data after the JSON value")
+	// Decoder.More treats a leftover '}' or ']' as the end of a value, so
+	// "{}}" would load as {} and a corrupt agents.json would start the
+	// process with an empty definition set. Token is the same check
+	// Unmarshal uses: only EOF after whitespace is a clean end.
+	if _, err := dec.Token(); err != io.EOF {
+		if err == nil {
+			return errors.New("unexpected data after the JSON value")
+		}
+		return err
 	}
 	return nil
 }

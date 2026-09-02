@@ -4,10 +4,12 @@
 package agent
 
 import (
+	"encoding/json"
 	"maps"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -680,6 +682,78 @@ plugins:
 	}
 }
 
+// FuzzParseDshProvider drives the dump-config parser with arbitrary CLI
+// output. The captured provider is interpolated into a YAML overlay quoted
+// scalar, so a value outside the charset the regex admits would break out of
+// that quote or become a different file than dshPatchKey names.
+func FuzzParseDshProvider(f *testing.F) {
+	seeds := []string{
+		`
+plugins:
+  - id: other-plugin
+    provider: 'nope'
+  - id: agent-default-model
+    provider: "deepseek"
+    model: 'chat'
+`,
+		"  - id: agent-default-model\n    provider: openai\n",
+		"  - id: agent-default-model\n    provider: 'deep-seek.v1_2'\n",
+		"- id: agent-default-model\nprovider: 'nope'\n",
+		"  - id: agent-default-model\n    provider: \"x\"\n  - id: other\n    provider: y\n",
+		"  - id: agent-default-model\n    model: chat\n",
+		"provider: 'openai'\n  - id: agent-default-model\n",
+		"  - id: agent-default-model\n    provider: 'o'penai'\n",
+		"  - id: agent-default-model\r\n    provider: grok\r\n",
+		"  - id: agent-default-model\n    provider: \n",
+		"",
+		strings.Repeat("  - id: other\n    provider: x\n", 40) +
+			"  - id: agent-default-model\n    provider: last\n",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, dump string) {
+		got := parseDshProvider(dump)
+		if again := parseDshProvider(dump); again != got {
+			t.Fatalf("parseDshProvider is not deterministic for %q: %q vs %q", dump, got, again)
+		}
+		if got == "" {
+			return
+		}
+		if !dshProviderCharset(got) {
+			t.Fatalf("provider %q is outside the overlay charset", got)
+		}
+		if strings.ContainsAny(got, "'\"\n\r:") {
+			t.Fatalf("provider %q would break the YAML overlay quote", got)
+		}
+		if !strings.Contains(dump, "agent-default-model") {
+			t.Fatalf("invented provider %q from a dump with no agent-default-model entry", got)
+		}
+		if !strings.Contains(dump, got) {
+			t.Fatalf("invented provider %q, not present in %q", got, dump)
+		}
+	})
+}
+
+// dshProviderCharset is the capture of dshProviderRe: ASCII word characters,
+// dots, and hyphens. The overlay quotes this value, so anything else is a
+// parse bug rather than a YAML-injection hole.
+func dshProviderCharset(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9',
+			c == '_', c == '.', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func TestParseUsagePicksUpThinkingTokens(t *testing.T) {
 	u := ParseUsage([]byte(`{"usage":{"output_tokens":900,"output_tokens_details":{"thinking_tokens":300}}}`))
 	if u.Output != 900 || u.Thinking != 300 {
@@ -1091,13 +1165,104 @@ func TestCustomAgentFileUsageWithoutRoots(t *testing.T) {
 func TestCustomAgentFileTrailingData(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	dir := t.TempDir()
-	path := filepath.Join(dir, "agents.json")
-	if err := os.WriteFile(path, []byte(`{} {"piclone":{"argv":["x","{prompt}"]}}`), 0o644); err != nil {
-		t.Fatal(err)
+	// A second value, and a leftover closer that Decoder.More does not
+	// report (FuzzCustomDefinitions/85197b199bd913d6), must both refuse
+	// rather than load as an empty definition set.
+	for _, body := range []string{
+		`{} {"piclone":{"argv":["x","{prompt}"]}}`,
+		`{}}`,
+		`{}]`,
+	} {
+		path := filepath.Join(dir, "agents.json")
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := LoadCustomFile(path); err == nil {
+			t.Fatalf("trailing data %q must be rejected, not half-read", body)
+		}
 	}
-	if err := LoadCustomFile(path); err == nil {
-		t.Fatal("data after the JSON object must be rejected, not half-read")
+}
+
+// FuzzCustomDefinitions feeds unmarshalStrict the JSON operators put in
+// agents.json. A definition that survives decoding is what Register would
+// exec, so the contract is: decoding is deterministic, trailing data and
+// unknown fields stay errors, a valid definition keeps its {prompt} until
+// expansion and never expands to an empty argv, and a name with separators
+// never validates.
+func FuzzCustomDefinitions(f *testing.F) {
+	seeds := [][]byte{
+		[]byte(`{}`),
+		[]byte(`{"piclone":{"argv":["piclone","-p","{prompt}"],"stream":["--jsonl"],"note":"test"}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"model":["--model","{model}"],"effort":["--effort","{effort}"],"opt_in":true}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{"roots":["~/.x"],"suffix":".jsonl","cumulative":true,"header_cwd":true}}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"optin":true}}`),
+		[]byte(`{} {"x":{"argv":["x","{prompt}"]}}`),
+		[]byte(`{}}`),
+		[]byte(`{}]`),
+		[]byte(`{"bad name":{"argv":["x","{prompt}"]}}`),
+		[]byte(`{"x":{}}`),
+		[]byte(`{"x":{"argv":[]}}`),
+		[]byte(`{"x":{"argv":["no-placeholder"]}}`),
+		[]byte(`[]`),
+		[]byte(`null`),
+		[]byte(`{not json`),
+		[]byte(``),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{}}}`),
+		[]byte(`{"packed":{"argv":["packed","-p","{prompt} (model {model})"]}}`),
 	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		var defs map[string]Custom
+		err := unmarshalStrict(data, &defs)
+		var again map[string]Custom
+		err2 := unmarshalStrict(data, &again)
+		if (err == nil) != (err2 == nil) {
+			t.Fatalf("unmarshalStrict is not deterministic about errors on %q: %v vs %v", data, err, err2)
+		}
+		if err != nil {
+			return
+		}
+		if !reflect.DeepEqual(defs, again) {
+			t.Fatalf("unmarshalStrict is not deterministic for %q", data)
+		}
+		var viaStd map[string]Custom
+		if json.Unmarshal(data, &viaStd) != nil {
+			t.Fatalf("accepted something encoding/json rejects: %q", data)
+		}
+		for name, def := range defs {
+			if err := def.validate(name); err != nil {
+				continue
+			}
+			if name == "" || strings.ContainsAny(name, " \t,:=@") {
+				t.Fatalf("validate accepted a name with separators: %q", name)
+			}
+			foundPrompt := false
+			for _, a := range def.Argv {
+				if strings.Contains(a, promptPlaceholder) {
+					foundPrompt = true
+					break
+				}
+			}
+			if !foundPrompt {
+				t.Fatalf("validate accepted %q with no %s in argv %q", name, promptPlaceholder, def.Argv)
+			}
+			argv := buildCustom(def, Spec{Tool: name, Model: "m", Effort: "high"}, "PROMPT",
+				BuildOpts{Stream: true, Continue: true})
+			if len(argv) == 0 {
+				t.Fatalf("valid definition %q expanded to no argv", name)
+			}
+			if again := buildCustom(def, Spec{Tool: name, Model: "m", Effort: "high"}, "PROMPT",
+				BuildOpts{Stream: true, Continue: true}); !slices.Equal(argv, again) {
+				t.Fatalf("buildCustom is not deterministic for %q: %q vs %q", name, argv, again)
+			}
+			joined := strings.Join(argv, "\x00")
+			if strings.Contains(joined, promptPlaceholder) {
+				t.Fatalf("prompt placeholder survived expansion of %q: %q", name, argv)
+			}
+		}
+	})
 }
 
 // resetCustom restores the definition registry after a test mutates it.

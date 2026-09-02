@@ -82,6 +82,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- A trailing `}` or `]` after `agents.json` is refused, matching
+  `encoding/json`. `json.Decoder.More` treats those closers as end-of-value,
+  so `{}}` used to load as an empty definition set.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal
