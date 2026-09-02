@@ -114,6 +114,144 @@ func TestWorktreeRootSymlinkEscapeIsRefused(t *testing.T) {
 	}
 }
 
+// A hostile clone can put a smudge filter in .git/config and name it from
+// .gitattributes. worktree add checks files out, so without the empty
+// attr.tree overlay that filter would run in this process before any agent
+// starts.
+func TestSmudgeFilterDoesNotRunOnWorktreeAdd(t *testing.T) {
+	r := newRepo(t)
+	marker := filepath.Join(t.TempDir(), "pwned")
+	gitIn(t, r.Dir, "config", "filter.evil.smudge", "touch "+marker)
+	gitIn(t, r.Dir, "config", "filter.evil.clean", "cat")
+	if err := os.WriteFile(filepath.Join(r.Dir, ".gitattributes"),
+		[]byte("* filter=evil\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", ".gitattributes")
+	gitIn(t, r.Dir, "commit", "-qm", "attrs")
+	r = Open(r.Dir)
+
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, add := range []struct {
+		name string
+		fn   func() (*Worktree, error)
+	}{
+		{"AddWorktree", func() (*Worktree, error) {
+			return r.AddWorktree(ctx, "sec-review", "tag-l1-00", base)
+		}},
+		{"AddStackWorktree", func() (*Worktree, error) {
+			return r.AddStackWorktree(ctx, "gauntlet/stack/x/01-a", "tag", base)
+		}},
+		{"AddSnapshotWorktree", func() (*Worktree, error) {
+			return r.AddSnapshotWorktree(ctx, "snap", base)
+		}},
+	} {
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("smudge filter already ran before %s", add.name)
+		}
+		wt, err := add.fn()
+		if err != nil {
+			t.Fatalf("%s: %v", add.name, err)
+		}
+		if _, err := os.Stat(filepath.Join(wt.Dir, "main.go")); err != nil {
+			t.Fatalf("%s checked out no files: %v", add.name, err)
+		}
+		_ = wt.Remove(context.WithoutCancel(ctx))
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("smudge filter executed during %s", add.name)
+		}
+	}
+}
+
+// merge.<driver>.driver is a command line git runs on conflict. A squash
+// merge of a review branch must not exec one planted in the clone's config.
+func TestMergeDriverDoesNotRunOnMerge(t *testing.T) {
+	r := newRepo(t)
+	marker := filepath.Join(t.TempDir(), "pwned")
+	gitIn(t, r.Dir, "config", "merge.evil.driver", "touch "+marker+" ; true")
+	if err := os.WriteFile(filepath.Join(r.Dir, ".gitattributes"),
+		[]byte("* merge=evil\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", ".gitattributes")
+	gitIn(t, r.Dir, "commit", "-qm", "mergeattr")
+
+	gitIn(t, r.Dir, "checkout", "-qb", "other")
+	if err := os.WriteFile(filepath.Join(r.Dir, "main.go"),
+		[]byte("package other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "commit", "-qam", "other")
+	gitIn(t, r.Dir, "checkout", "-q", "main")
+	if err := os.WriteFile(filepath.Join(r.Dir, "main.go"),
+		[]byte("package mainline\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "commit", "-qam", "mainline")
+	r = Open(r.Dir)
+
+	_ = r.Merge(context.Background(), "other", "land other")
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("merge driver executed during Merge")
+	}
+}
+
+// GIT_SSH_COMMAND=ssh is looked up on PATH. A relative PATH entry would
+// resolve to a planted ssh in the reviewed tree during ls-remote/fetch/push.
+func TestPlantedSSHOnRelativePATHDoesNotRun(t *testing.T) {
+	r := newRepo(t)
+	t.Setenv("GIT_SSH_COMMAND", "placeholder")
+	os.Unsetenv("GIT_SSH_COMMAND")
+
+	marker := filepath.Join(t.TempDir(), "pwned")
+	script := filepath.Join(r.Dir, "ssh")
+	if err := os.WriteFile(script,
+		[]byte("#!/bin/sh\ntouch \""+marker+"\"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "."+string(os.PathListSeparator)+os.Getenv("PATH"))
+	gitIn(t, r.Dir, "remote", "add", "origin", "git@host.invalid:owner/repo.git")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, _, err := r.RemoteBranchTip(ctx, "origin", "main"); err == nil {
+		t.Fatal("ls-remote against host.invalid somehow succeeded")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("planted ./ssh executed via a relative PATH entry")
+	}
+}
+
+func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
+	listing := strings.Join([]string{
+		"filter.evil.smudge=touch pwned",
+		"filter.evil.clean=cat",
+		"filter.evil.required=true",
+		"merge.evil.driver=touch pwned",
+		"diff.evil.textconv=cat",
+		"core.editor=vim",
+		"user.email=test@example.invalid",
+		"remote.origin.url=https://github.com/o/r.git",
+		"url.https://evil.insteadOf=https://github.com/",
+	}, "\n")
+	got := disableLocalDrivers(listing)
+	want := []string{
+		"-c", "filter.evil.smudge=",
+		"-c", "filter.evil.clean=",
+		"-c", "filter.evil.required=false",
+		"-c", "merge.evil.driver=",
+		"-c", "diff.evil.textconv=",
+		"-c", "core.editor=",
+	}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("disableLocalDrivers =\n%q\nwant\n%q", got, want)
+	}
+}
+
 // The snapshot worktree is a checkout of one commit: uncommitted files in the
 // original tree must not appear in it, which is what lets stacked discovery
 // read it instead of the checkout.

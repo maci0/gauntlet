@@ -31,6 +31,7 @@ var safeConfig = []string{
 	"-c", "core.hooksPath=/dev/null",
 	"-c", "core.pager=cat",
 	"-c", "diff.external=",
+	"-c", "core.gitProxy=",
 	// An ext:: remote is a command line: fetching from one executes it. No
 	// gauntlet operation needs transport helpers, so a hostile repo config or
 	// remote URL shaped that way is refused instead of run.
@@ -122,6 +123,15 @@ type Repo struct {
 	// while size and mtime still match, so an edited file recomputes; files
 	// that vanish leave their entries behind until the table resets.
 	lineCounts map[string]lineCount
+
+	// extraSafe is the per-repo -c overlay on top of safeConfig: attr.tree
+	// pointed at the empty tree (so in-tree .gitattributes cannot select a
+	// smudge filter or merge driver) and local filter/merge/diff commands
+	// blanked, for git versions that ignore attr.tree. Computed once; a
+	// hostile config is a property of the clone, not of one call.
+	safeMu    sync.Mutex
+	extraSafe []string
+	safeReady bool
 }
 
 // lineCount is one cached count and the stat it was measured against. mtime
@@ -169,24 +179,127 @@ func (r *Repo) run(ctx context.Context, timeout time.Duration, args ...string) (
 // non-nil, is wired to the command's standard input (check-ignore reads its
 // path list that way); nil keeps git's stdin closed.
 func (r *Repo) runIn(ctx context.Context, stdin io.Reader, timeout time.Duration, args ...string) ([]byte, error) {
+	return r.execGit(ctx, stdin, timeout, r.argv(args)...)
+}
+
+// argv is the full git argument list: the per-repo overlay, then the static
+// safe config, then the caller's command. Overlay first so a later -c in
+// args (tests that re-enable a hook) still wins, matching the previous
+// "last -c wins" contract.
+func (r *Repo) argv(args []string) []string {
+	extra := r.extraSafeConfig()
+	out := make([]string, 0, len(extra)+len(safeConfig)+len(args))
+	out = append(out, extra...)
+	out = append(out, safeConfig...)
+	return append(out, args...)
+}
+
+// extraSafeConfig returns the per-repo -c flags, computing them once.
+func (r *Repo) extraSafeConfig() []string {
+	if r == nil {
+		return nil
+	}
+	r.safeMu.Lock()
+	defer r.safeMu.Unlock()
+	if r.safeReady {
+		return r.extraSafe
+	}
+	r.extraSafe = r.buildExtraSafe()
+	r.safeReady = true
+	return r.extraSafe
+}
+
+// buildExtraSafe must run with safeMu held and must not call extraSafeConfig:
+// it bootstraps through execGit with only the static safeConfig.
+func (r *Repo) buildExtraSafe() []string {
+	var extra []string
+	out, err := r.execGit(context.Background(), bytes.NewReader(nil), gitQuick,
+		append(append([]string{}, safeConfig...), "hash-object", "-t", "tree", "--stdin")...)
+	if err == nil {
+		if oid := strings.TrimSpace(string(out)); isHex(oid) {
+			// attr.tree=empty disables in-tree .gitattributes: smudge filters
+			// and merge drivers named there cannot run. Git 2.40+; older git
+			// ignores the unknown key and the local-config blanks below cover
+			// it. The empty-tree object is well-known and needs no -w.
+			extra = append(extra, "-c", "attr.tree="+oid)
+		}
+	}
+	list, err := r.execGit(context.Background(), nil, gitQuick,
+		append(append([]string{}, safeConfig...), "config", "--local", "--list")...)
+	if err == nil {
+		extra = append(extra, disableLocalDrivers(string(list))...)
+	}
+	if extra == nil {
+		return []string{}
+	}
+	return extra
+}
+
+// disableLocalDrivers blanks every local config key that names a program git
+// would exec from .gitattributes or during a checkout/merge/diff. attr.tree
+// already stops attributes from selecting them on git 2.40+; this is the
+// fallback for older git, and covers a driver that config would invoke
+// without an attribute (core.editor, gitProxy).
+func disableLocalDrivers(listing string) []string {
+	var extra []string
+	for line := range strings.SplitSeq(listing, "\n") {
+		key, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || key == "" {
+			continue
+		}
+		switch {
+		case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
+			key == "core.gitproxy", key == "interactive.difffilter",
+			key == "core.editor", key == "sequence.editor", key == "core.askpass":
+			extra = append(extra, "-c", key+"=")
+		case strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
+			extra = append(extra, "-c", key+"=false")
+		}
+	}
+	return extra
+}
+
+func isFilterCommand(key string) bool {
+	return strings.HasPrefix(key, "filter.") &&
+		(strings.HasSuffix(key, ".smudge") ||
+			strings.HasSuffix(key, ".clean") ||
+			strings.HasSuffix(key, ".process"))
+}
+
+func isMergeDriver(key string) bool {
+	return strings.HasPrefix(key, "merge.") && strings.HasSuffix(key, ".driver")
+}
+
+func isDiffHelper(key string) bool {
+	if !strings.HasPrefix(key, "diff.") {
+		return false
+	}
+	return strings.HasSuffix(key, ".textconv") ||
+		strings.HasSuffix(key, ".command") ||
+		strings.HasSuffix(key, ".cmd")
+}
+
+func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Duration, args ...string) ([]byte, error) {
 	g := gitPath()
 	if g == "" {
 		return nil, exec.ErrNotFound
 	}
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	argv := append(append([]string{}, safeConfig...), args...)
-	cmd := exec.CommandContext(ctx, g, argv...)
-	cmd.Dir = r.Dir
+	cmd := exec.CommandContext(ctx, g, args...)
+	if r != nil {
+		cmd.Dir = r.Dir
+	}
 	cmd.Stdin = stdin
 	// core.sshCommand is executed for every ssh fetch, ls-remote, and push,
 	// and a reviewed repository's own .git/config can set it. The environment
 	// variable outranks every config scope, so exporting plain ssh neutralizes
 	// a repo-local command while a value the user exported themselves is kept.
-	cmd.Env = os.Environ()
-	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh")
-	}
+	//
+	// PATH is the same absolute-only list resolveGit uses: GIT_SSH_COMMAND=ssh
+	// looks up ssh on PATH, and a relative entry (notably ".") would pick up
+	// a planted executable in the reviewed tree.
+	cmd.Env = gitEnv()
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	// The deadline kill takes the whole process group down, not just the git
@@ -211,6 +324,41 @@ func (r *Repo) runIn(ctx context.Context, stdin io.Reader, timeout time.Duration
 		}
 	}
 	return out.Bytes(), err
+}
+
+// gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
+// operator already exported one, GIT_SSH_COMMAND=ssh. Git's own helpers (ssh,
+// a credential helper, diffie) inherit this, so a planted ./ssh cannot run.
+func gitEnv() []string {
+	env := os.Environ()
+	abs := absPATH()
+	out := make([]string, 0, len(env)+2)
+	seenPATH := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			out = append(out, "PATH="+abs)
+			seenPATH = true
+			continue
+		}
+		out = append(out, kv)
+	}
+	if !seenPATH {
+		out = append(out, "PATH="+abs)
+	}
+	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
+		out = append(out, "GIT_SSH_COMMAND=ssh")
+	}
+	return out
+}
+
+func absPATH() string {
+	keep := make([]string, 0, 16)
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir != "" && filepath.IsAbs(dir) {
+			keep = append(keep, dir)
+		}
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
 }
 
 var (

@@ -4,6 +4,7 @@
 package selfupdate
 
 import (
+	"context"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -104,5 +105,22 @@ func TestNewerThan(t *testing.T) {
 	}
 	if rel.NewerThan("v1.2.3") {
 		t.Fatal("the same version must not reinstall")
+	}
+}
+
+func TestCheckRejectsMalformedRepo(t *testing.T) {
+	ctx := context.Background()
+	for _, repo := range []string{
+		"maci0/gauntlet/extra",
+		"maci0/gauntlet/../../../etc",
+		"https://evil.example/repo",
+		"maci0/gauntlet\nX: y",
+		"maci0",
+		"/maci0/gauntlet",
+		"maci0/gauntlet?",
+	} {
+		if _, err := Check(ctx, repo); err == nil {
+			t.Errorf("Check(%q) accepted a malformed repository", repo)
+		}
 	}
 }
