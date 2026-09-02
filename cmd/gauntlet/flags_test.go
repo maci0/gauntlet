@@ -351,6 +351,39 @@ func TestParseFlagsRepeatableAndCommaLists(t *testing.T) {
 	}
 }
 
+func TestParseFlagsPaths(t *testing.T) {
+	// A single file, a whole directory, and a glob are all legal entries, and
+	// the flag is repeatable and comma-separated like the other lists.
+	o, err := parseFlags([]string{"--paths", "scripts/bolide.py,internal/runner", "--paths", "docs/*.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(o.paths, "|") != "scripts/bolide.py|internal/runner|docs/*.md" {
+		t.Fatalf("paths: %v", o.paths)
+	}
+
+	// Omitted means the whole tree.
+	o, err = parseFlags(nil)
+	if err != nil || len(o.paths) != 0 {
+		t.Fatalf("default paths: %v %v", o.paths, err)
+	}
+
+	// An explicit empty --paths would silently mean the whole tree too, the
+	// opposite of the narrowing it asked for: refused, like --reviews '' is
+	// kept explicit rather than expanded.
+	if _, err := parseFlags([]string{"--paths", ""}); err == nil {
+		t.Fatal("explicit empty --paths accepted")
+	}
+	if _, err := parseFlags([]string{"--paths", " , "}); err == nil {
+		t.Fatal("whitespace-only --paths accepted")
+	}
+
+	// Subcommands do not read it, so it must be refused, not swallowed.
+	if _, err := parseFlags([]string{"runs", "--paths", "x"}); err == nil {
+		t.Fatal("gauntlet runs --paths was not refused")
+	}
+}
+
 // The seed value must keep the flag package's base-0 uint64 parsing (hex
 // literals and underscores), which the custom Value replaced.
 func TestParseFlagsSeedLiterals(t *testing.T) {

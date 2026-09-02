@@ -49,6 +49,7 @@ var helpGroups = []flagGroup{
 	{"Reviews", []flagDoc{
 		{"r", "reviews", "LIST", "reviews and/or sets to run; the -review suffix is optional, repeats add weight, 'suggest' adds an agent's picks to the list (repeatable)"},
 		{"x", "exclude", "LIST", "reviews and/or sets to skip (repeatable)"},
+		{"", "paths", "LIST", "scope reviews to these files, directories, or globs, relative to the reviewed directory; prompt-enforced, the agent keeps the whole tree (repeatable)"},
 		{"s", "suggest", "", "an agent picks the reviews; any named with --reviews are scheduled as well"},
 		{"", "suggest-agent", "AGENT", "agent to run the suggest step, or 'gauntlet' to choose from file signals with no agent at all (default: sample from --agents)"},
 		{"", "suggest-timeout", "DUR", fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute))},

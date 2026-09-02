@@ -557,7 +557,7 @@ func run(argv []string) int {
 			Seed:             opts.seed,
 			// The dashboard renders the feed from these events, so --tui must
 			// not suppress them; only --quiet does.
-			Yolo: opts.yolo, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
+			Yolo: opts.yolo, Paths: opts.paths, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
 			ContinueSessions: opts.continueSessions,
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
 		}

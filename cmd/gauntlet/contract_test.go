@@ -40,7 +40,7 @@ var goldenFlagNames = []string{
 	"max-loops", "merge-into",
 	"n", "no-color",
 	"once", "opencode-db",
-	"p", "pr-base", "prompt-dir", "push", "push-remote",
+	"p", "paths", "pr-base", "prompt-dir", "push", "push-remote",
 	"q", "quiet",
 	"r", "raw", "resolve-conflicts", "retries", "reviews", "runtime",
 	"s", "seed", "semcode", "show-prompt", "stacked-prs", "stream", "suggest",
