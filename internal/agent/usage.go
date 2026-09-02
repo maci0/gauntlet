@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // TailBytes is how much of an agent's output is kept for usage parsing. Usage
@@ -178,13 +179,17 @@ const subjectMax = 100
 func ParseSubject(tail []byte) string {
 	matches := subjectRe.FindAllStringSubmatch(string(tail), -1)
 	for _, m := range slices.Backward(matches) {
-		// Controls go first, then the trim: dropping a control byte can
-		// expose whitespace that was hiding behind it, and a subject is a
-		// line of text, not a line of text with a ragged end. This becomes a
-		// commit message, where a newline would forge a body or an author
-		// trailer.
+		// Formatting and separators go first, then the trim: dropping a
+		// hidden character can expose whitespace that was hiding behind it,
+		// and a subject is a line of text, not a line of text with a ragged
+		// end. This becomes a commit message, where a newline or a bidi
+		// override would forge a body or spoof git log.
 		s := strings.Map(func(r rune) rune {
-			if r < 0x20 || r == 0x7f {
+			if r == ' ' {
+				return r
+			}
+			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+				unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 				return -1
 			}
 			return r

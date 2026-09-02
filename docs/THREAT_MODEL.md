@@ -130,7 +130,7 @@ Untrusted inputs with their validation point:
 | Git outputs (shortstat, porcelain, check-ignore) | `gitx.go:425,614,655,673,692` | regex/line parsing; C-quoted paths decoded (`unquoteC`, `gitx.go:692`) then display-sanitized before any message (`safePaths`, `runner.go:364`; dashboard `ui.go:523-528`; plain reporter `report.go:84-88`); counts only, never executed |
 | Reviewed repo's `.git/config` and `.gitattributes` | every git call, `gitx.go:25-39,197-259,282-361` | `core.fsmonitor`, `core.hooksPath=/dev/null`, `core.pager=cat`, `diff.external`, `core.gitProxy` forced empty; `protocol.ext.allow=never`; `attr.tree` pointed at the empty tree so in-tree `.gitattributes` cannot select a smudge filter or merge driver; local `filter.*`/`merge.*`/`diff.*` commands, `core.editor`, `core.askpass`, and peers blanked from `--local --list`; git resolved on absolute-only PATH so a planted `./git` cannot run; `GIT_SSH_COMMAND=ssh` outranks a repo-local `core.sshCommand` unless the operator already exported one, and git's children inherit that absolute-only PATH (`gitEnv`); git's own children die with its process group and bounded pipe wait (`gitx.go:305-317`) |
 | `.gauntlet.lock` holder note | read back on lock conflict, `runner/lock.go:98` | the note lives in the reviewed tree, where an agent could rewrite it: one line, 120 runes, `Display`-sanitized before it reaches a terminal (`lock.go:22-25,88,98`) |
-| Conflicted paths interpolated into the conflict prompt | `ConflictPrompt`, `compose.go:165`; filtered in `runConflictAgent`, `conflict.go:90-114` | a path is named only when it equals `normalize.Sanitize(p)`; a control-carrying name is omitted and still scanned for markers, so it holds the branch with a human |
+| Conflicted paths interpolated into the conflict prompt | `git diff -z` into `runConflictAgent`, `conflict.go:90-114`, then `ConflictPrompt` (`compose.go:185`) | a path is named only when it equals `normalize.Sanitize(p)` and `conflictPathOK` (control/Cf omitted, `RESOLVE:` and `</files>` omitted, 1024-rune cap); 50-file cap (over-cap skips the launch); list fenced in `<files>`; a dropped path is still scanned for markers, so it holds the branch with a human |
 | Helper-tool inventory appended to prompts | PATH probe at startup, `runner.go:327`, rendered `compose.go:90-114` | operator-machine facts crossing outward with every prompt: which helper binaries exist and that installing missing ones is forbidden |
 | File-signal suggester tree walk | `suggest_fast.go:535,645` | 100k files, depth 12, 2k file heads × 4 KiB; opens via `os.OpenRoot` so a symlink or path that escapes the reviewed tree is skipped (`suggest_fast.go:640-667`) |
 | `~/.gauntlet/agents.json` | `custom.LoadCustomFile`, `custom.go:253` | malformed file refuses startup rather than silently changing the agent set; unknown JSON keys are errors (`custom.go:273-278`); `CustomFilePath` returns empty when HOME is missing so a definitions file is never picked up from `./.gauntlet` in the reviewed tree (`custom.go:294`) |
@@ -142,10 +142,10 @@ Untrusted inputs with their validation point:
 
 **B1 -> B2 (the injection path).** A hostile repository plants
 `evil-review.md`; discovery prefers it over the bundled prompt of the same
-name, composition fences it between markers, and the marker-closing string is
-escaped (`compose.go:139`). The agent that receives it has its own permission
-system disabled or auto-approved (or, for a custom agent, whatever the
-operator put in argv). Applicable classes: elevation of privilege (repo
+name, composition fences it between markers, and both the opening and closing
+marker strings in the body are escaped (`compose.go:144-145`). The agent that
+receives it has its own permission system disabled or auto-approved (or, for a
+custom agent, whatever the operator put in argv). Applicable classes: elevation of privilege (repo
 author -> code execution with user rights), tampering (working tree,
 commits), info disclosure (secrets, source exfiltration). The fence is
 advisory: the ground rules forbid git, deletion, and persistence, and
@@ -286,12 +286,13 @@ access, which already implies game over.
 | Runaway git grandchildren (hooks, merge drivers) holding pipes | process-group SIGKILL on deadline, bounded WaitDelay | `gitx.go:305-317` |
 | Planted executables shadowing agents/git/`gh` | cwd-relative PATH entries stripped for agent, git, git-child, and `gh` resolution | `agent.go:161-173`, `gitx.go:82-94,329-361`, `ghx.go:86-97` |
 | Symlink/FIFO race into permission-bypassed runs | `O_NOFOLLOW` opens, regular-file stats, size caps; suggester peeks via `os.OpenRoot` | `prompt.go:249-297`, `gitx.go:462-481`, `runner/lock.go:43-58`, `suggest_fast.go:640-667` |
-| Prompt injection blending into containment rules | begin/end markers, end-marker escaping, report-section stripping fails open | `compose.go:31-34,48-70,139` |
-| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, strict suggestion grammar checked against known set | `compose.go:174-223,238-261` |
+| Prompt injection blending into containment rules | begin/end markers, both markers escaped in the body, report-section stripping fails open | `compose.go:31-37,48-70,144-145` |
+| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, strict suggestion grammar checked against known set, reasons capped to the same budget | `compose.go:227-266,277-306` |
 | Injection via `Signals:` into the file-signal suggester | known kinds, charset, 12×40-rune caps; `mark:` values search file heads, not executed | `prompt.go:144-199`, `suggest_fast.go:490,711` |
 | Terminal-driven or spoofed output, including prompt preview, journal replay, reporter, and dashboard | `Display`/`Sanitize` strip escapes, controls, bidi; width cap; rate limit; duplicate collapse | `normalize.go`, `modes.go:56-57`, `runs.go:94`, `report.go:84-88`, `ui.go:523-528`, `exec.go:42,46,219-224`, `runner.go:27` |
 | Hostile file names reaching messages or logs | C-quote decoding then sanitization of every git path before a terminal write | `gitx.go:673,692`, `runner.go:364`, `lock.go:22-25`, `conflict.go:90-114` |
-| Hostile file names forging conflict-prompt instructions | drop unsanitary paths from the named list; markers still block the merge | `conflict.go:90-114` |
+| Hostile file names forging conflict-prompt instructions | drop unsanitary paths (control/Cf, `RESOLVE:`, fence-closer); 1024-rune path cap; 50-file cap (over-cap skips the launch); list fenced in `<files>`; markers still block the merge | `compose.go:185-225`, `conflict.go:90-114` |
+| Model output written as a commit subject | ASCII controls, Unicode Cf (bidi), Zl/Zp stripped; 100-rune cap; one line | `agent/usage.go` ParseSubject |
 | Output-volume DoS from a chatty agent | 4 MiB line cap emitted in chunks, bounded tail buffers (1 MiB suggest tail) | `exec.go:34-42,300-358,438-448` |
 | Oversized prompt files | 1 MiB read cap; argv-length pre-check with named failure | `prompt.go:36`, `agent.go:409-415,441-446` |
 | Runaway/hung agents | per-review timeout, process group SIGTERM then SIGKILL, stdin null device, own session (no controlling terminal, so Ctrl-C cannot be disabled from inside an agent), drain grace for stuck grandchildren | `exec.go:25-32,81-290,386-419` |

@@ -99,6 +99,11 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 // open and the branch stays with a human — the same outcome a file the agent
 // could not resolve gets.
 func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []string, wt *gitx.Worktree) bool {
+	if len(paths) > prompt.ConflictFileMax {
+		r.log("%s has %d conflicted files, over the %d a resolver prompt will name; leaving the branch for a human",
+			review, len(paths), prompt.ConflictFileMax)
+		return false
+	}
 	named := make([]string, 0, len(paths))
 	for _, p := range paths {
 		if p == normalize.Sanitize(p) {
@@ -108,6 +113,7 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		r.log("Not naming %s in the conflict prompt: the path carries control characters",
 			normalize.Sanitize(p))
 	}
+	named = prompt.ConflictNamed(named)
 	if len(named) == 0 {
 		r.log("No conflicted path is safe to name in a prompt; leaving the branch for a human")
 		return false

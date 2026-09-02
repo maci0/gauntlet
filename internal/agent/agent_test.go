@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -202,18 +203,20 @@ func FuzzParseSubject(f *testing.F) {
 	f.Add("subject:\tfeat(ui): tighten the lanes\r\n")
 	f.Add("SUBJECT: " + strings.Repeat("x", 4096))
 	f.Add("SUBJECT: fix\x1b[31m: colored\x00 and \x07 belled")
+	f.Add("SUBJECT: fix: \u202Eevil\u202C and \u2028break")
 	f.Add("PATH: a.go\nSUBJECT:   \nSUBJECT: chore: the last one wins\n")
 	f.Fuzz(func(t *testing.T, tail string) {
 		got := ParseSubject([]byte(tail))
-		if len(got) > subjectMax {
-			t.Fatalf("subject is %d bytes, want at most %d: %q", len(got), subjectMax, got)
+		if n := utf8.RuneCountInString(got); n > subjectMax {
+			t.Fatalf("subject is %d runes, want at most %d: %q", n, subjectMax, got)
 		}
 		if strings.ContainsAny(got, "\n\r") {
 			t.Fatalf("a subject spanning lines can forge a commit body: %q", got)
 		}
 		for _, r := range got {
-			if r < 0x20 || r == 0x7f {
-				t.Fatalf("control byte %q survived into %q", r, got)
+			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+				unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+				t.Fatalf("formatting rune %q survived into %q", r, got)
 			}
 		}
 		if got != strings.TrimSpace(got) {
@@ -270,10 +273,21 @@ func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
 	if got != "fix: thing[31m and more" {
 		t.Fatalf("printable text did not survive sanitizing: %q", got)
 	}
+	bidi := ParseSubject([]byte("SUBJECT: fix: \u202Eevil\u202C good\n"))
+	if strings.ContainsRune(bidi, '\u202E') || strings.ContainsRune(bidi, '\u202C') {
+		t.Fatalf("bidi override survived into a commit subject: %q", bidi)
+	}
+	if !strings.Contains(bidi, "evil") || !strings.Contains(bidi, "good") {
+		t.Fatalf("visible text was lost with the bidi marks: %q", bidi)
+	}
+	sep := ParseSubject([]byte("SUBJECT: fix: a\u2028b\u2029c\n"))
+	if strings.ContainsAny(sep, "\u2028\u2029") {
+		t.Fatalf("line/paragraph separator survived into a commit subject: %q", sep)
+	}
 	long := "SUBJECT: " + strings.Repeat("x", 500) + "\n"
 	got = ParseSubject([]byte(long))
-	if n := len(got); n > subjectMax {
-		t.Fatalf("subject is %d bytes, want at most %d", n, subjectMax)
+	if n := utf8.RuneCountInString(got); n > subjectMax {
+		t.Fatalf("subject is %d runes, want at most %d", n, subjectMax)
 	}
 	if got != strings.Repeat("x", subjectMax) {
 		t.Fatalf("truncation dropped the printable prefix: %q", got)

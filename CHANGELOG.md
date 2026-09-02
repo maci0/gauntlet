@@ -23,6 +23,18 @@ minor instead and were listed under Changed.
   1, so the launcher cannot emit a command the parser would refuse.
 - `?` on the launcher opens a help overlay, the same key the dashboard uses.
   `q` / `esc` close it; they do not leave the picker.
+- A project prompt that contains the opening review marker can no longer
+  close the fence: both `BEGIN REVIEW` and `END REVIEW` in the body are
+  rewritten, matching what the end marker already did.
+- Conflicted paths named in the resolver prompt are fenced, dropped when they
+  carry the resolver's output protocol or formatting characters, and capped;
+  a conflict with more files than the prompt will name is left for a human
+  instead of launching an agent that cannot finish.
+- Commit subjects taken from agent output drop bidi overrides and Unicode
+  line separators, not only ASCII controls, so a model cannot spoof `git log`
+  or forge a commit body.
+- Suggestion reasons from the triage agent are rune-capped like catalog
+  descriptions, so one overlong line cannot flood the suggest listing.
 
 ### Changed
 
