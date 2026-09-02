@@ -14,7 +14,6 @@ import (
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
-	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // The launcher: the screen `gauntlet pick` opens so a run can be composed
@@ -46,6 +45,10 @@ type PickConfig struct {
 	// of these has to be written out in full. Passed in rather than looked
 	// up here: nothing under internal/ui imports the prompt catalog.
 	Reserved []string
+	// FastSuggest is the --suggest-agent value that picks reviews from file
+	// signals instead of asking a model. Empty omits that choice. Passed in
+	// rather than looked up here: the picker does not import the runner.
+	FastSuggest string
 }
 
 // PickGroup is one collapsible category: a review set and the members of it
@@ -180,9 +183,9 @@ func newPicker(cfg PickConfig) *picker {
 			{kind: optCount, label: "concurrency", n: 1,
 				help: "parallel lanes (-j), worktree-isolated and merged back"},
 			{kind: optCycle, label: "suggest agent", flag: "--suggest-agent",
-				// "gauntlet" is the suggester that is not an agent: it reads
+				// FastSuggest is the suggester that is not an agent: it reads
 				// the tree for signals, costs nothing, and answers at once.
-				values: append([]string{"from the pool", runner.FastSuggestAgent}, cfg.Agents...),
+				values: suggestAgentValues(cfg),
 				help:   "who proposes the reviews; gauntlet reads the files instead of asking a model"},
 			{kind: optToggle, label: "once", flag: "--once", on: true,
 				help: "one loop, then stop"},
@@ -207,6 +210,17 @@ func newPicker(cfg PickConfig) *picker {
 		p.hues.get(a)
 	}
 	return p
+}
+
+// suggestAgentValues is the --suggest-agent cycle: unset, then the file-signal
+// suggester when the caller named one, then every installed agent.
+func suggestAgentValues(cfg PickConfig) []string {
+	out := make([]string, 0, 2+len(cfg.Agents))
+	out = append(out, "from the pool")
+	if cfg.FastSuggest != "" {
+		out = append(out, cfg.FastSuggest)
+	}
+	return append(out, cfg.Agents...)
 }
 
 // branchLabel names the branch the run would sit on, for a screen that must

@@ -53,11 +53,16 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `journal`; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing
-else. `prompt` imports `gitx`, so project discovery's
-one git call (check-ignore) uses the same hardened resolver and safe config
-as every other git invocation. `agent` and `prompt` import `fuzzy`, so a
+else. The picker takes the file-signal suggester name from `PickConfig`
+rather than importing `runner` for it. `prompt` imports `gitx`, so project
+discovery's one git call (check-ignore) uses the same hardened resolver and
+safe config as every other git invocation, and `humanize` so composed
+prompts spell timeouts the same way the rest of the binary does. `agent`
+and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere.
-Nothing imports `ui`, so the loop runs headless with zero TUI cost.
+`agent` and `journal` import `gauntlethome`, the one resolver of the state
+root. Nothing inside `internal/` imports `ui`, so the loop runs headless
+with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 

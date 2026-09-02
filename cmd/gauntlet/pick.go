@@ -48,15 +48,16 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 
 	branch, targets, dirty := treeState(ctx, dir)
 	argv, ok, err := ui.Pick(ui.PickConfig{
-		Dir:      dir,
-		Groups:   pickGroups(set),
-		Reserved: append(prompt.SetNames(), prompt.Suggest),
-		Agents:   runner.AgentLabels(agent.Installed()),
-		Branch:   branch,
-		Merge:    targets,
-		Dirty:    dirty,
-		CPUs:     runtime.NumCPU(),
-		Version:  version,
+		Dir:         dir,
+		Groups:      pickGroups(set),
+		Reserved:    append(prompt.SetNames(), prompt.Suggest),
+		FastSuggest: runner.FastSuggestAgent,
+		Agents:      runner.AgentLabels(agent.Installed()),
+		Branch:      branch,
+		Merge:       targets,
+		Dirty:       dirty,
+		CPUs:        runtime.NumCPU(),
+		Version:     version,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

@@ -62,8 +62,9 @@ func TestWriteShots(t *testing.T) {
 			{Name: "security", Reviews: []PickReview{rev("deps-review", "vulnerable and unused dependencies")}},
 			{Name: "frontend", Reviews: []PickReview{rev("ux-review", "flows a person has to follow")}},
 		},
-		Agents: []string{"claude", "codex:gpt-5", "gemini", "crush", "opencode"},
-		Branch: "work", Merge: []string{"main"},
+		Agents:      []string{"claude", "codex:gpt-5", "gemini", "crush", "opencode"},
+		FastSuggest: "gauntlet",
+		Branch:      "work", Merge: []string{"main"},
 		CPUs: 16,
 	})
 	p.w, p.h, p.ready = 104, 28, true

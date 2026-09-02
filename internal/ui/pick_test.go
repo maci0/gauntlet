@@ -24,10 +24,11 @@ func demoPicker() *picker {
 				{Name: "a11y-review", Desc: "keyboard and contrast", Project: true},
 			}},
 		},
-		Agents: []string{"claude", "codex:gpt-5"},
-		Branch: "work",
-		Merge:  []string{"main", "release"},
-		CPUs:   8,
+		Agents:      []string{"claude", "codex:gpt-5"},
+		FastSuggest: "gauntlet",
+		Branch:      "work",
+		Merge:       []string{"main", "release"},
+		CPUs:        8,
 	})
 	p.w, p.h, p.ready = 100, 30, true
 	return p
@@ -157,6 +158,27 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 				t.Fatalf("argv is %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// FastSuggest is passed in rather than imported from the runner, so a caller
+// that does not name one must not grow a --suggest-agent gauntlet of its own.
+func TestPickerOmitsFileSignalSuggesterWhenUnset(t *testing.T) {
+	p := newPicker(PickConfig{
+		Dir:    "/home/dev/project",
+		Groups: []PickGroup{{Name: "quick", Reviews: []PickReview{{Name: "sec-review", Desc: "d"}}}},
+		Agents: []string{"claude"},
+		CPUs:   8,
+	})
+	p.w, p.h, p.ready = 100, 30, true
+	p.suggest = true
+	p.opts[optSuggestAgent].idx = 1
+	got := strings.Join(p.argv(), " ")
+	if strings.Contains(got, "--suggest-agent gauntlet") {
+		t.Fatalf("an unset FastSuggest still composed the file-signal suggester:\n%s", got)
+	}
+	if !strings.Contains(got, "--suggest-agent claude") {
+		t.Fatalf("idx 1 should be the first agent when FastSuggest is omitted:\n%s", got)
 	}
 }
 

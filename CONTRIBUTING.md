@@ -85,7 +85,8 @@ refactors with no visible behavior need nothing.
 `cmd/gauntlet` is flags and dispatch only; everything real lives in
 `internal/`, and dependencies point one way: `runner` uses `agent`,
 `prompt`, `normalize`, `gitx`, and friends, and no package inside
-`internal/` imports `ui`. [docs/DESIGN.md](docs/DESIGN.md) is the map and
+`internal/` imports `ui`. A test in `cmd/gauntlet` pins that graph.
+[docs/DESIGN.md](docs/DESIGN.md) is the map and
 records what each decision costs.
 
 Adding a review prompt is dropping `NAME-review.md` into
