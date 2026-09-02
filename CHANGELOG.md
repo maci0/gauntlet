@@ -106,6 +106,13 @@ minor instead and were listed under Changed.
   flags before the run id, so `gauntlet show --no-color RUN` and
   `gauntlet show --help` after `--no-color` work.
 - `gauntlet show` on an unknown run id points at `gauntlet runs`.
+- Stacked PR creation treats head and base as an idempotency key: if
+  `gh pr create` times out after GitHub accepted the pull request, or fails
+  because it already exists, the existing URL is reused instead of stopping
+  the stack or opening a second PR.
+- `StartBranch` on a lane or stack worktree converges when the branch already
+  exists at its base, the same leftover-empty-branch rule `AddWorktree`
+  already follows. A branch that carries commits is still refused.
 - A review that never launched (unknown name, unreadable prompt, or a command
   line that could not be built) now publishes `review_end` like every other
   outcome, so the journal, the dashboard, and `gauntlet show` record it. The

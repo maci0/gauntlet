@@ -278,6 +278,11 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 
 // StartBranch advances a stack worktree onto a fresh child of base. The old
 // branch remains: an open pull request still needs it locally and remotely.
+//
+// Calling it again with the same branch still at base checks that branch out
+// rather than failing: a retry or a leftover from a killed attempt is the
+// same state a first call produces. A branch that already carries commits is
+// real output and is refused, matching reclaimEmptyBranch.
 func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	if w == nil || w.repo == nil {
 		return errors.New("nil stack worktree")
@@ -287,7 +292,18 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	}
 	sub := &Repo{Dir: w.Dir}
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "-c", branch, base); err != nil {
-		return fmt.Errorf("git switch -c %s: %w", branch, err)
+		tip, tipErr := w.repo.Tip(ctx, "refs/heads/"+branch)
+		baseTip, baseErr := w.repo.Tip(ctx, base)
+		if tipErr != nil || baseErr != nil {
+			return fmt.Errorf("git switch -c %s: %w", branch, err)
+		}
+		if tip != baseTip {
+			return fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
+				branch, shortSHA(tip), shortSHA(baseTip))
+		}
+		if _, swErr := sub.run(ctx, gitNormal, "switch", "--quiet", branch); swErr != nil {
+			return fmt.Errorf("git switch -c %s: %w", branch, err)
+		}
 	}
 	w.Branch, w.base = branch, base
 	return nil

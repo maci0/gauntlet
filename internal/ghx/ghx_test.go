@@ -267,3 +267,74 @@ exit 2
 		t.Fatalf("Find dropped an owner-less candidate: %q, %v", got, err)
 	}
 }
+
+// A create that fails after GitHub accepted it (timeout, "already exists")
+// must return the existing PR rather than error, or a stacked retry opens a
+// second PR or stops a layer that is already published.
+func TestCreateReusesExistingPRWhenCreateFails(t *testing.T) {
+	dir := t.TempDir()
+	script := `#!/bin/sh
+case "$1 $2" in
+  "pr create") echo 'a pull request already exists' >&2; exit 1 ;;
+  "pr list")
+    echo '[{"url":"https://github.com/owner/repo/pull/7","headRefName":"child","baseRefName":"base","headRepositoryOwner":{"login":"owner"}}]'
+    exit 0 ;;
+esac
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com"}
+	got, err := c.Create(context.Background(), "child", "base", "t", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://github.com/owner/repo/pull/7" {
+		t.Fatalf("Create = %q, want the existing PR", got)
+	}
+}
+
+// gh prints the URL then dies: the process fails, stdout still names the PR.
+func TestCreateKeepsURLWhenProcessFailsAfterPrintingIt(t *testing.T) {
+	dir := t.TempDir()
+	script := `#!/bin/sh
+case "$1 $2" in
+  "pr create") echo 'https://github.com/owner/repo/pull/8'; exit 1 ;;
+  "pr list") echo '[]'; exit 0 ;;
+esac
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com"}
+	got, err := c.Create(context.Background(), "child", "base", "t", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://github.com/owner/repo/pull/8" {
+		t.Fatalf("Create = %q, want the URL gh printed before failing", got)
+	}
+}
+
+func TestCreateStillFailsWhenNoPRExists(t *testing.T) {
+	dir := t.TempDir()
+	script := `#!/bin/sh
+case "$1 $2" in
+  "pr create") echo denied >&2; exit 1 ;;
+  "pr list") echo '[]'; exit 0 ;;
+esac
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	c := Client{Dir: dir, Repo: "owner/repo", Host: "github.com"}
+	if _, err := c.Create(context.Background(), "child", "base", "t", "b"); err == nil {
+		t.Fatal("Create succeeded with no PR and a failed gh")
+	}
+}

@@ -172,9 +172,22 @@ func (c Client) ownsHead(p pull) bool {
 
 // Create opens a pull request and returns its URL. Every value is an argv
 // element; repository text is never evaluated by a shell.
+//
+// Head and base are the idempotency key. A create that times out after GitHub
+// accepted it, or that fails because the PR already exists, is recovered by
+// Find: a retry returns the existing URL instead of opening a second PR or
+// failing a layer that is already published. Stdout is trusted when it is
+// already a valid PR URL, which is what a kill after gh printed the URL looks
+// like.
 func (c Client) Create(ctx context.Context, head, base, title, body string) (string, error) {
 	out, err := c.run(ctx, "pr", "create", "--repo", c.selector(), "--head", c.head(head),
 		"--base", base, "--title", title, "--body", body)
+	if url, ok := c.createdURL(out); ok {
+		return url, nil
+	}
+	if url, findErr := c.Find(ctx, head, base); findErr == nil && url != "" {
+		return url, nil
+	}
 	if err != nil {
 		return "", fmt.Errorf("create PR %s -> %s: %w", head, base, err)
 	}
@@ -183,6 +196,21 @@ func (c Client) Create(ctx context.Context, head, base, title, body string) (str
 		return "", errors.New("gh pr create returned no URL")
 	}
 	return c.validateURL(prURL)
+}
+
+// createdURL reports a PR URL gh printed on stdout, even when the process
+// then failed. Anything that is not a valid URL for this host is ignored so
+// an error page or usage text cannot be taken for a successful create.
+func (c Client) createdURL(out []byte) (string, bool) {
+	raw := firstLine(strings.TrimSpace(string(out)))
+	if raw == "" {
+		return "", false
+	}
+	u, err := c.validateURL(raw)
+	if err != nil {
+		return "", false
+	}
+	return u, true
 }
 
 func (c Client) selector() string {

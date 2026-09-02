@@ -100,6 +100,104 @@ func TestResetToBaseRestoresAndConverges(t *testing.T) {
 	assertWorktreeMatchesBase(t, ctx, r, wt, base)
 }
 
+func TestStartBranchTwiceConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "lane-0", "run-l1-lane0", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	branch := "gauntlet/run-l1-lane0-00/sec-review"
+	if err := wt.StartBranch(ctx, branch, base); err != nil {
+		t.Fatal(err)
+	}
+	if wt.Branch != branch {
+		t.Fatalf("StartBranch left Branch=%q, want %s", wt.Branch, branch)
+	}
+	one, err := r.Tip(ctx, branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if one != base {
+		t.Fatalf("new branch is at %s, want base %s", one, base)
+	}
+
+	if err := wt.StartBranch(ctx, branch, base); err != nil {
+		t.Fatalf("a repeated StartBranch on the same empty branch must succeed: %v", err)
+	}
+	two, err := r.Tip(ctx, branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if two != one {
+		t.Fatalf("a repeated StartBranch moved the branch: %s != %s", two, one)
+	}
+
+	// Detached, the branch still exists at base: a killed attempt leaves that,
+	// and the next StartBranch must check it out rather than fail on switch -c.
+	if err := wt.Advance(ctx, base); err != nil {
+		t.Fatal(err)
+	}
+	if err := wt.StartBranch(ctx, branch, base); err != nil {
+		t.Fatalf("StartBranch on a leftover empty branch must succeed: %v", err)
+	}
+	if wt.Branch != branch {
+		t.Fatalf("recovered StartBranch left Branch=%q, want %s", wt.Branch, branch)
+	}
+	three, err := r.Tip(ctx, branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if three != base {
+		t.Fatalf("recovered branch moved: %s != %s", three, base)
+	}
+}
+
+func TestStartBranchRejectsExistingWork(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "lane-0", "run-l1-lane0", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	branch := "gauntlet/run-l1-lane0-00/sec-review"
+	if err := wt.StartBranch(ctx, branch, base); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
+		[]byte("package fix\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
+		t.Fatal(err)
+	}
+	kept, err := r.Tip(ctx, branch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := wt.StartBranch(ctx, branch, base); err == nil {
+		t.Fatal("StartBranch over a branch with commits must fail")
+	} else if !strings.Contains(err.Error(), "already exists at") {
+		t.Fatalf("leftover-work error = %v, want it to name both tips", err)
+	}
+	if got, err := r.Tip(ctx, branch); err != nil || got != kept {
+		t.Fatalf("the kept branch was modified: %s != %s (%v)", got, kept, err)
+	}
+}
+
 func assertWorktreeMatchesBase(t *testing.T, ctx context.Context, r *Repo, wt *Worktree, base string) {
 	t.Helper()
 	sub := &Repo{Dir: wt.Dir}
