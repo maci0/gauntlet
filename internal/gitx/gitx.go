@@ -121,7 +121,8 @@ type Repo struct {
 	// untracked file each time turns one dashboard number into a background
 	// disk scan that grows as reviews add files. An entry is trusted only
 	// while size and mtime still match, so an edited file recomputes; files
-	// that vanish leave their entries behind until the table resets.
+	// that vanish leave their entries behind. The table stops admitting new
+	// keys at lineCountCacheMax rather than dropping the working set.
 	lineCounts map[string]lineCount
 
 	// extraSafe is the per-repo -c overlay on top of safeConfig: attr.tree
@@ -145,9 +146,9 @@ type lineCount struct {
 	lines   int
 }
 
-// lineCountCacheMax bounds the table; past it the cache resets rather than
-// growing with every path ever seen in a run.
-const lineCountCacheMax = 4096
+// lineCountCacheMax bounds the table. A var so tests can shrink it;
+// production always sees 4096.
+var lineCountCacheMax = 4096
 
 // Stats are cumulative worktree line changes against a baseline commit.
 type Stats struct {
@@ -484,8 +485,9 @@ func openRegular(path string) (*os.File, error) {
 
 // countLinesCached counts the newlines in a regular file through the repo's
 // sample cache: an unchanged file (same size and mtime) returns its
-// remembered count instead of being read again. Sample calls this for every untracked file every
-// sample, so the cache is what keeps repeated sampling at stat cost.
+// remembered count instead of being read again. Sample calls this for every
+// untracked file every sample, so the cache is what keeps repeated sampling
+// at stat cost.
 func (r *Repo) countLinesCached(path string) int {
 	f, err := openRegular(path)
 	if err != nil {
@@ -501,10 +503,12 @@ func (r *Repo) countLinesCached(path string) int {
 		return e.lines
 	}
 	n := countLinesFrom(f)
-	if r.lineCounts == nil || len(r.lineCounts) >= lineCountCacheMax {
+	if r.lineCounts == nil {
 		r.lineCounts = make(map[string]lineCount)
 	}
-	r.lineCounts[path] = lineCount{size: size, modTime: mod, lines: n}
+	if _, exists := r.lineCounts[path]; exists || len(r.lineCounts) < lineCountCacheMax {
+		r.lineCounts[path] = lineCount{size: size, modTime: mod, lines: n}
+	}
 	return n
 }
 

@@ -293,6 +293,54 @@ func TestCountLinesCachedRecountsChangedFiles(t *testing.T) {
 	}
 }
 
+// Filling past the cap used to wipe the table, so a later sample re-read
+// every file that was already in the working set. New paths past the cap
+// are left uncached; entries already there stay.
+func TestCountLinesCachedKeepsWorkingSetAtCap(t *testing.T) {
+	old := lineCountCacheMax
+	lineCountCacheMax = 4
+	t.Cleanup(func() { lineCountCacheMax = old })
+
+	r := Open(t.TempDir())
+	write := func(name, body string) string {
+		t.Helper()
+		p := filepath.Join(r.Dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	hot := write("hot.txt", "one\n")
+	if n := r.countLinesCached(hot); n != 1 {
+		t.Fatalf("hot count = %d, want 1", n)
+	}
+	for i := range 8 {
+		p := write(fmt.Sprintf("n%d.txt", i), "x\n")
+		if n := r.countLinesCached(p); n != 1 {
+			t.Fatalf("%s count = %d, want 1", p, n)
+		}
+	}
+	if _, ok := r.lineCounts[hot]; !ok {
+		t.Fatal("a file counted before the cap was dropped from the table")
+	}
+	if n := len(r.lineCounts); n > lineCountCacheMax {
+		t.Fatalf("cache grew to %d, cap is %d", n, lineCountCacheMax)
+	}
+
+	// An already-cached file that changes still updates in place, even
+	// when the table is full.
+	if err := os.WriteFile(hot, []byte("one\ntwo\nthree\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.countLinesCached(hot); n != 3 {
+		t.Fatalf("count after edit at cap = %d, want 3", n)
+	}
+	if e, ok := r.lineCounts[hot]; !ok || e.lines != 3 {
+		t.Fatalf("updated entry missing or stale: ok=%v %+v", ok, e)
+	}
+}
+
 func TestDirtyPathsHonorsOwnArtifacts(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

@@ -91,18 +91,26 @@ func dshDefaultProvider(base []string) (string, error) {
 	return dshProvider, dshProbeErr
 }
 
+// dshPatchKey names one overlay file. "@" is outside the provider/model
+// charset ([A-Za-z0-9._/:-]), and "/" and ":" are percent-encoded rather
+// than flattened to "_", so foo/bar and foo_bar cannot share a file.
+func dshPatchKey(provider, model string) string {
+	enc := strings.NewReplacer("/", "%2F", ":", "%3A")
+	return enc.Replace(provider) + "@" + enc.Replace(model)
+}
+
 // dshModelPatch writes (once per provider/model pair) the YAML overlay that
 // pins dsh's model, and returns its path. It lives in the user cache dir, not
 // a temp filesystem: it is small, reusable across runs, and never secret.
 func dshModelPatch(provider, model string) (string, error) {
-	key := strings.NewReplacer("/", "_", ":", "_").Replace(provider + "/" + model)
 	body := fmt.Sprintf("- id: agent-default-model\n  config:\n    provider: '%s'\n    model: '%s'\n",
 		provider, model)
-	return writeDshPatch(key, body)
+	return writeDshPatch(dshPatchKey(provider, model), body)
 }
 
 // writeDshPatch stores one overlay under the user cache dir and returns its
-// path, writing it at most once per process.
+// path. A process writes each key once unless the file has since vanished,
+// in which case it is rewritten so dsh is never pointed at a missing path.
 //
 // The file is renamed over any existing copy rather than truncated in place:
 // the cache is shared across gauntlet processes, and another run's dsh child
@@ -111,10 +119,16 @@ func dshModelPatch(provider, model string) (string, error) {
 // reader gets one whole file, and identical content makes old and new
 // interchangeable.
 func writeDshPatch(key, body string) (string, error) {
+	if key == "" || strings.ContainsRune(key, os.PathSeparator) {
+		return "", errors.New("invalid overlay key")
+	}
 	dshPatchMu.Lock()
 	defer dshPatchMu.Unlock()
 	if p, ok := dshPatches[key]; ok {
-		return p, nil
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+		delete(dshPatches, key)
 	}
 	dir, err := os.UserCacheDir()
 	if err != nil {

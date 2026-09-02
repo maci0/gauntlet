@@ -1204,9 +1204,9 @@ func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
 	}
 
 	for _, c := range []struct{ model, key, want string }{
-		{"deepseek/chat", "deepseek_chat",
+		{"deepseek/chat", "deepseek@chat",
 			"- id: agent-default-model\n  config:\n    provider: 'deepseek'\n    model: 'chat'\n"},
-		{"openrouter/deepseek/deepseek-chat", "openrouter_deepseek_deepseek-chat",
+		{"openrouter/deepseek/deepseek-chat", "openrouter%2Fdeepseek@deepseek-chat",
 			"- id: agent-default-model\n  config:\n    provider: 'openrouter/deepseek'\n    model: 'deepseek-chat'\n"},
 	} {
 		patch := modelPatch(c.model)
@@ -1267,6 +1267,97 @@ func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".prov_model.yml-") {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestDshPatchKeyDoesNotCollide(t *testing.T) {
+	// Flattening "/" and ":" to "_" made these pairs share one overlay, so
+	// the second pin launched with the first pair's provider and model.
+	pairs := [][2]string{
+		{"foo_bar", "baz"},
+		{"foo", "bar_baz"},
+		{"foo/bar", "baz"},
+		{"foo", "bar/baz"},
+		{"a:b", "c"},
+		{"a", "b:c"},
+	}
+	seen := map[string][2]string{}
+	for _, p := range pairs {
+		key := dshPatchKey(p[0], p[1])
+		if prev, ok := seen[key]; ok {
+			t.Errorf("dshPatchKey(%q, %q) = %q, same as (%q, %q)",
+				p[0], p[1], key, prev[0], prev[1])
+		}
+		seen[key] = p
+	}
+
+	cache := isolateDshPatches(t)
+	path1, err := dshModelPatch("foo_bar", "baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	path2, err := dshModelPatch("foo", "bar_baz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path1 == path2 {
+		t.Fatalf("distinct pairs shared overlay %q", path1)
+	}
+	body1, err := os.ReadFile(path1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body2, err := os.ReadFile(path2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body1), "provider: 'foo_bar'") || !strings.Contains(string(body1), "model: 'baz'") {
+		t.Fatalf("first overlay pinned the wrong pair: %s", body1)
+	}
+	if !strings.Contains(string(body2), "provider: 'foo'") || !strings.Contains(string(body2), "model: 'bar_baz'") {
+		t.Fatalf("second overlay pinned the wrong pair: %s", body2)
+	}
+	dir := filepath.Join(cache, "gauntlet", "dsh")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("overlay dir has %d files, want 2", len(entries))
+	}
+}
+
+func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
+	isolateDshPatches(t)
+
+	path, err := writeDshPatch("gone", "body-one\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	// The in-process table still names the path; a cache cleaner (or the
+	// user) deleting the file must not keep handing dsh a missing overlay.
+	got, err := writeDshPatch("gone", "body-two\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != path {
+		t.Fatalf("rewrote at %q, want %q", got, path)
+	}
+	if body, err := os.ReadFile(path); err != nil || string(body) != "body-two\n" {
+		t.Fatalf("missing file was not rewritten: %q, %v", body, err)
+	}
+}
+
+func TestWriteDshPatchRejectsAPathKey(t *testing.T) {
+	isolateDshPatches(t)
+	if _, err := writeDshPatch("a"+string(os.PathSeparator)+"b", "x\n"); err == nil {
+		t.Fatal("a key with a path separator must be refused")
+	}
+	if _, err := writeDshPatch("", "x\n"); err == nil {
+		t.Fatal("an empty key must be refused")
 	}
 }
 

@@ -71,6 +71,13 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- dsh model overlays are keyed uniquely: `foo/bar` and `foo_bar` no longer
+  share one `--patch` file, so a later pin cannot launch with an earlier
+  pair's provider and model. A deleted overlay is rewritten instead of
+  handed to dsh as a missing path.
+- The untracked-file line-count table stops admitting new keys at its cap
+  instead of wiping the working set, so a tree with more than 4096 new
+  files does not re-read every already-counted file on the next sample.
 - A review that never launched (unknown name, unreadable prompt, or a command
   line that could not be built) now publishes `review_end` like every other
   outcome, so the journal, the dashboard, and `gauntlet show` record it. The
