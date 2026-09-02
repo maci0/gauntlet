@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -29,7 +30,8 @@ var ErrLocked = errors.New("another gauntlet is already running here")
 // Lock is an exclusive, advisory lock on one review directory.
 type Lock struct {
 	path string
-	fd   int // -1 once released
+	mu   sync.Mutex
+	fd   int // -1 once released; guarded by mu
 }
 
 // Acquire takes the directory lock. The descriptor stays open for the lifetime
@@ -75,7 +77,12 @@ func Acquire(path string) (*Lock, error) {
 // directory is told what it is waiting for instead of just that it must wait.
 // Best effort: a note that cannot be written costs nothing but the message.
 func (l *Lock) Note(text string) {
-	if l == nil || l.fd < 0 {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.fd < 0 {
 		return
 	}
 	line := append([]byte(normalize.Truncate(normalize.Sanitize(text), noteRunes)), '\n')
@@ -104,7 +111,12 @@ func readNote(fd int) string {
 // same lock. Closing an already-closed descriptor twice is not harmless, the
 // second close can land on a recycled fd, so Release marks the lock spent.
 func (l *Lock) Release() {
-	if l == nil || l.fd < 0 {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.fd < 0 {
 		return
 	}
 	fd := l.fd

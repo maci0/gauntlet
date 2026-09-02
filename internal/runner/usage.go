@@ -36,6 +36,11 @@ type nopReader struct{}
 func (nopReader) Run(context.Context, func(int, int)) {}
 func (nopReader) Final() (int, int)                   { return 0, 0 }
 
+// openTranscript builds the reader that tails an agent's session log. A var
+// so tests can substitute a reader that outlives the agent, which is the
+// race the join in runReview is there to close.
+var openTranscript = newTranscriptReader
+
 // watchTranscript returns a reader for one agent working in one directory.
 // since bounds what counts: anything written before it belongs to whatever ran
 // earlier.
@@ -43,5 +48,5 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 // The implementation is chosen at build time; see usage_toktop.go and
 // usage_off.go.
 func watchTranscript(tool, dir string, since time.Time) transcriptReader {
-	return newTranscriptReader(tool, dir, since)
+	return openTranscript(tool, dir, since)
 }

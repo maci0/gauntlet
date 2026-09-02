@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unicode/utf8"
@@ -139,11 +140,21 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// run, so the maximum seen so far is the current value.
 	var usageMu sync.Mutex
 	live := agent.Usage{Output: -1, Thinking: -1, Total: -1}
+	// emitting is cleared once the result is being assembled, so a pump that
+	// outlives drainGrace cannot publish usage or output for a review that
+	// has already ended: those events are keyed by agent, and would land on
+	// whatever that agent starts next.
+	var emitting atomic.Bool
+	emitting.Store(true)
 	report := func(u agent.Usage) {
-		if o.Usage == nil || !u.Known() {
+		if o.Usage == nil || !u.Known() || !emitting.Load() {
 			return
 		}
 		usageMu.Lock()
+		if !emitting.Load() {
+			usageMu.Unlock()
+			return
+		}
 		grew := false
 		if u.Output > live.Output {
 			live.Output, grew = u.Output, true
@@ -173,7 +184,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			MaxWidth:       streamLineCols,
 		})
 		emit := func(l normalize.Line) {
-			if o.Sink != nil {
+			if o.Sink != nil && emitting.Load() {
 				o.Sink(l)
 			}
 		}
@@ -253,6 +264,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	case <-drained:
 	case <-time.After(drainGrace):
 	}
+	usageMu.Lock()
+	emitting.Store(false)
+	usageMu.Unlock()
 
 	tailMu.Lock()
 	final := tail.Bytes()

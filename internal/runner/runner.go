@@ -958,9 +958,13 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 
 	// The transcript watcher lives exactly as long as the agent does. Its
 	// context is derived from the review's, so an interrupt stops it too.
+	// Run is joined before review_end: the lane key is the agent, not the
+	// review, so a tick published after this review has ended is attributed
+	// to whatever that agent starts next.
 	watchCtx, stopWatch := context.WithCancel(ctx)
 	watcher := watchTranscript(spec.Tool, dir, start)
-	go watcher.Run(watchCtx, publishUsage)
+	var watchDone sync.WaitGroup
+	watchDone.Go(func() { watcher.Run(watchCtx, publishUsage) })
 
 	pr := runProc(ctx, procOpts{
 		Argv:           argv,
@@ -975,6 +979,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Stream: r.cfg.Stream,
 	})
 	stopWatch()
+	watchDone.Wait()
 	// The agent's last records are written as it exits, so the final read
 	// happens here rather than on a tick that already passed.
 	if out, think := watcher.Final(); out > 0 || think > 0 {

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -819,6 +820,32 @@ func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
 	}
 }
 
+// Note is written from the event consumer while Release runs on the process
+// that owns the lock. Overlapping them used to Pwrite a descriptor that
+// Release had already closed, which is a recycled-fd bug under the detector.
+func TestLockNoteAndReleaseDoNotRace(t *testing.T) {
+	dir := t.TempDir()
+	lock, err := Acquire(LockPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 50 {
+				lock.Note("running a-review")
+			}
+		})
+	}
+	wg.Go(func() {
+		time.Sleep(time.Millisecond)
+		lock.Release()
+	})
+	wg.Wait()
+	lock.Release()
+}
+
 // A review whose agent dies once is rerun on the same agent after a wait, and
 // only falls through to another agent once the retries are spent.
 func TestFailedReviewIsRetriedOnTheSameAgent(t *testing.T) {
@@ -1444,6 +1471,93 @@ echo "RESULT: no-changes"`)
 	}
 	if usage[len(usage)-1] != 900 || lastEnd != 900 {
 		t.Fatalf("final usage %v, review end %d, want 900", usage, lastEnd)
+	}
+}
+
+// holdAfterCancel is a transcript reader that publishes after the agent is
+// gone, once the test unblocks it. It is the race runReview used to have:
+// review_end went out while Run was still in flight, and the tick landed on
+// the next review sharing that agent lane.
+type holdAfterCancel struct {
+	cancelled chan struct{}
+	release   chan struct{}
+}
+
+func (h holdAfterCancel) Run(ctx context.Context, onChange func(output, thinking int)) {
+	<-ctx.Done()
+	close(h.cancelled)
+	<-h.release
+	onChange(999, 0)
+}
+
+func (holdAfterCancel) Final() (int, int) { return 0, 0 }
+
+func TestTranscriptWatcherJoinsBeforeReviewEnd(t *testing.T) {
+	cancelled := make(chan struct{})
+	release := make(chan struct{})
+	openTranscript = func(string, string, time.Time) transcriptReader {
+		return holdAfterCancel{cancelled: cancelled, release: release}
+	}
+	t.Cleanup(func() { openTranscript = newTranscriptReader })
+
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan struct{})
+	go func() {
+		r.Run(context.Background())
+		bus.Close()
+		close(finished)
+	}()
+
+	select {
+	case <-cancelled:
+	case <-time.After(15 * time.Second):
+		t.Fatal("watcher never saw the agent finish")
+	}
+	select {
+	case <-finished:
+		t.Fatal("review ended while the watcher was still running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+
+	select {
+	case <-finished:
+	case <-time.After(15 * time.Second):
+		t.Fatal("run stuck after the watcher was released")
+	}
+
+	var sawTick, sawEnd bool
+	for _, ev := range <-done {
+		switch ev.Kind {
+		case EvUsage:
+			if sawEnd {
+				t.Fatalf("usage after review_end: %+v", ev)
+			}
+			if ev.Tokens == 999 {
+				sawTick = true
+			}
+		case EvReviewEnd:
+			sawEnd = true
+		}
+	}
+	if !sawTick {
+		t.Fatal("watcher tick never published")
+	}
+	if !sawEnd {
+		t.Fatal("missing review_end")
 	}
 }
 
