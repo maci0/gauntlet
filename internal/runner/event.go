@@ -97,10 +97,8 @@ type Event struct {
 	LineKind normalize.Kind `json:"line_kind,omitempty"`
 	Repeat   int            `json:"repeat,omitempty"`
 
-	// Version and Args appear on EvRunStart so a journal line is
-	// self-describing.
+	// Version appears on EvRunStart so a journal line is self-describing.
 	Version string   `json:"version,omitempty"`
-	Args    []string `json:"args,omitempty"`
 	Agents  []string `json:"agents,omitempty"`
 	Total   int      `json:"total,omitempty"` // reviews scheduled per loop
 	// Seed is the effective RNG seed, on EvRunStart only: review shuffles and

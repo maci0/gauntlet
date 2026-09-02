@@ -72,7 +72,6 @@ func TestApplyRefusesReleaseWithoutChecksums(t *testing.T) {
 	rel.Assets = append(rel.Assets, struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
-		Size int64  `json:"size"`
 	}{Name: assetName("9.9.9"), URL: "http://127.0.0.1:1/asset"})
 
 	if _, err := Apply(context.Background(), rel); err == nil ||

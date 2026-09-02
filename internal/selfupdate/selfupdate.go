@@ -119,7 +119,6 @@ type Release struct {
 	Assets  []struct {
 		Name string `json:"name"`
 		URL  string `json:"browser_download_url"`
-		Size int64  `json:"size"`
 	} `json:"assets"`
 }
 

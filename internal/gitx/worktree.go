@@ -43,18 +43,6 @@ const worktreeRoot = ".gauntlet/worktrees"
 // the branch name, so the marker alone is what a search looks for.
 const conflictMarker = "<<<<<<<"
 
-// IsClean reports whether the working tree has no uncommitted changes beyond
-// the runner's own artifacts, tracked or untracked. Worktree isolation only
-// refuses tracked modifications (see Status); untracked files do not block
-// --jobs.
-func (r *Repo) IsClean(ctx context.Context, ownArtifacts map[string]bool) (bool, error) {
-	dirty, err := r.DirtyPaths(ctx, ownArtifacts)
-	if err != nil {
-		return false, err
-	}
-	return len(dirty) == 0, nil
-}
-
 // CurrentBranch returns the checked-out branch name, or "" on a detached HEAD.
 func (r *Repo) CurrentBranch(ctx context.Context) string {
 	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "--short", "HEAD")

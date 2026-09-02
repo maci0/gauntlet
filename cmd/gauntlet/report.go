@@ -40,7 +40,6 @@ func (p palette) red(s string) string    { return p.wrap("31", s) }
 func (p palette) green(s string) string  { return p.wrap("32", s) }
 func (p palette) yellow(s string) string { return p.wrap("33", s) }
 func (p palette) blue(s string) string   { return p.wrap("34", s) }
-func (p palette) cyan(s string) string   { return p.wrap("36", s) }
 
 // Consumer-facing environment variables this package reads. One definition,
 // so the help screen's environment section (helpEnvVars in usage.go) cannot

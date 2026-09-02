@@ -14,6 +14,8 @@ import (
 
 // newTranscriptReader follows an agent's session transcript through toktop,
 // which is where the per-agent knowledge of those formats is maintained.
+// since bounds what counts: anything written before it belongs to whatever ran
+// earlier.
 func newTranscriptReader(tool, dir string, since time.Time) transcriptReader {
 	w := agentusage.Watch(tool, dir, since)
 	if w == nil {

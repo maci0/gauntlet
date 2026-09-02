@@ -325,9 +325,6 @@ func TestDirtyPathsHonorsOwnArtifacts(t *testing.T) {
 	if len(dirty) != 1 || dirty[0] != "main.go" {
 		t.Fatalf("own artifact should be excluded by real path, got %v", dirty)
 	}
-	if clean, err := r.IsClean(ctx, map[string]bool{real: true}); clean || err != nil {
-		t.Fatalf("a real edit is not clean: clean=%v err=%v", clean, err)
-	}
 }
 
 func TestDirtyPathsNonASCIIFilename(t *testing.T) {
