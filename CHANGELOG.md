@@ -15,10 +15,11 @@ minor instead and were listed under Changed.
 ### Added
 
 - `make ci` runs the Go pull-request checks (`make check` then `make test`).
-- A missing or stale `index.jsonl` is rebuilt from the run journals, so
-  `gauntlet runs` and the file-signal suggester still see a run whose
-  process died after flushing the journal. `gauntlet show` already read
-  those files. Reconstructed rows have no `args` or `exit_code`.
+- A missing or empty `index.jsonl` is rebuilt from the run journals, and a
+  stale one has every newer unindexed journal appended, so `gauntlet runs`
+  and the file-signal suggester still see a run whose process died after
+  flushing the journal. `gauntlet show` already read those files.
+  Reconstructed rows have no `args` or `exit_code`.
 - `GH_TOKEN` is read for release lookups, the same name GitHub CLI uses. It
   wins over `GITHUB_TOKEN` when both are set, and both now authenticate the
   checksum and asset downloads as well as the release listing, so a private
@@ -85,6 +86,10 @@ minor instead and were listed under Changed.
 - A trailing `}` or `]` after `agents.json` is refused, matching
   `encoding/json`. `json.Decoder.More` treats those closers as end-of-value,
   so `{}}` used to load as an empty definition set.
+- Listing runs recovers the whole tail of journals missing from
+  `index.jsonl`, not only the newest, so two runs that died before Close
+  both appear. A failed index write is retried on the next Close, and a
+  rebuild cannot overwrite a Close that races it.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal

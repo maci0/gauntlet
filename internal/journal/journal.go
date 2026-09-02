@@ -8,14 +8,17 @@
 //	~/.gauntlet/
 //	  runs/2026-08-25/<run-id>.jsonl   one file per run: the full event stream
 //	  index.jsonl                      one summary line per finished run
+//	  .index.lock                      serializes index rebuilds and Close
 //	  state/<run-id>.json              hot-reload handoff, deleted after pickup
 //
 // Date sharding keeps any single directory listing small, and the flat index
 // makes "what did I run last week" a tail, not a tree walk. The journals are
-// the source of truth: a missing, empty, or stale index is rebuilt from them
-// so a crash that flushed the event stream but never wrote the summary row
-// still lists. Nothing here is load-bearing for a run in progress: a journal
-// that cannot be written degrades to a warning, never a failed run.
+// the source of truth: a missing or empty index is rebuilt from them, and a
+// stale one has every newer unindexed journal appended, so a crash that
+// flushed the event stream but never wrote the summary row still lists, and
+// two such crashes in a row do not hide the older one. Nothing here is
+// load-bearing for a run in progress: a journal that cannot be written
+// degrades to a warning, never a failed run.
 package journal
 
 import (
@@ -31,6 +34,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -158,9 +162,10 @@ func (j *Journal) Flush() {
 //
 // It converges: a hot reload closed the file quietly before execing away, and
 // when that exec fails the dying process still has to finish its own run. So
-// Close after CloseQuiet skips straight to the index append, and a repeated
-// Close never writes a second row: one run, one summary, whatever order the
-// endings arrive in.
+// Close after CloseQuiet skips straight to the index append. A successful
+// append is sticky so a repeated Close never writes a second row; a failed
+// one leaves the journal unindexed so a later Close can retry. One run, one
+// summary, whatever order the endings arrive in.
 func (j *Journal) Close(s Summary) error {
 	if j == nil {
 		return nil
@@ -182,16 +187,49 @@ func (j *Journal) Close(s Summary) error {
 		j.closed = true
 	}
 	s.RunID, s.Path = j.runID, j.path
-	j.indexed = true
-	if err := appendIndex(s); err != nil && j.err == nil {
-		j.err = err
+	if err := appendIndex(s); err != nil {
+		// An index failure is not sticky: a later Close retries the append.
+		// A journal write error that already landed in j.err still wins.
+		if j.err != nil {
+			return j.err
+		}
+		return err
 	}
+	j.indexed = true
 	return j.err
 }
 
 func indexPath() string { return filepath.Join(Home(), "index.jsonl") }
 
+func indexLockPath() string { return filepath.Join(Home(), ".index.lock") }
+
+// withIndexLock serializes index mutations across processes. writeIndex
+// replaces index.jsonl by rename, so the lock lives in a sibling file: a
+// flock on the index itself would be left on the old inode after the swap.
+func withIndexLock(fn func() error) error {
+	if err := os.MkdirAll(Home(), 0o700); err != nil {
+		return err
+	}
+	fd, err := syscall.Open(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(fd)
+	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
+		return err
+	}
+	defer syscall.Flock(fd, syscall.LOCK_UN)
+	return fn()
+}
+
 func appendIndex(s Summary) error {
+	return withIndexLock(func() error {
+		return appendIndexLocked(s)
+	})
+}
+
+func appendIndexLocked(s Summary) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
@@ -290,8 +328,32 @@ func readIndex(n int) ([]Summary, error) {
 // recoverIndex restores the listing from the run journals when the index
 // cannot answer. A healthy index is left alone: Close writes Args and
 // ExitCode that the journals do not carry, and rebuilding would drop them.
+//
+// A stale index is the tail case: one or more processes flushed then died
+// before Close. Appending only the newest journal would hide an older crash
+// that is still sitting on disk. The missing tail is reconstructed oldest
+// first so the listing stays chronological, without rewriting the rows Close
+// already wrote.
 func recoverIndex() error {
-	id, path, ok, err := newestJournal()
+	id, _, ok, err := newestJournal()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	newest, err := readIndex(1)
+	if err != nil {
+		return err
+	}
+	if len(newest) > 0 && newest[0].RunID == id {
+		return nil
+	}
+	return withIndexLock(recoverIndexLocked)
+}
+
+func recoverIndexLocked() error {
+	id, _, ok, err := newestJournal()
 	if err != nil {
 		return err
 	}
@@ -309,11 +371,46 @@ func recoverIndex() error {
 	if newest[0].RunID == id {
 		return nil
 	}
-	s, err := summarizeFile(id, path)
+	return recoverIndexTail(newest[0].RunID)
+}
+
+// recoverIndexTail appends reconstructed rows for every journal newer than
+// anchorID, oldest first. If the indexed run is not among the files (deleted
+// journal, rearranged tree), only the true newest is appended, so a full
+// walk cannot duplicate every existing row.
+func recoverIndexTail(anchorID string) error {
+	journals, err := listJournals()
 	if err != nil {
-		return nil
+		return err
 	}
-	_ = appendIndex(s)
+	var missing []namedJournal
+	found := false
+	for _, journal := range journals {
+		if journal.id == anchorID {
+			found = true
+			break
+		}
+		missing = append(missing, journal)
+	}
+	if !found {
+		if len(journals) == 0 {
+			return nil
+		}
+		s, err := summarizeFile(journals[0].id, journals[0].path)
+		if err != nil {
+			return nil
+		}
+		return appendIndexLocked(s)
+	}
+	for _, journal := range slices.Backward(missing) {
+		s, err := summarizeFile(journal.id, journal.path)
+		if err != nil {
+			continue
+		}
+		if err := appendIndexLocked(s); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -424,6 +521,7 @@ func listJournals() ([]namedJournal, error) {
 
 // rebuildIndex rewrites index.jsonl from every run journal, oldest first, so
 // a later Close still appends. Journals that cannot be read are skipped.
+// The caller holds the index lock.
 func rebuildIndex() (int, error) {
 	journals, err := listJournals()
 	if err != nil {
@@ -446,6 +544,7 @@ func rebuildIndex() (int, error) {
 	return len(rows), nil
 }
 
+// writeIndex replaces index.jsonl. The caller holds the index lock.
 func writeIndex(rows []Summary) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err

@@ -12,7 +12,7 @@ installed.
 | `gauntlet pick` | compose a run on screen, then run it |
 | `gauntlet doctor` | report which agent CLIs and helper tools are installed |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
-| `gauntlet runs [--limit N]` | list recent runs recorded under `~/.gauntlet`. Rebuilds a missing or stale `index.jsonl` from the journal files. |
+| `gauntlet runs [--limit N]` | list recent runs recorded under `~/.gauntlet`. Rebuilds a missing `index.jsonl` from the journal files, and appends every newer unindexed journal when the listing is stale. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 

@@ -315,6 +315,7 @@ Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):
 ~/.gauntlet/
   runs/2026-08-25/20260825T131500Z-a91f.jsonl   the full event stream
   index.jsonl                                    one summary line per run
+  .index.lock                                    serializes index rebuilds and Close
   state/                                         hot-reload handoff files
 ```
 
@@ -335,11 +336,13 @@ matter later.
 
 The journals under `runs/` are the durable copy. `index.jsonl` is derived:
 `gauntlet runs` and the file-signal suggester rebuild it when the file is
-missing, empty, or missing the newest journal, which is how a process that
-flushed events then died before writing the summary row still lists.
-`gauntlet show <run-id>` reads the journal file directly and does not need
-the index. A reconstructed summary has no `args` or `exit_code`; only a
-clean close records those.
+missing or empty, and append every newer unindexed journal when it is stale,
+which is how a process that flushed events then died before writing the
+summary row still lists. Several such runs in a row are all appended, oldest
+first. `gauntlet show <run-id>` reads the journal file directly and does not
+need the index. A reconstructed summary has no `args` or `exit_code`; only a
+clean close records those. Rebuilds and Close serialize so a listing cannot
+drop a summary that landed while the index was being rewritten.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 
@@ -347,6 +350,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 |---|---|---|
 | `runs/YYYY-MM-DD/<id>.jsonl` | one run's event stream | copy the files; `gauntlet runs` rebuilds the index from them |
 | `index.jsonl` | listing cache | rebuilt from `runs/` |
+| `.index.lock` | serializes index rebuilds and Close | ephemeral |
 | `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
 | `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one restarts the unfinished loop |
 | `<repo>/.gauntlet.lock` | directory lock | ephemeral |

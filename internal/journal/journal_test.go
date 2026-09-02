@@ -1022,6 +1022,189 @@ func TestHistorySurvivesADeletedIndex(t *testing.T) {
 	}
 }
 
+// Two processes that flushed then died before Close must both list.
+// Recovering only the newest journal would hide the older crash until
+// something deleted the index.
+func TestRecentIndexesTheWholeUnindexedTail(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	idA := NewRunID(first)
+	jA, err := Open(idA, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jA.Close(Summary{
+		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
+	idB := NewRunID(second)
+	jB, err := Open(idB, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jB.Write(map[string]any{
+		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
+	})
+	jB.Write(map[string]any{
+		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
+		"review": "doc-review", "status": "ok", "loop": 1,
+	})
+	jB.Flush()
+	jB.CloseQuiet()
+
+	third := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
+	idC := NewRunID(third)
+	jC, err := Open(idC, third)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jC.Write(map[string]any{
+		"ev": "run_start", "ts": third, "dir": "/c", "version": "test",
+	})
+	jC.Write(map[string]any{
+		"ev": "review_end", "ts": third.Add(time.Minute), "dir": "/c",
+		"review": "sec-review", "status": "ok", "loop": 1,
+	})
+	jC.Flush()
+	jC.CloseQuiet()
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 3 {
+		t.Fatalf("both unindexed journals should list: %+v", runs)
+	}
+	if runs[0].RunID != idC || runs[1].RunID != idB || runs[2].RunID != idA {
+		t.Fatalf("want newest crash, older crash, then the closed run: %+v", runs)
+	}
+	if runs[0].OK != 1 || len(runs[0].Dirs) != 1 || runs[0].Dirs[0] != "/c" {
+		t.Fatalf("newest orphan summary wrong: %+v", runs[0])
+	}
+	if runs[1].OK != 1 || len(runs[1].Dirs) != 1 || runs[1].Dirs[0] != "/b" {
+		t.Fatalf("older orphan summary wrong: %+v", runs[1])
+	}
+	if !slices.Equal(runs[2].Args, []string{"--once"}) {
+		t.Fatalf("appending the tail must not rebuild the healthy rows: %+v", runs[2])
+	}
+}
+
+// A Close that cannot append the index row must not mark the run indexed:
+// the next Close is the retry, and without it the run stays off the listing
+// until something else recovers the journal.
+func TestCloseRetriesAFailedIndexWrite(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now, "dir": "/repo"})
+	j.Flush()
+
+	if err := os.Mkdir(indexPath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{
+		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
+		OK: 1, Reviews: 1, ExitCode: 1,
+	}); err == nil {
+		t.Fatal("index write should fail while the path is a directory")
+	}
+	if err := os.Remove(indexPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{
+		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
+		OK: 1, Reviews: 1, ExitCode: 1,
+	}); err != nil {
+		t.Fatalf("retry should index the run: %v", err)
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].RunID != id {
+		t.Fatalf("retried close should list the run: %+v", runs)
+	}
+	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].ExitCode != 1 {
+		t.Fatalf("retried close should keep the close row: %+v", runs[0])
+	}
+}
+
+// A rebuild of a missing index and a Close racing each other must not let
+// the rename overwrite the Close row. Args and ExitCode live only there.
+func TestIndexRebuildDoesNotDropAConcurrentClose(t *testing.T) {
+	for range 30 {
+		home := t.TempDir()
+		t.Setenv("GAUNTLET_HOME", home)
+
+		first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+		idA := NewRunID(first)
+		jA, err := Open(idA, first)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := jA.Close(Summary{
+			Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
+			ExitCode: 0,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(indexPath()); err != nil {
+			t.Fatal(err)
+		}
+
+		second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
+		idB := NewRunID(second)
+		jB, err := Open(idB, second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jB.Write(map[string]any{"ev": "run_start", "ts": second, "dir": "/b"})
+		jB.Flush()
+
+		var wg sync.WaitGroup
+		wg.Go(func() { _, _ = Recent(10) })
+		wg.Go(func() {
+			_ = jB.Close(Summary{
+				Dirs: []string{"/b"}, Start: second, End: second,
+				Args: []string{"--jobs", "2"}, ExitCode: 2,
+			})
+		})
+		wg.Wait()
+
+		runs, err := Recent(10)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var b Summary
+		found := false
+		for _, r := range runs {
+			if r.RunID == idB {
+				b = r
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("closed run missing after rebuild race: %+v", runs)
+		}
+		if !slices.Equal(b.Args, []string{"--jobs", "2"}) || b.ExitCode != 2 {
+			t.Fatalf("Close row lost to rebuild: %+v", b)
+		}
+	}
+}
+
 func TestRebuildIndexSkipsACorruptJournal(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)
