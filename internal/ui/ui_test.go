@@ -56,7 +56,7 @@ func TestStaticFrameHasEveryInstrument(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 120, 40)
 	for _, want := range []string{
 		"GAUNTLET", "ACTIVITY", "AGENTS", "REVIEWS", "FEED",
-		"sec-review", "claude", "2×lane", "1.0.0",
+		"sec", "claude", "2×lane", "1.0.0",
 	} {
 		if !strings.Contains(frame, want) {
 			t.Errorf("frame is missing %q", want)
@@ -920,6 +920,52 @@ func TestFooterSaysResumeWhenPaused(t *testing.T) {
 	}
 	if strings.Contains(footer, "space:pause") {
 		t.Fatalf("a paused feed still advertises pause:\n%s", footer)
+	}
+}
+
+// f is the same kind of toggle: the footer says what the next press does.
+func TestFooterSaysWidenWhenFiltered(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.filter = feedSignal
+	footer := lastLine(stripANSI(m.View()))
+	if !strings.Contains(footer, "f:widen") {
+		t.Fatalf("a narrowed feed still says filter:\n%s", footer)
+	}
+	if strings.Contains(footer, "f:filter") {
+		t.Fatalf("a narrowed feed still advertises filter:\n%s", footer)
+	}
+}
+
+// Lanes and the feed spell a review the way the grid already did: without the
+// -review suffix that is the same on every name.
+func TestDashboardSpellsReviewNamesWithoutTheSuffix(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	m.apply(runner.Event{Kind: runner.EvReviewStart, Review: "sec-review",
+		Agent: "claude", Time: m.cfg.Started})
+	m.apply(runner.Event{Kind: runner.EvOutput, Review: "sec-review", Agent: "claude",
+		Text: "looking at auth", LineKind: normalize.Plain})
+	got := stripANSI(m.View())
+	if !strings.Contains(got, "sec") {
+		t.Fatal("short review name missing from the frame")
+	}
+	if strings.Contains(got, "sec-review") {
+		t.Fatalf("the -review suffix leaked onto a lane or feed prefix:\n%s", got)
+	}
+}
+
+// home / end are the same jumps as g / G, for keyboards that have them.
+func TestFeedHomeAndEndMatchG(t *testing.T) {
+	m := newModel(demoConfig())
+	m.feed = make([]feedLine, 40)
+	m.Update(tea.KeyMsg{Type: tea.KeyHome})
+	if m.scroll != 39 {
+		t.Fatalf("home left scroll %d, want the oldest line", m.scroll)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if m.scroll != 0 {
+		t.Fatalf("end left scroll %d, want the live edge", m.scroll)
 	}
 }
 

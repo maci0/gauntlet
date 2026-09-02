@@ -160,6 +160,12 @@ func dirLabel(dir string, w int) string {
 	return dir
 }
 
+// reviewShort is a review as the screens name it: the -review suffix is noise
+// repeated on every cell, lane, and feed line.
+func reviewShort(name string) string {
+	return strings.TrimSuffix(name, "-review")
+}
+
 func styled(c lipgloss.TerminalColor, s string) string {
 	return lipgloss.NewStyle().Foreground(c).Render(s)
 }

@@ -317,6 +317,12 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.move(+1)
 	case "up", "k":
 		p.move(-1)
+	case "home":
+		p.cursor[p.focus] = 0
+	case "end":
+		if n := p.paneLen(p.focus); n > 0 {
+			p.cursor[p.focus] = n - 1
+		}
 	case " ":
 		p.toggle()
 	case "a":
@@ -462,10 +468,17 @@ func (p *picker) toggle() {
 		case rowReview:
 			p.selected[r.review.Name] = !p.selected[r.review.Name]
 		case rowGroup:
-			// A header fills its group, and empties it when it is already full.
-			g := p.cfg.Groups[r.group]
-			want := p.groupOn(r.group) < len(g.Reviews)
-			for _, rev := range g.Reviews {
+			// A header fills its visible members, and empties them when they
+			// are already full. A filter hides the rest, so those stay put.
+			matches := p.matching(p.cfg.Groups[r.group])
+			want := false
+			for _, rev := range matches {
+				if !p.selected[rev.Name] {
+					want = true
+					break
+				}
+			}
+			for _, rev := range matches {
 				p.selected[rev.Name] = want
 			}
 			p.open[r.group] = true
@@ -505,14 +518,20 @@ func (p *picker) toggle() {
 }
 
 // toggleAll clears the focused pane, or fills it when it is already empty.
+// A filter bounds the reviews pane: hidden rows are not selected by accident.
 func (p *picker) toggleAll() {
 	switch p.focus {
 	case paneReviews:
-		want := p.chosen() == 0
-		for _, g := range p.cfg.Groups {
-			for _, rev := range g.Reviews {
-				p.selected[rev.Name] = want
+		revs := p.visibleReviews()
+		want := true
+		for _, rev := range revs {
+			if p.selected[rev.Name] {
+				want = false
+				break
 			}
+		}
+		for _, rev := range revs {
+			p.selected[rev.Name] = want
 		}
 	case paneAgents:
 		want := !slices.Contains(p.agents, true)
@@ -520,6 +539,23 @@ func (p *picker) toggleAll() {
 			p.agents[i] = want
 		}
 	}
+}
+
+// visibleReviews is the reviews the tree is showing: the filter's matches,
+// or everything when there is no filter. A review in two sets is one review.
+func (p *picker) visibleReviews() []PickReview {
+	var out []PickReview
+	seen := map[string]bool{}
+	for _, g := range p.cfg.Groups {
+		for _, rev := range p.matching(g) {
+			if seen[rev.Name] {
+				continue
+			}
+			seen[rev.Name] = true
+			out = append(out, rev)
+		}
+	}
+	return out
 }
 
 func (p *picker) groupOn(i int) int {
@@ -680,7 +716,7 @@ func (p *picker) reviewArgs() string {
 // on the triage agent. Sets and the keyword are resolved before review names,
 // so the full name is the only spelling that means what was selected.
 func (p *picker) abbreviate(name string) string {
-	short := strings.TrimSuffix(name, "-review")
+	short := reviewShort(name)
 	if short == name {
 		return name
 	}
@@ -755,7 +791,7 @@ func (p *picker) suggestAgent() string {
 
 func (p *picker) View() string {
 	if !p.ready {
-		return ""
+		return "\n  gauntlet is warming up…"
 	}
 	if p.help {
 		return p.renderHelp()
@@ -915,6 +951,14 @@ func (p *picker) renderKeys() string {
 		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
 		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 	}
+	if p.typing {
+		// q types into the filter rather than leaving, and enter keeps the
+		// filter rather than launching. Advertising the pane keys here is
+		// how a reader thinks they cancelled a run they only searched.
+		keys = []struct{ k, v string }{
+			{"⏎", "keep"}, {"esc", "clear"}, {"↑↓", "move"},
+		}
+	}
 	var b strings.Builder
 	for _, k := range keys {
 		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.v)
@@ -945,7 +989,11 @@ func (p *picker) renderNarrow() string {
 	if why := p.blocked(); why != "" {
 		rows = append(rows, styleWarn.Render("⚠ "+why))
 	}
-	rows = append(rows, styleDim.Render("⏎ run  q cancel  ? help"))
+	keys := "⏎ run  q cancel  ? help"
+	if p.typing {
+		keys = "⏎ keep  esc clear"
+	}
+	rows = append(rows, styleDim.Render(keys))
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)
 	}
@@ -961,8 +1009,9 @@ func (p *picker) renderHelp() string {
 		"  j / k        move within a pane",
 		"  space        toggle a review, a set, an agent, or a switch",
 		"  ← / →        open or close a set; change a value",
-		"  a            all or none in this pane",
-		"  /            filter reviews by name or description",
+		"  a            all or none of what this pane is showing",
+		"  /            filter reviews by name or description; enter keeps it, esc clears",
+		"  home / end   first / last row in this pane",
 		"  + / -        raise or lower concurrency",
 		"  enter        run the composed command",
 		"  q            leave without running",
@@ -1176,7 +1225,7 @@ func (p *picker) runPanel(w, h int) string {
 // noise repeated 50 times, and a prompt the reviewed tree carries overrides
 // the bundled one of that name, which is worth knowing before picking it.
 func reviewLabel(rev PickReview) string {
-	name := strings.TrimSuffix(rev.Name, "-review")
+	name := reviewShort(rev.Name)
 	if rev.Project {
 		name += " [project]"
 	}

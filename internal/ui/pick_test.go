@@ -602,3 +602,77 @@ func TestNarrowLauncherClipsToThePane(t *testing.T) {
 		}
 	}
 }
+
+// A filter is a search: bulk select and a set header must not reach through
+// it and toggle reviews the tree is not showing.
+func TestPickFilterBoundsBulkSelect(t *testing.T) {
+	p := demoPicker()
+	p.toggleAll() // all four selected
+	p.filter = "ux"
+	p.toggleAll()
+	if p.selected["ux-review"] {
+		t.Fatal("a on a filtered pane should clear the visible review")
+	}
+	for _, name := range []string{"sec-review", "code-review", "a11y-review"} {
+		if !p.selected[name] {
+			t.Fatalf("%s was hidden by the filter and still got cleared", name)
+		}
+	}
+	p.toggleAll()
+	if !p.selected["ux-review"] {
+		t.Fatal("a on an empty visible set should fill it")
+	}
+	if p.chosen() != 4 {
+		t.Fatalf("filling the visible set touched hidden rows: chosen %d", p.chosen())
+	}
+}
+
+func TestPickFilterBoundsGroupToggle(t *testing.T) {
+	p := demoPicker()
+	p.filter = "ux"
+	p.cursor[paneReviews] = 1 // frontend header; quick has no match
+	p.toggle()
+	if !p.selected["ux-review"] {
+		t.Fatal("space on the filtered group should take the visible member")
+	}
+	if p.selected["a11y-review"] {
+		t.Fatal("space on the filtered group selected a hidden member")
+	}
+}
+
+// While the filter is open, enter keeps it and q types. The footer has to
+// name those keys, or it keeps advertising a launch the key no longer does.
+func TestPickFilterFooterNamesFilterKeys(t *testing.T) {
+	p := demoPicker()
+	press(p, "/")
+	footer := lastLine(stripANSI(p.View()))
+	for _, want := range []string{":keep", ":clear"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("typing a filter, footer lost %q:\n%s", want, footer)
+		}
+	}
+	for _, dead := range []string{":run", ":cancel"} {
+		if strings.Contains(footer, dead) {
+			t.Fatalf("typing a filter, footer still advertises %q:\n%s", dead, footer)
+		}
+	}
+}
+
+func TestPickWarmupMatchesTheDashboard(t *testing.T) {
+	p := newPicker(PickConfig{})
+	if got := p.View(); !strings.Contains(got, "warming up") {
+		t.Fatalf("an unready launcher was blank: %q", got)
+	}
+}
+
+func TestPickHomeEndJumpThePane(t *testing.T) {
+	p := demoPicker()
+	p.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if want := len(p.rows()) - 1; p.cursor[paneReviews] != want {
+		t.Fatalf("end left cursor %d, want the last row %d", p.cursor[paneReviews], want)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyHome})
+	if p.cursor[paneReviews] != 0 {
+		t.Fatalf("home left cursor %d, want the first row", p.cursor[paneReviews])
+	}
+}

@@ -226,12 +226,12 @@ you do:
 
 | Key | Action |
 |---|---|
-| `q`, `esc` | quit (stops the run, killing what is running) |
+| `q`, `esc` | press twice to stop the run, killing what is running; the first press arms it |
 | `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `f` | narrow the feed to results, errors, and diffs, and back |
-| `g` / `G` | jump to oldest / newest |
+| `g` / `G`, `home` / `end` | jump to oldest / newest |
 | `?` | help, and the list of unmerged branches |
 
 Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,

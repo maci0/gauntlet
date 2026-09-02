@@ -48,11 +48,12 @@ several paths uses the first.
 |---|---|
 | `tab` / `shift+tab` | move between reviews, agents, and run options |
 | `up`/`down`, `j`/`k` | move within a pane |
-| `space` | toggle a review, a whole set, an agent, or a switch |
+| `space` | toggle a review, a whole set, an agent, or a switch. A set header toggles the members the filter is showing. |
 | `left`/`right`, `h`/`l` | collapse or expand a set; change the job count |
-| `a` | select all or none in this pane |
+| `a` | select all or none of what this pane is showing (the filter, if any, bounds it) |
 | `+` / `-` | raise or lower concurrency, from any pane |
-| `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it |
+| `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it. While typing, the key legend names those keys instead of run/cancel. |
+| `home` / `end` | first / last row in the focused pane |
 | `?` | toggle a help overlay; `q` / `esc` close it |
 | `enter` / `q` | run the composed command / leave without running |
 

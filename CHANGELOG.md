@@ -46,6 +46,14 @@ minor instead and were listed under Changed.
 
 - Dashboard and launcher wordmark is the brand teal of the mark, one hue,
   not a per-letter gradient. Panel names stay dim with the rest of the chrome.
+- Dashboard lanes and the feed drop the `-review` suffix the grid already
+  omitted, so a name is spelled the same way on every instrument.
+- `f` in the dashboard footer says `widen` while the feed is narrowed, the
+  same way `space` says `resume` while paused.
+- `home` / `end` jump the dashboard feed the way `g` / `G` do, and jump to
+  the first or last row of the focused launcher pane.
+- The launcher shows the same "warming up" line as the dashboard until the
+  terminal reports its size, instead of a blank screen.
 - `--continue-sessions` with `--jobs` above 1 or `--stacked-prs` is a usage
   error. Those modes give each review a fresh worktree, so there is no session
   to resume; the flag used to be accepted and silently ignored. Scripts that
@@ -102,6 +110,13 @@ minor instead and were listed under Changed.
   explicit empty `--prompt-dir` or `--log` is a usage error too, matching
   `--dir`. A leading `~/` with no usable HOME is refused rather than taken
   relative to the working directory.
+- The launcher's `a` key and a set header's space bar act on the reviews the
+  filter is showing, not the ones it hid. A fruitless filter no longer
+  selects the whole catalog.
+- Typing a review filter on the launcher replaces the key legend with the
+  keys that work there (`enter` keeps it, `esc` clears it). The legend used
+  to keep advertising `run` and `cancel`, which those keys do not do until
+  the filter is closed.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal

@@ -333,9 +333,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scroll = max(0, m.scroll-1)
 		case "k", "up":
 			m.scroll = min(m.scroll+1, max(0, len(m.visibleFeed())-1))
-		case "g":
+		case "g", "home":
 			m.scroll = max(0, len(m.visibleFeed())-1)
-		case "G":
+		case "G", "end":
 			m.scroll = 0
 		case "f":
 			m.filter = (m.filter + 1) % feedFilters
@@ -631,7 +631,7 @@ func (m *model) reviewCellWidth() int {
 			longest = max(longest, w)
 			continue
 		}
-		w := uniseg.StringWidth(strings.TrimSuffix(n, "-review"))
+		w := uniseg.StringWidth(reviewShort(n))
 		if m.cellWidths == nil {
 			m.cellWidths = map[string]int{}
 		}
@@ -795,11 +795,11 @@ func (m *model) renderLanes(w, h int) string {
 			if m.cfg.Timeout > 0 {
 				frac = m.now.Sub(l.start).Seconds() / m.cfg.Timeout.Seconds()
 			}
-			name := l.review
+			name := reviewShort(l.review)
 			if l.attempt > 1 {
 				// A retry looks like a restart otherwise: same review, same
 				// lane, clock back to zero.
-				name = fmt.Sprintf("%s ↻%d", l.review, l.attempt)
+				name = fmt.Sprintf("%s ↻%d", name, l.attempt)
 			}
 			work = pad(styleValue.Render(trim(name, revW)), revW) + " " +
 				meter(frac, meterW, hue) + " " +
@@ -929,7 +929,7 @@ func (m *model) renderGrid(w, h int) string {
 	for _, name := range names {
 		r := m.reviews[name]
 		glyph, col := statusGlyph(r.status)
-		short := trim(strings.TrimSuffix(name, "-review"), cellW-3)
+		short := trim(reviewShort(name), cellW-3)
 		cell := styled(col, glyph) + " "
 		switch r.status {
 		case statusRunning:
@@ -1020,7 +1020,7 @@ func (m *model) renderFeed(w, h int) string {
 	for _, l := range visible {
 		prefix := ""
 		if l.review != "" {
-			prefix = styled(m.hues.get(l.agent), pad(trim(l.review, 16), 16)) + styleFaint.Render(" │ ")
+			prefix = styled(m.hues.get(l.agent), pad(trim(reviewShort(l.review), 16), 16)) + styleFaint.Render(" │ ")
 		}
 		text := l.text
 		if l.repeat > 1 {
@@ -1166,7 +1166,7 @@ func (m *model) renderHelp() string {
 		"  ctrl+c x2   quit while a finish is draining (stops the run)",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed",
-		"  g / G       jump to oldest / newest",
+		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results and errors, and back",
 		"  ?, h        toggle this help",
 		"",
@@ -1201,7 +1201,11 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 		keys = append(keys, struct{ k, d string }{"s", "finish"})
 	}
 	if scrollable {
-		keys = append(keys, struct{ k, d string }{"f", "filter"})
+		f := "filter"
+		if m.filter == feedSignal {
+			f = "widen"
+		}
+		keys = append(keys, struct{ k, d string }{"f", f})
 	}
 	return keys
 }
