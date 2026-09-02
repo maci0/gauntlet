@@ -31,3 +31,23 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 		t.Fatal("make install must say when ~/.local/bin is not on PATH")
 	}
 }
+
+// AGENTS.md is loaded into every agent session. The three shipped tag
+// sets must be named the way make and CI invoke them: a wrong command
+// here is re-run by something that trusts it.
+func TestAgentsMdDocumentsTheThreeTagSets(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(b)
+	if !strings.Contains(text, "TAGS=notoktop") {
+		t.Fatal("AGENTS.md must name TAGS=notoktop (drops transcript reading)")
+	}
+	if !strings.Contains(text, "`TAGS=`") {
+		t.Fatal("AGENTS.md must name TAGS= (empty tags: drops the sqlite driver)")
+	}
+	if strings.Contains(text, "drop both") {
+		t.Fatal("AGENTS.md must not treat TAGS=notoktop as dropping toktop and sqlite together; TAGS= is the sqlite-off build")
+	}
+}
