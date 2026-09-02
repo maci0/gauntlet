@@ -122,6 +122,9 @@ minor instead and were listed under Changed.
   merge is a scratch checkout of committed work, so a local notes.txt was
   never going to be in it; refusing the merge used to drop a loop's
   committed changes. Tracked dirty files still block, matching `--jobs`.
+- A pump that outlives an agent's process no longer publishes output or
+  usage after that review has ended. Those events are keyed by agent, so
+  they used to land on whatever the same agent started next.
 - A trailing `}` or `]` after `agents.json` is refused, matching
   `encoding/json`. `json.Decoder.More` treats those closers as end-of-value,
   so `{}}` used to load as an empty definition set.

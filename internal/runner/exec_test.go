@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -187,6 +188,47 @@ func TestRunProcPumpsEndWhenAGrandchildHoldsThePipe(t *testing.T) {
 	}
 	t.Fatalf("pump goroutines outlived runProc: %d goroutines now, %d before",
 		runtime.NumGoroutine(), before)
+}
+
+// A grandchild that keeps writing after the agent is killed leaves the pumps
+// running past drainGrace. Output is keyed by agent, so a line published after
+// runProc returns is attributed to whatever that agent starts next.
+func TestRunProcDoesNotSinkAfterReturn(t *testing.T) {
+	if _, err := exec.LookPath("setsid"); err != nil {
+		t.Skip("setsid is required to simulate a detached grandchild")
+	}
+	oldDrain := drainGrace
+	drainGrace = 100 * time.Millisecond
+	t.Cleanup(func() { drainGrace = oldDrain })
+
+	bin := fakeAgent(t, t.TempDir(), "agent",
+		"setsid -f sleep 20\n"+
+			"while true; do echo tick; done\n")
+
+	var seen, late atomic.Int64
+	var finished atomic.Bool
+	res := runProc(context.Background(), procOpts{
+		Argv:    []string{bin},
+		Timeout: 500 * time.Millisecond,
+		Raw:     true,
+		Sink: func(normalize.Line) {
+			seen.Add(1)
+			if finished.Load() {
+				late.Add(1)
+			}
+		},
+	})
+	finished.Store(true)
+	if !res.TimedOut {
+		t.Fatalf("want timeout, got %+v", res)
+	}
+	if seen.Load() == 0 {
+		t.Fatal("sink never ran")
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := late.Load(); n > 0 {
+		t.Fatalf("sink ran %d times after runProc returned", n)
+	}
 }
 
 // An agent must run in its own session, not just its own process group. A

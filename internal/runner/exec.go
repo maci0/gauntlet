@@ -146,9 +146,12 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// emitting is cleared once the result is being assembled, so a pump that
 	// outlives drainGrace cannot publish usage or output for a review that
 	// has already ended: those events are keyed by agent, and would land on
-	// whatever that agent starts next.
+	// whatever that agent starts next. The flag is cleared under usageMu, and
+	// callbacks is incremented under the same lock, so a Sink or Usage call
+	// cannot start after the clear, and in-flight ones finish before return.
 	var emitting atomic.Bool
 	emitting.Store(true)
+	var callbacks sync.WaitGroup
 	report := func(u agent.Usage) {
 		if o.Usage == nil || !u.Known() || !emitting.Load() {
 			return
@@ -169,10 +172,14 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			live.Thinking, grew = u.Thinking, true
 		}
 		snapshot := live
-		usageMu.Unlock()
-		if grew {
-			o.Usage(snapshot)
+		if !grew {
+			usageMu.Unlock()
+			return
 		}
+		callbacks.Add(1)
+		usageMu.Unlock()
+		o.Usage(snapshot)
+		callbacks.Done()
 	}
 	observe := func(line string) {
 		if o.Usage == nil || !agent.MayCarryUsage(line) {
@@ -188,9 +195,18 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			Now:            o.Now,
 		})
 		emit := func(l normalize.Line) {
-			if o.Sink != nil && emitting.Load() {
-				o.Sink(l)
+			if o.Sink == nil {
+				return
 			}
+			usageMu.Lock()
+			if !emitting.Load() {
+				usageMu.Unlock()
+				return
+			}
+			callbacks.Add(1)
+			usageMu.Unlock()
+			o.Sink(l)
+			callbacks.Done()
 		}
 		handle := func(line string) {
 			tailMu.Lock()
@@ -279,6 +295,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	usageMu.Lock()
 	emitting.Store(false)
 	usageMu.Unlock()
+	callbacks.Wait()
 
 	tailMu.Lock()
 	final := tail.Bytes()
