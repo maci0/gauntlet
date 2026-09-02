@@ -616,6 +616,24 @@ func TestDiscoverSkipsGitIgnoredPrompts(t *testing.T) {
 	}
 }
 
+func TestSkipProjectRelMatchesWalkDirectoryRules(t *testing.T) {
+	if skipProjectRel("kept-review.md") {
+		t.Fatal("a root prompt must not be skipped")
+	}
+	if skipProjectRel("sub/nested-review.md") {
+		t.Fatal("a prompt in a normal directory must not be skipped")
+	}
+	if !skipProjectRel("vendor/vendored-review.md") {
+		t.Fatal("vendor/ is a skipDir")
+	}
+	if !skipProjectRel(".hidden/buried-review.md") {
+		t.Fatal("a hidden directory is skipped")
+	}
+	if skipProjectRel(".dot-review.md") {
+		t.Fatal("walk skips hidden directories, not hidden files")
+	}
+}
+
 func TestReadNoFollowRejectsOversize(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "big-review.md")
@@ -667,13 +685,64 @@ func TestWalkProjectSkipsPromptDir(t *testing.T) {
 	}
 	for _, root := range []string{dir, "."} {
 		t.Chdir(dir)
-		found := walkProject(root, pd)
+		found := walkProject(t.Context(), root, pd)
 		if inDirFound(root, found) {
 			t.Errorf("root %q: promptDir was walked: %v", root, found)
 		}
 		if !keptFound(root, found) {
 			t.Errorf("root %q: legitimate prompt dropped: %v", root, found)
 		}
+	}
+}
+
+// Git lists *-review.md by basename glob, but discovery must still apply the
+// same directory skips the walk does: a tracked prompt in vendor/ is other
+// people's code, and a hidden directory is not a project prompt.
+func TestWalkProjectGitListingHonorsDirectorySkips(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is required for this test")
+	}
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(git, args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	run("init", "-q")
+	write(t, filepath.Join(dir, "kept-review.md"), "Your goal is to stay.\n")
+	nested := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(nested, "nested-review.md"), "Your goal is to nest.\n")
+	vendored := filepath.Join(dir, "vendor")
+	if err := os.MkdirAll(vendored, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(vendored, "vendored-review.md"), "Your goal is to hide.\n")
+	hidden := filepath.Join(dir, ".hidden")
+	if err := os.MkdirAll(hidden, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(hidden, "buried-review.md"), "Your goal is to hide.\n")
+
+	found := walkProject(t.Context(), dir, "")
+	stems := map[string]bool{}
+	for _, p := range found {
+		stems[strings.TrimSuffix(filepath.Base(p), ".md")] = true
+	}
+	if !stems["kept-review"] || !stems["nested-review"] {
+		t.Fatalf("git listing missed a project prompt: %v", found)
+	}
+	if stems["vendored-review"] {
+		t.Fatalf("a prompt in vendor/ was accepted: %v", found)
+	}
+	if stems["buried-review"] {
+		t.Fatalf("a prompt in a hidden directory was accepted: %v", found)
 	}
 }
 

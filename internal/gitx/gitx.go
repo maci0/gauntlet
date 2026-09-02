@@ -498,12 +498,21 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		return r.lastVal, true
 	}
 
-	diff, err := r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline)
-	if err != nil {
-		return Stats{}, false
-	}
-	untracked, err := r.run(ctx, gitQuick, "ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil {
+	// The two queries are independent reads of the same tree: running them
+	// together cuts sample latency in half, and they only hold r.mu because
+	// the cached result they fill is shared. extraSafeConfig and gitPath
+	// serialize themselves.
+	var diff, untracked []byte
+	var diffErr, lsErr error
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		diff, diffErr = r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline)
+	})
+	wg.Go(func() {
+		untracked, lsErr = r.run(ctx, gitQuick, "ls-files", "--others", "--exclude-standard", "-z")
+	})
+	wg.Wait()
+	if diffErr != nil || lsErr != nil {
 		return Stats{}, false
 	}
 
@@ -838,12 +847,42 @@ func unquoteC(s string) string {
 // ignored. It is what a tree scan should walk, since the repo already declares
 // which directories are build output and which are dependencies.
 func (r *Repo) ListFiles(ctx context.Context) ([]string, error) {
+	return r.listFiles(ctx, 0)
+}
+
+// ListFilesAtMost is ListFiles stopped after n paths. A scan that will only
+// look at the first hundred thousand files must not keep the rest of a
+// million-file listing alive as substrings of one giant string.
+func (r *Repo) ListFilesAtMost(ctx context.Context, n int) ([]string, error) {
+	return r.listFiles(ctx, n)
+}
+
+// ListFilesMatching is ListFiles restricted to a git pathspec (a glob matched
+// against the basename when it contains no slash). Prompt discovery asks for
+// "*-review.md" so a large tree is not walked just to find a handful of files.
+func (r *Repo) ListFilesMatching(ctx context.Context, glob string) ([]string, error) {
+	if glob == "" {
+		return r.listFiles(ctx, 0)
+	}
+	return r.listFiles(ctx, 0, glob)
+}
+
+func (r *Repo) listFiles(ctx context.Context, limit int, pathspec ...string) ([]string, error) {
 	if r == nil || !Available() {
 		return nil, errors.New("git is not available")
 	}
-	out, err := r.run(ctx, gitSlow, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	args := make([]string, 0, 6+len(pathspec))
+	args = append(args, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	if len(pathspec) > 0 {
+		args = append(args, "--")
+		args = append(args, pathspec...)
+	}
+	out, err := r.run(ctx, gitSlow, args...)
 	if err != nil {
 		return nil, err
+	}
+	if limit > 0 {
+		return splitNULAtMost(out, limit), nil
 	}
 	return splitNUL(out), nil
 }
@@ -875,11 +914,39 @@ func (r *Repo) ChangedSince(ctx context.Context, since string) ([]string, error)
 // a file the commit did not touch, and the suggester's tree listing would key
 // its file signals on a name the tree does not have.
 func splitNUL(out []byte) []string {
-	var paths []string
+	// One backing string for every record: the listing is already in memory,
+	// and substrings of it beat a copy per path. Count the NULs so the slice
+	// is sized once; git -z usually terminates the last record, but a missing
+	// terminator still fits in +1.
+	paths := make([]string, 0, bytes.Count(out, []byte{0})+1)
 	for field := range strings.SplitSeq(string(out), "\x00") {
 		if field != "" {
 			paths = append(paths, field)
 		}
+	}
+	return paths
+}
+
+// splitNULAtMost copies at most n records out of git's -z output. Unlike
+// splitNUL it does not alias the input, so the caller can drop the rest of a
+// huge listing without the kept paths pinning it.
+func splitNULAtMost(out []byte, n int) []string {
+	if n <= 0 {
+		return nil
+	}
+	paths := make([]string, 0, n)
+	start := 0
+	for i := 0; i <= len(out); i++ {
+		if i < len(out) && out[i] != 0 {
+			continue
+		}
+		if i > start {
+			paths = append(paths, string(out[start:i]))
+			if len(paths) == n {
+				return paths
+			}
+		}
+		start = i + 1
 	}
 	return paths
 }

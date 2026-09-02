@@ -226,10 +226,25 @@ func clean(raw string) (string, bool) {
 		s = s[len(g):]
 	}
 	s = strings.TrimRight(s, " \t")
-	if s == "" || punctOnlyRe.MatchString(s) || spinnerRe.MatchString(s) || boxRe.MatchString(s) {
+	if s == "" {
+		return "", false
+	}
+	// Spinner, box-drawing, and punctuation-only lines have no ASCII letter.
+	// Typical agent output does, so the three regexes are skipped for it.
+	if !hasASCIILetter(s) && (punctOnlyRe.MatchString(s) || spinnerRe.MatchString(s) || boxRe.MatchString(s)) {
 		return "", false
 	}
 	return s, true
+}
+
+func hasASCIILetter(s string) bool {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+			return true
+		}
+	}
+	return false
 }
 
 // stripControl removes C0/C1 controls and Unicode formatting characters

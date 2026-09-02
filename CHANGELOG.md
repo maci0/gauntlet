@@ -92,7 +92,13 @@ minor instead and were listed under Changed.
   the rows shown rather than a split of the whole slice.
 - The file-signal suggester reuses one git handle for the tree listing and
   the churn window. Opening a repo no longer runs `rev-parse HEAD` until
-  line stats need a baseline.
+  line stats need a baseline. A million-file tree is listed only up to the
+  scan cap, so the unused tail does not stay in memory.
+- Project prompt discovery asks git for `*-review.md` by name instead of
+  walking the tree. Generated and hidden directories are still skipped;
+  a directory that is not a repository still walks.
+- Worktree line samples run `git diff --shortstat` and `ls-files -o`
+  together instead of one after the other.
 
 ### Fixed
 

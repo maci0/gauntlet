@@ -113,7 +113,7 @@ Untrusted inputs with their validation point:
 
 | Entry point | Where it enters | Validation / cap |
 |---|---|---|
-| Project `*-review.md` files | tree walk, `internal/prompt/discover.go:124`; read `prompt.go:63` via `readNoFollow` (`prompt.go:249-272`) | regular files only, `O_NOFOLLOW\|O_NONBLOCK`, 1 MiB cap (`prompt.go:36`); project prompts override bundled ones of the same name (`discover.go:104-111`); duplicate detection reads bounded (`discover.go:179-207`) |
+| Project `*-review.md` files | git `ls-files` glob, walk fallback, `internal/prompt/discover.go`; read `prompt.go` via `readNoFollow` | regular files only, `O_NOFOLLOW\|O_NONBLOCK`, 1 MiB cap; skipDirs and hidden directories dropped; git-ignored files refused; project prompts override bundled ones of the same name; duplicate detection reads bounded |
 | Prompt names (file stems) | `discover.go:68,88` | NFC-normalized keys (`prompt.go:307-308`); control/Cf characters reject the file with a warning (`discover.go:70,90`; strip at `prompt.go:315`) |
 | Prompt descriptions ("Your goal" line) | `prompt.go:87-103`, fed to the suggest catalog `compose.go:193` | name and description both fenced: `</catalog>` and `RELEVANT:` neutralized (`compose.go:200-207`); 200-rune cap on a rune boundary (`compose.go:174,212-223`) |
 | Prompt `Summary:` line | `prompt.go:122-142`, fed to stacked PR bodies `internal/runner/prbody.go` | sanitized and cut to 60 runes at read; PR rendering strips controls, flattens to one line, and bounds again (`prbody.go:19-28`) |

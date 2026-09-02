@@ -771,6 +771,71 @@ func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
 	}
 }
 
+// A glob with no slash is matched against the basename, so "*-review.md"
+// finds nested prompts without listing the rest of the tree.
+func TestListFilesMatchingRestrictsToGlob(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	write := func(name, body string) {
+		t.Helper()
+		full := filepath.Join(r.Dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("top-review.md", "x")
+	write("sub/nested-review.md", "x")
+	write("other.go", "x")
+
+	files, err := r.ListFilesMatching(ctx, "*-review.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, f := range files {
+		got[f] = true
+	}
+	if !got["top-review.md"] || !got["sub/nested-review.md"] {
+		t.Fatalf("glob missed a prompt: %v", files)
+	}
+	if got["other.go"] || got["main.go"] {
+		t.Fatalf("glob leaked a non-matching path: %v", files)
+	}
+}
+
+func TestListFilesAtMostStopsAfterN(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	for _, name := range []string{"a.go", "b.go", "c.go"} {
+		if err := os.WriteFile(filepath.Join(r.Dir, name), []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, err := r.ListFilesAtMost(ctx, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("want 2 paths, got %d: %v", len(files), files)
+	}
+}
+
+func TestSplitNULAtMostDropsEmptyAndCaps(t *testing.T) {
+	got := splitNULAtMost([]byte("a\x00\x00b\x00c"), 2)
+	if !slices.Equal(got, []string{"a", "b"}) {
+		t.Fatalf("got %q", got)
+	}
+	if got := splitNULAtMost(nil, 3); len(got) != 0 {
+		t.Fatalf("empty input: %q", got)
+	}
+	if got := splitNULAtMost([]byte("only"), 5); !slices.Equal(got, []string{"only"}) {
+		t.Fatalf("unterminated record: %q", got)
+	}
+}
+
 // git's -z output is raw bytes on purpose, and a file name may legitimately
 // begin or end with a space. Trimming the records would hand every caller a
 // name that no longer matches the file: a stacked PR body naming a path the

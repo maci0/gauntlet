@@ -625,7 +625,9 @@ func listTree(root string) ([]string, *gitx.Repo) {
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
 	repo := gitx.Open(root)
-	if paths, err := repo.ListFiles(ctx); err == nil && len(paths) > 0 {
+	// Cap at scanMaxFiles so a million-file listing is not kept as one
+	// string that the first hundred thousand paths would pin.
+	if paths, err := repo.ListFilesAtMost(ctx, scanMaxFiles); err == nil && len(paths) > 0 {
 		return paths, repo
 	}
 	var out []string

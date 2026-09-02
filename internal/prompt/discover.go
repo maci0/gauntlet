@@ -77,7 +77,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 		}
 	}
 
-	candidates := walkProject(projectRoot, promptDir)
+	candidates := walkProject(ctx, projectRoot, promptDir)
 	ignored := (&gitx.Repo{Dir: projectRoot}).CheckIgnore(ctx, candidates)
 
 	seen := map[string]string{} // name -> winning path
@@ -121,7 +121,12 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 
 // walkProject lists *-review.md files in the tree, skipping hidden and
 // generated directories and anything inside promptDir.
-func walkProject(root, promptDir string) []string {
+//
+// A git repository is asked for the files by name: walking every directory
+// just to find a handful of prompts is the startup cost that misses the
+// sub-100ms first-output budget on a large tree. The walk remains the
+// fallback when git is missing or the directory is not a repository.
+func walkProject(ctx context.Context, root, promptDir string) []string {
 	absPromptDir := ""
 	if promptDir != "" {
 		absPromptDir, _ = filepath.Abs(promptDir)
@@ -134,6 +139,9 @@ func walkProject(root, promptDir string) []string {
 	absRoot, _ := filepath.Abs(root)
 	abspath := func(path string) string {
 		return filepath.Join(absRoot, strings.TrimPrefix(path, root))
+	}
+	if found, ok := gitProjectPrompts(ctx, root, absPromptDir, abspath); ok {
+		return found
 	}
 	var found []string
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -168,6 +176,55 @@ func walkProject(root, promptDir string) []string {
 	})
 	sort.Strings(found)
 	return found
+}
+
+// gitProjectPrompts asks git for *-review.md files. ok is false when git
+// cannot list the tree, so the caller walks. An empty listing is a successful
+// miss: walking would only find ignored or generated-directory files, both
+// of which discovery already drops.
+func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath func(string) string) ([]string, bool) {
+	rels, err := gitx.Open(root).ListFilesMatching(ctx, "*-review.md")
+	if err != nil {
+		return nil, false
+	}
+	found := make([]string, 0, len(rels))
+	sep := string(os.PathSeparator)
+	for _, rel := range rels {
+		if skipProjectRel(rel) {
+			continue
+		}
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if absPromptDir != "" {
+			abs := abspath(path)
+			if abs == absPromptDir || strings.HasPrefix(abs, absPromptDir+sep) {
+				continue
+			}
+		}
+		fi, e := os.Lstat(path)
+		if e != nil || !fi.Mode().IsRegular() {
+			continue
+		}
+		found = append(found, path)
+	}
+	sort.Strings(found)
+	return found, true
+}
+
+// skipProjectRel reports whether a repo-relative path sits in a directory
+// the walk would have skipped: a generated tree, or any hidden directory.
+// The file's own name is not judged; walk skips hidden directories, not
+// hidden files.
+func skipProjectRel(rel string) bool {
+	parts := strings.Split(filepath.ToSlash(rel), "/")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts[:len(parts)-1] {
+		if skipDirs[part] || strings.HasPrefix(part, ".") {
+			return true
+		}
+	}
+	return false
 }
 
 // sameContent reports whether a project file matches the review it shadows.

@@ -55,8 +55,9 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing
 else. The picker takes the file-signal suggester name from `PickConfig`
 rather than importing `runner` for it. `prompt` imports `gitx`, so project
-discovery's one git call (check-ignore) uses the same hardened resolver and
-safe config as every other git invocation, and `humanize` so composed
+discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
+same hardened resolver and safe config as every other git invocation, and
+`humanize` so composed
 prompts spell timeouts the same way the rest of the binary does. `agent`
 and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere; the CLI
@@ -312,15 +313,18 @@ Agent wall time dominates by three orders of magnitude, so "fast" means the
 runner never adds to it and never makes the user wait to see state.
 
 - **Prompts are embedded** (`go:embed`), so the bundled set costs no syscalls
-  and no prompt directory has to exist. Project prompt discovery walks the tree
-  once, skipping the same directories as the original, and asks git about
-  ignored files in a single batched call rather than one per file.
+  and no prompt directory has to exist. Project prompt discovery asks git for
+  `*-review.md` by basename glob rather than walking the tree, then filters
+  generated and hidden directories the same way the walk would. The walk is
+  the fallback when git is missing or the directory is not a repository;
+  ignored files are still refused by one batched `check-ignore`.
 - **PATH resolution is memoized** per process. The original ran `shutil.which`
   repeatedly; `doctor` alone did hundreds of stat calls serially. Here the
   inventory probes every candidate binary in parallel with a bounded pool.
 - **Git stats are sampled, not polled per review.** One `git diff --shortstat`
-  plus one `ls-files -o` per sample, shared by all lanes behind a mutex, with
-  a minimum interval between samples.
+  and one `ls-files -o` per sample, run together, shared by all lanes behind a
+  mutex, with a minimum interval between samples. The file-signal scan stops
+  listing at a hundred thousand paths so a larger tree does not stay in memory.
 - **Output is streamed, never buffered whole.** Each lane reads into a fixed
   ring (64 KiB tail for token parsing) and pushes normalized lines onward.
   Nothing accumulates per-review output in memory.
