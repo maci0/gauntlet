@@ -111,6 +111,33 @@ func writeScript(t *testing.T, path, body string) {
 // file names), and json.Marshal escapes control bytes but passes bidi
 // overrides through as raw UTF-8, so the replay must strip them the way every
 // other display surface already does.
+// STARTED is a local ISO datetime, not US MM-DD without a year: 01-02 is
+// 2 January or 1 February depending on who reads it, and two runs a year
+// apart on the same calendar day would otherwise look identical.
+func TestRunsListsStartAsISOLocal(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(90 * time.Second),
+		Dirs: []string{"/tmp/proj"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	want := start.Local().Format("2006-01-02 15:04:05")
+	if !strings.Contains(buf.String(), want) {
+		t.Fatalf("STARTED should be ISO local %q, got:\n%s", want, buf.String())
+	}
+}
+
 func TestShowSanitizesReplayedEvents(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "20260826T120000Z-dead"

@@ -32,7 +32,7 @@ func cmdRuns(out io.Writer, pal palette, limit int) int {
 		fmt.Fprintf(out, "No runs recorded yet under %s\n", journal.Home())
 		return exitOK
 	}
-	fmt.Fprintf(out, "%-22s  %-16s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
+	fmt.Fprintf(out, "%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
 		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
 	// The column's name overstates what it counts; say so once, right where
 	// it first appears, or a run that only skipped reviews reads as broken.
@@ -51,8 +51,8 @@ func cmdRuns(out io.Writer, pal palette, limit int) int {
 			tokens = humanize.Count(e.Tokens)
 		}
 		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
-		fmt.Fprintf(out, "%-22s  %-16s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
-			e.RunID, e.Start.Local().Format("01-02 15:04:05"), dur,
+		fmt.Fprintf(out, "%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
+			e.RunID, e.Start.Local().Format("2006-01-02 15:04:05"), dur,
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
 	fmt.Fprintf(out, "\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))

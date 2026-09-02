@@ -32,6 +32,18 @@ func runFakeProc(t *testing.T, body string, tune func(*procOpts)) ([]normalize.L
 	return got, runProc(context.Background(), opts)
 }
 
+// Timeout 0 is "no bound", the same contract --runtime 0 has. time.NewTimer(0)
+// fires immediately, so a zero timeout used to kill the child before it ran.
+func TestZeroTimeoutMeansUnlimited(t *testing.T) {
+	_, res := runFakeProc(t, "sleep 0.3\necho done", func(o *procOpts) { o.Timeout = 0 })
+	if res.TimedOut {
+		t.Fatal("Timeout 0 fired immediately; it must mean no timeout")
+	}
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+}
+
 func TestRawOutputCannotDriveTheTerminal(t *testing.T) {
 	got, res := runFakeProc(t,
 		`printf '\033[31mRED\033[0m plain\n'`,

@@ -80,8 +80,11 @@ type reporter struct {
 	quiet    bool
 }
 
-func (r *reporter) logf(format string, args ...any) {
-	fmt.Fprintf(r.out, "[%s] %s\n", time.Now().Format("15:04:05"),
+func (r *reporter) logf(at time.Time, format string, args ...any) {
+	if at.IsZero() {
+		at = time.Now()
+	}
+	fmt.Fprintf(r.out, "[%s] %s\n", at.Local().Format("15:04:05"),
 		normalize.Sanitize(fmt.Sprintf(format, args...)))
 }
 
@@ -99,7 +102,7 @@ func (r *reporter) handle(ev runner.Event) {
 	}
 	switch ev.Kind {
 	case runner.EvLog:
-		r.logf("%s%s", tag, ev.Text)
+		r.logf(ev.Time, "%s%s", tag, ev.Text)
 	case runner.EvOutput:
 		if r.quiet {
 			return
@@ -112,7 +115,7 @@ func (r *reporter) handle(ev runner.Event) {
 		fmt.Fprintf(r.out, "%s%s\n", prefix, line)
 	case runner.EvMerge:
 		if ev.Status == runner.StatusConflict {
-			r.logf("%sMERGE CONFLICT: %s kept on %s", tag, ev.Review, ev.Branch)
+			r.logf(ev.Time, "%sMERGE CONFLICT: %s kept on %s", tag, ev.Review, ev.Branch)
 		}
 	case runner.EvLoopEnd:
 		lines := ""
@@ -120,7 +123,7 @@ func (r *reporter) handle(ev runner.Event) {
 			lines = fmt.Sprintf(", +%d/-%d lines", *ev.Ins, *ev.Del)
 		}
 		fmt.Fprintln(r.out)
-		r.logf("%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
+		r.logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
 			humanize.Duration(time.Duration(ev.Elapsed*float64(time.Second))), lines)
 		fmt.Fprintln(r.out)
 	}

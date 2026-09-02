@@ -115,10 +115,17 @@ func (d *dirRun) scanDir() string {
 // full results, not just counters: the successor prints the run's summary and
 // writes its index row, and both must describe the whole run.
 type handoff struct {
-	RunID     string                `json:"run_id"`
-	StartedAt time.Time             `json:"started_at"`
-	Reloads   int                   `json:"reloads"`
-	Dirs      map[string]dirHandoff `json:"dirs"`
+	RunID     string    `json:"run_id"`
+	StartedAt time.Time `json:"started_at"`
+	// Elapsed is how long the run had been going when this handoff was
+	// written, measured on the predecessor's monotonic clock. The successor
+	// reconstructs a start from it so --runtime and the dashboard do not
+	// jump when the wall clock steps (NTP, a manual set) during the exec.
+	// Omitempty keeps an old handoff that lacks the field readable: resume
+	// then falls back to the wall-clock difference from StartedAt.
+	Elapsed time.Duration         `json:"elapsed,omitempty"`
+	Reloads int                   `json:"reloads"`
+	Dirs    map[string]dirHandoff `json:"dirs"`
 }
 
 // dirHandoff is one directory's progress at the moment of the swap.
@@ -150,6 +157,21 @@ func (h handoff) Loops() int {
 		n += d.Loops
 	}
 	return n
+}
+
+// resumeStart reconstructs a start time that carries this process's
+// monotonic clock, offset by the elapsed the predecessor already measured.
+// time.Since of the result equals that elapsed plus whatever this process
+// then spends, even if the wall clock stepped during the exec.
+//
+// An old handoff with no elapsed field falls back to the wall-clock span
+// from StartedAt, which is what those binaries already measured against.
+func resumeStart(now time.Time, prior handoff) time.Time {
+	elapsed := prior.Elapsed
+	if elapsed == 0 && !prior.StartedAt.IsZero() {
+		elapsed = now.Sub(prior.StartedAt)
+	}
+	return now.Add(-elapsed)
 }
 
 func run(argv []string) int {
@@ -272,14 +294,22 @@ func run(argv []string) int {
 		prior.Dirs = map[string]dirHandoff{}
 	}
 	runID := prior.RunID
-	startedAt := prior.StartedAt
+	// origin is the wall instant the run began, for the journal. startedAt
+	// is what time.Since measures against in this process: a fresh run uses
+	// now (monotonic), a resumed one is reconstructed from the predecessor's
+	// measured elapsed so an NTP step during the exec cannot exhaust or
+	// extend --runtime.
+	var origin, startedAt time.Time
 	// One clock read for both the id and the shard: two reads either side of
 	// a UTC midnight would put a fresh run's id date and its directory one
 	// day apart.
 	now := time.Now()
 	if !resumed || runID == "" {
 		runID = journal.NewRunID(now)
-		startedAt = now
+		origin, startedAt = now, now
+	} else {
+		origin = prior.StartedAt
+		startedAt = resumeStart(now, prior)
 	}
 
 	ownArtifacts := map[string]bool{}
@@ -450,17 +480,17 @@ func run(argv []string) int {
 			rep.Consume(reportEvents)
 		})
 		if resumed {
-			rep.logf("Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
+			rep.logf(now, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
 				version, runID, prior.Reloads, prior.Loops())
 		}
-		rep.logf("gauntlet %s, run %s, agents: %s", version, runID, strings.Join(runner.AgentLabels(agents), ", "))
+		rep.logf(now, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(runner.AgentLabels(agents), ", "))
 		if autoDetected {
-			rep.logf("Auto-detected agents (name them with --agents to pin the pool)")
+			rep.logf(now, "Auto-detected agents (name them with --agents to pin the pool)")
 		}
 		if opts.jobs > 1 {
-			rep.logf("Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
+			rep.logf(now, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
 		} else if opts.stackedPRs {
-			rep.logf("Stacked PR mode: sequential reviews in one isolated worktree")
+			rep.logf(now, "Stacked PR mode: sequential reviews in one isolated worktree")
 		}
 	}
 	if opts.tui {
@@ -587,7 +617,7 @@ func run(argv []string) int {
 	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
-		if code := doReload(*path, runID, startedAt, runs, prior, argv, stdout); code >= 0 {
+		if code := doReload(*path, runID, origin, time.Since(startedAt), runs, prior, argv, stdout); code >= 0 {
 			// The exec failed, or the handoff could not be saved and the
 			// reload was aborted: no successor is coming, so finish the run
 			// here. Returning without the summary would orphan the whole
@@ -615,7 +645,7 @@ func run(argv []string) int {
 	if reloadFailed {
 		code = exitFail
 	}
-	writeSummary(jrnl, runID, startedAt, dirs, agents, runs, code)
+	writeSummary(jrnl, runID, origin, dirs, agents, runs, code)
 	return code
 }
 
@@ -1015,10 +1045,10 @@ func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *r
 
 // doReload hands control to the new binary. It returns a nonnegative exit code
 // only when the exec failed and the caller should exit normally instead.
-func doReload(path, runID string, start time.Time, runs []*dirRun, prior handoff,
+func doReload(path, runID string, start time.Time, elapsed time.Duration, runs []*dirRun, prior handoff,
 	argv []string, out io.Writer) int {
 	h := handoff{
-		RunID: runID, StartedAt: start, Reloads: prior.Reloads + 1,
+		RunID: runID, StartedAt: start, Elapsed: elapsed, Reloads: prior.Reloads + 1,
 		Dirs: make(map[string]dirHandoff, len(runs)),
 	}
 	for _, d := range runs {

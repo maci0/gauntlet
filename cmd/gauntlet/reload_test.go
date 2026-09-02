@@ -19,6 +19,26 @@ import (
 // journal was already quiet-closed with no index row, so the run would vanish
 // from `gauntlet runs` and the history weighting. The reload is aborted
 // instead, and the caller finishes the run in this process.
+// resumeStart reconstructs a monotonic-bearing start from the elapsed the
+// predecessor measured. An NTP step (or a manual clock set) during the exec
+// must not count toward --runtime; an old handoff that never wrote elapsed
+// still has to trust the wall clock, which is what those binaries measured.
+func TestResumeStartIgnoresAWallClockJumpWhenElapsedIsKnown(t *testing.T) {
+	origin := time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC)
+	measured := 90 * time.Minute
+	now := origin.Add(measured + 2*time.Hour)
+
+	started := resumeStart(now, handoff{StartedAt: origin, Elapsed: measured})
+	if got := now.Sub(started); got != measured {
+		t.Fatalf("elapsed %s includes the wall-clock jump; want the measured %s", got, measured)
+	}
+
+	started = resumeStart(now, handoff{StartedAt: origin})
+	if got := now.Sub(started); got != measured+2*time.Hour {
+		t.Fatalf("wall fallback %s, want %s", got, measured+2*time.Hour)
+	}
+}
+
 func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	// StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
 	// it under a regular file, so MkdirAll fails with ENOTDIR.
@@ -40,7 +60,7 @@ func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	// of execing anything. The abort is reported on stderr, where the
 	// exec-failure path reports too.
 	code, errs := captureStderrFor(t, func() int {
-		return doReload("", "20260827T120000Z-dead", start, runs, handoff{}, []string{}, &out)
+		return doReload("", "20260827T120000Z-dead", start, 0, runs, handoff{}, []string{}, &out)
 	})
 	if code != exitFail {
 		t.Errorf("an unsavable handoff should abort the reload with exit %d, got %d", exitFail, code)

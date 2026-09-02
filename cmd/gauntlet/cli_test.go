@@ -180,7 +180,7 @@ func TestFailedReloadRemovesHandoffState(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "test-run"
 	if code := doReload(filepath.Join(t.TempDir(), "missing-binary"),
-		runID, time.Now(), nil, handoff{}, []string{"--once"}, io.Discard); code != exitFail {
+		runID, time.Now(), 0, nil, handoff{}, []string{"--once"}, io.Discard); code != exitFail {
 		t.Fatalf("a failed exec should exit %d, got %d", exitFail, code)
 	}
 	if _, err := os.Stat(filepath.Join(journal.StateDir(), runID+".json")); !os.IsNotExist(err) {

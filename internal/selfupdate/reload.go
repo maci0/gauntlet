@@ -26,6 +26,14 @@ type fingerprint struct {
 
 func (f fingerprint) valid() bool { return f.size > 0 }
 
+// same reports whether two stats describe one file. mtime is compared with
+// Equal, not ==: Time equality includes the Location pointer, and a Stat
+// that returns the same instant in a different zone (UTC vs Local) would
+// otherwise look like a new binary and fire a reload.
+func (f fingerprint) same(o fingerprint) bool {
+	return f.inode == o.inode && f.size == o.size && f.mtime.Equal(o.mtime)
+}
+
 func stat(path string) (fingerprint, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -85,7 +93,7 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 			if err != nil || !cur.valid() {
 				continue // mid-rename: the next tick sees the new file
 			}
-			if cur == w.base {
+			if cur.same(w.base) {
 				continue
 			}
 			// Re-stat at once and require the same reading: a file caught
@@ -94,7 +102,7 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 			// writers here (self-update, go build) rename atomically, so a
 			// stable fingerprint means a whole file.
 			settled, err := stat(w.path)
-			if err != nil || settled != cur {
+			if err != nil || !settled.same(cur) {
 				continue
 			}
 			w.base = cur

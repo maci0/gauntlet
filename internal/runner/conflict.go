@@ -121,7 +121,10 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 	}
 	r.log("Resolving the %s conflict in %s with %s", review,
 		humanize.List(safePaths(paths), 3), spec.Label())
-	timeout := min(r.cfg.Timeout, conflictTimeout)
+	timeout := conflictTimeout
+	if r.cfg.Timeout > 0 {
+		timeout = min(r.cfg.Timeout, conflictTimeout)
+	}
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit,

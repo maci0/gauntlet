@@ -72,6 +72,20 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 	}
 }
 
+// The prefix is the event's instant, not when the line was printed: a
+// buffered log would otherwise shift every timestamp, and a replay would
+// disagree with the live run.
+func TestReporterLogsTheEventTime(t *testing.T) {
+	stamp := time.Date(2026, 11, 1, 1, 30, 0, 0, time.FixedZone("EST", -5*3600))
+	var out bytes.Buffer
+	r := &reporter{out: &out}
+	r.handle(runner.Event{Kind: runner.EvLog, Text: "hello", Time: stamp})
+	want := "[" + stamp.Local().Format("15:04:05") + "]"
+	if !strings.Contains(out.String(), want) {
+		t.Fatalf("logged %q, want the event time prefix %s", out.String(), want)
+	}
+}
+
 // TestSummaryAggregatesAcrossDirectories pins the end-of-run block scripts
 // parse: fixed sections, totals merged over directories, the token rate and
 // reasoning floor, and a failure list that says why each review failed.

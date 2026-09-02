@@ -18,6 +18,20 @@ type handoffBlob struct {
 	Pending []string `json:"pending"`
 }
 
+func TestFingerprintSameIgnoresLocation(t *testing.T) {
+	utc := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	offset := utc.In(time.FixedZone("test+2", 2*60*60))
+	a := fingerprint{inode: 1, size: 10, mtime: utc}
+	b := fingerprint{inode: 1, size: 10, mtime: offset}
+	if !a.same(b) {
+		t.Fatal("the same instant in different zones must count as the same file")
+	}
+	c := fingerprint{inode: 1, size: 10, mtime: utc.Add(time.Second)}
+	if a.same(c) {
+		t.Fatal("a later mtime must not count as the same file")
+	}
+}
+
 func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 	dir := t.TempDir()
 	want := handoffBlob{Loops: 2, Pending: []string{"sec-review", "doc-review"}}
