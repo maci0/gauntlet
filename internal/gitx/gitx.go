@@ -297,6 +297,10 @@ func isDiffHelper(key string) bool {
 }
 
 func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Duration, args ...string) ([]byte, error) {
+	return r.execGitEnv(ctx, stdin, nil, timeout, args...)
+}
+
+func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []string, timeout time.Duration, args ...string) ([]byte, error) {
 	g := gitPath()
 	if g == "" {
 		return nil, exec.ErrNotFound
@@ -316,7 +320,7 @@ func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Durati
 	// PATH is the same absolute-only list resolveGit uses: GIT_SSH_COMMAND=ssh
 	// looks up ssh on PATH, and a relative entry (notably ".") would pick up
 	// a planted executable in the reviewed tree.
-	cmd.Env = gitEnv()
+	cmd.Env = mergeGitEnv(extraEnv)
 	out := &cappedWriter{limit: gitOutputMax}
 	errBuf := &cappedWriter{limit: gitOutputMax}
 	cmd.Stdout, cmd.Stderr = out, errBuf
@@ -425,6 +429,31 @@ func gitEnv() []string {
 		out = append(out, "GIT_SSH_COMMAND=ssh")
 	}
 	return out
+}
+
+// mergeGitEnv overlays extra KEY=value pairs on gitEnv, replacing any
+// existing entry for the same key. GIT_INDEX_FILE is how Snapshot points
+// git at a private index without touching the real one; getenv returns the
+// first match, so appending would not win over a caller-exported value.
+func mergeGitEnv(extra []string) []string {
+	env := gitEnv()
+	if len(extra) == 0 {
+		return env
+	}
+	drop := make(map[string]struct{}, len(extra))
+	for _, kv := range extra {
+		key, _, _ := strings.Cut(kv, "=")
+		drop[key] = struct{}{}
+	}
+	out := make([]string, 0, len(env)+len(extra))
+	for _, kv := range env {
+		key, _, _ := strings.Cut(kv, "=")
+		if _, ok := drop[key]; ok {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, extra...)
 }
 
 func absPATH() string {

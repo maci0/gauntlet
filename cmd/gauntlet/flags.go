@@ -317,7 +317,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("j", "jobs", func(n string) {
 		fs.IntVar(&o.jobs, n, 1, "reviews to run at once per directory; >1 gives each its own git worktree and merges back")
 	})
-	fs.IntVar(&o.retries, "retries", defaultRetries, "reruns of a failed review on the same agent, waiting longer each time (0 = none)")
+	fs.IntVar(&o.retries, "retries", defaultRetries, "reruns of a failed review on the same agent from the same tree, waiting longer each time (0 = none)")
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
 	fs.Var(seedFlag{&o.seed}, "seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })

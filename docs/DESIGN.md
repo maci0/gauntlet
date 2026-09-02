@@ -134,7 +134,10 @@ the unit of safe parallelism is **the directory**, not the agent.
 - `--stacked-prs` turns on one **isolated sequential stack**, described below.
 - A review that fails to launch or exits non-zero is retried on the same
   agent (`--retries`, default 2), then on further agents until the pool is
-  exhausted. Timeouts are not retried.
+  exhausted. Timeouts are not retried. Each retry starts from the same
+  files the first attempt saw: an isolated review resets its worktree to
+  the base commit, an in-place review restores a snapshot of the working
+  tree (including the user's uncommitted files) taken before the attempt.
 - Cancellation is a `context.Context` per review, plus process-group kill
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
 - Events are published on one buffered channel per run and fanned out to the

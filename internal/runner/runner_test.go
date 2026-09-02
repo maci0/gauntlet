@@ -1088,6 +1088,131 @@ exit 1`)
 	}
 }
 
+// An in-place retry must start from the same files the first attempt saw:
+// the failed attempt's edits and scratch are restored away, and uncommitted
+// files that were already in the tree survive.
+func TestRetriedInPlaceReviewStartsFromSnapshot(t *testing.T) {
+	repo := testRepo(t)
+	wip := filepath.Join(repo, "wip.go")
+	if err := os.WriteFile(wip, []byte("package wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _ := promptSet(t, "sec-review")
+	counter := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo x >> `+counter+`
+attempts=$(wc -l < `+counter+`)
+if [ "$attempts" -ge 2 ]; then
+	if [ -e scratch.go ]; then
+		echo "the failed attempt left scratch.go behind" >&2
+		exit 4
+	fi
+	if grep -q broken main.go; then
+		echo "the failed attempt's edit to main.go is still there" >&2
+		exit 5
+	fi
+	if [ ! -e wip.go ]; then
+		echo "the user's wip.go was lost" >&2
+		exit 6
+	fi
+	echo "package fixed" > fixed.go
+	echo "RESULT: no-changes"
+	exit 0
+fi
+echo "package broken" >> main.go
+echo "package scratch" > scratch.go
+exit 1`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
+		t.Fatalf("the retry must succeed against a restored tree: %+v", c)
+	}
+	body, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := strings.Count(string(body), "x"); lines != 2 {
+		t.Fatalf("agent ran %d times, want 2 (first try plus one retry)", lines)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "scratch.go")); err == nil {
+		t.Fatal("the failed attempt's scratch.go is still in the tree")
+	}
+	main, err := os.ReadFile(filepath.Join(repo, "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(main), "broken") {
+		t.Fatalf("main.go still holds the failed attempt's edit:\n%s", main)
+	}
+	if got, err := os.ReadFile(wip); err != nil || string(got) != "package wip\n" {
+		t.Fatalf("wip.go = %q (%v)", got, err)
+	}
+	if got, err := os.ReadFile(filepath.Join(repo, "fixed.go")); err != nil || string(got) != "package fixed\n" {
+		t.Fatalf("the retry's own change never landed: %q (%v)", got, err)
+	}
+}
+
+// --continue-sessions resumes a successful review's session for the next
+// review, but a retry of a failed attempt starts a new session: continuing
+// the failed conversation would replay its side effects on a restored tree.
+func TestContinueSessionsDoesNotResumeAFailedAttempt(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	logPath := filepath.Join(t.TempDir(), "continue")
+	counter := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+c=0
+prompt=""
+for a in "$@"; do
+	[ "$a" = "-c" ] && c=1
+	prompt=$a
+done
+echo "c=$c" >> `+logPath+`
+# a-review is first and always succeeds; b-review fails once then succeeds.
+case "$prompt" in
+*"Your goal is to test b-review"*)
+	echo x >> `+counter+`
+	attempts=$(wc -l < `+counter+`)
+	if [ "$attempts" -lt 2 ]; then
+		exit 1
+	fi
+	;;
+esac
+echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.ContinueSessions = true
+	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	// ResumeQueue pins the order: schedule() shuffles otherwise, and the
+	// assertion is that b-review's first try resumes a-review's session.
+	cfg.ResumeQueue = []string{"a-review", "b-review"}
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.OK != 2 || c.Failures() != 0 {
+		t.Fatalf("counts: %+v", c)
+	}
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(got)), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("launches = %d, want 3 (a-review, b-review, b-review retry):\n%s", len(lines), got)
+	}
+	if lines[0] != "c=0" {
+		t.Fatalf("first review resumed a session: %s", lines[0])
+	}
+	if lines[1] != "c=1" {
+		t.Fatalf("second review did not resume the successful session: %s", lines[1])
+	}
+	if lines[2] != "c=0" {
+		t.Fatalf("retry resumed the failed session: %s", lines[2])
+	}
+}
+
 // --merge-into moves each loop's commits onto another branch without ever
 // checking that branch out in the tree the reviews are running in.
 func TestMergeIntoLandsTheWorkOnAnotherBranch(t *testing.T) {

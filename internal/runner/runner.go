@@ -150,6 +150,10 @@ type Runner struct {
 	tools   map[string]string
 	mergeMu sync.Mutex // serializes merges into the main tree
 
+	// retrySnap is the in-place tree as it was before the current review.
+	// Isolated reviews rewind a worktree to its base commit instead.
+	retrySnap gitx.Snapshot
+
 	loopMu    sync.Mutex
 	loopCount int
 
@@ -852,7 +856,21 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 
 // runReview dispatches one review to one agent. wt is nil for in-place runs.
 func (r *Runner) runReview(ctx context.Context, review string, loopNo int, wt *gitx.Worktree) Result {
+	if wt == nil && r.repo != nil && r.mayRetry() && gitx.Available() {
+		if snap, err := r.repo.Snapshot(ctx); err != nil {
+			r.log("Warning: cannot snapshot the tree before %s: %v", review, err)
+		} else {
+			r.retrySnap = snap
+			defer func() { r.retrySnap = gitx.Snapshot{} }()
+		}
+	}
 	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{}, 0)
+}
+
+// mayRetry reports whether a failed launch or nonzero exit can run again:
+// either another attempt on the same agent, or a different agent in the pool.
+func (r *Runner) mayRetry() bool {
+	return r.cfg.Retries > 0 || len(r.cfg.Agents) > 1
 }
 
 // shouldResume reports whether this launch may resume the spec's previous
@@ -1026,19 +1044,23 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
 		res.Status = StatusFail
 		res.Detail = pr.Err.Error()
+		r.forgetSession(spec)
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
 	case pr.TimedOut:
 		r.log("TIMEOUT: %s (%s) after %s", review, spec.Label(), humanize.Duration(r.cfg.Timeout))
 		res.Status = StatusTimeout
+		r.forgetSession(spec)
 	case pr.Canceled:
 		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
 		res.Status = StatusInterrupted
+		r.forgetSession(spec)
 	case pr.ExitCode != 0:
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)
 		res.Status = StatusFail
+		r.forgetSession(spec)
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
@@ -1082,10 +1104,10 @@ const (
 // budget for the same reason.
 //
 // A retried review starts from the same state as the first attempt: in an
-// isolated review the worktree is reset to its base commit, so the failed
-// attempt's half-applied fixes cannot leak into what the retry sees, commits,
-// or merges. Sequential reviews retry in place, where the tree belongs to the
-// user and is not the runner's to rewind.
+// isolated review the worktree is reset to its base commit; in place, the
+// working tree is restored to the snapshot taken before the first attempt,
+// including the user's own uncommitted files. Either way the failed attempt's
+// half-applied fixes cannot leak into what the retry sees, commits, or merges.
 //
 // ponytail: the backoff is per review, not per agent. Reviews rate-limited by
 // one provider each wait on their own; a shared per-agent gate is the upgrade
@@ -1122,19 +1144,38 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 	return r.runReviewExcluding(ctx, review, loopNo, wt, next, 0), true
 }
 
-// resetForRetry rewinds an isolated review's checkout to its base before the
-// next attempt runs. It reports whether the retry may proceed: a checkout that
-// cannot be restored would make every later attempt build on unknown state,
-// so the review fails instead of committing something no rerun could produce.
+// resetForRetry rewinds the checkout to what the first attempt saw before the
+// next one runs. Isolated reviews reset to the worktree's base commit; in-place
+// reviews restore the pre-review snapshot. It reports whether the retry may
+// proceed: a checkout that cannot be restored would make every later attempt
+// build on unknown state, so the review fails instead of committing something
+// no rerun could produce.
 func (r *Runner) resetForRetry(ctx context.Context, review string, wt *gitx.Worktree) bool {
-	if wt == nil {
+	if wt != nil {
+		if err := wt.ResetToBase(ctx); err != nil {
+			r.log("Cannot restore the worktree for %s before the retry: %v", review, err)
+			return false
+		}
 		return true
 	}
-	if err := wt.ResetToBase(ctx); err != nil {
-		r.log("Cannot restore the worktree for %s before the retry: %v", review, err)
+	if !r.retrySnap.Valid() {
+		return true
+	}
+	if err := r.repo.Restore(ctx, r.retrySnap); err != nil {
+		r.log("Cannot restore the tree for %s before the retry: %v", review, err)
 		return false
 	}
 	return true
+}
+
+// forgetSession drops spec from the resume set so a later launch of the same
+// agent starts a new session. A failed, timed-out, or interrupted attempt must
+// not be continued: --continue-sessions is for context between successful
+// reviews, and retrying inside a failed conversation would replay its effects.
+func (r *Runner) forgetSession(spec agent.Spec) {
+	r.mu.Lock()
+	delete(r.sessionStarted, spec)
+	r.mu.Unlock()
 }
 
 // backoff is the wait before the next attempt: doubling, capped, and jittered

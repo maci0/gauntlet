@@ -141,6 +141,11 @@ minor instead and were listed under Changed.
 - Closing `--log` reports a write error instead of dropping it.
 - The dashboard feed's scroll offset stays inside the retained ring, so a
   long pause cannot claim thousands of lines back after history is trimmed.
+- An in-place retry restores the working tree to the snapshot taken before
+  the failed attempt, including the user's own uncommitted files, so the
+  next try starts from the same files the first one saw. Isolated reviews
+  already reset their worktrees. `--continue-sessions` no longer resumes a
+  failed attempt's session.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal

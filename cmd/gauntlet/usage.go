@@ -71,7 +71,7 @@ var helpGroups = []flagGroup{
 		{"", "stacked-prs", "", "one isolated worktree; each changed review opens a PR based on the previous one"},
 		{"", "pr-base", "BRANCH", "remote base fetched for --stacked-prs (default: current branch name)"},
 		{"", "push-remote", "REMOTE", "remote receiving stacked PR branches (default: origin)"},
-		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent, waiting longer each time (default %d)", defaultRetries)},
+		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent from the same tree, waiting longer each time (default %d)", defaultRetries)},
 		{"", "runtime", "DUR", "wall-clock budget for the whole run (0 = unlimited)"},
 		{"", "usage-cmd", "CMD", "command printing the percent of the provider's usage window already spent"},
 		{"", "usage-limit", "PCT", "stop starting reviews at this percent of that window (0 = unlimited)"},

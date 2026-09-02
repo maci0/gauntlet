@@ -49,10 +49,12 @@ gauntlet -j 4 -a mixed --once
   after the review, so the work can be inspected or merged by hand. Unresolved
   conflicts are reported as their own outcome and make the run exit nonzero.
 - A review that is retried (`--retries`, after a launch failure or a nonzero
-  exit) starts over from the commit its branch was cut from: whatever the
-  failed attempt left behind is reset away, so attempt N+1 sees exactly what
-  attempt N saw. In-place reviews (`--jobs` 1) retry in the live tree, which
-  belongs to you and is not rewound.
+  exit) starts over from the same files the first attempt saw: whatever the
+  failed attempt left behind is reset away. Isolated reviews rewind their
+  worktree to the commit it was cut from. In-place reviews (`--jobs` 1)
+  restore a snapshot of the working tree taken before the attempt, including
+  uncommitted files that were already there, so your own dirty files survive
+  and the agent's debris does not.
 - Lane checkouts are removed at the end of the loop; merged review branches
   are deleted; unmerged ones survive.
 

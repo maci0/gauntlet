@@ -27,9 +27,13 @@ organizational decisions; none is assigned here.
   place; who commits depends on the mode (see B2). Corruption here destroys
   uncommitted user work, which is why `--jobs N>1` demands a clean tree
   (DESIGN.md "Isolated parallel reviews", rule 1), and why the runner rewinds
-  only its own worktrees between retry attempts (`git reset --hard` +
-  `git clean -fd`, `ResetToBase` in `internal/gitx/worktree.go`; never the
-  user's checkout).
+  only its own worktrees to a base commit between retry attempts
+  (`git reset --hard` + `git clean -fd`, `ResetToBase` in
+  `internal/gitx/worktree.go`). In-place retries restore a snapshot of the
+  user's checkout taken before the attempt (`Snapshot`/`Restore` in
+  `internal/gitx/snapshot.go`): the user's own uncommitted files come back,
+  the failed attempt's edits do not, and HEAD is never moved past that
+  snapshot.
 - **Credentials reachable by the user account**: cloud keys, SSH keys,
   `GH_TOKEN`/`GITHUB_TOKEN`, every agent's own API-key store (`~/.claude`,
   `~/.gemini`, and peers). Agents run with full user privileges.
@@ -166,9 +170,9 @@ privilege transition:
   rule 3). Between retry attempts the runner alone rewinds its worktree to
   the base commit so attempt N+1 starts where N did (`ResetToBase` in
   `internal/gitx/worktree.go`, called from `resetForRetry`): more runner-side
-  git authority, exercised only inside gauntlet-created worktrees, never the
-  user's checkout. Persistent lanes reuse one worktree across reviews; each
-  advance or retry still starts from a known commit.
+  git authority, exercised only inside gauntlet-created worktrees.
+  Persistent lanes reuse one worktree across reviews; each advance or retry
+  still starts from a known commit.
 - **`--stacked-prs` (worktree isolation plus publication):** the runner has
   the same staging, commit, and retry-reset authority inside one scratch
   worktree, then invokes Git to push each committed child branch and `gh` to
@@ -203,8 +207,12 @@ privilege transition:
   Gauntlet's scratch worktrees are refused when `.gauntlet` or
   `.gauntlet/worktrees` is a symlink or not a real directory inside the
   repository (`ensureWorktreeRoot` in `internal/gitx/worktree.go:140`).
-- **Sequential in-place with `--commit`/`--push`:** the commit step is itself
-  an agent launch. `runCommitStep` (`commit.go:97`) execs one agent with
+- **Sequential in-place with `--commit`/`--push`:** a failed review's retry
+  restores a snapshot of the user's checkout taken before the attempt
+  (`Snapshot`/`Restore` in `internal/gitx/snapshot.go`), the same rewind
+  authority as a worktree reset, bounded to putting back files the user
+  already had. The commit step is itself an agent launch. `runCommitStep`
+  (`commit.go:97`) execs one agent with
   `prompt.CommitPrompt` (`compose.go:147`), which instructs it to run
   `git commit`, and with `--push` also `git push`; under `--yolo` a rejected
   push escalates to an agent-run `git pull --rebase` and retry
