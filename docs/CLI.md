@@ -80,7 +80,7 @@ A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |
 
 Sets: `all`, `project`, `quick`, `standard`, `security`, `frontend`,
-`backend`, `agents`, `shipping`. A `*-review.md` file in the reviewed tree is
+`backend`, `agents`, `shipping`, `gitops`. A `*-review.md` file in the reviewed tree is
 picked up automatically and overrides a bundled prompt of the same name.
 
 **Choosing agents**

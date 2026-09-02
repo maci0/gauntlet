@@ -42,6 +42,12 @@ var Sets = map[string][]string{
 		"idempotency-review", "o11y-review", "perf-review", "dst-review",
 		"authz-review", "cache-review", "dr-review",
 	},
+	// Kubernetes manifests, kustomize, Helm charts, and the Argo CD / Flux
+	// delivery layer, plus the existing reviews that share that ground.
+	"gitops": {
+		"k8s-review", "gitops-review", "helm-review", "container-review",
+		"infra-review", "sec-review", "dr-review",
+	},
 	// Repos that ship instructions for AI agents.
 	"agents": {
 		"prompt-review", "skills-review", "agentrules-review", "llm-review",
