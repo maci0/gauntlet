@@ -58,6 +58,11 @@ minor instead and were listed under Changed.
 - `gauntlet runs` prints STARTED as local `YYYY-MM-DD HH:MM:SS`. The old
   `MM-DD HH:MM:SS` column had no year and swapped day and month for readers
   used to ISO dates.
+- `gauntlet runs` DURATION uses the monotonic elapsed Close records, matching
+  the run's Total time. An NTP step or a manual clock set between start and
+  end can no longer stretch or shrink the listing. Old index rows without
+  `elapsed_s` still use End−Start; a pair that moved backwards prints `n/a`
+  instead of `0s`.
 - Bundled review prompts: integer-width and abbreviation rules no longer
   rewrite language-idiomatic types and names; post-quantum crypto items are
   note-only; Kubernetes-native checks skip Dockerfile-only trees; docs-vs-code

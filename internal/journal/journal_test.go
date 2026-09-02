@@ -1244,3 +1244,45 @@ func TestRebuildIndexSkipsACorruptJournal(t *testing.T) {
 		t.Fatalf("the readable journal vanished next to a corrupt one: %+v", runs)
 	}
 }
+
+func TestSummaryDurationPrefersMeasuredElapsed(t *testing.T) {
+	start := time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC)
+	// US spring-forward is 2:00 local this morning; a wall-clock End two
+	// hours later is not the run's duration. The process measured 90 minutes
+	// on its monotonic clock, and that is what the listing must print even
+	// if NTP also stepped the wall clock forward during the run.
+	s := Summary{
+		Start:   start,
+		End:     start.Add(3 * time.Hour),
+		Elapsed: (90 * time.Minute).Seconds(),
+	}
+	d, ok := s.Duration()
+	if !ok || d != 90*time.Minute {
+		t.Fatalf("Duration() = %s, %v; want 90m, true", d, ok)
+	}
+}
+
+func TestSummaryDurationFallsBackToInstants(t *testing.T) {
+	est := time.FixedZone("EST", -5*3600)
+	edt := time.FixedZone("EDT", -4*3600)
+	// 01:30 EST -> 03:30 EDT is one hour of instants: 02:00 EST does not
+	// exist on 2026-03-08. Subtracting clock faces would report two hours.
+	start := time.Date(2026, 3, 8, 1, 30, 0, 0, est)
+	end := time.Date(2026, 3, 8, 3, 30, 0, 0, edt)
+	s := Summary{Start: start, End: end}
+	d, ok := s.Duration()
+	if !ok || d != time.Hour {
+		t.Fatalf("Duration() = %s, %v; want 1h across the spring-forward gap", d, ok)
+	}
+}
+
+func TestSummaryDurationMissingWhenClockSteppedBack(t *testing.T) {
+	start := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC)
+	s := Summary{Start: start, End: start.Add(-time.Hour)}
+	if d, ok := s.Duration(); ok {
+		t.Fatalf("a wall-clock step back reported %s as a duration", d)
+	}
+	if d, ok := (Summary{}).Duration(); ok {
+		t.Fatalf("a zero summary reported %s as a duration", d)
+	}
+}

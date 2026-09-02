@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -138,6 +139,65 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	}
 }
 
+func TestRunsListsMeasuredElapsedWhenTheWallClockJumped(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 3, 8, 7, 0, 0, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// NTP stepped the wall clock two hours forward during a 90-minute run.
+	// End.Sub(Start) would list 2h30m; the measured elapsed is what Total
+	// time printed when the run ended.
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(2*time.Hour + 90*time.Minute),
+		Elapsed: (90 * time.Minute).Seconds(),
+		Dirs:    []string{"/tmp/proj"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "1h30m") {
+		t.Fatalf("DURATION should be the measured 1h30m, got:\n%s", out)
+	}
+	if strings.Contains(out, "2h30m") {
+		t.Fatalf("DURATION used the wall-clock span after an NTP step:\n%s", out)
+	}
+}
+
+func TestRunsListsNAWhenEndPrecedesStart(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 11, 1, 6, 30, 0, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An old index row with no elapsed_s, and a wall clock that stepped
+	// backward: End.Sub(Start) is negative and used to render as 0s.
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(-time.Hour),
+		Dirs: []string{"/tmp/proj"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	if !strings.Contains(buf.String(), "n/a") {
+		t.Fatalf("DURATION should be n/a when the wall clock stepped back, got:\n%s", buf.String())
+	}
+	if strings.Contains(buf.String(), "0s") {
+		t.Fatalf("DURATION must not invent 0s for a negative wall span:\n%s", buf.String())
+	}
+}
+
 func TestRunsListsAfterDeletedIndex(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
@@ -189,5 +249,37 @@ func TestShowSanitizesReplayedEvents(t *testing.T) {
 	}
 	if !strings.Contains(out, "CONFLICT") || !strings.Contains(out, "evil") {
 		t.Errorf("replay lost the readable content: %q", out)
+	}
+}
+
+func TestShowRendersEventTimeFromOffsetStamp(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	runID := "20261101T063000Z-dead"
+	dir := filepath.Join(journal.Home(), "runs", "2026-11-01")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// 01:30 EST on US fall-back day: the hour happens twice, and only the
+	// offset says which. The journal encoder writes time.Time this way;
+	// UnmarshalText is the inverse, so the replay must not drop the prefix.
+	stamp := time.Date(2026, 11, 1, 1, 30, 0, 0, time.FixedZone("EST", -5*3600))
+	line, err := json.Marshal(struct {
+		Ev   string    `json:"ev"`
+		TS   time.Time `json:"ts"`
+		Text string    `json:"text"`
+	}{Ev: "log", TS: stamp, Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, runID+".jsonl"), append(line, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdShow(&buf, runID); code != exitOK {
+		t.Fatalf("replaying a recorded run should exit %d, got %d", exitOK, code)
+	}
+	want := stamp.Local().Format("15:04:05")
+	if !strings.Contains(buf.String(), want) {
+		t.Fatalf("replay lost the event time prefix %s: %q", want, buf.String())
 	}
 }

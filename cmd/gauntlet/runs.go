@@ -38,7 +38,10 @@ func cmdRuns(out io.Writer, pal palette, limit int) int {
 	// it first appears, or a run that only skipped reviews reads as broken.
 	fmt.Fprintln(out, pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
 	for _, e := range entries {
-		dur := humanize.Duration(e.End.Sub(e.Start))
+		dur := "n/a"
+		if d, ok := e.Duration(); ok {
+			dur = humanize.Duration(d)
+		}
 		dirs := make([]string, 0, len(e.Dirs))
 		for _, d := range e.Dirs {
 			dirs = append(dirs, filepath.Base(d))
@@ -70,6 +73,18 @@ func failedCell(pal palette, bad int) string {
 	return s
 }
 
+// showTime renders a journal timestamp as local wall clock. UnmarshalText
+// is the inverse of encoding/json's time.Time marshal, so a Z stamp, an
+// offset, and a fractional second all round-trip; Parse(RFC3339Nano) is
+// close but not that inverse, and a stamp the encoder wrote must replay.
+func showTime(s string) string {
+	var t time.Time
+	if err := t.UnmarshalText([]byte(s)); err != nil {
+		return ""
+	}
+	return t.Local().Format("15:04:05")
+}
+
 // cmdShow replays one run's journal as readable lines.
 func cmdShow(out io.Writer, runID string) int {
 	// One event in memory at a time: a long run's journal can be far larger
@@ -77,9 +92,7 @@ func cmdShow(out io.Writer, runID string) int {
 	err := journal.Events(runID, func(ev map[string]any) {
 		ts := ""
 		if s, ok := ev["ts"].(string); ok {
-			if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
-				ts = t.Local().Format("15:04:05")
-			}
+			ts = showTime(s)
 		}
 		kind, _ := ev["ev"].(string)
 		delete(ev, "ts")

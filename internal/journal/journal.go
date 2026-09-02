@@ -72,6 +72,7 @@ type Summary struct {
 	Args      []string  `json:"args,omitempty"`
 	Start     time.Time `json:"start"`
 	End       time.Time `json:"end"`
+	Elapsed   float64   `json:"elapsed_s,omitempty"` // monotonic seconds; Duration
 	Loops     int       `json:"loops"`
 	Reviews   int       `json:"reviews"`
 	OK        int       `json:"ok"`
@@ -82,6 +83,25 @@ type Summary struct {
 	Del       int       `json:"del,omitempty"`
 	Tokens    int       `json:"tokens,omitempty"`
 	ExitCode  int       `json:"exit_code"`
+}
+
+// Duration is how long the run lasted, and whether that span is known.
+//
+// Close records the monotonic elapsed the process measured (JSON seconds,
+// matching event elapsed_s, not a time.Duration's nanoseconds), so an NTP
+// step or a manual clock set between Start and End cannot turn a 30-minute
+// run into 0s (clock stepped back) or 90 minutes (clock stepped forward).
+// Old index rows, and rows rebuilt from the event stream, have only wall
+// timestamps: End.Sub(Start) is then the fallback, and a pair that moved
+// backwards is missing rather than a negative duration.
+func (s Summary) Duration() (time.Duration, bool) {
+	if s.Elapsed > 0 {
+		return time.Duration(s.Elapsed * float64(time.Second)), true
+	}
+	if s.Start.IsZero() || s.End.IsZero() || s.End.Before(s.Start) {
+		return 0, false
+	}
+	return s.End.Sub(s.Start), true
 }
 
 // Journal is the append-only event log of one run. It is safe for concurrent
@@ -282,8 +302,8 @@ func (j *Journal) CloseQuiet() {
 // The journals under runs/ are the durable copy. If the index is missing,
 // empty, or does not yet name the newest journal (a process that flushed
 // events then died before Close), Recent reconstructs the missing rows from
-// those files and writes them back. A reconstructed row has no Args or
-// ExitCode: only Close records those.
+// those files and writes them back. A reconstructed row has no Args,
+// ExitCode, or Elapsed: only Close records those.
 func Recent(n int) ([]Summary, error) {
 	if n <= 0 {
 		return nil, nil
@@ -334,8 +354,9 @@ func readIndex(n int) ([]Summary, error) {
 }
 
 // recoverIndex restores the listing from the run journals when the index
-// cannot answer. A healthy index is left alone: Close writes Args and
-// ExitCode that the journals do not carry, and rebuilding would drop them.
+// cannot answer. A healthy index is left alone: Close writes Args,
+// ExitCode, and Elapsed that the journals do not carry, and rebuilding
+// would drop them.
 //
 // A stale index is the tail case: one or more processes flushed then died
 // before Close. Appending only the newest journal would hide an older crash
@@ -588,8 +609,8 @@ type indexEvent struct {
 	Agents  []string  `json:"agents"`
 }
 
-// summarizeFile rebuilds a Summary from one run's event stream. Args and
-// ExitCode are not on the events; they stay zero.
+// summarizeFile rebuilds a Summary from one run's event stream. Args,
+// ExitCode, and Elapsed are not on the events; they stay zero.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
 	f, err := os.Open(path)

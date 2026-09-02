@@ -340,9 +340,10 @@ missing or empty, and append every newer unindexed journal when it is stale,
 which is how a process that flushed events then died before writing the
 summary row still lists. Several such runs in a row are all appended, oldest
 first. `gauntlet show <run-id>` reads the journal file directly and does not
-need the index. A reconstructed summary has no `args` or `exit_code`; only a
-clean close records those. Rebuilds and Close serialize so a listing cannot
-drop a summary that landed while the index was being rewritten.
+need the index. A reconstructed summary has no `args`, `exit_code`, or
+`elapsed_s`; only a clean close records those. Rebuilds and Close serialize
+so a listing cannot drop a summary that landed while the index was being
+rewritten.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 
