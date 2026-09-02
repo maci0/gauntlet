@@ -37,7 +37,7 @@ var goldenFlagNames = []string{
 	"h", "help", "hot-reload",
 	"j", "jobs",
 	"l", "limit", "list", "log",
-	"max-loops", "merge-into",
+	"max-loops", "max-reviews", "merge-into",
 	"n", "no-color",
 	"once", "opencode-db",
 	"p", "paths", "pr-base", "prompt-dir", "push", "push-remote",

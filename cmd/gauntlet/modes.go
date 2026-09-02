@@ -86,7 +86,14 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		}
 		fmt.Fprintln(out, pal.bold("Dry run")+pal.dim(": planned schedule for one loop"))
 		names := append([]string(nil), d.reviews...)
-		if !opts.stackedPRs {
+		capped := opts.maxReviews > 0 && opts.maxReviews < len(d.reviews)
+		if opts.stackedPRs {
+			// Stack mode never shuffles, so the capped pass is knowable here:
+			// the first N of the configured order.
+			if capped {
+				names = names[:opts.maxReviews]
+			}
+		} else {
 			sort.Strings(names)
 		}
 		col := 0
@@ -107,7 +114,12 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		if repeats > 0 {
 			extra = fmt.Sprintf(" (%d extra from repeats)", repeats)
 		}
-		fmt.Fprintf(out, "Reviews per loop: %d%s\n", len(d.reviews), extra)
+		if capped {
+			fmt.Fprintf(out, "Reviews per loop: %d of %d%s, capped by --max-reviews\n",
+				opts.maxReviews, len(d.reviews), extra)
+		} else {
+			fmt.Fprintf(out, "Reviews per loop: %d%s\n", len(d.reviews), extra)
+		}
 	}
 	mode := "sequential, in place"
 	if opts.stackedPRs {

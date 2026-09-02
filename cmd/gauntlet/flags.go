@@ -81,6 +81,7 @@ type options struct {
 	mergeInto        string
 	resolveConflicts bool
 	maxLoops         int
+	maxReviews       int
 	seed             uint64
 	commit           bool
 	push             bool
@@ -324,6 +325,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	})
 	fs.IntVar(&o.retries, "retries", defaultRetries, "reruns of a failed review on the same agent from the same tree, waiting longer each time (0 = none)")
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
+	fs.IntVar(&o.maxReviews, "max-reviews", 0, "cap reviews per loop, cut after the seeded shuffle; "+
+		"a repeated review fills one slot per listing (0 = unlimited)")
 	fs.Var(seedFlag{&o.seed}, "seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
 	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
@@ -555,6 +558,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.maxLoops < 0 {
 		return nil, errors.New("--max-loops must be >= 0")
+	}
+	if o.maxReviews < 0 {
+		return nil, errors.New("--max-reviews must be >= 0")
 	}
 	if o.push {
 		o.commit = true
