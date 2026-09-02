@@ -70,18 +70,25 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	case pr.ExitCode != 0:
 		return fmt.Errorf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode)
 	}
-	// The agent says it committed; git decides whether it did. Open never
-	// fails, so git being absent is what the verification actually hits, and
-	// saying so beats letting exec.ErrNotFound surface as "cannot read git
-	// status".
+	return unfinishedCommit(ctx, gitx.Open(o.Dir), nil)
+}
+
+// unfinishedCommit reports whether tracked files are still dirty after a
+// commit-step agent claimed success. The agent saying so is not the same as
+// git saying so: both the in-loop step and the --jobs dirty-tree offer ask
+// this, so a liar cannot make --commit look like it landed work.
+//
+// Untracked files are not the job. The same rule the worktree precondition
+// uses: an agent that leaves untracked scratch behind has still committed
+// what git tracks.
+func unfinishedCommit(ctx context.Context, repo *gitx.Repo, own map[string]bool) error {
+	// Open never fails, so git being absent is what the verification
+	// actually hits, and saying so beats letting exec.ErrNotFound surface
+	// as "cannot read git status".
 	if !gitx.Available() {
 		return errors.New("commit step finished but git is unavailable, so the commit could not be verified")
 	}
-	repo := gitx.Open(o.Dir)
-	// The same rule the worktree precondition uses: what had to be committed
-	// is what git tracks. An agent that leaves untracked scratch behind has
-	// still done the job asked of it.
-	changes, err := repo.Status(ctx, nil)
+	changes, err := repo.Status(ctx, own)
 	if err != nil {
 		return fmt.Errorf("cannot read git status after the commit step: %w", err)
 	}
@@ -152,6 +159,12 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		status = StatusFail
 	default:
 		r.log("%s step done (%s)", action, spec.Label())
+	}
+	if status == StatusOK {
+		if err := unfinishedCommit(ctx, r.repo, r.cfg.OwnArtifacts); err != nil {
+			r.log("%v", err)
+			status = StatusFail
+		}
 	}
 	if status == StatusFail || status == StatusTimeout {
 		r.st.addCommitFail()

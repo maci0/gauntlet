@@ -595,9 +595,12 @@ const commitStepMarker = "commit assistant"
 func TestCommitStepRunsAfterADirtyReview(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "a-review")
-	bin := fakeAgent(t, t.TempDir(), "claude", `
+	agentDir := t.TempDir()
+	bin := fakeAgent(t, agentDir, "claude", `
 case "$*" in *"`+commitStepMarker+`"*)
-  echo "COMMIT: done" > commit-step-ran
+  echo "COMMIT: done" > "$(dirname "$0")/commit-step-ran"
+  git add -A
+  git commit -qm "work"
   exit 0;;
 esac
 echo "// touched" >> main.go
@@ -627,7 +630,7 @@ echo "RESULT: changed=1"`)
 	}
 	// The commit agent answered as the commit assistant, not by falling
 	// through the review branch again.
-	if _, err := os.Stat(filepath.Join(repo, "commit-step-ran")); err != nil {
+	if _, err := os.Stat(filepath.Join(agentDir, "commit-step-ran")); err != nil {
 		t.Fatalf("the commit step never ran its own branch: %v", err)
 	}
 	body, err := os.ReadFile(filepath.Join(repo, "main.go"))
@@ -636,6 +639,9 @@ echo "RESULT: changed=1"`)
 	}
 	if n := strings.Count(string(body), "// touched"); n != 1 {
 		t.Fatalf("the commit step ran the review branch %d extra times:\n%s", n-1, body)
+	}
+	if out := gitOut(t, repo, "status", "--porcelain"); out != "" {
+		t.Fatalf("tracked work left uncommitted after --commit:\n%s", out)
 	}
 }
 
@@ -682,6 +688,42 @@ echo "RESULT: changed=1"`)
 		}
 		if ev.Status != StatusFail {
 			t.Fatalf("commit event reported %v, want fail", ev.Status)
+		}
+		return
+	}
+	t.Fatal("no commit event published")
+}
+
+// An agent that exits happily without committing is a failure, not a
+// success: --commit's contract is that the tracked work landed, not that
+// the assistant said it did. The --jobs dirty-tree offer already asked
+// git; the in-loop step must too.
+func TestCommitStepReportsWhatGitSees(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in *"`+commitStepMarker+`"*) echo "committed everything, honest"; exit 0;; esac
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Commit = true
+
+	r, got := runRecorded(t, cfg)
+
+	if r.Stats().CommitRuns() != 1 || r.Stats().CommitFails() != 1 {
+		t.Fatalf("a tree still dirty after the commit step must be one run and one failure: runs=%d fails=%d",
+			r.Stats().CommitRuns(), r.Stats().CommitFails())
+	}
+	for _, ev := range got {
+		if ev.Kind != EvCommit {
+			continue
+		}
+		if ev.Status != StatusFail {
+			t.Fatalf("commit event reported %v, want fail", ev.Status)
+		}
+		if out := gitOut(t, repo, "status", "--porcelain"); !strings.Contains(out, "main.go") {
+			t.Fatalf("the uncommitted edit must still be in the tree:\n%s", out)
 		}
 		return
 	}
@@ -1105,6 +1147,36 @@ echo "RESULT: changed=1"`)
 	}
 	if tip := gitOut(t, repo, "rev-parse", "main-line"); tip != gitOut(t, repo, "rev-parse", "HEAD") {
 		t.Fatal("nothing was committed, so main-line must not have moved")
+	}
+}
+
+// --merge-into needs a branch to merge from. A detached HEAD has none, so
+// the work cannot land on the target; counting that as success would report
+// a merge that never happened.
+func TestMergeIntoRefusesDetachedHEAD(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	before := gitOut(t, repo, "rev-parse", "main-line")
+	gitRun(t, repo, "checkout", "-q", "--detach")
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+git add -A
+git commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Commit, cfg.MergeInto = true, "main-line"
+	r, got := runRecorded(t, cfg)
+
+	if n := countKind(got, EvMerge); n != 0 {
+		t.Fatalf("%d merge events, want none: there is no branch to merge from", n)
+	}
+	if r.Stats().CommitFails() == 0 {
+		t.Fatal("a refused merge must be counted, not passed over in silence")
+	}
+	if gitOut(t, repo, "rev-parse", "main-line") != before {
+		t.Fatal("main-line must not have moved: the work is on a detached commit")
 	}
 }
 

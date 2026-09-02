@@ -1195,6 +1195,7 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 	from := r.repo.CurrentBranch(ctx)
 	if from == "" {
 		r.log("Not merging into %s: this tree is on a detached HEAD", r.cfg.MergeInto)
+		r.st.addCommitFail()
 		return
 	}
 	if from == r.cfg.MergeInto {
