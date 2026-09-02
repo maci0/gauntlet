@@ -188,13 +188,48 @@ func TestFailedReloadRemovesHandoffState(t *testing.T) {
 	}
 }
 
+// --list and --show-prompt only read prompts. A machine with no agent CLI
+// must still be able to inspect the bundled set; doctor is how you find out
+// the box is empty.
+func TestListAndShowPromptWorkWithoutAgentCLIs(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is required for this test")
+	}
+	bin := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(bin, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	dir := t.TempDir()
+
+	devnull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devnull.Close()
+	origOut, origErr := os.Stdout, os.Stderr
+	defer func() { os.Stdout, os.Stderr = origOut, origErr }()
+	os.Stdout, os.Stderr = devnull, devnull
+	list := run([]string{"--list", "--dir", dir})
+	show := run([]string{"--show-prompt", "sec-review", "--dir", dir})
+	if list != exitOK {
+		t.Errorf("--list without agents exited %d, want %d", list, exitOK)
+	}
+	if show != exitOK {
+		t.Errorf("--show-prompt without agents exited %d, want %d", show, exitOK)
+	}
+}
+
 // A run id that names nothing is a bad argument (exit 2), while a journal
 // that exists but cannot be read is a general failure (exit 1). Scripts use
 // the difference to tell "I typed the wrong id" from "gauntlet broke".
 func TestShowExitCodes(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
-	if code := cmdShow(io.Discard, "no-such-run"); code != exitUsage {
-		t.Errorf("unknown run id should exit %d, got %d", exitUsage, code)
+	got := captureStderr(t, func() int { return cmdShow(io.Discard, "no-such-run") })
+	if !strings.Contains(got, "see: gauntlet runs") {
+		t.Errorf("unknown run id should point at gauntlet runs:\n%s", got)
 	}
 
 	home := t.TempDir()

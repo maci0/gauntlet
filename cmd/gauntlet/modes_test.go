@@ -131,6 +131,13 @@ func TestShowPromptPrintsTheExactAgentText(t *testing.T) {
 			t.Errorf("unknown-review error is missing %q:\n%s", want, stderr)
 		}
 	}
+
+	hint := captureStderr(t, func() int {
+		return cmdShowPrompt(io.Discard, set, &options{showPrompt: "secc"})
+	})
+	if !strings.Contains(hint, `did you mean "sec"`) {
+		t.Errorf("a close miss should hint the stem: %s", hint)
+	}
 }
 
 // TestShowPromptStripsTerminalEscapes pins the display boundary on

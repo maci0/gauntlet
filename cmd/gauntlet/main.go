@@ -254,28 +254,32 @@ func run(argv []string) int {
 		return exitUsage
 	}
 
-	// Agents: explicit list, or everything installed.
+	// Agents: explicit list, or everything installed. --list and --show-prompt
+	// only read prompts, so they must work on a machine that has not installed
+	// an agent yet; doctor is how you find that out.
 	agents := opts.agents
 	autoDetected := false
 	if len(agents) == 0 {
 		agents = agent.Installed()
 		autoDetected = true
+	}
+	if opts.needsAgents() {
 		if len(agents) == 0 {
 			fmt.Fprintf(os.Stderr, "No auto-detectable agents found in PATH. Install one of: %s, "+
 				"or name an agent explicitly with --agents.\n", strings.Join(agent.Valid, ", "))
 			return exitUsage
 		}
-	}
-	for _, spec := range agents {
-		if opts.bin[spec.Tool] != "" {
-			continue
-		}
-		if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
-			continue // BuildCmd falls back to bunx @deepseek-ai/dsh
-		}
-		if agent.Resolve(spec.Tool) == "" {
-			fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", spec.Tool)
-			return exitUsage
+		for _, spec := range agents {
+			if opts.bin[spec.Tool] != "" {
+				continue
+			}
+			if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
+				continue // BuildCmd falls back to bunx @deepseek-ai/dsh
+			}
+			if agent.Resolve(spec.Tool) == "" {
+				fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", spec.Tool)
+				return exitUsage
+			}
 		}
 	}
 
@@ -1159,7 +1163,11 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 // only read EOF.
 func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
 	if opts.yes || opts.yolo {
-		fmt.Fprintf(out, "Committing with %s first (--yes).\n", spec.Label())
+		flag := "--yes"
+		if opts.yolo && !opts.yes {
+			flag = "--yolo"
+		}
+		fmt.Fprintf(out, "Committing with %s first (%s).\n", spec.Label(), flag)
 		return true
 	}
 	if !stdinIsTerminal() {

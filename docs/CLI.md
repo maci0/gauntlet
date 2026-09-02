@@ -20,11 +20,15 @@ Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs`, and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
 `--limit`, and `show` and `version` take none of their own. `--log` and
-`--no-color` work everywhere. Any other flag is refused with a usage error
-(exit 2) rather than parsed and silently dropped, so `gauntlet runs --jobs 4`
-fails loudly instead of printing a table that ignores the concurrency it was
-given. (The `-V` flag form of version is the one exception: it means "print
-the version and exit" and wins over scoping, like help does.)
+`--no-color` work everywhere, and may precede the subcommand, so
+`gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
+`show` takes its run id anywhere among the flags: `gauntlet show --no-color RUN`
+and `gauntlet show RUN --no-color` are the same. Any other flag is refused with
+a usage error (exit 2) rather than parsed and silently dropped, so
+`gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
+the concurrency it was given. (The `-V` flag form of version is the one
+exception: it means "print the version and exit" and wins over scoping, like
+help does.)
 
 `pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
 with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
@@ -114,8 +118,8 @@ picked up automatically and overrides a bundled prompt of the same name.
 | Flag | Purpose |
 |---|---|
 | `doctor` | Report installed agent CLIs and helper tools. Exits 1 if no agent is usable. |
-| `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
-| `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. |
+| `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. `--list` does not need an agent CLI on PATH; `--dry-run` does, because it names the agents a real run would launch. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
+| `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. Does not need an agent CLI on PATH. |
 | `--log FILE` | Also write all output to FILE. |
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
 | `--stream` | On by default: agents that have a machine-readable mode are asked for it, giving live token counts and the reasoning/output split shown separately in the feed (`--stream=false` launches them as before). |

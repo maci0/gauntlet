@@ -59,7 +59,8 @@ discovery's one git call (check-ignore) uses the same hardened resolver and
 safe config as every other git invocation, and `humanize` so composed
 prompts spell timeouts the same way the rest of the binary does. `agent`
 and `prompt` import `fuzzy`, so a
-mistyped review or agent name gets the same suggestion everywhere.
+mistyped review or agent name gets the same suggestion everywhere; the CLI
+uses it for unknown commands and flags too.
 `agent` and `journal` import `gauntlethome`, the one resolver of the state
 root. Nothing inside `internal/` imports `ui`, so the loop runs headless
 with zero TUI cost. `cmd/gauntlet` pins this graph.

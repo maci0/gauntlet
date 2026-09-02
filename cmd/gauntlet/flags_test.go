@@ -417,7 +417,11 @@ func captureStdout(t *testing.T, f func()) string {
 }
 
 func TestHelpPrintsToStdout(t *testing.T) {
-	for _, argv := range [][]string{{"-h"}, {"--help"}, {"doctor", "--help"}} {
+	for _, argv := range [][]string{
+		{"-h"}, {"--help"}, {"doctor", "--help"},
+		{"show", "--help"}, {"show", "--no-color", "--help"},
+		{"--no-color", "help"},
+	} {
 		got := captureStdout(t, func() {
 			if _, err := parseFlags(argv); err != errHelp {
 				t.Errorf("%v: expected errHelp, got %v", argv, err)
@@ -434,10 +438,118 @@ func TestUnknownCommandHintListsEveryCommand(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, cmd := range []string{"help", "doctor", "update", "runs", "show", "version"} {
+	for _, cmd := range commandNames {
 		if !strings.Contains(err.Error(), cmd) {
 			t.Errorf("hint %q does not mention accepted command %q", err, cmd)
 		}
+	}
+}
+
+func TestCommandNamesMatchTheHelpScreen(t *testing.T) {
+	for _, name := range commandNames {
+		found := false
+		for _, c := range helpCommands {
+			if strings.Contains(c.Cmd, name) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("command %q is missing from the help screen", name)
+		}
+	}
+}
+
+func TestUnknownCommandSuggestsClosest(t *testing.T) {
+	_, err := parseFlags([]string{"run"})
+	if err == nil || !strings.Contains(err.Error(), `did you mean "runs"`) {
+		t.Fatalf("unknown command should hint the closest name, got %v", err)
+	}
+}
+
+func TestUnknownFlagSuggestsClosest(t *testing.T) {
+	_, err := parseFlags([]string{"--tuii"})
+	if err == nil || !strings.Contains(err.Error(), "did you mean --tui") {
+		t.Fatalf("unknown flag should hint the closest name, got %v", err)
+	}
+	_, err = parseFlags([]string{"-Z"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(err.Error(), "did you mean") {
+		t.Fatalf("a one-letter miss is too ambiguous to hint: %v", err)
+	}
+}
+
+func TestGlobalFlagsMayPrecedeSubcommand(t *testing.T) {
+	o, err := parseFlags([]string{"--no-color", "doctor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.command != "doctor" || !o.noColor {
+		t.Fatalf("gauntlet --no-color doctor parsed as %+v", o)
+	}
+	o, err = parseFlags([]string{"--log", "gauntlet.log", "runs", "--limit", "5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.command != "runs" || o.logFile == "" || o.runsLimit != 5 {
+		t.Fatalf("gauntlet --log FILE runs --limit 5 parsed as %+v", o)
+	}
+}
+
+func TestShowFlagsMayPrecedeRunID(t *testing.T) {
+	o, err := parseFlags([]string{"show", "--no-color", "20260825T000000Z-abcd"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.command != "show" || o.showRun != "20260825T000000Z-abcd" || !o.noColor {
+		t.Fatalf("show --no-color RUN parsed as %+v", o)
+	}
+	o, err = parseFlags([]string{"show", "20260825T000000Z-abcd", "--no-color"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.command != "show" || o.showRun != "20260825T000000Z-abcd" || !o.noColor {
+		t.Fatalf("show RUN --no-color parsed as %+v", o)
+	}
+}
+
+func TestNeedsAgentsSkipsInformationalModes(t *testing.T) {
+	list, err := parseFlags([]string{"--list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.needsAgents() {
+		t.Fatal("--list must not require an agent CLI")
+	}
+	prompt, err := parseFlags([]string{"--show-prompt", "sec"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prompt.needsAgents() {
+		t.Fatal("--show-prompt must not require an agent CLI")
+	}
+	suggest, err := parseFlags([]string{"--list", "--suggest"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !suggest.needsAgents() {
+		t.Fatal("--list --suggest still launches an agent")
+	}
+	local, err := parseFlags([]string{"--list", "--suggest", "--suggest-agent", "gauntlet"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if local.needsAgents() {
+		t.Fatal("--list --suggest --suggest-agent gauntlet reads the tree, not a CLI")
+	}
+	run, err := parseFlags([]string{"--once"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !run.needsAgents() {
+		t.Fatal("a real run requires an agent CLI")
 	}
 }
 

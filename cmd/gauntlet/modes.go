@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -33,8 +34,18 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 		if _, ok := set.Get(name + "-review"); ok {
 			name += "-review"
 		} else {
-			fmt.Fprintf(os.Stderr, "Unknown review: %s\nReviews: %s\n",
-				opts.showPrompt, strings.Join(set.Names, ", "))
+			candidates := append([]string{}, set.Names...)
+			for _, n := range set.Names {
+				if stem, ok := strings.CutSuffix(n, "-review"); ok {
+					candidates = append(candidates, stem)
+				}
+			}
+			hint := ""
+			if c := fuzzy.Closest(opts.showPrompt, candidates); c != "" {
+				hint = fmt.Sprintf(" (did you mean %q?)", c)
+			}
+			fmt.Fprintf(os.Stderr, "Unknown review: %s%s\nReviews: %s\n",
+				opts.showPrompt, hint, strings.Join(set.Names, ", "))
 			return exitUsage
 		}
 	}

@@ -96,7 +96,16 @@ minor instead and were listed under Changed.
 - The dashboard reasoning glyph no longer panics when the clock is set
   before 1970. Go's remainder keeps the sign of a negative `UnixNano`, so
   the frame index was -1.
-
+- Unknown commands and flags include a "did you mean" hint, matching unknown
+  review and agent names. `--show-prompt` does too.
+- `gauntlet --list` and `--show-prompt` no longer require an agent CLI in
+  PATH. They only read prompts; `gauntlet doctor` reports which agents are
+  installed.
+- Global flags (`--help`, `--version`, `--log`, `--no-color`) may precede the
+  subcommand, so `gauntlet --no-color doctor` works. `gauntlet show` accepts
+  flags before the run id, so `gauntlet show --no-color RUN` and
+  `gauntlet show --help` after `--no-color` work.
+- `gauntlet show` on an unknown run id points at `gauntlet runs`.
 - A review that never launched (unknown name, unreadable prompt, or a command
   line that could not be built) now publishes `review_end` like every other
   outcome, so the journal, the dashboard, and `gauntlet show` record it. The

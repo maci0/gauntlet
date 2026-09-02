@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"slices"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
@@ -28,8 +30,7 @@ import (
 var errHelp = errors.New("help requested")
 
 // parseError marks a failure whose message and usage screen have already been
-// written to stderr, by the flag package or by reportUsage. run must not
-// print either again.
+// written to stderr by reportUsage. run must not print either again.
 type parseError struct{ err error }
 
 func (e parseError) Error() string { return e.err.Error() }
@@ -200,41 +201,39 @@ func parseFlags(argv []string) (*options, error) {
 		runsLimit: defaultRunsLimit, width: terminalWidth(),
 	}
 
-	// Subcommands come first and take their own small flag sets.
-	if len(argv) > 0 && !strings.HasPrefix(argv[0], "-") {
-		switch argv[0] {
-		case "doctor", "update", "runs", "show", "version", "pick":
-			o.command = argv[0]
-			argv = argv[1:]
-			if o.command == "show" {
-				if len(argv) > 0 && (argv[0] == "-h" || argv[0] == "--help") {
-					printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout)}, o.width)
-					return nil, errHelp
-				}
-				// A run id never starts with '-', so a flag there means the
-				// id was forgotten, not that a run is named "--limit".
-				if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
-					return nil, reportUsage(o, errors.New("show needs a run id (see: gauntlet runs)"))
-				}
-				o.showRun, argv = argv[0], argv[1:]
-			}
-		case "help":
-			// The word every other CLI answers to. Anything after it is
-			// ignored: this screen is the same for every command.
-			printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout)}, o.width)
-			return nil, errHelp
-		default:
-			return nil, reportUsage(o, fmt.Errorf(
-				"unknown command: %q (try: help, pick, doctor, update, runs, show, version)", argv[0]))
-		}
+	cmd, argv := peelSubcommand(argv)
+	switch {
+	case cmd == "":
+		// the default run
+	case !slices.Contains(commandNames, cmd):
+		return nil, reportUsage(o, unknownCommand(cmd))
+	default:
+		o.command = cmd
 	}
 
 	fs, raw := buildFlagSet(o)
+	if o.command == "show" {
+		id, rest := peelShowRun(fs, argv)
+		o.showRun = id
+		argv = rest
+		// A run id never starts with '-', so a leftover leading dash after
+		// help/version is a forgotten id, not a run named "--limit". Flags
+		// that precede a real id (`show --no-color RUN`) are kept in rest.
+		if id == "" && !argsNamed(argv, "h", "help") && !argsNamed(argv, "V", "version") {
+			return nil, reportUsage(o, errors.New("show needs a run id (see: gauntlet runs)"))
+		}
+	}
+
+	// Report unknown flags ourselves so a close miss can carry a "did you
+	// mean" hint, the same shape as an unknown command. The flag package
+	// would otherwise print the bare message and the usage screen first.
+	fs.SetOutput(io.Discard)
+	fs.Usage = func() {}
 	if err := fs.Parse(expandAttachedValues(fs, argv)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil, errHelp
 		}
-		return nil, parseError{err}
+		return nil, reportUsage(o, enhanceFlagError(err, fs))
 	}
 	opts, err := finishFlags(o, fs, raw)
 	if err != nil {
@@ -370,7 +369,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 
 	// Help wins over every other flag and validation: an explicitly requested
 	// screen belongs on stdout, where redirection and pipes can capture it.
-	if raw.help {
+	// The `help` word is the same request, and is parsed rather than handled
+	// before flags so `gauntlet --no-color help` still honors --no-color.
+	if raw.help || o.command == "help" {
 		printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout) && !o.noColor}, o.width)
 		return nil, errHelp
 	}
@@ -656,6 +657,24 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	return o, nil
 }
 
+// needsAgents reports whether this invocation has to find a launchable agent
+// CLI. --list and --show-prompt only read prompts, so they must work on a
+// machine that has not installed one yet; doctor is how you find that out.
+// --list --suggest still launches an agent, unless the file-signal suggester
+// is named, which reads the tree and needs no CLI.
+func (o *options) needsAgents() bool {
+	if o.showPrompt != "" {
+		return false
+	}
+	if o.list && !o.suggest {
+		return false
+	}
+	if o.list && o.suggestAgent != nil && o.suggestAgent.Tool == runner.FastSuggestAgent {
+		return false
+	}
+	return true
+}
+
 // subcommandFlags names the flags each subcommand actually reads, on top of
 // the global ones. The default run (no subcommand) is not listed: it reads
 // them all.
@@ -665,6 +684,10 @@ var subcommandFlags = map[string][]string{
 	"update": {"check", "update-repo"},
 	"runs":   {"limit"},
 	"show":   {},
+	// help is handled in finishFlags before stray-flag checks, so extra
+	// flags are ignored the way they are after --help. The entry exists so
+	// a later check cannot treat `help` as the default run.
+	"help": {},
 	// The -V flag form keeps its "wins over scoping" reading below; the
 	// subcommand word is held to the same discipline as the rest.
 	"version": {},
@@ -783,4 +806,130 @@ func expandAttachedValues(fs *flag.FlagSet, argv []string) []string {
 func isBoolFlag(f *flag.Flag) bool {
 	b, ok := f.Value.(interface{ IsBoolFlag() bool })
 	return ok && b.IsBoolFlag()
+}
+
+// peelSubcommand pulls a subcommand word off argv. It may sit first, or after
+// only global flags, so `gauntlet --no-color doctor` is the same command as
+// `gauntlet doctor --no-color`. A non-global flag stops the scan: then this
+// is the default run, and a later word is an unexpected argument.
+func peelSubcommand(argv []string) (cmd string, rest []string) {
+	if len(argv) == 0 {
+		return "", nil
+	}
+	if !strings.HasPrefix(argv[0], "-") {
+		return argv[0], argv[1:]
+	}
+	dummy, _ := buildFlagSet(&options{})
+	argv = expandAttachedValues(dummy, argv)
+	i := 0
+	for i < len(argv) {
+		a := argv[i]
+		if a == "--" || len(a) < 2 || a[0] != '-' {
+			break
+		}
+		name := strings.TrimLeft(a, "-")
+		name, _, attached := strings.Cut(name, "=")
+		if !slices.Contains(globalFlags, name) {
+			break
+		}
+		i++
+		if !attached {
+			if f := dummy.Lookup(name); f != nil && !isBoolFlag(f) && i < len(argv) {
+				i++
+			}
+		}
+	}
+	if i < len(argv) && (len(argv[i]) < 2 || argv[i][0] != '-') && argv[i] != "--" {
+		cmd = argv[i]
+		rest = make([]string, 0, len(argv)-1)
+		rest = append(rest, argv[:i]...)
+		rest = append(rest, argv[i+1:]...)
+		return cmd, rest
+	}
+	return "", argv
+}
+
+// peelShowRun takes the first non-flag word as the run id and leaves every
+// flag, before or after it, for Parse. `gauntlet show --no-color RUN` and
+// `gauntlet show RUN --no-color` then mean the same thing.
+func peelShowRun(fs *flag.FlagSet, argv []string) (id string, rest []string) {
+	argv = expandAttachedValues(fs, argv)
+	rest = make([]string, 0, len(argv))
+	for i := 0; i < len(argv); i++ {
+		a := argv[i]
+		if a == "--" {
+			rest = append(rest, argv[i:]...)
+			break
+		}
+		if len(a) > 1 && a[0] == '-' {
+			rest = append(rest, a)
+			name := strings.TrimLeft(a, "-")
+			name, _, attached := strings.Cut(name, "=")
+			if !attached {
+				if f := fs.Lookup(name); f != nil && !isBoolFlag(f) && i+1 < len(argv) {
+					i++
+					rest = append(rest, argv[i])
+				}
+			}
+			continue
+		}
+		if id == "" {
+			id = a
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return id, rest
+}
+
+// argsNamed reports whether argv names one of the flags before `--`.
+func argsNamed(argv []string, names ...string) bool {
+	want := make(map[string]bool, len(names)*2)
+	for _, n := range names {
+		want["-"+n] = true
+		want["--"+n] = true
+	}
+	for _, a := range argv {
+		if a == "--" {
+			return false
+		}
+		name, _, _ := strings.Cut(a, "=")
+		if want[name] {
+			return true
+		}
+	}
+	return false
+}
+
+func unknownCommand(name string) error {
+	hint := ""
+	if c := fuzzy.Closest(name, commandNames); c != "" {
+		hint = fmt.Sprintf(" (did you mean %q?)", c)
+	}
+	return fmt.Errorf("unknown command: %q%s (try: %s)",
+		name, hint, strings.Join(commandNames, ", "))
+}
+
+func enhanceFlagError(err error, fs *flag.FlagSet) error {
+	const prefix = "flag provided but not defined: -"
+	name, ok := strings.CutPrefix(err.Error(), prefix)
+	if !ok || name == "" {
+		return err
+	}
+	// A one-letter miss is one substitution from every short flag; guessing
+	// `-1` for `-Z` is noise.
+	if len(name) < 2 {
+		return err
+	}
+	var names []string
+	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
+	c := fuzzy.Closest(name, names)
+	if c == "" {
+		return err
+	}
+	spell := "--" + c
+	if len(c) == 1 {
+		spell = "-" + c
+	}
+	return fmt.Errorf("%s (did you mean %s?)", err, spell)
 }

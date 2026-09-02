@@ -94,13 +94,14 @@ func cmdShow(out io.Writer, runID string) int {
 		fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
 	})
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
 		// An id that names nothing is a bad argument, like an unknown review
 		// name for --show-prompt: usage error. A journal that exists but
 		// cannot be read is a general failure.
 		if errors.Is(err, journal.ErrNoJournal) {
+			fmt.Fprintf(os.Stderr, "%v (see: gauntlet runs)\n", err)
 			return exitUsage
 		}
+		fmt.Fprintln(os.Stderr, err)
 		return exitFail
 	}
 	return exitOK

@@ -122,6 +122,11 @@ var helpCommands = []struct{ Cmd, Help string }{
 	{"gauntlet help", "show this help and exit"},
 }
 
+// commandNames is the subcommand surface, including help. peelSubcommand and
+// the unknown-command hint both read this list, so a new word cannot land in
+// one place and not the other.
+var commandNames = []string{"help", "pick", "doctor", "update", "runs", "show", "version"}
+
 var helpExamples = []struct{ Cmd, Help string }{
 	{"gauntlet -a claude --once", "one pass over every review, then stop"},
 	{"gauntlet -r quick -x test-review", "a named set, minus one review"},
