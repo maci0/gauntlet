@@ -121,9 +121,10 @@ type Repo struct {
 	// mu. Sampling repeats for the life of a loop, and re-reading every
 	// untracked file each time turns one dashboard number into a background
 	// disk scan that grows as reviews add files. An entry is trusted only
-	// while size and mtime still match, so an edited file recomputes; files
-	// that vanish leave their entries behind. The table stops admitting new
-	// keys at lineCountCacheMax rather than dropping the working set.
+	// while size and mtime still match, so an edited file recomputes. Files
+	// that vanish or leave the untracked set are dropped so the cap is the
+	// live working set. The table stops admitting new keys at
+	// lineCountCacheMax rather than dropping that set.
 	lineCounts map[string]lineCount
 
 	// extraSafe is the per-repo -c overlay on top of safeConfig: attr.tree
@@ -547,6 +548,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 
 	st := parseShortstat(diff)
 	skipArtifacts := len(ownArtifacts) > 0
+	var live []string
 	for name := range bytes.SplitSeq(untracked, []byte{0}) {
 		if len(name) == 0 {
 			continue
@@ -557,6 +559,10 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 				continue
 			}
 		}
+		live = append(live, p)
+	}
+	r.pruneLineCounts(live)
+	for _, p := range live {
 		st.Ins += r.countLinesCached(p)
 	}
 
@@ -604,14 +610,34 @@ func openRegular(path string) (*os.File, error) {
 // remembered count instead of being read again. Sample calls this for every
 // untracked file every sample, so the cache is what keeps repeated sampling
 // at stat cost.
+// pruneLineCounts drops entries that are not in this sample's untracked
+// set. Reviews commit or delete files they created; without this those
+// paths occupy the cap forever and later untracked files are never cached.
+func (r *Repo) pruneLineCounts(live []string) {
+	if len(r.lineCounts) == 0 {
+		return
+	}
+	keep := make(map[string]struct{}, len(live))
+	for _, p := range live {
+		keep[p] = struct{}{}
+	}
+	for p := range r.lineCounts {
+		if _, ok := keep[p]; !ok {
+			delete(r.lineCounts, p)
+		}
+	}
+}
+
 func (r *Repo) countLinesCached(path string) int {
 	f, err := openRegular(path)
 	if err != nil {
+		delete(r.lineCounts, path)
 		return 0
 	}
 	defer f.Close()
 	fi, err := f.Stat()
 	if err != nil {
+		delete(r.lineCounts, path)
 		return 0
 	}
 	size, mod := fi.Size(), fi.ModTime()

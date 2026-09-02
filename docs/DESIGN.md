@@ -479,12 +479,14 @@ Design points:
   every shard. The journals are the source of truth: a missing or empty index
   is rebuilt from them, and a stale one has every newer unindexed journal
   appended, so a crash that flushed the event stream still lists, and two
-  such crashes in a row do not hide the older one. Reconstructed rows omit
-  `args`, `exit_code`, and `elapsed_s`, which only `Close` records. Index
-  rebuilds and Close serialize on a sibling lock so a listing cannot
-  overwrite a just-written summary. The listing prefers `elapsed_s`
-  (monotonic) over End−Start so an NTP step cannot rewrite how long a run
-  lasted.
+  such crashes in a row do not hide the older one. A crash behind a later
+  Close is filled from its journal for that listing; appending it would
+  make it the newest index row and hide the later Close's `args`.
+  Reconstructed rows omit `args`, `exit_code`, and `elapsed_s`, which only
+  `Close` records. Index rebuilds and Close serialize on a sibling lock so
+  a listing cannot overwrite a just-written summary. The listing prefers
+  `elapsed_s` (monotonic) over End−Start so an NTP step cannot rewrite how
+  long a run lasted.
 - Agent output (`output` events) and the live usage ticks (`usage` events)
   are **not** journaled. They are large, they are reconstructible from the
   agents' own logs, and the results are what anyone reads later. Everything

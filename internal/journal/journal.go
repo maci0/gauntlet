@@ -14,11 +14,12 @@
 // Date sharding keeps any single directory listing small, and the flat index
 // makes "what did I run last week" a tail, not a tree walk. The journals are
 // the source of truth: a missing or empty index is rebuilt from them, and a
-// stale one has every newer unindexed journal appended, so a crash that
-// flushed the event stream but never wrote the summary row still lists, and
-// two such crashes in a row do not hide the older one. Nothing here is
-// load-bearing for a run in progress: a journal that cannot be written
-// degrades to a warning, never a failed run.
+// stale one has every unindexed journal in the listing window appended, so a
+// crash that flushed the event stream but never wrote the summary row still
+// lists, including one that sits behind a later Close, and two such crashes
+// in a row do not hide the older one. Nothing here is load-bearing for a run
+// in progress: a journal that cannot be written degrades to a warning, never
+// a failed run.
 package journal
 
 import (
@@ -304,8 +305,11 @@ func (j *Journal) CloseQuiet() {
 // The journals under runs/ are the durable copy. If the index is missing,
 // empty, or does not yet name the newest journal (a process that flushed
 // events then died before Close), Recent reconstructs the missing rows from
-// those files and writes them back. A reconstructed row has no Args,
-// ExitCode, or Elapsed: only Close records those.
+// those files and writes them back. A crash that is not at the tail, because
+// a later run Closed, is filled from its journal for this listing: appending
+// it would make it the newest index row and hide that later Close. A
+// reconstructed row has no Args, ExitCode, or Elapsed: only Close records
+// those.
 func Recent(n int) ([]Summary, error) {
 	if n <= 0 {
 		return nil, nil
@@ -317,7 +321,32 @@ func Recent(n int) ([]Summary, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dedupeRunIDs(out), nil
+	out = dedupeRunIDs(out)
+	want, err := listJournalsN(n)
+	if err != nil || len(want) == 0 {
+		// No journals: the index is the listing, as tests and a
+		// hand-written index rely on.
+		return out, err
+	}
+	lookup, err := indexLookup(want, out)
+	if err != nil {
+		return nil, err
+	}
+	// A hole behind a later Close cannot be appended: that would make it
+	// the newest index row, and recoverIndex would then reconstruct the
+	// already-Closed newer run and hide its Args. The listing fills those
+	// rows from the journal for this call; the index stays a suffix cache.
+	for _, j := range want {
+		if _, ok := lookup[j.id]; ok {
+			continue
+		}
+		s, err := summarizeFile(j.id, j.path)
+		if err != nil {
+			continue
+		}
+		lookup[j.id] = s
+	}
+	return summariesFor(want, lookup), nil
 }
 
 func readIndex(n int) ([]Summary, error) {
@@ -403,6 +432,67 @@ func recoverIndexLocked() error {
 		return nil
 	}
 	return recoverIndexTail(newest[0].RunID)
+}
+
+// indexLookup is the newest index row for each of want, newest-first so a
+// Close row wins over a reconstruction. listed is the already-read tail;
+// the healthy path (every wanted id is there) does not widen the read.
+func indexLookup(want []namedJournal, listed []Summary) (map[string]Summary, error) {
+	lookup := make(map[string]Summary, len(want))
+	for _, s := range listed {
+		if s.RunID != "" {
+			if _, ok := lookup[s.RunID]; !ok {
+				lookup[s.RunID] = s
+			}
+		}
+	}
+	need := 0
+	for _, j := range want {
+		if _, ok := lookup[j.id]; !ok {
+			need++
+		}
+	}
+	if need == 0 {
+		return lookup, nil
+	}
+	// A hole sits behind a later Close, so it is older than the tail of
+	// n rows. Widen until every wanted id is present or the file ends;
+	// first occurrence still wins, because each wider read is newest-first.
+	for limit := max(len(listed)*2, 32); need > 0; limit *= 2 {
+		rows, err := readIndex(limit)
+		if err != nil {
+			return nil, err
+		}
+		for _, s := range rows {
+			if s.RunID == "" {
+				continue
+			}
+			if _, ok := lookup[s.RunID]; !ok {
+				lookup[s.RunID] = s
+			}
+		}
+		still := 0
+		for _, j := range want {
+			if _, ok := lookup[j.id]; !ok {
+				still++
+			}
+		}
+		if still == 0 || len(rows) < limit {
+			break
+		}
+		need = still
+	}
+	return lookup, nil
+}
+
+func summariesFor(want []namedJournal, lookup map[string]Summary) []Summary {
+	out := make([]Summary, 0, len(want))
+	for _, j := range want {
+		if s, ok := lookup[j.id]; ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // recoverIndexTail appends reconstructed rows for every journal newer than
@@ -530,10 +620,16 @@ func newestJournal() (id, path string, ok bool, err error) {
 }
 
 func listJournals() ([]namedJournal, error) {
+	return listJournalsN(0)
+}
+
+// listJournalsN returns the newest n journals, newest first. n <= 0 means
+// every journal, the walk recoverIndexTail uses.
+func listJournalsN(n int) ([]namedJournal, error) {
 	var out []namedJournal
 	err := walkJournals(func(j namedJournal) bool {
 		out = append(out, j)
-		return true
+		return n <= 0 || len(out) < n
 	})
 	return out, err
 }

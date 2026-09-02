@@ -344,11 +344,13 @@ The journals under `runs/` are the durable copy. `index.jsonl` is derived:
 missing or empty, and append every newer unindexed journal when it is stale,
 which is how a process that flushed events then died before writing the
 summary row still lists. Several such runs in a row are all appended, oldest
-first. `gauntlet show <run-id>` reads the journal file directly and does not
-need the index. A reconstructed summary has no `args`, `exit_code`, or
-`elapsed_s`; only a clean close records those. Rebuilds and Close serialize
-so a listing cannot drop a summary that landed while the index was being
-rewritten.
+first. A crash that is not at the tail, because a later run Closed, is still
+listed: the n newest journals are the listing, and a hole in that window is
+filled from the event stream without rewriting Close rows. `gauntlet show
+<run-id>` reads the journal file directly and does not need the index. A
+reconstructed summary has no `args`, `exit_code`, or `elapsed_s`; only a
+clean close records those. Rebuilds and Close serialize so a listing cannot
+drop a summary that landed while the index was being rewritten.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 

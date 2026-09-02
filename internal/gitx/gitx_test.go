@@ -341,6 +341,84 @@ func TestCountLinesCachedKeepsWorkingSetAtCap(t *testing.T) {
 	}
 }
 
+// A vanished file must free its slot: otherwise a long loop that creates
+// then commits files fills the table with dead keys and every later
+// untracked file is re-read on every sample.
+func TestCountLinesCachedDropsVanishedFiles(t *testing.T) {
+	r := Open(t.TempDir())
+	p := filepath.Join(r.Dir, "notes.txt")
+	if err := os.WriteFile(p, []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.countLinesCached(p); n != 2 {
+		t.Fatalf("first count = %d, want 2", n)
+	}
+	if err := os.Remove(p); err != nil {
+		t.Fatal(err)
+	}
+	if n := r.countLinesCached(p); n != 0 {
+		t.Fatalf("removed file counted %d lines", n)
+	}
+	if _, ok := r.lineCounts[p]; ok {
+		t.Fatal("a vanished file must not keep its cache slot")
+	}
+}
+
+func TestSamplePrunesLineCountsSoNewFilesFit(t *testing.T) {
+	old := lineCountCacheMax
+	lineCountCacheMax = 2
+	t.Cleanup(func() { lineCountCacheMax = old })
+
+	r := newRepo(t)
+	ctx := context.Background()
+	write := func(name, body string) string {
+		t.Helper()
+		p := filepath.Join(r.Dir, name)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	a, b := write("a.txt", "one\n"), write("b.txt", "two\n")
+	if _, ok := r.Sample(ctx, nil); !ok {
+		t.Fatal("sample should succeed")
+	}
+	if _, ok := r.lineCounts[a]; !ok {
+		t.Fatal("a.txt should be cached")
+	}
+	if _, ok := r.lineCounts[b]; !ok {
+		t.Fatal("b.txt should be cached")
+	}
+
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(b); err != nil {
+		t.Fatal(err)
+	}
+	c, d := write("c.txt", "three\n"), write("d.txt", "four\n")
+	r.Invalidate()
+	if _, ok := r.Sample(ctx, nil); !ok {
+		t.Fatal("sample after replace should succeed")
+	}
+	if _, ok := r.lineCounts[a]; ok {
+		t.Fatal("removed a.txt must not occupy a slot")
+	}
+	if _, ok := r.lineCounts[b]; ok {
+		t.Fatal("removed b.txt must not occupy a slot")
+	}
+	if _, ok := r.lineCounts[c]; !ok {
+		t.Fatal("c.txt should be cached after prune")
+	}
+	if _, ok := r.lineCounts[d]; !ok {
+		t.Fatal("d.txt should be cached after prune")
+	}
+	if n := len(r.lineCounts); n > lineCountCacheMax {
+		t.Fatalf("cache grew to %d, cap is %d", n, lineCountCacheMax)
+	}
+}
+
 func TestDirtyPathsHonorsOwnArtifacts(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

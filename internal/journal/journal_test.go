@@ -1160,6 +1160,78 @@ func TestRecentIndexesTheWholeUnindexedTail(t *testing.T) {
 	}
 }
 
+// A crash that is not at the tail, because a later run Closed, used to stay
+// off the listing: recoverIndex compared only the newest journal to the
+// newest index row, and that later Close made them match.
+func TestRecentIndexesAHoleBehindALaterClose(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	idA := NewRunID(first)
+	jA, err := Open(idA, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jA.Close(Summary{
+		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
+	idB := NewRunID(second)
+	jB, err := Open(idB, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jB.Write(map[string]any{
+		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
+	})
+	jB.Write(map[string]any{
+		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
+		"review": "doc-review", "status": "ok", "loop": 1,
+	})
+	jB.Flush()
+	jB.CloseQuiet()
+
+	third := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
+	idC := NewRunID(third)
+	jC, err := Open(idC, third)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jC.Write(map[string]any{
+		"ev": "run_start", "ts": third, "dir": "/c", "version": "test",
+	})
+	if err := jC.Close(Summary{
+		Dirs: []string{"/c"}, Start: third, End: third, Args: []string{"--tui"},
+		ExitCode: 0,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 3 {
+		t.Fatalf("the crashed run behind a later close should list: %+v", runs)
+	}
+	if runs[0].RunID != idC || runs[1].RunID != idB || runs[2].RunID != idA {
+		t.Fatalf("want closed newest, the hole, then the older close: %+v", runs)
+	}
+	if runs[1].OK != 1 || len(runs[1].Dirs) != 1 || runs[1].Dirs[0] != "/b" {
+		t.Fatalf("hole summary wrong: %+v", runs[1])
+	}
+	if !slices.Equal(runs[0].Args, []string{"--tui"}) {
+		t.Fatalf("the later close row must keep its args: %+v", runs[0])
+	}
+	if !slices.Equal(runs[2].Args, []string{"--once"}) {
+		t.Fatalf("appending the hole must not rebuild the healthy rows: %+v", runs[2])
+	}
+}
+
 // A Close that cannot append the index row must not mark the run indexed:
 // the next Close is the retry, and without it the run stays off the listing
 // until something else recovers the journal.

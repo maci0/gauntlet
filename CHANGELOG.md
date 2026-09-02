@@ -129,6 +129,11 @@ minor instead and were listed under Changed.
   `index.jsonl`, not only the newest, so two runs that died before Close
   both appear. A failed index write is retried on the next Close, and a
   rebuild cannot overwrite a Close that races it.
+- `gauntlet runs` and the file-signal suggester list a crashed run that
+  sits behind a later Close, not only an unindexed suffix. The index is
+  a cache of summaries; the n newest journals are the listing, so a hole
+  in that window is filled from the event stream without rewriting Close
+  rows.
 - Path flags (`--dir`, `--dirs`, `--log`, `--prompt-dir`, `--bin`) refuse an
   environment variable that is unset or empty instead of expanding it to
   nothing. `$MISSING` used to become the current directory (`--dir`), the
@@ -155,6 +160,9 @@ minor instead and were listed under Changed.
   next try starts from the same files the first one saw. Isolated reviews
   already reset their worktrees. `--continue-sessions` no longer resumes a
   failed attempt's session.
+- The untracked-file line-count cache drops files that have vanished or
+  left the untracked set, so a long loop that creates then commits files
+  does not fill the table with dead keys and re-read every later file.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal
