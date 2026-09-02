@@ -266,9 +266,11 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// descriptors, so neither the pumps nor this function outlive it.
 	drained := make(chan struct{})
 	go func() { wg.Wait(); close(drained) }()
+	drain := time.NewTimer(drainGrace)
+	defer drain.Stop()
 	select {
 	case <-drained:
-	case <-time.After(drainGrace):
+	case <-drain.C:
 	}
 	usageMu.Lock()
 	emitting.Store(false)
@@ -387,16 +389,20 @@ func emitStream(ev streamjson.Event, norm *normalize.Normalizer, emit func(norma
 // returns the resulting exit code.
 func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
 	killGroup(cmd, syscall.SIGTERM)
+	term := time.NewTimer(killGrace)
+	defer term.Stop()
 	select {
 	case err := <-waitErr:
 		return exitCode(cmd, err)
-	case <-time.After(killGrace):
+	case <-term.C:
 	}
 	killGroup(cmd, syscall.SIGKILL)
+	kill := time.NewTimer(killGrace)
+	defer kill.Stop()
 	select {
 	case err := <-waitErr:
 		return exitCode(cmd, err)
-	case <-time.After(killGrace):
+	case <-kill.C:
 		// Unreapable (uninterruptible I/O): abandon it rather than block the
 		// loop forever.
 		return -1

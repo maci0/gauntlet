@@ -58,6 +58,12 @@ minor instead and were listed under Changed.
 - The README install snippet fetches the binary for the version it just
   resolved, rather than `releases/latest/download`, so a release published
   between the two curls cannot pair a new tag with the previous binary.
+- The directory lock is no longer inherited by agent and git children. The
+  lock descriptor is opened close-on-exec, so a killed parent cannot leave
+  the tree locked for as long as those children live.
+- Agent timeout and output-drain waits no longer leave a timer running after
+  the process has already exited. Each wait is a timer that is stopped when
+  the other path wins, matching the retry backoff.
 
 - `--continue-sessions` with `--jobs` above 1 or `--stacked-prs` is a usage
   error. Those modes give each review a fresh worktree, so there is no session

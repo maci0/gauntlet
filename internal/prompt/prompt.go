@@ -275,8 +275,10 @@ func readNoFollow(path string) (string, error) {
 // openNoFollow opens a regular file, refusing a symlink at the last component
 // and returning immediately on a FIFO or device. Callers that already Lstat'd
 // still open this way: the file can be swapped between the check and the read.
+// O_CLOEXEC keeps the descriptor out of a child that forks while the read is
+// in flight.
 func openNoFollow(path string) (*os.File, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}

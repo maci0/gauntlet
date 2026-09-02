@@ -39,10 +39,13 @@ type Lock struct {
 //
 // O_NOFOLLOW rejects a symlinked lock path and O_NONBLOCK keeps a planted FIFO
 // from blocking the open forever; the mode is checked on the descriptor, not
-// the path, so the check cannot be raced.
+// the path, so the check cannot be raced. O_CLOEXEC keeps the descriptor out
+// of agent and git children: Go's fork+exec only closes extra fds that have
+// it set, and without it a killed parent leaves the directory locked for as
+// long as those children live.
 func Acquire(path string) (*Lock, error) {
 	fd, err := syscall.Open(path,
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0o644)
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open lock file %s: %w "+
 			"(the lock path must be a creatable regular file)", path, err)

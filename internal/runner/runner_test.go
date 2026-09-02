@@ -774,6 +774,26 @@ func TestLockKeepsTwoRunsApart(t *testing.T) {
 	}
 }
 
+// Go's fork+exec only closes extra descriptors that have close-on-exec set.
+// Without it every agent and git child inherits the lock, and a killed parent
+// leaves the directory locked for as long as those children live.
+func TestLockFdIsCloseOnExec(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	lock, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	if lock.fd < 3 {
+		t.Fatalf("lock fd %d overlaps stdin/stdout/stderr", lock.fd)
+	}
+	cmd := exec.Command("/bin/sh", "-c", fmt.Sprintf("test -e /dev/fd/%d", lock.fd))
+	if err := cmd.Run(); err == nil {
+		t.Fatal("lock fd was inherited by a child process")
+	}
+}
+
 // A hot reload releases the locks before the exec, and when that exec fails
 // the deferred release runs again on the same locks. The second Release must
 // be a no-op: closing an already-closed descriptor can hit a recycled fd.

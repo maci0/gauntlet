@@ -196,12 +196,15 @@ func appendIndex(s Summary) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	line, err := json.Marshal(s)
 	if err != nil {
+		f.Close()
 		return err
 	}
 	_, err = f.Write(append(line, '\n'))
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
 	return err
 }
 

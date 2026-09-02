@@ -462,9 +462,10 @@ func (r *Repo) Invalidate() {
 // openRegular opens path read-only, refusing symlinks at open time. A planted
 // symlink (to a FIFO, device, or out-of-tree file) must not be followed, and
 // opening a writer-less FIFO would block forever. O_NONBLOCK is cleared once
-// the descriptor is known to be a regular file.
+// the descriptor is known to be a regular file. O_CLOEXEC keeps the descriptor
+// out of a child that forks while the read is in flight.
 func openRegular(path string) (*os.File, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -474,8 +475,9 @@ func openRegular(path string) (*os.File, error) {
 		f.Close()
 		return nil, errors.New("not a regular file")
 	}
-	// Restoring blocking mode is courtesy to whoever inherits the
-	// descriptor; there is nothing to do if the kernel refuses.
+	// O_NONBLOCK was only to refuse a planted FIFO; the line count reads
+	// through this descriptor and must not get EAGAIN. There is nothing to
+	// do if the kernel refuses.
 	_ = syscall.SetNonblock(fd, false)
 	return f, nil
 }
