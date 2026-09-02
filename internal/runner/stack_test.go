@@ -117,8 +117,8 @@ func TestStackedPRsBuildLinearRemoteGraphWithoutTouchingCheckout(t *testing.T) {
 	repo, _ := stackRepo(t)
 	logPath, statePath := fakeGH(t)
 	base := gitOut(t, repo, "rev-parse", "main")
-	b1 := gitx.StackBranchName(base, 0, "first-review")
-	b2 := gitx.StackBranchName(base, 1, "second-review")
+	b1 := gitx.StackFinalBranch(0, "first-review", "fix: add first layer")
+	b2 := gitx.StackFinalBranch(1, "second-review", "fix: add second layer")
 	// A tag carrying a stack branch's exact name must not shadow the branch:
 	// bare-ref resolution prefers tags, which would re-parent the stack.
 	gitOut(t, repo, "tag", b1)
@@ -190,9 +190,12 @@ case "$*" in
 esac`)
 
 	runQuiet(t, cfg)
-	b1 := gitx.StackBranchName(base, 0, "first-review")
-	empty := gitx.StackBranchName(base, 1, "empty-review")
-	b3 := gitx.StackBranchName(base, 2, "third-review")
+	// Neither fixture prints a SUBJECT, so the topic comes from the generated
+	// fallback subject; the no-change layer never commits, so the only name it
+	// ever had is the provisional one.
+	b1 := gitx.StackFinalBranch(0, "first-review", "chore: add first.txt")
+	empty := gitx.StackProvisionalBranch(base, 1, "empty-review")
+	b3 := gitx.StackFinalBranch(2, "third-review", "chore: add third.txt")
 	if got := gitOut(t, repo, "rev-parse", b3+"^"); got != gitOut(t, repo, "rev-parse", b1) {
 		t.Fatalf("third layer did not collapse onto first: %s", got)
 	}
@@ -227,8 +230,7 @@ echo 'RESULT: changed=1'`)
 	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
 		t.Fatalf("retry result: %+v", got)
 	}
-	base := gitOut(t, repo, "rev-parse", "main")
-	branch := gitx.StackBranchName(base, 0, "retry-review")
+	branch := gitx.StackFinalBranch(0, "retry-review", "chore: add clean.txt")
 	if files := gitOut(t, repo, "diff", "--name-only", "main.."+branch); files != "clean.txt" {
 		t.Fatalf("failed attempt leaked into commit: %q", files)
 	}
@@ -253,7 +255,7 @@ echo 'RESULT: changed=1'`)
 		t.Fatalf("reviews started after publication failed: %q", started)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
-	b1 := gitx.StackBranchName(base, 0, "first-review")
+	b1 := gitx.StackFinalBranch(0, "first-review", "chore: add change.txt")
 	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b1)
 	if got := gitOut(t, repo, "rev-parse", "main"); got != base {
 		t.Fatal("publication failure moved the original branch")
@@ -330,9 +332,16 @@ sleep 10`)
 		t.Fatalf("canceled stack worktree survived:\n%s", list)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
-	branch := gitx.StackBranchName(base, 0, "slow-review")
+	// The review never committed, so the only name the layer ever had is the
+	// provisional one; nothing under the prefix may have reached the remote.
+	branch := gitx.StackProvisionalBranch(base, 0, "slow-review")
 	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", branch); err != nil || found {
 		t.Fatalf("canceled layer was published: found=%v err=%v", found, err)
+	}
+	remotes, err := r.repo.RemoteBranchesWithPrefix(context.Background(), "origin",
+		gitx.StackBranchPrefix(0, "slow-review"))
+	if err != nil || len(remotes) != 0 {
+		t.Fatalf("canceled layer left remote branches: %v err=%v", remotes, err)
 	}
 }
 
@@ -354,8 +363,8 @@ esac`)
 		t.Fatalf("results after failed layer: %+v", got)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
-	bad := gitx.StackBranchName(base, 0, "bad-review")
-	good := gitx.StackBranchName(base, 1, "good-review")
+	bad := gitx.StackProvisionalBranch(base, 0, "bad-review")
+	good := gitx.StackFinalBranch(1, "good-review", "chore: add good.txt")
 	cmd := exec.Command("git", "show-ref", "--verify", "refs/heads/"+bad)
 	cmd.Dir = repo
 	if cmd.Run() == nil {
@@ -468,7 +477,7 @@ func TestStackedPRsDirtyCheckoutNeedsConsentAndUsesRemoteBase(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(repo, "reviewed.txt")); !os.IsNotExist(statErr) {
 		t.Fatal("review output reached the original checkout")
 	}
-	branch := gitx.StackBranchName(remoteBase, 0, "sec-review")
+	branch := gitx.StackFinalBranch(0, "sec-review", "chore: add reviewed.txt")
 	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+branch+"^"); got != remoteBase {
 		t.Fatalf("stack parent = %s, want fetched remote base %s", got, remoteBase)
 	}
@@ -548,12 +557,16 @@ echo 'RESULT: changed=1'`)
 	if strings.Count(string(started), "x") != 2 {
 		t.Fatalf("resume reran or skipped reviews: %q", started)
 	}
-	b1 := gitx.StackBranchName(pinned, 0, "first-review")
-	b2 := gitx.StackBranchName(pinned, 1, "second-review")
+	b1 := gitx.StackFinalBranch(0, "first-review", "chore: add first.txt")
+	b2 := gitx.StackFinalBranch(1, "second-review", "chore: add second.txt")
 	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != gitOut(t, repo, "rev-parse", "refs/heads/"+b1) {
 		t.Fatalf("resumed layer parent = %s, want the pinned stack's first layer", got)
 	}
-	moved := gitx.StackBranchName(advanced, 1, "second-review")
+	// Had the resume followed the advanced base, its second layer would hang
+	// off the advanced commit rather than the pinned stack's first layer (the
+	// parent check above), and its worktree would have opened under the
+	// advanced base's provisional name.
+	moved := gitx.StackProvisionalBranch(advanced, 1, "second-review")
 	cmd := exec.Command("git", "show-ref", "--verify", "refs/heads/"+moved)
 	cmd.Dir = repo
 	if cmd.Run() == nil {
@@ -612,8 +625,7 @@ echo 'RESULT: changed=1'`)
 	if strings.Count(string(started), "x") != 1 {
 		t.Fatalf("a review started after the push failed: %q", started)
 	}
-	base := gitOut(t, repo, "rev-parse", "main")
-	b1 := gitx.StackBranchName(base, 0, "first-review")
+	b1 := gitx.StackFinalBranch(0, "first-review", "chore: add changed.txt")
 	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b1)
 	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", b1); err != nil || found {
 		t.Fatalf("rejected push left a remote branch: found=%v err=%v", found, err)
@@ -688,7 +700,7 @@ echo fixed > fixed.txt; echo 'RESULT: changed=1'`)
 		t.Fatalf("cross-fork counts: %+v", got)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
-	branch := gitx.StackBranchName(base, 0, "sec-review")
+	branch := gitx.StackFinalBranch(0, "sec-review", "chore: add fixed.txt")
 	if out, err := exec.Command("git", "-C", fork, "rev-parse", "refs/heads/"+branch).CombinedOutput(); err != nil {
 		t.Fatalf("stack branch missing from the push destination: %v: %s", err, out)
 	}
@@ -816,7 +828,11 @@ func TestStackedPRBodyDescribesItsLayer(t *testing.T) {
 	reviews := []string{"first-review", "empty-review", "second-review"}
 	cfg := stackConfig(t, repo, reviews, `
 case "$*" in
-  *first-review*) printf 'first\n' > first.txt; echo 'SUBJECT: fix: add the first layer' ;;
+  *first-review*)
+    printf 'first\n' > first.txt
+    echo 'PATH: first.txt: seed the first fixture'
+    echo 'PATH: not-in-the-diff.go: a note the commit cannot vouch for'
+    echo 'SUBJECT: fix: add the first layer' ;;
   *empty-review*) echo 'RESULT: no-changes' ;;
   *second-review*) printf 'second\n' > second.txt; echo 'SUBJECT: fix: add the second layer' ;;
 esac
@@ -838,7 +854,7 @@ echo 'RESULT: changed=1'`)
 	for _, want := range []string{
 		"fix: add the first layer",
 		"Scope: what the first one looks at.",
-		"- `first.txt`",
+		"- `first.txt` — seed the first fixture",
 		"1 file changed, 1 insertion, 0 deletions.",
 		"First layer of a stack, cut from `main`.",
 	} {
@@ -846,9 +862,14 @@ echo 'RESULT: changed=1'`)
 			t.Fatalf("the first PR body is missing %q:\n%s", want, first)
 		}
 	}
+	// A note whose path the commit never touched describes the wrong diff and
+	// must not be rendered anywhere in the body.
+	if strings.Contains(first, "not-in-the-diff") {
+		t.Fatalf("a note for an untouched path leaked into the body:\n%s", first)
+	}
 	for _, want := range []string{
 		"Scope: what the second one looks at.",
-		"- `second.txt`",
+		"- `second.txt`\n",
 		// The review that changed nothing left no branch, so the layer below
 		// this one is the first review's, and this is layer 2 of 2 -- not 3,
 		// which is where its position in the schedule would have put it.
@@ -862,5 +883,86 @@ echo 'RESULT: changed=1'`)
 	// file list that carried the layer below would describe the wrong diff.
 	if strings.Contains(second, "first.txt") {
 		t.Fatalf("the second PR body claims the first layer's file:\n%s", second)
+	}
+}
+
+// A branch from an older stack can sit under the same deterministic prefix --
+// even under the exact final name this run would pick. Ancestry, not name,
+// decides what is recovered: the stale branch is ignored and survives
+// untouched, and the new layer publishes under a disambiguated name.
+func TestStackedPRsRejectStaleBranchFromOlderStackByAncestry(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	base := gitOut(t, repo, "rev-parse", "main")
+	tree := gitOut(t, repo, "rev-parse", "main^{tree}")
+	oldBase := gitOut(t, repo, "commit-tree", tree, "-m", "an older era")
+	oldLayer := gitOut(t, repo, "commit-tree", tree, "-p", oldBase, "-m", "chore: add fixed.txt")
+	stale := gitx.StackFinalBranch(0, "sec-review", "chore: add fixed.txt")
+	gitOut(t, repo, "branch", stale, oldLayer)
+	gitOut(t, repo, "push", "-q", "origin", stale)
+
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"sec-review"}, `
+echo x >> "`+marker+`"
+echo fixed > fixed.txt
+echo 'RESULT: changed=1'`)
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("the stale branch was mistaken for a published layer: %q", started)
+	}
+	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+stale); got != oldLayer {
+		t.Fatalf("stale branch moved: %s", got)
+	}
+	branch := stale + "-" + base[:6]
+	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+branch+"^"); got != base {
+		t.Fatalf("published layer parent = %s, want base %s", got, base)
+	}
+	state, _ := os.ReadFile(statePath)
+	if !strings.Contains(string(state), branch+"|main|") {
+		t.Fatalf("PR head is not the disambiguated branch:\n%s", state)
+	}
+}
+
+// A killed run can stop after a layer's commit but before its rename and
+// push. Recovery finds the provisional branch by prefix, verifies it by
+// ancestry, finishes the rename from its own commit subject, and publishes it
+// without launching the agent again.
+func TestStackedPRsRecoveryFinishesRenameOfCommittedProvisionalLayer(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	base := gitOut(t, repo, "rev-parse", "main")
+	tree := gitOut(t, repo, "rev-parse", "main^{tree}")
+	commit := gitOut(t, repo, "commit-tree", tree, "-p", "main", "-m", "fix: recover the stranded layer")
+	provisional := gitx.StackProvisionalBranch(base, 0, "sec-review")
+	gitOut(t, repo, "branch", provisional, commit)
+
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"sec-review"}, `
+echo x >> "`+marker+`"
+echo fixed > fixed.txt
+echo 'RESULT: changed=1'`)
+	runQuiet(t, cfg)
+	if body, _ := os.ReadFile(marker); len(body) != 0 {
+		t.Fatalf("recovery reran the committed review: %q", body)
+	}
+	final := gitx.StackFinalBranch(0, "sec-review", "fix: recover the stranded layer")
+	if got := gitOut(t, repo, "rev-parse", "refs/heads/"+final); got != commit {
+		t.Fatalf("recovered layer = %s, want the stranded commit %s", got, commit)
+	}
+	if out := gitOut(t, repo, "ls-remote", "--heads", "origin", final); !strings.Contains(out, final) {
+		t.Fatalf("recovered layer never reached the remote: %s", out)
+	}
+	cmd := exec.Command("git", "show-ref", "--verify", "refs/heads/"+provisional)
+	cmd.Dir = repo
+	if cmd.Run() == nil {
+		t.Fatal("the provisional name survived the recovery rename")
+	}
+	state, _ := os.ReadFile(statePath)
+	if !strings.Contains(string(state), final+"|main|") {
+		t.Fatalf("PR head is not the renamed branch:\n%s", state)
 	}
 }

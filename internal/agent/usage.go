@@ -180,31 +180,36 @@ const subjectMax = 100
 func ParseSubject(tail []byte) string {
 	matches := subjectRe.FindAllStringSubmatch(string(tail), -1)
 	for _, m := range slices.Backward(matches) {
-		// Formatting and separators go first, then the trim: dropping a
-		// hidden character can expose whitespace that was hiding behind it,
-		// and a subject is a line of text, not a line of text with a ragged
-		// end. This becomes a commit message, where a newline would forge a
-		// body or an author trailer and a bidi override would reverse the log
-		// line.
-		s := strings.Map(func(r rune) rune {
-			if r == ' ' {
-				return r
-			}
-			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
-				unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-				return -1
-			}
-			return r
-		}, m[1])
-		s = strings.TrimSpace(s)
-		if utf8.RuneCountInString(s) > subjectMax {
-			s = strings.TrimSpace(truncateRunes(s, subjectMax))
-		}
-		if s != "" {
+		if s := cleanReportedLine(m[1], subjectMax); s != "" {
 			return s
 		}
 	}
 	return ""
+}
+
+// cleanReportedLine sanitizes one line of agent output headed for a file
+// people read. Formatting and separators go first, then the trim: dropping a
+// hidden character can expose whitespace that was hiding behind it, and the
+// result is a line of text, not a line of text with a ragged end. A subject
+// becomes a commit message, where a newline would forge a body or an author
+// trailer and a bidi override would reverse the log line; a file note lands
+// in a PR body with the same exposure.
+func cleanReportedLine(s string, maxRunes int) string {
+	s = strings.Map(func(r rune) rune {
+		if r == ' ' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+			return -1
+		}
+		return r
+	}, s)
+	s = strings.TrimSpace(s)
+	if utf8.RuneCountInString(s) > maxRunes {
+		s = strings.TrimSpace(truncateRunes(s, maxRunes))
+	}
+	return s
 }
 
 // truncateRunes cuts s to at most max runes. A commit subject survives an

@@ -54,7 +54,9 @@ type procResult struct {
 	// Subject is the commit subject the agent printed for its change, empty
 	// when it printed none.
 	Subject string
-	Err     error // launch failure only
+	// FileNotes are the per-file "what was done" lines the agent printed.
+	FileNotes []agent.FileNote
+	Err       error // launch failure only
 }
 
 // procOpts configures one agent launch.
@@ -300,6 +302,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	tailMu.Lock()
 	final := tail.Bytes()
 	res.Subject = agent.ParseSubject(final)
+	res.FileNotes = agent.ParseFileNotes(final)
 	finalUsage := agent.ParseUsage(final)
 	tailMu.Unlock()
 	usageMu.Lock()

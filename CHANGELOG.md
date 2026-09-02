@@ -38,6 +38,30 @@ minor instead and were listed under Changed.
   paths, so the scope is prompt-enforced, not mechanical. Without the flag,
   prompts are byte-identical to before. Suggest, commit, and conflict
   prompts are unchanged, and an explicit empty `--paths` is refused.
+- Stacked-PR bodies describe each file: the `PATH:` lines a review prints are
+  matched against the layer's own commit and rendered beside the paths under
+  `## Changes` (``- `path` — what was done``). A file the agent described
+  nothing for renders as a bare path, exactly as before; notes naming files
+  the commit never touched are dropped. Notes are flattened, length-bounded,
+  and backtick-neutralized like every other untrusted value in the body, and
+  the whole body is now capped as well.
+
+### Changed
+
+- Stack branches are named `review/<NN>-<review>-<topic>` (e.g.
+  `review/03-sec-review-input-validation`) instead of
+  `gauntlet/stack/<tip>/<NN>-<review>`: the 1-based layer number keeps merge
+  order sortable and the topic is a slug cut from the commit subject. Each
+  layer starts under a deterministic provisional name
+  (`review/<NN>-<review>-wip-<base>`) and is renamed once its commit exists,
+  before the push. A resumed run finds published layers by listing the
+  deterministic `review/<NN>-<review>` prefix and verifying candidates by
+  commit graph -- a layer must be a one-commit child of the previous layer's
+  tip -- so a same-named branch from an older stack is rejected by ancestry;
+  when it occupies the topic name, the new layer appends the stack's short
+  base commit. The preflight dry-run probe moved to the same `review/`
+  namespace, and `review/` branches are no longer offered as merge targets,
+  matching `gauntlet/`.
 
 ## 1.17.0
 

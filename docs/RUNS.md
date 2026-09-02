@@ -96,11 +96,27 @@ extra `--jobs` lanes. One persistent checkout lives under
 branches survive because open PRs need them. The branch checked out in the
 original directory never moves and no stack branch is merged automatically.
 
+### How a branch is named
+
+A published layer is named `review/<NN>-<review>-<topic>`, e.g.
+`review/03-sec-bolide-input-validation`: `NN` is the layer's 1-based schedule
+position, which keeps merge order visible and sortable, and the topic is a
+short slug cut from the commit subject. The topic does not exist until the
+review has committed, so each layer starts under a deterministic provisional
+name (`review/<NN>-<review>-wip-<base>`), takes its topic name once the
+commit exists, and only then is pushed. A resumed run finds already-published
+layers by listing branches under the deterministic `review/<NN>-<review>`
+prefix, then verifies each candidate by commit graph -- a recovered layer
+must be a one-commit child of the previous layer's tip -- so a same-named
+leftover from an older stack is rejected by ancestry rather than mistaken for
+this run's work. When the topic name is already taken by such a leftover, the
+new layer appends the stack's short base commit at the end of the name.
+
 ### What a PR says
 
 The title is the commit subject the agent wrote for its change. The body adds
-what the title has no room for, and only what can be read back from the
-branch itself:
+what the title has no room for: what can be read back from the branch itself,
+plus the agent's own one-line account of each file it reported on.
 
 ```markdown
 ## Summary
@@ -111,29 +127,30 @@ Scope: stale reads, cross-tenant bleed, stampedes.
 
 ## Changes
 
-- `internal/cache/store.go`
-- `internal/cache/store_test.go`
+- `internal/cache/store.go` — guard the refill against a stale read
+- `internal/cache/store_test.go` — cover the refill race
 
 2 files changed, 41 insertions, 12 deletions.
 
 ## Stack
 
-Layer 3 of a stack, targeting `gauntlet/stack/ab12cd34ef56/02-sec-review`
+Layer 3 of a stack, targeting `review/02-sec-review-drop-stale-entries`
 rather than `main`, so this comparison holds only this change. The base
 merges first.
 ```
 
 `Scope` is the review's own `Summary:` line, or its goal sentence when it
-declares none; a prompt with neither leaves the line out. The path list stops
-at ten and counts the rest. The layer number counts published branches, not
-schedule positions, so a review that changed nothing does not leave a gap in
-the numbering. No body names the agent that wrote the change or the pass it
-came from, for the same reason commit subjects do not; the one place
-`gauntlet` appears is inside a ref name, which a reader needs to check the
-branch out and which GitHub already prints above the diff. Every value read
-out of the reviewed repository -- an agent's subject, a prompt's summary, a
-path -- is flattened to one line and length-bounded before it becomes
-Markdown.
+declares none; a prompt with neither leaves the line out. The per-file notes
+are the `PATH:` lines the review printed; a file the agent described nothing
+for renders as a bare path, and a note naming a file the commit never touched
+is dropped. The path list stops at ten and counts the rest. The layer number
+counts published branches, not schedule positions, so a review that changed
+nothing does not leave a gap in the numbering. No body names the agent that
+wrote the change or the pass it came from, for the same reason commit
+subjects do not. Every value read out of the reviewed repository -- an
+agent's subject, a note, a prompt's summary, a path -- is flattened to one
+line and length-bounded before it becomes Markdown, and the whole body is
+capped.
 
 Every check runs before any agent starts, the `--suggest` agent included.
 When the original checkout has tracked or untracked changes, gauntlet names
