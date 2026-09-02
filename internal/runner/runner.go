@@ -1225,9 +1225,11 @@ func (r *Runner) outputSink(review, agentLabel string) func(normalize.Line) {
 }
 
 // runMergeStep merges what this loop produced into --merge-into. It runs
-// after the commit step, because only committed work can be merged: anything
-// still dirty in the tree is not in the branch, and merging then would report
-// a success that moved none of it.
+// after the commit step, because only committed work can be merged: tracked
+// files still dirty are not in the branch, and merging then would report a
+// success that moved none of them. Untracked files stay in the original tree
+// either way: the merge is a scratch checkout of committed work, the same
+// rule --jobs uses when it lets them sit.
 //
 // The merge happens in a scratch checkout of the target, so the branch the
 // reviews ran on stays checked out and the run stays watchable. A conflict
@@ -1251,15 +1253,15 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 	if from == r.cfg.MergeInto {
 		return // the work is already there
 	}
-	dirty, err := r.repo.DirtyPaths(ctx, r.cfg.OwnArtifacts)
+	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
 	if err != nil {
 		r.log("Not merging into %s: cannot read git status: %v", r.cfg.MergeInto, err)
 		r.st.addCommitFail()
 		return
 	}
-	if len(dirty) > 0 {
+	if len(changes.Tracked) > 0 {
 		r.log("Not merging into %s: %d uncommitted path(s) would be left behind",
-			r.cfg.MergeInto, len(dirty))
+			r.cfg.MergeInto, len(changes.Tracked))
 		r.st.addCommitFail()
 		return
 	}

@@ -1250,6 +1250,46 @@ echo "RESULT: changed=1"`)
 	}
 }
 
+// Untracked files do not block --merge-into. The merge is a scratch checkout
+// of committed work, so a local notes.txt was never going to be in it, and
+// --jobs has allowed untracked files since 1.12. Treating them as dirty used
+// to skip the merge and drop a loop's committed work.
+func TestMergeIntoIgnoresUntrackedFiles(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	gitRun(t, repo, "checkout", "-q", "-b", "work")
+	if err := os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("local"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+git add main.go
+git -c user.name=t -c user.email=t@e commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.MergeInto = "main-line"
+	_, got := runRecorded(t, cfg)
+
+	if !strings.Contains(gitOut(t, repo, "log", "--oneline", "main-line"), "review work") {
+		t.Fatalf("main-line did not take the work:\n%s",
+			gitOut(t, repo, "log", "--oneline", "--all"))
+	}
+	var merged bool
+	for _, ev := range got {
+		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
+			merged = true
+		}
+	}
+	if !merged {
+		t.Fatal("the merge was not reported on the bus")
+	}
+	if _, err := os.Stat(filepath.Join(repo, "notes.txt")); err != nil {
+		t.Fatalf("the untracked file should still be in the original tree: %v", err)
+	}
+}
+
 // The merge is refused rather than faked when the work is still uncommitted:
 // merging then would report moving what it did not move.
 func TestMergeIntoRefusesADirtyTree(t *testing.T) {
