@@ -8,8 +8,10 @@ import (
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -17,7 +19,8 @@ import (
 // Direct modules in go.mod are the supply-chain surface this repository
 // chose. An unused one still downloads, still hashes, and still sits in the
 // module graph; dropping it is the fix, and this test is how a leftover is
-// found before it ships.
+// found before it ships. Test files do not count: a module imported only
+// from _test.go is a test dependency listed as production.
 func TestDirectModulesAreImported(t *testing.T) {
 	root := moduleRoot(t)
 	direct := directModules(t, root)
@@ -27,7 +30,128 @@ func TestDirectModulesAreImported(t *testing.T) {
 	used := importedModules(t, root, direct)
 	for _, path := range direct {
 		if !used[path] {
-			t.Errorf("go.mod requires %s, but no .go file imports it; remove the unused module", path)
+			t.Errorf("go.mod requires %s, but no non-test .go file imports it; remove the unused module", path)
+		}
+	}
+}
+
+// directModuleSites is the "Contained by" column in docs/DESIGN.md. A new
+// direct module must appear here with the packages allowed to import it;
+// an import outside those prefixes is the coupling that column exists to
+// prevent.
+var directModuleSites = map[string][]string{
+	"github.com/charmbracelet/bubbletea": {"internal/ui/"},
+	"github.com/charmbracelet/lipgloss":  {"internal/ui/"},
+	"github.com/muesli/termenv":          {"internal/ui/"},
+	"github.com/maci0/toktop":            {"cmd/gauntlet/", "internal/runner/"},
+	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/"},
+	"golang.org/x/text":                  {"internal/fuzzy/", "internal/prompt/", "internal/runner/", "internal/ui/"},
+	"golang.org/x/term":                  {"cmd/gauntlet/"},
+}
+
+// TestDirectModuleImportSites fails when a direct module is imported from
+// a package docs/DESIGN.md does not allow, when a new direct module has no
+// containment entry, or when an entry outlives the require. toktop is
+// extra-constrained: every import site must carry a notoktop build tag, or
+// `-tags notoktop` would not drop it.
+func TestDirectModuleImportSites(t *testing.T) {
+	root := moduleRoot(t)
+	direct := directModules(t, root)
+	for _, path := range direct {
+		if _, ok := directModuleSites[path]; !ok {
+			t.Errorf("go.mod requires %s, but directModuleSites has no allowed import prefixes; add the docs/DESIGN.md containment", path)
+		}
+	}
+	for path := range directModuleSites {
+		if !slices.Contains(direct, path) {
+			t.Errorf("directModuleSites lists %s, which is not a direct module; drop the stale entry", path)
+		}
+	}
+
+	fset := token.NewFileSet()
+	err := walkGoFiles(root, func(rel, path string) error {
+		body := readRepoFile(t, path)
+		f, err := parser.ParseFile(fset, path, body, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, spec := range f.Imports {
+			imp := strings.Trim(spec.Path.Value, `"`)
+			for mod, prefixes := range directModuleSites {
+				if imp != mod && !strings.HasPrefix(imp, mod+"/") {
+					continue
+				}
+				ok := false
+				for _, p := range prefixes {
+					if strings.HasPrefix(rel, p) {
+						ok = true
+						break
+					}
+				}
+				if !ok {
+					t.Errorf("%s imports %s; docs/DESIGN.md allows that module in %s", rel, mod, strings.Join(prefixes, ", "))
+				}
+				if mod == "github.com/maci0/toktop" && !fileHasBuildTag(body, "notoktop") {
+					t.Errorf("%s imports toktop without a notoktop build tag; -tags notoktop would not drop it", rel)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A direct module pinned to a pseudo-version is an unpublished commit in
+// the production graph. Transitives inherit whatever their parents asked
+// for; the modules this repository chose must be tagged releases.
+func TestDirectModulesAreTagged(t *testing.T) {
+	root := moduleRoot(t)
+	reqs := directReqs(t, root)
+	if len(reqs) == 0 {
+		t.Fatal("go.mod listed no direct modules")
+	}
+	for _, r := range reqs {
+		if pseudoVersion.MatchString(r.version) {
+			t.Errorf("go.mod requires %s %s, a pseudo-version; pin a tagged release", r.path, r.version)
+		}
+	}
+}
+
+// docs/DESIGN.md says every linked module is MIT or BSD-3-Clause. Direct
+// modules are the ones this repository adopted; their LICENSE files are
+// the check that claim runs against, before a new require lands.
+func TestDirectModuleLicenses(t *testing.T) {
+	root := moduleRoot(t)
+	reqs := directReqs(t, root)
+	if len(reqs) == 0 {
+		t.Fatal("go.mod listed no direct modules")
+	}
+	dirs := moduleDirs(t, root, reqs)
+	for _, r := range reqs {
+		dir := dirs[r.path]
+		if dir == "" {
+			t.Errorf("%s: go list -m did not report a module directory", r.path)
+			continue
+		}
+		body := readLicense(t, dir, r.path)
+		switch kind := licenseKind(body); kind {
+		case "MIT", "BSD-3-Clause":
+		default:
+			t.Errorf("%s license is %s, not MIT or BSD-3-Clause; docs/DESIGN.md requires a check before adoption", r.path, kind)
+		}
+	}
+}
+
+// sqlite and klauspost/compress are not imported here; they link because
+// toktop does. docs/DESIGN.md has to name them or the graph they add looks
+// like an accident.
+func TestDesignDocumentsToktopTransitives(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), "docs", "DESIGN.md"))
+	for _, want := range []string{"klauspost/compress", "modernc.org/sqlite"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("docs/DESIGN.md must name %s: it links through toktop", want)
 		}
 	}
 }
@@ -108,9 +232,23 @@ func readRepoFile(t *testing.T, path string) string {
 	return string(b)
 }
 
+type moduleReq struct {
+	path, version string
+}
+
 func directModules(t *testing.T, root string) []string {
 	t.Helper()
-	var out []string
+	reqs := directReqs(t, root)
+	out := make([]string, len(reqs))
+	for i, r := range reqs {
+		out[i] = r.path
+	}
+	return out
+}
+
+func directReqs(t *testing.T, root string) []moduleReq {
+	t.Helper()
+	var out []moduleReq
 	inRequire := false
 	for raw := range strings.SplitSeq(readRepoFile(t, filepath.Join(root, "go.mod")), "\n") {
 		line := strings.TrimSpace(raw)
@@ -120,21 +258,21 @@ func directModules(t *testing.T, root string) []string {
 		case inRequire && line == ")":
 			inRequire = false
 		case strings.HasPrefix(line, "require ") && !strings.HasPrefix(line, "require ("):
-			if path, ok := requirePath(line); ok {
-				out = append(out, path)
+			if r, ok := requireModule(line); ok {
+				out = append(out, r)
 			}
 		case inRequire:
-			if path, ok := requirePath(line); ok {
-				out = append(out, path)
+			if r, ok := requireModule(line); ok {
+				out = append(out, r)
 			}
 		}
 	}
 	return out
 }
 
-func requirePath(line string) (string, bool) {
+func requireModule(line string) (moduleReq, bool) {
 	if strings.Contains(line, "// indirect") {
-		return "", false
+		return moduleReq{}, false
 	}
 	if i := strings.Index(line, "//"); i >= 0 {
 		line = strings.TrimSpace(line[:i])
@@ -144,31 +282,17 @@ func requirePath(line string) (string, bool) {
 		fields = fields[1:]
 	}
 	if len(fields) < 2 {
-		return "", false
+		return moduleReq{}, false
 	}
-	return fields[0], true
+	return moduleReq{path: fields[0], version: fields[1]}, true
 }
 
 func importedModules(t *testing.T, root string, modules []string) map[string]bool {
 	t.Helper()
 	used := make(map[string]bool, len(modules))
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			name := d.Name()
-			switch {
-			case path == root:
-				return nil
-			case strings.HasPrefix(name, "."), name == "testdata":
-				return fs.SkipDir
-			default:
-				return nil
-			}
-		}
-		if !strings.HasSuffix(d.Name(), ".go") {
+	err := walkGoFiles(root, func(rel, path string) error {
+		if strings.HasSuffix(rel, "_test.go") {
 			return nil
 		}
 		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
@@ -190,6 +314,101 @@ func importedModules(t *testing.T, root string, modules []string) map[string]boo
 	}
 	return used
 }
+
+func walkGoFiles(root string, fn func(rel, path string) error) error {
+	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			name := d.Name()
+			switch {
+			case path == root:
+				return nil
+			case strings.HasPrefix(name, "."), name == "testdata":
+				return fs.SkipDir
+			default:
+				return nil
+			}
+		}
+		if !strings.HasSuffix(d.Name(), ".go") {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		return fn(filepath.ToSlash(rel), path)
+	})
+}
+
+func fileHasBuildTag(body, tag string) bool {
+	for raw := range strings.SplitSeq(body, "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "package ") {
+			return false
+		}
+		if !strings.HasPrefix(line, "//go:build") && !strings.HasPrefix(line, "// +build") {
+			continue
+		}
+		if strings.Contains(line, tag) {
+			return true
+		}
+	}
+	return false
+}
+
+func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
+	t.Helper()
+	args := []string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}
+	for _, r := range reqs {
+		args = append(args, r.path)
+	}
+	cmd := exec.Command("go", args...)
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		var stderr []byte
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = ee.Stderr
+		}
+		t.Fatalf("go list -m: %v\n%s", err, stderr)
+	}
+	dirs := make(map[string]string, len(reqs))
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		path, dir, ok := strings.Cut(line, "\t")
+		if !ok {
+			t.Fatalf("go list -m: unexpected line %q", line)
+		}
+		dirs[path] = dir
+	}
+	return dirs
+}
+
+func readLicense(t *testing.T, dir, module string) string {
+	t.Helper()
+	for _, name := range []string{"LICENSE", "LICENSE.txt", "LICENSE.md"} {
+		b, err := os.ReadFile(filepath.Join(dir, name))
+		if err == nil {
+			return string(b)
+		}
+	}
+	t.Fatalf("%s has no LICENSE in %s", module, dir)
+	return ""
+}
+
+func licenseKind(body string) string {
+	switch {
+	case strings.Contains(body, "MIT License"), strings.Contains(body, "Permission is hereby granted"):
+		return "MIT"
+	case strings.Contains(body, "Redistribution and use in source and binary forms"):
+		return "BSD-3-Clause"
+	default:
+		return "unknown"
+	}
+}
+
+var pseudoVersion = regexp.MustCompile(`\d{14}-[0-9a-f]{12}$`)
 
 var richPinned = regexp.MustCompile(`rich==([0-9][0-9A-Za-z._-]*)`)
 

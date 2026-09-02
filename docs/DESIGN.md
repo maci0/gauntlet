@@ -68,8 +68,9 @@ with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 
-Seven direct modules and one deliberate transitive; everything else is
-standard library. The default is no
+Seven direct modules, plus sqlite and klauspost/compress which arrive
+through toktop. The rest of the graph is what those modules require.
+The default is no
 new dependency: each row earns its place by doing something the standard
 library cannot, and each was kept small on purpose.
 
@@ -79,6 +80,7 @@ library cannot, and each was kept small on purpose.
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
+| `klauspost/compress` | zstd decoder for dsh concatenated session logs | pulled in through toktop/agentusage; `-tags notoktop` drops it |
 | `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | pulled in through toktop; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji render in alignment | display paths in `internal/ui` and the plain reporter in `cmd/gauntlet` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, and the file-signal suggester | `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
@@ -99,9 +101,9 @@ Supply-chain posture, and what any new dependency inherits as obligations:
 - A scheduled `govulncheck` job, plus one on every `go.mod`/`go.sum` change,
   reports vulnerabilities reachable from this code; dependabot owns version
   bumps, the scan owns advisories.
-- Licenses are MIT or BSD-3-Clause throughout, compatible with this repo's
-  AGPL-3.0-or-later. A dependency's license is checked before adoption,
-  not after.
+- Licenses of every linked module are MIT or BSD-3-Clause, compatible with
+  this repo's AGPL-3.0-or-later. A dependency's license is checked before
+  adoption, not after.
 - The sqlite driver tracks upstream SQLite closely; when auditing, read the
   `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
   self-constructed queries against agent-owned database files, never SQL
