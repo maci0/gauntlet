@@ -154,3 +154,20 @@ func TestReadmeGridMatchesBundled(t *testing.T) {
 		t.Errorf("README.md review grid is stale; replace it between the markers with:\n\n%s", want.String())
 	}
 }
+
+// The install snippet resolves a tag, then must fetch that tag's asset. Using
+// releases/latest/download after the resolve can pair a newly published tag
+// name with the previous binary if a release lands between the two curls.
+func TestReadmeInstallPinsTheResolvedTag(t *testing.T) {
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(readme)
+	if strings.Contains(text, "releases/latest/download/") {
+		t.Fatal("README install fetches from releases/latest/download/; use releases/download/v${ver}/ so the binary matches the tag just resolved")
+	}
+	if !strings.Contains(text, "releases/download/v${ver}/") {
+		t.Fatal("README install must fetch from releases/download/v${ver}/")
+	}
+}

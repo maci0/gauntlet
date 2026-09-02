@@ -20,6 +20,10 @@ make test             # every package, race detector, shuffled order (~30s)
 ```
 
 The first run downloads Go modules; after that the loop is offline.
+`make` passes `-mod=readonly`, so a drift from go.sum fails the command
+instead of rewriting the lockfile. Change modules with `go get` / `go mod tidy`,
+not as a side effect of the build. `gofmt` is the one from `$(go env GOROOT)`,
+not whatever happens to be first on `PATH`.
 
 For the edit-test loop, run one package or one test instead of the suite:
 

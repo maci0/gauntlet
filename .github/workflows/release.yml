@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Full race suite plus four-platform cross-compilation, with room to spare;
     # bounded so a hung step cannot sit on the tag for hours.
     timeout-minutes: 60

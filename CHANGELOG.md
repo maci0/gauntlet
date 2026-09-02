@@ -32,6 +32,9 @@ minor instead and were listed under Changed.
 - `gauntlet pick` no longer treats untracked files as blocking `--jobs`.
   The runner has allowed them since 1.12; the launcher was still using a
   full dirty-tree check and refused a run that would have started.
+- The README install snippet fetches the binary for the version it just
+  resolved, rather than `releases/latest/download`, so a release published
+  between the two curls cannot pair a new tag with the previous binary.
 
 ## 1.16.0
 

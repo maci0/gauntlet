@@ -72,7 +72,7 @@ Install the latest release binary:
 ```sh
 mkdir -p ~/.local/bin
 ver=$(curl -fsSL https://api.github.com/repos/maci0/gauntlet/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
-curl -fsSL "https://github.com/maci0/gauntlet/releases/latest/download/gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)" -o ~/.local/bin/gauntlet
+curl -fsSL "https://github.com/maci0/gauntlet/releases/download/v${ver}/gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)" -o ~/.local/bin/gauntlet
 chmod +x ~/.local/bin/gauntlet
 ```
 

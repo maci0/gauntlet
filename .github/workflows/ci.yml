@@ -20,8 +20,10 @@ jobs:
       fail-fast: false
       matrix:
         # The runner shells out to agents, locks directories, and kills process
-        # groups, so both supported platforms run the real suite.
-        os: [ubuntu-latest, macos-latest]
+        # groups, so both supported platforms run the real suite. Images are
+        # pinned, not -latest: a runner-image rollout must not turn a green
+        # tree red with no code change.
+        os: [ubuntu-24.04, macos-15]
         # Both halves of the optional toktop integration are shipped, so both
         # are tested: with it the transcript readers run, without it gauntlet
         # must still build and fall back to what agents print.
@@ -53,7 +55,7 @@ jobs:
   # and shots.sh) gate the same way every other language in this repository
   # does, so they cannot rot into something nobody can run.
   scripts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -82,7 +84,7 @@ jobs:
       - run: shellcheck scripts/shots.sh
 
   dist:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

@@ -4,7 +4,13 @@ DIST    := dist
 VERSION ?= dev
 
 GO      ?= go
+GOFMT   ?= $(shell $(GO) env GOROOT)/bin/gofmt
 LDFLAGS := -s -w -X main.version=$(VERSION)
+
+# Honor go.sum: a missing or extra module must fail the command rather than
+# rewrite the manifests. `make vuln` clears this; govulncheck is not a build
+# input and is fetched unpinned on purpose.
+export GOFLAGS += -mod=readonly
 
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for
@@ -109,18 +115,20 @@ vet: ## run go vet
 
 # Package directories only: the Go tool already ignores dot-directories, but
 # gofmt walks everything, including scratch fixtures.
-GOFILES = $(shell $(GO) list -f '{{.Dir}}' ./...)
+GOFILES = $(shell $(GO) list -mod=readonly -f '{{.Dir}}' ./...)
 
 .PHONY: fmt
 fmt: ## rewrite all Go files with gofmt
-	gofmt -s -w $(GOFILES)
+	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }
+	$(GOFMT) -s -w $(GOFILES)
 
 # CI tests all three tag configurations (see the matrix in ci.yml); check
 # compiles each of them so a break under one of them fails here and not
 # after push. The bare pass is the third configuration: neither tag defined.
 .PHONY: check
 check: ## verify formatting, toolchain fixes, and vet (CI parity)
-	@unformatted=$$(gofmt -s -l $(GOFILES)); \
+	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }; \
+		unformatted=$$("$(GOFMT)" -s -l $(GOFILES)) || exit 1; \
 		if [ -n "$$unformatted" ]; then \
 			echo "needs gofmt:"; echo "$$unformatted"; exit 1; \
 		fi
@@ -150,7 +158,7 @@ check-scripts: ## ruff and shellcheck on scripts/ (CI also runs mypy --strict)
 # network on first use; everything else in this Makefile does not.
 .PHONY: vuln
 vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 .PHONY: install
 install: build ## install into ~/.local/bin
@@ -172,7 +180,9 @@ dist: ## build every release platform into dist/
 	# A previous dist with a different VERSION or PLATFORMS must not leak into
 	# this one: release globs dist/gauntlet_* both into checksums.txt and the
 	# uploaded assets, so stale binaries here would ship as release artifacts.
-	@rm -f $(DIST)/$(BINARY)_*
+	# checksums.txt and sbom.txt are rewritten by `release`; drop them here so
+	# `make dist` cannot leave a previous version's inventory beside new binaries.
+	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.txt
 	@for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
@@ -205,16 +215,19 @@ release: test dist ## build every platform and write dist/checksums.txt and dist
 # built pinned to C/UTC, one under the ambient environment, then cmp. Side b
 # strips LC_ALL rather than inheriting the C this Makefile exports, so the
 # second build really does see the host's locale; TZ is genuinely ambient
-# either way. CI runs it on every push.
+# either way. The tree is archived to a file then extracted twice: a tar pipe
+# would hide a failing create behind a successful extract (POSIX sh has no
+# pipefail). CI runs it on every push.
 REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
 repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
 	@rm -rf "$(REPRO_DIR)" && mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b" && \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
+		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
+			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
-			tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
-				-cf - . | tar -C "$(REPRO_DIR)/$$side" -xf - || exit 1; \
+			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \
 		done && \
 		echo "repro: copy a (LC_ALL=C TZ=UTC)" && \
 		(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 TZ=UTC LC_ALL=C \
