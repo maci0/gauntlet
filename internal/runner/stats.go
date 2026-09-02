@@ -66,15 +66,12 @@ func (s *Stats) CommitFails() int {
 	return s.commitFails
 }
 
-// addCommitRun records one commit step that launched.
 func (s *Stats) addCommitRun() {
 	s.mu.Lock()
 	s.commitRuns++
 	s.mu.Unlock()
 }
 
-// addCommitFail records one commit-step failure, including launches that
-// never reached an agent.
 func (s *Stats) addCommitFail() {
 	s.mu.Lock()
 	s.commitFails++
@@ -111,7 +108,6 @@ type Counts struct {
 	OK, Fail, Timeout, Skipped, Interrupted, Conflict int
 }
 
-// tally records one result under its status bucket.
 func (c *Counts) tally(s Status) {
 	switch s {
 	case StatusOK:

@@ -575,17 +575,6 @@ func TestAddWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	git := func(args ...string) string {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = r.Dir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-		return strings.TrimSpace(string(out))
-	}
-
 	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
 	if err != nil {
 		t.Fatal(err)
@@ -601,15 +590,15 @@ func TestAddWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tree := git("rev-parse", "HEAD^{tree}")
-	commit := git("commit-tree", tree, "-p", base, "-m", "conflicted work")
+	tree := gitOut(t, r.Dir, "rev-parse", "HEAD^{tree}")
+	commit := gitOut(t, r.Dir, "commit-tree", tree, "-p", base, "-m", "conflicted work")
 	kept := "gauntlet/run-l2-00/sec-review"
-	git("branch", kept, commit)
+	gitIn(t, r.Dir, "branch", kept, commit)
 
 	if _, err := r.AddWorktree(ctx, "sec-review", "run-l2-00", base); err == nil {
 		t.Fatal("an add over a branch with real work must fail")
 	}
-	if got := git("rev-parse", kept); got != commit {
+	if got := gitOut(t, r.Dir, "rev-parse", kept); got != commit {
 		t.Fatalf("the kept branch was modified: %s != %s", got, commit)
 	}
 }
@@ -719,16 +708,8 @@ func TestNULOutputKeepsSpacesInNames(t *testing.T) {
 		t.Fatalf("ListFiles renamed the file: %q", files)
 	}
 
-	git := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = r.Dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-	}
-	git("add", "-A")
-	git("commit", "-qm", "add a file with spaces around its name")
+	gitIn(t, r.Dir, "add", "-A")
+	gitIn(t, r.Dir, "commit", "-qm", "add a file with spaces around its name")
 
 	changed, err := r.ChangedFiles(ctx, r.Dir, "HEAD~1", "HEAD")
 	if err != nil {

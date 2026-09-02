@@ -6,10 +6,8 @@ package gitx
 import (
 	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 )
@@ -128,16 +126,6 @@ func TestMergeTwiceLandsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	git := func(args ...string) string {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = r.Dir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-		return strings.TrimSpace(string(out))
-	}
 	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
 	if err != nil {
 		t.Fatal(err)
@@ -156,17 +144,17 @@ func TestMergeTwiceLandsOnce(t *testing.T) {
 	if !mr.Merged {
 		t.Fatalf("first merge failed: %+v", mr)
 	}
-	afterFirst := git("rev-parse", "HEAD")
-	commits := git("rev-list", "--count", base+"..HEAD")
+	afterFirst := gitOut(t, r.Dir, "rev-parse", "HEAD")
+	commits := gitOut(t, r.Dir, "rev-list", "--count", base+"..HEAD")
 
 	mr = r.Merge(ctx, wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
 		t.Fatalf("merging an already-landed branch must succeed as a no-op, got: %+v", mr)
 	}
-	if got := git("rev-parse", "HEAD"); got != afterFirst {
+	if got := gitOut(t, r.Dir, "rev-parse", "HEAD"); got != afterFirst {
 		t.Fatalf("a repeated merge added commits: %s != %s", got, afterFirst)
 	}
-	if got := git("rev-list", "--count", base+"..HEAD"); got != commits {
+	if got := gitOut(t, r.Dir, "rev-list", "--count", base+"..HEAD"); got != commits {
 		t.Fatalf("a repeated merge changed the history length: %s != %s", got, commits)
 	}
 }
@@ -178,17 +166,7 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	git := func(args ...string) string {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = r.Dir
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-		return strings.TrimSpace(string(out))
-	}
-	git("branch", "main-line", base)
+	gitIn(t, r.Dir, "branch", "main-line", base)
 
 	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
 	if err != nil {
@@ -208,17 +186,17 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 	if !mr.Merged {
 		t.Fatalf("first merge into main-line failed: %+v", mr)
 	}
-	afterFirst := git("rev-parse", "refs/heads/main-line")
-	commits := git("rev-list", "--count", base+"..refs/heads/main-line")
+	afterFirst := gitOut(t, r.Dir, "rev-parse", "refs/heads/main-line")
+	commits := gitOut(t, r.Dir, "rev-list", "--count", base+"..refs/heads/main-line")
 
 	mr = r.MergeInto(ctx, "main-line", wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
 		t.Fatalf("a repeat merge of unchanged work must succeed as a no-op, got: %+v", mr)
 	}
-	if got := git("rev-parse", "refs/heads/main-line"); got != afterFirst {
+	if got := gitOut(t, r.Dir, "rev-parse", "refs/heads/main-line"); got != afterFirst {
 		t.Fatalf("a repeated merge moved main-line: %s != %s", got, afterFirst)
 	}
-	if got := git("rev-list", "--count", base+"..refs/heads/main-line"); got != commits {
+	if got := gitOut(t, r.Dir, "rev-list", "--count", base+"..refs/heads/main-line"); got != commits {
 		t.Fatalf("a repeated merge stacked commits on main-line: %s != %s", got, commits)
 	}
 }

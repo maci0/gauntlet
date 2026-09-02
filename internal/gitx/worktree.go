@@ -195,15 +195,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
-		// A failure can leave the add half-done: a cancel or a kill lands
-		// mid-write, the command dies, but the registration it already wrote
-		// and the branch it already created do not. Clear both while the lock
-		// is still held, on a live context, so the caller gets the error and
-		// moves on while the repo stays as it was found.
-		cleanCtx := context.WithoutCancel(ctx)
-		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
-		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
-		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
+		r.abortWorktreeAdd(ctx, dir, branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -237,12 +229,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
-		// A cancel during the add can leave a half-created, locked entry.
-		// Clean it up here so callers do not need to know the path.
-		cleanCtx := context.WithoutCancel(ctx)
-		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
-		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
-		_, _ = r.run(cleanCtx, gitQuick, "branch", "-D", branch)
+		r.abortWorktreeAdd(ctx, dir, branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
@@ -270,12 +257,23 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
-		cleanCtx := context.WithoutCancel(ctx)
-		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
-		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		r.abortWorktreeAdd(ctx, dir, "")
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
+}
+
+// abortWorktreeAdd drops a half-created checkout and, when named, its branch.
+// A cancel or kill can land after git has registered the worktree and created
+// the branch; both have to go. The caller still holds wtMu, and the context
+// is kept alive so a cancelled add does not skip the cleanup.
+func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
+	cleanCtx := context.WithoutCancel(ctx)
+	_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+	_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+	if branch != "" {
+		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
+	}
 }
 
 // StartBranch advances a stack worktree onto a fresh child of base. The old
@@ -855,8 +853,6 @@ func StackBranchName(baseTip string, index int, review string) string {
 }
 
 func firstLine(s string) string {
-	if before, _, ok := strings.Cut(s, "\n"); ok {
-		return before
-	}
-	return s
+	line, _, _ := strings.Cut(s, "\n")
+	return line
 }

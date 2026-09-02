@@ -16,11 +16,18 @@ import (
 // gitIn runs one git command in dir, failing the test on error.
 func gitIn(t *testing.T, dir string, args ...string) {
 	t.Helper()
+	_ = gitOut(t, dir, args...)
+}
+
+func gitOut(t *testing.T, dir string, args ...string) string {
+	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
 	}
+	return strings.TrimSpace(string(out))
 }
 
 // A reviewed repository's own .git/config is untrusted, and core.sshCommand
