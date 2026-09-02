@@ -18,7 +18,7 @@ func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if got := gauntlethome.ExpandPath("~/src"); got != filepath.Join(home, "src") {
+	if got := gauntlethome.ExpandPath("~" + string(os.PathSeparator) + "src"); got != filepath.Join(home, "src") {
 		t.Errorf("~/src expanded to %q", got)
 	}
 	if got := gauntlethome.ExpandPath("~"); got != "~" {

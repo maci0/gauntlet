@@ -58,6 +58,9 @@ minor instead and were listed under Changed.
 - The README install snippet fetches the binary for the version it just
   resolved, rather than `releases/latest/download`, so a release published
   between the two curls cannot pair a new tag with the previous binary.
+- The README install snippet and `make install` say when `~/.local/bin` is
+  not on PATH. On macOS it is not there by default, so the binary was
+  installed and then not found.
 - The directory lock is no longer inherited by agent and git children. The
   lock descriptor is opened close-on-exec, so a killed parent cannot leave
   the tree locked for as long as those children live.

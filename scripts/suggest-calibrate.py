@@ -51,7 +51,7 @@ def agent_picks() -> dict[str, set[str]]:
     if not index.is_file():
         raise SystemExit(f"no runs to calibrate against: {index} is missing")
     picks: dict[str, set[str]] = {}
-    for line in index.read_text(errors="replace").splitlines():
+    for line in index.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
             summary = json.loads(line)
         except json.JSONDecodeError:
@@ -62,7 +62,7 @@ def agent_picks() -> dict[str, set[str]]:
         if not run.is_file():
             continue
         directory, loop, reviews = None, 0, set()
-        for entry in run.read_text(errors="replace").splitlines():
+        for entry in run.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
                 event = json.loads(entry)
             except json.JSONDecodeError:

@@ -24,4 +24,10 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, "GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@latest") {
 		t.Fatal("make vuln must clear GOFLAGS; govulncheck is fetched unpinned and is not a build input")
 	}
+	if !strings.Contains(text, `mkdir -p "$(TMPDIR)"`) {
+		t.Fatal(`mkdir TMPDIR must quote the path: HOME can contain spaces`)
+	}
+	if !strings.Contains(text, "is not on PATH") {
+		t.Fatal("make install must say when ~/.local/bin is not on PATH")
+	}
 }

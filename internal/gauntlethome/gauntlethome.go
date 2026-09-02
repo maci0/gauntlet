@@ -56,9 +56,9 @@ func absolute(p string) string {
 // "~/..." names something under HOME.
 func ExpandPath(p string) string {
 	p = os.ExpandEnv(p)
-	if strings.HasPrefix(p, "~/") {
+	if after, ok := strings.CutPrefix(p, "~"+string(os.PathSeparator)); ok {
 		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[2:])
+			return filepath.Join(home, after)
 		}
 	}
 	return p

@@ -76,6 +76,9 @@ curl -fsSL "https://github.com/maci0/gauntlet/releases/download/v${ver}/gauntlet
 chmod +x ~/.local/bin/gauntlet
 ```
 
+`~/.local/bin` must be on `PATH`. Most Linux environments already put it
+there; on macOS, add it.
+
 Or build and install from source:
 
 ```sh

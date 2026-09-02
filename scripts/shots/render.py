@@ -13,6 +13,7 @@ braille.
 """
 
 import argparse
+import os
 import pathlib
 import re
 
@@ -29,11 +30,11 @@ def main() -> None:
     ap.add_argument("title", help="window title for the terminal chrome")
     args = ap.parse_args()
 
-    body = args.source.read_text()
+    body = args.source.read_text(encoding="utf-8")
     text = Text.from_ansi(body)
     width = max(len(line) for line in text.plain.splitlines())
 
-    with open("/dev/null", "w") as sink:
+    with open(os.devnull, "w", encoding="utf-8") as sink:
         console = Console(
             record=True,
             width=width,
@@ -45,9 +46,11 @@ def main() -> None:
         console.print(text, end="")
         console.save_svg(str(args.dest), title=args.title, theme=None)
 
-    svg = re.sub(r"@font-face \{.*?\}\n", "", args.dest.read_text(), flags=re.DOTALL)
+    svg = re.sub(
+        r"@font-face \{.*?\}\n", "", args.dest.read_text(encoding="utf-8"), flags=re.DOTALL
+    )
     svg = re.sub(r"font-family:[^;\n]*", f"font-family: {FONTS}", svg)
-    args.dest.write_text(svg)
+    args.dest.write_text(svg, encoding="utf-8")
 
     box = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
     if box is None:

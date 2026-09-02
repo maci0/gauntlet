@@ -1096,14 +1096,22 @@ func TestDshStreamDoesNotPatchCompression(t *testing.T) {
 	}
 }
 
-// isolateDshPatches points UserCacheDir at a fresh temp dir and empties the
+// isolateDshPatches points UserCacheDir at a fresh tree and empties the
 // patched-overlay table, restoring whatever was there when the test ends.
+//
+// UserCacheDir is $XDG_CACHE_HOME on Linux and $HOME/Library/Caches on
+// macOS, so an XDG-only override would skip the overlay tests on Darwin.
+// HOME plus XDG_CACHE_HOME covers both: Linux reads the XDG dir, Darwin
+// reads $HOME/Library/Caches. Callers use the returned path, not a
+// hardcoded suffix.
 func isolateDshPatches(t *testing.T) string {
 	t.Helper()
-	cache := t.TempDir()
-	t.Setenv("XDG_CACHE_HOME", cache)
-	if got, err := os.UserCacheDir(); err != nil || got != cache {
-		t.Skip("UserCacheDir does not follow XDG_CACHE_HOME here")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	dshPatchMu.Lock()
@@ -1116,7 +1124,18 @@ func isolateDshPatches(t *testing.T) string {
 		maps.Copy(dshPatches, saved)
 		dshPatchMu.Unlock()
 	})
-	return cache
+	return dir
+}
+
+func TestIsolateDshPatchesUsesUserCacheDir(t *testing.T) {
+	dir := isolateDshPatches(t)
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != cache {
+		t.Fatalf("isolateDshPatches = %q, want UserCacheDir %q", dir, cache)
+	}
 }
 
 // dsh pins its model through a generated --patch overlay rather than a model

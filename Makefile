@@ -34,8 +34,8 @@ export LC_ALL := C
 export TMPDIR ?= $(HOME)/.cache/gauntlet/test
 # Every go command inherits TMPDIR, and go refuses to start when it does not
 # exist, so it is created at parse time rather than per target: a fresh CI
-# runner has no such directory.
-$(shell mkdir -p $(TMPDIR))
+# runner has no such directory. Quoted: HOME can contain spaces.
+$(shell mkdir -p "$(TMPDIR)")
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
 # groups, the directory lock needs flock, prompt reads need O_NOFOLLOW, and hot
@@ -77,7 +77,7 @@ run: build ## build, then run one loop here with the dashboard
 
 .PHONY: test
 test: ## run all tests with the race detector, shuffled order
-	@mkdir -p $(TMPDIR)
+	@mkdir -p "$(TMPDIR)"
 	$(GO) test $(GOTAGS) -race -shuffle=on ./...
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
@@ -88,12 +88,12 @@ RUN ?=
 
 .PHONY: test-pkg
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
-	@mkdir -p $(TMPDIR)
+	@mkdir -p "$(TMPDIR)"
 	$(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
 
 .PHONY: cover
 cover: ## test coverage summary, gated by COVER_MIN
-	@mkdir -p $(TMPDIR) $(DIST)
+	@mkdir -p "$(TMPDIR)" $(DIST)
 	$(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
 	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
 		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
@@ -164,6 +164,8 @@ vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs
 install: build ## install into ~/.local/bin
 	install -d ~/.local/bin
 	install -m 0755 $(BINARY) ~/.local/bin/$(BINARY)
+	@case ":$$PATH:" in *:"$(HOME)/.local/bin":*) ;; *) \
+		echo "note: $(HOME)/.local/bin is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
 
 .PHONY: clean
 clean: ## remove build artifacts
