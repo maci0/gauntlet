@@ -254,6 +254,21 @@ func run(argv []string) int {
 		return exitUsage
 	}
 
+	// Continue a run that a hot reload interrupted, so counters and the
+	// journal survive the swap. Loaded before discovery: a resumed stacked
+	// run must pin its predecessor's base commit before anything is read.
+	// A successor whose handoff cannot be read must stop here: starting a
+	// fresh run would re-apply finished reviews under a new id.
+	var prior handoff
+	resumed, err := selfupdate.LoadState(&prior)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Cannot resume the interrupted run: %v\n", err)
+		return exitFail
+	}
+	if prior.Dirs == nil {
+		prior.Dirs = map[string]dirHandoff{}
+	}
+
 	// Agents: explicit list, or everything installed.
 	agents := opts.agents
 	autoDetected := false
@@ -285,14 +300,6 @@ func run(argv []string) int {
 	}
 	defer releaseAll(runs)
 
-	// Continue a run that a hot reload interrupted, so counters and the
-	// journal survive the swap. Loaded before discovery: a resumed stacked
-	// run must pin its predecessor's base commit before anything is read.
-	var prior handoff
-	resumed := selfupdate.LoadState(&prior)
-	if prior.Dirs == nil {
-		prior.Dirs = map[string]dirHandoff{}
-	}
 	runID := prior.RunID
 	// origin is the wall instant the run began, for the journal. startedAt
 	// is what time.Since measures against in this process: a fresh run uses

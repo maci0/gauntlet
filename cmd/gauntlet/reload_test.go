@@ -73,6 +73,26 @@ func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	}
 }
 
+// A successor whose handoff cannot be parsed must exit rather than start a
+// fresh run: repeating finished reviews under a new id is worse than stopping.
+func TestRunAbortsOnUnreadableHandoff(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "run.json")
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_STATE", path)
+
+	code, errs := captureStderrFor(t, func() int {
+		return run([]string{"--once", "--dir", t.TempDir()})
+	})
+	if code != exitFail {
+		t.Errorf("an unreadable handoff should exit %d, got %d", exitFail, code)
+	}
+	if msg := errs.String(); !strings.Contains(msg, "Cannot resume the interrupted run") {
+		t.Errorf("the abort should name the handoff, got: %q", msg)
+	}
+}
+
 // captureStderrFor swaps os.Stderr for a pipe, runs f, and returns its exit
 // code along with whatever it wrote to stderr. Unlike captureStderr it makes
 // no assumption about which code a failure should produce.

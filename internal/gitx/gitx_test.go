@@ -745,3 +745,65 @@ func TestChangedSinceNamesRecentWork(t *testing.T) {
 		t.Fatal("a window covering the whole history reported no files")
 	}
 }
+
+func TestCurrentBranchDistinguishesDetachedFromFailure(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	name, err := r.CurrentBranch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "main" {
+		t.Fatalf("CurrentBranch = %q, want main", name)
+	}
+
+	cmd := exec.Command("git", "checkout", "--quiet", "--detach", "HEAD")
+	cmd.Dir = r.Dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("detach: %v: %s", err, out)
+	}
+	name, err = r.CurrentBranch(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "" {
+		t.Fatalf("detached HEAD reported as %q", name)
+	}
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := r.CurrentBranch(canceled); err == nil {
+		t.Fatal("CurrentBranch on a canceled context must fail, not look detached")
+	}
+}
+
+func TestRemoteURLPreservesGitFailures(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	if _, err := r.RemoteURL(ctx, "origin"); err == nil {
+		t.Fatal("a missing remote must fail")
+	} else if !strings.Contains(err.Error(), "no Git remote origin") {
+		t.Fatalf("missing remote: %v", err)
+	}
+
+	canceled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := r.RemoteURL(canceled, "origin"); err == nil {
+		t.Fatal("RemoteURL on a canceled context must fail")
+	} else if strings.Contains(err.Error(), "no Git remote origin") {
+		t.Fatalf("a git failure was reported as a missing remote: %v", err)
+	}
+}
+
+func TestRemotePushURLDoesNotFallBackOnGitFailure(t *testing.T) {
+	r := newRepo(t)
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := r.RemotePushURL(canceled, "origin")
+	if err == nil {
+		t.Fatal("RemotePushURL on a canceled context must fail, not fall back")
+	}
+	if !strings.Contains(err.Error(), "push URL") {
+		t.Fatalf("fell back to the fetch URL instead of reporting the push-url failure: %v", err)
+	}
+}

@@ -390,7 +390,8 @@ half-written binary is never executed. When it changes (self-update,
 5. The successor seeds its stats from the handoff, resumes the interrupted
    loop from its remaining reviews, subtracts finished loops from
    `--max-loops`, keeps the original start time for `--runtime`, and appends
-   to the same journal file.
+   to the same journal file. An unreadable handoff is a hard failure: the
+   successor exits rather than starting a fresh run that would repeat work.
 
 The result is one run, one run id, one index row, one summary, spanning both
 binaries. What a reload costs is latency: it waits for the reviews in flight,

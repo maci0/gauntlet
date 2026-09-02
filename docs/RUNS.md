@@ -354,7 +354,9 @@ executable on disk changes, by `gauntlet update`, `make install`, or a fresh
 - **Nothing is lost.** Run id, start time, per-review results, per-agent
   totals, and loop budget cross the gap, so the final summary and the journal
   describe the whole run as one. The process keeps its pid and terminal:
-  `execve`, not a respawn.
+  `execve`, not a respawn. If the successor cannot read the handoff, it exits
+  instead of starting a new run: repeating finished reviews under a new id is
+  worse than stopping.
 
 The cost is latency, not correctness: the swap waits for the reviews in flight,
 which can take up to `--timeout`.

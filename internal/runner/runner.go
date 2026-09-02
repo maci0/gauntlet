@@ -591,7 +591,11 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		r.log("Cannot read HEAD, falling back to sequential: %v", err)
 		return r.runLoopSequential(ctx, loopNo)
 	}
-	branch := r.repo.CurrentBranch(ctx)
+	branch, err := r.repo.CurrentBranch(ctx)
+	if err != nil {
+		r.log("Cannot read the current branch, falling back to sequential: %v", err)
+		return r.runLoopSequential(ctx, loopNo)
+	}
 	if branch == "" {
 		r.log("Detached HEAD: merges would be lost, falling back to sequential")
 		return r.runLoopSequential(ctx, loopNo)
@@ -605,7 +609,9 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 			r.log("Cannot create lane %d: %v", i, err)
 			for j := range i {
 				if lanes[j] != nil {
-					_ = lanes[j].Remove(context.WithoutCancel(ctx))
+					if err := lanes[j].Remove(context.WithoutCancel(ctx)); err != nil {
+						r.log("Cannot remove lane %d: %v", j, err)
+					}
 					r.repo.DeleteBranch(context.WithoutCancel(ctx), lanes[j].Branch)
 				}
 			}
@@ -619,7 +625,9 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 			if wt == nil {
 				continue
 			}
-			_ = wt.Remove(cleanCtx)
+			if err := wt.Remove(cleanCtx); err != nil {
+				r.log("Cannot remove lane worktree %s: %v", wt.Dir, err)
+			}
 			if wt.Branch != "" {
 				r.repo.DeleteBranch(cleanCtx, wt.Branch)
 			}
@@ -727,7 +735,9 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	// Start from the latest HEAD so the review sees work merged by other
 	// lanes, not the stale tip from when the loop (or the last review) began.
 	base := wt.Base()
-	if tip, err := r.repo.Tip(ctx, "HEAD"); err == nil && tip != "" {
+	if tip, err := r.repo.Tip(ctx, "HEAD"); err != nil {
+		r.log("Cannot read HEAD before %s, using the lane's previous base: %v", review, err)
+	} else if tip != "" {
 		base = tip
 	}
 
@@ -753,7 +763,10 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	advance := func(deleteBranch bool) {
 		branchToDelete := wt.Branch
 		tip := base
-		if t, err := r.repo.Tip(ctx, "HEAD"); err == nil && t != "" {
+		if t, err := r.repo.Tip(ctx, "HEAD"); err != nil {
+			r.log("Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
+				review, laneIdx, err)
+		} else if t != "" {
 			tip = t
 		}
 		if err := wt.Advance(context.WithoutCancel(ctx), tip); err != nil {
@@ -1170,7 +1183,11 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 	if r.cfg.MergeInto == "" || ctx.Err() != nil || r.repo == nil {
 		return
 	}
-	from := r.repo.CurrentBranch(ctx)
+	from, err := r.repo.CurrentBranch(ctx)
+	if err != nil {
+		r.log("Not merging into %s: cannot read the current branch: %v", r.cfg.MergeInto, err)
+		return
+	}
 	if from == "" {
 		r.log("Not merging into %s: this tree is on a detached HEAD", r.cfg.MergeInto)
 		return

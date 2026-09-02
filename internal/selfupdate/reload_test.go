@@ -46,7 +46,11 @@ func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 	t.Setenv(stateEnv, path)
 
 	var got handoffBlob
-	if !LoadState(&got) {
+	ok, err := LoadState(&got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
 		t.Fatal("a written handoff must be found")
 	}
 	if got.Loops != want.Loops || len(got.Pending) != 2 ||
@@ -58,8 +62,12 @@ func TestSaveAndLoadStateRoundTrip(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("the handoff file survived its own load")
 	}
-	if LoadState(&got) {
+	ok, err = LoadState(&got)
+	if ok {
 		t.Fatal("the same handoff was served twice")
+	}
+	if err == nil {
+		t.Fatal("a consumed handoff must be reported, not treated as a fresh start")
 	}
 }
 
@@ -109,7 +117,11 @@ func TestSaveStateSweepsStaleHandoffs(t *testing.T) {
 func TestLoadStateWithoutHandoff(t *testing.T) {
 	t.Setenv(stateEnv, "")
 	var v handoffBlob
-	if LoadState(&v) {
+	ok, err := LoadState(&v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok {
 		t.Fatal("a normal start has no state to load")
 	}
 }
@@ -123,8 +135,12 @@ func TestLoadStateRejectsGarbage(t *testing.T) {
 	t.Setenv(stateEnv, path)
 
 	var v handoffBlob
-	if LoadState(&v) {
+	ok, err := LoadState(&v)
+	if ok {
 		t.Fatal("garbage loaded as handoff state")
+	}
+	if err == nil {
+		t.Fatal("an unreadable handoff must be an error, not a silent fresh start")
 	}
 	// A rejected handoff is still consumed: retrying the start must not trip
 	// over it forever.
@@ -158,7 +174,7 @@ func TestSaveStateReplacesWholeFile(t *testing.T) {
 	// The handoff is written moments before the exec: a rewrite must replace
 	// the file whole rather than truncate it in place, so a kill mid-write
 	// leaves either the old state or none instead of a blob that fails to
-	// parse and silently restarts every loop.
+	// parse and aborts the successor.
 	dir := t.TempDir()
 	first := handoffBlob{Loops: 1, Pending: []string{"a-review"}}
 	second := handoffBlob{Loops: 2, Pending: []string{"b-review", "c-review"}}

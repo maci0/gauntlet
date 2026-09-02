@@ -121,8 +121,8 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // The blob is written to a sibling temp file, synced, and renamed into place:
 // the exec follows immediately, so a kill mid-write must leave either the
 // previous state or none, never a truncated file. LoadState cannot parse a
-// torn blob, and an unparseable handoff silently restarts every loop from
-// zero.
+// torn blob, and an unreadable handoff is an error so the successor exits
+// instead of restarting every loop from zero.
 //
 // Handoffs whose successor never ran are swept here: a handoff is meant to be
 // read moments after it is written, and one that outlives the retention window
@@ -187,21 +187,28 @@ func sweepStaleHandoffs(dir string) {
 	}
 }
 
-// LoadState reads and removes the handoff blob named by GAUNTLET_STATE. It
-// reports whether state was found: a normal start simply has none.
-func LoadState(v any) bool {
+// LoadState reads and removes the handoff blob named by GAUNTLET_STATE.
+//
+// ok is true only when a handoff was parsed. A normal start has none and
+// returns (false, nil). When the environment names a file that cannot be
+// read or parsed, it returns an error: the successor must not treat that as
+// a fresh start, which would re-run finished reviews under a new run id.
+func LoadState(v any) (ok bool, err error) {
 	path := os.Getenv(stateEnv)
 	if path == "" {
-		return false
+		return false, nil
 	}
 	data, err := os.ReadFile(path)
 	// Read once, then drop it: a stale handoff must not resurrect old counters
 	// on the next manual start.
 	_ = os.Remove(path)
 	if err != nil {
-		return false
+		return false, fmt.Errorf("reload handoff %s: %w", path, err)
 	}
-	return json.Unmarshal(data, v) == nil
+	if err := json.Unmarshal(data, v); err != nil {
+		return false, fmt.Errorf("reload handoff %s: %w", path, err)
+	}
+	return true, nil
 }
 
 // Reexec replaces this process with the binary at path, keeping the original
