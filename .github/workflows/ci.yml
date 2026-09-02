@@ -67,9 +67,11 @@ jobs:
       # ruff, mypy, and rich are pinned for the same reason every other
       # toolchain in the repository is: a new upstream release must not turn
       # a green tree red with no code change, and the two ruff steps must
-      # never resolve different versions within one run. Bump these pins
-      # deliberately in one commit, running all three steps locally first;
-      # dependabot does not track versions inside `run:` steps.
+      # never resolve different versions within one run. The rich pin must
+      # match scripts/shots/render.py's PEP 723 header, which is what
+      # `uv run` actually installs. Bump these pins deliberately in one
+      # commit, running all three steps locally first; dependabot does not
+      # track versions inside `run:` steps.
       - run: uvx ruff@0.16.4 check scripts
       - run: uvx ruff@0.16.4 format --check scripts
       # rich has type information, so mypy needs it installed to see it.

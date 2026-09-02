@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["rich"]
+# dependencies = ["rich==15.0.0"]
 # ///
 """Turn one captured terminal frame into an SVG, and report its pixel size.
 
