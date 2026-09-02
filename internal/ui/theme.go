@@ -50,7 +50,9 @@ func adaptive(light, dark string) lipgloss.AdaptiveColor {
 }
 
 var (
-	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(cLavender)
+	// Panel names are chrome: live values inside the title stay independently
+	// colored, and the label itself stays dim so it never competes with them.
+	styleTitle = lipgloss.NewStyle().Bold(true).Foreground(cDim)
 	styleDim   = lipgloss.NewStyle().Foreground(cDim)
 	styleFaint = lipgloss.NewStyle().Foreground(cFaint)
 	styleTrack = lipgloss.NewStyle().Foreground(cTrack)
@@ -262,13 +264,7 @@ func heatColor(f float64) lipgloss.TerminalColor {
 	}
 }
 
-// wordmark renders the logo once, with a cyan to peach gradient.
-var wordmark = sync.OnceValue(func() string {
-	letters := []rune("GAUNTLET")
-	colors := []lipgloss.AdaptiveColor{cTeal, cCyan, cBlue, cLavender, cMagenta, cPink, cPeach, cYellow}
-	var b strings.Builder
-	for i, l := range letters {
-		b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(colors[i%len(colors)]).Render(string(l)))
-	}
-	return b.String()
-})
+// wordmark is the name in the brand teal of the path-arrow in assets/mark.svg.
+func wordmark() string {
+	return lipgloss.NewStyle().Bold(true).Foreground(cTeal).Render("GAUNTLET")
+}

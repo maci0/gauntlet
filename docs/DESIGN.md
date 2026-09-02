@@ -461,7 +461,8 @@ Design points:
 Follows the TMOG dashboard rules: a cockpit, not a report.
 
 - The whole state fits one screen: lanes, review grid, throughput, feed.
-- Live data is bright; grid, borders, and chrome stay dim.
+- Live data is bright; grid, borders, panel names, and chrome stay dim.
+- The wordmark is the brand teal of the path-arrow in the mark, one hue.
 - One hue per agent, used for its lane, its rows, and its trace everywhere.
 - Colors adapt to the terminal's background: Catppuccin Latte on light
   terminals, Mocha on dark ones. The pairs are pinned by test to WCAG 2.2 AA:

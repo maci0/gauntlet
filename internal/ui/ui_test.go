@@ -560,6 +560,19 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 	}
 }
 
+// The wordmark is the brand teal, one hue: the README logos are a single-color
+// name next to a teal path-arrow, and a per-letter gradient would be a color
+// the mark does not use.
+func TestWordmarkIsTheBrandTeal(t *testing.T) {
+	want := lipgloss.NewStyle().Bold(true).Foreground(cTeal).Render("GAUNTLET")
+	if got := wordmark(); got != want {
+		t.Fatalf("wordmark is not the brand teal:\n got %q\nwant %q", got, want)
+	}
+	if got := stripANSI(wordmark()); got != "GAUNTLET" {
+		t.Fatalf("wordmark text = %q, want GAUNTLET", got)
+	}
+}
+
 func contrastRatio(t *testing.T, fg, bg string) float64 {
 	t.Helper()
 	a, b := wcagLuminance(t, fg), wcagLuminance(t, bg)

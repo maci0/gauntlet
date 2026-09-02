@@ -29,6 +29,8 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- Dashboard and launcher wordmark is the brand teal of the mark, one hue,
+  not a per-letter gradient. Panel names stay dim with the rest of the chrome.
 - Bundled review prompts: integer-width and abbreviation rules no longer
   rewrite language-idiomatic types and names; post-quantum crypto items are
   note-only; Kubernetes-native checks skip Dockerfile-only trees; docs-vs-code
