@@ -72,6 +72,9 @@ type procOpts struct {
 	Stream bool
 	// MaxLinesPerSec bounds the sink; 0 is unlimited.
 	MaxLinesPerSec int
+	// Now is the clock the output normalizer rate-limits against. nil means
+	// time.Now, matching normalize.Config.
+	Now func() time.Time
 	// Usage is called whenever the agent reports a larger token count than
 	// before, so a dashboard can show throughput while the agent is still
 	// running. Agents that report usage only at exit simply call it once.
@@ -182,6 +185,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		norm := normalize.New(normalize.Config{
 			MaxLinesPerSec: o.MaxLinesPerSec,
 			MaxWidth:       streamLineCols,
+			Now:            o.Now,
 		})
 		emit := func(l normalize.Line) {
 			if o.Sink != nil && emitting.Load() {

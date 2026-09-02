@@ -133,7 +133,7 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 	}
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
-		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit,
+		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
 		Sink: r.outputSink(review, spec.Label()),
 	})
 	switch {

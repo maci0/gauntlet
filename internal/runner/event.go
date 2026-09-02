@@ -120,9 +120,20 @@ type Bus struct {
 	subs   []chan Event
 	closed bool
 
-	// Now stamps events that arrive without a timestamp of their own.
-	// Injectable for tests; nil means time.Now.
+	// Now is the run's clock. It stamps events that arrive without a
+	// timestamp of their own, and the runner reads it for start time,
+	// elapsed, the runtime budget, and a clock-derived seed. Injectable
+	// for tests; nil means time.Now.
 	Now func() time.Time
+}
+
+// now is the bus clock: the injected Now, or wall time. Nil-safe so New can
+// stamp a start time before the runner exists.
+func (b *Bus) now() time.Time {
+	if b != nil && b.Now != nil {
+		return b.Now()
+	}
+	return time.Now()
 }
 
 // NewBus returns a bus with no subscribers.
@@ -154,11 +165,7 @@ func droppable(k Kind) bool { return k == EvOutput || k == EvUsage }
 // delivered. After Close it does nothing.
 func (b *Bus) Publish(e Event) {
 	if e.Time.IsZero() {
-		if b.Now != nil {
-			e.Time = b.Now()
-		} else {
-			e.Time = time.Now()
-		}
+		e.Time = b.now()
 	}
 	b.mu.RLock()
 	defer b.mu.RUnlock()

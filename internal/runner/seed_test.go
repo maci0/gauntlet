@@ -123,6 +123,109 @@ func TestZeroSeedDerivesFromClock(t *testing.T) {
 	}
 }
 
+// TestZeroSeedUsesInjectedClock pins the clock seam for an unset seed: two
+// runners that share one frozen Now derive the same seed, and Unix epoch
+// (UnixNano 0) still yields a nonzero seed so 0 keeps meaning "unset".
+func TestZeroSeedUsesInjectedClock(t *testing.T) {
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 123, time.UTC)
+	bus := NewBus()
+	bus.Now = func() time.Time { return stamp }
+
+	build := func() *Runner {
+		t.Helper()
+		r, err := New(context.Background(), seedConfig(t,
+			[]string{"aa-review"}, []agent.Spec{{Tool: "claude"}}, 0), bus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	a, b := build(), build()
+	want := uint64(stamp.UnixNano())
+	if a.seed != want || b.seed != want {
+		t.Fatalf("injected clock seed: %d and %d, want %d", a.seed, b.seed, want)
+	}
+
+	epoch := NewBus()
+	epoch.Now = func() time.Time { return time.Unix(0, 0).UTC() }
+	r, err := New(context.Background(), seedConfig(t,
+		[]string{"aa-review"}, []agent.Spec{{Tool: "claude"}}, 0), epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.seed == 0 {
+		t.Fatal("epoch clock derived seed 0, which means unset")
+	}
+}
+
+// TestElapsedUsesInjectedClock pins that review and loop elapsed, event
+// timestamps, and Stats.Start all read Bus.Now, so a frozen clock makes a
+// real agent launch report zero elapsed instead of wall time.
+func TestElapsedUsesInjectedClock(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Seed = 1
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	bus := NewBus()
+	bus.Now = func() time.Time { return stamp }
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+	r := runOn(t, cfg, bus)
+
+	if !r.Stats().Start.Equal(stamp) {
+		t.Fatalf("Stats.Start %v, want injected %v", r.Stats().Start, stamp)
+	}
+	results := r.Stats().Results()
+	if len(results) != 1 {
+		t.Fatalf("results: %+v", results)
+	}
+	if results[0].Elapsed != 0 {
+		t.Fatalf("result elapsed %s, want 0 under a frozen clock", results[0].Elapsed)
+	}
+	for _, ev := range <-done {
+		if !ev.Time.Equal(stamp) {
+			t.Fatalf("%s timestamp %v, want %v", ev.Kind, ev.Time, stamp)
+		}
+		if (ev.Kind == EvReviewEnd || ev.Kind == EvLoopEnd) && ev.Elapsed != 0 {
+			t.Fatalf("%s elapsed %v, want 0 under a frozen clock", ev.Kind, ev.Elapsed)
+		}
+	}
+}
+
+// TestBudgetExhaustedUsesInjectedClock pins that --runtime compares against
+// Bus.Now, not wall time: a clock already past the budget must not start a
+// review, even though the process has only just launched.
+func TestBudgetExhaustedUsesInjectedClock(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Seed = 1
+	// Far future so a wall-clock time.Since(Started) is negative and would
+	// not exhaust the budget: this test only passes if the check reads Now.
+	stamp := time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+	cfg.Started = stamp
+	cfg.Runtime = time.Second
+
+	bus := NewBus()
+	bus.Now = func() time.Time { return stamp.Add(2 * time.Second) }
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+	r := runOn(t, cfg, bus)
+
+	if got := r.Stats().Results(); len(got) != 0 {
+		t.Fatalf("budget should prevent reviews, got %+v", got)
+	}
+	if countKind(<-done, EvReviewStart) != 0 {
+		t.Fatal("a review started after the injected clock had spent the budget")
+	}
+}
+
 // TestScheduleReplaysAcrossAReload pins the property a hot reload needs: a
 // successor built from the recorded seed schedules every later loop exactly as
 // the uninterrupted run would have. This only holds because each loop's order

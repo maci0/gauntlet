@@ -58,7 +58,8 @@ func TestBusSubscribeAfterClose(t *testing.T) {
 }
 
 // TestBusInjectedClock pins the stamping contract: an event published without
-// a timestamp gets the bus's Now when one is injected, time.Now otherwise.
+// a timestamp gets the bus's Now when one is injected, wall time otherwise.
+// Elapsed, budget, and clock-derived seeds share this same Now; see seed_test.
 func TestBusInjectedClock(t *testing.T) {
 	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 

@@ -134,6 +134,12 @@ the unit of safe parallelism is **the directory**, not the agent.
   logger, the journal, and the TUI. Publishing never blocks the scheduler:
   output and live usage ticks may be dropped when a subscriber's buffer is
   full; results are never dropped.
+- The event bus carries an injectable clock (`Bus.Now`). Event timestamps,
+  review and loop elapsed times, the `--runtime` budget, and a zero `--seed`
+  all read it, so a test that pins the clock also pins those. Stochastic
+  choices (shuffle, agent pick, backoff jitter) are keyed draws from the
+  seed, not a shared random stream, so a recorded seed replays them even
+  when `--jobs` interleaves lanes.
 
 ### Isolated parallel reviews (`--jobs N`)
 

@@ -283,9 +283,9 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	}
 	start := cfg.Started
 	if start.IsZero() {
-		start = time.Now()
+		start = bus.now()
 	}
-	seed := seedOrClock(cfg.Seed)
+	seed := seedOrClock(cfg.Seed, bus.now)
 	r := &Runner{
 		cfg:            cfg,
 		bus:            bus,
@@ -345,13 +345,25 @@ func (r *Runner) toolsFor(review string) prompt.Tools {
 // Stats exposes the accumulated results.
 func (r *Runner) Stats() *Stats { return r.st }
 
+// now is the runner's clock: the bus's injected Now, or wall time.
+func (r *Runner) now() time.Time { return r.bus.now() }
+
 // seedOrClock returns the configured seed, or one derived from the clock when
 // unset, so production keeps its random shuffle while a seeded run replays it.
-func seedOrClock(seed uint64) uint64 {
+// now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
+// be re-derived on replay instead of reproducing the original draws.
+func seedOrClock(seed uint64, now func() time.Time) uint64 {
 	if seed != 0 {
 		return seed
 	}
-	return uint64(time.Now().UnixNano())
+	if now == nil {
+		now = time.Now
+	}
+	n := uint64(now().UnixNano())
+	if n == 0 {
+		n = 1
+	}
+	return n
 }
 
 // Loops is the number of completed loops.
@@ -478,7 +490,7 @@ func (r *Runner) Run(ctx context.Context) {
 		loopNo := r.Loops() + 1
 		r.bus.Publish(Event{Kind: EvLoopStart, Dir: r.cfg.Dir, Loop: loopNo, Total: len(r.cfg.Reviews)})
 
-		start := time.Now()
+		start := r.now()
 		before, haveBefore := r.sample(ctx)
 		beforeIns, beforeDel := 0, 0
 		if r.cfg.StackedPRs {
@@ -504,7 +516,7 @@ func (r *Runner) Run(ctx context.Context) {
 
 		ev := Event{
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
-			Elapsed: time.Since(start).Seconds(),
+			Elapsed: r.now().Sub(start).Seconds(),
 		}
 		if r.cfg.StackedPRs {
 			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
@@ -528,7 +540,7 @@ func (r *Runner) Run(ctx context.Context) {
 }
 
 func (r *Runner) budgetExhausted() bool {
-	return r.cfg.Runtime > 0 && time.Since(r.st.Start) >= r.cfg.Runtime
+	return r.cfg.Runtime > 0 && r.now().Sub(r.st.Start) >= r.cfg.Runtime
 }
 
 // runLoopSequential reviews the working tree in place, one review at a time.
@@ -933,7 +945,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		before, haveBefore = r.sample(ctx)
 	}
 
-	start := time.Now()
+	start := r.now()
 
 	// Two independent sources of live usage: what the agent prints, and what
 	// it writes to its own session transcript. Whichever reports more is the
@@ -972,6 +984,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Timeout:        r.cfg.Timeout,
 		Raw:            r.cfg.Raw,
 		MaxLinesPerSec: outputRateLimit,
+		Now:            r.now,
 		Sink:           r.outputSink(review, spec.Label()),
 		// Cumulative for this review: the dashboard turns successive values
 		// into a rate, and a review that never reports usage sends nothing.
@@ -985,7 +998,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	if out, think := watcher.Final(); out > 0 || think > 0 {
 		publishUsage(out, think)
 	}
-	res.Elapsed = time.Since(start)
+	res.Elapsed = r.now().Sub(start)
 	res.ExitCode = pr.ExitCode
 	res.Subject = pr.Subject
 	usageMu.Lock()

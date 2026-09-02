@@ -133,7 +133,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	timeout := min(r.cfg.Timeout, commitTimeout)
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: r.cfg.Dir, Timeout: timeout,
-		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit,
+		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
 		Sink: r.outputSink("commit", spec.Label()),
 	})
 
