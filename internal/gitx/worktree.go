@@ -881,5 +881,5 @@ func StackBranchName(baseTip string, index int, review string) string {
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
-	return line
+	return redactUserinfo(line)
 }

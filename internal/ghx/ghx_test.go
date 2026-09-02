@@ -16,6 +16,7 @@ func TestParseRemote(t *testing.T) {
 		raw, repo, host string
 	}{
 		{"https://github.com/owner/project.git", "owner/project", "github.com"},
+		{"https://user:pass@github.com/owner/project.git", "owner/project", "github.com"},
 		{"git@github.com:owner/project.git", "owner/project", "github.com"},
 		{"ssh://git@git.example.com/owner/project.git", "owner/project", "git.example.com"},
 		// A trailing slash is the spelling a browser address bar hands over,
@@ -40,6 +41,26 @@ func TestParseRemote(t *testing.T) {
 		"https://github.com/owner/.git", "https://github.com//repo"} {
 		if _, _, err := ParseRemote(raw); err == nil {
 			t.Errorf("ParseRemote(%q) accepted a non-GitHub repository", raw)
+		}
+	}
+}
+
+func TestParseRemoteErrorRedactsUserinfo(t *testing.T) {
+	cases := []string{
+		"https://alice:s3cret@github.com/owner/group/project",
+		"https://alice:s3cret@",
+		"https://alice:s3cret@github.com/only-owner",
+	}
+	for _, raw := range cases {
+		_, _, err := ParseRemote(raw)
+		if err == nil {
+			t.Errorf("ParseRemote(%q) accepted", raw)
+			continue
+		}
+		msg := err.Error()
+		if strings.Contains(msg, "s3cret") || strings.Contains(msg, "alice:") ||
+			strings.Contains(msg, "alice@") {
+			t.Errorf("ParseRemote(%q) error leaked userinfo: %q", raw, msg)
 		}
 	}
 }

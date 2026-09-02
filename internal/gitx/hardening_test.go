@@ -80,6 +80,27 @@ func TestExtTransportRemoteIsRefused(t *testing.T) {
 	}
 }
 
+// A remote URL may carry userinfo (https://user:pass@host/...). Git repeats
+// that URL on stderr when the fetch fails, and the runner journals the error,
+// so the account name and password must not survive the wrap.
+func TestGitErrorRedactsRemoteUserinfo(t *testing.T) {
+	r := newRepo(t)
+	gitIn(t, r.Dir, "remote", "add", "origin",
+		"https://alice:s3cret@127.0.0.1:1/owner/repo.git")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	_, err := r.FetchRemoteBranchTip(ctx, "origin", "main")
+	if err == nil {
+		t.Fatal("fetch of 127.0.0.1:1 succeeded")
+	}
+	msg := err.Error()
+	if strings.Contains(msg, "s3cret") || strings.Contains(msg, "alice:") ||
+		strings.Contains(msg, "alice@") {
+		t.Fatalf("git error leaked remote userinfo: %q", msg)
+	}
+}
+
 // A hostile tree can plant .gauntlet (or worktrees below it) as a symlink
 // pointing anywhere. Worktree creation must refuse to follow it rather than
 // write or force-remove through it.

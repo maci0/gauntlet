@@ -75,6 +75,10 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
+  stored as `https://alice:token@host/repo.git` is reported as
+  `https://host/repo.git`, so the account name does not reach the terminal
+  or the run journal.
 - dsh model overlays are keyed uniquely: `foo/bar` and `foo_bar` no longer
   share one `--patch` file, so a later pin cannot launch with an earlier
   pair's provider and model. A deleted overlay is rewritten instead of

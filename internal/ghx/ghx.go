@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
@@ -52,16 +53,20 @@ func ParseRemote(raw string) (repo, host string, err error) {
 	if raw == "" {
 		return "", "", errors.New("empty remote URL")
 	}
+	// Errors quote the remote so the operator can see what was refused;
+	// userinfo is stripped first so a stored https://user:pass@host/... does
+	// not land in the terminal or the run journal.
+	shown := redactUserinfo(raw)
 	if after, ok := strings.CutPrefix(raw, "git@"); ok {
 		left, path, ok := strings.Cut(after, ":")
 		if !ok {
-			return "", "", fmt.Errorf("unsupported Git remote URL %q", raw)
+			return "", "", fmt.Errorf("unsupported Git remote URL %q", shown)
 		}
 		host, repo = left, path
 	} else {
 		u, parseErr := url.Parse(raw)
 		if parseErr != nil || u.Hostname() == "" {
-			return "", "", fmt.Errorf("unsupported Git remote URL %q", raw)
+			return "", "", fmt.Errorf("unsupported Git remote URL %q", shown)
 		}
 		host, repo = u.Hostname(), strings.TrimPrefix(u.Path, "/")
 	}
@@ -76,7 +81,7 @@ func ParseRemote(raw string) (repo, host string, err error) {
 	// Count==1 is not enough: `owner/` and `/repo` each have one slash and
 	// are not a GitHub repository. Both sides have to be a name.
 	if host == "" || !ok || owner == "" || name == "" || strings.Contains(name, "/") {
-		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", raw)
+		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", shown)
 	}
 	return repo, host, nil
 }
@@ -262,5 +267,20 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 
 func firstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
-	return line
+	return redactUserinfo(line)
+}
+
+// userinfoRe matches the userinfo of a URL (the "alice:token@" in
+// https://alice:token@host/...). git@host:path SSH syntax has no "://", so
+// it is left alone.
+var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/@\s'"]+@`)
+
+// redactUserinfo strips URL userinfo from s so a credential-bearing remote
+// does not land in an error string. Idempotent; strings with no "://" are
+// returned unchanged.
+func redactUserinfo(s string) string {
+	if !strings.Contains(s, "://") {
+		return s
+	}
+	return userinfoRe.ReplaceAllString(s, "$1")
 }

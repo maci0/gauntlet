@@ -319,12 +319,30 @@ func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Durati
 	err := cmd.Run()
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into
-		// a bare exit status that says nothing about the cause.
-		if msg := strings.TrimSpace(errBuf.String()); msg != "" {
+		// a bare exit status that says nothing about the cause. Userinfo is
+		// stripped first: a remote stored as https://user:pass@host/... is
+		// otherwise echoed verbatim into the error the runner prints and
+		// journals.
+		if msg := redactUserinfo(strings.TrimSpace(errBuf.String())); msg != "" {
 			return out.Bytes(), fmt.Errorf("%w: %s", err, msg)
 		}
 	}
 	return out.Bytes(), err
+}
+
+// userinfoRe matches the userinfo of a URL (the "alice:token@" in
+// https://alice:token@host/...), including ssh:// and git:// spellings git
+// prints. git@host:path SSH syntax has no "://", so it is left alone.
+var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/@\s'"]+@`)
+
+// redactUserinfo strips URL userinfo from s so a credential-bearing remote
+// does not land in an error string. Idempotent; strings with no "://" are
+// returned unchanged.
+func redactUserinfo(s string) string {
+	if !strings.Contains(s, "://") {
+		return s
+	}
+	return userinfoRe.ReplaceAllString(s, "$1")
 }
 
 // gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
