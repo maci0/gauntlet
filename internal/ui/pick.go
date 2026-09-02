@@ -144,6 +144,7 @@ type picker struct {
 
 	cursor [paneCount]int
 	scroll [paneCount]int
+	help   bool
 
 	// The config is fixed for the life of a session, so two derived views of
 	// it are computed once instead of per render: every distinct review, and
@@ -187,6 +188,8 @@ func newPicker(cfg PickConfig) *picker {
 				help: "one loop, then stop"},
 			{kind: optToggle, label: "dashboard", flag: "--tui", on: true,
 				help: "live screen instead of scrolling output"},
+			{kind: optToggle, label: "stacked PRs", flag: "--stacked-prs",
+				help: "one isolated worktree; each changed review opens a PR on the previous one"},
 			{kind: optToggle, label: "commit", flag: "--commit",
 				help: "an agent commits what the reviews changed, on this branch"},
 			{kind: optToggle, label: "push", flag: "--push",
@@ -250,12 +253,24 @@ func (p *picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
+	if p.help {
+		// Same overlay contract as the dashboard: q/esc close help, they do
+		// not leave the launcher. h stays a navigation key here.
+		switch key {
+		case "q", "ctrl+c", "esc", "?":
+			p.help = false
+		}
+		return p, nil
+	}
 	if p.typing {
 		return p.filterKey(msg, key)
 	}
 	switch key {
 	case "ctrl+c", "q", "esc":
 		return p, tea.Quit
+	case "?":
+		p.help = true
+		return p, nil
 	case "enter":
 		if p.blocked() != "" {
 			return p, nil // the reason is on screen; nothing to launch yet
@@ -295,9 +310,13 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "/":
 		p.typing, p.focus = true, paneReviews
 	case "+", "=":
-		p.concurrency().n++
+		if !p.stacked() {
+			p.concurrency().n++
+		}
 	case "-", "_":
-		p.concurrency().n = max(1, p.concurrency().n-1)
+		if !p.stacked() {
+			p.concurrency().n = max(1, p.concurrency().n-1)
+		}
 	}
 	return p, nil
 }
@@ -399,6 +418,9 @@ func (p *picker) expand(open bool) {
 
 func (p *picker) adjust(d int) {
 	o := &p.opts[p.cursor[paneOptions]]
+	if p.optionInert(o) {
+		return
+	}
 	switch o.kind {
 	case optCount:
 		o.n = max(1, o.n+d)
@@ -441,9 +463,27 @@ func (p *picker) toggle() {
 		}
 	case paneOptions:
 		o := &p.opts[p.cursor[paneOptions]]
+		if p.optionInert(o) {
+			return
+		}
 		switch o.kind {
 		case optToggle:
 			o.on = !o.on
+			if o.flag == "--stacked-prs" && o.on {
+				// Stack mode owns commits, pushes, and the job count; the
+				// parser refuses the combination, so the screen must not
+				// compose it.
+				if c := p.optByFlag("--commit"); c != nil {
+					c.on = false
+				}
+				if u := p.optByFlag("--push"); u != nil {
+					u.on = false
+				}
+				if m := p.optByFlag("--merge-into"); m != nil {
+					m.idx = 0
+				}
+				p.concurrency().n = 1
+			}
 		case optCycle:
 			p.adjust(+1)
 		}
@@ -570,17 +610,20 @@ func (p *picker) argv() []string {
 	}
 	for _, o := range p.opts {
 		switch {
-		case o.kind == optCount && o.n > 1:
+		case o.kind == optCount && o.n > 1 && !p.stacked():
 			out = append(out, "-j", fmt.Sprint(o.n))
 		case o.kind == optCycle && o.flag == "--merge-into":
-			if o.idx > 0 && p.committing() {
+			if o.idx > 0 && p.committing() && !p.stacked() {
 				out = append(out, o.flag, o.values[o.idx])
 			}
 		case o.kind == optCycle:
 			// The suggest agent is emitted next to the choice it qualifies.
 		case o.kind == optToggle && o.on:
-			if o.flag == "--commit" && p.pushing() {
-				continue // --push already implies it
+			if o.flag == "--commit" && (p.pushing() || p.stacked()) {
+				continue // --push already implies it; the stack owns commits
+			}
+			if o.flag == "--push" && p.stacked() {
+				continue
 			}
 			out = append(out, o.flag)
 		}
@@ -643,9 +686,39 @@ func (p *picker) optByFlag(flag string) *option {
 	return nil
 }
 
+// stacked reports whether the composed run is an unmerged PR stack.
+func (p *picker) stacked() bool {
+	o := p.optByFlag("--stacked-prs")
+	return o != nil && o.on
+}
+
+// optionInert reports a run-pane row that cannot apply in the current mode:
+// stack mode owns commits, pushes, merge targets, and the job count, so those
+// rows are drawn and keyed as inert rather than composed into a command the
+// parser would refuse.
+func (p *picker) optionInert(o *option) bool {
+	if o.flag == "--stacked-prs" {
+		return false
+	}
+	if !p.stacked() {
+		return false
+	}
+	if o.kind == optCount {
+		return true
+	}
+	switch o.flag {
+	case "--commit", "--push", "--merge-into":
+		return true
+	}
+	return false
+}
+
 // committing reports whether the composed run produces commits at all, which
 // is what a merge target needs to mean anything.
 func (p *picker) committing() bool {
+	if p.stacked() {
+		return false
+	}
 	c := p.optByFlag("--commit")
 	return p.pushing() || (c != nil && c.on)
 }
@@ -669,6 +742,9 @@ func (p *picker) suggestAgent() string {
 func (p *picker) View() string {
 	if !p.ready {
 		return ""
+	}
+	if p.help {
+		return p.renderHelp()
 	}
 	if p.w < 50 || p.h < 12 {
 		return p.renderNarrow()
@@ -711,7 +787,7 @@ func (p *picker) renderHeader() string {
 	scope := fmt.Sprintf("%d of %d reviews", p.chosen(), len(p.knownReviews))
 	switch {
 	case p.suggest && p.chosen() > 0:
-		scope = fmt.Sprintf("agent-picked, %d weighted", p.chosen())
+		scope = fmt.Sprintf("agent-picked, %d also scheduled", p.chosen())
 	case p.suggest:
 		scope = "agent-picked reviews"
 	case p.chosen() == 0:
@@ -784,7 +860,11 @@ func (p *picker) hint() string {
 	}
 	switch p.focus {
 	case paneOptions:
-		return p.opts[p.cursor[paneOptions]].help
+		o := p.opts[p.cursor[paneOptions]]
+		if p.optionInert(&o) {
+			return "stacked PRs own this; turn that off to change it"
+		}
+		return o.help
 	case paneAgents:
 		return "the pool reviews are drawn from; none picked means auto-detect"
 	default:
@@ -818,7 +898,7 @@ func (p *picker) renderStatus() string {
 func (p *picker) renderKeys() string {
 	keys := []struct{ k, v string }{
 		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
-		{"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
+		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
 		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 	}
 	var b strings.Builder
@@ -851,11 +931,36 @@ func (p *picker) renderNarrow() string {
 	if why := p.blocked(); why != "" {
 		rows = append(rows, styleWarn.Render("⚠ "+why))
 	}
-	rows = append(rows, styleDim.Render("⏎ run  q cancel"))
+	rows = append(rows, styleDim.Render("⏎ run  q cancel  ? help"))
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)
 	}
 	return strings.Join(rows, "\n")
+}
+
+func (p *picker) renderHelp() string {
+	lines := []string{
+		styleTitle.Render("compose a run"),
+		styleDim.Render("q  esc  ?  close this help"),
+		"",
+		"  tab          reviews, agents, and run options",
+		"  j / k        move within a pane",
+		"  space        toggle a review, a set, an agent, or a switch",
+		"  ← / →        open or close a set; change a value",
+		"  a            all or none in this pane",
+		"  /            filter reviews by name or description",
+		"  + / -        raise or lower concurrency",
+		"  enter        run the composed command",
+		"  q            leave without running",
+		"",
+		styleDim.Render("  Picking no reviews runs all of them."),
+		styleDim.Render("  suggest: an agent proposes the reviews; anything ticked is also scheduled."),
+		styleDim.Render("  stacked PRs: each changed review opens a PR on the previous one."),
+	}
+	if why := p.blocked(); why != "" {
+		lines = append(lines, "", styleWarn.Render("  "+why))
+	}
+	return clipBlock(lines, p.w, p.h)
 }
 
 // window keeps the cursor inside the visible slice of a pane, scrolling only
@@ -951,7 +1056,7 @@ func (p *picker) reviewPanel(w, h int) string {
 		title = "REVIEWS  " + styleInfo.Render("chosen by an agent at run time")
 		if n := p.chosen(); n > 0 {
 			title = fmt.Sprintf("REVIEWS  %s", styleInfo.Render(
-				fmt.Sprintf("agent-picked, plus %d weighted here", n)))
+				fmt.Sprintf("agent-picked, plus %d also scheduled", n)))
 		}
 	}
 	if hidden := len(rows) - (to - from); hidden > 0 {
@@ -1001,6 +1106,7 @@ func (p *picker) runPanel(w, h int) string {
 		o := p.opts[i]
 		cur := p.focus == paneOptions && i == p.cursor[paneOptions]
 		var left, right string
+		inert := p.optionInert(&o)
 		switch o.kind {
 		case optCount:
 			left = "  " + o.label
@@ -1009,19 +1115,23 @@ func (p *picker) runPanel(w, h int) string {
 			frac := float64(o.n) / float64(max(p.cfg.CPUs, 1))
 			right = meter(frac, 8, heatColor(frac)) + " " +
 				styleValue.Render(fmt.Sprint(o.n)) + styleDim.Render(fmt.Sprintf("/%d cpu", p.cfg.CPUs))
+			if inert {
+				left = styleFaint.Render("  " + o.label)
+				right = styleFaint.Render(fmt.Sprint(o.n) + fmt.Sprintf("/%d cpu", p.cfg.CPUs))
+			}
 		case optCycle:
 			// A cycle row that cannot apply yet is drawn inert: the suggest
 			// agent without suggest, a merge target without commits.
 			value := o.values[o.idx]
-			applies := p.suggest
+			applies := p.suggest && !inert
 			chosen := styled(p.hues.get(value), value)
 			if o.flag == "--merge-into" {
-				applies = p.committing()
+				applies = p.committing() && !inert
 				chosen = styleValue.Render(value)
 			}
 			left = "  " + o.label
 			switch {
-			case !applies:
+			case !applies || inert:
 				left = styleFaint.Render("  " + o.label)
 				right = styleFaint.Render(value)
 			case o.idx == 0:
@@ -1031,6 +1141,13 @@ func (p *picker) runPanel(w, h int) string {
 			}
 		default:
 			left = checkbox(o.on) + " " + o.label
+			if inert {
+				mark := "[ ] "
+				if o.on {
+					mark = "[x] "
+				}
+				left = styleFaint.Render(mark + o.label)
+			}
 		}
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}

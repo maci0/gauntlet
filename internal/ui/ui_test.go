@@ -321,6 +321,22 @@ func TestFeedTitleMarksScrolledBack(t *testing.T) {
 	}
 }
 
+// Unmerged branches used to live only in the help overlay. The feed title
+// carries the count so a reader who never presses ? still sees that work
+// was kept, and ? still lists the names.
+func TestFeedTitleMarksUnmergedBranches(t *testing.T) {
+	m := newModel(demoConfig())
+	if got := stripANSI(m.feedTitle()); strings.Contains(got, "unmerged") {
+		t.Fatalf("a clean run advertised unmerged branches: %q", got)
+	}
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "1 unmerged") {
+		t.Fatalf("feed title %q, want the unmerged count", got)
+	}
+}
+
 // Pausing must hold, not drop: everything an agent prints while the feed is
 // paused stays readable afterwards, and the viewport does not move until the
 // reader asks it to.
@@ -745,6 +761,152 @@ func TestHelpOverlayShieldsTheDashboard(t *testing.T) {
 	key(" ") // with the view back, the same key acts again
 	if !m.paused {
 		t.Fatal("space stopped working after help closed")
+	}
+}
+
+// While help is up, q closes the overlay. The overlay has to say so first:
+// listing "q quits" as the first line is how a reader stops a run they opened
+// help to understand.
+func TestHelpOverlayLeadsWithHowToClose(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 80, 24, true
+	m.help = true
+	got := stripANSI(m.View())
+	closeAt := strings.Index(got, "close this help")
+	quitAt := strings.Index(got, "stop the run")
+	if closeAt < 0 {
+		t.Fatalf("help does not say how to close it:\n%s", got)
+	}
+	if quitAt >= 0 && quitAt < closeAt {
+		t.Fatalf("help lists quit before close:\n%s", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if m.help {
+		t.Fatal("q on the overlay should close help, not stop the run")
+	}
+	if m.quitArmed {
+		t.Fatal("closing help must not arm the hard stop")
+	}
+}
+
+// The overlay is a full-screen view: it has to clip like every other one, or
+// a small terminal that advertised "?" wraps into a taller broken screen.
+func TestHelpOverlayFitsThePane(t *testing.T) {
+	m := newModel(demoConfig())
+	m.help, m.ready = true, true
+	for _, size := range [][2]int{{40, 10}, {60, 12}, {80, 24}} {
+		m.w, m.h = size[0], size[1]
+		for i, ln := range strings.Split(m.View(), "\n") {
+			if got := lipgloss.Width(ln); got > size[0] {
+				t.Fatalf("%dx%d: row %d is %d columns: %q",
+					size[0], size[1], i, got, stripANSI(ln))
+			}
+		}
+		if rows := strings.Split(m.View(), "\n"); len(rows) > size[1] {
+			t.Fatalf("%dx%d: help is %d rows", size[0], size[1], len(rows))
+		}
+	}
+}
+
+// q while reviews are running is a hard stop. One press arms it; a second
+// press closes. Any other key cancels the arming, so an accidental tap does
+// not kill the run.
+func TestQuitNeedsASecondPressWhileRunning(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		t.Fatal("the first q stopped the run")
+	}
+	if !m.quitArmed {
+		t.Fatal("the first q should ask for confirmation")
+	}
+	if got := stripANSI(m.View()); !strings.Contains(got, "q TO STOP") {
+		t.Fatalf("the header does not say q will stop the run:\n%s", got)
+	}
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "q:stop now") {
+		t.Fatalf("the footer still advertises a plain quit:\n%s", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")})
+	if m.quitArmed {
+		t.Fatal("a different key should cancel the armed stop")
+	}
+	if !m.paused {
+		t.Fatal("space should still pause after cancelling the stop")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd == nil {
+		t.Fatal("the second q should stop the run")
+	}
+}
+
+// Once the run has finished, q closes the screen on the first press: there is
+// nothing left to kill, and a confirm would strand the reader on a dead view.
+func TestQuitClosesImmediatelyWhenDone(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.done = true
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd == nil {
+		t.Fatal("q on a finished run should close the dashboard")
+	}
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "q:close") {
+		t.Fatalf("a finished run still advertises quit:\n%s", lastLine(stripANSI(m.View())))
+	}
+	if strings.Contains(lastLine(stripANSI(m.View())), "s:finish") {
+		t.Fatalf("a finished run still advertises finish:\n%s", lastLine(stripANSI(m.View())))
+	}
+}
+
+// The footer names the action space will take now, not the one it already took.
+func TestFooterSaysResumeWhenPaused(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.paused = true
+	footer := lastLine(stripANSI(m.View()))
+	if !strings.Contains(footer, "space:resume") {
+		t.Fatalf("a paused feed still says pause:\n%s", footer)
+	}
+	if strings.Contains(footer, "space:pause") {
+		t.Fatalf("a paused feed still advertises pause:\n%s", footer)
+	}
+}
+
+// A merge conflict is the line a reader narrowed the feed to see. Runner
+// narration used to land as plain text, so the "results and errors" filter
+// hid it.
+func TestMergeConflictSurvivesTheFeedFilter(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 40, true
+	m.apply(runner.Event{Kind: runner.EvLog,
+		Text: "MERGE CONFLICT: sec-review kept on branch gauntlet/x/sec-review (CONFLICT in main.go)"})
+	m.apply(runner.Event{Kind: runner.EvLog,
+		Text: "To land it after resolving: git merge gauntlet/x/sec-review"})
+	m.apply(runner.Event{Kind: runner.EvLog, Text: "Running code-review with claude"})
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")})
+	got := stripANSI(m.renderFeed(100, 10))
+	for _, want := range []string{"MERGE CONFLICT", "To land it after resolving"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the signal filter hid %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Running code-review") {
+		t.Fatalf("narration survived the filter:\n%s", got)
+	}
+}
+
+// The small-terminal fallback is "did anything break": a conflict count
+// without the branch name leaves the reader no next action.
+func TestMinimalViewNamesUnmergedBranches(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 40, 10, true
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	got := stripANSI(m.renderMinimal())
+	if !strings.Contains(got, "unmerged:") || !strings.Contains(got, "sec-review") {
+		t.Fatalf("the fallback lost the unmerged branch:\n%s", got)
 	}
 }
 

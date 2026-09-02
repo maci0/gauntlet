@@ -123,6 +123,16 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.optByFlag("--commit").on = true
 			p.optByFlag("--merge-into").idx = 1
 		}, "-C /home/dev/project --once --tui --commit --merge-into main"},
+		{"stacked PRs are a flag of their own", func(p *picker) {
+			p.optByFlag("--stacked-prs").on = true
+		}, "-C /home/dev/project --once --tui --stacked-prs"},
+		{"stacked PRs drop commit, push, merge, and jobs", func(p *picker) {
+			p.optByFlag("--commit").on = true
+			p.optByFlag("--push").on = true
+			p.optByFlag("--merge-into").idx = 1
+			p.concurrency().n = 4
+			p.optByFlag("--stacked-prs").on = true
+		}, "-C /home/dev/project --once --tui --stacked-prs"},
 		{"a subset of agents is passed, all of them is not", func(p *picker) {
 			p.agents[0] = true
 		}, "-C /home/dev/project -a claude --once --tui"},
@@ -466,9 +476,92 @@ func TestPickFooterKeepsCriticalKeysVisible(t *testing.T) {
 	p := demoPicker()
 	p.w, p.h, p.ready = 104, 30, true
 	footer := lastLine(p.View())
-	for _, want := range []string{":pane", ":toggle", ":open/close", ":filter"} {
+	for _, want := range []string{":pane", ":toggle", ":open/close", ":filter", ":help"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("a wide terminal should document more than the essentials (%q missing):\n%s", want, footer)
+		}
+	}
+}
+
+// ? opens a help overlay the way the dashboard does. q on that overlay
+// closes it rather than leaving the launcher, so a reader who opened help
+// does not cancel the run they were composing.
+func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
+	p := demoPicker()
+	p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	if !p.help {
+		t.Fatal("? did not open help")
+	}
+	got := stripANSI(p.View())
+	for _, want := range []string{"close this help", "Picking no reviews runs all of them", "tab", "stacked PRs"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("help lost %q:\n%s", want, got)
+		}
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if p.help {
+		t.Fatal("q on the overlay should close help")
+	}
+	if p.launch {
+		t.Fatal("q on the overlay must not launch")
+	}
+	// A later q, with the view back, still leaves.
+	press(p, "q")
+	if p.launch {
+		t.Fatal("q should leave without launching")
+	}
+}
+
+// Stack mode owns commits and the job count: turning it on has to clear the
+// flags the parser would refuse, and +/- must not sneak a -j back in.
+func TestPickStackedPRsClearConflictingOptions(t *testing.T) {
+	p := demoPicker()
+	p.concurrency().n = 4
+	p.optByFlag("--push").on = true
+	p.optByFlag("--merge-into").idx = 1
+	p.focus = paneOptions
+	for i, o := range p.opts {
+		if o.flag == "--stacked-prs" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	p.toggle()
+	if !p.stacked() {
+		t.Fatal("space did not turn stacked PRs on")
+	}
+	if p.concurrency().n != 1 {
+		t.Fatalf("jobs %d, want 1 after stacked PRs", p.concurrency().n)
+	}
+	if p.optByFlag("--push").on || p.optByFlag("--commit").on {
+		t.Fatal("commit/push stayed on under stacked PRs")
+	}
+	if p.optByFlag("--merge-into").idx != 0 {
+		t.Fatal("a merge target stayed selected under stacked PRs")
+	}
+	press(p, "+", "+")
+	if p.concurrency().n != 1 {
+		t.Fatal("+ still raised jobs under stacked PRs")
+	}
+	if got := strings.Join(p.argv(), " "); got != "-C /home/dev/project --once --tui --stacked-prs" {
+		t.Fatalf("argv is %q", got)
+	}
+}
+
+func TestPickHelpOverlayFitsThePane(t *testing.T) {
+	p := demoPicker()
+	p.help = true
+	for _, size := range [][2]int{{20, 6}, {40, 10}, {80, 24}} {
+		p.w, p.h = size[0], size[1]
+		view := p.View()
+		for i, ln := range strings.Split(view, "\n") {
+			if got := lipgloss.Width(ln); got > size[0] {
+				t.Fatalf("%dx%d: row %d is %d columns: %q",
+					size[0], size[1], i, got, stripANSI(ln))
+			}
+		}
+		if rows := strings.Split(view, "\n"); len(rows) > size[1] {
+			t.Fatalf("%dx%d: help is %d rows", size[0], size[1], len(rows))
 		}
 	}
 }

@@ -170,6 +170,7 @@ type model struct {
 	help      bool
 	done      bool
 	reloading bool
+	quitArmed bool // q/esc was pressed once; a second press stops the run
 
 	loop        int
 	counts      map[string]int
@@ -292,16 +293,30 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.help {
 			// The overlay owns the screen: a keypress acting on the hidden
 			// dashboard changes state nobody can see, so it answers only its
-			// closing keys.
+			// closing keys. q here closes the overlay; it does not stop the run.
 			switch msg.String() {
 			case "q", "ctrl+c", "esc", "?", "h":
 				m.help = false
 			}
 			return m, nil
 		}
-		switch msg.String() {
+		key := msg.String()
+		switch key {
 		case "q", "esc":
-			return m, tea.Quit
+			// q while the run is live is a hard stop. One press arms it so an
+			// accidental tap does not kill reviews; a second press, or q
+			// after the run has finished or is already draining, closes.
+			if m.done || m.finishing || m.quitArmed {
+				return m, tea.Quit
+			}
+			m.quitArmed = true
+			return m, nil
+		default:
+			if m.quitArmed {
+				m.quitArmed = false
+			}
+		}
+		switch key {
 		case "ctrl+c":
 			// Staged like the terminal's Ctrl-C: the first asks for the
 			// graceful quit the `s` key makes, the second closes the
@@ -329,7 +344,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s":
 			// Asking twice changes nothing, so the screen says it once and
 			// keeps saying it in the header until the run ends.
-			if m.cfg.OnFinish != nil && !m.finishing {
+			if m.cfg.OnFinish != nil && !m.finishing && !m.done {
 				m.finishing = true
 				m.cfg.OnFinish()
 			}
@@ -448,7 +463,7 @@ func (m *model) apply(ev runner.Event) {
 		m.reloading = true
 		m.pushFeed(feedLine{text: ev.Text, kind: normalize.Result})
 	case runner.EvLog:
-		m.pushFeed(feedLine{text: ev.Text, kind: normalize.Plain, review: "runner"})
+		m.pushFeed(feedLine{text: ev.Text, kind: logKind(ev.Text), review: "runner"})
 	case runner.EvOutput:
 		m.pendingRate++
 		if l := m.lane(m.laneKey(ev)); l != nil {
@@ -680,6 +695,8 @@ func (m *model) renderHeader() string {
 // fallback, so both views tell the run's state the same way.
 func (m *model) stateLabel() (string, lipgloss.Style) {
 	switch {
+	case m.quitArmed:
+		return "● q TO STOP", styleBad
 	case m.done:
 		return "● DONE", styleDim
 	case m.finishing:
@@ -691,6 +708,27 @@ func (m *model) stateLabel() (string, lipgloss.Style) {
 	default:
 		return "● RUNNING", styleOK
 	}
+}
+
+// logKind classifies runner narration for the feed filter. Failures and the
+// "how to land it" hint after a conflict have to survive "results and errors",
+// or the lines a reader narrowed the feed to see disappear.
+func logKind(text string) normalize.Kind {
+	switch {
+	case strings.HasPrefix(text, "MERGE CONFLICT"),
+		strings.HasPrefix(text, "MERGE FAILED"),
+		strings.HasPrefix(text, "FAILED"),
+		strings.HasPrefix(text, "TIMEOUT"),
+		strings.HasPrefix(text, "STACK STOPPED"),
+		strings.HasPrefix(text, "Cannot "),
+		strings.HasPrefix(text, "Interrupted"),
+		strings.HasPrefix(text, "Warning:"),
+		strings.HasPrefix(text, "Conflict step"),
+		strings.HasPrefix(text, "To land it"),
+		strings.Contains(text, " failed"):
+		return normalize.Error
+	}
+	return normalize.Plain
 }
 
 func (m *model) activityTitle() string {
@@ -950,6 +988,9 @@ func (m *model) feedTitle() string {
 	if l := m.filter.label(); l != "" {
 		title += "  " + styleInfo.Render(l)
 	}
+	if n := len(m.conflicts); n > 0 {
+		title += "  " + styleWarn.Render(fmt.Sprintf("%d unmerged", n))
+	}
 	if m.scroll > 0 {
 		title += "  " + styleDim.Render(fmt.Sprintf("%d lines back", m.scroll))
 	}
@@ -1012,12 +1053,8 @@ func (m *model) renderFooter() string {
 	// end once the token counters grow, so the keys that keep a reader
 	// oriented (quit, help, pause) come before the ones only the data
 	// hungry need. The full pause semantics live in help; here one word.
-	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"?", "help"}, {"space", "pause"},
-		{"j/k", "scroll"}, {"s", "finish"}, {"f", "filter"},
-	}
 	var b strings.Builder
-	for _, k := range keys {
+	for _, k := range m.footerKeys(true) {
 		b.WriteString(styleMagic.Render(k.k) + styleDim.Render(":"+k.d+"  "))
 	}
 	right := ""
@@ -1064,11 +1101,8 @@ func (m *model) renderMinimal() string {
 	// keep a reader oriented (quit, help, pause) come first. Only keys this
 	// view can show the effect of are listed: scroll acts on a feed the
 	// fallback does not draw, so advertising it would name a dead key.
-	keys := []struct{ k, d string }{
-		{"q", "quit"}, {"?", "help"}, {"space", "pause"}, {"s", "finish"},
-	}
 	var hint strings.Builder
-	for _, k := range keys {
+	for _, k := range m.footerKeys(false) {
 		seg := k.k + " " + k.d
 		if hint.Len() > 0 && hint.Len()+2+len(seg) > m.w {
 			break
@@ -1084,9 +1118,14 @@ func (m *model) renderMinimal() string {
 			styleDim.Render(humanize.Duration(m.now.Sub(m.cfg.Started))),
 			stateStyle.Render(stateTxt)),
 		tally.String(),
+	}
+	if len(m.conflicts) > 0 {
+		rows = append(rows, styleWarn.Render("unmerged: "+strings.Join(m.conflicts, ", ")))
+	}
+	rows = append(rows,
 		styleDim.Render("terminal too small for the dashboard"),
 		styleDim.Render(hint.String()),
-	}
+	)
 	for i, r := range rows {
 		rows[i] = clip(r, m.w)
 	}
@@ -1094,10 +1133,29 @@ func (m *model) renderMinimal() string {
 }
 
 func (m *model) renderHelp() string {
+	// Close keys first: while this overlay is up, q and esc close it, they
+	// do not stop the run. Listing quit first is how a reader kills a run
+	// they opened help to understand.
 	lines := []string{
 		styleTitle.Render("gauntlet dashboard"),
+		styleDim.Render("q  esc  ?  close this help"),
 		"",
-		"  q, esc      quit (stops the run, killing what is running)",
+	}
+	if len(m.conflicts) > 0 {
+		lines = append(lines, styleWarn.Render("Unmerged branches (kept for you to merge):"))
+		for _, c := range m.conflicts {
+			lines = append(lines, "  "+c)
+		}
+		lines = append(lines, "")
+	}
+	qLine := "  q, esc      stop the run, killing what is running (press twice)"
+	if m.done {
+		qLine = "  q, esc      close (the run has finished)"
+	} else if m.finishing {
+		qLine = "  q, esc      stop now (a finish is already draining)"
+	}
+	lines = append(lines,
+		qLine,
 		"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
 		"  ctrl+c x2   quit while a finish is draining (stops the run)",
 		"  space       pause the feed (output collects; reviews keep running)",
@@ -1107,11 +1165,50 @@ func (m *model) renderHelp() string {
 		"  ?, h        toggle this help",
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
+	)
+	return clipBlock(lines, m.w, m.h)
+}
+
+// footerKeys is the key legend for the full footer and the small-terminal
+// fallback. Labels follow the current state so a paused feed says resume, a
+// finished run says close, and a dead action (finish after the run ended) is
+// not advertised. scrollable is false on the fallback, which has no feed.
+func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
+	q := "quit"
+	switch {
+	case m.done:
+		q = "close"
+	case m.quitArmed:
+		q = "stop now"
 	}
-	if len(m.conflicts) > 0 {
-		lines = append(lines, "", styleWarn.Render("  Unmerged branches:"))
-		for _, c := range m.conflicts {
-			lines = append(lines, "    "+c)
+	space := "pause"
+	if m.paused {
+		space = "resume"
+	}
+	keys := []struct{ k, d string }{
+		{"q", q}, {"?", "help"}, {"space", space},
+	}
+	if scrollable {
+		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
+	}
+	if !m.done && !m.finishing {
+		keys = append(keys, struct{ k, d string }{"s", "finish"})
+	}
+	if scrollable {
+		keys = append(keys, struct{ k, d string }{"f", "filter"})
+	}
+	return keys
+}
+
+// clipBlock fits lines into a w by h pane the way the small-terminal fallback
+// does: each row clips to the width, extra rows are dropped from the bottom.
+func clipBlock(lines []string, w, h int) string {
+	if h > 0 && len(lines) > h {
+		lines = lines[:h]
+	}
+	if w > 0 {
+		for i, ln := range lines {
+			lines[i] = clip(ln, w)
 		}
 	}
 	return strings.Join(lines, "\n")

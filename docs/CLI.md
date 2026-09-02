@@ -30,9 +30,9 @@ the version and exit" and wins over scoping, like help does.)
 with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
 proposes the reviews, and the run pane names which agent does it), the agents
 this machine has in the colors they will keep during the run, concurrency
-metered against the CPU count, and the run switches. The composed command line
-is on screen the whole time, and `enter` runs exactly that, so the flags are
-learned rather than hidden. Picking nothing is not an empty run: it is every
+metered against the CPU count, and the run switches (including stacked PRs).
+The composed command line is on screen the whole time, and `enter` runs exactly
+that, so the flags are learned rather than hidden. Picking nothing is not an empty run: it is every
 review, which is what the composed command says by saying nothing. A run the
 tree cannot support is refused with its reason on screen rather than composed
 and failed on launch (concurrency above 1 needs no uncommitted changes to tracked files). It needs a
@@ -49,6 +49,7 @@ several paths uses the first.
 | `a` | select all or none in this pane |
 | `+` / `-` | raise or lower concurrency, from any pane |
 | `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it |
+| `?` | toggle a help overlay; `q` / `esc` close it |
 | `enter` / `q` | run the composed command / leave without running |
 
 ## Options
