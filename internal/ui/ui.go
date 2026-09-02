@@ -874,7 +874,13 @@ func thinkGlyph(now, last time.Time) string {
 		return motionStill
 	}
 	frames := []string{"◐", "◓", "◑", "◒"}
-	return frames[(now.UnixNano()/int64(thinkingFrame))%int64(len(frames))]
+	// UnixNano is negative before 1970, and Go's remainder keeps the
+	// dividend's sign, so a pre-epoch now would index frames at -1 and panic.
+	i := now.UnixNano() / int64(thinkingFrame) % int64(len(frames))
+	if i < 0 {
+		i += int64(len(frames))
+	}
+	return frames[i]
 }
 
 func failStyle(n int) lipgloss.Style {

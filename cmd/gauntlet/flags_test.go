@@ -213,6 +213,13 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"blank usage probe", []string{"--usage-cmd", "   ", "--usage-limit", "80"},
 			"--usage-cmd is blank"},
 		{"usage probe and limit together", []string{"--usage-cmd", "sh -c 'echo 1'", "--usage-limit", "80"}, ""},
+		// flag.Float64Var uses ParseFloat, which accepts these. A range
+		// check cannot reject NaN (every comparison against it is false),
+		// and the runner would then read pct < NaN as "at or past the limit".
+		{"usage limit NaN", []string{"--usage-cmd", "true", "--usage-limit", "NaN"}, "percentage"},
+		{"usage limit nan", []string{"--usage-cmd", "true", "--usage-limit", "nan"}, "percentage"},
+		{"usage limit Inf", []string{"--usage-cmd", "true", "--usage-limit", "Inf"}, "percentage"},
+		{"usage limit over 100", []string{"--usage-cmd", "true", "--usage-limit", "101"}, "percentage"},
 		{"trailing argument", []string{"extra"}, "unknown command"},
 		{"check outside update", []string{"--check"}, "--check requires 'gauntlet update'"},
 		{"limit outside runs", []string{"--limit", "5"}, "--limit requires 'gauntlet runs'"},

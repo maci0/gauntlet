@@ -313,6 +313,12 @@ func appendText(into *strings.Builder, s string) {
 	into.WriteString(s)
 }
 
+// maxPlausible is the largest token counter accepted, the same trillion-token
+// cap agent.ParseUsage uses. A 2^62 counter fits in int and then overflows
+// the run total when two of them are added, or wraps 100*thinking/tokens to
+// a negative percentage. No review generates that many tokens.
+const maxPlausible = 1 << 40
+
 func asInt(v any) (int, bool) {
 	switch n := v.(type) {
 	case float64:
@@ -320,7 +326,12 @@ func asInt(v any) (int, bool) {
 		// out-of-range results differ by platform (amd64 gives the minimum,
 		// arm64 saturates to the maximum). A counter outside it is not a
 		// measurement: report nothing rather than a platform-dependent lie.
-		if !(n >= 1) || n >= 1<<63 {
+		//
+		// JSON numbers arrive here as float64, so a fractional count would
+		// otherwise truncate (1.9 -> 1). MaxInt sits beside maxPlausible
+		// because a 32-bit int fills first. !(n >= 1) is what rejects NaN:
+		// n < 1 does not.
+		if !(n >= 1) || n != math.Trunc(n) || n > maxPlausible || n > float64(math.MaxInt) {
 			return 0, false
 		}
 		return int(n), true
@@ -332,7 +343,7 @@ func asInt(v any) (int, bool) {
 		// and report 5 for 2^32+5 -- the platform-dependent lie the float64
 		// case above exists to avoid.
 		i, err := n.Int64()
-		if err != nil || i < 1 || i > math.MaxInt {
+		if err != nil || i < 1 || i > math.MaxInt || i > maxPlausible {
 			return 0, false
 		}
 		return int(i), true

@@ -656,6 +656,19 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 	}
 }
 
+func TestThinkGlyphPreEpochDoesNotPanic(t *testing.T) {
+	// Go's % keeps the dividend's sign: UnixNano before 1970 is negative, so
+	// the frame index used to be -1 and the slice lookup panicked.
+	t.Setenv("GAUNTLET_NO_ANIMATION", "")
+	now := time.Unix(-1, 0)
+	got := thinkGlyph(now, now)
+	switch got {
+	case "◐", "◓", "◑", "◒":
+	default:
+		t.Fatalf("pre-epoch glyph %q, want a turning frame", got)
+	}
+}
+
 // The footer clips from its right end once the counters are wide, so the
 // keys that keep a reader oriented must outlast the ones only the data
 // hungry need: quit, help, and pause survive; filter is the first to go.

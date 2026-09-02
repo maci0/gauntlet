@@ -82,6 +82,21 @@ minor instead and were listed under Changed.
 - The untracked-file line-count table stops admitting new keys at its cap
   instead of wiping the working set, so a tree with more than 4096 new
   files does not re-read every already-counted file on the next sample.
+- `--usage-limit NaN` (and `nan`) is a usage error. `flag.Float64Var` accepts
+  it, the 0-100 range check cannot see it, and the runner's `pct < limit`
+  comparison is then always false, so a run configured with a NaN limit
+  stopped before its first review. Non-finite values are refused the same
+  way a probe that prints them already is.
+- Stream-JSON token counters that are not whole numbers, or that claim more
+  than a trillion tokens, are ignored rather than truncated or stored.
+  `{"output_tokens": 1.9}` used to record 1, because JSON numbers decode as
+  `float64` and `int(1.9)` is 1. A 2^62 counter fitted in `int` and then
+  overflowed the run total. Both match what `json.Number` parsing and the
+  text-usage cap already required.
+- The dashboard reasoning glyph no longer panics when the clock is set
+  before 1970. Go's remainder keeps the sign of a negative `UnixNano`, so
+  the frame index was -1.
+
 - A review that never launched (unknown name, unreadable prompt, or a command
   line that could not be built) now publishes `review_end` like every other
   outcome, so the journal, the dashboard, and `gauntlet show` record it. The

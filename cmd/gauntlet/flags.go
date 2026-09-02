@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"strconv"
@@ -453,7 +454,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if (o.usageCmd == "") != (o.usageLimit == 0) {
 		return nil, errors.New("--usage-cmd and --usage-limit are used together, or not at all")
 	}
-	if o.usageLimit < 0 || o.usageLimit > 100 {
+	// ParseFloat accepts "NaN" and the infinities as valid floats. Every
+	// comparison against NaN is false, so the range check below cannot see
+	// it, and neither can the runner's `pct < limit`: a NaN limit reads as
+	// "at or past" on the first check and ends the run. The probe already
+	// rejects these; the flag has to as well.
+	if math.IsNaN(o.usageLimit) || math.IsInf(o.usageLimit, 0) || o.usageLimit < 0 || o.usageLimit > 100 {
 		return nil, fmt.Errorf("--usage-limit %g: want a percentage between 0 and 100", o.usageLimit)
 	}
 	if o.usageCmd != "" {
