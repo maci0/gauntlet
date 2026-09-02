@@ -31,8 +31,71 @@ import (
 	"time"
 )
 
-// defaultRepo is the GitHub repository releases are fetched from.
-const defaultRepo = "maci0/gauntlet"
+// DefaultRepo is the GitHub repository releases are fetched from when
+// --update-repo is omitted.
+const DefaultRepo = "maci0/gauntlet"
+
+// githubPart is one side of owner/repo: letters, digits, and . _ -, and not
+// a "." / ".." path segment that would climb out of /repos/.
+func githubPart(s string) bool {
+	if s == "" || s == "." || s == ".." || len(s) > 100 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9',
+			c == '.', c == '_', c == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// ParseRepo accepts a GitHub owner/repo path, the form --update-repo takes.
+// Empty means DefaultRepo. A URL, a path with extra segments, or a name
+// outside GitHub's charset is refused here so Check never concatenates it
+// into the API path.
+func ParseRepo(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return DefaultRepo, nil
+	}
+	if strings.Contains(s, "://") || strings.Contains(s, "@") {
+		return "", fmt.Errorf("want owner/repo, not a URL (%q)", s)
+	}
+	owner, repo, ok := strings.Cut(s, "/")
+	if !ok || owner == "" || repo == "" || strings.Contains(repo, "/") {
+		return "", fmt.Errorf("want owner/repo, got %q", s)
+	}
+	if !githubPart(owner) || !githubPart(repo) {
+		return "", fmt.Errorf("invalid GitHub repository %q: owner and repo are letters, digits, and . _ -", s)
+	}
+	return owner + "/" + repo, nil
+}
+
+const (
+	envGHToken     = "GH_TOKEN"
+	envGitHubToken = "GITHUB_TOKEN"
+)
+
+// githubToken is the optional bearer token for api.github.com. GH_TOKEN wins
+// when both are set, matching GitHub CLI; either one is sent only to GitHub.
+func githubToken() string {
+	for _, name := range []string{envGHToken, envGitHubToken} {
+		if tok := strings.TrimSpace(os.Getenv(name)); tok != "" {
+			return tok
+		}
+	}
+	return ""
+}
+
+func setGitHubAuth(req *http.Request) {
+	if tok := githubToken(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+}
 
 // repoNameRe is OWNER/REPO as GitHub writes it: no slashes beyond the one
 // separator, no spaces, nothing that could turn the releases URL into a
@@ -74,8 +137,9 @@ var client = &http.Client{Timeout: 5 * time.Minute}
 // Check queries the latest release. It is never called on the startup path:
 // a version check must not stand between the user and the first review.
 func Check(ctx context.Context, repo string) (*Release, error) {
-	if repo == "" {
-		repo = defaultRepo
+	repo, err := ParseRepo(repo)
+	if err != nil {
+		return nil, err
 	}
 	if !repoNameRe.MatchString(repo) {
 		return nil, fmt.Errorf("invalid GitHub repository %q (want OWNER/REPO)", repo)
@@ -86,9 +150,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
-	}
+	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -220,6 +282,7 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -237,6 +300,7 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err

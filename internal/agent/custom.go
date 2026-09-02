@@ -92,12 +92,28 @@ func (c Custom) validate(name string) error {
 	if len(c.Argv) == 0 {
 		return fmt.Errorf("custom agent %q has no argv", name)
 	}
+	foundPrompt := false
 	for _, a := range c.Argv {
 		if strings.Contains(a, promptPlaceholder) {
-			return nil
+			foundPrompt = true
+			break
 		}
 	}
-	return fmt.Errorf("custom agent %q: argv must contain %s", name, promptPlaceholder)
+	if !foundPrompt {
+		return fmt.Errorf("custom agent %q: argv must contain %s", name, promptPlaceholder)
+	}
+	if c.Usage != nil {
+		n := 0
+		for _, r := range c.Usage.Roots {
+			if strings.TrimSpace(r) != "" {
+				n++
+			}
+		}
+		if n == 0 {
+			return fmt.Errorf("custom agent %q: usage.roots must name at least one directory", name)
+		}
+	}
+	return nil
 }
 
 // builtinCustom are agents gauntlet ships a definition for rather than code.

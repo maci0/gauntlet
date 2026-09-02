@@ -82,7 +82,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` means every installed agent. The model id and effort level are passed to the CLI verbatim: gauntlet cannot know which pairs a third-party CLI serves, so an unserved value fails at launch, by that CLI's own error. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only agents whose effort flag was verified accept one — currently `claude` (`--effort`) and `opencode` (`--variant`) — plus defined agents with an `effort` list (or an `{effort}` placeholder); the rest refuse at startup. Repeatable. |
 | `--bin TOOL=PATH` | none | Run an agent from a specific executable. Repeatable. |
 | `--agent-cmd NAME=ARGV` | none | Define an agent gauntlet does not ship, e.g. `pi='pi -p {prompt}'`. Repeatable; `~/.gauntlet/agents.json` makes it permanent. |
-| `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Ignored in worktree modes (`--jobs > 1` and `--stacked-prs`). |
+| `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Conflicts with `--jobs > 1` and `--stacked-prs`: each review is a fresh worktree, so there is no session to resume. |
 
 **Execution**
 
@@ -130,7 +130,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 |---|---|---|
 | `--hot-reload` | on | When this binary is replaced during a run (by `gauntlet update`, `make install`, or a rebuild), finish the reviews in flight and hand the rest of the loop to the new binary instead of exiting. |
 | `--auto-update` | off | During a run, check for a new release shortly after start and every six hours, install it, and hand over at the next safe point like a hot reload. A failed check is reported and the run goes on. |
-| `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from. |
+| `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from, as `owner/repo`. A URL or extra path segment is a usage error. |
 
 ## Environment variables
 
@@ -140,7 +140,8 @@ None is required; unset, everything lives under `~/.gauntlet`.
 |---|---|
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty or `0`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. |
-| `GITHUB_TOKEN` | Optional. Sent only to api.github.com by `gauntlet update` and `--auto-update`, for a higher API rate limit. |
+| `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
+| `GH_TOKEN` | Same as `GITHUB_TOKEN`. Wins if both are set, matching GitHub CLI. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
 | `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty or `0`: force color on, so piping through `less -R` keeps its palette. |
 | `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. |

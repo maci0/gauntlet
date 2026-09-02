@@ -19,6 +19,7 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/maci0/gauntlet/internal/selfupdate"
 	"golang.org/x/term"
 )
 
@@ -351,7 +352,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 
 	fs.BoolVar(&o.hotReload, "hot-reload", true, "reload automatically when this binary is replaced")
 	fs.BoolVar(&o.autoUpdate, "auto-update", false, "check for new releases during the run and install them")
-	fs.StringVar(&o.updateRepo, "update-repo", "", "GitHub repo to fetch releases from")
+	fs.StringVar(&o.updateRepo, "update-repo", selfupdate.DefaultRepo, "GitHub repo to fetch releases from")
 	fs.BoolVar(&o.checkOnly, "check", false, "update: report the latest release without installing")
 	alias("V", "version", func(n string) { fs.BoolVar(showVersion, n, false, "print the version and exit") })
 	alias("h", "help", func(n string) { fs.BoolVar(help, n, false, "show this help and exit") })
@@ -543,6 +544,28 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.retries < 0 {
 		return nil, errors.New("--retries must be >= 0")
+	}
+	if o.continueSessions && (o.jobs > 1 || o.stackedPRs) {
+		return nil, errors.New("--continue-sessions cannot be used with --jobs > 1 or --stacked-prs: each review is a fresh worktree")
+	}
+	o.dir = strings.TrimSpace(o.dir)
+	if o.dir == "" {
+		return nil, errors.New("--dir is empty")
+	}
+	o.pushRemote = strings.TrimSpace(o.pushRemote)
+	if isFlagSet(fs, "push-remote") && o.pushRemote == "" {
+		return nil, errors.New("--push-remote is empty")
+	}
+	if isFlagSet(fs, "update-repo") && strings.TrimSpace(o.updateRepo) == "" {
+		return nil, errors.New("--update-repo is empty: want owner/repo")
+	}
+	repo, err := selfupdate.ParseRepo(o.updateRepo)
+	if err != nil {
+		return nil, fmt.Errorf("--update-repo: %w", err)
+	}
+	o.updateRepo = repo
+	if isFlagSet(fs, "dirs", "target-dirs") && len(dirs) == 0 {
+		return nil, errors.New("--dirs is empty")
 	}
 	if o.stackedPRs {
 		if o.commit || o.push {

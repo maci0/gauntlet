@@ -12,6 +12,13 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- `GH_TOKEN` is read for release lookups, the same name GitHub CLI uses. It
+  wins over `GITHUB_TOKEN` when both are set, and both now authenticate the
+  checksum and asset downloads as well as the release listing, so a private
+  `--update-repo` can actually install.
+
 ### Fixed
 
 - A review that never launched (unknown name, unreadable prompt, or a command
@@ -46,6 +53,23 @@ minor instead and were listed under Changed.
 - The README install snippet fetches the binary for the version it just
   resolved, rather than `releases/latest/download`, so a release published
   between the two curls cannot pair a new tag with the previous binary.
+
+- `--continue-sessions` with `--jobs` above 1 or `--stacked-prs` is a usage
+  error. Those modes give each review a fresh worktree, so there is no session
+  to resume; the flag used to be accepted and silently ignored.
+
+### Fixed
+
+- `--update-repo` is checked as `owner/repo` at startup. A URL, a missing
+  slash, or an extra path segment used to reach the GitHub API and fail there
+  with a status line, or to hit a different endpoint entirely.
+
+- `--dir`, `--dirs`, and `--push-remote` refuse an empty value instead of
+  treating it as the current directory or as `origin`.
+
+- A defined agent's `usage` with no `roots` is refused when the definition
+  is loaded, rather than later when transcript registration fails without
+  naming the file.
 
 ## 1.16.0
 

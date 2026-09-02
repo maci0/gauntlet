@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
 // documentedFlags is every flag name the help screen claims to have.
@@ -64,6 +66,8 @@ func TestUsageRendersEverySection(t *testing.T) {
 		fmt.Sprintf("(default %dm)", int(defaultTimeout/time.Minute)),
 		fmt.Sprintf("(default %d)", defaultRunsLimit),
 		"(0 = unlimited)",
+		selfupdate.DefaultRepo,
+		"GH_TOKEN",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("help screen is missing %q", want)
@@ -90,7 +94,8 @@ func TestParseFlagsDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	if o.timeout != defaultTimeout || o.suggestTimeout != defaultTimeout ||
-		o.jobs != 1 || o.retries != defaultRetries || o.runsLimit != defaultRunsLimit || !o.hotReload {
+		o.jobs != 1 || o.retries != defaultRetries || o.runsLimit != defaultRunsLimit || !o.hotReload ||
+		o.updateRepo != selfupdate.DefaultRepo {
 		t.Fatalf("unexpected defaults: %+v", o)
 	}
 	if o.reviewsSet {
@@ -107,17 +112,18 @@ func TestRegisteredDefaultsMatchTheConsts(t *testing.T) {
 	fs, _ := buildFlagSet(&options{})
 	for _, c := range []struct {
 		name string
-		want int
+		want string
 	}{
-		{"retries", defaultRetries},
-		{"limit", defaultRunsLimit},
+		{"retries", strconv.Itoa(defaultRetries)},
+		{"limit", strconv.Itoa(defaultRunsLimit)},
+		{"update-repo", selfupdate.DefaultRepo},
 	} {
 		f := fs.Lookup(c.name)
 		if f == nil {
 			t.Fatalf("flag -%s is not registered", c.name)
 		}
-		if f.DefValue != strconv.Itoa(c.want) {
-			t.Errorf("-%s registers default %q, want %d (the const)", c.name, f.DefValue, c.want)
+		if f.DefValue != c.want {
+			t.Errorf("-%s registers default %q, want %s (the const)", c.name, f.DefValue, c.want)
 		}
 	}
 }
@@ -164,6 +170,8 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 	}{
 		{"once implies one loop", []string{"--once"}, ""},
 		{"push implies commit", []string{"--push"}, ""},
+		{"continue-sessions in place", []string{"--continue-sessions"}, ""},
+		{"update-repo fork", []string{"--update-repo", "other/gauntlet"}, ""},
 		{"suggest with reviews", []string{"-s", "-r", "quick"}, ""},
 		{"suggest mixed in", []string{"-r", "suggest,sec"}, ""},
 		{"exclude suggest", []string{"-x", "suggest"}, "not a review name"},
@@ -179,6 +187,17 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"stack is one pass", []string{"--stacked-prs", "--max-loops", "2"}, "one ordered review pass"},
 		{"base needs stack", []string{"--pr-base", "main"}, "requires --stacked-prs"},
 		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs"},
+		{"empty dir", []string{"--dir", ""}, "--dir is empty"},
+		{"whitespace dir", []string{"--dir", "  "}, "--dir is empty"},
+		{"empty dirs", []string{"--dirs", ""}, "--dirs is empty"},
+		{"empty dirs commas", []string{"--dirs", ",,,"}, "--dirs is empty"},
+		{"empty push-remote", []string{"--stacked-prs", "--push-remote", ""}, "--push-remote is empty"},
+		{"empty update-repo", []string{"--update-repo", ""}, "--update-repo is empty"},
+		{"update-repo URL", []string{"--update-repo", "https://github.com/maci0/gauntlet"}, "want owner/repo"},
+		{"update-repo extra path", []string{"--update-repo", "maci0/gauntlet/extra"}, "want owner/repo"},
+		{"update-repo no slash", []string{"--update-repo", "maci0"}, "want owner/repo"},
+		{"continue-sessions with jobs", []string{"--continue-sessions", "-j", "2"}, "cannot be used with --jobs"},
+		{"continue-sessions with stack", []string{"--continue-sessions", "--stacked-prs"}, "cannot be used with --jobs"},
 		{"negative limit", []string{"runs", "--limit", "-3"}, "--limit must be >= 1"},
 		{"zero limit", []string{"runs", "--limit", "0"}, "--limit must be >= 1"},
 		{"dirs with dir", []string{"--dirs", "a", "-C", "b"}, "conflicts"},

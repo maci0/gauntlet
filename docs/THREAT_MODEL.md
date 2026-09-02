@@ -30,7 +30,7 @@ organizational decisions; none is assigned here.
   `git clean -fd`, `ResetToBase` in `internal/gitx/worktree.go`; never the
   user's checkout).
 - **Credentials reachable by the user account**: cloud keys, SSH keys,
-  `GITHUB_TOKEN`, every agent's own API-key store (`~/.claude`, `~/.gemini`,
+  `GH_TOKEN`/`GITHUB_TOKEN`, every agent's own API-key store (`~/.claude`, `~/.gemini`,
   and peers). Agents run with full user privileges.
 - **Reviewed source confidentiality**: leaves the machine through each agent's
   model API calls.
@@ -82,7 +82,7 @@ organizational decisions; none is assigned here.
   commit, `persist-credentials: false`; the scanner itself is deliberately
   unpinned because its result never becomes a build input).
 - **B5, secrets <-> processes.** Secrets enter from the operator environment
-  and agent config stores; they leave toward api.github.com (only when
+  and agent config stores; they leave toward GitHub (only when `GH_TOKEN` or
   `GITHUB_TOKEN` is set) and toward each agent's model provider.
 - **B6, gauntlet <-> local state.** `~/.gauntlet` (or `GAUNTLET_HOME`): the
   JSONL journal, hot-reload handoff files, `agents.json`.
@@ -98,7 +98,7 @@ Untrusted inputs with their validation point:
 | Prompt descriptions ("Your goal" line) | `prompt.go:71-82`, fed to the suggest catalog `compose.go:181` | name and description both fenced: `</catalog>` and `RELEVANT:` neutralized (`compose.go:188-195`); 200-rune cap on a rune boundary (`compose.go:162,200-207`) |
 | CLI flags: `--agents`, `--bin TOOL=PATH`, `--agent-cmd NAME=ARGV`, `--prompt-dir DIR` | `cmd/gauntlet/flags.go`; parsed by `ParseSpecs`, `ParseBin` (`agent.go`), `ParseAgentCmd` (`custom.go`), `discover.go:44-77` | allow-listed tool names; dsh model charset-restricted (`dshModelRe`); `@effort` charset-restricted for every agent and refused where no verified flag exists (`effortRe`, `takesEffort`); argv split on spaces, no shell; `--bin` paths made absolute before any chdir (`ParseBin`); `--prompt-dir` takes regular files only, control-char names rejected; subcommands refuse flags they do not read (`rejectStrayFlags`, `flags.go`) |
 | Environment: `PATH` | `pathNoCWD` (`agent.go`), `gitx.go:36-48` | cwd-relative and relative entries dropped for agent and git resolution |
-| Environment: `GAUNTLET_HOME`, `GITHUB_TOKEN`, `TERM`/NO_COLOR, `GAUNTLET_STATE` | `gauntlethome.go:30`, `selfupdate.go:74`, `cmd/gauntlet/report.go:47-53`, `selfupdate/reload.go:18` | operator-controlled, same-user trust; `GAUNTLET_HOME` made absolute at resolution so the state root cannot depend on the current directory (`CustomFilePath`, `custom.go`) |
+| Environment: `GAUNTLET_HOME`, `GH_TOKEN`/`GITHUB_TOKEN`, `TERM`/NO_COLOR, `GAUNTLET_STATE` | `gauntlethome.go:30`, `selfupdate.go:84-97`, `cmd/gauntlet/report.go:47-53`, `selfupdate/reload.go:18` | operator-controlled, same-user trust; `GAUNTLET_HOME` made absolute at resolution so the state root cannot depend on the current directory (`CustomFilePath`, `custom.go`); `--update-repo` is `owner/repo` only (`ParseRepo`) |
 | Agent stdout/stderr | pipes in `exec.go:95-107`; line scan `exec.go:268` | 4 MiB per line emitted in chunks (`exec.go:33-41`), escape/control/bidi strip before terminal (`normalize.go:332 Display`), width cap 2000 cols (`exec.go:45`), rate limit 200 lines/s (`runner.go:27`); even `--raw` passes `Display` (`exec.go:202`) |
 | Stream-JSON events from agents | `streamjson.Parse` at `exec.go:182` | envelope-agnostic parser; thinking lines sanitized + capped (`exec.go:330-345`) |
 | Token counters parsed from output and transcripts | `exec.go:152-158,245-256`; transcript watch off with `-tags notoktop`, `usage_toktop.go:17`; custom roots `custom.go:62` | integers only; transcripts are other files under `$HOME` |
@@ -226,8 +226,9 @@ reload re-exec'ing the new binary mid-run without user confirmation
 advisory scanner in CI (`vulnscan.yml`) watches the dependency graph, not this
 channel.
 
-**B5.** Secret egress: `GITHUB_TOKEN` goes only to `api.github.com`
-(`selfupdate.go:74-76`). Agent CLIs receive the inherited environment and
+**B5.** Secret egress: `GH_TOKEN` / `GITHUB_TOKEN` go only to GitHub
+(`selfupdate.go:84-97`, attached to the listing, checksums, and asset
+requests). Agent CLIs receive the inherited environment and
 hold their own stored credentials; anything the user can read, a runaway
 agent can read and send where its model provider accepts. No gauntlet-side
 control exists; the boundary is the operating system, hence the container

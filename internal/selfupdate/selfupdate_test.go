@@ -91,6 +91,51 @@ func FuzzChecksumFor(f *testing.F) {
 	})
 }
 
+func TestParseRepo(t *testing.T) {
+	got, err := ParseRepo("")
+	if err != nil || got != DefaultRepo {
+		t.Fatalf("empty = %q %v, want DefaultRepo %q", got, err, DefaultRepo)
+	}
+	got, err = ParseRepo("  maci0/gauntlet  ")
+	if err != nil || got != "maci0/gauntlet" {
+		t.Fatalf("trimmed = %q %v", got, err)
+	}
+	got, err = ParseRepo("org/.github")
+	if err != nil || got != "org/.github" {
+		t.Fatalf(".github repo = %q %v", got, err)
+	}
+	for _, bad := range []string{
+		"maci0",
+		"maci0/gauntlet/extra",
+		"https://github.com/maci0/gauntlet",
+		"git@github.com:maci0/gauntlet.git",
+		"maci0/gauntlet?foo",
+		"maci0/..",
+		"../gauntlet",
+		"maci0/gauntlet repo",
+	} {
+		if _, err := ParseRepo(bad); err == nil {
+			t.Errorf("ParseRepo(%q) accepted", bad)
+		}
+	}
+}
+
+func TestGitHubTokenPrefersGHToken(t *testing.T) {
+	t.Setenv(envGitHubToken, "from-github")
+	t.Setenv(envGHToken, "from-gh")
+	if got := githubToken(); got != "from-gh" {
+		t.Fatalf("GH_TOKEN should win, got %q", got)
+	}
+	t.Setenv(envGHToken, "")
+	if got := githubToken(); got != "from-github" {
+		t.Fatalf("GITHUB_TOKEN fallback = %q", got)
+	}
+	t.Setenv(envGitHubToken, "  ")
+	if got := githubToken(); got != "" {
+		t.Fatalf("whitespace-only token = %q, want empty", got)
+	}
+}
+
 func TestAssetName(t *testing.T) {
 	got := assetName("1.2.3")
 	if !strings.Contains(got, runtime.GOOS) || !strings.Contains(got, runtime.GOARCH) {

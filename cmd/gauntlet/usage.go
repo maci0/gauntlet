@@ -13,6 +13,8 @@ import (
 	"io"
 	"strings"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
 // flagDoc is one row of the help screen.
@@ -56,7 +58,7 @@ var helpGroups = []flagGroup{
 		{"a", "agents", "LIST", "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent (repeatable, default: auto-detect)"},
 		{"", "bin", "TOOL=PATH", "run an agent from a specific executable (repeatable)"},
 		{"", "agent-cmd", "NAME=ARGV", "define an agent gauntlet does not know, e.g. pi='pi -p {prompt}' (repeatable)"},
-		{"", "continue-sessions", "", "resume each agent's session between reviews"},
+		{"", "continue-sessions", "", "resume each agent's session between reviews (conflicts with --jobs > 1 and --stacked-prs)"},
 	}},
 	{"Execution", []flagDoc{
 		{"C", "dir", "DIR", "directory to review"},
@@ -101,7 +103,7 @@ var helpGroups = []flagGroup{
 	{"Updates", []flagDoc{
 		{"", "hot-reload", "", "reload when this binary is replaced (default true)"},
 		{"", "auto-update", "", "install new releases during the run"},
-		{"", "update-repo", "REPO", "GitHub repo to fetch releases from"},
+		{"", "update-repo", "REPO", "GitHub repo to fetch releases from (default " + selfupdate.DefaultRepo + ")"},
 		{"", "check", "", "update: report the latest release without installing"},
 	}},
 	{"History", []flagDoc{
@@ -139,9 +141,9 @@ var helpExitCodes = []struct{ Code, Meaning string }{
 }
 
 // helpEnvVars is the environment section: the variables a consumer can set to
-// change gauntlet's behavior. GAUNTLET_HOME and GITHUB_TOKEN are read by
-// internal packages (gauntlethome, selfupdate); the color names come from
-// report.go's consts, so this table cannot drift from colorEnabled.
+// change gauntlet's behavior. GAUNTLET_HOME and GH_TOKEN/GITHUB_TOKEN are
+// read by internal packages (gauntlethome, selfupdate); the color names come
+// from report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []struct{ Name, Help string }{
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)"},
 	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion)"},
@@ -149,7 +151,8 @@ var helpEnvVars = []struct{ Name, Help string }{
 	{"CLICOLOR_FORCE", "keep color when the output is piped"},
 	{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
 	{"TERM", "\"dumb\" disables color, even with the two above"},
-	{"GITHUB_TOKEN", "used for release lookups, to avoid rate limits"},
+	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads"},
+	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set"},
 }
 
 // printUsage renders the help screen.

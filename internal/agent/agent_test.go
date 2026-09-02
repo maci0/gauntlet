@@ -870,8 +870,10 @@ func TestCustomAgentDropsArgumentsWithNothingToPutInThem(t *testing.T) {
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
-		"no argv":   {},
-		"no prompt": {Argv: []string{"x", "--flag"}},
+		"no argv":                {},
+		"no prompt":              {Argv: []string{"x", "--flag"}},
+		"usage without roots":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
+		"usage with blank roots": {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
 	}
 	for name, def := range cases {
 		if err := Register("tmp", def); err == nil {
@@ -1022,6 +1024,23 @@ func TestCustomAgentFileUnknownField(t *testing.T) {
 	err := LoadCustomFile(path)
 	if err == nil || !strings.Contains(err.Error(), "unknown field") {
 		t.Fatalf("want an unknown-field rejection naming the key, got %v", err)
+	}
+}
+
+func TestCustomAgentFileUsageWithoutRoots(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agents.json")
+	body := `{"piclone":{"argv":["piclone","-p","{prompt}"],"usage":{}}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := LoadCustomFile(path)
+	if err == nil || !strings.Contains(err.Error(), "usage.roots") {
+		t.Fatalf("want usage.roots refusal naming the file, got %v", err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("error should name %s, got %v", path, err)
 	}
 }
 
