@@ -29,8 +29,9 @@ var goldenReviewNames = []string{
 	"code-review", "compat-review", "concurrency-review", "config-review",
 	"container-review", "db-review", "deps-review", "design-review",
 	"doc-review", "dr-review", "dst-review", "dx-review", "error-review",
-	"functionality-review", "fuzz-review", "i18n-review",
-	"idempotency-review", "infra-review", "lint-review", "llm-review",
+	"functionality-review", "fuzz-review", "gitops-review", "helm-review",
+	"i18n-review", "idempotency-review", "infra-review", "k8s-review",
+	"lint-review", "llm-review",
 	"minimalism-review", "mobile-review", "numerics-review",
 	"o11y-review", "perf-review", "pkg-review", "privacy-review",
 	"prompt-review", "release-review", "resource-review", "sdk-review",
@@ -42,7 +43,7 @@ var goldenReviewNames = []string{
 // goldenSetNames is the set surface: the named sets plus the two computed
 // ones (--reviews all / --reviews project).
 var goldenSetNames = []string{
-	"agents", "all", "backend", "frontend", "project", "quick",
+	"agents", "all", "backend", "frontend", "gitops", "project", "quick",
 	"security", "shipping", "standard",
 }
 

@@ -319,6 +319,17 @@ var fastRules = []rule{
 		return s.count(".tf", ".tfvars") > 0 || s.anyName("ansible.cfg", "playbook.yml") ||
 			s.anyPath("charts", "manifests", "kustomization.yaml")
 	}), []string{"infra-review", "container-review", "dr-review"}},
+	{"Kubernetes manifests or kustomize files", weightStrong, present(func(s signals) bool {
+		return s.anyName("kustomization.yaml", "kustomization.yml") ||
+			s.anyPath("manifests", "overlays", "base")
+	}), []string{"k8s-review", "container-review"}},
+	{"a GitOps delivery layer", weightStrong, present(func(s signals) bool {
+		return s.anyPath("flux-system", "argocd") ||
+			s.anyName("gotk-components.yaml", "gotk-sync.yaml", "application.yaml", "applicationset.yaml", "helmrelease.yaml")
+	}), []string{"gitops-review", "k8s-review", "dr-review"}},
+	{"a Helm chart", weightStrong, present(func(s signals) bool {
+		return s.anyName("chart.yaml") || s.anyPath("charts")
+	}), []string{"helm-review", "container-review"}},
 	{"a build system", weightNormal, present(func(s signals) bool {
 		return s.anyName("makefile", "justfile", "cmakelists.txt", "meson.build", "build.gradle", "pom.xml")
 	}), []string{"build-review"}},

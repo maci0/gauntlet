@@ -114,8 +114,8 @@ knows, defined ones included. See
 ## The reviews
 
 Every review is one prompt file. Run all of them, a named set (`-r quick`,
-`-r security`, `-r backend`, `-r frontend`, `-r shipping`, `-r agents`), or any
-list you like. `gauntlet --list` prints this table with what is scheduled.
+`-r security`, `-r backend`, `-r frontend`, `-r shipping`, `-r agents`,
+`-r gitops`), or any list you like. `gauntlet --list` prints this table with what is scheduled.
 
 <!-- BEGIN REVIEWS: generated from internal/prompt/prompts, checked by TestReadmeGridMatchesBundled -->
 | Review | Finds |
@@ -143,9 +143,12 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 | `error-review` | silent data loss, misleading behavior, cascading failure |
 | `functionality-review` | the gap between intended and actual behavior |
 | `fuzz-review` | untrusted-input surfaces with no fuzz harness |
+| `gitops-review` | Argo CD / Flux delivery: pinning, sync, drift, secrets |
+| `helm-review` | chart templating, values contract, hooks, CRDs |
 | `i18n-review` | translations, locale formatting, layout in other scripts |
 | `idempotency-review` | what happens when the operation runs twice |
 | `infra-review` | CI/CD, IaC, deployment, environment wiring |
+| `k8s-review` | manifests, kustomize structure, API deprecations |
 | `lint-review` | linters present, strict enough, and blocking CI |
 | `llm-review` | prompt injection, cost, and unvalidated model output |
 | `minimalism-review` | prove every line is needed, or delete it |
