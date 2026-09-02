@@ -15,6 +15,8 @@ library.
   shipped tag sets: default (`sqlite`), bare, and `-tags notoktop`. All
   must be clean; run `go fix` under those same three tag sets before
   committing if the fix step reports anything.
+- `make check-scripts`: ruff and shellcheck on `scripts/`. CI's `scripts`
+  job also runs mypy `--strict`. Rule selection is `pyproject.toml`.
 - `make test`: the suite with the race detector and shuffled order.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
   in the Makefile. The floor is CI's number, not a local one: a machine with

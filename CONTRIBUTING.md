@@ -54,6 +54,12 @@ with `make test TAGS=notoktop` and `make test TAGS=` when your change
 touches tagged files; you do not need dist or repro unless you touched the
 release path.
 
+A separate `scripts` job lints `scripts/` with ruff (rules in
+[pyproject.toml](pyproject.toml)), mypy `--strict`, and shellcheck on
+`scripts/shots.sh`. `make check-scripts` runs the ruff and shellcheck
+steps locally. mypy on the screenshot renderer needs `rich`, which CI
+installs for that job.
+
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph
 ([vulnscan.yml](.github/workflows/vulnscan.yml)). `make vuln` runs the same

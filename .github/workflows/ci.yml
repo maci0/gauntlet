@@ -49,9 +49,9 @@ jobs:
       - run: make cover
         if: matrix.tags == 'sqlite' && runner.os == 'Linux'
 
-  # The one Python file here is the screenshot renderer. It gates the same way
-  # every other language in this repository does, so a maintainer task cannot
-  # rot into something nobody can run.
+  # Maintainer scripts (the screenshot renderer, the suggester calibrator,
+  # and shots.sh) gate the same way every other language in this repository
+  # does, so they cannot rot into something nobody can run.
   scripts:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -71,11 +71,15 @@ jobs:
       # match scripts/shots/render.py's PEP 723 header, which is what
       # `uv run` actually installs. Bump these pins deliberately in one
       # commit, running all three steps locally first; dependabot does not
-      # track versions inside `run:` steps.
+      # track versions inside `run:` steps. Rule selection lives in
+      # pyproject.toml, which both uvx ruff and a local ruff read.
       - run: uvx ruff@0.16.4 check scripts
       - run: uvx ruff@0.16.4 format --check scripts
       # rich has type information, so mypy needs it installed to see it.
       - run: uvx --with rich==15.0.0 mypy@2.3.1 --strict scripts
+      # Preinstalled on the Ubuntu runner image; shots.sh is the only shell
+      # script in the tree.
+      - run: shellcheck scripts/shots.sh
 
   dist:
     runs-on: ubuntu-latest

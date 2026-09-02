@@ -134,6 +134,15 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
 
+# Local mirror of ci.yml's scripts job minus mypy: mypy --strict on
+# render.py needs rich, which CI installs via uvx --with. ruff and
+# shellcheck must be on PATH; CI pins ruff through uvx instead.
+.PHONY: check-scripts
+check-scripts: ## ruff and shellcheck on scripts/ (CI also runs mypy --strict)
+	ruff check scripts
+	ruff format --check scripts
+	shellcheck scripts/shots.sh
+
 # Advisory scan of the dependency graph, the same invocation vulnscan.yml
 # runs on pull requests that touch go.mod or go.sum. Unpinned for the reason
 # stated there: a scanner is worth only what its advisory database knows,

@@ -18,6 +18,12 @@ minor instead and were listed under Changed.
   rewrite language-idiomatic types and names; post-quantum crypto items are
   note-only; Kubernetes-native checks skip Dockerfile-only trees; docs-vs-code
   disagreements have a single owner.
+- Ruff on `scripts/` selects the bugbear, pylint, pyupgrade, and bandit
+  groups (and every other category those two files already pass), with a
+  100-column cap, instead of the default four error codes. `scripts/shots.sh`
+  is gated with shellcheck in the same CI job. Rule selection lives in
+  `pyproject.toml`, which both the pinned CI `uvx ruff` and
+  `make check-scripts` read.
 
 ## 1.16.0
 

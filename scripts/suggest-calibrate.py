@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 
 # A suggest run that scheduled nearly the whole catalog is a fallback, not a
@@ -41,9 +42,7 @@ def module_root() -> pathlib.Path:
 
 
 def gauntlet_home() -> pathlib.Path:
-    return pathlib.Path(
-        os.environ.get("GAUNTLET_HOME", pathlib.Path.home() / ".gauntlet")
-    )
+    return pathlib.Path(os.environ.get("GAUNTLET_HOME", pathlib.Path.home() / ".gauntlet"))
 
 
 def agent_picks() -> dict[str, set[str]]:
@@ -113,9 +112,10 @@ def main() -> None:
     root = module_root()
     binary = root / ".scratch" / "gauntlet-calibrate"
     binary.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        ["go", "build", "-o", str(binary), "./cmd/gauntlet"], cwd=root, check=True
-    )
+    go = shutil.which("go")
+    if go is None:
+        raise SystemExit("go is not on PATH")
+    subprocess.run([go, "build", "-o", str(binary), "./cmd/gauntlet"], cwd=root, check=True)
 
     scores: list[tuple[float, float]] = []
     for directory, picked in sorted(agent_picks().items()):
@@ -128,7 +128,8 @@ def main() -> None:
         scores.append((recall, precision))
         if args.detail:
             print(
-                f"{pathlib.Path(directory).name:<16} agent={len(picked):>3} fast={len(proposed):>3} "
+                f"{pathlib.Path(directory).name:<16} "
+                f"agent={len(picked):>3} fast={len(proposed):>3} "
                 f"recall={recall:.2f} precision={precision:.2f}"
             )
             print(f"   missed: {sorted(picked - proposed)}")
@@ -137,9 +138,7 @@ def main() -> None:
     recall = sum(r for r, _ in scores) / len(scores)
     precision = sum(p for _, p in scores) / len(scores)
     f1 = 2 * recall * precision / max(1e-9, recall + precision)
-    print(
-        f"{len(scores)} directories: recall={recall:.2f} precision={precision:.2f} f1={f1:.2f}"
-    )
+    print(f"{len(scores)} directories: recall={recall:.2f} precision={precision:.2f} f1={f1:.2f}")
 
 
 if __name__ == "__main__":
