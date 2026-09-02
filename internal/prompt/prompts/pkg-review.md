@@ -53,7 +53,7 @@ Review the following:
 - No multi-stage build: compilers, package managers, and source left in the runtime image
 - Bloated layers: cache not cleaned in the same layer, large files added then removed later
 - Secrets or credentials baked into any layer, including intermediate ones
-- Missing OCI labels (source, version, license), missing or wrong `HEALTHCHECK`/`ENTRYPOINT`/`STOPSIGNAL` semantics
+- Missing OCI labels (source, version, license); missing or wrong `HEALTHCHECK`/`STOPSIGNAL`; shell-form `ENTRYPOINT`/`CMD` (`sh -c "..."`) so PID 1 is a shell that swallows SIGTERM (Kubernetes probes and preStop belong to container-review)
 (Deployment, orchestration, and registry workflow belong to infra-review.)
 
 8. Service and desktop integration

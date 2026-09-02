@@ -10,6 +10,15 @@ and waits for a major version; new flags and other additions may land in a
 minor. While the project was 0.x, other behavior changes could land in a
 minor instead and were listed under Changed.
 
+## Unreleased
+
+### Changed
+
+- Bundled review prompts: integer-width and abbreviation rules no longer
+  rewrite language-idiomatic types and names; post-quantum crypto items are
+  note-only; Kubernetes-native checks skip Dockerfile-only trees; docs-vs-code
+  disagreements have a single owner.
+
 ## 1.16.0
 
 ### Added

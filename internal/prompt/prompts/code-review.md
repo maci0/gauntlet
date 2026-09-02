@@ -11,7 +11,7 @@ Review the following:
 - Naming inconsistencies
 - Units or qualifiers first (`max_latency_ms`) or missing. Put units last, most-significant word first (`latency_ms_max`, `latency_ms_min`) so related names group and sort
 - Related names of unequal length (`src`/`dest`) where equal length would line up in copies and slices (`source`/`target`)
-- Abbreviated names (`buf`, `ctx`, `req`, `idx`) except a primitive integer in a sort or matrix. Spell the word
+- Novel abbreviated names that hide the unit or role. Spell those out. Language idioms (`ctx`/`err` in Go, `req`/`res` in HTTP handlers, `i`/`j` in loops, `buf` next to a length) and the file's existing short names are not findings
 - Generic names that hide role (`allocator` where `gpa`/`arena` would tell the reader whether to free)
 - Overloaded names that mean different things in different modules
 - Helper or callback not prefixed with its caller (`read_sector_callback` vs a free-standing `on_done`)
@@ -91,7 +91,7 @@ Review the following:
 - Implicit contracts between modules that are not enforced by types or assertions
 - Optional values treated as always present
 - Inconsistent use of type narrowing or discriminated unions
-- Architecture-sized integers (`usize`, `size_t`, `int`, `long`, `number`). Use explicitly-sized types (`u32`, `uint32_t`, `i64`) for everything; width is part of the contract
+- Unspecified integer width on a wire, file, FFI, or persistence boundary (`int`, `long`, `number`, or `usize` used as a stored size). Use an explicitly-sized type (`u32`, `uint32_t`, `i64`) there; width is part of the contract. Language-idiomatic architecture-sized types for in-memory indexes and counts (`usize`, `size_t`, `int`) are not a finding
 - `index`, `count`, and `size` treated as interchangeable. They are distinct: index is 0-based, count is 1-based (index to count adds one), size is count times the unit. Put the qualifier in the name
 - Division whose rounding mode is implicit (`/` or `//` when exact, floor, and ceil all mean different things). Name the intent
 - Large values (more than ~16 bytes) passed by value when the callee must not copy them. Pass a const pointer or const reference

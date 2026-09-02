@@ -60,7 +60,7 @@ Instructions:
 - Fix order: cross-tenant data exposure > object-level misses on mutations > object-level misses on reads > function-level gaps on privileged operations > escalation paths > consistency and default-allow structure > missing deny-side tests.
 - If available, use: `semgrep` (locate handlers missing the project's own authorization call pattern; never `--config auto`, it sends the project URL off-host). Never install tools.
 - Map the enforcement chokepoints first (middleware, decorators, policy classes, ORM scopes), then hunt the paths that bypass them; a handler-by-handler read without the map misses the structural findings.
-- Judge against the project's own permission model as documented or evidently intended; where the intent is unclear, record it as an open question instead of assuming.
+- Judge against the project's own permission model as documented or evidently intended; where the intent is unclear, skip that path instead of assuming.
 - In auto-fix mode make narrow, verifiable fixes: add the missing ownership check to one handler using the project's existing pattern, add the tenant filter to one query, move one route inside the auth middleware, strip role/owner fields from one mass-assignment site, add one deny-side test. Do not redesign the permission model, introduce a policy engine, or change the authentication flow (sec-review's territory) in one pass.
 - A finding needs a reachable path: name the principal, the request, and the object they should not reach. Unreachable theoretical gaps are low severity at most.
 - Prefer fewer high-value findings; call out enforcement that is centralized and consistent so future passes leave it alone.

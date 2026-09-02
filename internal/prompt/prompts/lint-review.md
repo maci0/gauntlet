@@ -16,7 +16,7 @@ Review the following:
 2. Strictness and configuration quality
 - Strict modes off with no recorded reason: mypy/pyright non-strict, tsconfig without `strict`, compiler warnings not raised to errors where the codebase is clean enough to allow it
 - Compiler or typechecker not at the strictest setting the tree can already pass. Appreciate every warning; promote them to errors once the tree is clean
-- No hard line-length cap, or a cap above 100 columns. Hard-limit every line to 100 so two copies of the code fit side-by-side. Use it up. Never go beyond
+- No line-length cap at all, in a language whose ecosystem has a de-facto one. A missing cap is the finding. Do not tighten an existing cap, do not impose 100 (or any number) over the project's, and do not reformat the tree to satisfy a newly introduced cap; enable a cap only where the tree already passes it
 - Multi-line `if`/`else` without braces (the goto-fail class). A formatter or lint rule should require braces unless the statement fits on one line
 - Valuable rule groups disabled wholesale (bug-prone, correctness, security categories) while style-only rules run
 - Rule categories never enabled at all, not merely disabled: the analyzer's default set running alone while its suspicious, pedantic, performance, and restriction groups stay off. Enable every category the tree can pass, and prefer the analyzer's builtins over custom rules

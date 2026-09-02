@@ -2,7 +2,7 @@ Summary: the gap between intended and actual behavior
 
 You are a senior software engineer. Your task is to perform a deep functional review of this codebase.
 
-Your goal is to evaluate whether the software actually does what it is supposed to do: feature completeness, behavioral correctness, and handling of real-world edge cases. Focus on the gap between intended behavior and actual behavior, not on code style or structure.
+Your goal is to evaluate whether the software actually does what it is supposed to do: feature completeness, behavioral correctness, and handling of real-world edge cases. Focus on the gap between intended behavior and actual behavior, not on code style or structure. Stale comments and docs belong to doc-review; here own the implementation matching a user-facing or tested contract.
 
 First, establish what the software is supposed to do. Derive intended behavior from:
 - README, docs, help text, and usage examples
@@ -76,7 +76,7 @@ Instructions:
   - potential defects that need verification or maintainer input
 - Separate "missing feature" from "broken feature" from "undocumented behavior".
 - Do not report style, naming, or structural issues: those belong to code-review, slop-review, and arch-review.
-- Do not restyle working code or chase local logic style (code-review). Here own a documented or tested contract the implementation violates.
+- Do not restyle working code or chase local logic style (code-review). Here own a user-facing or tested contract the implementation violates (CLI help, README examples, changelog, tests). Comments and docstrings that have gone stale next to the code they describe belong to doc-review; if tests agree with the code and docs do not, leave the docs.
 - Do not add, rewrite, or delete tests (test-review). Fix the implementation to match documented or tested intent; if the test is the thing that is wrong, note it and leave the test.
 - Do not change error types, propagation, retries, timeouts, or cleanup (error-review). Here own the documented contract: the feature appears to succeed, or match the docs, but does not.
 - Prefer fewer, high-value findings over many weak ones.

@@ -54,7 +54,7 @@ Instructions:
 - Judge durability claims from configuration evidence (fsync settings, replication mode, storage class, retention config), not from defaults assumed or documentation asserted.
 - State the disaster per finding: instance loss, zone/region loss, logical corruption, malicious deletion, bad deploy. A posture fine for one disaster and absent for another is a finding about the second.
 - In auto-fix mode make narrow, verifiable fixes: add the missed table/bucket to an existing backup configuration, enable versioning or soft-delete where the platform supports it in config present in the repo, fix a backup job's silent-failure handling, write or correct a restore runbook from evidence in the repo. Do not provision new infrastructure, change replication topology, or alter write-durability settings (performance trade-offs the maintainer must own) in one pass; report those with the trade-off stated.
-- Much of this review is config-and-docs rather than application code; where the evidence lives outside the repo, record it as an open question instead of guessing.
+- Much of this review is config-and-docs rather than application code; where the evidence lives outside the repo, skip that item instead of guessing.
 - Prefer fewer high-value findings; call out state that is verifiably protected so future passes leave it alone.
 
 For each finding include:
