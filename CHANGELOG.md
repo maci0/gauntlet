@@ -44,6 +44,13 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- `--merge-into` refuses to merge when git status cannot be read, the same
+  way it already refuses a dirty tree, so a merge event cannot report work
+  that never moved.
+- A missing or stale run index that cannot be reconstructed is an error
+  from `gauntlet runs`, not a listing that silently omits the newest run.
+- A stacked-PR reload that cannot verify its pinned base commit fails
+  rather than fetching a new tip and splitting the stack.
 - Dashboard and launcher wordmark is the brand teal of the mark, one hue,
   not a per-letter gradient. Panel names stay dim with the rest of the chrome.
 - Dashboard lanes and the feed drop the `-review` suffix the grid already

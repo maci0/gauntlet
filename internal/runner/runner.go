@@ -603,7 +603,11 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		r.log("Cannot read HEAD, falling back to sequential: %v", err)
 		return r.runLoopSequential(ctx, loopNo)
 	}
-	branch := r.repo.CurrentBranch(ctx)
+	branch, err := r.repo.CurrentBranch(ctx)
+	if err != nil {
+		r.log("Cannot read the current branch, falling back to sequential: %v", err)
+		return r.runLoopSequential(ctx, loopNo)
+	}
 	if branch == "" {
 		r.log("Detached HEAD: merges would be lost, falling back to sequential")
 		return r.runLoopSequential(ctx, loopNo)
@@ -1192,7 +1196,12 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 	if r.cfg.MergeInto == "" || ctx.Err() != nil || r.repo == nil {
 		return
 	}
-	from := r.repo.CurrentBranch(ctx)
+	from, err := r.repo.CurrentBranch(ctx)
+	if err != nil {
+		r.log("Not merging into %s: cannot read the current branch: %v", r.cfg.MergeInto, err)
+		r.st.addCommitFail()
+		return
+	}
 	if from == "" {
 		r.log("Not merging into %s: this tree is on a detached HEAD", r.cfg.MergeInto)
 		r.st.addCommitFail()
@@ -1201,7 +1210,13 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 	if from == r.cfg.MergeInto {
 		return // the work is already there
 	}
-	if dirty, err := r.repo.DirtyPaths(ctx, r.cfg.OwnArtifacts); err == nil && len(dirty) > 0 {
+	dirty, err := r.repo.DirtyPaths(ctx, r.cfg.OwnArtifacts)
+	if err != nil {
+		r.log("Not merging into %s: cannot read git status: %v", r.cfg.MergeInto, err)
+		r.st.addCommitFail()
+		return
+	}
+	if len(dirty) > 0 {
 		r.log("Not merging into %s: %d uncommitted path(s) would be left behind",
 			r.cfg.MergeInto, len(dirty))
 		r.st.addCommitFail()

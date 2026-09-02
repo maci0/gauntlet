@@ -49,7 +49,11 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	}
 	base := cfg.PRBase
 	if base == "" {
-		base = repo.CurrentBranch(ctx)
+		cur, err := repo.CurrentBranch(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the current branch: %w", err)
+		}
+		base = cur
 	}
 	if base == "" {
 		return nil, errors.New("--stacked-prs needs --pr-base when HEAD is detached")
@@ -117,9 +121,16 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	// fetching again: a remote base that advances mid-run would rename every
 	// layer and split the resumed run into a new stack.
 	var baseTip string
-	if cfg.ResumeStackTip != "" && repo.HasCommit(ctx, cfg.ResumeStackTip) {
-		baseTip = cfg.ResumeStackTip
-	} else {
+	if cfg.ResumeStackTip != "" {
+		has, err := repo.HasCommit(ctx, cfg.ResumeStackTip)
+		if err != nil {
+			return nil, fmt.Errorf("cannot verify pinned stack base %s: %w", shortTip(cfg.ResumeStackTip), err)
+		}
+		if has {
+			baseTip = cfg.ResumeStackTip
+		}
+	}
+	if baseTip == "" {
 		baseTip, err = repo.FetchRemoteBranchTip(ctx, cfg.PushRemote, base)
 		if err != nil {
 			return nil, fmt.Errorf("cannot fetch %s/%s: %w", cfg.PushRemote, base, err)
@@ -280,7 +291,9 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			res.Detail = commitErr.Error()
 			r.st.Add(res)
 			r.publishStackFailure(loopNo, review, branch, parent, commitErr)
-			_ = wt.DiscardCurrent(context.WithoutCancel(ctx))
+			if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
+				r.log("Cannot discard failed stack layer %s: %v", review, err)
+			}
 			return false
 		}
 		if !changed {

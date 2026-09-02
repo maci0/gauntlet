@@ -43,13 +43,18 @@ const worktreeRoot = ".gauntlet/worktrees"
 // the branch name, so the marker alone is what a search looks for.
 const conflictMarker = "<<<<<<<"
 
-// CurrentBranch returns the checked-out branch name, or "" on a detached HEAD.
-func (r *Repo) CurrentBranch(ctx context.Context) string {
+// CurrentBranch returns the checked-out branch name. A detached HEAD is
+// ("", nil): that is a state, not a failure. Any other git error is returned
+// so callers do not treat a broken repository as detached.
+func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
-		return ""
+		if exitsWith(err, 1) {
+			return "", nil
+		}
+		return "", err
 	}
-	return strings.TrimSpace(string(out))
+	return strings.TrimSpace(string(out)), nil
 }
 
 // Branches lists local branch names, excluding gauntlet's own review
@@ -689,12 +694,26 @@ func (r *Repo) RemotePushURL(ctx context.Context, remote string) (string, error)
 // HasCommit reports whether the object store already holds sha as a commit.
 // A hot-reload successor uses it to keep a pinned stack base that its
 // predecessor fetched, instead of fetching a tip that may have moved.
-func (r *Repo) HasCommit(ctx context.Context, sha string) bool {
+//
+// Missing is a normal answer (false, nil). A git failure is returned, not
+// reported as missing: treating a locked or broken store as "not there"
+// would make a resumed stacked run fetch a new base and split the stack.
+func (r *Repo) HasCommit(ctx context.Context, sha string) (bool, error) {
 	if !isHex(sha) {
-		return false // never a revision expression or an option
+		return false, nil // never a revision expression or an option
 	}
-	_, err := r.run(ctx, gitQuick, "cat-file", "-e", sha+"^{commit}")
-	return err == nil
+	// rev-parse --verify --quiet: exit 0 if the commit exists, 1 if it does
+	// not, anything else if git itself failed. cat-file -e exits 128 for a
+	// missing object, the same status as "not a repository", so it cannot
+	// tell those apart.
+	_, err := r.run(ctx, gitQuick, "rev-parse", "--verify", "--quiet", sha+"^{commit}")
+	if err == nil {
+		return true, nil
+	}
+	if exitsWith(err, 1) {
+		return false, nil
+	}
+	return false, err
 }
 
 func isHex(s string) bool {

@@ -1180,6 +1180,55 @@ echo "RESULT: changed=1"`)
 	}
 }
 
+// A merge that cannot prove the tree is clean must not report success: the
+// work that is still uncommitted would stay behind, and the event would say
+// it moved.
+func TestMergeIntoRefusesWhenStatusCannotBeRead(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	before := gitOut(t, repo, "rev-parse", "main-line")
+
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is required for runner tests")
+	}
+	wrapDir := t.TempDir()
+	script := fmt.Sprintf(`#!/bin/sh
+for a in "$@"; do
+  if [ "$a" = "status" ]; then
+    echo "broken status" >&2
+    exit 128
+  fi
+done
+exec %q "$@"
+`, realGit)
+	if err := os.WriteFile(filepath.Join(wrapDir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", wrapDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "// touched" >> main.go
+git add -A
+git commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.MergeInto = "main-line"
+	r, got := runRecorded(t, cfg)
+
+	if n := countKind(got, EvMerge); n != 0 {
+		t.Fatalf("%d merge events, want none: git status could not be read", n)
+	}
+	if r.Stats().CommitFails() == 0 {
+		t.Fatal("a refused merge must be counted, not passed over in silence")
+	}
+	if gitOut(t, repo, "rev-parse", "main-line") != before {
+		t.Fatal("main-line must not have moved: cleanliness could not be verified")
+	}
+}
+
 // A graceful quit stops starting reviews, lets the ones running finish, and
 // still commits what this loop produced: there is no successor to do it, so
 // dropping the commit step would leave the work uncommitted on disk.

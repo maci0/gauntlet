@@ -220,8 +220,8 @@ choices:
   are running on stays checked out and the run stays watchable. It needs
   `--commit` or `--push`, because only committed work can merge, and it
   refuses (rather than reporting a merge that moved nothing) if the tree is
-  still dirty. A conflict aborts the merge and leaves both branches where they
-  were, for a human to resolve.
+  still dirty or git status cannot be read. A conflict aborts the merge and
+  leaves both branches where they were, for a human to resolve.
 - `--stacked-prs` never edits or merges into the checked-out branch. It owns
   one separate worktree, commits and pushes each changed review branch, and
   opens the linear PR chain described above.

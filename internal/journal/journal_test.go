@@ -889,6 +889,72 @@ func TestRecentIndexesAJournalNeverClosed(t *testing.T) {
 	}
 }
 
+// Reconstructing an unindexed journal must not hide it when the index cannot
+// be written: a listing without that run would look complete.
+func TestRecentReportsAnUnwritableIndexWhenReconstructing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	idA := NewRunID(first)
+	jA, err := Open(idA, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jA.Close(Summary{
+		Dirs: []string{"/a"}, Start: first, End: first,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
+	idB := NewRunID(second)
+	jB, err := Open(idB, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jB.Write(map[string]any{"ev": "run_start", "ts": second, "dir": "/b"})
+	jB.Flush()
+	jB.CloseQuiet()
+
+	idx := indexPath()
+	if err := os.Chmod(idx, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(idx, 0o600) })
+
+	if _, err := Recent(10); err == nil {
+		t.Fatal("a reconstructed run that cannot be written to the index must be an error, not a listing that hides it")
+	}
+}
+
+// Open must not start a second shard for an existing run when it cannot list
+// the journals: a listing failure is not proof that the file is gone.
+func TestOpenDoesNotSplitARunWhenListingFails(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	j, err := Open("custom-run", first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	j.Flush()
+	j.CloseQuiet()
+
+	runs := filepath.Join(home, "runs")
+	if err := os.Chmod(runs, 0o300); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(runs, 0o700) })
+
+	second := time.Date(2026, 8, 26, 0, 0, 0, 0, time.UTC)
+	if _, err := Open("custom-run", second); err == nil {
+		t.Fatal("Open must not invent a second shard when it cannot list the first")
+	}
+}
+
 // Recovering an in-flight journal writes a reconstructed row; Close then
 // appends the real one. The listing is newest first, so the Close row wins.
 func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {

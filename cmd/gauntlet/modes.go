@@ -227,7 +227,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			if errors.Is(r.err, context.Canceled) {
 				return errAborted
 			}
-			return fmt.Errorf("%w: %s: %v", errAgentFailed, d.dir, r.err)
+			return fmt.Errorf("%w: %s: %w", errAgentFailed, d.dir, r.err)
 		}
 		where := ""
 		if len(runs) > 1 {

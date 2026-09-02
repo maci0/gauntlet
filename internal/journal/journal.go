@@ -134,7 +134,9 @@ func Open(runID string, now time.Time) (*Journal, error) {
 	// clock. That would split one run's event stream over two files, and a
 	// replay by id would find only the newer half, so follow the file the run
 	// already has when there is one.
-	if prev, ok, _ := locateRun(runID); ok {
+	if prev, ok, err := locateRun(runID); err != nil {
+		return nil, fmt.Errorf("cannot locate existing journal for %s: %w", runID, err)
+	} else if ok {
 		path = prev
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -427,9 +429,12 @@ func recoverIndexTail(anchorID string) error {
 		}
 		s, err := summarizeFile(journals[0].id, journals[0].path)
 		if err != nil {
-			return nil
+			return fmt.Errorf("cannot reconstruct run %s: %w", journals[0].id, err)
 		}
-		return appendIndexLocked(s)
+		if err := appendIndexLocked(s); err != nil {
+			return fmt.Errorf("cannot append reconstructed run %s to the index: %w", journals[0].id, err)
+		}
+		return nil
 	}
 	for _, journal := range slices.Backward(missing) {
 		s, err := summarizeFile(journal.id, journal.path)
@@ -437,7 +442,7 @@ func recoverIndexTail(anchorID string) error {
 			continue
 		}
 		if err := appendIndexLocked(s); err != nil {
-			return err
+			return fmt.Errorf("cannot append reconstructed run %s to the index: %w", journal.id, err)
 		}
 	}
 	return nil

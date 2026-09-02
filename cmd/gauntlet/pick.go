@@ -118,7 +118,10 @@ func treeState(ctx context.Context, dir string) (branch string, targets []string
 	if repo == nil {
 		return "", nil, false
 	}
-	branch = repo.CurrentBranch(ctx)
+	branch, err := repo.CurrentBranch(ctx)
+	if err != nil {
+		return "", nil, false
+	}
 	for _, b := range repo.Branches(ctx) {
 		if b != branch {
 			targets = append(targets, b)

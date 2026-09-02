@@ -489,3 +489,47 @@ func TestSquashInReportsAMergeNobodyCanResolve(t *testing.T) {
 		t.Fatal("merging a branch that does not exist should fail, not report a conflict")
 	}
 }
+
+func TestCurrentBranchDistinguishesDetachedFromError(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	got, err := r.CurrentBranch(ctx)
+	if err != nil || got != "main" {
+		t.Fatalf("on a branch: got %q, %v; want main, nil", got, err)
+	}
+
+	gitIn(t, r.Dir, "checkout", "-q", "--detach")
+	got, err = r.CurrentBranch(ctx)
+	if err != nil || got != "" {
+		t.Fatalf("detached HEAD: got %q, %v; want empty, nil", got, err)
+	}
+
+	outside := Open(t.TempDir())
+	if _, err := outside.CurrentBranch(ctx); err == nil {
+		t.Fatal("outside a repository CurrentBranch must fail, not report detached HEAD")
+	}
+}
+
+func TestHasCommitDistinguishesMissingFromError(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	head, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	has, err := r.HasCommit(ctx, head)
+	if err != nil || !has {
+		t.Fatalf("HEAD should be present: has=%v err=%v", has, err)
+	}
+
+	missing := strings.Repeat("b", 40)
+	has, err = r.HasCommit(ctx, missing)
+	if err != nil || has {
+		t.Fatalf("a missing object is false, nil; got has=%v err=%v", has, err)
+	}
+
+	outside := Open(t.TempDir())
+	if _, err := outside.HasCommit(ctx, missing); err == nil {
+		t.Fatal("outside a repository HasCommit must fail, not report the object missing")
+	}
+}
