@@ -73,11 +73,13 @@ about it from a red check.
 ## Changelog
 
 User-visible changes land in [CHANGELOG.md](CHANGELOG.md) under `##
-Unreleased` in the same change that makes them. The release workflow turns
-that section into the release notes and fails a tag push that has no
-matching `## <version>` section, so a fix or feature without an entry is
-found after push rather than before it. Internal refactors with no visible
-behavior need nothing.
+Unreleased` in the same change that makes them. Each impact heading
+(`Added`, `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`) appears
+at most once per version: add another bullet, not another heading. The
+release workflow turns that section into the release notes and fails a tag
+push that has no matching `## <version>` section, so a fix or feature
+without an entry is found after push rather than before it. Internal
+refactors with no visible behavior need nothing.
 
 ## Layout
 

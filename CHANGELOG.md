@@ -18,19 +18,28 @@ minor instead and were listed under Changed.
   wins over `GITHUB_TOKEN` when both are set, and both now authenticate the
   checksum and asset downloads as well as the release listing, so a private
   `--update-repo` can actually install.
-
-### Fixed
-
-- A review that never launched (unknown name, unreadable prompt, or a command
-  line that could not be built) now publishes `review_end` like every other
-  outcome, so the journal, the dashboard, and `gauntlet show` record it. The
-  file-signal suggester no longer treats those, or failed, timed-out, and
-  interrupted launches, as finished runs that changed nothing.
+- `gauntlet pick` can compose `--stacked-prs` from the run pane. Turning it
+  on clears `--commit`, `--push`, and `--merge-into` and pins concurrency at
+  1, so the launcher cannot emit a command the parser would refuse.
+- `?` on the launcher opens a help overlay, the same key the dashboard uses.
+  `q` / `esc` close it; they do not leave the picker.
 
 ### Changed
 
 - Dashboard and launcher wordmark is the brand teal of the mark, one hue,
   not a per-letter gradient. Panel names stay dim with the rest of the chrome.
+- `--continue-sessions` with `--jobs` above 1 or `--stacked-prs` is a usage
+  error. Those modes give each review a fresh worktree, so there is no session
+  to resume; the flag used to be accepted and silently ignored. Scripts that
+  passed both will see exit 2.
+- `q` / `esc` on the live dashboard arms a hard stop instead of killing the
+  run on the first press (1.15.0 still documented immediate quit). A second
+  press, or `q` after the run has finished or is already draining, closes the
+  dashboard and cancels the run. The header shows `q TO STOP` while armed;
+  any other key disarms it. `q` on the help overlay still only closes help.
+- `gauntlet runs` prints STARTED as local `YYYY-MM-DD HH:MM:SS`. The old
+  `MM-DD HH:MM:SS` column had no year and swapped day and month for readers
+  used to ISO dates.
 - Bundled review prompts: integer-width and abbreviation rules no longer
   rewrite language-idiomatic types and names; post-quantum crypto items are
   note-only; Kubernetes-native checks skip Dockerfile-only trees; docs-vs-code
@@ -49,6 +58,11 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- A review that never launched (unknown name, unreadable prompt, or a command
+  line that could not be built) now publishes `review_end` like every other
+  outcome, so the journal, the dashboard, and `gauntlet show` record it. The
+  file-signal suggester no longer treats those, or failed, timed-out, and
+  interrupted launches, as finished runs that changed nothing.
 - `gauntlet pick` no longer treats untracked files as blocking `--jobs`.
   The runner has allowed them since 1.12; the launcher was still using a
   full dirty-tree check and refused a run that would have started.
@@ -67,23 +81,18 @@ minor instead and were listed under Changed.
 - Agent timeout and output-drain waits no longer leave a timer running after
   the process has already exited. Each wait is a timer that is stopped when
   the other path wins, matching the retry backoff.
-
-- `--continue-sessions` with `--jobs` above 1 or `--stacked-prs` is a usage
-  error. Those modes give each review a fresh worktree, so there is no session
-  to resume; the flag used to be accepted and silently ignored.
-
-### Fixed
-
 - `--update-repo` is checked as `owner/repo` at startup. A URL, a missing
   slash, or an extra path segment used to reach the GitHub API and fail there
   with a status line, or to hit a different endpoint entirely.
-
 - `--dir`, `--dirs`, and `--push-remote` refuse an empty value instead of
   treating it as the current directory or as `origin`.
-
 - A defined agent's `usage` with no `roots` is refused when the definition
   is loaded, rather than later when transcript registration fails without
   naming the file.
+- A hot-reload handoff records the predecessor's monotonic elapsed time, so
+  `--runtime` and the dashboard clock do not jump when the wall clock steps
+  during the exec. An older handoff without the field still uses the
+  wall-clock span from when the run started.
 
 ## 1.16.0
 

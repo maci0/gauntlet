@@ -237,12 +237,13 @@ not part of it: that is a decision about a shared branch, and it stays yours.
 
 ## Stopping a run
 
-Three ways, and they mean different things:
+Several ways, and they mean different things:
 
 | How | What happens |
 |---|---|
 | `s` on the dashboard, `SIGQUIT` (`Ctrl-\`), or the first `Ctrl-C` | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
 | A second `Ctrl-C`, or `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. One more force-kills. |
+| `q` or `esc` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q TO STOP`); any other key disarms. `q` on the help overlay closes help and does not arm the stop. Before this, a single `q` killed the run immediately. |
 | `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
 | `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
 
