@@ -36,7 +36,7 @@ type PickConfig struct {
 	Agents  []string    // installed agent labels, empty when none were found
 	Branch  string      // the branch the reviews would run on, "" off a branch
 	Merge   []string    // other local branches, as merge targets
-	Dirty   bool        // the tree has uncommitted changes, which worktrees refuse
+	Dirty   bool        // tracked files have uncommitted changes, which worktrees refuse
 	CPUs    int         // the concurrency meter is drawn against this
 	Version string
 	// Reserved are the words --reviews reads as something other than a
@@ -759,10 +759,12 @@ func (p *picker) renderCommand() string {
 }
 
 // blocked reports why the composed run would not start, or "" when it would.
-// Worktree isolation cuts branches from a commit, so uncommitted work would
-// be invisible to every review: better to say so here than to compose a
-// command that fails on launch. The same goes for an empty agent pool: every
-// run auto-detects its agents, so nothing here can launch at all.
+// Worktree isolation cuts branches from a commit, so uncommitted edits to
+// tracked files would be invisible to every review: better to say so here
+// than to compose a command that fails on launch. Untracked files do not
+// block --jobs, so they do not block the launcher either. The same goes for
+// an empty agent pool: every run auto-detects its agents, so nothing here
+// can launch at all.
 func (p *picker) blocked() string {
 	if len(p.cfg.Agents) == 0 {
 		return "no agent CLI is installed: install one (see: gauntlet doctor)"

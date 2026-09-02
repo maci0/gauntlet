@@ -14,10 +14,12 @@ import (
 	"strings"
 )
 
-// Worktree is one review's private checkout: its own directory, its own
-// branch, cut from a known commit. Concurrent reviews never share a tree, so
-// they cannot overwrite each other's edits or observe each other's half-done
-// work. Their results reach the main tree only through Merge.
+// Worktree is a private checkout: its own directory and branch, cut from a
+// known commit. Concurrent reviews never share a tree, so they cannot
+// overwrite each other's edits or observe each other's half-done work. In
+// --jobs mode it is a persistent lane reused across reviews; stacked-PR mode
+// advances one through the stack. Results reach the main tree only through
+// Merge.
 type Worktree struct {
 	Dir    string // absolute path of the checkout
 	Branch string
@@ -42,9 +44,9 @@ const worktreeRoot = ".gauntlet/worktrees"
 const conflictMarker = "<<<<<<<"
 
 // IsClean reports whether the working tree has no uncommitted changes beyond
-// the runner's own artifacts. Worktree mode requires a clean tree: a branch is
-// cut from a commit, so uncommitted work would be invisible to every review
-// and then collide with the merges.
+// the runner's own artifacts, tracked or untracked. Worktree isolation only
+// refuses tracked modifications (see Status); untracked files do not block
+// --jobs.
 func (r *Repo) IsClean(ctx context.Context, ownArtifacts map[string]bool) (bool, error) {
 	dirty, err := r.DirtyPaths(ctx, ownArtifacts)
 	if err != nil {
@@ -158,9 +160,10 @@ func (r *Repo) ensureWorktreeRoot() error {
 	return nil
 }
 
-// AddWorktree creates a checkout of base on a fresh branch. The name is the
-// review it belongs to; the tag (run id plus loop and lane) keeps concurrent
-// and repeated runs from colliding on branch names.
+// AddWorktree creates a checkout of base on a fresh branch. The name identifies
+// the checkout (a persistent lane, or a one-shot conflict resolver); the tag
+// (run id plus loop and lane) keeps concurrent and repeated runs from colliding
+// on branch names.
 func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktree, error) {
 	if !Available() {
 		return nil, errors.New("git is required for parallel reviews")

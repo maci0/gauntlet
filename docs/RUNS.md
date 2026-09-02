@@ -23,9 +23,12 @@ gauntlet -j 4 -a mixed --once
   from a commit, so that work would be invisible to every review and then
   collide with its merge). Untracked files do not block the run: they are in
   nobody's way, and the run says once that they are not reviewed.
-- Each review gets `git worktree add -b gauntlet/<run>/<review>` under
+- `--jobs N` creates **N persistent lane worktrees** under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
-- The runner (never the agent) commits each worktree, then lands the branches
+  Reviews pull from a shared queue: a lane that finishes one starts the next.
+  Each review still gets its own branch; the lane directory stays put so later
+  reviews in that lane reuse the agent's prompt cache.
+- The runner (never the agent) commits each review, then lands the branches
   on your branch one at a time, squashed: one commit per review, no merge
   nodes. The commit is authored by you, with your git identity, and its
   subject is the one the review printed for its own change (`SUBJECT: fix: …`
@@ -34,9 +37,9 @@ gauntlet -j 4 -a mixed --once
   touched (`chore: add helper.go`), never a line about the review itself.
 - With `--push`, each review is pushed as it lands rather than all of them at
   the end, so a long run publishes as it goes.
-- Each worktree is cut from the tree's **current tip**, not from where the
-  loop began, so a review that waited hours for a lane still starts on what
-  has landed since.
+- Each review's branch is cut from the tree's **current tip**, not from where
+  the loop began, so a review that waited for a lane still starts on what has
+  landed since. After a merge the lane advances to that tip.
 - A conflicting merge is **handed to an agent**: the conflict is replayed in a
   scratch checkout cut from the tip, one agent launch resolves the marked
   files, and the result is merged. The merge lock is held throughout, so the
@@ -46,11 +49,12 @@ gauntlet -j 4 -a mixed --once
   after the review, so the work can be inspected or merged by hand. Unresolved
   conflicts are reported as their own outcome and make the run exit nonzero.
 - A review that is retried (`--retries`, after a launch failure or a nonzero
-  exit) starts over from the commit its worktree was cut from: whatever the
+  exit) starts over from the commit its branch was cut from: whatever the
   failed attempt left behind is reset away, so attempt N+1 sees exactly what
-  attempt N saw. In-place reviews (`--jobs` unset) retry in the live tree,
-  which belongs to you and is not rewound.
-- Merged branches and their checkouts are cleaned up; unmerged ones survive.
+  attempt N saw. In-place reviews (`--jobs` 1) retry in the live tree, which
+  belongs to you and is not rewound.
+- Lane checkouts are removed at the end of the loop; merged review branches
+  are deleted; unmerged ones survive.
 
 Without `--jobs`, reviews run one at a time and edit the tree in place, exactly
 like the Python original, dirty tree and all.
@@ -206,8 +210,8 @@ choices:
 - `--commit` has an agent write a message and commit **on the branch you are
   on**. `--push` does that and pushes it. Neither creates a branch, and
   neither merges anything.
-- `--jobs N` is the only thing that branches: each review works on
-  `gauntlet/<run>/<review>`, and the runner merges those back into **the
+- `--jobs N` is the only thing that branches: each review works on a
+  branch under `gauntlet/`, and the runner merges those back into **the
   branch you are on**, one at a time, squashed. Nothing here targets `main`
   by name; if you are on `feature-x`, the work lands on `feature-x`.
 - `--merge-into BRANCH` is the step after that: once a loop's work is

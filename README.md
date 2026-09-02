@@ -26,9 +26,10 @@
 One static binary loops ~50 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
-- **Isolation when it runs in parallel.** `--jobs N` gives every review its own
-  `git worktree` on its own branch, merged back one at a time. Concurrent
-  agents never share a working tree.
+- **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
+  worktrees that pull reviews from a shared queue, each review on its own
+  branch, merged back one at a time. Concurrent agents never share a working
+  tree.
 - **Unmerged review stacks.** `--stacked-prs` runs reviews in one isolated
   worktree and opens each changed review as a child PR of the previous one.
   The branch in your editor is never changed.
@@ -171,9 +172,10 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 ## How a run works
 
 Reviews run one at a time against your working tree, forever, until you stop
-them. `--jobs N` buys parallelism with isolation instead: every review gets
-its own `git worktree` on its own branch, and the runner (never the agent)
-commits each one and merges them back one at a time.
+them. `--jobs N` buys parallelism with isolation instead: N persistent lane
+worktrees pull reviews from a shared queue, each review on its own branch,
+and the runner (never the agent) commits each one and merges them back one
+at a time.
 
 Stack mode is sequential for a different reason: every review must see the
 commits below it. From base `main`, changed reviews produce `review-1 → main`,
@@ -186,16 +188,14 @@ lifecycle and recovery rules.
 
 ```mermaid
 flowchart LR
-    T[your branch<br/>clean tree] --> S[scheduler]
-    S --> W1[worktree<br/>sec-review]
-    S --> W2[worktree<br/>perf-review]
-    S --> W3[worktree<br/>doc-review]
-    W1 --> C1[runner commits]
-    W2 --> C2[runner commits]
-    W3 --> C3[runner commits]
-    C1 --> M[merge --squash<br/>one at a time]
-    C2 --> M
-    C3 --> M
+    T[your branch<br/>clean tree] --> S[shared queue]
+    S --> L0[lane-0]
+    S --> L1[lane-1]
+    S --> L2[lane-2]
+    L0 --> C[runner commits]
+    L1 --> C
+    L2 --> C
+    C --> M[merge --squash<br/>one at a time]
     M --> T2[your branch]
     M -. conflict .-> R[agent resolves<br/>in a scratch checkout]
     R -. merged .-> T2

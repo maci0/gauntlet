@@ -35,7 +35,7 @@ type Config struct {
 	Bin     map[string]string // agent -> executable override
 
 	Timeout  time.Duration
-	Jobs     int // 1: sequential, in place. >1: one worktree per review, then merge
+	Jobs     int // 1: sequential, in place. >1: N persistent lane worktrees, then merge
 	MaxLoops int
 	Runtime  time.Duration
 

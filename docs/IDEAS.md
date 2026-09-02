@@ -5,16 +5,17 @@ future reader can judge whether the problem still exists.
 
 ## Worktree setup hook
 
-**Problem.** `--jobs N` runs each review in a fresh `git worktree`. Many repos
-do not build in a bare checkout: local `.env` files, `node_modules`,
-virtualenvs, and build caches are untracked, so they are absent. The agent's
-verification step then fails for reasons unrelated to the review, and the
-review either wastes its budget or reports a false problem.
+**Problem.** `--jobs N` runs reviews in N persistent lane worktrees, each a
+bare checkout of the current tip. Many repos do not build in a bare checkout:
+local `.env` files, `node_modules`, virtualenvs, and build caches are
+untracked, so they are absent. The agent's verification step then fails for
+reasons unrelated to the review, and the review either wastes its budget or
+reports a false problem.
 
-**Shape of the fix.** `--worktree-setup CMD`, run once in each new checkout
-before the agent starts (symlink `node_modules`, copy `.env`, warm a cache).
-Needs a timeout of its own and a clear failure mode: a setup that fails should
-skip that review, not run it in a broken tree.
+**Shape of the fix.** `--worktree-setup CMD`, run once in each new lane
+checkout before the first agent starts (symlink `node_modules`, copy `.env`,
+warm a cache). Needs a timeout of its own and a clear failure mode: a setup
+that fails should skip that lane, not run it in a broken tree.
 
 ## Cross-run learning from the journal
 
@@ -107,29 +108,9 @@ default question is settled:
 
 - Agents are shown with their model field and unavailable ones greyed with
   the reason.
-- A directories pane: add paths and globs, mark trees that are dirty (a
-  `--jobs > 1` run needs a clean tree), and show the product, "4 jobs x 3
+- A directories pane: add paths and globs, mark trees whose tracked files
+  are dirty (`--jobs > 1` refuses those), and show the product, "4 jobs x 3
   directories = up to 12 agents at once".
 - Recent runs from `~/.gauntlet/index.jsonl`, which already records the argv,
   offered as one-key presets.
 - A key that copies the composed command line.
-
-## ~~Persistent isolated worktree (`--worktree`)~~ Implemented
-
-Implemented as persistent lanes in `--jobs N` mode. See DESIGN.md,
-"API-level cache reuse across reviews" for the full description.
-
-`--jobs N` creates N persistent lane worktrees at loop start, distributes
-reviews across them from a shared queue, and destroys them at loop end.
-Within a lane, reviews run sequentially in the same directory (cache hits).
-Across lanes, reviews run in parallel (N cold starts total). Conflict
-handling uses `Advance` to detach and reset the lane, keeping the review
-branch for human resolution.
-
-Decisions resolved during implementation:
-
-- Conflicts advance the lane to HEAD and keep the review branch for the user.
-- Lanes own their commits like `--stacked-prs`, merged under `mergeMu`.
-- Lanes are recreated per loop (not reused across loops).
-- Lane assignment is queue-based (first-free-lane pulls next review), not
-  round-robin or weighted.

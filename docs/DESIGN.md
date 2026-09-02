@@ -15,7 +15,7 @@ also publish its changes as a linear, unmerged PR stack.
 1. Same review semantics as the Python original: same prompts, same injected
    rules, same containment, same exit codes.
 2. Parallel where it is safe: across directories always, and inside one
-   directory only with a worktree per review and a merge step.
+   directory only with isolated lane worktrees and a merge step.
 3. A dashboard that reads like an instrument, not a log tail.
 4. Fast: sub-100ms to first useful output, no measurable runner overhead
    against agent wall time.
@@ -49,7 +49,8 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/runner/usage*.go` | the bridge to toktop's transcript reading, on unless `-tags notoktop` |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`prompt`, `normalize`, `gitx`, `ghx`, and `streamjson`; `ui` imports
+`prompt`, `normalize`, `gitx`, `ghx`, `streamjson`, `humanize`, and
+`journal`; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing
 else. `prompt` imports `gitx`, so project discovery's
@@ -123,9 +124,9 @@ the unit of safe parallelism is **the directory**, not the agent.
   the Python original does, editing the working tree in place.
 - `--jobs N` (N > 1) turns on **isolated parallel reviews**, described below.
 - `--stacked-prs` turns on one **isolated sequential stack**, described below.
-- A review that fails to launch or exits non-zero is retried on a different
-  agent, and again on further agents until the pool is exhausted. Timeouts are
-  not retried.
+- A review that fails to launch or exits non-zero is retried on the same
+  agent (`--retries`, default 2), then on further agents until the pool is
+  exhausted. Timeouts are not retried.
 - Cancellation is a `context.Context` per review, plus process-group kill
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
 - Events are published on one buffered channel per run and fanned out to the
@@ -137,26 +138,37 @@ the unit of safe parallelism is **the directory**, not the agent.
 
 Concurrent agents in one working tree corrupt each other, so the runner does
 not allow it. Parallelism inside a directory is granted only with isolation:
+N persistent lane worktrees pull reviews from a shared queue. Each review
+still gets its own branch; the lane directory stays put so later reviews in
+that lane reuse the agent's prompt cache (see below).
 
 ```
 baseline commit
-   ├── git worktree add -b gauntlet/<run>/sec-review   .gauntlet/worktrees/…
-   ├── git worktree add -b gauntlet/<run>/perf-review  .gauntlet/worktrees/…
-   └── git worktree add -b gauntlet/<run>/doc-review   .gauntlet/worktrees/…
-         agents run concurrently, each in its own checkout
+   ├── git worktree add  lane-0   .gauntlet/worktrees/…
+   ├── git worktree add  lane-1   .gauntlet/worktrees/…
+   └── git worktree add  lane-2   .gauntlet/worktrees/…
+         N agents run concurrently, each in a stable checkout
+         a lane that finishes a review pulls the next from the queue
    ↓
    one commit per review (runner-authored, no AI attribution)
    ↓
    serialized merge --squash back into the original branch
+   ↓
+   the lane advances to the new tip and starts the next review
 ```
 
 Rules the runner enforces:
 
-1. **Git required, tree clean.** A branch is cut from a commit, so uncommitted
-   work would be invisible to every review and then collide with the merges.
-   `--jobs N` on a dirty tree is a usage error, not a warning.
-2. **One worktree per review**, under `.gauntlet/worktrees/`, added to
+1. **Git required, tree clean of tracked changes.** A branch is cut from a
+   commit, so uncommitted edits to files git knows about would be invisible
+   to every review and then collide with the merges. Untracked files do not
+   block the run. The runner returns `ErrDirtyTree`; the CLI may offer to
+   commit first rather than only naming the error.
+2. **N persistent lane worktrees**, under `.gauntlet/worktrees/`, added to
    `.git/info/exclude` so the checkouts never appear as untracked files.
+   Reviews pull from a shared queue (first free lane takes the next). Each
+   review still gets its own branch; a lane that finishes one starts another
+   from the current tip.
 3. **The runner commits, not the agent.** Agents remain forbidden to run git
    (unchanged containment). After a review, the runner stages and commits its
    worktree in one commit. Nothing to commit means nothing merged.
@@ -165,23 +177,24 @@ Rules the runner enforces:
    land it, is aborted with its branch kept, named after the review, so the
    work can be inspected or merged by hand. Conflicts are reported as their
    own outcome in the summary and the journal, never silently dropped.
-5. **Cleanup on the way out**: worktree removed, merged branches deleted,
-   `git worktree prune` run. Unmerged branches survive on purpose.
+5. **Cleanup on the way out**: lane worktrees removed, merged review branches
+   deleted, `git worktree prune` run. Unmerged branches survive on purpose.
 6. Per-review line stats come from the review's own commit, so they stay
    exact under parallelism (unlike a shared-tree diff, which cannot be
    attributed).
 7. `--commit`/`--push` still forces a quiescent point: all lanes drain and
    merge before the commit step runs.
-8. **Worktrees are cut from the current tip**, not from the loop's starting
-   commit: lanes refill for as long as the loop runs, and a stale base turns
-   every later merge in a loop into a conflict.
+8. **Each review's branch is cut from the current tip**, not from the loop's
+   starting commit: after a merge the lane advances to that tip, and a stale
+   base would turn every later merge in a loop into a conflict.
 9. **The conflict step** (`--resolve-conflicts`, on by default) replays a
    refused branch into a scratch checkout of the tip, hands the marked files
    to one agent launch, and merges what comes back. It runs under the merge
    lock, so the tip is fixed for its duration; it commits nothing that still
    carries conflict markers; and every failure path leaves exactly what a
    plain conflict leaves. The agent sees only the conflicted files and is
-   forbidden to run git, like every other agent this tool launches.
+   forbidden to run git, like every other agent this tool launches. The
+   lane then advances without deleting the kept branch.
 
 ### Isolated stacked pull requests (`--stacked-prs`)
 

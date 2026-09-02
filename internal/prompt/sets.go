@@ -60,9 +60,11 @@ var DynamicSets = map[string]string{
 }
 
 // Suggest is the reserved --reviews keyword: an agent inspects the repo and
-// picks the relevant reviews. It is not in DynamicSets because it cannot
-// compose with other names and needs an agent run plus confirmation before the
-// loop starts.
+// picks the relevant reviews. Flag parsing strips it from the list and sets
+// the suggest step, so the rest of --reviews survives: suggest,sec schedules
+// sec plus whatever the agent picks. It is not in DynamicSets because Expand
+// never sees it: it is a flag-level request, not a set of names, and it needs
+// an agent run plus confirmation before the loop starts.
 const Suggest = "suggest"
 
 // SetNames lists every named set, sorted.

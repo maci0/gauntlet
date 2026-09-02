@@ -24,6 +24,14 @@ minor instead and were listed under Changed.
   is gated with shellcheck in the same CI job. Rule selection lives in
   `pyproject.toml`, which both the pinned CI `uvx ruff` and
   `make check-scripts` read.
+- Docs for `--jobs N` describe the persistent lane worktrees the runner
+  actually uses, not the per-review throwaway checkouts that 1.13.0 replaced.
+
+### Fixed
+
+- `gauntlet pick` no longer treats untracked files as blocking `--jobs`.
+  The runner has allowed them since 1.12; the launcher was still using a
+  full dirty-tree check and refused a run that would have started.
 
 ## 1.16.0
 

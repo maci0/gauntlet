@@ -35,9 +35,10 @@ is on screen the whole time, and `enter` runs exactly that, so the flags are
 learned rather than hidden. Picking nothing is not an empty run: it is every
 review, which is what the composed command says by saying nothing. A run the
 tree cannot support is refused with its reason on screen rather than composed
-and failed on launch (concurrency above 1 needs a clean tree). It needs a
-terminal on stdin and stdout, and takes `-C/--dir` and `--prompt-dir` to say
-what it should offer.
+and failed on launch (concurrency above 1 needs no uncommitted changes to tracked files). It needs a
+terminal on stdin and stdout, and takes `-C/--dir`, `--dirs`, and `--prompt-dir` to say
+what it should offer. The launcher composes one run for one tree: `--dirs` with
+several paths uses the first.
 
 | Key | Action |
 |---|---|
@@ -89,7 +90,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-C, --dir DIR` | cwd | Directory to review. |
 | `--dirs LIST` | none | Review several directories in parallel; globs are expanded. Conflicts with `--dir`. Also accepted as `--target-dirs`, the name the Python tool used. |
 | `--retries N` | 2 | Reruns of a failed review on the same agent, waiting longer each time (5s, then doubling, jittered). A run that exhausts them still falls back to another agent. Timeouts are never retried. |
-| `-j, --jobs N` | 1 | Reviews at a time **per directory**; >1 uses worktree isolation and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
+| `-j, --jobs N` | 1 | Parallel lanes **per directory**; >1 uses N persistent worktrees and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it; a value that splits into nothing is a usage error. Used only with `--usage-limit`. |

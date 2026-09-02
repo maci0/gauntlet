@@ -108,9 +108,10 @@ func pickGroups(set prompt.Set) []ui.PickGroup {
 
 // treeState is what the launcher needs to know about the repository: the
 // branch a run would sit on, the other local branches it could be merged
-// into, and whether the tree is dirty, which is what worktree isolation
-// refuses. Outside a git repository there is none of it, and the launcher
-// simply does not offer those choices.
+// into, and whether tracked files are dirty, which is what worktree isolation
+// refuses. Untracked files do not block --jobs, so they do not block the
+// launcher either. Outside a git repository there is none of it, and the
+// launcher simply does not offer those choices.
 func treeState(ctx context.Context, dir string) (branch string, targets []string, dirty bool) {
 	repo := gitx.Open(dir)
 	if repo == nil {
@@ -122,6 +123,6 @@ func treeState(ctx context.Context, dir string) (branch string, targets []string
 			targets = append(targets, b)
 		}
 	}
-	clean, err := repo.IsClean(ctx, nil)
-	return branch, targets, err == nil && !clean
+	ch, err := repo.Status(ctx, nil)
+	return branch, targets, err == nil && len(ch.Tracked) > 0
 }
