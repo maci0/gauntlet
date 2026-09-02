@@ -10,14 +10,19 @@ import (
 	"testing"
 )
 
-// The Makefile is the build: a go command that can rewrite go.mod/go.sum
-// would let the lockfile drift from the source that produced a binary.
-func TestMakefileHonorsGoSum(t *testing.T) {
+func makefileText(t *testing.T) string {
+	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "Makefile"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(b)
+	return string(b)
+}
+
+// The Makefile is the build: a go command that can rewrite go.mod/go.sum
+// would let the lockfile drift from the source that produced a binary.
+func TestMakefileHonorsGoSum(t *testing.T) {
+	text := makefileText(t)
 	if !strings.Contains(text, "-mod=readonly") {
 		t.Fatal("Makefile must pass -mod=readonly so a build cannot rewrite go.mod or go.sum")
 	}
@@ -49,5 +54,30 @@ func TestAgentsMdDocumentsTheThreeTagSets(t *testing.T) {
 	}
 	if strings.Contains(text, "drop both") {
 		t.Fatal("AGENTS.md must not treat TAGS=notoktop as dropping toktop and sqlite together; TAGS= is the sqlite-off build")
+	}
+}
+
+// make ci is the one local command that covers the pull-request Go job.
+func TestMakefileHasCITarget(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "\nci: check test ##") {
+		t.Fatal("make ci must run check then test, the Go checks a pull request runs")
+	}
+}
+
+// Missing uvx, shellcheck, or gofmt used to be a bare "command not found".
+func TestMakefileCheckScriptsPreflight(t *testing.T) {
+	text := makefileText(t)
+	for _, want := range []string{
+		"uvx not found",
+		"shellcheck not found",
+		"gofmt not found",
+		"uvx ruff@$(RUFF_VERSION) check scripts",
+		"uvx ruff@$(RUFF_VERSION) format --check scripts",
+		"uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Makefile missing %q", want)
+		}
 	}
 }

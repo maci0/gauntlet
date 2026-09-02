@@ -3,3 +3,6 @@
 /gauntlet
 dist/
 .gauntlet.lock
+.ruff_cache/
+.mypy_cache/
+__pycache__/

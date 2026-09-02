@@ -10,8 +10,9 @@ agents, applying fixes to the working tree. One static binary, prompts embedded.
   shipped tag sets: default (`sqlite`), bare, and `-tags notoktop`. All
   must be clean; run `go fix` under those same three tag sets before
   committing if the fix step reports anything.
-- `make check-scripts`: ruff on `scripts/`, shellcheck on `scripts/shots.sh`.
-  CI's `scripts` job also runs mypy `--strict`. Rule selection is `pyproject.toml`.
+- `make ci`: `make check` and `make test`, the Go checks a pull request runs.
+- `make check-scripts`: ruff, mypy `--strict`, and shellcheck on `scripts/`,
+  using the versions CI pins via `uvx`. Rule selection is `pyproject.toml`.
 - `make test`: the suite with the race detector and shuffled order.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
   in the Makefile. The floor is CI's number, not a local one: a machine with

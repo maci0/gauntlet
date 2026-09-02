@@ -14,6 +14,7 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- `make ci` runs the Go pull-request checks (`make check` then `make test`).
 - `GH_TOKEN` is read for release lookups, the same name GitHub CLI uses. It
   wins over `GITHUB_TOKEN` when both are set, and both now authenticate the
   checksum and asset downloads as well as the release listing, so a private
@@ -60,8 +61,8 @@ minor instead and were listed under Changed.
   groups (and every other category those two files already pass), with a
   100-column cap, instead of the default four error codes. `scripts/shots.sh`
   is gated with shellcheck in the same CI job. Rule selection lives in
-  `pyproject.toml`, which both the pinned CI `uvx ruff` and
-  `make check-scripts` read.
+  `pyproject.toml`. `make check-scripts` runs the same pinned ruff, mypy, and
+  shellcheck steps as that job, so a scripts/ change fails locally.
 - Docs for `--jobs N` describe the persistent lane worktrees the runner
   actually uses, not the per-review throwaway checkouts that 1.13.0 replaced.
 - Live usage ticks on the event bus are droppable, the same as agent output:

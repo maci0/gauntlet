@@ -1,8 +1,8 @@
 # Contributing
 
-The short version: `make check` and `make test` must pass before you push.
-CI runs both on every pull request, plus the other build-tag configurations
-and a cross-compilation pass.
+The short version: `make ci` must pass before you push. That is `make check`
+and `make test`. CI runs both on every pull request, plus the other build-tag
+configurations and a cross-compilation pass.
 
 ## Prerequisites
 
@@ -45,11 +45,11 @@ reason; leave it alone unless you know better.
 ## Checks a pull request must pass
 
 ```sh
-make check
+make ci               # make check && make test
 ```
 
-This is gofmt, `go fix`, and vet across all three tag configurations CI
-tests (default `sqlite`, bare, and `notoktop`). It mirrors ci.yml's first
+`make check` is gofmt, `go fix`, and vet across all three tag configurations
+CI tests (default `sqlite`, bare, and `notoktop`). It mirrors ci.yml's first
 step exactly: if `make check` is green locally, that step is green there.
 
 CI additionally runs the full suite under each tag configuration, then
@@ -60,9 +60,8 @@ release path.
 
 A separate `scripts` job lints `scripts/` with ruff (rules in
 [pyproject.toml](pyproject.toml)), mypy `--strict`, and shellcheck on
-`scripts/shots.sh`. `make check-scripts` runs the ruff and shellcheck
-steps locally. mypy on the screenshot renderer needs `rich`, which CI
-installs for that job.
+`scripts/shots.sh`. `make check-scripts` runs those same three steps with
+the versions CI pins. It needs `uv` (for `uvx`) and shellcheck on PATH.
 
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph

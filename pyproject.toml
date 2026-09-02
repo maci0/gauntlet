@@ -1,5 +1,5 @@
-# Maintainer scripts under scripts/. CI's scripts job reads this file
-# (uvx ruff / mypy), so local and CI apply the same rules.
+# Maintainer scripts under scripts/. CI's scripts job and `make check-scripts`
+# both read this file (uvx ruff / mypy), so local and CI apply the same rules.
 
 [tool.ruff]
 target-version = "py311"

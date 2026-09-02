@@ -53,6 +53,40 @@ func TestShotRendererRichPinMatchesCI(t *testing.T) {
 	}
 }
 
+// check-scripts must use the same ruff, mypy, and rich pins as the scripts
+// job. A Makefile that lints with whatever is on PATH, or a CI bump that
+// forgets the Makefile, is an after-push failure.
+func TestScriptsToolPinsMatchCI(t *testing.T) {
+	root := moduleRoot(t)
+	makefile := readRepoFile(t, filepath.Join(root, "Makefile"))
+	ci := readRepoFile(t, filepath.Join(root, ".github", "workflows", "ci.yml"))
+	script := readRepoFile(t, filepath.Join(root, "scripts", "shots", "render.py"))
+
+	checks := []struct {
+		name, makefile, ci string
+	}{
+		{"ruff", makefilePin(makefile, "RUFF_VERSION"), toolAtPin(ci, "ruff")},
+		{"mypy", makefilePin(makefile, "MYPY_VERSION"), toolAtPin(ci, "mypy")},
+		{"rich", makefilePin(makefile, "RICH_VERSION"), richPin(ci)},
+	}
+	for _, c := range checks {
+		if c.makefile == "" {
+			t.Errorf("Makefile does not set %s_VERSION", strings.ToUpper(c.name))
+			continue
+		}
+		if c.ci == "" {
+			t.Errorf("ci.yml does not pin %s", c.name)
+			continue
+		}
+		if c.makefile != c.ci {
+			t.Errorf("%s pin mismatch: Makefile has %s, ci.yml has %s; bump them together", c.name, c.makefile, c.ci)
+		}
+	}
+	if scriptVer := richPin(script); scriptVer != makefilePin(makefile, "RICH_VERSION") {
+		t.Errorf("rich pin mismatch: render.py has %s, Makefile has %s", scriptVer, makefilePin(makefile, "RICH_VERSION"))
+	}
+}
+
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))
@@ -161,6 +195,24 @@ var richPinned = regexp.MustCompile(`rich==([0-9][0-9A-Za-z._-]*)`)
 
 func richPin(text string) string {
 	m := richPinned.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+func makefilePin(text, name string) string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + ` \?= ([0-9][0-9A-Za-z._-]*)$`)
+	m := re.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+func toolAtPin(text, tool string) string {
+	re := regexp.MustCompile(regexp.QuoteMeta(tool) + `@([0-9][0-9A-Za-z._-]*)`)
+	m := re.FindStringSubmatch(text)
 	if m == nil {
 		return ""
 	}

@@ -24,6 +24,11 @@ export GOFLAGS += -mod=readonly
 TAGS    ?= sqlite
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
+# Scripts job pins, matching .github/workflows/ci.yml (TestScriptsToolPinsMatchCI).
+RUFF_VERSION ?= 0.16.4
+MYPY_VERSION ?= 2.3.1
+RICH_VERSION ?= 15.0.0
+
 # Release artifacts must not depend on the build host's locale: the shell
 # orders glob expansion with strcoll, so checksums.txt and sbom.txt would
 # list assets in a different order on hosts with a different LC_COLLATE.
@@ -32,6 +37,10 @@ export LC_ALL := C
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
 export TMPDIR ?= $(HOME)/.cache/gauntlet/test
+# HOME-empty would mkdir /.cache and go would then fail somewhere less obvious.
+ifeq ($(TMPDIR),/.cache/gauntlet/test)
+$(error HOME is unset; set HOME or TMPDIR to a disk-backed directory. Tests must not use tmpfs or a gitignored path inside this repo)
+endif
 # Every go command inherits TMPDIR, and go refuses to start when it does not
 # exist, so it is created at parse time rather than per target: a fresh CI
 # runner has no such directory. Quoted: HOME can contain spaces.
@@ -119,6 +128,7 @@ GOFILES = $(shell $(GO) list -mod=readonly -f '{{.Dir}}' ./...)
 
 .PHONY: fmt
 fmt: ## rewrite all Go files with gofmt
+	@test -x "$(GOFMT)" || { echo "gofmt not found at $(GOFMT); install Go or set GOFMT to this toolchain's gofmt" >&2; exit 1; }
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }
 	$(GOFMT) -s -w $(GOFILES)
 
@@ -127,6 +137,7 @@ fmt: ## rewrite all Go files with gofmt
 # after push. The bare pass is the third configuration: neither tag defined.
 .PHONY: check
 check: ## verify formatting, toolchain fixes, and vet (CI parity)
+	@test -x "$(GOFMT)" || { echo "gofmt not found at $(GOFMT); install Go or set GOFMT to this toolchain's gofmt" >&2; exit 1; }
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }; \
 		unformatted=$$("$(GOFMT)" -s -l $(GOFILES)) || exit 1; \
 		if [ -n "$$unformatted" ]; then \
@@ -142,13 +153,32 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
 
-# Local mirror of ci.yml's scripts job minus mypy: mypy --strict on
-# render.py needs rich, which CI installs via uvx --with. ruff and
-# shellcheck must be on PATH; CI pins ruff through uvx instead.
+# The Go half of a pull request: analysis across all three tag sets, then
+# the race suite. The scripts job is separate (check-scripts) because it
+# needs uvx and shellcheck, which a Go-only change does not.
+.PHONY: ci
+ci: check test ## Go pull-request checks: fmt, fix, vet, and the test suite
+
+# Local mirror of ci.yml's scripts job, including the pins. uvx fetches
+# those tools on first use; shellcheck stays a PATH binary because that is
+# what the Ubuntu runner already has.
 .PHONY: check-scripts
-check-scripts: ## ruff and shellcheck on scripts/ (CI also runs mypy --strict)
-	ruff check scripts
-	ruff format --check scripts
+check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
+	@command -v uvx >/dev/null 2>&1 || { \
+		echo "check-scripts: uvx not found on PATH." >&2; \
+		echo "CI runs: uvx ruff@$(RUFF_VERSION) check scripts" >&2; \
+		echo "         uvx ruff@$(RUFF_VERSION) format --check scripts" >&2; \
+		echo "         uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts" >&2; \
+		echo "         shellcheck scripts/shots.sh" >&2; \
+		exit 1; \
+	}
+	@command -v shellcheck >/dev/null 2>&1 || { \
+		echo "check-scripts: shellcheck not found on PATH (CI uses the Ubuntu runner's copy)" >&2; \
+		exit 1; \
+	}
+	uvx ruff@$(RUFF_VERSION) check scripts
+	uvx ruff@$(RUFF_VERSION) format --check scripts
+	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts
 	shellcheck scripts/shots.sh
 
 # Advisory scan of the dependency graph, the same invocation vulnscan.yml
