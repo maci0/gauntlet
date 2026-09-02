@@ -4,7 +4,7 @@ The Go implementation of gauntlet: run ~50 specialized review prompts through in
 AI coding agents, which apply fixes directly to the working tree.
 
 The Python original is a single 2700-line sequential script. This port keeps
-its trust model and prompt semantics, and changes five things: reviews can run
+the original's prompt semantics, and changes five things: reviews can run
 in parallel with git-level isolation, agent output is normalized into
 structured events instead of raw bytes, every run is journaled, and the binary
 can replace and reload itself while a loop is running; an ordered pass can
@@ -411,11 +411,11 @@ in milliseconds and for no tokens. What it collects in one pass:
 - **What is missing.** No tests, no documentation, no CI: absence is the
   strongest argument for the review that would fix it, and presence-only rules
   said the opposite.
-- **What is alive.** `git log --since=90.days --name-only` weights a language
-  by whether anyone is still editing it. Without commit history the weighting
-  is skipped rather than guessed.
+- **What is alive.** `git log --since="90 days ago" --name-only` weights a
+  language by whether anyone is still editing it. Without commit history the
+  weighting is skipped rather than guessed.
 - **What happened here before.** The journal already records each review's outcome
-  per directory. A review that has finished here several times without changing
+  per directory. A review that has finished here three times without changing
   a line is demoted; one that keeps landing changes is promoted. It is the only
   signal that improves with use.
 - **What a prompt declares.** A `Signals:` line in a project's own review makes
@@ -424,8 +424,9 @@ in milliseconds and for no tokens. What it collects in one pass:
 
 Each rule contributes weight rather than a yes, the reviews are ranked by the
 total, and what does not clear the floor is not proposed. The tree is listed by
-`git ls-files` when there is a repository, so the project's own ignore rules
-decide what counts as source; a plain walk with a skip list is the fallback.
+`git ls-files --cached --others --exclude-standard` when there is a repository,
+so tracked files and untracked files the project's ignore rules allow both count
+as source; a plain walk with a skip list is the fallback.
 
 `scripts/suggest-calibrate.py` scores the result against what agents picked in
 past runs. It is a reference, not ground truth: several of these rules are
@@ -474,12 +475,18 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
   edge, with a current-value marker at the live end.
 - Missing data shows as missing (`~`, `n/a`), never as zero or an interpolation.
 
-## Trust model (unchanged from the original)
+## Trust model
+
+Prompt reads, PATH stripping, display sanitization, and the directory lock are
+the original's. Git invocation is stricter: a reviewed repository's config can
+name programs, so the port blanks every execution-bearing key it can reach.
 
 - Prompts are read with `O_NOFOLLOW`, size-capped, regular files only.
 - Agent binaries resolve on a PATH with cwd-relative entries removed.
-- Git runs with `core.fsmonitor`, `core.hooksPath`, `diff.external`, and the
-  pager forced empty, so a hostile repo's config cannot execute code.
+- Git runs with `core.fsmonitor`, `core.hooksPath`, `diff.external`,
+  `core.gitProxy`, and the pager forced empty, `protocol.ext.allow=never`, and
+  `GIT_SSH_COMMAND=ssh` unless the operator already set it, so a hostile repo's
+  config cannot execute code. Git's PATH is the same absolute-only list.
 - Untrusted text (prompt names, descriptions, agent output) is sanitized of
   control and bidi-formatting characters before display.
 - A `flock` on `.gauntlet.lock` prevents concurrent runs in one directory.

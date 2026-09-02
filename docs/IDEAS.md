@@ -25,6 +25,12 @@ default set), which agent is fastest per review kind (bias the lane
 assignment), which reviews time out repeatedly (raise their budget). All of it
 is offline analysis over files that already exist; none of it needs a service.
 
+The file-signal suggester already demotes a review that has finished in this
+directory three times without landing a change, and promotes one that keeps
+finding work (see [DESIGN.md](DESIGN.md#choosing-reviews-without-an-agent)).
+What has not shipped is using that history to change the default set, the lane
+assignment, or per-review timeouts.
+
 ## Per-review timeout budgets
 
 One global `--timeout` is blunt: `doc-review` rarely needs 30 minutes,
