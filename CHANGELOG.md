@@ -21,7 +21,16 @@ minor instead and were listed under Changed.
   N slots when both land inside the cut. With `--stacked-prs` the single
   ordered pass is truncated to its first N entries. `0` (the default) is
   unlimited, and `--dry-run` reports the capped count.
-
+- Three reviews for Kubernetes and GitOps repos: `k8s-review` (manifests,
+  cross-resource reference integrity, API deprecations, and kustomize
+  structure, components included), `gitops-review` (the Argo CD / Flux
+  delivery layer: source pinning, sync and prune posture, ordering and
+  health, secrets delivery, environment promotion), and `helm-review`
+  (chart authoring: template correctness, the values contract, hooks, CRD
+  lifecycle). Each gates on evidence in the tree and reviews
+  tool-agnostically when the delivery tool leaves no markers. A new
+  `gitops` set schedules them together with `container-review`,
+  `infra-review`, `sec-review`, and `dr-review`.
 - `--paths LIST` scopes every review to the named files, directories, or
   globs, relative to the reviewed directory (comma-separated, repeatable).
   The agent still works from the whole repository for context; the composed
