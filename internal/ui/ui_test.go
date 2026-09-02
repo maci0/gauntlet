@@ -455,6 +455,30 @@ func TestTrimRespectsDisplayWidth(t *testing.T) {
 	}
 }
 
+// dirLabel cuts from the left, keeping the tail that identifies the tree.
+// The cut must land between grapheme clusters: a combining mark or an emoji
+// ZWJ sequence dropped onto the ellipsis is the same class of split trim
+// already refuses.
+func TestDirLabelCutsBetweenGraphemes(t *testing.T) {
+	nfd := strings.Repeat("x", 20) + "cafe\u0301" + strings.Repeat("y", 5)
+	got := dirLabel(nfd, 8)
+	if strings.Contains(got, "\u0301") && !strings.Contains(got, "e\u0301") {
+		t.Fatalf("cut orphaned a combining mark onto the ellipsis: %q", got)
+	}
+	if w := lipgloss.Width(got); w > 8 {
+		t.Fatalf("dirLabel is %d cells, want at most 8: %q", w, got)
+	}
+	family := "👨\u200d👩\u200d👧"
+	long := strings.Repeat("a", 20) + family + "/src"
+	got = dirLabel(long, 8)
+	if rest, ok := strings.CutPrefix(got, "…"); ok && strings.HasPrefix(rest, "\u200d") {
+		t.Fatalf("cut landed inside an emoji sequence: %q", got)
+	}
+	if w := lipgloss.Width(got); w > 8 {
+		t.Fatalf("dirLabel is %d cells, want at most 8: %q", w, got)
+	}
+}
+
 func TestChartDrawsGridWhenEmpty(t *testing.T) {
 	// Absence of signal is information: the baseline must still be visible.
 	got := chart(nil, 10, 2)

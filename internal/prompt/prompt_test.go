@@ -533,6 +533,26 @@ func TestDiscoverProjectOverridesBundled(t *testing.T) {
 	}
 }
 
+// A project file that is the bundled body with a UTF-8 BOM is the same
+// prompt after stripBOM, so it must not be reported as an override.
+func TestDiscoverBOMCopyOfBundledIsNotAnOverride(t *testing.T) {
+	dir := t.TempDir()
+	body, err := (Review{Name: "sec-review", Origin: Bundled}).Body()
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "sec-review.md"), "\xef\xbb\xbf"+body)
+	_, warnings, err := Discover(context.Background(), "", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "overrides") {
+			t.Fatalf("a BOM'd copy of the bundled body was reported as an override: %v", warnings)
+		}
+	}
+}
+
 func TestDiscoverSkipsSymlinksAndHiddenDirs(t *testing.T) {
 	dir := t.TempDir()
 	real := filepath.Join(dir, "outside.md")
@@ -707,6 +727,19 @@ func TestSameContentComparesAgainstTheShadowedBody(t *testing.T) {
 	missing := filepath.Join(dir, "gone-review.md")
 	if sameContent(mine, missing) {
 		t.Fatal("an unreadable file matched")
+	}
+
+	// A UTF-8 BOM declares the encoding; Body already strips it, so a file
+	// that is the body plus that mark is the same prompt, not a divergent one.
+	bommed := filepath.Join(dir, "bom-review.md")
+	write(t, bommed, "\xef\xbb\xbf"+body)
+	if !sameContent(mine, bommed) {
+		t.Fatal("a BOM'd copy of the same body was reported divergent")
+	}
+	threeMore := filepath.Join(dir, "threemore-review.md")
+	write(t, threeMore, "xxx"+body)
+	if sameContent(mine, threeMore) {
+		t.Fatal("three extra non-BOM bytes matched as if they were a BOM")
 	}
 }
 

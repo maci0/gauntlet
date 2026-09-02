@@ -12,6 +12,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/gitx"
 )
 
@@ -179,6 +181,11 @@ func displayNames(files []string) []string {
 }
 
 func commitToken(s string) string {
+	// Filenames arrive in whatever form the filesystem handed git (macOS
+	// writes NFD); compose first so the subject stores the same spelling
+	// discovery and signal matching already use, and so a combining mark
+	// cannot sit on the 72-rune cut by itself.
+	s = norm.NFC.String(s)
 	s = strings.Map(func(r rune) rune {
 		if r < 0x20 || r == 0x7f {
 			return -1

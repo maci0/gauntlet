@@ -306,6 +306,57 @@ func TestMarkSearchAddsDeclaredWithoutDisturbingTheTable(t *testing.T) {
 	}
 }
 
+// A declared mark is stored NFC+lower. File contents are not: macOS editors
+// write NFD, and asciiFold leaves non-ASCII capitals alone. Both spellings
+// of the same word in a source head must still match the signal.
+func TestFastSuggestMatchesMarkAcrossNormalizationForms(t *testing.T) {
+	dir := tree(t, "src/main.go\x00package main\n// cafe\u0301 notes\n")
+	promptDir := t.TempDir()
+	body := "Signals: mark:caf\u00e9\n\nYour goal is to review café notes.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, promptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var reason string
+	for _, s := range fastSuggest(dir, []string{"cafe-review"}, set) {
+		if s.Name == "cafe-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("an NFD spelling of café in a source file never matched mark:café")
+	}
+	if !strings.Contains(reason, "mark:café") && !strings.Contains(reason, "mark:caf") {
+		t.Errorf("evidence was %q, which does not name the mark that matched", reason)
+	}
+}
+
+func TestFastSuggestMatchesMarkIgnoringNonASCIICase(t *testing.T) {
+	dir := tree(t, "src/main.go\x00package main\n// CAFÉ notes\n")
+	promptDir := t.TempDir()
+	body := "Signals: mark:caf\u00e9\n\nYour goal is to review café notes.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, promptDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reason string
+	for _, s := range fastSuggest(dir, []string{"cafe-review"}, set) {
+		if s.Name == "cafe-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("CAFÉ in a source file never matched mark:café")
+	}
+}
+
 // A macOS tree hands out NFD filenames while an author types NFC into the
 // Signals: line of a prompt. Both sides are stored NFC (record normalizes
 // what it receives, prompt.Signals normalizes what the author declared), so

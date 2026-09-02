@@ -149,8 +149,11 @@ func dirLabel(dir string, w int) string {
 	}
 	if w > 1 && uniseg.StringWidth(dir) > w {
 		for uniseg.StringWidth(dir) > w-1 {
-			_, size := utf8.DecodeRuneInString(dir)
-			dir = dir[size:]
+			_, rest, _, _ := uniseg.FirstGraphemeClusterInString(dir, -1)
+			if rest == dir {
+				break
+			}
+			dir = rest
 		}
 		dir = "…" + dir
 	}

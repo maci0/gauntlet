@@ -182,11 +182,18 @@ func sameContent(prev Review, path string) bool {
 		return false
 	}
 	fi, err := os.Stat(path)
-	if err != nil || fi.Size() != int64(len(want)) {
+	if err != nil {
 		return false
 	}
-	got, ok := readBounded(path, int64(len(want))+1)
-	return ok && string(got) == want
+	// Body strips a UTF-8 BOM, so a file that is the body plus that mark is
+	// the same text. Any other size cannot match.
+	switch fi.Size() {
+	case int64(len(want)), int64(len(want) + len("\xef\xbb\xbf")):
+	default:
+		return false
+	}
+	got, ok := readBounded(path, fi.Size()+1)
+	return ok && stripBOM(string(got)) == want
 }
 
 // sameFile reports whether two prompt copies are byte-identical.

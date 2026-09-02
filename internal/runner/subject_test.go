@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/gitx"
 )
 
@@ -77,5 +79,19 @@ func TestSubjectFromChangesStripsControlsAndFits(t *testing.T) {
 	}
 	if !strings.HasPrefix(got, "chore: update x") {
 		t.Fatalf("truncated subject lost the type and name: %q", got)
+	}
+}
+
+// A macOS tree hands git NFD filenames. The subject is permanent history, so
+// the same word must land in the composed form used everywhere else rather
+// than as a combining sequence that a later rune-counted cut can split.
+func TestSubjectFromChangesComposesFilenames(t *testing.T) {
+	nfd := "cafe\u0301.go"
+	if nfd == norm.NFC.String(nfd) {
+		t.Fatal("fixture is not decomposed")
+	}
+	got := subjectFromChanges(gitx.Changes{Tracked: []string{nfd}})
+	if want := "chore: update café.go"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }

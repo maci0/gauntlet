@@ -669,11 +669,27 @@ func peek(root string, paths []string, s *signals, declared []string) {
 		f.Close()
 		read++
 		head := asciiFold(scratch[:0], buf[:n])
+		var folded string
+		hasFolded := false
 		for _, m := range wanted {
 			if s.mark[m.says] > 0 {
 				continue
 			}
-			if bytes.Contains(head, []byte(m.text)) {
+			hit := false
+			if isASCII(m.text) {
+				hit = bytes.Contains(head, []byte(m.text))
+			} else {
+				// Non-ASCII needles are stored NFC+ToLower by Signals; a
+				// macOS file may hold the NFD spelling, and a capital É
+				// survives asciiFold. Fold the haystack the same way so
+				// the two forms meet.
+				if !hasFolded {
+					folded = strings.ToLower(norm.NFC.String(string(head)))
+					hasFolded = true
+				}
+				hit = strings.Contains(folded, m.text)
+			}
+			if hit {
 				s.mark[m.says]++
 				seenAll = len(s.mark) == kinds
 			}
@@ -779,4 +795,13 @@ func asciiFold(dst, b []byte) []byte {
 		dst = append(dst, c)
 	}
 	return dst
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }

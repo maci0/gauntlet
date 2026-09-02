@@ -205,6 +205,8 @@ func FuzzParseSubject(f *testing.F) {
 	f.Add("SUBJECT: fix\x1b[31m: colored\x00 and \x07 belled")
 	f.Add("SUBJECT: fix: \u202Eevil\u202C and \u2028break")
 	f.Add("PATH: a.go\nSUBJECT:   \nSUBJECT: chore: the last one wins\n")
+	f.Add("SUBJECT: " + strings.Repeat("你", 50) + "\n")
+	f.Add("SUBJECT: fix: \u202eevil\u202c\n")
 	f.Fuzz(func(t *testing.T, tail string) {
 		got := ParseSubject([]byte(tail))
 		if n := utf8.RuneCountInString(got); n > subjectMax {
@@ -284,6 +286,13 @@ func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
 	if strings.ContainsAny(sep, "\u2028\u2029") {
 		t.Fatalf("line/paragraph separator survived into a commit subject: %q", sep)
 	}
+	got = ParseSubject([]byte("SUBJECT: fix: \u202eevil\u202c\n"))
+	if strings.ContainsRune(got, '\u202e') || strings.ContainsRune(got, '\u202c') {
+		t.Fatalf("bidi override survived into a commit subject: %q", got)
+	}
+	if got != "fix: evil" {
+		t.Fatalf("visible text did not survive stripping format runes: %q", got)
+	}
 	long := "SUBJECT: " + strings.Repeat("x", 500) + "\n"
 	got = ParseSubject([]byte(long))
 	if n := utf8.RuneCountInString(got); n > subjectMax {
@@ -291,6 +300,20 @@ func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
 	}
 	if got != strings.Repeat("x", subjectMax) {
 		t.Fatalf("truncation dropped the printable prefix: %q", got)
+	}
+}
+
+// The cap is in runes, matching every other display limit here. A byte
+// reading of subjectMax would cut a 40-character CJK subject (120 bytes)
+// even though it is well under 100 code points.
+func TestParseSubjectLengthIsRunesNotBytes(t *testing.T) {
+	subject := strings.Repeat("你", 40)
+	if len(subject) <= subjectMax {
+		t.Fatalf("fixture is only %d bytes; it no longer exceeds a byte reading of the cap", len(subject))
+	}
+	got := ParseSubject([]byte("SUBJECT: " + subject + "\n"))
+	if got != subject {
+		t.Fatalf("a 40-rune CJK subject was mangled: got %q", got)
 	}
 }
 

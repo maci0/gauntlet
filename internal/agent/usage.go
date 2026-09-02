@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // TailBytes is how much of an agent's output is kept for usage parsing. Usage
@@ -182,8 +183,9 @@ func ParseSubject(tail []byte) string {
 		// Formatting and separators go first, then the trim: dropping a
 		// hidden character can expose whitespace that was hiding behind it,
 		// and a subject is a line of text, not a line of text with a ragged
-		// end. This becomes a commit message, where a newline or a bidi
-		// override would forge a body or spoof git log.
+		// end. This becomes a commit message, where a newline would forge a
+		// body or an author trailer and a bidi override would reverse the log
+		// line.
 		s := strings.Map(func(r rune) rune {
 			if r == ' ' {
 				return r
@@ -195,7 +197,7 @@ func ParseSubject(tail []byte) string {
 			return r
 		}, m[1])
 		s = strings.TrimSpace(s)
-		if len(s) > subjectMax {
+		if utf8.RuneCountInString(s) > subjectMax {
 			s = strings.TrimSpace(truncateRunes(s, subjectMax))
 		}
 		if s != "" {
