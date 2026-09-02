@@ -52,7 +52,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		Groups:      pickGroups(set),
 		Reserved:    append(prompt.SetNames(), prompt.Suggest),
 		FastSuggest: runner.FastSuggestAgent,
-		Agents:      runner.AgentLabels(agent.Installed()),
+		Agents:      agent.Labels(agent.Installed()),
 		Branch:      branch,
 		Merge:       targets,
 		Dirty:       dirty,

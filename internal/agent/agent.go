@@ -41,6 +41,15 @@ func (s Spec) Label() string {
 	return l
 }
 
+// Labels renders each spec as its display form.
+func Labels(specs []Spec) []string {
+	out := make([]string, 0, len(specs))
+	for _, s := range specs {
+		out = append(out, s.Label())
+	}
+	return out
+}
+
 // Valid lists every supported agent CLI.
 var Valid = []string{
 	"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent",

@@ -30,6 +30,21 @@ func TestParseSpecs(t *testing.T) {
 	}
 }
 
+func TestLabels(t *testing.T) {
+	got := Labels([]Spec{
+		{Tool: "claude"},
+		{Tool: "codex", Model: "gpt-5"},
+		{Tool: "grok", Effort: "high"},
+	})
+	want := []string{"claude", "codex:gpt-5", "grok@high"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Labels() = %v, want %v", got, want)
+	}
+	if n := len(Labels(nil)); n != 0 {
+		t.Fatalf("Labels(nil) length = %d, want 0", n)
+	}
+}
+
 func TestParseSpecsRejects(t *testing.T) {
 	cases := []string{
 		"claud",          // typo

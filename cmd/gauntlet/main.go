@@ -472,7 +472,7 @@ func run(argv []string) int {
 			Version:    version,
 			RunID:      runID,
 			Dirs:       dirs,
-			Agents:     runner.AgentLabels(agents),
+			Agents:     agent.Labels(agents),
 			Reviews:    allReviews(runs),
 			Jobs:       opts.jobs,
 			StackedPRs: opts.stackedPRs,
@@ -491,7 +491,7 @@ func run(argv []string) int {
 			rep.logf(now, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
 				version, runID, prior.Reloads, prior.Loops())
 		}
-		rep.logf(now, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(runner.AgentLabels(agents), ", "))
+		rep.logf(now, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agent.Labels(agents), ", "))
 		if autoDetected {
 			rep.logf(now, "Auto-detected agents (name them with --agents to pin the pool)")
 		}
@@ -845,7 +845,7 @@ func writeSummary(j *journal.Journal, runID string, start time.Time, elapsed tim
 	agents []agent.Spec, runs []*dirRun, code int) {
 
 	s := journal.Summary{
-		Version: version, Dirs: dirs, Agents: runner.AgentLabels(agents),
+		Version: version, Dirs: dirs, Agents: agent.Labels(agents),
 		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: code,
 	}
 	if elapsed > 0 {

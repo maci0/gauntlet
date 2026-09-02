@@ -120,7 +120,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		yolo = "  |  YOLO"
 	}
 	fmt.Fprintf(out, "Agents: %s  |  timeout: %s  |  mode: %s%s\n",
-		strings.Join(runner.AgentLabels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
+		strings.Join(agent.Labels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
 	limit := "infinite"
 	if opts.maxLoops > 0 {
 		limit = fmt.Sprint(opts.maxLoops)
