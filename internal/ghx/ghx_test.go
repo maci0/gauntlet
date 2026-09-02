@@ -33,11 +33,85 @@ func TestParseRemote(t *testing.T) {
 		}
 	}
 	for _, raw := range []string{"", "/tmp/repo.git", "https://github.com/only-owner",
-		"https://github.com/only-owner/", "https://github.com/owner/group/project"} {
+		"https://github.com/only-owner/", "https://github.com/owner/group/project",
+		// One slash is not OWNER/REPO when either side is empty. `.git` as the
+		// repo name strips to a trailing slash; a double slash leaves a
+		// leading one. Both used to pass the count==1 check.
+		"https://github.com/owner/.git", "https://github.com//repo"} {
 		if _, _, err := ParseRemote(raw); err == nil {
 			t.Errorf("ParseRemote(%q) accepted a non-GitHub repository", raw)
 		}
 	}
+}
+
+// FuzzParseRemote drives the Git remote URL parser with arbitrary strings
+// from a reviewed repository's config. The result is passed to gh as --repo
+// and --hostname, so whatever is accepted must be exactly one non-empty owner
+// and one non-empty name on a non-empty host, and parsing must be
+// deterministic.
+func FuzzParseRemote(f *testing.F) {
+	seeds := []string{
+		"https://github.com/owner/project.git",
+		"git@github.com:owner/project.git",
+		"ssh://git@git.example.com/owner/project.git",
+		"https://github.com/owner/project",
+		"https://github.com/owner/project/",
+		"https://github.com/owner/project.git/",
+		"git@github.com:owner/project/",
+		"https://user:pass@github.com/owner/project.git",
+		"https://github.com:443/owner/project",
+		"https://github.com/owner/project.git?x=1",
+		"https://github.com/owner/project.git#frag",
+		"https://github.com/owner/.git",
+		"https://github.com//repo",
+		"https://github.com/only-owner",
+		"https://github.com/owner/group/project",
+		"git@github.com:owner/project",
+		"git@github.com/owner/project.git",
+		"ssh://git@github.com/owner/project.git/",
+		"file:///tmp/repo.git",
+		"ext::sh -c evil",
+		"/tmp/repo.git",
+		"",
+		"   ",
+		"git@",
+		"https://github.com/owner/project.git.git",
+		"https://[::1]/owner/project.git",
+		"git@github.com:owner/project.git/",
+		"HTTPS://GITHUB.COM/Owner/Project.GIT",
+		"https://github.com/ow ner/repo",
+		"javascript:alert(1)",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, raw string) {
+		repo, host, err := ParseRemote(raw)
+		repo2, host2, err2 := ParseRemote(raw)
+		if (err == nil) != (err2 == nil) || repo != repo2 || host != host2 {
+			t.Fatalf("ParseRemote(%q) is not deterministic: (%q, %q, %v) vs (%q, %q, %v)",
+				raw, repo, host, err, repo2, host2, err2)
+		}
+		if strings.TrimSpace(raw) == "" {
+			if err == nil {
+				t.Fatalf("empty remote was accepted as %q %q", repo, host)
+			}
+			return
+		}
+		if err != nil {
+			if repo != "" || host != "" {
+				t.Fatalf("rejected remote still returned %q %q", repo, host)
+			}
+			return
+		}
+		if host == "" {
+			t.Fatalf("accepted %q with an empty host", raw)
+		}
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+			t.Fatalf("accepted %q as repo %q, which is not OWNER/REPO", raw, repo)
+		}
+	})
 }
 
 func TestClientPreflightFindAndCreate(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -250,6 +251,94 @@ func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("disableLocalDrivers =\n%q\nwant\n%q", got, want)
 	}
+}
+
+// FuzzDisableLocalDrivers drives the local-config blanker with arbitrary
+// `git config --list` text. That listing is the reviewed repository's own
+// config, and the result is spliced into every later git argv as `-c key=`.
+// Whatever it emits must be paired `-c` assignments that neutralize a driver
+// key from the listing, never invent a value, and stay deterministic.
+func FuzzDisableLocalDrivers(f *testing.F) {
+	seeds := []string{
+		strings.Join([]string{
+			"filter.evil.smudge=touch pwned",
+			"filter.evil.clean=cat",
+			"filter.evil.required=true",
+			"merge.evil.driver=touch pwned",
+			"diff.evil.textconv=cat",
+			"core.editor=vim",
+			"user.email=test@example.invalid",
+			"remote.origin.url=https://github.com/o/r.git",
+		}, "\n"),
+		"filter.x.process=foo\ndiff.x.command=bar\ndiff.x.cmd=baz\n",
+		"core.gitproxy=x\ninteractive.difffilter=y\nsequence.editor=z\ncore.askpass=w\n",
+		"filter.x.required=\n=novalue\nnocolon\n\n\t\n",
+		"FILTER.X.SMUDGE=x\nfilter..smudge=x\nmerge..driver=x\n",
+		strings.Repeat("filter.x.smudge=y\n", 20),
+		"filter.x.smudge=" + strings.Repeat("a", 4096),
+		"diff.x.textconv=\ncore.editor=\n",
+		"filter.x.smudge=one\nfilter.x.smudge=two\n",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, listing string) {
+		got := disableLocalDrivers(listing)
+		if again := disableLocalDrivers(listing); !slices.Equal(got, again) {
+			t.Fatalf("disableLocalDrivers(%q) is not deterministic: %q vs %q", listing, got, again)
+		}
+		if len(got)%2 != 0 {
+			t.Fatalf("disableLocalDrivers(%q) = %q, not -c pairs", listing, got)
+		}
+		want := 0
+		for line := range strings.SplitSeq(listing, "\n") {
+			key, _, ok := strings.Cut(strings.TrimSpace(line), "=")
+			if !ok || key == "" {
+				continue
+			}
+			if driverKey(key) {
+				want++
+			}
+		}
+		if len(got)/2 != want {
+			t.Fatalf("disableLocalDrivers(%q) neutralized %d keys, listing had %d driver keys",
+				listing, len(got)/2, want)
+		}
+		for i := 0; i < len(got); i += 2 {
+			if got[i] != "-c" {
+				t.Fatalf("argv %d is %q, want -c (from %q)", i, got[i], listing)
+			}
+			val := got[i+1]
+			key, rhs, ok := strings.Cut(val, "=")
+			if !ok || key == "" || !driverKey(key) {
+				t.Fatalf("neutralized %q, which is not a driver key (from %q)", val, listing)
+			}
+			switch rhs {
+			case "":
+				if strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required") {
+					t.Fatalf("blanked required-filter key %q, want false", key)
+				}
+			case "false":
+				if !(strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required")) {
+					t.Fatalf("set false on %q", key)
+				}
+			default:
+				t.Fatalf("left a value on %q", val)
+			}
+		}
+	})
+}
+
+func driverKey(key string) bool {
+	switch {
+	case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
+		key == "core.gitproxy", key == "interactive.difffilter",
+		key == "core.editor", key == "sequence.editor", key == "core.askpass":
+		return true
+	case strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
+		return true
+	}
+	return false
 }
 
 // The snapshot worktree is a checkout of one commit: uncommitted files in the

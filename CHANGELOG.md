@@ -52,6 +52,9 @@ minor instead and were listed under Changed.
 - `gauntlet pick` no longer treats untracked files as blocking `--jobs`.
   The runner has allowed them since 1.12; the launcher was still using a
   full dirty-tree check and refused a run that would have started.
+- Stacked PRs refuse a remote whose path is not OWNER/REPO on both sides.
+  `https://github.com/owner/.git` and `https://github.com//repo` used to
+  pass the one-slash check and be handed to gh as `owner/` and `/repo`.
 - The README install snippet fetches the binary for the version it just
   resolved, rather than `releases/latest/download`, so a release published
   between the two curls cannot pair a new tag with the previous binary.

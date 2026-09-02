@@ -72,7 +72,10 @@ func ParseRemote(raw string) (repo, host string, err error) {
 	// empty last path segment, the OWNER/REPO shape check counts two slashes,
 	// and a stacked run refuses a remote every other git command accepts.
 	repo = strings.TrimSuffix(strings.TrimSuffix(repo, "/"), ".git")
-	if host == "" || strings.Count(repo, "/") != 1 {
+	owner, name, ok := strings.Cut(repo, "/")
+	// Count==1 is not enough: `owner/` and `/repo` each have one slash and
+	// are not a GitHub repository. Both sides have to be a name.
+	if host == "" || !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", raw)
 	}
 	return repo, host, nil
