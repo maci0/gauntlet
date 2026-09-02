@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/maci0/gauntlet/internal/prompt"
 )
 
 // changelogGroups is Keep a Changelog's impact headings, the vocabulary
@@ -83,6 +85,60 @@ func TestChangelogMentionsEveryContractEnvVar(t *testing.T) {
 	for _, name := range goldenEnvVars {
 		if !strings.Contains(text, name) {
 			t.Errorf("CHANGELOG.md does not mention %s; environment names are API and land in Unreleased in the same change as the snapshot", name)
+		}
+	}
+}
+
+// Long flag names are the consumer-facing spellings. Short aliases are the
+// same flags; requiring "-j" in the notes would match every hyphenated word.
+func TestChangelogMentionsEveryContractFlag(t *testing.T) {
+	text := readChangelog(t)
+	for _, name := range goldenFlagNames {
+		if len(name) < 2 {
+			continue
+		}
+		needle := "--" + name
+		if !strings.Contains(text, needle) {
+			t.Errorf("CHANGELOG.md does not mention %s; flag names are API and land in Unreleased in the same change as the snapshot", needle)
+		}
+	}
+}
+
+func TestChangelogMentionsEveryContractCommand(t *testing.T) {
+	text := readChangelog(t)
+	for _, cmd := range goldenCommands {
+		word := cmd
+		if i := strings.Index(word, " ["); i >= 0 {
+			word = word[:i]
+		}
+		if i := strings.Index(word, " <"); i >= 0 {
+			word = word[:i]
+		}
+		if word == "gauntlet" {
+			continue
+		}
+		if !strings.Contains(text, word) {
+			t.Errorf("CHANGELOG.md does not mention %q; command names are API and land in Unreleased in the same change as the snapshot", word)
+		}
+	}
+}
+
+func TestChangelogMentionsEveryContractReview(t *testing.T) {
+	text := readChangelog(t)
+	for _, name := range prompt.BundledNames() {
+		stem := strings.TrimSuffix(name, "-review")
+		if strings.Contains(text, name) || strings.Contains(text, "`"+stem+"`") {
+			continue
+		}
+		t.Errorf("CHANGELOG.md does not mention %s; review names are API and land in Unreleased in the same change as the snapshot", name)
+	}
+}
+
+func TestChangelogMentionsEveryContractSet(t *testing.T) {
+	text := readChangelog(t)
+	for _, name := range prompt.SetNames() {
+		if !strings.Contains(text, "`"+name+"`") {
+			t.Errorf("CHANGELOG.md does not mention `%s`; set names are API and land in Unreleased in the same change as the snapshot", name)
 		}
 	}
 }

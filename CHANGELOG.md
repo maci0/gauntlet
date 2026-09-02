@@ -1163,6 +1163,8 @@ Added:
   on by default where an agent has one). Reasoning tokens are tracked and shown
   separately. Agents that report nothing show no rate rather than a zero.
 - A run journal under `~/.gauntlet`, with `gauntlet runs` and `gauntlet show`.
+- `gauntlet version` and `gauntlet help` print the same screens as `--version`
+  and `--help`.
 - `gauntlet update`: verified self-update, plus hot reload that finishes the
   reviews in flight, hands over the unfinished part of the loop, and re-execs
   without losing counters.
@@ -1192,7 +1194,7 @@ Changed:
   with `--dir`.
 - `--tui`: experimental curses dashboard with live review status, stats
   gauges, and scrollable agent output. No dependencies (stdlib curses).
-- Short flags: `-c` (commit), `-p` (push), `-s` (suggest), `-1` (once).
+- Short flags: `-c` (commit), `-p` (push), `-s` (suggest), `-1` / `--once`.
 - `--raw`: echo agent output verbatim. Default is now normalized: ANSI
   escapes stripped, spinner frames dropped, repeated progress lines
   collapsed. Different agents (claude, gemini, kimi, codex, etc.) have
@@ -1818,3 +1820,12 @@ Changed:
 
 First tagged release: 32 review prompts, the runner with `doctor`, project-local
 prompt discovery, the flock lockfile and exit-code contract, tests, and CI.
+The bundled reviews (names are API): `a11y-review`, `api-review`,
+`arch-review`, `build-review`, `cli-review`, `code-review`,
+`concurrency-review`, `config-review`, `db-review`, `deps-review`,
+`design-review`, `doc-review`, `dst-review`, `error-review`,
+`functionality-review`, `fuzz-review`, `i18n-review`, `infra-review`,
+`llm-review`, `minimalism-review`, `mobile-review`, `o11y-review`,
+`perf-review`, `pkg-review`, `privacy-review`, `release-review`,
+`sdk-review`, `sec-review`, `slop-review`, `test-review`, `uislop-review`,
+`ux-review`.
