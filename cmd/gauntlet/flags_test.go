@@ -189,6 +189,9 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs"},
 		{"empty dir", []string{"--dir", ""}, "--dir is empty"},
 		{"whitespace dir", []string{"--dir", "  "}, "--dir is empty"},
+		{"empty prompt-dir", []string{"--prompt-dir", ""}, "--prompt-dir is empty"},
+		{"whitespace prompt-dir", []string{"--prompt-dir", "  "}, "--prompt-dir is empty"},
+		{"empty log", []string{"--log", ""}, "--log is empty"},
 		{"empty dirs", []string{"--dirs", ""}, "--dirs is empty"},
 		{"empty dirs commas", []string{"--dirs", ",,,"}, "--dirs is empty"},
 		{"empty push-remote", []string{"--stacked-prs", "--push-remote", ""}, "--push-remote is empty"},
@@ -259,6 +262,20 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 				t.Fatalf("error %q does not mention %q", err, c.want)
 			}
 		})
+	}
+}
+
+func TestParseFlagsUnsetPathVar(t *testing.T) {
+	t.Setenv("GAUNTLET_TEST_MISSING", "x")
+	os.Unsetenv("GAUNTLET_TEST_MISSING")
+	for _, argv := range [][]string{
+		{"--prompt-dir", "$GAUNTLET_TEST_MISSING"},
+		{"--log", "$GAUNTLET_TEST_MISSING/out.log"},
+	} {
+		_, err := parseFlags(argv)
+		if err == nil || !strings.Contains(err.Error(), "GAUNTLET_TEST_MISSING") {
+			t.Errorf("%v: want unset-var error, got %v", argv, err)
+		}
 	}
 }
 

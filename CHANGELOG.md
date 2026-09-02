@@ -90,6 +90,13 @@ minor instead and were listed under Changed.
   `index.jsonl`, not only the newest, so two runs that died before Close
   both appear. A failed index write is retried on the next Close, and a
   rebuild cannot overwrite a Close that races it.
+- Path flags (`--dir`, `--dirs`, `--log`, `--prompt-dir`, `--bin`) refuse an
+  environment variable that is unset or empty instead of expanding it to
+  nothing. `$MISSING` used to become the current directory (`--dir`), the
+  bundled prompts (`--prompt-dir`), or a silently dropped log (`--log`). An
+  explicit empty `--prompt-dir` or `--log` is a usage error too, matching
+  `--dir`. A leading `~/` with no usable HOME is refused rather than taken
+  relative to the working directory.
 - Git and GitHub errors that quote a remote URL drop URL userinfo. A remote
   stored as `https://alice:token@host/repo.git` is reported as
   `https://host/repo.git`, so the account name does not reach the terminal

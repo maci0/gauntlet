@@ -18,22 +18,27 @@ func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	if got := gauntlethome.ExpandPath("~" + string(os.PathSeparator) + "src"); got != filepath.Join(home, "src") {
-		t.Errorf("~/src expanded to %q", got)
+	got, err := gauntlethome.ExpandPath("~" + string(os.PathSeparator) + "src")
+	if err != nil || got != filepath.Join(home, "src") {
+		t.Errorf("~/src expanded to %q %v", got, err)
 	}
-	if got := gauntlethome.ExpandPath("~"); got != "~" {
-		t.Errorf("a bare ~ must be left alone, got %q", got)
+	got, err = gauntlethome.ExpandPath("~")
+	if err != nil || got != "~" {
+		t.Errorf("a bare ~ must be left alone, got %q %v", got, err)
 	}
-	if got := gauntlethome.ExpandPath("~other/src"); got != "~other/src" {
-		t.Errorf("another user's home is not ours to expand: %q", got)
+	got, err = gauntlethome.ExpandPath("~other/src")
+	if err != nil || got != "~other/src" {
+		t.Errorf("another user's home is not ours to expand: %q %v", got, err)
 	}
 
 	t.Setenv("GAUNTLET_TEST_DIR", filepath.Join(home, "env"))
-	if got := gauntlethome.ExpandPath("$GAUNTLET_TEST_DIR/sub"); got != filepath.Join(home, "env", "sub") {
-		t.Errorf("$VAR not expanded: %q", got)
+	got, err = gauntlethome.ExpandPath("$GAUNTLET_TEST_DIR/sub")
+	if err != nil || got != filepath.Join(home, "env", "sub") {
+		t.Errorf("$VAR not expanded: %q %v", got, err)
 	}
-	if got := gauntlethome.ExpandPath("/plain/path"); got != "/plain/path" {
-		t.Errorf("plain path changed: %q", got)
+	got, err = gauntlethome.ExpandPath("/plain/path")
+	if err != nil || got != "/plain/path" {
+		t.Errorf("plain path changed: %q %v", got, err)
 	}
 }
 
@@ -172,6 +177,27 @@ func TestResolveDirs(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "--dir:") ||
 			strings.Contains(err.Error(), "--dirs") {
 			t.Fatalf("want a --dir error, got %v", err)
+		}
+	})
+
+	// $UNSET used to expand to nothing, then filepath.Abs("") became cwd, so
+	// --dir $TYPO reviewed the current tree instead of failing.
+	t.Run("unset variable is an error, not cwd", func(t *testing.T) {
+		t.Setenv("GAUNTLET_TEST_MISSING", "x")
+		os.Unsetenv("GAUNTLET_TEST_MISSING")
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := resolveDirs(&options{dir: "$GAUNTLET_TEST_MISSING"})
+		if err == nil {
+			t.Fatalf("unset $VAR must not become a directory, got %v (cwd %s)", got, cwd)
+		}
+		if !strings.Contains(err.Error(), "GAUNTLET_TEST_MISSING") {
+			t.Fatalf("error should name the variable, got %v", err)
+		}
+		if strings.Contains(err.Error(), "--dirs") {
+			t.Fatalf("singular flag must keep its own label, got %v", err)
 		}
 	})
 }

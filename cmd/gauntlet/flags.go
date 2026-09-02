@@ -648,11 +648,27 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		// Nothing is executed in list mode, so a commit step would be a lie.
 		o.commit, o.push = false, false
 	}
-	if o.promptDir != "" {
-		o.promptDir = gauntlethome.ExpandPath(o.promptDir)
+	if isFlagSet(fs, "prompt-dir") {
+		o.promptDir = strings.TrimSpace(o.promptDir)
+		if o.promptDir == "" {
+			return nil, errors.New("--prompt-dir is empty")
+		}
+		expanded, err := gauntlethome.ExpandPath(o.promptDir)
+		if err != nil {
+			return nil, fmt.Errorf("--prompt-dir: %w", err)
+		}
+		o.promptDir = expanded
 	}
-	if o.logFile != "" {
-		o.logFile = gauntlethome.ExpandPath(o.logFile)
+	if isFlagSet(fs, "log") {
+		o.logFile = strings.TrimSpace(o.logFile)
+		if o.logFile == "" {
+			return nil, errors.New("--log is empty")
+		}
+		expanded, err := gauntlethome.ExpandPath(o.logFile)
+		if err != nil {
+			return nil, fmt.Errorf("--log: %w", err)
+		}
+		o.logFile = expanded
 	}
 	return o, nil
 }

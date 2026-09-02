@@ -604,7 +604,10 @@ func ParseBin(s string) (string, string, error) {
 		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, hint,
 			strings.Join(AllNames(), ", "))
 	}
-	expanded := gauntlethome.ExpandPath(path)
+	expanded, err := gauntlethome.ExpandPath(path)
+	if err != nil {
+		return "", "", err
+	}
 	// A path with a directory component is used as is; a bare name searches
 	// PATH without cwd-relative entries. Either way the result is absolute
 	// before any chdir, so a relative --bin cannot retarget into the tree.

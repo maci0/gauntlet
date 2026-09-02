@@ -59,7 +59,9 @@ several paths uses the first.
 ## Options
 
 Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
-`--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use.
+`--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
+that is unset or empty is a usage error rather than expanding to nothing. An
+explicit empty `--prompt-dir` or `--log` is refused the same way `--dir` is.
 
 A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 `-j 3`, and `-j=3` are the same flag.

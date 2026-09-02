@@ -1276,7 +1276,13 @@ func resolveDirs(opts *options) ([]string, error) {
 	seen := map[string]bool{}
 	out := make([]string, 0, len(list))
 	for _, entry := range list {
-		expanded := gauntlethome.ExpandPath(entry)
+		expanded, err := gauntlethome.ExpandPath(entry)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", label, err)
+		}
+		if expanded == "" {
+			return nil, fmt.Errorf("%s is empty", label)
+		}
 		matches := []string{expanded}
 		globbed := isGlob(expanded)
 		if globbed {

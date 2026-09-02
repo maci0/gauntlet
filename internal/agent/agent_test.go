@@ -166,6 +166,13 @@ func TestParseBinResolvesBeforeAnyChdir(t *testing.T) {
 	if _, _, err := ParseBin("kimi=./relative-agent"); err == nil {
 		t.Fatal("a relative path must not resolve")
 	}
+
+	t.Setenv("GAUNTLET_TEST_MISSING", "x")
+	os.Unsetenv("GAUNTLET_TEST_MISSING")
+	if _, _, err := ParseBin("claude=$GAUNTLET_TEST_MISSING"); err == nil ||
+		!strings.Contains(err.Error(), "GAUNTLET_TEST_MISSING") {
+		t.Fatalf("unset $VAR must be refused, got %v", err)
+	}
 }
 
 // crush's non-interactive mode is a subcommand, and its interactive --yolo

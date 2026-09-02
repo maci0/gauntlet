@@ -8,6 +8,7 @@
 package gauntlethome
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,12 +55,39 @@ func absolute(p string) string {
 // through this one function, so --dir, --dirs, --log, --prompt-dir, and
 // --bin all expand the same way. A bare "~" or "~user" is left alone: only
 // "~/..." names something under HOME.
-func ExpandPath(p string) string {
-	p = os.ExpandEnv(p)
-	if after, ok := strings.CutPrefix(p, "~"+string(os.PathSeparator)); ok {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, after)
+//
+// A $VAR or ${VAR} whose environment variable is unset or empty is an error:
+// replacing it with nothing would turn --dir $TYPO into the current
+// directory, --prompt-dir $TYPO into the bundled prompts, and --log $TYPO
+// into a silently dropped log. A leading ~/ with no usable HOME is the same
+// class of miss: the path would otherwise be taken relative to cwd.
+func ExpandPath(p string) (string, error) {
+	var missing []string
+	seen := map[string]bool{}
+	expanded := os.Expand(p, func(key string) string {
+		v, ok := os.LookupEnv(key)
+		if !ok || v == "" {
+			if !seen[key] {
+				seen[key] = true
+				missing = append(missing, key)
+			}
+			return ""
 		}
+		return v
+	})
+	if len(missing) == 1 {
+		return "", fmt.Errorf("environment variable %s is unset or empty", missing[0])
 	}
-	return p
+	if len(missing) > 1 {
+		return "", fmt.Errorf("environment variables %s are unset or empty", strings.Join(missing, ", "))
+	}
+	after, ok := strings.CutPrefix(expanded, "~"+string(os.PathSeparator))
+	if !ok {
+		return expanded, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot expand ~: home directory is unknown")
+	}
+	return filepath.Join(home, after), nil
 }
