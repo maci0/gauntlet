@@ -463,10 +463,12 @@ Design points:
 - The journal is **another subscriber to the same event bus** the dashboard
   reads. No separate instrumentation path exists to drift out of sync.
 - Date sharding keeps one directory listing small; the flat index makes "what
-  did I run last week" a tail rather than a tree walk. The journals are the
-  source of truth: a missing, empty, or stale index is rebuilt from them, so
-  a crash that flushed the event stream still lists. Reconstructed rows omit
-  `args` and `exit_code`, which only `Close` records.
+  did I run last week" a tail rather than a tree walk. A generated run id
+  encodes that date, so looking one up is a stat of one file, not a probe of
+  every shard. The journals are the source of truth: a missing, empty, or
+  stale index is rebuilt from them, so a crash that flushed the event stream
+  still lists. Reconstructed rows omit `args` and `exit_code`, which only
+  `Close` records.
 - Agent output (`output` events) and the live usage ticks (`usage` events)
   are **not** journaled. They are large, they are reconstructible from the
   agents' own logs, and the results are what anyone reads later. Everything

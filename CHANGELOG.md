@@ -72,6 +72,13 @@ minor instead and were listed under Changed.
 - Live usage ticks on the event bus are droppable, the same as agent output:
   a slow subscriber no longer stalls the scheduler on reconstructible
   telemetry. Final token counts still ride on `review_end`.
+- `gauntlet show` and suggest history look up a generated run id by the date
+  it encodes, instead of probing every day directory under the journal.
+- `gauntlet runs` parses the index tail from the end, so a long index costs
+  the rows shown rather than a split of the whole slice.
+- The file-signal suggester reuses one git handle for the tree listing and
+  the churn window. Opening a repo no longer runs `rev-parse HEAD` until
+  line stats need a baseline.
 
 ### Fixed
 

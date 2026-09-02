@@ -112,6 +112,7 @@ type Repo struct {
 
 	mu       sync.Mutex
 	baseline string
+	baseOnce sync.Once
 	lastAt   time.Time
 	lastVal  Stats
 	haveLast bool
@@ -155,22 +156,37 @@ type Stats struct {
 	Ins, Del int
 }
 
-// Open prepares a repo handle and records the baseline commit that line stats
-// are measured against. Outside a repository (or without git) every stat call
-// reports "unknown" and the runner silently omits line counts.
+// Open prepares a repo handle. The baseline commit used for line stats is
+// resolved on first use, so callers that only run read-only git (status,
+// list, check-ignore, the file-signal scan) do not pay for a rev-parse.
+// Outside a repository (or without git) every stat call reports "unknown"
+// and the runner silently omits line counts.
 func Open(dir string) *Repo {
-	r := &Repo{Dir: dir}
-	if !Available() {
-		return r
-	}
-	if out, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD"); err == nil {
-		r.baseline = strings.TrimSpace(string(out))
-	}
-	return r
+	return &Repo{Dir: dir}
 }
 
 // HasBaseline reports whether line stats are measurable here.
-func (r *Repo) HasBaseline() bool { return r != nil && r.baseline != "" }
+func (r *Repo) HasBaseline() bool {
+	if r == nil {
+		return false
+	}
+	r.ensureBaseline()
+	return r.baseline != ""
+}
+
+// ensureBaseline records HEAD once. Sample is the only caller that needs it;
+// ListFiles, Status, and CheckIgnore share the handle and must not each
+// spawn a git process for a commit they never compare against.
+func (r *Repo) ensureBaseline() {
+	r.baseOnce.Do(func() {
+		if !Available() {
+			return
+		}
+		if out, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD"); err == nil {
+			r.baseline = strings.TrimSpace(string(out))
+		}
+	})
+}
 
 func (r *Repo) run(ctx context.Context, timeout time.Duration, args ...string) ([]byte, error) {
 	return r.runIn(ctx, nil, timeout, args...)
@@ -451,13 +467,16 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 
 	st := parseShortstat(diff)
+	skipArtifacts := len(ownArtifacts) > 0
 	for name := range bytes.SplitSeq(untracked, []byte{0}) {
 		if len(name) == 0 {
 			continue
 		}
 		p := filepath.Join(r.Dir, string(name))
-		if real, err := filepath.EvalSymlinks(p); err == nil && ownArtifacts[real] {
-			continue
+		if skipArtifacts {
+			if real, err := filepath.EvalSymlinks(p); err == nil && ownArtifacts[real] {
+				continue
+			}
 		}
 		st.Ins += r.countLinesCached(p)
 	}
@@ -625,8 +644,10 @@ func (r *Repo) statusPorcelain(ctx context.Context, ownArtifacts map[string]bool
 		if p == "" {
 			continue
 		}
-		if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
-			continue
+		if len(ownArtifacts) > 0 {
+			if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
+				continue
+			}
 		}
 		visit(line, p)
 	}

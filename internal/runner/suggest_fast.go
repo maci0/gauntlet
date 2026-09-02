@@ -116,42 +116,58 @@ var sourceExts = map[string]bool{
 // markEntry is one substring to look for and what finding it says about the
 // code. A review's own `mark:` signal becomes one of these too, searching for
 // itself under its own name.
-type markEntry struct{ text, says string }
+type markEntry struct {
+	text, says string
+	// needle is text as bytes, set for ASCII marks so peek can search file
+	// heads without allocating a copy per file per mark. Nil means the
+	// haystack has to be folded for a non-ASCII needle.
+	needle []byte
+}
+
+// mark is one built-in substring search. ASCII needles are stored as bytes
+// once so peek does not allocate a copy per file per mark.
+func mark(text, says string) markEntry {
+	e := markEntry{text: text, says: says}
+	if isASCII(text) {
+		e.needle = []byte(text)
+	}
+	return e
+}
 
 // marks maps a substring found in source to what it says about the code. Names
 // on the left are lowercased before the search, so a match is case-insensitive
 // without a regex engine or a second pass over the text.
 var marks = []markEntry{
-	{"net/http", "http"}, {"http.handle", "http"}, {"fastapi", "http"},
-	{"flask", "http"}, {"express(", "http"}, {"axum::", "http"}, {"gin.", "http"},
-	{"database/sql", "sql"}, {"psycopg", "sql"}, {"sqlalchemy", "sql"},
-	{"sqlite3", "sql"}, {"pg.pool", "sql"}, {"gorm.", "sql"},
-	{"time.now", "clock"}, {"datetime.now", "clock"}, {"time.sleep", "clock"},
-	{"utcnow", "clock"}, {"cron", "clock"},
-	{"go func", "concurrent"}, {"asyncio", "concurrent"}, {"threading.", "concurrent"},
-	{"sync.mutex", "concurrent"}, {"std::thread", "concurrent"}, {"tokio::", "concurrent"},
-	{"multiprocessing", "concurrent"}, {"pthread_", "concurrent"},
-	{"prometheus", "telemetry"}, {"opentelemetry", "telemetry"}, {"otel", "telemetry"},
-	{"logrus", "telemetry"}, {"structlog", "telemetry"},
-	{"redis", "cache"}, {"memcache", "cache"}, {"lru_cache", "cache"},
-	{"jwt", "auth"}, {"oauth", "auth"}, {"bcrypt", "auth"}, {"argon2", "auth"},
-	{"session[", "auth"}, {"set-cookie", "auth"},
-	{"unsafe.pointer", "unsafe"}, {"ctypes", "unsafe"}, {"eval(", "unsafe"},
-	{"pickle.loads", "unsafe"}, {"innerhtml", "unsafe"},
-	{"subprocess", "exec"}, {"exec.command", "exec"}, {"os/exec", "exec"},
-	{"anthropic", "model"}, {"openai", "model"}, {"completions.create", "model"},
-	{"ollama", "model"}, {"system_prompt", "model"},
-	{"boto3", "cloud"}, {"kubernetes", "cloud"}, {"terraform", "cloud"},
-	{"idempotenc", "retry"}, {"retry(", "retry"}, {"backoff", "retry"},
-	{"celery", "retry"}, {"sqs", "retry"},
-	{"argparse", "cli"}, {"click.command", "cli"}, {"cobra.command", "cli"},
-	{"flag.parse", "cli"}, {"clap::", "cli"}, {"commander", "cli"}, {"yargs", "cli"},
-	{"bubbletea", "tui"}, {"ratatui", "tui"}, {"curses", "tui"},
-	{"rich.console", "tui"}, {"blessed", "tui"},
-	{"gettext", "translate"}, {"i18n", "translate"}, {"usetranslation", "translate"},
-	{"backup", "recovery"}, {"restore(", "recovery"}, {"failover", "recovery"},
-	{"float32", "numeric"}, {"float64", "numeric"}, {"numpy", "numeric"},
-	{"decimal(", "numeric"}, {"round(", "numeric"},
+	mark("net/http", "http"), mark("http.handle", "http"), mark("fastapi", "http"),
+	mark("flask", "http"), mark("express(", "http"), mark("axum::", "http"), mark("gin.", "http"),
+	mark("database/sql", "sql"), mark("psycopg", "sql"), mark("sqlalchemy", "sql"),
+	mark("sqlite3", "sql"), mark("pg.pool", "sql"), mark("gorm.", "sql"),
+	mark("time.now", "clock"), mark("datetime.now", "clock"), mark("time.sleep", "clock"),
+	mark("utcnow", "clock"), mark("cron", "clock"),
+	mark("go func", "concurrent"), mark("asyncio", "concurrent"), mark("threading.", "concurrent"),
+	mark("sync.mutex", "concurrent"), mark("std::thread", "concurrent"), mark("tokio::", "concurrent"),
+	mark("multiprocessing", "concurrent"), mark("pthread_", "concurrent"),
+	mark("prometheus", "telemetry"), mark("opentelemetry", "telemetry"), mark("otel", "telemetry"),
+	mark("logrus", "telemetry"), mark("structlog", "telemetry"),
+	mark("redis", "cache"), mark("memcache", "cache"), mark("lru_cache", "cache"),
+	mark("jwt", "auth"), mark("oauth", "auth"), mark("bcrypt", "auth"), mark("argon2", "auth"),
+	mark("session[", "auth"), mark("set-cookie", "auth"),
+	mark("unsafe.pointer", "unsafe"), mark("ctypes", "unsafe"), mark("eval(", "unsafe"),
+	mark("pickle.loads", "unsafe"), mark("innerhtml", "unsafe"),
+	mark("subprocess", "exec"), mark("exec.command", "exec"), mark("os/exec", "exec"),
+	mark("anthropic", "model"), mark("openai", "model"), mark("completions.create", "model"),
+	mark("ollama", "model"), mark("system_prompt", "model"),
+	mark("boto3", "cloud"), mark("kubernetes", "cloud"), mark("terraform", "cloud"),
+	mark("idempotenc", "retry"), mark("retry(", "retry"), mark("backoff", "retry"),
+	mark("celery", "retry"), mark("sqs", "retry"),
+	mark("argparse", "cli"), mark("click.command", "cli"), mark("cobra.command", "cli"),
+	mark("flag.parse", "cli"), mark("clap::", "cli"), mark("commander", "cli"), mark("yargs", "cli"),
+	mark("bubbletea", "tui"), mark("ratatui", "tui"), mark("curses", "tui"),
+	mark("rich.console", "tui"), mark("blessed", "tui"),
+	mark("gettext", "translate"), mark("i18n", "translate"), mark("usetranslation", "translate"),
+	mark("backup", "recovery"), mark("restore(", "recovery"), mark("failover", "recovery"),
+	mark("float32", "numeric"), mark("float64", "numeric"), mark("numpy", "numeric"),
+	mark("decimal(", "numeric"), mark("round(", "numeric"),
 }
 
 // signals is what one pass over a tree found. Counts, not booleans: how much
@@ -538,7 +554,7 @@ func scan(dir string, declared []string) signals {
 		path: map[string]bool{}, mark: map[string]int{}, hot: map[string]int{},
 	}
 	root := filepath.Clean(dir)
-	paths, fromGit := listTree(root)
+	paths, repo := listTree(root)
 	for _, rel := range paths {
 		if s.files >= scanMaxFiles {
 			break
@@ -547,13 +563,16 @@ func scan(dir string, declared []string) signals {
 		record(&s, rel)
 	}
 	peek(root, paths, &s, declared)
-	if !fromGit {
+	if repo == nil {
 		return s
 	}
 	// Git listed the tree, so it can also say which part of it is alive.
+	// The same handle already paid for the safe-config overlay on ListFiles;
+	// a second Open would recompute it and rev-parse a baseline this scan
+	// never uses.
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
-	if changed, err := gitx.Open(root).ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
+	if changed, err := repo.ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
 		s.churn = true
 		for _, rel := range changed {
 			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++
@@ -597,14 +616,17 @@ func record(s *signals, rel string) {
 	}
 }
 
-// listTree returns the tree's files relative to root, and whether git listed
-// them. Git knows what the project considers source; the walk is the fallback
-// for a directory that is not a repository.
-func listTree(root string) ([]string, bool) {
+// listTree returns the tree's files relative to root, and the git handle that
+// listed them (nil when the walk was the fallback). Git knows what the project
+// considers source; the walk is for a directory that is not a repository. The
+// handle is reused for the churn window so the safe-config overlay is paid
+// once.
+func listTree(root string) ([]string, *gitx.Repo) {
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
-	if paths, err := gitx.Open(root).ListFiles(ctx); err == nil && len(paths) > 0 {
-		return paths, true
+	repo := gitx.Open(root)
+	if paths, err := repo.ListFiles(ctx); err == nil && len(paths) > 0 {
+		return paths, repo
 	}
 	var out []string
 	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -631,7 +653,7 @@ func listTree(root string) ([]string, bool) {
 		out = append(out, rel)
 		return nil
 	})
-	return out, false
+	return out, nil
 }
 
 // peek reads the head of source files and records what they import and call.
@@ -676,8 +698,8 @@ func peek(root string, paths []string, s *signals, declared []string) {
 				continue
 			}
 			hit := false
-			if isASCII(m.text) {
-				hit = bytes.Contains(head, []byte(m.text))
+			if m.needle != nil {
+				hit = bytes.Contains(head, m.needle)
 			} else {
 				// Non-ASCII needles are stored NFC+ToLower by Signals; a
 				// macOS file may hold the NFD spelling, and a capital É
@@ -746,7 +768,7 @@ func markSearch(declared []string) []markEntry {
 			continue
 		}
 		seen[d] = true
-		out = append(out, markEntry{text: d, says: d})
+		out = append(out, mark(d, d))
 	}
 	return out
 }

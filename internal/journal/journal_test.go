@@ -476,6 +476,59 @@ func FuzzParseTail(f *testing.F) {
 	})
 }
 
+func TestShardFromRunID(t *testing.T) {
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	if got := shardFromRunID(id); got != "2026-08-25" {
+		t.Fatalf("generated id %q: shard %q, want 2026-08-25", id, got)
+	}
+	for _, id := range []string{
+		"", "broken-run", "20260825", "20260825T131500",
+		"20260825X131500Z-1", "abcdefghT131500Z-1", "20260825TxxxxxxZ-1",
+	} {
+		if got := shardFromRunID(id); got != "" {
+			t.Errorf("%q: got shard %q, want empty so locateRun scans", id, got)
+		}
+	}
+}
+
+// A generated id must resolve by opening its own date shard, not by listing
+// every day directory: History and `gauntlet show` would otherwise pay one
+// probe per day the install has ever run.
+func TestLocateRunUsesTheDateInAGeneratedID(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	if err := j.Close(Summary{Start: now, End: now}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Decoy shards newer and older, including one that would win a newest-first
+	// scan if the dated path were skipped. They stay empty so a wrong lookup
+	// is a miss, not a silent hit on the wrong file.
+	for _, day := range []string{"2020-01-01", "2026-08-24", "2026-08-26", "2026-12-31"} {
+		if err := os.MkdirAll(filepath.Join(home, "runs", day), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	p, ok, err := locateRun(id)
+	if err != nil || !ok {
+		t.Fatalf("generated id missed: ok=%v err=%v", ok, err)
+	}
+	want := filepath.Join(home, "runs", "2026-08-25", id+".jsonl")
+	if p != want {
+		t.Fatalf("located %q, want the dated shard %q", p, want)
+	}
+}
+
 func TestEventsUnknownRun(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	err := Events("nope", nil)

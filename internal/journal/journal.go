@@ -579,29 +579,40 @@ const recentChunk = 256 << 10
 // parseTail parses newline-delimited summaries out of data, newest last,
 // returning up to n of them newest first. dropFirst says whether the head of
 // data may cut a line in half (it does whenever the slice starts past byte 0).
+//
+// Lines are walked from the end of the buffer so a listing of n runs parses
+// n of them, not every line the slice happens to hold. The contract matches
+// splitting on '\n' and dropping a truncated head line: FuzzParseTail is the
+// oracle.
 func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) {
 	if n <= 0 {
 		return nil, false // up to zero entries is no entries
 	}
-	lines := strings.Split(string(data), "\n")
-	first := 0
-	if dropFirst && len(lines) > 0 {
-		first = 1 // the line the slice landed inside is not complete
-	}
-	out = make([]Summary, 0, min(n, len(lines)))
-	for i := len(lines) - 1; i >= first; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line == "" {
-			continue
+	out = make([]Summary, 0, n)
+	end := len(data)
+	for end >= 0 {
+		start := 0
+		if i := bytes.LastIndexByte(data[:end], '\n'); i >= 0 {
+			start = i + 1
 		}
-		var s Summary
-		if err := json.Unmarshal([]byte(line), &s); err != nil {
-			continue
+		// A slice that did not begin at byte 0 may start inside a line;
+		// that first record is incomplete and must not be parsed.
+		if !(dropFirst && start == 0) {
+			line := bytes.TrimSpace(data[start:end])
+			if len(line) > 0 {
+				var s Summary
+				if err := json.Unmarshal(line, &s); err == nil {
+					out = append(out, s)
+					if len(out) == n {
+						return out, true
+					}
+				}
+			}
 		}
-		out = append(out, s)
-		if len(out) == n {
-			return out, true
+		if start == 0 {
+			break
 		}
+		end = start - 1
 	}
 	return out, false
 }
@@ -675,7 +686,7 @@ func validRunID(s string) bool {
 	return true
 }
 
-// findRun locates a run journal by id, searching the date shards newest first.
+// findRun locates a run journal by id.
 func findRun(runID string) (string, error) {
 	if p, ok, err := locateRun(runID); err != nil {
 		return "", err
@@ -686,9 +697,14 @@ func findRun(runID string) (string, error) {
 		filepath.Join(Home(), "runs"))
 }
 
-// locateRun returns the path already holding runID's journal, if any. Shards
-// are searched newest first, so a run that somehow has more than one file
-// resolves to the one a replay would read anyway.
+// locateRun returns the path already holding runID's journal, if any.
+//
+// Generated ids embed the UTC date they were filed under, so that shard is
+// tried first: listing every day directory and probing each one would make
+// `gauntlet show` and History cost the age of the install, not the one file
+// they want. Ids that were not generated that way (tests, a hand-named file)
+// still scan, newest shard first, which is also the fallback when the dated
+// path is missing (a tree that was rearranged).
 //
 // The id is validated first: `gauntlet show` hands it over straight from the
 // command line, and an unvalidated join would let "../" climb out of the runs
@@ -698,6 +714,12 @@ func locateRun(runID string) (string, bool, error) {
 		return "", false, nil
 	}
 	root := filepath.Join(Home(), "runs")
+	if shard := shardFromRunID(runID); shard != "" {
+		p := filepath.Join(root, shard, runID+".jsonl")
+		if _, err := os.Stat(p); err == nil {
+			return p, true, nil
+		}
+	}
 	days, err := os.ReadDir(root)
 	if err != nil {
 		// A journal tree that does not exist yet means no such run, not a
@@ -716,6 +738,26 @@ func locateRun(runID string) (string, bool, error) {
 		}
 	}
 	return "", false, nil
+}
+
+// shardFromRunID is the date directory NewRunID files a journal under:
+// YYYY-MM-DD from the leading YYYYMMDDTHHMMSSZ of a generated id. Anything
+// else (a custom name, a truncated stamp) returns "" so locateRun scans.
+func shardFromRunID(id string) string {
+	if len(id) < 16 || id[8] != 'T' || id[15] != 'Z' {
+		return ""
+	}
+	for i := range 8 {
+		if id[i] < '0' || id[i] > '9' {
+			return ""
+		}
+	}
+	for i := 9; i < 15; i++ {
+		if id[i] < '0' || id[i] > '9' {
+			return ""
+		}
+	}
+	return id[:4] + "-" + id[4:6] + "-" + id[6:8]
 }
 
 // ReviewHistory is what past runs did with one review in one directory.
