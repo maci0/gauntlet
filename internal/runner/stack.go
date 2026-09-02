@@ -177,7 +177,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		var err error
 		previous := parent
 		parent, parentTip, recovered, err = r.recoverStackLayer(
-			ctx, i, r.cfg.Reviews[i], parent, parentTip, false, true, published+1)
+			ctx, loopNo, i, r.cfg.Reviews[i], parent, parentTip, stackRecoverPrefix, published+1)
 		if parent != previous {
 			published++
 		}
@@ -232,7 +232,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		var handled bool
 		previous := parent
 		parent, parentTip, handled, err = r.recoverStackLayer(
-			ctx, i, review, parent, parentTip, true, false, published+1)
+			ctx, loopNo, i, review, parent, parentTip, stackRecoverCurrent, published+1)
 		if parent != previous {
 			published++
 		}
@@ -347,12 +347,24 @@ func (r *Runner) stackResumeIndex() int {
 	return 0
 }
 
+// stackRecoverPass says which walk is asking about a layer.
+type stackRecoverPass int
+
+const (
+	// stackRecoverPrefix walks layers a predecessor already finished.
+	// An absent or empty branch is handled; a recovered PR is not recorded again.
+	stackRecoverPrefix stackRecoverPass = iota
+	// stackRecoverCurrent is the live schedule. An absent branch means the
+	// agent must run; a recovered layer is recorded as a result.
+	stackRecoverCurrent
+)
+
 // recoverStackLayer finishes or reuses a deterministic layer left by an
 // earlier process. It returns handled=false only when the agent must run.
-func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, parent string,
-	parentTip string, record, absentDone bool, layer int) (next, nextTip string, handled bool, recoverErr error) {
+func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, parent, parentTip string,
+	pass stackRecoverPass, layer int) (next, nextTip string, handled bool, recoverErr error) {
 
-	branch := gitx.StackBranchName(r.stackBaseTip, index, review)
+	branch := gitx.StackBranchName(r.stackBaseTip, scheduleIndex, review)
 	prURL, err := r.gh.Find(ctx, branch, parent)
 	if err != nil {
 		return parent, parentTip, false, err
@@ -372,14 +384,14 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 		if prURL != "" {
 			return parent, parentTip, false, errors.New("existing PR has no recoverable head branch")
 		}
-		return parent, parentTip, absentDone, nil
+		return parent, parentTip, pass == stackRecoverPrefix, nil
 	}
 	if localTip == parentTip {
 		if remoteFound {
 			return parent, parentTip, false, errors.New("remote stack branch has no review commit")
 		}
 		r.repo.DeleteBranch(context.WithoutCancel(ctx), branch)
-		return parent, parentTip, absentDone, nil
+		return parent, parentTip, pass == stackRecoverPrefix, nil
 	}
 	actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+branch)
 	if err != nil || actualParent != parentTip {
@@ -405,10 +417,10 @@ func (r *Runner) recoverStackLayer(ctx context.Context, index int, review, paren
 			return parent, parentTip, false, err
 		}
 	}
-	if record {
+	if pass == stackRecoverCurrent {
 		r.st.Add(Result{Review: review, Branch: branch, Base: parent, URL: prURL})
 	}
-	r.publishPullRequest(1, review, branch, parent, prURL, true)
+	r.publishPullRequest(loopNo, review, branch, parent, prURL, true)
 	return branch, localTip, true, nil
 }
 

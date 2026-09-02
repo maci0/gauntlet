@@ -597,8 +597,47 @@ func TestAddWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 
 	if _, err := r.AddWorktree(ctx, "sec-review", "run-l2-00", base); err == nil {
 		t.Fatal("an add over a branch with real work must fail")
+	} else if !strings.Contains(err.Error(), "already exists at") {
+		t.Fatalf("leftover-work error = %v, want it to name both tips", err)
 	}
 	if got := gitOut(t, r.Dir, "rev-parse", kept); got != commit {
+		t.Fatalf("the kept branch was modified: %s != %s", got, commit)
+	}
+}
+
+func TestAddStackWorktreeConvergesOnLeftoverBranch(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := "gauntlet/stack/" + base[:12] + "/01-sec-review"
+	wt, err := r.AddStackWorktree(ctx, branch, "run", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := r.AddStackWorktree(ctx, branch, "run", base)
+	if err != nil {
+		t.Fatalf("a second identical add must succeed: %v", err)
+	}
+	if again.Branch != wt.Branch || again.Dir != wt.Dir {
+		t.Fatalf("rerun should rebuild the same stack worktree: %+v vs %+v", again, wt)
+	}
+	if err := again.Remove(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	tree := gitOut(t, r.Dir, "rev-parse", "HEAD^{tree}")
+	commit := gitOut(t, r.Dir, "commit-tree", tree, "-p", base, "-m", "unpublished work")
+	gitIn(t, r.Dir, "branch", "-f", branch, commit)
+
+	if _, err := r.AddStackWorktree(ctx, branch, "run", base); err == nil {
+		t.Fatal("an add over a branch with real work must fail")
+	} else if !strings.Contains(err.Error(), "already exists at") {
+		t.Fatalf("leftover-work error = %v, want the same wording AddWorktree uses", err)
+	}
+	if got := gitOut(t, r.Dir, "rev-parse", branch); got != commit {
 		t.Fatalf("the kept branch was modified: %s != %s", got, commit)
 	}
 }

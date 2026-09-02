@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -316,6 +317,62 @@ func TestUnresolvedFailsOnAnUnreadablePath(t *testing.T) {
 	}
 	if len(left) != 0 {
 		t.Fatalf("Unresolved = %q along with the error; want nothing claimed either way", left)
+	}
+}
+
+func TestMergeConflictDetailNamesTheConflict(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "branch", "main-line", base)
+
+	write := func(name, body string) *Worktree {
+		t.Helper()
+		wt, err := r.AddWorktree(ctx, name, name, base)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = wt.Remove(context.WithoutCancel(ctx)) })
+		if err := os.WriteFile(filepath.Join(wt.Dir, "main.go"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := wt.CommitAll(ctx, "change"); err != nil {
+			t.Fatal(err)
+		}
+		return wt
+	}
+	first := write("a-review", "package main\n\nfunc main() { a() }\n")
+	second := write("b-review", "package main\n\nfunc main() { b() }\n")
+
+	if mr := r.Merge(ctx, first.Branch, "land a"); !mr.Merged {
+		t.Fatalf("first merge failed: %+v", mr)
+	}
+	got := r.Merge(ctx, second.Branch, "land b")
+	if !got.Conflict || got.Merged {
+		t.Fatalf("second merge = %+v, want a conflict", got)
+	}
+	if got.Detail == "" || strings.Contains(got.Detail, "\n") {
+		t.Fatalf("Merge Detail = %q, want one line", got.Detail)
+	}
+	if !strings.HasPrefix(got.Detail, "CONFLICT") {
+		t.Fatalf("Merge Detail = %q, want the CONFLICT line, not git's Auto-merging prefix", got.Detail)
+	}
+
+	if mr := r.MergeInto(ctx, "main-line", first.Branch, "land a"); !mr.Merged {
+		t.Fatalf("first merge into main-line failed: %+v", mr)
+	}
+	into := r.MergeInto(ctx, "main-line", second.Branch, "land b")
+	if !into.Conflict || into.Merged {
+		t.Fatalf("MergeInto = %+v, want a conflict", into)
+	}
+	if into.Detail == "" || strings.Contains(into.Detail, "\n") {
+		t.Fatalf("MergeInto Detail = %q, want one line", into.Detail)
+	}
+	if !strings.HasPrefix(into.Detail, "CONFLICT") {
+		t.Fatalf("MergeInto Detail = %q, want the CONFLICT line", into.Detail)
 	}
 }
 

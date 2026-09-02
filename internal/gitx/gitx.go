@@ -386,6 +386,11 @@ const untrackedLineCap = 8 << 20
 // countReadBytes is the size of one read chunk.
 const countReadBytes = 1 << 20
 
+// binarySniffBytes is how much of a file's head is checked for a NUL. git's
+// own binary heuristic looks at a prefix, not the whole file; a NUL later
+// than this still leaves a line count, which is the same tradeoff.
+const binarySniffBytes = 64 << 10
+
 // lineBufs recycles read buffers across the untracked-file walk. Sample runs
 // every few hundred milliseconds and touches every untracked file each time,
 // so a fresh 1 MiB per file would hand the GC tens of megabytes of garbage
@@ -517,7 +522,7 @@ func countLinesFrom(f *os.File) int {
 		}
 		c, err := f.Read(buf)
 		if c > 0 {
-			if first && bytes.IndexByte(buf[:min(c, 65536)], 0) >= 0 {
+			if first && bytes.IndexByte(buf[:min(c, binarySniffBytes)], 0) >= 0 {
 				return 0 // binary: no line count to speak of
 			}
 			first = false
@@ -657,10 +662,8 @@ func (r *Repo) CheckIgnore(ctx context.Context, paths []string) map[string]bool 
 	if err != nil && !exitsWith(err, 1) {
 		return out // not a repository, or git broke: ignore nothing
 	}
-	for p := range strings.SplitSeq(string(data), "\x00") {
-		if p != "" {
-			out[p] = true
-		}
+	for _, p := range splitNUL(data) {
+		out[p] = true
 	}
 	return out
 }

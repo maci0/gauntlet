@@ -177,31 +177,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	slug := BranchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
-	// A leftover checkout from a killed run would fail the add; clear it first.
-	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	// A leftover branch would fail the add too: a hot reload continues the
-	// same run id while the successor's loop numbering restarts, so tags and
-	// their branches recur. One still pointing at base carries no committed
-	// work (a review commits before its branch matters), so dropping it lets a
-	// rerun converge. One pointing anywhere else holds real output, and the
-	// same rule that keeps conflicted branches applies: fail rather than destroy.
-	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
-		if tip != base {
-			return nil, fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
-				branch, tip[:min(12, len(tip))], base[:min(12, len(base))])
-		}
-		// A failure here is not swallowed for long: the worktree add below
-		// then fails on the branch that is still there, with git's own words.
-		_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
-	}
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return nil, err
-	}
-	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
-		r.abortWorktreeAdd(ctx, dir, branch)
-		return nil, fmt.Errorf("git worktree add: %w", err)
-	}
-	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
+	return r.addBranchWorktree(ctx, dir, branch, base)
 }
 
 // AddStackWorktree creates the one checkout a stacked-PR run advances through
@@ -221,21 +197,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 	}
 
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+BranchSlug(tag))
-	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if tip, err := r.Tip(ctx, "refs/heads/"+branch); err == nil {
-		if tip != base {
-			return nil, fmt.Errorf("branch %s already carries unpublished work", branch)
-		}
-		_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
-	}
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
-		return nil, err
-	}
-	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
-		r.abortWorktreeAdd(ctx, dir, branch)
-		return nil, fmt.Errorf("git worktree add: %w", err)
-	}
-	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
+	return r.addBranchWorktree(ctx, dir, branch, base)
 }
 
 // AddSnapshotWorktree cuts a read-only view of one commit, detached so no
@@ -255,8 +217,7 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+BranchSlug(tag))
 	// A leftover snapshot from a killed run sits at this same deterministic
 	// path; it is gauntlet's own and carries nothing, so it is replaced.
-	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+	if err := r.prepareWorktreeDir(ctx, dir); err != nil {
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
@@ -277,6 +238,54 @@ func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 	if branch != "" {
 		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
 	}
+}
+
+// prepareWorktreeDir clears a leftover checkout at dir and creates its parent.
+// Callers hold wtMu.
+func (r *Repo) prepareWorktreeDir(ctx context.Context, dir string) error {
+	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
+	return os.MkdirAll(filepath.Dir(dir), 0o755)
+}
+
+// reclaimEmptyBranch deletes branch when it still points at base, which means
+// it carries no committed work. A leftover branch would fail worktree add: a
+// hot reload continues the same run id while the successor's loop numbering
+// restarts, so tags and their branches recur. One pointing anywhere else holds
+// real output, and the same rule that keeps conflicted branches applies: fail
+// rather than destroy.
+func (r *Repo) reclaimEmptyBranch(ctx context.Context, branch, base string) error {
+	tip, err := r.Tip(ctx, "refs/heads/"+branch)
+	if err != nil {
+		return nil
+	}
+	if tip != base {
+		return fmt.Errorf("branch %s already exists at %s, not base %s; merge or delete it first",
+			branch, shortSHA(tip), shortSHA(base))
+	}
+	// A failure here is not swallowed for long: the worktree add then fails
+	// on the branch that is still there, with git's own words.
+	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
+	return nil
+}
+
+func shortSHA(s string) string {
+	return s[:min(12, len(s))]
+}
+
+// addBranchWorktree creates a checkout of base on a fresh branch at dir.
+// Callers hold wtMu and have already proved the worktree root.
+func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) (*Worktree, error) {
+	if err := r.prepareWorktreeDir(ctx, dir); err != nil {
+		return nil, err
+	}
+	if err := r.reclaimEmptyBranch(ctx, branch, base); err != nil {
+		return nil, err
+	}
+	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
+		r.abortWorktreeAdd(ctx, dir, branch)
+		return nil, fmt.Errorf("git worktree add: %w", err)
+	}
+	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
 }
 
 // StartBranch advances a stack worktree onto a fresh child of base. The old
@@ -359,20 +368,9 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 	if err == nil {
 		return nil, nil
 	}
-	// -z names each path on its own NUL-terminated record and leaves bytes
-	// like é raw. Without it git quotes non-ASCII into C escapes
-	// ("r\303\251sum\303\251.tex"), a string Unresolved cannot open back up,
-	// so markers in that file would go unnoticed and get committed.
-	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "-z",
-		"--diff-filter=U")
+	paths, uErr := sub.unmergedPaths(ctx)
 	if uErr != nil {
 		return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
-	}
-	var paths []string
-	for p := range strings.SplitSeq(string(unmerged), "\x00") {
-		if p != "" {
-			paths = append(paths, p)
-		}
 	}
 	if len(paths) == 0 {
 		// The merge failed for a reason no editing can fix (a bad ref, a
@@ -497,14 +495,9 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 		// the answer comes from the index rather than from parsing narration.
 		// Either way keep the cause's words; the check must run before abort,
 		// which throws away exactly this state.
-		unmerged, uErr := r.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
-		conflicted := uErr == nil && strings.TrimSpace(string(unmerged)) != ""
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			detail = err.Error()
-		}
+		paths, uErr := r.unmergedPaths(ctx)
 		r.abortMerge(ctx)
-		return MergeResult{Conflict: conflicted, Detail: firstLine(detail)}
+		return classifyMergeFailure(out, err, paths, uErr)
 	}
 	// A squash stages; it never commits. Nothing staged means the branch held
 	// nothing this tree does not already have.
@@ -516,12 +509,8 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	if err != nil {
 		// The squash applied cleanly, so whatever failed is bookkeeping and
 		// not a conflict for anyone to resolve.
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			detail = err.Error()
-		}
 		r.abortMerge(ctx)
-		return MergeResult{Detail: firstLine(detail)}
+		return MergeResult{Detail: mergeNarration(out, err)}
 	}
 	return MergeResult{Merged: true}
 }
@@ -562,11 +551,11 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "merge-"+BranchSlug(target))
 	// Clearing a checkout a killed run left here; if it fails, the add below
 	// reports it rather than this line.
-	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+	if err := r.prepareWorktreeDir(ctx, dir); err != nil {
 		return MergeResult{Detail: err.Error()}
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", dir, target); err != nil {
+		r.abortWorktreeAdd(ctx, dir, "")
 		// A target already checked out elsewhere is the common cause, and it
 		// is the user's own checkout: say so rather than the raw git error.
 		return MergeResult{Detail: fmt.Sprintf("cannot check out %s to merge into: %v", target, err)}
@@ -584,14 +573,45 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	// Classify the same way Merge does, by what the index still holds, before
 	// the abort throws that state away: runMergeStep reports a genuine
 	// conflict differently from a merge git could not even start.
-	unmerged, uErr := sub.run(ctx, gitNormal, "diff", "--name-only", "--diff-filter=U")
-	conflicted := uErr == nil && strings.TrimSpace(string(unmerged)) != ""
-	detail := strings.TrimSpace(string(out))
-	if detail == "" {
-		detail = err.Error()
-	}
+	paths, uErr := sub.unmergedPaths(ctx)
 	_, _ = sub.run(context.WithoutCancel(ctx), gitNormal, "merge", "--abort")
-	return MergeResult{Conflict: conflicted, Detail: detail}
+	return classifyMergeFailure(out, err, paths, uErr)
+}
+
+// unmergedPaths lists index entries git still has not resolved. -z keeps
+// non-ASCII names as raw bytes, the same form Unresolved and the conflict
+// prompt can open.
+func (r *Repo) unmergedPaths(ctx context.Context) ([]string, error) {
+	out, err := r.run(ctx, gitNormal, "diff", "--name-only", "-z", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
+	return splitNUL(out), nil
+}
+
+// classifyMergeFailure records whether the index still holds unmerged paths
+// and keeps a one-line explanation. Git writes "Auto-merging <path>" first
+// and the CONFLICT line after it; taking the first line would hide why the
+// merge stopped.
+func classifyMergeFailure(out []byte, cause error, paths []string, pathErr error) MergeResult {
+	return MergeResult{
+		Conflict: pathErr == nil && len(paths) > 0,
+		Detail:   mergeNarration(out, cause),
+	}
+}
+
+func mergeNarration(out []byte, cause error) string {
+	text := strings.TrimSpace(string(out))
+	if text == "" {
+		text = cause.Error()
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "CONFLICT") {
+			return line
+		}
+	}
+	return firstLine(text)
 }
 
 // Push sends the current branch to its upstream. It is used after a review
