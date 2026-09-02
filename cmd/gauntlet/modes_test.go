@@ -173,3 +173,41 @@ func TestShowPromptStripsTerminalEscapes(t *testing.T) {
 		}
 	}
 }
+
+// TestDryRunReportsTheMaxReviewsCap pins that --dry-run tells the truth about
+// a capped loop: the per-loop count names both the cap and the full schedule,
+// and in stack mode — whose order is known here, unshuffled — the printed
+// schedule itself is the truncated pass.
+func TestDryRunReportsTheMaxReviewsCap(t *testing.T) {
+	set := promptPair(t)
+	reviews := []string{"doc-review", "sec-review", "sec-review"}
+	d := &dirRun{dir: t.TempDir(), set: set, reviews: reviews}
+
+	render := func(opts *options) string {
+		t.Helper()
+		var out bytes.Buffer
+		dryRun(&out, palette{}, []*dirRun{d}, nil, opts)
+		return out.String()
+	}
+
+	got := render(&options{timeout: time.Minute, maxReviews: 2})
+	if !strings.Contains(got, "Reviews per loop: 2 of 3 (1 extra from repeats), capped by --max-reviews") {
+		t.Fatalf("capped dry run does not report the cap:\n%s", got)
+	}
+
+	// A cap the schedule never reaches leaves the line as it always was.
+	got = render(&options{timeout: time.Minute, maxReviews: 3})
+	if !strings.Contains(got, "Reviews per loop: 3 (1 extra from repeats)\n") {
+		t.Fatalf("no-op cap changed the count line:\n%s", got)
+	}
+
+	// Stack mode prints the pass in its configured order, so the cap shows as
+	// the pass itself: the first N entries and nothing after them.
+	got = render(&options{timeout: time.Minute, maxReviews: 2, stackedPRs: true})
+	if !strings.Contains(got, "doc-review") || strings.Count(got, "sec-review") != 1 {
+		t.Fatalf("stacked dry run does not print the truncated pass:\n%s", got)
+	}
+	if !strings.Contains(got, "capped by --max-reviews") {
+		t.Fatalf("stacked dry run does not report the cap:\n%s", got)
+	}
+}

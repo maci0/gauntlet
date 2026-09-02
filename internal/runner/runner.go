@@ -36,7 +36,14 @@ type Config struct {
 	Timeout  time.Duration
 	Jobs     int // 1: sequential, in place. >1: N persistent lane worktrees, then merge
 	MaxLoops int
-	Runtime  time.Duration
+	// MaxReviews caps how many reviews one loop runs. The cut happens after
+	// the seeded per-loop shuffle, so a seeded run replays exactly which
+	// reviews made the cut, and every loop's draws match an uncapped run's.
+	// A review scheduled twice holds two of the slots when both land inside
+	// the cut. Zero means unlimited. A resume queue is never re-capped: it is
+	// the already-truncated remainder of an interrupted loop.
+	MaxReviews int
+	Runtime    time.Duration
 
 	// UsageCmd is a command whose stdout is the percentage of the provider's
 	// usage window already spent, and UsageLimit is the percentage at which
@@ -289,6 +296,12 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		if cfg.PushRemote == "" {
 			cfg.PushRemote = "origin"
 		}
+		// Stack mode never shuffles: its one pass walks cfg.Reviews in
+		// configured order, and the resume suffix check indexes into it, so
+		// the cap truncates the schedule itself rather than the per-loop draw.
+		if n := cfg.MaxReviews; n > 0 && n < len(cfg.Reviews) {
+			cfg.Reviews = cfg.Reviews[:n]
+		}
 	}
 	start := cfg.Started
 	if start.IsZero() {
@@ -472,15 +485,30 @@ func (r *Runner) schedule(loopNo int) []string {
 		j := drawIndex(r.seed, key, i+1)
 		order[i], order[j] = order[j], order[i]
 	}
+	// The cap cuts after the shuffle, which always draws over the full list:
+	// capping first would change the draw keys and break seeded replay, and
+	// cutting here is what makes different loops sample different reviews.
+	if n := r.cfg.MaxReviews; n > 0 && n < len(order) {
+		order = order[:n]
+	}
 	r.setPending(order)
 	return order
+}
+
+// perLoop is how many reviews one loop schedules: the full list, or the
+// --max-reviews cap when it is smaller.
+func (r *Runner) perLoop() int {
+	if n := r.cfg.MaxReviews; n > 0 && n < len(r.cfg.Reviews) {
+		return n
+	}
+	return len(r.cfg.Reviews)
 }
 
 // Run executes loops until the context is canceled or a limit is reached.
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
 		Kind: EvRunStart, Dir: r.cfg.Dir, Version: r.cfg.Version,
-		Agents: agent.Labels(r.cfg.Agents), Total: len(r.cfg.Reviews),
+		Agents: agent.Labels(r.cfg.Agents), Total: r.perLoop(),
 		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
@@ -497,7 +525,7 @@ func (r *Runner) Run(ctx context.Context) {
 			return
 		}
 		loopNo := r.Loops() + 1
-		r.bus.Publish(Event{Kind: EvLoopStart, Dir: r.cfg.Dir, Loop: loopNo, Total: len(r.cfg.Reviews)})
+		r.bus.Publish(Event{Kind: EvLoopStart, Dir: r.cfg.Dir, Loop: loopNo, Total: r.perLoop()})
 
 		start := r.now()
 		before, haveBefore := r.sample(ctx)

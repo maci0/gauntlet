@@ -14,6 +14,13 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- `--max-reviews N` caps how many reviews one loop runs, however large the
+  expanded `--reviews`/set schedule is. The cut happens after the seeded
+  per-loop shuffle, so `--seed` replays exactly which N ran and different
+  loops sample different reviews; a review scheduled twice fills two of the
+  N slots when both land inside the cut. With `--stacked-prs` the single
+  ordered pass is truncated to its first N entries. `0` (the default) is
+  unlimited, and `--dry-run` reports the capped count.
 - Three reviews for Kubernetes and GitOps repos: `k8s-review` (manifests,
   cross-resource reference integrity, API deprecations, and kustomize
   structure, components included), `gitops-review` (the Argo CD / Flux
