@@ -11,9 +11,11 @@
 //	  state/<run-id>.json              hot-reload handoff, deleted after pickup
 //
 // Date sharding keeps any single directory listing small, and the flat index
-// makes "what did I run last week" a tail, not a tree walk. Nothing here is
-// load-bearing: a journal that cannot be written degrades to a warning, never
-// a failed run.
+// makes "what did I run last week" a tail, not a tree walk. The journals are
+// the source of truth: a missing, empty, or stale index is rebuilt from them
+// so a crash that flushed the event stream but never wrote the summary row
+// still lists. Nothing here is load-bearing for a run in progress: a journal
+// that cannot be written degrades to a warning, never a failed run.
 package journal
 
 import (
@@ -187,12 +189,13 @@ func (j *Journal) Close(s Summary) error {
 	return j.err
 }
 
+func indexPath() string { return filepath.Join(Home(), "index.jsonl") }
+
 func appendIndex(s Summary) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(Home(), "index.jsonl"),
-		os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
@@ -236,11 +239,28 @@ func (j *Journal) CloseQuiet() {
 // costs what the listing shows, not the size of every run ever recorded.
 // A truncated or partly corrupt index yields what could be parsed rather than
 // an error: this is a convenience log, not a ledger.
+//
+// The journals under runs/ are the durable copy. If the index is missing,
+// empty, or does not yet name the newest journal (a process that flushed
+// events then died before Close), Recent reconstructs the missing rows from
+// those files and writes them back. A reconstructed row has no Args or
+// ExitCode: only Close records those.
 func Recent(n int) ([]Summary, error) {
 	if n <= 0 {
 		return nil, nil
 	}
-	f, err := os.Open(filepath.Join(Home(), "index.jsonl"))
+	if err := recoverIndex(); err != nil {
+		return nil, err
+	}
+	out, err := readIndex(n)
+	if err != nil {
+		return nil, err
+	}
+	return dedupeRunIDs(out), nil
+}
+
+func readIndex(n int) ([]Summary, error) {
+	f, err := os.Open(indexPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -265,6 +285,291 @@ func Recent(n int) ([]Summary, error) {
 			return out, nil
 		}
 	}
+}
+
+// recoverIndex restores the listing from the run journals when the index
+// cannot answer. A healthy index is left alone: Close writes Args and
+// ExitCode that the journals do not carry, and rebuilding would drop them.
+func recoverIndex() error {
+	id, path, ok, err := newestJournal()
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return nil
+	}
+	newest, err := readIndex(1)
+	if err != nil {
+		return err
+	}
+	if len(newest) == 0 {
+		_, err := rebuildIndex()
+		return err
+	}
+	if newest[0].RunID == id {
+		return nil
+	}
+	s, err := summarizeFile(id, path)
+	if err != nil {
+		return nil
+	}
+	_ = appendIndex(s)
+	return nil
+}
+
+// dedupeRunIDs keeps the first occurrence of each run id. Recent is newest
+// first, so a Close row appended after a reconstructed one wins.
+func dedupeRunIDs(in []Summary) []Summary {
+	if len(in) < 2 {
+		return in
+	}
+	seen := make(map[string]struct{}, len(in))
+	out := make([]Summary, 0, len(in))
+	for _, s := range in {
+		if s.RunID == "" {
+			out = append(out, s)
+			continue
+		}
+		if _, ok := seen[s.RunID]; ok {
+			continue
+		}
+		seen[s.RunID] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
+type namedJournal struct {
+	id, path string
+}
+
+// newestJournal is the latest run file under runs/, shards then ids, both
+// newest first. Run ids embed a UTC timestamp, so a lexical max is the
+// latest start.
+func newestJournal() (id, path string, ok bool, err error) {
+	root := filepath.Join(Home(), "runs")
+	days, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", "", false, nil
+		}
+		return "", "", false, err
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
+	for _, d := range days {
+		if !d.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, d.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		var names []string
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+			stem := strings.TrimSuffix(f.Name(), ".jsonl")
+			if validRunID(stem) {
+				names = append(names, stem)
+			}
+		}
+		if len(names) == 0 {
+			continue
+		}
+		sort.Slice(names, func(i, j int) bool { return names[i] > names[j] })
+		id = names[0]
+		return id, filepath.Join(dir, id+".jsonl"), true, nil
+	}
+	return "", "", false, nil
+}
+
+func listJournals() ([]namedJournal, error) {
+	root := filepath.Join(Home(), "runs")
+	days, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
+	var out []namedJournal
+	for _, d := range days {
+		if !d.IsDir() {
+			continue
+		}
+		dir := filepath.Join(root, d.Name())
+		files, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		var batch []namedJournal
+		for _, f := range files {
+			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+				continue
+			}
+			id := strings.TrimSuffix(f.Name(), ".jsonl")
+			if !validRunID(id) {
+				continue
+			}
+			batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
+		}
+		sort.Slice(batch, func(i, j int) bool { return batch[i].id > batch[j].id })
+		out = append(out, batch...)
+	}
+	return out, nil
+}
+
+// rebuildIndex rewrites index.jsonl from every run journal, oldest first, so
+// a later Close still appends. Journals that cannot be read are skipped.
+func rebuildIndex() (int, error) {
+	journals, err := listJournals()
+	if err != nil {
+		return 0, err
+	}
+	rows := make([]Summary, 0, len(journals))
+	for _, journal := range slices.Backward(journals) {
+		s, err := summarizeFile(journal.id, journal.path)
+		if err != nil {
+			continue
+		}
+		rows = append(rows, s)
+	}
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	if err := writeIndex(rows); err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}
+
+func writeIndex(rows []Summary) error {
+	if err := os.MkdirAll(Home(), 0o700); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(Home(), ".index.jsonl-*")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(name)
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
+		return err
+	}
+	enc := json.NewEncoder(tmp)
+	for _, s := range rows {
+		if err := enc.Encode(s); err != nil {
+			return err
+		}
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(name, indexPath()); err != nil {
+		return err
+	}
+	return nil
+}
+
+// indexEvent is the subset of a journal line summarizeFile reads. Extra
+// fields are ignored, matching Events.
+type indexEvent struct {
+	Ev      string    `json:"ev"`
+	TS      time.Time `json:"ts"`
+	Dir     string    `json:"dir"`
+	Status  string    `json:"status"`
+	Loop    int       `json:"loop"`
+	Ins     *int      `json:"ins"`
+	Del     *int      `json:"del"`
+	Tokens  int       `json:"tokens"`
+	Version string    `json:"version"`
+	Agents  []string  `json:"agents"`
+}
+
+// summarizeFile rebuilds a Summary from one run's event stream. Args and
+// ExitCode are not on the events; they stay zero.
+func summarizeFile(runID, path string) (Summary, error) {
+	s := Summary{RunID: runID, Path: path}
+	f, err := os.Open(path)
+	if err != nil {
+		return Summary{}, err
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
+	seenDir := map[string]bool{}
+	var lastTS time.Time
+	for sc.Scan() {
+		var e indexEvent
+		if err := json.Unmarshal(sc.Bytes(), &e); err != nil {
+			continue
+		}
+		if !e.TS.IsZero() {
+			if s.Start.IsZero() {
+				s.Start = e.TS
+			}
+			lastTS = e.TS
+		}
+		if e.Dir != "" && !seenDir[e.Dir] {
+			seenDir[e.Dir] = true
+			s.Dirs = append(s.Dirs, e.Dir)
+		}
+		if e.Loop > s.Loops {
+			s.Loops = e.Loop
+		}
+		switch e.Ev {
+		case "run_start":
+			if s.Version == "" {
+				s.Version = e.Version
+			}
+			if len(s.Agents) == 0 {
+				s.Agents = append([]string(nil), e.Agents...)
+			}
+			if !e.TS.IsZero() {
+				s.Start = e.TS
+			}
+		case "review_end":
+			s.Reviews++
+			switch e.Status {
+			case "", "ok":
+				s.OK++
+			case "fail", "timeout":
+				s.Failed++
+			case "skipped":
+				s.Skipped++
+			case "conflict":
+				s.Conflicts++
+			}
+			if e.Ins != nil {
+				s.Ins += *e.Ins
+			}
+			if e.Del != nil {
+				s.Del += *e.Del
+			}
+			s.Tokens += e.Tokens
+		case "merge":
+			if e.Ins != nil {
+				s.Ins += *e.Ins
+			}
+			if e.Del != nil {
+				s.Del += *e.Del
+			}
+		}
+	}
+	if err := sc.Err(); err != nil {
+		return Summary{}, err
+	}
+	s.End = lastTS
+	return s, nil
 }
 
 // recentChunk is the first slice taken from the end of the index: thousands of

@@ -459,13 +459,17 @@ Design points:
 - The journal is **another subscriber to the same event bus** the dashboard
   reads. No separate instrumentation path exists to drift out of sync.
 - Date sharding keeps one directory listing small; the flat index makes "what
-  did I run last week" a tail rather than a tree walk.
+  did I run last week" a tail rather than a tree walk. The journals are the
+  source of truth: a missing, empty, or stale index is rebuilt from them, so
+  a crash that flushed the event stream still lists. Reconstructed rows omit
+  `args` and `exit_code`, which only `Close` records.
 - Agent output (`output` events) and the live usage ticks (`usage` events)
   are **not** journaled. They are large, they are reconstructible from the
   agents' own logs, and the results are what anyone reads later. Everything
   else is.
-- Journaling is never load-bearing: a journal that cannot be opened degrades
-  to a warning. A nil journal is a working no-op, so no caller branches on it.
+- Journaling is never load-bearing for a run in progress: a journal that
+  cannot be opened degrades to a warning. A nil journal is a working no-op,
+  so no caller branches on it.
 - A hot reload appends to the same file and writes **one** index row, from the
   successor, covering the whole run.
 

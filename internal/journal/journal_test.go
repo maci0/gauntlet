@@ -694,3 +694,317 @@ func TestHistoryIgnoresUnfinishedReviews(t *testing.T) {
 		}
 	}
 }
+
+// The journals are the durable copy. Deleting the derived index must not hide
+// a finished run: Recent rebuilds the listing from the event stream.
+func TestRecentRebuildsMissingIndex(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, del := 4, 1
+	j.Write(map[string]any{
+		"ev": "run_start", "ts": now, "dir": "/repo", "version": "test",
+		"agents": []string{"claude"},
+	})
+	j.Write(map[string]any{
+		"ev": "review_end", "ts": now.Add(time.Minute), "dir": "/repo",
+		"review": "sec-review", "status": "ok", "ins": ins, "del": del,
+		"tokens": 12, "loop": 1,
+	})
+	if err := j.Close(Summary{
+		Version: "test", Dirs: []string{"/repo"}, Agents: []string{"claude"},
+		Args: []string{"--once"}, Start: now, End: now.Add(time.Minute),
+		Loops: 1, Reviews: 1, OK: 1, Ins: ins, Del: del, Tokens: 12,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(indexPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].RunID != id {
+		t.Fatalf("deleted index should rebuild from the journal: %+v", runs)
+	}
+	got := runs[0]
+	if got.OK != 1 || got.Reviews != 1 || got.Ins != ins || got.Del != del || got.Tokens != 12 {
+		t.Fatalf("rebuilt summary counts wrong: %+v", got)
+	}
+	if got.Version != "test" || !slices.Equal(got.Dirs, []string{"/repo"}) ||
+		!slices.Equal(got.Agents, []string{"claude"}) {
+		t.Fatalf("rebuilt summary lost run_start fields: %+v", got)
+	}
+	if len(got.Args) != 0 {
+		t.Fatalf("a reconstructed row has no args: %+v", got)
+	}
+	if _, err := os.Stat(indexPath()); err != nil {
+		t.Fatalf("rebuild should write the index back: %v", err)
+	}
+}
+
+// Close writes Args onto the index only. Rebuilding a healthy index would
+// drop them, so Recent must leave a matching index alone.
+func TestRecentKeepsIndexArgsWhenHealthy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now, "dir": "/repo"})
+	if err := j.Close(Summary{
+		Dirs: []string{"/repo"}, Args: []string{"--once", "--tui"},
+		Start: now, End: now, ExitCode: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 || runs[0].RunID != id {
+		t.Fatalf("healthy index should list the closed run: %+v", runs)
+	}
+	if !slices.Equal(runs[0].Args, []string{"--once", "--tui"}) || runs[0].ExitCode != 1 {
+		t.Fatalf("a matching index must not be rebuilt: %+v", runs[0])
+	}
+}
+
+// A process that flushed the journal then died before Close leaves a file
+// with no index row. The next listing must pick that run up without
+// rewriting the rows Close already wrote.
+func TestRecentIndexesAJournalNeverClosed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	idA := NewRunID(first)
+	jA, err := Open(idA, first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := jA.Close(Summary{
+		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
+	idB := NewRunID(second)
+	jB, err := Open(idB, second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jB.Write(map[string]any{
+		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
+	})
+	jB.Write(map[string]any{
+		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
+		"review": "doc-review", "status": "ok", "loop": 1,
+	})
+	jB.Flush()
+	jB.CloseQuiet()
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("the unindexed journal should list: %+v", runs)
+	}
+	if runs[0].RunID != idB || runs[1].RunID != idA {
+		t.Fatalf("want the orphan newest, then the closed run: %+v", runs)
+	}
+	if runs[0].OK != 1 || len(runs[0].Dirs) != 1 || runs[0].Dirs[0] != "/b" {
+		t.Fatalf("orphan summary wrong: %+v", runs[0])
+	}
+	if !slices.Equal(runs[1].Args, []string{"--once"}) {
+		t.Fatalf("appending an orphan must not rebuild the healthy rows: %+v", runs[1])
+	}
+}
+
+// Recovering an in-flight journal writes a reconstructed row; Close then
+// appends the real one. The listing is newest first, so the Close row wins.
+func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now, "dir": "/repo"})
+	j.Flush()
+	j.CloseQuiet()
+
+	if _, err := Recent(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{
+		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
+		OK: 3, Reviews: 3, ExitCode: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("the close row and the reconstructed row are one run: %+v", runs)
+	}
+	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].OK != 3 || runs[0].ExitCode != 1 {
+		t.Fatalf("the close row should win: %+v", runs[0])
+	}
+}
+
+func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range []map[string]any{
+		{"ev": "review_end", "status": "ok"},
+		{"ev": "review_end", "status": "fail"},
+		{"ev": "review_end", "status": "timeout"},
+		{"ev": "review_end", "status": "skipped"},
+		{"ev": "review_end", "status": "conflict"},
+		{"ev": "review_end", "status": "interrupted"},
+		{"ev": "review_end"},
+	} {
+		j.Write(e)
+	}
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Reviews != 7 || s.OK != 2 || s.Failed != 2 || s.Skipped != 1 || s.Conflicts != 1 {
+		t.Fatalf("status tally wrong: %+v", s)
+	}
+}
+
+// Isolated reviews publish line counts on merge, not review_end. Sequential
+// reviews put them on review_end. Summing both would double-count neither
+// shape if the other field is absent, and a --merge-into event carries none.
+func TestSummarizeFileTakesIsolatedLinesFromMerge(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, del := 7, 2
+	j.Write(map[string]any{"ev": "review_end", "dir": "/w", "review": "sec-review", "status": "ok"})
+	j.Write(map[string]any{
+		"ev": "merge", "dir": "/w", "review": "sec-review", "status": "ok",
+		"ins": ins, "del": del,
+	})
+	j.Write(map[string]any{"ev": "merge", "dir": "/w", "review": "main", "status": "ok"})
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Reviews != 1 || s.OK != 1 || s.Ins != ins || s.Del != del {
+		t.Fatalf("isolated lines should come from merge once: %+v", s)
+	}
+}
+
+func TestHistorySurvivesADeletedIndex(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, del := 12, 3
+	j.Write(map[string]any{
+		"ev": "review_end", "dir": "/w/one", "review": "sec-review",
+		"status": "ok", "ins": ins, "del": del,
+	})
+	if err := j.Close(Summary{Dirs: []string{"/w/one"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(indexPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/one")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("history after a deleted index = %+v", h)
+	}
+}
+
+func TestRebuildIndexSkipsACorruptJournal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "review_end", "dir": "/repo", "status": "ok"})
+	if err := j.Close(Summary{Dirs: []string{"/repo"}, Start: now, End: now}); err != nil {
+		t.Fatal(err)
+	}
+	bad := filepath.Join(home, "runs", "2026-08-25", "20260825T120000Z-0001.jsonl")
+	if err := os.WriteFile(bad, []byte("not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(indexPath()); err != nil {
+		t.Fatal(err)
+	}
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("corrupt journal still lists as a row, good one must remain: %+v", runs)
+	}
+	var found bool
+	for _, r := range runs {
+		if r.RunID == id && r.OK == 1 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("the readable journal vanished next to a corrupt one: %+v", runs)
+	}
+}

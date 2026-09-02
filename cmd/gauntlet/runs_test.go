@@ -138,6 +138,32 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	}
 }
 
+func TestRunsListsAfterDeletedIndex(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(90 * time.Second),
+		Dirs: []string{"/tmp/proj"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(journal.Home(), "index.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+		t.Fatalf("listing after a deleted index should exit %d, got %d", exitOK, code)
+	}
+	if !strings.Contains(buf.String(), id) {
+		t.Fatalf("listing after a deleted index should still name the run:\n%s", buf.String())
+	}
+}
+
 func TestShowSanitizesReplayedEvents(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "20260826T120000Z-dead"

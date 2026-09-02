@@ -15,6 +15,10 @@ minor instead and were listed under Changed.
 ### Added
 
 - `make ci` runs the Go pull-request checks (`make check` then `make test`).
+- A missing or stale `index.jsonl` is rebuilt from the run journals, so
+  `gauntlet runs` and the file-signal suggester still see a run whose
+  process died after flushing the journal. `gauntlet show` already read
+  those files. Reconstructed rows have no `args` or `exit_code`.
 - `GH_TOKEN` is read for release lookups, the same name GitHub CLI uses. It
   wins over `GITHUB_TOKEN` when both are set, and both now authenticate the
   checksum and asset downloads as well as the release listing, so a private

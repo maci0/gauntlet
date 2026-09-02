@@ -333,6 +333,32 @@ has changed or disappeared. Agent output and the live token ticks are
 not journaled: they are large and reconstructible, and the results are what
 matter later.
 
+The journals under `runs/` are the durable copy. `index.jsonl` is derived:
+`gauntlet runs` and the file-signal suggester rebuild it when the file is
+missing, empty, or missing the newest journal, which is how a process that
+flushed events then died before writing the summary row still lists.
+`gauntlet show <run-id>` reads the journal file directly and does not need
+the index. A reconstructed summary has no `args` or `exit_code`; only a
+clean close records those.
+
+What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
+
+| Path | What it is | Survives |
+|---|---|---|
+| `runs/YYYY-MM-DD/<id>.jsonl` | one run's event stream | copy the files; `gauntlet runs` rebuilds the index from them |
+| `index.jsonl` | listing cache | rebuilt from `runs/` |
+| `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
+| `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one restarts the unfinished loop |
+| `<repo>/.gauntlet.lock` | directory lock | ephemeral |
+| `<repo>/.gauntlet/worktrees/` | isolated checkouts | ephemeral; unmerged review branches stay in git |
+
+Review output lives in the reviewed repository's git history, not here. A
+run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
+buffer, with no `fsync`. A crash can lose the current loop's events still
+in that buffer, and the index row is written only when the process exits.
+Nothing here is replicated off the machine: `GAUNTLET_HOME` is a
+directory, and backups of it are yours.
+
 ## Updating and hot reload
 
 ```sh
