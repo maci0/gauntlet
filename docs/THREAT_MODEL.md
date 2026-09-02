@@ -90,10 +90,12 @@ organizational decisions; none is assigned here.
 - **B4, internet <-> binary.** GitHub releases API and release assets reach
   the self-update path; what lands on disk is executed by hot reload. The
   publishing side of the same channel is GitHub Actions: `release.yml` builds
-  and uploads the assets `update` verifies, and `vulnscan.yml` runs
+  and uploads the assets `update` verifies (the write token is in the
+  environment only for that upload), and `vulnscan.yml` runs
   govulncheck weekly and on every `go.mod`/`go.sum` change (actions pinned by
-  commit, `persist-credentials: false`; the scanner itself is deliberately
-  unpinned because its result never becomes a build input). Stacked
+  commit, runner images pinned, `persist-credentials: false`; the scanner
+  itself is deliberately unpinned because its result never becomes a build
+  input). Stacked
   publication is a second internet path: the `gh` CLI, resolved from an
   absolute-only PATH (`internal/ghx/ghx.go:81-97`), using the operator's own
   `gh` credentials, not the `GH_TOKEN` gauntlet reads for self-update.

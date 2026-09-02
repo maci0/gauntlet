@@ -85,6 +85,7 @@ Supply-chain posture, and what any new dependency inherits as obligations:
 
 - Every module is pinned to an exact version and verified against `go.sum`
   at build time. GitHub Actions are pinned by commit SHA, not tag.
+  Runner images are pinned (`ubuntu-24.04`, `macos-15`), not `-latest`.
 - Each release ships `checksums.txt` (the contract `gauntlet update` verifies
   downloads against) and `sbom.txt`, a per-binary module inventory from
   `go version -m`.

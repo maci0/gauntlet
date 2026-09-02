@@ -45,10 +45,13 @@ jobs:
       # other four legs spend their runner minutes on `make test`.
       - run: make check
         if: matrix.tags == 'sqlite'
-      - run: make test TAGS=${{ matrix.tags }}
+      # cover already runs the race suite, so the linux/sqlite cell does not
+      # pay for the same tests a second time.
+      - run: make test TAGS='${{ matrix.tags }}'
+        if: matrix.tags != 'sqlite' || runner.os != 'Linux'
       # The floor ratchets: a change that drops a tested path fails here
       # rather than being noticed a release later.
-      - run: make cover
+      - run: make cover TAGS='${{ matrix.tags }}'
         if: matrix.tags == 'sqlite' && runner.os == 'Linux'
 
   # Maintainer scripts (the screenshot renderer, the suggester calibrator,
@@ -96,6 +99,16 @@ jobs:
       # Cross-compilation is part of the contract: `gauntlet update` can only
       # install a platform that actually builds.
       - run: make dist VERSION=ci
+      # Linking is not running: a host binary that builds and then refuses to
+      # start would pass dist and fail only when a tag runs the release smoke
+      # test. Stamp is VERSION=ci, the same value dist just used.
+      - run: |
+          got="$(dist/gauntlet_ci_linux_amd64 version)"
+          echo "$got"
+          if [ "$got" != "gauntlet ci" ]; then
+            echo "smoke test failed: binary reports \"$got\", want \"gauntlet ci\"" >&2
+            exit 1
+          fi
       # A reproducibility claim nobody tests is decoration: same source, two
       # paths, different locale and TZ, must give byte-identical binaries.
       - run: make repro

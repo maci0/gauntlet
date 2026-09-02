@@ -20,6 +20,13 @@ jobs:
     # Full race suite plus four-platform cross-compilation, with room to spare;
     # bounded so a hung step cannot sit on the tag for hours.
     timeout-minutes: 60
+    # The job token can create releases. Keep it out of the environment for
+    # checkout, setup-go, `make release` (which runs the test suite), and the
+    # smoke test; Publish puts it back. gh and anything that reads
+    # GITHUB_TOKEN then cannot talk to the API until that step.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -71,15 +78,17 @@ jobs:
       #
       # A half-published release (created, then an upload died) makes
       # `gh release create` fail on every retry; the fallback clobbers the
-      # existing assets instead, so re-running this workflow heals it. The
-      # artifacts are reproducible and just passed the smoke test, so replacing
-      # them is safe; if no release exists, upload also fails and the job
-      # stays red.
+      # existing assets and refreshes the notes, so re-running this workflow
+      # heals it. The artifacts are reproducible and just passed the smoke
+      # test, so replacing them is safe; if no release exists, upload also
+      # fails and the job stays red.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" --notes-file notes.md \
             dist/gauntlet_* dist/checksums.txt dist/sbom.txt ||
-          gh release upload "$GITHUB_REF_NAME" --clobber \
-            dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+          { gh release upload "$GITHUB_REF_NAME" --clobber \
+              dist/gauntlet_* dist/checksums.txt dist/sbom.txt &&
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md; }
