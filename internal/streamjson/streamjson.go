@@ -206,7 +206,10 @@ func decodeValue(dec *json.Decoder, depth int) (any, error) {
 
 // skipValue consumes one value without building it, counting delimiters
 // rather than recursing: what it is called on is arbitrarily deep by
-// definition, so it must not add a stack frame per level.
+// definition, so it must not add a stack frame per level. The decoder's
+// input is the line, so Token eventually EOFs; a closer with no matching
+// opener is not a value, the same answer decodeValue gives at shallower
+// depths.
 func skipValue(dec *json.Decoder) error {
 	open := 0
 	for {
@@ -220,6 +223,9 @@ func skipValue(dec *json.Decoder) error {
 			} else {
 				open--
 			}
+		}
+		if open < 0 {
+			return errNotJSON
 		}
 		if open == 0 {
 			return nil // a scalar, or the container just closed

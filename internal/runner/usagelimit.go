@@ -27,6 +27,11 @@ import (
 // review that is waiting on the answer, and failing open is the safe default.
 const usageProbeTimeout = 10 * time.Second
 
+// usageProbeWait is how long Wait may outlive the deadline kill before it
+// gives up on an unreapable child, the same insurance runProc's drainGrace
+// carries. Shorter than the probe timeout: the kill already went out.
+const usageProbeWait = 5 * time.Second
+
 // checkUsageLimit asks the configured probe how much of the provider's usage
 // window is gone and, at or above the limit, converts that into the graceful
 // quit the runner already has: the review in flight finishes, its branch is
@@ -87,7 +92,7 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 		}
 		return nil
 	}
-	cmd.WaitDelay = 5 * time.Second
+	cmd.WaitDelay = usageProbeWait
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {

@@ -28,6 +28,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -312,7 +313,7 @@ func readIndex(n int) ([]Summary, error) {
 	}
 	size := fi.Size()
 
-	for chunk := int64(recentChunk); ; chunk *= 2 {
+	for chunk := int64(recentChunk); ; {
 		start := max(size-chunk, 0)
 		data := make([]byte, size-start)
 		if _, err := f.ReadAt(data, start); err != nil && !errors.Is(err, io.EOF) {
@@ -322,6 +323,13 @@ func readIndex(n int) ([]Summary, error) {
 		if enough || start == 0 {
 			return out, nil
 		}
+		// Doubling is how the window grows; once it cannot, the next pass
+		// has to be the whole file or the loop never reaches start==0.
+		if chunk > math.MaxInt64/2 {
+			chunk = math.MaxInt64
+			continue
+		}
+		chunk *= 2
 	}
 }
 
@@ -440,83 +448,68 @@ type namedJournal struct {
 	id, path string
 }
 
-// newestJournal is the latest run file under runs/, shards then ids, both
+// walkJournals visits every run journal under runs/, shards then ids, both
 // newest first. Run ids embed a UTC timestamp, so a lexical max is the
-// latest start.
-func newestJournal() (id, path string, ok bool, err error) {
+// latest start. visit returning false stops the walk.
+func walkJournals(visit func(namedJournal) bool) error {
 	root := filepath.Join(Home(), "runs")
 	days, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "", "", false, nil
+			return nil
 		}
-		return "", "", false, err
+		return err
 	}
 	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
 	for _, d := range days {
 		if !d.IsDir() {
 			continue
 		}
-		dir := filepath.Join(root, d.Name())
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		var names []string
-		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
-				continue
-			}
-			stem := strings.TrimSuffix(f.Name(), ".jsonl")
-			if validRunID(stem) {
-				names = append(names, stem)
+		for _, j := range journalsInDir(filepath.Join(root, d.Name())) {
+			if !visit(j) {
+				return nil
 			}
 		}
-		if len(names) == 0 {
-			continue
-		}
-		sort.Slice(names, func(i, j int) bool { return names[i] > names[j] })
-		id = names[0]
-		return id, filepath.Join(dir, id+".jsonl"), true, nil
 	}
-	return "", "", false, nil
+	return nil
+}
+
+func journalsInDir(dir string) []namedJournal {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var batch []namedJournal
+	for _, f := range files {
+		if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+			continue
+		}
+		id := strings.TrimSuffix(f.Name(), ".jsonl")
+		if !validRunID(id) {
+			continue
+		}
+		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
+	}
+	sort.Slice(batch, func(i, j int) bool { return batch[i].id > batch[j].id })
+	return batch
+}
+
+// newestJournal is the latest run file under runs/.
+func newestJournal() (id, path string, ok bool, err error) {
+	err = walkJournals(func(j namedJournal) bool {
+		id, path, ok = j.id, j.path, true
+		return false
+	})
+	return id, path, ok, err
 }
 
 func listJournals() ([]namedJournal, error) {
-	root := filepath.Join(Home(), "runs")
-	days, err := os.ReadDir(root)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
 	var out []namedJournal
-	for _, d := range days {
-		if !d.IsDir() {
-			continue
-		}
-		dir := filepath.Join(root, d.Name())
-		files, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		var batch []namedJournal
-		for _, f := range files {
-			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
-				continue
-			}
-			id := strings.TrimSuffix(f.Name(), ".jsonl")
-			if !validRunID(id) {
-				continue
-			}
-			batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
-		}
-		sort.Slice(batch, func(i, j int) bool { return batch[i].id > batch[j].id })
-		out = append(out, batch...)
-	}
-	return out, nil
+	err := walkJournals(func(j namedJournal) bool {
+		out = append(out, j)
+		return true
+	})
+	return out, err
 }
 
 // rebuildIndex rewrites index.jsonl from every run journal, oldest first, so
@@ -579,12 +572,13 @@ func writeIndex(rows []Summary) error {
 	return nil
 }
 
-// indexEvent is the subset of a journal line summarizeFile reads. Extra
-// fields are ignored, matching Events.
+// indexEvent is the subset of a journal line summarizeFile and History read.
+// Extra fields are ignored, matching Events.
 type indexEvent struct {
 	Ev      string    `json:"ev"`
 	TS      time.Time `json:"ts"`
 	Dir     string    `json:"dir"`
+	Review  string    `json:"review"`
 	Status  string    `json:"status"`
 	Loop    int       `json:"loop"`
 	Ins     *int      `json:"ins"`
@@ -722,14 +716,20 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 // consumer prints one line at a time anyway. Lines that do not parse are
 // skipped, matching the index reader's tolerance for a killed process.
 func Events(runID string, visit func(map[string]any)) error {
-	return events(runID, nil, visit)
+	return events(runID, nil, func(line []byte) {
+		var m map[string]any
+		if err := json.Unmarshal(line, &m); err == nil {
+			visit(m)
+		}
+	})
 }
 
 // events replays a journal like Events, but when gate is non-nil it is applied
-// to each raw line first and only passing lines are decoded. A gate is a
+// to each raw line first and only passing lines are visited. A gate is a
 // conservative prefilter, not an authority: a line that slips past it is
-// decoded and decided normally.
-func events(runID string, gate func([]byte) bool, visit func(map[string]any)) error {
+// handed to visit and decided there. visit must finish with the line before
+// returning: the scanner reuses the buffer.
+func events(runID string, gate func([]byte) bool, visit func([]byte)) error {
 	path, err := findRun(runID)
 	if err != nil {
 		return err
@@ -746,10 +746,7 @@ func events(runID string, gate func([]byte) bool, visit func(map[string]any)) er
 		if gate != nil && !gate(line) {
 			continue
 		}
-		var m map[string]any
-		if err := json.Unmarshal(line, &m); err == nil {
-			visit(m)
-		}
+		visit(line)
 	}
 	return sc.Err()
 }
@@ -923,41 +920,45 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		// events counted here.
 		_ = events(run.RunID, func(line []byte) bool {
 			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON)
-		}, func(e map[string]any) {
-			kind, _ := e["ev"].(string)
-			if d, _ := e["dir"].(string); d != dir {
+		}, func(line []byte) {
+			var e indexEvent
+			if err := json.Unmarshal(line, &e); err != nil {
 				return
 			}
-			name, _ := e["review"].(string)
-			if name == "" {
+			if e.Dir != dir || e.Review == "" {
 				return
 			}
-			ins, _ := e["ins"].(float64)
-			del, _ := e["del"].(float64)
-			switch kind {
+			ins, del := 0, 0
+			if e.Ins != nil {
+				ins = *e.Ins
+			}
+			if e.Del != nil {
+				del = *e.Del
+			}
+			switch e.Ev {
 			case "review_end":
-				if s, _ := e["status"].(string); s != "" && s != "ok" {
+				if e.Status != "" && e.Status != "ok" {
 					return
 				}
-				h := out[name]
+				h := out[e.Review]
 				h.Runs++
 				if ins+del > 0 {
 					h.Changed++
 				}
-				out[name] = h
+				out[e.Review] = h
 			case "merge":
 				// The run itself is already counted by this review's
 				// review_end; the merge only ever adds whether it landed
 				// measured work. The loop-step merge into --merge-into
 				// carries no counts and names a branch, not a review, so it
 				// falls out on both.
-				if s, _ := e["status"].(string); s != "ok" {
+				if e.Status != "ok" {
 					return
 				}
 				if ins+del > 0 {
-					h := out[name]
+					h := out[e.Review]
 					h.Changed++
-					out[name] = h
+					out[e.Review] = h
 				}
 			}
 		})

@@ -341,6 +341,23 @@ func TestDecoderAcceptsDepthAndRejectsTrailingBytes(t *testing.T) {
 	}
 }
 
+// A closer is not a JSON value. skipValue is what decodeValue calls past
+// decodeDepth, so a `}` where a value belongs has to fail, not walk until
+// EOF hoping a matching opener appears. encoding/json reports that closer
+// itself; skipValue's own nesting count refuses one that arrives as a token.
+func TestSkipValueRejectsACloser(t *testing.T) {
+	for _, in := range []string{"}", "]", "}{"} {
+		dec := json.NewDecoder(strings.NewReader(in))
+		if err := skipValue(dec); err == nil {
+			t.Errorf("skipValue(%q) succeeded, want an error", in)
+		}
+	}
+	dec := json.NewDecoder(strings.NewReader(`{"a":1}`))
+	if err := skipValue(dec); err != nil {
+		t.Fatalf("skipValue of one object: %v", err)
+	}
+}
+
 // BenchmarkParse measures the per-line cost every stream-mode output line and
 // every transcript record pays.
 func BenchmarkParse(b *testing.B) {

@@ -22,6 +22,11 @@ import (
 
 const commandTimeout = 2 * time.Minute
 
+// waitGrace is how long Run may outlive its process before the output pipes
+// are closed out from under whoever still holds them, the same bound gitx
+// uses. A grandchild gh spawned (a helper, a pager) inherits those pipes.
+const waitGrace = 10 * time.Second
+
 // Client is a GitHub repository reached through gh.
 type Client struct {
 	Dir  string
@@ -252,7 +257,7 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	}
 	// Like gitx: a child that escapes the process group must not keep Run
 	// blocked on the output pipes past the kill.
-	cmd.WaitDelay = 10 * time.Second
+	cmd.WaitDelay = waitGrace
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	if err := cmd.Run(); err != nil {
