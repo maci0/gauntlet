@@ -299,7 +299,11 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			case runner.StatusConflict:
 				detail = "merge conflict, kept on " + f.Branch
 			case runner.StatusSkipped:
-				detail = "skipped: never ran (unknown name or unreadable prompt)"
+				if f.Detail != "" {
+					detail = "skipped: " + normalize.Sanitize(f.Detail)
+				} else {
+					detail = "skipped: never ran (unknown name or unreadable prompt)"
+				}
 			case runner.StatusFail:
 				if f.Detail != "" {
 					detail = normalize.Sanitize(f.Detail)

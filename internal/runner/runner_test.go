@@ -1744,8 +1744,11 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 	bus.Close()
 
 	results := r.Stats().Results()
-	if len(results) != 1 || results[0].Status != StatusSkipped {
-		t.Fatalf("failed add recorded as %+v, want one skipped result", results)
+	if len(results) != 1 || results[0].Status != StatusSkipped || results[0].ExitCode != -1 {
+		t.Fatalf("failed add recorded as %+v, want one skipped result with exit -1", results)
+	}
+	if results[0].Detail == "" {
+		t.Fatal("failed add left Detail empty")
 	}
 
 	var ends []Event
@@ -1758,6 +1761,12 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 		t.Fatalf("a failed add published %d review_end events (%+v), want exactly one skipped",
 			len(ends), ends)
 	}
+	if ends[0].ExitCode == nil || *ends[0].ExitCode != -1 {
+		t.Fatalf("skipped review_end exit %+v, want -1", ends[0].ExitCode)
+	}
+	if ends[0].Text == "" {
+		t.Fatal("skipped review_end left Text empty")
+	}
 
 	// Every squatting branch keeps its commit: a failed review must not
 	// take out a branch it did not create.
@@ -1769,6 +1778,83 @@ func TestFailedWorktreeAddReportsAndKeepsRepo(t *testing.T) {
 	}
 	if out := gitOut(t, repo, "worktree", "list"); strings.Count(out, "\n") != 0 {
 		t.Errorf("checkouts appeared:\n%s", out)
+	}
+}
+
+// TestUnstartedReviewsPublishReviewEnd pins the journal contract for a review
+// that never launched: unknown name, unreadable prompt, and a command line
+// that cannot be built all publish review_end, matching the stats, instead of
+// vanishing from the event stream.
+func TestUnstartedReviewsPublishReviewEnd(t *testing.T) {
+	repo := testRepo(t)
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo ok`)
+
+	t.Run("unknown name", func(t *testing.T) {
+		set, _ := promptSet(t, "sec-review")
+		cfg := baseConfig(t, repo, set, []string{"ghost-review"}, bin)
+		r, got := runRecorded(t, cfg)
+		assertUnstartedEnd(t, r, got, "ghost-review", StatusSkipped, "unknown name")
+	})
+
+	t.Run("unreadable prompt", func(t *testing.T) {
+		set, dir := promptSet(t, "sec-review")
+		path := filepath.Join(dir, "sec-review.md")
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+		r, got := runRecorded(t, cfg)
+		assertUnstartedEnd(t, r, got, "sec-review", StatusSkipped, "not a regular file")
+	})
+
+	t.Run("unbuildable command", func(t *testing.T) {
+		dir := t.TempDir()
+		// Past the single-argument exec limit, so BuildCmd refuses before
+		// launch instead of failing with E2BIG on every agent.
+		big := strings.Repeat("x", 130<<10)
+		if err := os.WriteFile(filepath.Join(dir, "sec-review.md"),
+			[]byte("Your goal is to test.\n"+big), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		set, _, err := Discover(t, dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+		r, got := runRecorded(t, cfg)
+		assertUnstartedEnd(t, r, got, "sec-review", StatusFail, "exec limit")
+	})
+}
+
+func assertUnstartedEnd(t *testing.T, r *Runner, events []Event, review string, status Status, wantText string) {
+	t.Helper()
+	results := r.Stats().Results()
+	if len(results) != 1 || results[0].Review != review || results[0].Status != status {
+		t.Fatalf("stats: %+v, want one %s %s", results, review, status)
+	}
+	if results[0].ExitCode != -1 {
+		t.Fatalf("stats exit %d, want -1", results[0].ExitCode)
+	}
+	if !strings.Contains(results[0].Detail, wantText) {
+		t.Fatalf("stats Detail %q, want substring %q", results[0].Detail, wantText)
+	}
+	var ends []Event
+	for _, ev := range events {
+		if ev.Kind == EvReviewEnd && ev.Review == review {
+			ends = append(ends, ev)
+		}
+	}
+	if len(ends) != 1 || ends[0].Status != status {
+		t.Fatalf("review_end: %+v, want one %s", ends, status)
+	}
+	if ends[0].ExitCode == nil || *ends[0].ExitCode != -1 {
+		t.Fatalf("review_end exit %+v, want -1", ends[0].ExitCode)
+	}
+	if !strings.Contains(ends[0].Text, wantText) {
+		t.Fatalf("review_end Text %q, want substring %q", ends[0].Text, wantText)
 	}
 }
 

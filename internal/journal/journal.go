@@ -443,7 +443,10 @@ var mergeJSON = []byte(`"merge"`)
 // only signal that improves with use, and it costs one pass over the recent
 // journals.
 //
-// Runs are counted on review_end, which every finished review publishes once.
+// Runs are counted on review_end only when the review finished (status ok, or
+// no status on older journals). A skip, timeout, failure, or interrupt is not
+// a finished run: counting those as "ran and changed nothing" would demote
+// reviews the operator cancelled or that never launched.
 // Changed comes from either event that carries the review's measured lines:
 // a sequential review's review_end, or the merge event an isolated review's
 // work lands through. A merge that did not land (conflict, failure) carries no
@@ -484,6 +487,9 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			del, _ := e["del"].(float64)
 			switch kind {
 			case "review_end":
+				if s, _ := e["status"].(string); s != "" && s != "ok" {
+					return
+				}
 				h := out[name]
 				h.Runs++
 				if ins+del > 0 {

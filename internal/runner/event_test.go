@@ -62,6 +62,34 @@ func TestBusInjectedClock(t *testing.T) {
 	}
 }
 
+// TestBusDropsUsageWhenFull pins the droppable contract for live usage ticks:
+// they are high-volume and reconstructible, so a full subscriber must not
+// stall the scheduler the way a result event would.
+func TestBusDropsUsageWhenFull(t *testing.T) {
+	bus := NewBus()
+	ch := bus.Subscribe(1)
+	bus.Publish(Event{Kind: EvUsage, Tokens: 1})
+	released := make(chan struct{})
+	go func() {
+		bus.Publish(Event{Kind: EvUsage, Tokens: 2})
+		close(released)
+	}()
+	select {
+	case <-released:
+	case <-time.After(time.Second):
+		t.Fatal("usage publish blocked on a full subscriber")
+	}
+	got := <-ch
+	if got.Kind != EvUsage || got.Tokens != 1 {
+		t.Fatalf("first usage not kept: %+v", got)
+	}
+	select {
+	case extra := <-ch:
+		t.Fatalf("dropped usage was delivered: %+v", extra)
+	default:
+	}
+}
+
 // TestBusConcurrentClose exercises the publish/close race under the detector:
 // publishers running while Close lands must either deliver or drop, never
 // send into a closed channel.

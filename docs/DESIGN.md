@@ -131,8 +131,8 @@ the unit of safe parallelism is **the directory**, not the agent.
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
 - Events are published on one buffered channel per run and fanned out to the
   logger, the journal, and the TUI. Publishing never blocks the scheduler:
-  output events may be dropped when a subscriber's buffer is full; results
-  are never dropped.
+  output and live usage ticks may be dropped when a subscriber's buffer is
+  full; results are never dropped.
 
 ### Isolated parallel reviews (`--jobs N`)
 

@@ -130,6 +130,15 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 			t.Errorf("an all-zero tally still advertises %q:\n%s", absent, got)
 		}
 	}
+	d3 := &dirRun{dir: "/repo/c", loops: 1, stats: &runner.Stats{}}
+	d3.stats.Add(runner.Result{Review: "ghost-review", Agent: agent.Spec{Tool: "claude"},
+		Status: runner.StatusSkipped, ExitCode: -1, Detail: "unknown name"})
+	out.Reset()
+	summary(&out, palette{}, []*dirRun{d3}, time.Second)
+	if !strings.Contains(out.String(), "- ghost-review (claude): skipped: unknown name") {
+		t.Errorf("skipped review did not use Detail:\n%s", out.String())
+	}
+
 	// Per-agent rows merge the directories and sort by label.
 	if i, j := strings.Index(got, "claude"), strings.Index(got, "codex"); i < 0 || j < 0 || i > j {
 		t.Errorf("per-agent rows missing or out of order:\n%s", got)

@@ -12,6 +12,14 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- A review that never launched (unknown name, unreadable prompt, or a command
+  line that could not be built) now publishes `review_end` like every other
+  outcome, so the journal, the dashboard, and `gauntlet show` record it. The
+  file-signal suggester no longer treats those, or failed, timed-out, and
+  interrupted launches, as finished runs that changed nothing.
+
 ### Changed
 
 - Bundled review prompts: integer-width and abbreviation rules no longer
@@ -26,6 +34,9 @@ minor instead and were listed under Changed.
   `make check-scripts` read.
 - Docs for `--jobs N` describe the persistent lane worktrees the runner
   actually uses, not the per-review throwaway checkouts that 1.13.0 replaced.
+- Live usage ticks on the event bus are droppable, the same as agent output:
+  a slow subscriber no longer stalls the scheduler on reconstructible
+  telemetry. Final token counts still ride on `review_end`.
 
 ### Fixed
 

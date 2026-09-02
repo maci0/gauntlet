@@ -111,8 +111,8 @@ type Event struct {
 // Bus fans one run's events out to every subscriber (logger, journal, TUI).
 //
 // Publishing must never block the scheduler: an agent that prints thousands of
-// lines per second cannot be allowed to slow the reviews down. Output events
-// are therefore droppable; everything else is delivered.
+// lines per second cannot be allowed to slow the reviews down. Output and live
+// usage ticks are therefore droppable; results are never dropped.
 //
 // Background publishers (the auto-update check, the hot-reload watcher) can
 // still hold a live event when the run ends, so a Publish that lands after
@@ -146,9 +146,14 @@ func (b *Bus) Subscribe(buffer int) <-chan Event {
 	return ch
 }
 
-// Publish delivers an event to every subscriber. EvOutput is dropped for a
-// subscriber whose buffer is full; every other kind blocks until delivered.
-// After Close it does nothing.
+// droppable reports whether a full subscriber may miss this event. Output and
+// live usage are high-volume and reconstructible (the final counts ride on
+// review_end); everything else is a result and is delivered.
+func droppable(k Kind) bool { return k == EvOutput || k == EvUsage }
+
+// Publish delivers an event to every subscriber. Droppable kinds are skipped
+// for a subscriber whose buffer is full; every other kind blocks until
+// delivered. After Close it does nothing.
 func (b *Bus) Publish(e Event) {
 	if e.Time.IsZero() {
 		if b.Now != nil {
@@ -163,7 +168,7 @@ func (b *Bus) Publish(e Event) {
 		return
 	}
 	for _, ch := range b.subs {
-		if e.Kind == EvOutput {
+		if droppable(e.Kind) {
 			select {
 			case ch <- e:
 			default:

@@ -671,11 +671,7 @@ func (r *Runner) abandonQueue(loopNo int) {
 		res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
 			Status: StatusInterrupted}
 		r.st.Add(res)
-		r.bus.Publish(Event{
-			Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
-			Agent: res.Agent.Label(), Loop: loopNo, Status: StatusInterrupted,
-			ExitCode: new(res.ExitCode),
-		})
+		r.publishReviewEnd(res, loopNo, "", "")
 	}
 }
 
@@ -736,12 +732,10 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, gitx.BranchSlug(review))
 	if err := wt.StartBranch(ctx, branch, base); err != nil {
 		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
-		a := r.pickAgent(review, nil)
-		r.bus.Publish(Event{
-			Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review,
-			Agent: a.Label(), Loop: loopNo, Status: StatusSkipped,
-		})
-		return Result{Review: review, Agent: a, Status: StatusSkipped}
+		res := Result{Review: review, Agent: r.pickAgent(review, nil),
+			ExitCode: -1, Status: StatusSkipped, Detail: err.Error()}
+		r.publishReviewEnd(res, loopNo, "", "")
+		return res
 	}
 	if oldBranch != "" && oldBranch != branch {
 		r.repo.DeleteBranch(context.WithoutCancel(ctx), oldBranch)
@@ -870,22 +864,6 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	spec := r.pickAgent(review, exclude)
 	res := Result{Review: review, Agent: spec, ExitCode: -1}
 
-	rev, ok := r.cfg.Set.Get(review)
-	if !ok {
-		r.log("No such review: %s", review)
-		res.Status = StatusSkipped
-		return res
-	}
-	body, err := rev.Body()
-	if err != nil {
-		r.log("Cannot read prompt for %s (%v), skipping", review, err)
-		res.Status = StatusSkipped
-		return res
-	}
-	// Recorded on both of this attempt's events: a prompt edited mid-run makes
-	// its later attempts carry a different fingerprint, and the journal says so.
-	promptSHA := prompt.Fingerprint(body)
-
 	dir := r.cfg.Dir
 	lane := ""
 	if wt != nil {
@@ -896,6 +874,26 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		// here tells a replay which working directory the agent saw.
 		lane = wt.Branch
 	}
+
+	rev, ok := r.cfg.Set.Get(review)
+	if !ok {
+		r.log("No such review: %s", review)
+		res.Status = StatusSkipped
+		res.Detail = "unknown name"
+		r.publishReviewEnd(res, loopNo, "", lane)
+		return res
+	}
+	body, err := rev.Body()
+	if err != nil {
+		r.log("Cannot read prompt for %s (%v), skipping", review, err)
+		res.Status = StatusSkipped
+		res.Detail = err.Error()
+		r.publishReviewEnd(res, loopNo, "", lane)
+		return res
+	}
+	// Recorded on both of this attempt's events: a prompt edited mid-run makes
+	// its later attempts carry a different fingerprint, and the journal says so.
+	promptSHA := prompt.Fingerprint(body)
 
 	// Session resume targets an agent CLI's most recent session in a
 	// directory, not a model id. Skip it when two models of one CLI are in the
@@ -912,6 +910,8 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	if err != nil {
 		r.log("Cannot build command for %s: %v", spec.Label(), err)
 		res.Status = StatusFail
+		res.Detail = err.Error()
+		r.publishReviewEnd(res, loopNo, promptSHA, lane)
 		return res
 	}
 
@@ -1008,6 +1008,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	case pr.Err != nil:
 		r.log("FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
 		res.Status = StatusFail
+		res.Detail = pr.Err.Error()
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
@@ -1030,17 +1031,25 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 			humanize.Duration(res.Elapsed), linesNote(res))
 	}
 
+	r.publishReviewEnd(res, loopNo, promptSHA, lane)
+	return res
+}
+
+// publishReviewEnd puts one review's outcome on the bus. Every path that
+// decides a status uses it, including a skip that never launched, so the
+// journal and the dashboard cannot disagree with the stats.
+func (r *Runner) publishReviewEnd(res Result, loopNo int, promptSHA, lane string) {
 	ev := Event{
-		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: review, Agent: spec.Label(),
-		Loop: loopNo, Status: res.Status, ExitCode: new(res.ExitCode),
-		Elapsed: res.Elapsed.Seconds(), Tokens: res.Tokens, Thinking: res.Thinking,
-		PromptSHA: promptSHA, Branch: lane,
+		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: res.Review,
+		Agent: res.Agent.Label(), Loop: loopNo, Status: res.Status,
+		ExitCode: new(res.ExitCode), Elapsed: res.Elapsed.Seconds(),
+		Tokens: res.Tokens, Thinking: res.Thinking,
+		PromptSHA: promptSHA, Branch: lane, Text: res.Detail,
 	}
 	if res.HaveLines {
 		ev.Ins, ev.Del = new(res.Ins), new(res.Del)
 	}
 	r.bus.Publish(ev)
-	return res
 }
 
 // Retry delays. A rate limit or a dropped connection clears in seconds, so the

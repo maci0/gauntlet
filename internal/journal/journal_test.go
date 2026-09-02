@@ -648,3 +648,49 @@ func TestHistoryCountsAMergedReviewsLines(t *testing.T) {
 		t.Fatalf("the loop-step merge was counted as a review: %+v", h)
 	}
 }
+
+// A review that never finished is not a run the suggester should learn from.
+// Counting skips, failures, timeouts, and interrupts as "finished without
+// changing a line" would demote reviews the operator cancelled or that never
+// launched. Older journals with no status still count, as they did.
+func TestHistoryIgnoresUnfinishedReviews(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w", "review": "ok-review", "status": "ok"},
+		{"ev": "review_end", "dir": "/w", "review": "skip-review", "status": "skipped"},
+		{"ev": "review_end", "dir": "/w", "review": "fail-review", "status": "fail"},
+		{"ev": "review_end", "dir": "/w", "review": "timeout-review", "status": "timeout"},
+		{"ev": "review_end", "dir": "/w", "review": "interrupt-review", "status": "interrupted"},
+		{"ev": "review_end", "dir": "/w", "review": "legacy-review"},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	if err := j.Close(Summary{Dirs: []string{"/w"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["ok-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("ok-review = %+v, want one finished run", h)
+	}
+	if h := got["legacy-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("legacy-review = %+v, want one finished run (no status)", h)
+	}
+	for _, name := range []string{"skip-review", "fail-review", "timeout-review", "interrupt-review"} {
+		if h, ok := got[name]; ok {
+			t.Fatalf("%s was counted as a finished run: %+v", name, h)
+		}
+	}
+}
