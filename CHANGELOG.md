@@ -51,8 +51,12 @@ minor instead and were listed under Changed.
   from `gauntlet runs`, not a listing that silently omits the newest run.
 - A stacked-PR reload that cannot verify its pinned base commit fails
   rather than fetching a new tip and splitting the stack.
-- Dashboard and launcher wordmark is the brand teal of the mark, one hue,
-  not a per-letter gradient. Panel names stay dim with the rest of the chrome.
+- Dashboard and launcher wordmark is the path-arrow teal of the mark
+  (`#0e96a8` on dark terminals, a darker pull of that hue on light), one
+  hue, not Catppuccin teal and not a per-letter gradient. Footer keys are
+  body-colored chrome like the launcher's. The budget meter rides the heat
+  ramp. Reload status uses the info hue. Panel names stay dim with the
+  rest of the chrome.
 - Dashboard lanes and the feed drop the `-review` suffix the grid already
   omitted, so a name is spelled the same way on every instrument.
 - `f` in the dashboard footer says `widen` while the feed is narrowed, the

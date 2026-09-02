@@ -495,13 +495,17 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
 
 - The whole state fits one screen: lanes, review grid, throughput, feed.
 - Live data is bright; grid, borders, panel names, and chrome stay dim.
-- The wordmark is the brand teal of the path-arrow in the mark, one hue.
+- The wordmark is the path-arrow teal of the mark (`#0e96a8` on dark
+  terminals, a darker pull of the same hue on light), one hue, distinct
+  from the Catppuccin teal in the heat ramp and agent rotation.
 - One hue per agent, used for its lane, its rows, and its trace everywhere.
 - Colors adapt to the terminal's background: Catppuccin Latte on light
   terminals, Mocha on dark ones. The pairs are pinned by test to WCAG 2.2 AA:
   text at 4.5:1 (SC 1.4.3) and instrument strokes such as unlit meter
   segments and the chart baseline at 3:1 (SC 1.4.11). Borders are decorative
-  and exempt.
+  and exempt. Keys, panel names, and other chrome stay at the dim/body
+  styles; magenta is for diff hunk headers, lavender for reasoning, and the
+  heat ramp for magnitude.
 - Meters are quantized segments with a visible unlit remainder.
 - The throughput chart is braille (2x4 dots per cell) and hugs the right
   edge, with a current-value marker at the live end.

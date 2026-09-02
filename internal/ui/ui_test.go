@@ -578,7 +578,7 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 		"text": cText, "dim": cDim, "faint": cFaint,
 		"red": cRed, "green": cGreen, "yellow": cYellow, "peach": cPeach,
 		"blue": cBlue, "cyan": cCyan, "teal": cTeal, "magenta": cMagenta,
-		"pink": cPink, "lavender": cLavender,
+		"pink": cPink, "lavender": cLavender, "mark": cMark,
 	}
 	// Agent lanes render their label in the vendor's color, so those clear the
 	// same floor: a brand is never a reason to ship unreadable text.
@@ -601,16 +601,61 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 	}
 }
 
-// The wordmark is the brand teal, one hue: the README logos are a single-color
-// name next to a teal path-arrow, and a per-letter gradient would be a color
-// the mark does not use.
+// The wordmark is the path-arrow teal, one hue: the README logos are a
+// single-color name next to that arrow, and a Catppuccin teal or a
+// per-letter gradient would be a color the mark does not use.
 func TestWordmarkIsTheBrandTeal(t *testing.T) {
-	want := lipgloss.NewStyle().Bold(true).Foreground(cTeal).Render("GAUNTLET")
+	if cMark.Dark != "#0e96a8" {
+		t.Fatalf("wordmark dark is %q, want the mark's #0e96a8", cMark.Dark)
+	}
+	want := lipgloss.NewStyle().Bold(true).Foreground(cMark).Render("GAUNTLET")
 	if got := wordmark(); got != want {
-		t.Fatalf("wordmark is not the brand teal:\n got %q\nwant %q", got, want)
+		t.Fatalf("wordmark is not the mark teal:\n got %q\nwant %q", got, want)
 	}
 	if got := stripANSI(wordmark()); got != "GAUNTLET" {
 		t.Fatalf("wordmark text = %q, want GAUNTLET", got)
+	}
+}
+
+// Keys are chrome: live data is the bright thing, and magenta is reserved
+// for diff hunk headers. The launcher already draws keys in the body color;
+// the dashboard footer has to match or the two screens read as different
+// products.
+func TestFooterKeysAreChromeNotAccent(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	footer := lastLine(m.View())
+	if strings.Contains(footer, styleMagic.Render("q")) {
+		t.Fatal("footer keys used the accent reserved for diff metadata")
+	}
+	if !strings.Contains(footer, styleValue.Render("q")) {
+		t.Fatal("footer keys are not body-colored chrome")
+	}
+}
+
+// A budget is magnitude, so its meter rides the heat ramp. Lavender is the
+// reasoning hue; using it here would make time-spent look like thinking.
+func TestBudgetMeterUsesHeatNotReasoning(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.cfg.Budget = time.Hour
+	m.now = m.cfg.Started.Add(30 * time.Minute)
+	footer := lastLine(m.View())
+	if strings.Contains(footer, meter(0.5, 10, cLavender)) {
+		t.Fatal("budget meter used the reasoning hue")
+	}
+	if !strings.Contains(footer, meter(0.5, 10, heatColor(0.5))) {
+		t.Fatal("budget meter is not on the heat ramp")
 	}
 }
 

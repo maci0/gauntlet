@@ -41,6 +41,11 @@ var (
 	cMagenta  = adaptive("#8839ef", "#cba6f7")
 	cPink     = adaptive("#a2528c", "#f5c2e7")
 	cLavender = adaptive("#5767c2", "#b4befe")
+	// cMark is the path-arrow in assets/mark.svg. Dark is that ink as drawn
+	// (#0e96a8). Light is the same hue pulled darker until it clears 4.5:1
+	// on Latte. Distinct from cTeal, which stays the Catppuccin instrument
+	// tone used in the heat ramp and the agent rotation.
+	cMark = adaptive("#0b7988", "#0e96a8")
 )
 
 // adaptive pairs a Latte tone for light backgrounds with its Mocha
@@ -61,6 +66,9 @@ var (
 	styleWarn  = lipgloss.NewStyle().Foreground(cYellow)
 	styleBad   = lipgloss.NewStyle().Foreground(cRed)
 	styleInfo  = lipgloss.NewStyle().Foreground(cCyan)
+	// Magenta is for diff hunk headers, which already read as "meta" in a
+	// unified diff. It is not a chrome accent: keys, titles, and status
+	// use the dim/value/info styles the launcher already uses.
 	styleMagic = lipgloss.NewStyle().Foreground(cMagenta)
 	// Reasoning is real output, but it is not the answer: lavender keeps it
 	// legible while visibly subordinate to the text the agent actually wrote.
@@ -273,7 +281,7 @@ func heatColor(f float64) lipgloss.TerminalColor {
 	}
 }
 
-// wordmark is the name in the brand teal of the path-arrow in assets/mark.svg.
+// wordmark is the name in the path-arrow teal of assets/mark.svg, one hue.
 func wordmark() string {
-	return lipgloss.NewStyle().Bold(true).Foreground(cTeal).Render("GAUNTLET")
+	return lipgloss.NewStyle().Bold(true).Foreground(cMark).Render("GAUNTLET")
 }

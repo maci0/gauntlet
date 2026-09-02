@@ -1087,7 +1087,7 @@ func (p *picker) reviewPanel(w, h int) string {
 			name := styleValue.Render(g.Name)
 			lines = append(lines, pickLine(cur, inner,
 				styleDim.Render(mark)+" "+name,
-				count+" "+meter(float64(on)/float64(max(len(g.Reviews), 1)), 6, cTeal)))
+				count+" "+meter(float64(on)/float64(max(len(g.Reviews), 1)), 6, cMark)))
 		case rowReview:
 			rev := r.review
 			name := reviewLabel(rev)

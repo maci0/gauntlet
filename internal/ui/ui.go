@@ -544,7 +544,7 @@ func (m *model) pushFeed(l feedLine) {
 
 func (m *model) View() string {
 	if !m.ready {
-		return "\n  gauntlet is warming up…"
+		return ""
 	}
 	if m.help {
 		return m.renderHelp()
@@ -705,7 +705,7 @@ func (m *model) stateLabel() (string, lipgloss.Style) {
 	case m.finishing:
 		return "● FINISHING", styleWarn
 	case m.reloading:
-		return "● RELOADING", styleMagic
+		return "● RELOADING", styleInfo
 	case m.paused:
 		return "‖ FEED PAUSED", styleWarn
 	default:
@@ -1064,7 +1064,7 @@ func (m *model) renderFooter() string {
 	// hungry need. The full pause semantics live in help; here one word.
 	var b strings.Builder
 	for _, k := range m.footerKeys(true) {
-		b.WriteString(styleMagic.Render(k.k) + styleDim.Render(":"+k.d+"  "))
+		b.WriteString(styleValue.Render(k.k) + styleDim.Render(":"+k.d+"  "))
 	}
 	right := ""
 	if m.haveLines {
@@ -1085,7 +1085,7 @@ func (m *model) renderFooter() string {
 	}
 	if m.cfg.Budget > 0 {
 		frac := m.now.Sub(m.cfg.Started).Seconds() / m.cfg.Budget.Seconds()
-		right += "  " + meter(frac, 10, cLavender) + styleDim.Render(" budget")
+		right += "  " + meter(frac, 10, heatColor(frac)) + styleDim.Render(" budget")
 	}
 	return spread(b.String(), right, m.w)
 }
