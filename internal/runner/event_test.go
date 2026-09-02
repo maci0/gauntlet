@@ -12,6 +12,19 @@ import (
 // TestBusPublishAfterClose pins the shutdown contract: the auto-update and
 // hot-reload watchers can hold an event past the end of the run, and a Publish
 // landing after Close must be dropped, not panic on a closed channel.
+func TestStatusFailed(t *testing.T) {
+	for _, s := range []Status{StatusFail, StatusTimeout, StatusSkipped, StatusConflict} {
+		if !s.Failed() {
+			t.Errorf("%s should fail the run", s)
+		}
+	}
+	for _, s := range []Status{StatusOK, StatusInterrupted, ""} {
+		if s.Failed() {
+			t.Errorf("%s should not fail the run", s)
+		}
+	}
+}
+
 func TestBusPublishAfterClose(t *testing.T) {
 	bus := NewBus()
 	ch := bus.Subscribe(4)
@@ -25,9 +38,12 @@ func TestBusPublishAfterClose(t *testing.T) {
 
 func TestBusCloseIdempotent(t *testing.T) {
 	bus := NewBus()
-	bus.Subscribe(1)
+	ch := bus.Subscribe(1)
 	bus.Close()
 	bus.Close() // second close must not re-close the channels
+	if _, ok := <-ch; ok {
+		t.Fatal("subscription still open after a second Close")
+	}
 }
 
 // TestBusSubscribeAfterClose gives a late subscriber a closed channel so its
@@ -100,15 +116,6 @@ func TestBusConcurrentClose(t *testing.T) {
 		subs[i] = bus.Subscribe(64)
 	}
 
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			for i := range 200 {
-				bus.Publish(Event{Kind: EvOutput, Text: "line", Repeat: i})
-				bus.Publish(Event{Kind: EvLog, Text: "log"})
-			}
-		})
-	}
 	// Non-output events block until delivered, so consumers run alongside the
 	// publishers, exactly as the journal, reporter, and TUI do during a run.
 	var drained sync.WaitGroup
@@ -118,7 +125,22 @@ func TestBusConcurrentClose(t *testing.T) {
 			}
 		})
 	}
-	time.Sleep(time.Millisecond)
+
+	const publishers = 8
+	var started sync.WaitGroup
+	started.Add(publishers)
+	var wg sync.WaitGroup
+	for range publishers {
+		wg.Go(func() {
+			bus.Publish(Event{Kind: EvLog, Text: "start"})
+			started.Done()
+			for i := range 200 {
+				bus.Publish(Event{Kind: EvOutput, Text: "line", Repeat: i})
+				bus.Publish(Event{Kind: EvLog, Text: "log"})
+			}
+		})
+	}
+	started.Wait()
 	bus.Close()
 	wg.Wait()
 	drained.Wait()

@@ -322,11 +322,9 @@ sleep 10`)
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { r.Run(ctx); close(done) }()
-	time.Sleep(100 * time.Millisecond)
-	cancel()
-	<-done
+	defer cancel()
+	onFirstEvent(bus, EvReviewStart, cancel)
+	r.Run(ctx)
 	bus.Close()
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
 		t.Fatalf("canceled stack worktree survived:\n%s", list)
@@ -741,11 +739,9 @@ sleep 10`)
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { r.Run(ctx); close(done) }()
-	time.Sleep(100 * time.Millisecond)
-	cancel()
-	<-done
+	defer cancel()
+	onFirstEvent(bus, EvReviewStart, cancel)
+	r.Run(ctx)
 	bus.Close()
 
 	counts := r.Stats().Counts()

@@ -137,9 +137,12 @@ func TestGitHubTokenPrefersGHToken(t *testing.T) {
 }
 
 func TestAssetName(t *testing.T) {
+	// The name is the contract with the Makefile dist target: a mismatch
+	// means every installed binary fails to find its replacement.
 	got := assetName("1.2.3")
-	if !strings.Contains(got, runtime.GOOS) || !strings.Contains(got, runtime.GOARCH) {
-		t.Fatalf("asset name lacks the platform: %q", got)
+	want := "gauntlet_1.2.3_" + runtime.GOOS + "_" + runtime.GOARCH
+	if got != want {
+		t.Fatalf("assetName = %q, want %q", got, want)
 	}
 }
 
@@ -150,6 +153,16 @@ func TestNewerThan(t *testing.T) {
 	}
 	if rel.NewerThan("v1.2.3") {
 		t.Fatal("the same version must not reinstall")
+	}
+	if rel.NewerThan("1.2.3") {
+		t.Fatal("the same version without a v prefix must not reinstall")
+	}
+	// Comparison is exact, not semver: a published "downgrade" is still applied.
+	if !rel.NewerThan("2.0.0") {
+		t.Fatal("a lower tag than current must still be installable")
+	}
+	if (&Release{}).NewerThan("1.0.0") {
+		t.Fatal("a release with no tag is not newer than anything")
 	}
 }
 

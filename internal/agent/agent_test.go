@@ -267,9 +267,16 @@ func TestParseSubjectRefusesToCarryStructure(t *testing.T) {
 	if strings.ContainsAny(got, "\x1b\x07\x00\n") {
 		t.Fatalf("control bytes survived: %q", got)
 	}
+	if got != "fix: thing[31m and more" {
+		t.Fatalf("printable text did not survive sanitizing: %q", got)
+	}
 	long := "SUBJECT: " + strings.Repeat("x", 500) + "\n"
-	if n := len(ParseSubject([]byte(long))); n > subjectMax {
+	got = ParseSubject([]byte(long))
+	if n := len(got); n > subjectMax {
 		t.Fatalf("subject is %d bytes, want at most %d", n, subjectMax)
+	}
+	if got != strings.Repeat("x", subjectMax) {
+		t.Fatalf("truncation dropped the printable prefix: %q", got)
 	}
 }
 

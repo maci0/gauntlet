@@ -11,11 +11,14 @@ import (
 )
 
 func TestCommitSubjectPrefersTheAgent(t *testing.T) {
-	got := commitSubject("fix: guard the nil map write", gitx.Changes{
-		Tracked: []string{"internal/foo.go"},
-	})
+	ch := gitx.Changes{Tracked: []string{"internal/foo.go"}}
+	got := commitSubject("fix: guard the nil map write", ch)
 	if got != "fix: guard the nil map write" {
 		t.Fatalf("got %q", got)
+	}
+	got = commitSubject("  \n", ch)
+	if got != "chore: update foo.go" {
+		t.Fatalf("blank agent subject must fall through to the files: %q", got)
 	}
 }
 
@@ -64,9 +67,15 @@ func TestSubjectFromChangesStripsControlsAndFits(t *testing.T) {
 	if strings.ContainsRune(got, 0) {
 		t.Fatalf("control byte reached the subject: %q", got)
 	}
+	if got != "chore: update ok.go" {
+		t.Fatalf("visible name did not survive sanitizing: %q", got)
+	}
 	long := strings.Repeat("x", 80) + ".go"
 	got = subjectFromChanges(gitx.Changes{Tracked: []string{long}})
 	if n := len([]rune(got)); n > subjectMax {
 		t.Fatalf("subject is %d runes, want at most %d: %q", n, subjectMax, got)
+	}
+	if !strings.HasPrefix(got, "chore: update x") {
+		t.Fatalf("truncated subject lost the type and name: %q", got)
 	}
 }

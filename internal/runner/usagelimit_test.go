@@ -24,6 +24,7 @@ func TestParseUsagePercent(t *testing.T) {
 		{in: "91%", want: 91},
 		{in: "0", want: 0},
 		{in: "100", want: 100},
+		{in: "100.0", want: 100},
 		// A pipeline that narrates before printing the figure: the answer is
 		// the last line, not the first.
 		{in: "probing...\n77\n", want: 77},
@@ -32,6 +33,7 @@ func TestParseUsagePercent(t *testing.T) {
 		{in: "unknown", bad: true},
 		{in: "usage: 42", bad: true},
 		{in: "-1", bad: true},
+		{in: "100.1", bad: true},
 		{in: "101", bad: true},
 		// ParseFloat takes these, and a range check cannot reject NaN: every
 		// comparison against it is false, so it would pass as a percentage
@@ -96,8 +98,10 @@ func TestUsageLimitFinishesTheReviewInFlight(t *testing.T) {
 	set, _ := promptSet(t, "first-review", "second-review")
 	bin := fakeAgent(t, t.TempDir(), "claude", "true")
 	cfg := baseConfig(t, repo, set, []string{"first-review", "second-review"}, bin)
-	// Under the limit for the first review, over it before the second.
-	cfg.UsageCmd = probeScript(t, "10", "90")
+	// Under the limit for the first review, at the limit before the second:
+	// at-or-past is the documented stop, so answering exactly 80 must not
+	// keep spending.
+	cfg.UsageCmd = probeScript(t, "10", "80")
 	cfg.UsageLimit = 80
 
 	r := runQuiet(t, cfg)

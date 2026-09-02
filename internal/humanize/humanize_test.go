@@ -12,6 +12,7 @@ func TestDuration(t *testing.T) {
 	cases := map[time.Duration]string{
 		0:                  "0s",
 		45 * time.Second:   "45s",
+		60 * time.Second:   "1m00s",
 		90 * time.Second:   "1m30s",
 		3600 * time.Second: "1h00m",
 		7500 * time.Second: "2h05m",
@@ -49,8 +50,8 @@ func TestParseDuration(t *testing.T) {
 	}
 	// Each of these wraps time.Duration into a positive, plausible-looking
 	// value (5124096h becomes ~25m26s) and must be rejected outright.
-	for _, bad := range []string{"", "0", "-5m", "abc", "10y", "9999999999999999999999d",
-		"5124096h", "36893488148s", "177922d"} {
+	for _, bad := range []string{"", "0", "0s", "0m", "0h", "0d", "-5m", "abc", "10y",
+		"9999999999999999999999d", "5124096h", "36893488148s", "177922d"} {
 		if _, err := ParseDuration(bad); err == nil {
 			t.Errorf("ParseDuration(%q) should fail", bad)
 		}

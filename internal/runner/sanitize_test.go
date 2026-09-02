@@ -21,6 +21,9 @@ func TestSafePathsStripsHostileBytes(t *testing.T) {
 		"evil]0;pwned.md",
 		"abc.md",
 	}
+	if len(got) != len(want) {
+		t.Fatalf("safePaths returned %d paths, want %d: %q", len(got), len(want), got)
+	}
 	for i := range want {
 		if got[i] != want[i] {
 			t.Errorf("safePaths[%d] = %q, want %q", i, got[i], want[i])

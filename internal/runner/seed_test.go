@@ -64,6 +64,9 @@ func TestSeedReplaysScheduleAndPicks(t *testing.T) {
 	if slices.Equal(schedule(42), schedule(43)) {
 		t.Fatal("different seeds produced identical schedules")
 	}
+	if slices.Equal(picks(42, 12), picks(43, 12)) {
+		t.Fatal("different seeds produced identical agent picks")
+	}
 }
 
 // TestPicksDoNotDependOnDrawOrder pins the property that lets a --jobs > 1

@@ -40,10 +40,15 @@ func TestCountsTotalsAndFailures(t *testing.T) {
 	st.Add(Result{Review: "clash", Status: StatusConflict, Agent: agent.Spec{Tool: "codex"}})
 	st.Add(Result{Review: "ghost", Status: StatusSkipped, ExitCode: -1,
 		Agent: agent.Spec{Tool: "codex"}})
+	st.Add(Result{Review: "halted", Status: StatusInterrupted,
+		Agent: agent.Spec{Tool: "claude"}})
 
 	c := st.Counts()
-	if c.Total() != 5 {
+	if c.Total() != 6 {
 		t.Fatalf("total: %+v", c)
+	}
+	if c.Interrupted != 1 {
+		t.Fatalf("interrupted: %+v", c)
 	}
 	// A failure, a timeout, a conflict, and a skip fail the run, matching
 	// exit code 1's documented meaning; an interruption does not, because it
@@ -56,6 +61,11 @@ func TestCountsTotalsAndFailures(t *testing.T) {
 		failed[0].Review != "broken" || failed[1].Review != "clash" ||
 		failed[2].Review != "ghost" || failed[3].Review != "slow" {
 		t.Fatalf("failure list wrong: %+v", failed)
+	}
+	for _, res := range failed {
+		if res.Review == "halted" || res.Status == StatusInterrupted {
+			t.Fatalf("an interruption must not appear in the failure list: %+v", failed)
+		}
 	}
 
 	ins, del, tokens, agentTime, timed, haveLines := st.Totals()

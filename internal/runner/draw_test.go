@@ -15,6 +15,12 @@ import (
 // choice rests on: the same seed and key always give the same index, and the
 // index never escapes [0, n).
 func TestDrawIndexIsDeterministicAndBounded(t *testing.T) {
+	if got := drawIndex(42, "any", 0); got != 0 {
+		t.Fatalf("drawIndex(n=0) = %d, want 0", got)
+	}
+	if got := drawIndex(42, "any", 1); got != 0 {
+		t.Fatalf("drawIndex(n=1) = %d, want 0", got)
+	}
 	for n := 1; n <= 17; n++ {
 		for i := range 200 {
 			key := fmt.Sprintf("key-%d", i)
