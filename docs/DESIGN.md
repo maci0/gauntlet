@@ -38,7 +38,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
-| `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events |
+| `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage*.go`, dropped by `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
@@ -46,7 +46,6 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
-| `internal/runner/usage*.go` | the bridge to toktop's transcript reading, on unless `-tags notoktop` |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `prompt`, `normalize`, `gitx`, `ghx`, `streamjson`, `humanize`, and
@@ -211,9 +210,11 @@ Rules the runner enforces:
    to one agent launch, and merges what comes back. It runs under the merge
    lock, so the tip is fixed for its duration; it commits nothing that still
    carries conflict markers; and every failure path leaves exactly what a
-   plain conflict leaves. The agent sees only the conflicted files and is
-   forbidden to run git, like every other agent this tool launches. The
-   lane then advances without deleting the kept branch.
+   plain conflict leaves. The prompt names only the conflicted files and
+   forbids git, like every other agent this tool launches. A conflict with
+   more files than the prompt will name, or with no path safe to put in the
+   prompt, is left for a human instead of launching. The lane then advances
+   without deleting the kept branch.
 
 ### Isolated stacked pull requests (`--stacked-prs`)
 
@@ -524,10 +525,14 @@ name programs, so the port blanks every execution-bearing key it can reach.
 
 - Prompts are read with `O_NOFOLLOW`, size-capped, regular files only.
 - Agent binaries resolve on a PATH with cwd-relative entries removed.
-- Git runs with `core.fsmonitor`, `core.hooksPath`, `diff.external`,
-  `core.gitProxy`, and the pager forced empty, `protocol.ext.allow=never`, and
-  `GIT_SSH_COMMAND=ssh` unless the operator already set it, so a hostile repo's
-  config cannot execute code. Git's PATH is the same absolute-only list.
+- Git runs with `core.fsmonitor`, `diff.external`, and `core.gitProxy` forced
+  empty, `core.hooksPath=/dev/null`, `core.pager=cat`, `protocol.ext.allow=never`,
+  `attr.tree` pointed at the empty tree so in-tree `.gitattributes` cannot
+  select a smudge filter or merge driver, and local `filter.*`/`merge.*`/`diff.*`
+  commands plus `core.editor`, `core.askpass`, and peers blanked from
+  `--local --list`. `GIT_SSH_COMMAND=ssh` unless the operator already set it,
+  so a hostile repo's config cannot execute code. Git's PATH is the same
+  absolute-only list.
 - Untrusted text (prompt names, descriptions, agent output) is sanitized of
   control and bidi-formatting characters before display.
 - A `flock` on `.gauntlet.lock` prevents concurrent runs in one directory.

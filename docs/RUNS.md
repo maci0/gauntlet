@@ -43,7 +43,10 @@ gauntlet -j 4 -a mixed --once
 - A conflicting merge is **handed to an agent**: the conflict is replayed in a
   scratch checkout cut from the tip, one agent launch resolves the marked
   files, and the result is merged. The merge lock is held throughout, so the
-  tip cannot move under it. `--resolve-conflicts=false` skips this.
+  tip cannot move under it. `--resolve-conflicts=false` skips this. A conflict
+  with more files than the prompt will name, or with no path safe to put in
+  the prompt, is left aborted with the branch kept, the same as a resolver
+  that did not finish.
 - What the agent does not resolve (markers left in place, a launch that
   failed, a timeout) leaves the merge **aborted and the branch kept**, named
   after the review, so the work can be inspected or merged by hand. Unresolved

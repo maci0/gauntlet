@@ -122,8 +122,9 @@ makes an agent exit instead of run:
 | grok | `--output-format streaming-messages-json` |
 | clanker | `--stream` |
 
-`--stream` turns this on for whichever agents in the pool support it; the rest
-are launched exactly as before. The stream gives three things text mode hides:
+`--stream` is on by default: agents in the pool that have a machine-readable
+mode are asked for it; the rest are launched exactly as before. `--stream=false`
+keeps the prose launch. The stream gives three things text mode hides:
 usage as it accrues, the reasoning/output split, and text with no spinners or
 escape codes in it.
 

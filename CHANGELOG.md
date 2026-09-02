@@ -94,6 +94,11 @@ minor instead and were listed under Changed.
   shellcheck steps as that job, so a scripts/ change fails locally.
 - Docs for `--jobs N` describe the persistent lane worktrees the runner
   actually uses, not the per-review throwaway checkouts that 1.13.0 replaced.
+- Design docs name the git hardening the runner actually applies
+  (`core.pager=cat`, `attr.tree`, local driver blanks) and the conflict-step
+  cap that leaves an oversized conflict for a human. `--stream` is documented
+  as on by default, matching the flag. The landing-page trust model names
+  `core.pager=cat` rather than an empty pager.
 - Live usage ticks on the event bus are droppable, the same as agent output:
   a slow subscriber no longer stalls the scheduler on reconstructible
   telemetry. Final token counts still ride on `review_end`.

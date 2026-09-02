@@ -242,8 +242,8 @@ Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
 Agents run with their permission prompts disabled. That is the point of the
 tool, and it is why the containment rules exist: prompts are read with
 `O_NOFOLLOW` and size-capped, agent binaries resolve on a `PATH` without
-cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath`,
-`diff.external`, and the pager forced empty, untrusted text is stripped of
+cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath=/dev/null`,
+`diff.external`, and `core.pager=cat`, untrusted text is stripped of
 control and bidi characters before display, and a `flock` on `.gauntlet.lock`
 keeps two runs out of one directory.
 
