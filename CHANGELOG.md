@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.17.0
+
 ### Added
 
 - `make ci` runs the Go pull-request checks (`make check` then `make test`).
@@ -118,6 +120,14 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- A hot-reload handoff that cannot be read or parsed now aborts the successor
+  instead of starting a fresh run. The unparseable case was silent, so the new
+  process re-ran every finished review under a new run id.
+- Lane worktree removal failures and unreadable `HEAD` reads during `--jobs`
+  scheduling are logged. Removal errors were discarded, and a failed `HEAD`
+  read was indistinguishable from an unchanged tip, so a lane silently kept
+  its stale base.
+- `gauntlet update` network and JSON decode errors name the URL that failed.
 - `--merge-into` no longer treats untracked files as uncommitted work. The
   merge is a scratch checkout of committed work, so a local notes.txt was
   never going to be in it; refusing the merge used to drop a loop's
