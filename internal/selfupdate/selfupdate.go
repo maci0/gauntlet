@@ -152,7 +152,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -160,7 +160,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	}
 	var rel Release
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode %s: %w", url, err)
 	}
 	if rel.TagName == "" {
 		return nil, errors.New("release has no tag")
@@ -284,7 +284,7 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -302,7 +302,7 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 	setGitHubAuth(req)
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s: %w", url, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

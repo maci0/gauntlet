@@ -181,7 +181,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, errors.New("git is required for stacked PRs")
 	}
 	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return nil, fmt.Errorf("invalid stack branch %q", branch)
+		return nil, fmt.Errorf("invalid stack branch %q: %w", branch, err)
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
@@ -293,7 +293,7 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 		return errors.New("nil stack worktree")
 	}
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return fmt.Errorf("invalid stack branch %q", branch)
+		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
 	}
 	sub := &Repo{Dir: w.Dir}
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "-c", branch, base); err != nil {
@@ -549,7 +549,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 		return MergeResult{Detail: "git is not available"}
 	}
 	if _, err := r.Tip(ctx, "refs/heads/"+target); err != nil {
-		return MergeResult{Detail: fmt.Sprintf("no local branch %s to merge into", target)}
+		return MergeResult{Detail: fmt.Sprintf("no local branch %s to merge into: %v", target, err)}
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
@@ -676,7 +676,10 @@ func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string)
 func (r *Repo) RemoteURL(ctx context.Context, remote string) (string, error) {
 	out, err := r.run(ctx, gitQuick, "config", "--get", "remote."+remote+".url")
 	if err != nil {
-		return "", fmt.Errorf("no Git remote %s", remote)
+		if exitsWith(err, 1) {
+			return "", fmt.Errorf("no Git remote %s", remote)
+		}
+		return "", fmt.Errorf("git remote %s: %w", remote, err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -685,8 +688,14 @@ func (r *Repo) RemoteURL(ctx context.Context, remote string) (string, error) {
 // configured push URL when one exists, the fetch URL otherwise. Raw like
 // RemoteURL, for the same reason.
 func (r *Repo) RemotePushURL(ctx context.Context, remote string) (string, error) {
-	if out, err := r.run(ctx, gitQuick, "config", "--get", "remote."+remote+".pushurl"); err == nil {
+	out, err := r.run(ctx, gitQuick, "config", "--get", "remote."+remote+".pushurl")
+	if err == nil {
 		return strings.TrimSpace(string(out)), nil
+	}
+	// Exit 1 is "no such key": fall back to the fetch URL. Any other failure
+	// (timeout, not a repository) must not be papered over with a different URL.
+	if !exitsWith(err, 1) {
+		return "", fmt.Errorf("git remote %s push URL: %w", remote, err)
 	}
 	return r.RemoteURL(ctx, remote)
 }
@@ -752,7 +761,10 @@ func (r *Repo) FetchRemoteBranchTip(ctx context.Context, remote, branch string) 
 		return "", err
 	}
 	tip, err := r.Tip(ctx, "FETCH_HEAD")
-	if err != nil || tip == "" {
+	if err != nil {
+		return "", fmt.Errorf("fetch returned no branch tip: %w", err)
+	}
+	if tip == "" {
 		return "", errors.New("fetch returned no branch tip")
 	}
 	return tip, nil
@@ -771,7 +783,10 @@ func (r *Repo) FetchBranch(ctx context.Context, remote, branch string) error {
 // before a user-supplied base is joined into refs/heads or a refspec.
 func (r *Repo) ValidateBranchName(ctx context.Context, branch string) error {
 	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return fmt.Errorf("invalid branch name %q", branch)
+		if exitsWith(err, 1) {
+			return fmt.Errorf("invalid branch name %q", branch)
+		}
+		return fmt.Errorf("invalid branch name %q: %w", branch, err)
 	}
 	return nil
 }
