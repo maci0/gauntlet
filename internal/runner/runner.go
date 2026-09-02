@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -475,7 +474,7 @@ func (r *Runner) schedule(loopNo int) []string {
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
 		Kind: EvRunStart, Dir: r.cfg.Dir, Version: r.cfg.Version,
-		Agents: AgentLabels(r.cfg.Agents), Total: len(r.cfg.Reviews),
+		Agents: agent.Labels(r.cfg.Agents), Total: len(r.cfg.Reviews),
 		Seed: r.seed,
 	})
 	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
@@ -1325,15 +1324,3 @@ func linesNote(res Result) string {
 	}
 	return fmt.Sprintf(", +%d/-%d lines", res.Ins, res.Del)
 }
-
-// AgentLabels renders each spec as its display form.
-func AgentLabels(specs []agent.Spec) []string {
-	out := make([]string, 0, len(specs))
-	for _, s := range specs {
-		out = append(out, s.Label())
-	}
-	return out
-}
-
-// LockPath is the per-directory lock file that keeps two runs apart.
-func LockPath(dir string) string { return filepath.Join(dir, gitx.LockName) }

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
 
@@ -26,6 +27,9 @@ const (
 
 // ErrLocked means another gauntlet holds this directory's lock.
 var ErrLocked = errors.New("another gauntlet is already running here")
+
+// LockPath is the per-directory lock file that keeps two runs apart.
+func LockPath(dir string) string { return filepath.Join(dir, gitx.LockName) }
 
 // Lock is an exclusive, advisory lock on one review directory.
 type Lock struct {
