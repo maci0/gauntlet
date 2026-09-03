@@ -7,6 +7,7 @@ import (
 	"go/parser"
 	"go/token"
 	"io/fs"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -382,9 +383,7 @@ func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod download %s: %v\n%s", strings.Join(missing, " "), err, out)
 	}
-	for path, dir := range listModuleDirs(t, root, missing) {
-		dirs[path] = dir
-	}
+	maps.Copy(dirs, listModuleDirs(t, root, missing))
 	return dirs
 }
 
