@@ -517,13 +517,118 @@ func BranchSlug(s string) string {
 	return out
 }
 
-// StackBranchName is stable for one base commit, schedule position, and
-// review. That stability is how a repeated invocation recognizes layers it
-// already published without making unrelated stacks collide.
-func StackBranchName(baseTip string, index int, review string) string {
+// StackBranchPrefix is the deterministic head of every branch name one stack
+// layer can publish under: the 1-based schedule position keeps merge order
+// visible and sortable, and the review stem says which pass wrote it. It is
+// computable before the review runs, which is what lets a repeated invocation
+// find layers it already published whatever topic they ended up named after.
+func StackBranchPrefix(index int, review string) string {
+	return fmt.Sprintf("review/%02d-%s", index+1, BranchSlug(review))
+}
+
+// StackProvisionalBranch names a layer before its commit exists, when there
+// is no subject to take a topic from. The base-tip fragment keeps provisional
+// branches of unrelated stacks (same repository, older base) from colliding
+// on one name; the -wip- marker is what publication or a recovery pass
+// renames away once the commit's subject is known.
+func StackProvisionalBranch(baseTip string, index int, review string) string {
 	tip := BranchSlug(baseTip)
-	if len(tip) > 12 {
-		tip = tip[:12]
+	if len(tip) > 6 {
+		tip = tip[:6]
 	}
-	return fmt.Sprintf("gauntlet/stack/%s/%02d-%s", tip, index+1, BranchSlug(review))
+	return StackBranchPrefix(index, review) + "-wip-" + tip
+}
+
+// StackFinalBranch names a published layer after its commit subject, or ""
+// when the subject yields no usable topic, in which case the layer keeps its
+// provisional name.
+func StackFinalBranch(index int, review, subject string) string {
+	topic := TopicSlug(subject)
+	if topic == "" {
+		return ""
+	}
+	return StackBranchPrefix(index, review) + "-" + topic
+}
+
+// topicSlugMax bounds the topic fragment of a branch name. The subject it is
+// cut from is capped elsewhere at 100 runes; a ref that long stops being
+// something a reviewer can read in a branch list.
+const topicSlugMax = 40
+
+// TopicSlug distills a commit subject into the short topic a stack branch
+// name carries. The conventional-commit type and scope repeat what the
+// review stem already says, so they are dropped; what remains is lowercased
+// and reduced to hyphenated words, cut at a word boundary. The output is
+// always a valid ref fragment: lowercase alphanumerics and single interior
+// hyphens carry none of the sequences check-ref-format refuses.
+func TopicSlug(subject string) string {
+	if head, rest, ok := strings.Cut(subject, ":"); ok && isConventionalType(head) {
+		subject = rest
+	}
+	var b strings.Builder
+	pending := false // a hyphen is owed only between words
+	for _, r := range strings.ToLower(subject) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			need := 1
+			if pending {
+				need = 2
+			}
+			if b.Len()+need > topicSlugMax {
+				return b.String()
+			}
+			if pending {
+				b.WriteByte('-')
+				pending = false
+			}
+			b.WriteRune(r)
+		default:
+			if b.Len() > 0 {
+				pending = true
+			}
+		}
+	}
+	return b.String()
+}
+
+// isConventionalType recognizes the "type" or "type(scope)!" head of a
+// conventional-commit subject, so TopicSlug drops it rather than spending the
+// topic's budget repeating what the branch prefix already says.
+func isConventionalType(head string) bool {
+	head = strings.TrimSpace(head)
+	if head == "" || len(head) > 30 {
+		return false
+	}
+	for _, r := range head {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '(', r == ')', r == '-', r == '_', r == '!':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// RenameBranch moves the worktree's current branch to a new name, which is
+// how a layer sheds its provisional name once its commit subject is known.
+// The rename happens in the worktree so the checked-out HEAD follows it.
+func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
+	if w == nil || w.repo == nil || w.Branch == "" {
+		return errors.New("no branch to rename")
+	}
+	if name == w.Branch {
+		return nil
+	}
+	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", name); err != nil {
+		return fmt.Errorf("invalid stack branch %q: %w", name, err)
+	}
+	sub := &Repo{Dir: w.Dir}
+	// -m, never -M: a same-named branch holding real work is kept, and the
+	// failure is reported, matching reclaimEmptyBranch's rule.
+	if _, err := sub.run(ctx, gitNormal, "branch", "-m", w.Branch, name); err != nil {
+		return fmt.Errorf("git branch -m %s %s: %w", w.Branch, name, err)
+	}
+	w.Branch = name
+	return nil
 }

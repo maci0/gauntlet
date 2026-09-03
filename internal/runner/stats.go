@@ -29,6 +29,11 @@ type Result struct {
 	// review printed one. The runner writes the commit in worktree mode, and
 	// this is the only description of the change it has.
 	Subject string
+	// FileNotes are the per-file "what was done" lines the review printed,
+	// the only per-file description of the change that exists anywhere: a
+	// stacked layer's PR body renders them beside the paths its commit
+	// touched.
+	FileNotes []agent.FileNote
 	// Thinking is the reasoning share of Tokens, 0 when the agent does not
 	// report one.
 	Thinking int

@@ -735,7 +735,7 @@ func TestAddStackWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	branch := "gauntlet/stack/" + base[:12] + "/01-sec-review"
+	branch := StackProvisionalBranch(base, 0, "sec-review")
 	wt, err := r.AddStackWorktree(ctx, branch, "run", base)
 	if err != nil {
 		t.Fatal(err)
@@ -1102,5 +1102,126 @@ func TestRemotePushURLDoesNotFallBackOnGitFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "push URL") {
 		t.Fatalf("fell back to the fetch URL instead of reporting the push-url failure: %v", err)
+	}
+}
+
+func TestStackBranchNaming(t *testing.T) {
+	// The prefix is what recovery recomputes before the review runs, so it
+	// must depend on nothing a run learns later; the provisional name extends
+	// it with the base tip so unrelated stacks cannot collide; the final name
+	// extends it with a topic cut from the commit subject.
+	prefix := StackBranchPrefix(2, "sec-bolide")
+	if prefix != "review/03-sec-bolide" {
+		t.Fatalf("prefix = %q", prefix)
+	}
+	prov := StackProvisionalBranch("a3f2c19deadbeef", 2, "sec-bolide")
+	if prov != "review/03-sec-bolide-wip-a3f2c1" {
+		t.Fatalf("provisional = %q", prov)
+	}
+	final := StackFinalBranch(2, "sec-bolide", "fix(input)!: validate the request body")
+	if final != "review/03-sec-bolide-validate-the-request-body" {
+		t.Fatalf("final = %q", final)
+	}
+	if !strings.HasPrefix(prov, prefix+"-") || !strings.HasPrefix(final, prefix+"-") {
+		t.Fatalf("published names must extend the recovery prefix: %q %q", prov, final)
+	}
+
+	// A subject with no usable topic leaves the layer on its provisional name.
+	if got := StackFinalBranch(0, "sec-review", "☃ ☃ ☃"); got != "" {
+		t.Fatalf("unusable subject produced %q", got)
+	}
+
+	// Whatever the subject holds, the name must satisfy check-ref-format:
+	// hostile subjects become refs, and an invalid one would stop the stack.
+	r := newRepo(t)
+	ctx := context.Background()
+	for _, subject := range []string{
+		"fix: a..b //c ~^:? *[\\ @{ .lock",
+		"feat(scope): -- leading -and-trailing- ",
+		"chore: " + strings.Repeat("wordy-", 40),
+		"not a conventional subject at all: with a colon later",
+	} {
+		name := StackFinalBranch(0, "sec-review", subject)
+		if name == "" {
+			continue
+		}
+		if err := r.ValidateBranchName(ctx, name); err != nil {
+			t.Fatalf("subject %q made invalid ref %q: %v", subject, name, err)
+		}
+	}
+
+	// The topic budget cuts at a word boundary, never mid-word or on a dash.
+	long := TopicSlug("chore: alpha bravo charlie delta echo foxtrot golf hotel india")
+	if strings.HasSuffix(long, "-") || len(long) > 40 {
+		t.Fatalf("topic slug %q breaches its budget or ends on a dash", long)
+	}
+	if TopicSlug("fix: guard the nil map write") != "guard-the-nil-map-write" {
+		t.Fatalf("topic slug = %q", TopicSlug("fix: guard the nil map write"))
+	}
+}
+
+func TestBranchesExcludeGauntletNamespaces(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "feature/keep-me")
+	gitIn(t, r.Dir, "branch", "gauntlet/run-l1-00/sec-review")
+	gitIn(t, r.Dir, "branch", "review/01-sec-review-some-topic")
+	names := r.Branches(ctx)
+	if !slices.Contains(names, "feature/keep-me") {
+		t.Fatalf("user branch missing from %v", names)
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, "gauntlet/") || strings.HasPrefix(name, "review/") {
+			t.Fatalf("gauntlet-owned branch %s offered as a merge target", name)
+		}
+	}
+}
+
+func TestBranchListingByPrefixAndRename(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The prefix must not match a longer review stem that merely starts the
+	// same way: 01-sec-review and 01-sec-review-extra are different reviews.
+	gitIn(t, r.Dir, "branch", "review/01-sec-review-wip-abc123")
+	gitIn(t, r.Dir, "branch", "review/01-sec-review")
+	gitIn(t, r.Dir, "branch", "review/01-sec-reviewer-topic")
+	names, err := r.LocalBranchesWithPrefix(ctx, "review/01-sec-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"review/01-sec-review", "review/01-sec-review-wip-abc123"}
+	slices.Sort(names)
+	if !slices.Equal(names, want) {
+		t.Fatalf("local prefix listing = %v, want %v", names, want)
+	}
+
+	remote := t.TempDir()
+	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+		t.Fatalf("init bare remote: %v: %s", err, out)
+	}
+	gitIn(t, r.Dir, "remote", "add", "origin", remote)
+	gitIn(t, r.Dir, "push", "-q", "origin",
+		"review/01-sec-review-wip-abc123", "review/01-sec-reviewer-topic")
+	tips, err := r.RemoteBranchesWithPrefix(ctx, "origin", "review/01-sec-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tips) != 1 || tips["review/01-sec-review-wip-abc123"] != base {
+		t.Fatalf("remote prefix listing = %v", tips)
+	}
+
+	if err := r.RenameBranch(ctx, "review/01-sec-review-wip-abc123", "review/01-sec-review-final"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Tip(ctx, "refs/heads/review/01-sec-review-final"); err != nil {
+		t.Fatalf("renamed branch missing: %v", err)
+	}
+	// -m refuses to overwrite: a same-named branch holding work survives.
+	if err := r.RenameBranch(ctx, "review/01-sec-review-final", "review/01-sec-reviewer-topic"); err == nil {
+		t.Fatal("rename over an existing branch must fail")
 	}
 }

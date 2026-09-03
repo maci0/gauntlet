@@ -1065,6 +1065,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	res.Elapsed = r.now().Sub(start)
 	res.ExitCode = pr.ExitCode
 	res.Subject = pr.Subject
+	res.FileNotes = pr.FileNotes
 	usageMu.Lock()
 	res.Tokens = max(pr.Usage.Reported(), best)
 	res.Thinking = max(max(pr.Usage.Thinking, 0), bestThink)

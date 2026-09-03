@@ -139,3 +139,61 @@ func TestPRBodyBoundsEveryUntrustedValue(t *testing.T) {
 		t.Fatalf("nothing was truncated:\n%s", body)
 	}
 }
+
+func TestPRBodyRendersFileNotes(t *testing.T) {
+	// The diff shows which files moved; the note beside each path is the only
+	// place that says what was done to it. A file the agent described nothing
+	// for renders exactly as it would without notes: a bare path.
+	body := prBody{
+		Title: "fix(cache): drop the stale entry before the refill",
+		Files: []string{"internal/cache/store.go", "internal/cache/store_test.go"},
+		Notes: map[string]string{
+			"internal/cache/store.go": "guard the refill against a stale read.",
+		},
+		Base: "main", Root: "main", Layer: 1,
+	}.render()
+	if !strings.Contains(body, "- `internal/cache/store.go` — guard the refill against a stale read\n") {
+		t.Fatalf("note missing or trailing period kept:\n%s", body)
+	}
+	if !strings.Contains(body, "- `internal/cache/store_test.go`\n") {
+		t.Fatalf("a file without a note must render as a bare path:\n%s", body)
+	}
+}
+
+func TestPRBodyNeutralizesHostileNotes(t *testing.T) {
+	// A note is agent output quoting repository content: injection with the
+	// repository's words. Newlines must not open a heading or a list item,
+	// and a backtick must not open a code span that swallows the next path.
+	long := strings.Repeat("z", 4000)
+	body := prBody{
+		Title: "chore: tidy",
+		Files: []string{"a.go", "b.go", strings.Repeat("p", 500)},
+		Notes: map[string]string{
+			"a.go":                   "done\n## Injected\n- item\n```go\ncode",
+			"b.go":                   "un`balanced " + long,
+			strings.Repeat("p", 500): long,
+		},
+		Base: "main", Root: "main", Layer: 1,
+	}.render()
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(line, "#") && line != "## Summary" &&
+			line != "## Changes" && line != "## Stack" {
+			t.Fatalf("a note forged the heading %q:\n%s", line, body)
+		}
+		if strings.HasPrefix(line, "```") {
+			t.Fatalf("a note opened a code fence:\n%s", body)
+		}
+		if strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "- `") {
+			t.Fatalf("a note forged the list item %q:\n%s", line, body)
+		}
+		if strings.Count(line, "`")%2 != 0 {
+			t.Fatalf("unbalanced backticks can swallow the next line %q:\n%s", line, body)
+		}
+	}
+	if len(body) > prBodyMax+3 {
+		t.Fatalf("unbounded body of %d bytes", len(body))
+	}
+	if !strings.Contains(body, "…") {
+		t.Fatalf("nothing was truncated:\n%s", body)
+	}
+}

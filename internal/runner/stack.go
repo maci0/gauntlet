@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
 )
@@ -141,7 +143,7 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	if err := gh.Preflight(ctx); err != nil {
 		return nil, err
 	}
-	probe := fmt.Sprintf("gauntlet/preflight/%s-%s", shortTip(baseTip), safeTag(cfg.RunID))
+	probe := fmt.Sprintf("review/preflight-%s-%s", shortTip(baseTip), safeTag(cfg.RunID))
 	if err := repo.CanPushBranch(ctx, cfg.PushRemote, baseTip, probe); err != nil {
 		return nil, fmt.Errorf("cannot push stack branches to %s: %w", cfg.PushRemote, err)
 	}
@@ -194,7 +196,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
-				gitx.StackBranchName(r.stackBaseTip, i, r.cfg.Reviews[i]), parent,
+				gitx.StackProvisionalBranch(r.stackBaseTip, i, r.cfg.Reviews[i]), parent,
 				"recover completed stack", err)
 			return false
 		}
@@ -249,13 +251,15 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, review,
-				gitx.StackBranchName(r.stackBaseTip, i, review), parent, "recover stack layer", err)
+				gitx.StackProvisionalBranch(r.stackBaseTip, i, review), parent, "recover stack layer", err)
 			return false
 		}
 		if handled {
 			continue
 		}
-		branch := gitx.StackBranchName(r.stackBaseTip, i, review)
+		// The layer starts under a deterministic provisional name and takes
+		// its topic name only once its commit subject exists.
+		branch := gitx.StackProvisionalBranch(r.stackBaseTip, i, review)
 		if wt == nil {
 			wt, err = r.repo.AddStackWorktree(ctx, branch, r.cfg.RunID, parentTip)
 		} else {
@@ -308,7 +312,19 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			r.st.Add(res)
 			continue
 		}
-		body := r.stackBody(ctx, review, title, wt.Dir, parentTip, "HEAD", parent, published+1)
+		// The commit exists, so its subject can name the branch. A rename that
+		// cannot happen (no usable topic, or the name is taken locally or on
+		// the remote) keeps the provisional name, which is unique by
+		// construction; the stack stays publishable either way.
+		if final := r.stackFinalBranch(ctx, i, review, title, branch); final != "" {
+			if err := wt.RenameBranch(ctx, final); err != nil {
+				r.log("Keeping provisional stack branch %s: %v", branch, err)
+			} else {
+				branch = final
+				res.Branch = final
+			}
+		}
+		body := r.stackBody(ctx, review, title, wt.Dir, parentTip, "HEAD", parent, published+1, res.FileNotes)
 		// The layer's own commit range is the exact measurement, so it replaces
 		// whatever the shared-tree sample estimated -- but only when git
 		// answered. An unreadable range leaves the estimate standing rather
@@ -372,59 +388,104 @@ const (
 	stackRecoverCurrent
 )
 
-// recoverStackLayer finishes or reuses a deterministic layer left by an
-// earlier process. It returns handled=false only when the agent must run.
+// recoverStackLayer finishes or reuses a layer left by an earlier process. It
+// returns handled=false only when the agent must run.
+//
+// A published layer's name carries a topic taken from a commit subject that
+// does not exist yet when this runs, so the name cannot be recomputed. What
+// can be is its deterministic prefix: candidates are every local and remote
+// branch under it, and the commit graph — not the name — decides which one is
+// this stack's layer. The layer is by construction a one-commit child of the
+// previous layer's tip, which descends from the pinned base commit; a stale
+// same-prefixed branch from an older stack hangs off some other parent and is
+// rejected by that ancestry check.
 func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, parent, parentTip string,
 	pass stackRecoverPass, layer int) (next, nextTip string, handled bool, recoverErr error) {
 
-	branch := gitx.StackBranchName(r.stackBaseTip, scheduleIndex, review)
-	prURL, err := r.gh.Find(ctx, branch, parent)
+	prefix := gitx.StackBranchPrefix(scheduleIndex, review)
+	provisional := gitx.StackProvisionalBranch(r.stackBaseTip, scheduleIndex, review)
+	locals, err := r.repo.LocalBranchesWithPrefix(ctx, prefix)
 	if err != nil {
 		return parent, parentTip, false, err
 	}
-	localTip, localErr := r.repo.Tip(ctx, "refs/heads/"+branch)
-	remoteTip, remoteFound, remoteErr := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, branch)
-	if remoteErr != nil {
-		return parent, parentTip, false, remoteErr
+	remotes, err := r.repo.RemoteBranchesWithPrefix(ctx, r.stackReadRemote, prefix)
+	if err != nil {
+		return parent, parentTip, false, err
 	}
-	if localErr != nil && remoteFound {
-		if err := r.repo.FetchBranch(ctx, r.stackReadRemote, branch); err != nil {
-			return parent, parentTip, false, err
+	names := slices.Clone(locals)
+	for name := range remotes {
+		if !slices.Contains(names, name) {
+			names = append(names, name)
 		}
-		localTip, localErr = r.repo.Tip(ctx, "refs/heads/"+branch)
 	}
-	if localErr != nil {
-		if prURL != "" {
-			return parent, parentTip, false, errors.New("existing PR has no recoverable head branch")
+	slices.Sort(names)
+
+	var branch, branchTip string
+	for _, name := range names {
+		localTip, localErr := r.repo.Tip(ctx, "refs/heads/"+name)
+		remoteTip, remoteFound := remotes[name]
+		if localErr != nil && remoteFound {
+			if err := r.repo.FetchBranch(ctx, r.stackReadRemote, name); err != nil {
+				return parent, parentTip, false, err
+			}
+			localTip, localErr = r.repo.Tip(ctx, "refs/heads/"+name)
 		}
+		if localErr != nil {
+			continue
+		}
+		if localTip == parentTip {
+			// A provisional branch whose review never committed. Only this
+			// stack's own local leftover is reclaimed; any other branch
+			// sitting at the parent is stale and merely ignored.
+			if name == provisional && !remoteFound {
+				r.repo.DeleteBranch(context.WithoutCancel(ctx), name)
+			}
+			continue
+		}
+		if actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+name); err != nil || actualParent != parentTip {
+			continue // ancestry rejects it: not a one-commit child of this stack's previous layer
+		}
+		if remoteFound && remoteTip != localTip {
+			return parent, parentTip, false, fmt.Errorf("local and remote stack branch %s differ", name)
+		}
+		if branch != "" {
+			return parent, parentTip, false, fmt.Errorf(
+				"both %s and %s look like this stack's layer %d; delete the stale one", branch, name, layer)
+		}
+		branch, branchTip = name, localTip
+	}
+	if branch == "" {
 		return parent, parentTip, pass == stackRecoverPrefix, nil
 	}
-	if localTip == parentTip {
-		if remoteFound {
-			return parent, parentTip, false, errors.New("remote stack branch has no review commit")
+
+	title, err := r.repo.CommitSubject(ctx, "refs/heads/"+branch)
+	if err != nil {
+		return parent, parentTip, false, err
+	}
+	_, remoteFound := remotes[branch]
+	// A killed run can stop between commit and rename. Finish the rename here,
+	// but never for a name the remote already knows: the remote must stay
+	// self-describing, and renaming under an open PR would strand its head.
+	if branch == provisional && !remoteFound {
+		if final := r.stackFinalBranch(ctx, scheduleIndex, review, title, branch); final != "" {
+			if err := r.repo.RenameBranch(ctx, branch, final); err != nil {
+				r.log("Keeping provisional stack branch %s: %v", branch, err)
+			} else {
+				branch = final
+			}
 		}
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), branch)
-		return parent, parentTip, pass == stackRecoverPrefix, nil
-	}
-	actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+branch)
-	if err != nil || actualParent != parentTip {
-		return parent, parentTip, false,
-			fmt.Errorf("existing branch is not a one-commit child of %s", parent)
-	}
-	if remoteFound && remoteTip != localTip {
-		return parent, parentTip, false, errors.New("local and remote stack branches differ")
 	}
 	if !remoteFound {
 		if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
 			return parent, parentTip, false, fmt.Errorf("push: %w", err)
 		}
 	}
+	prURL, err := r.gh.Find(ctx, branch, parent)
+	if err != nil {
+		return parent, parentTip, false, err
+	}
 	if prURL == "" {
-		title, err := r.repo.CommitSubject(ctx, "refs/heads/"+branch)
-		if err != nil {
-			return parent, parentTip, false, err
-		}
-		body := r.stackBody(ctx, review, title, r.cfg.Dir, parentTip, localTip, parent, layer)
+		body := r.stackBody(ctx, review, title, r.cfg.Dir, parentTip, branchTip, parent, layer, nil)
 		prURL, err = r.ensurePullRequest(ctx, branch, parent, body)
 		if err != nil {
 			return parent, parentTip, false, err
@@ -434,7 +495,46 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		r.st.Add(Result{Review: review, Branch: branch, Base: parent, URL: prURL})
 	}
 	r.publishPullRequest(loopNo, review, branch, parent, prURL, true)
-	return branch, localTip, true, nil
+	return branch, branchTip, true, nil
+}
+
+// stackFinalBranch picks the published name of a committed layer: the
+// deterministic prefix plus a topic cut from the commit subject. A name
+// already taken by an unrelated branch — locally or on the remote — gets the
+// stack's short base tip appended at the end, where nobody reads it; if even
+// that is taken, "" says to keep the provisional name, which is unique by
+// construction.
+func (r *Runner) stackFinalBranch(ctx context.Context, index int, review, subject, current string) string {
+	final := gitx.StackFinalBranch(index, review, subject)
+	if final == "" || final == current {
+		return ""
+	}
+	if !r.stackNameTaken(ctx, final) {
+		return final
+	}
+	final += "-" + shortDisambiguator(r.stackBaseTip)
+	if final == current || r.stackNameTaken(ctx, final) {
+		return ""
+	}
+	return final
+}
+
+// stackNameTaken reports whether a branch name is already in use locally or
+// on the remote. An unreadable remote counts as taken: renaming onto a name
+// that cannot be checked risks a rejected push over what is only cosmetics.
+func (r *Runner) stackNameTaken(ctx context.Context, name string) bool {
+	if _, err := r.repo.Tip(ctx, "refs/heads/"+name); err == nil {
+		return true
+	}
+	_, found, err := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, name)
+	return err != nil || found
+}
+
+func shortDisambiguator(tip string) string {
+	if len(tip) > 6 {
+		return tip[:6]
+	}
+	return tip
 }
 
 func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, body prBody) (string, error) {
@@ -445,11 +545,16 @@ func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, bod
 }
 
 // stackBody assembles what a layer's PR says about itself: the subject area
-// the review declared, the paths its commit touched, how big it is, and where
-// it sits in the chain. Anything git will not answer is left out rather than
-// guessed at; a body missing its file list still orients a reader, while one
-// naming the wrong files misleads them.
-func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, base string, layer int) prBody {
+// the review declared, the paths its commit touched with the agent's own
+// account of what was done to each, how big it is, and where it sits in the
+// chain. Anything git will not answer is left out rather than guessed at; a
+// body missing its file list still orients a reader, while one naming the
+// wrong files misleads them. Notes are matched against the commit's own
+// paths for the same reason: a note whose path the commit never touched
+// describes the wrong diff. A recovered layer has no notes — its agent ran
+// in a process that is gone — and renders as a bare path list.
+func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, base string,
+	layer int, notes []agent.FileNote) prBody {
 	b := prBody{Title: title, Base: base, Root: r.stackBase, Layer: layer}
 	if rev, ok := r.cfg.Set.Get(review); ok {
 		b.Scope = rev.Summary()
@@ -457,10 +562,30 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 	if files, err := r.repo.ChangedFiles(ctx, dir, from, to); err == nil {
 		b.Files = files
 	}
+	if len(notes) > 0 && len(b.Files) > 0 {
+		byKey := make(map[string]string, len(notes))
+		for _, n := range notes {
+			byKey[noteKey(n.Path)] = n.Note
+		}
+		for _, f := range b.Files {
+			if note, ok := byKey[noteKey(f)]; ok {
+				if b.Notes == nil {
+					b.Notes = make(map[string]string)
+				}
+				b.Notes[f] = note
+			}
+		}
+	}
 	if ins, del, ok := r.repo.DiffStat(ctx, dir, from, to); ok {
 		b.Ins, b.Del, b.HaveLines = ins, del, true
 	}
 	return b
+}
+
+// noteKey aligns an agent-printed path with a git-reported one: forward
+// slashes and no leading "./".
+func noteKey(p string) string {
+	return strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./")
 }
 
 func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool) {

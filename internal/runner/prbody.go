@@ -26,6 +26,11 @@ const (
 	prBodyPathMax  = 120
 	prBodyTitleMax = 120
 	prBodyScopeMax = 160
+	prBodyNoteMax  = 200
+	// prBodyMax caps the whole rendered body. The per-field caps above make
+	// reaching it need many hostile inputs at once, but nothing below relies
+	// on that arithmetic staying true as fields are added.
+	prBodyMax = 8000
 )
 
 // prBody is what one stacked layer knows about itself at publication time.
@@ -36,6 +41,10 @@ type prBody struct {
 	Title string   // the commit subject, which is also the PR title
 	Scope string   // the review's declared subject area; empty when it declares none
 	Files []string // paths this layer's single commit touches
+	// Notes maps a touched path to the agent's one-line account of what was
+	// done to it. Only paths present in Files are rendered: a note whose path
+	// the commit never touched describes the wrong diff, or was planted.
+	Notes map[string]string
 	Ins   int
 	Del   int
 	// HaveLines distinguishes a measured zero from an unmeasured one. A diff
@@ -64,7 +73,7 @@ func (b prBody) render() string {
 		sb.WriteString("\n\n## Stack\n\n" + note)
 	}
 	sb.WriteString("\n")
-	return sb.String()
+	return normalize.Truncate(sb.String(), prBodyMax)
 }
 
 // changes lists the touched paths and the size of the change. Either half can
@@ -77,7 +86,14 @@ func (b prBody) changes() string {
 		shown = shown[:prBodyFileMax]
 	}
 	for _, path := range shown {
-		lines = append(lines, "- "+mdCode(path, prBodyPathMax))
+		line := "- " + mdCode(path, prBodyPathMax)
+		// The note rides after the path in prose position. Backticks are
+		// replaced like mdCode does, for the opposite reason: here one would
+		// open a code span that swallows the next line's path.
+		if note := strings.ReplaceAll(mdText(b.Notes[path], prBodyNoteMax), "`", "'"); note != "" {
+			line += " — " + strings.TrimSuffix(note, ".")
+		}
+		lines = append(lines, line)
 	}
 	if rest := len(b.Files) - len(shown); rest > 0 {
 		noun := "files"

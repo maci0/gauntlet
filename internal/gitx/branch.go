@@ -26,7 +26,8 @@ func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 }
 
 // Branches lists local branch names, excluding gauntlet's own review
-// branches: those are a run's scratch space, never a merge target.
+// branches — a run's lane scratch space under gauntlet/ and stacked-PR layers
+// under review/ — since neither is ever a merge target.
 func (r *Repo) Branches(ctx context.Context) []string {
 	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
 	if err != nil {
@@ -35,7 +36,7 @@ func (r *Repo) Branches(ctx context.Context) []string {
 	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
 		name := strings.TrimSpace(line)
-		if name != "" && !strings.HasPrefix(name, "gauntlet/") {
+		if name != "" && !strings.HasPrefix(name, "gauntlet/") && !strings.HasPrefix(name, "review/") {
 			names = append(names, name)
 		}
 	}
@@ -333,6 +334,64 @@ func (r *Repo) RemoteBranchTip(ctx context.Context, remote, branch string) (tip 
 		return "", false, nil
 	}
 	return fields[0], true, nil
+}
+
+// LocalBranchesWithPrefix lists local branches that are the prefix itself or
+// extend it past a hyphen: the shape every name a stack layer can publish
+// under takes, provisional or topic-final. A layer's branch name depends on a
+// commit subject that does not exist yet at recovery time, so recovery
+// matches this deterministic prefix and verifies candidates by commit graph.
+func (r *Repo) LocalBranchesWithPrefix(ctx context.Context, prefix string) ([]string, error) {
+	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)",
+		"refs/heads/"+prefix, "refs/heads/"+prefix+"-*")
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
+}
+
+// RemoteBranchesWithPrefix is LocalBranchesWithPrefix against the remote,
+// read via ls-remote so no local ref moves. It returns branch name to tip.
+func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix string) (map[string]string, error) {
+	out, err := r.run(ctx, gitPush, "ls-remote", "--heads", "--", remote,
+		"refs/heads/"+prefix, "refs/heads/"+prefix+"-*")
+	if err != nil {
+		return nil, err
+	}
+	tips := make(map[string]string)
+	for line := range strings.SplitSeq(string(out), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		if name, ok := strings.CutPrefix(fields[1], "refs/heads/"); ok {
+			tips[name] = fields[0]
+		}
+	}
+	return tips, nil
+}
+
+// RenameBranch moves a local branch, which is how recovery finishes the
+// provisional-to-final rename a killed run left undone. Like
+// Worktree.RenameBranch it refuses to overwrite: -m keeps a same-named branch
+// holding real work and reports the failure. It takes wtMu like DeleteBranch:
+// a rename walks the registered worktrees to follow a checked-out branch.
+func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
+	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", to); err != nil {
+		return fmt.Errorf("invalid stack branch %q: %w", to, err)
+	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+	if _, err := r.run(ctx, gitNormal, "branch", "-m", from, to); err != nil {
+		return fmt.Errorf("git branch -m %s %s: %w", from, to, err)
+	}
+	return nil
 }
 
 // FetchRemoteBranchTip downloads the selected remote branch and returns the
