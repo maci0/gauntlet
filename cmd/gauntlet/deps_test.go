@@ -360,11 +360,37 @@ func fileHasBuildTag(body, tag string) bool {
 
 func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
 	t.Helper()
-	args := []string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}
+	paths := make([]string, 0, len(reqs))
 	for _, r := range reqs {
-		args = append(args, r.path)
+		paths = append(paths, r.path)
 	}
-	cmd := exec.Command("go", args...)
+	dirs := listModuleDirs(t, root, paths)
+	// A module nothing imports under the active build tags is never
+	// downloaded by the build, so go list -m reports no Dir for it.
+	// Fetch the stragglers into the cache and ask again.
+	var missing []string
+	for _, path := range paths {
+		if dirs[path] == "" {
+			missing = append(missing, path)
+		}
+	}
+	if len(missing) == 0 {
+		return dirs
+	}
+	cmd := exec.Command("go", append([]string{"mod", "download"}, missing...)...)
+	cmd.Dir = root
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mod download %s: %v\n%s", strings.Join(missing, " "), err, out)
+	}
+	for path, dir := range listModuleDirs(t, root, missing) {
+		dirs[path] = dir
+	}
+	return dirs
+}
+
+func listModuleDirs(t *testing.T, root string, paths []string) map[string]string {
+	t.Helper()
+	cmd := exec.Command("go", append([]string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}, paths...)...)
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
@@ -374,7 +400,7 @@ func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
 		}
 		t.Fatalf("go list -m: %v\n%s", err, stderr)
 	}
-	dirs := make(map[string]string, len(reqs))
+	dirs := make(map[string]string, len(paths))
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		path, dir, ok := strings.Cut(line, "\t")
 		if !ok {
