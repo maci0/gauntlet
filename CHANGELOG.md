@@ -38,13 +38,13 @@ minor instead and were listed under Changed.
   paths, so the scope is prompt-enforced, not mechanical. Without the flag,
   prompts are byte-identical to before. Suggest, commit, and conflict
   prompts are unchanged, and an explicit empty `--paths` is refused.
-- Stacked-PR bodies describe each file: the `PATH:` lines a review prints are
-  matched against the layer's own commit and rendered beside the paths under
-  `## Changes` (``- `path` — what was done``). A file the agent described
-  nothing for renders as a bare path, exactly as before; notes naming files
-  the commit never touched are dropped. Notes are flattened, length-bounded,
-  and backtick-neutralized like every other untrusted value in the body, and
-  the whole body is now capped as well.
+- Stacked-PR bodies open with an overview of what the change is about: the
+  `PATH:` lines a review prints are matched against the layer's own commit,
+  deduplicated, and joined into one short paragraph under `## Summary`; the
+  `## Changes` file list stays bare paths. Notes naming files the commit
+  never touched are dropped. The overview is flattened, length-bounded, and
+  backtick-neutralized like every other untrusted value in the body, and the
+  whole body is now capped as well.
 
 ### Changed
 
@@ -62,6 +62,16 @@ minor instead and were listed under Changed.
   base commit. The preflight dry-run probe moved to the same `review/`
   namespace, and `review/` branches are no longer offered as merge targets,
   matching `gauntlet/`.
+
+### Fixed
+
+- Streamed runs (`--stream`, the default) lost every commit subject and
+  per-file note: the report parsers read the output tail, which held the raw
+  JSON event lines, and `SUBJECT:`/`PATH:` sit inside one escaped string
+  there, where the parsers' line anchors match nothing. Commits fell back to
+  the generated `chore: update <file>` subject every time. The tail now keeps
+  each stream event's decoded text, so subjects, per-file notes, and the
+  branch topics cut from subjects come from what the agent actually printed.
 
 ## 1.17.0
 

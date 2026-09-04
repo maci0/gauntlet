@@ -26,7 +26,10 @@ const (
 	prBodyPathMax  = 120
 	prBodyTitleMax = 120
 	prBodyScopeMax = 160
-	prBodyNoteMax  = 200
+	// prBodyOverviewMax bounds the overview paragraph. It is assembled from
+	// per-file notes, so without a cap a review that touched many files would
+	// push the file list and stack note off the page.
+	prBodyOverviewMax = 400
 	// prBodyMax caps the whole rendered body. The per-field caps above make
 	// reaching it need many hostile inputs at once, but nothing below relies
 	// on that arithmetic staying true as fields are added.
@@ -41,12 +44,12 @@ type prBody struct {
 	Title string   // the commit subject, which is also the PR title
 	Scope string   // the review's declared subject area; empty when it declares none
 	Files []string // paths this layer's single commit touches
-	// Notes maps a touched path to the agent's one-line account of what was
-	// done to it. Only paths present in Files are rendered: a note whose path
-	// the commit never touched describes the wrong diff, or was planted.
-	Notes map[string]string
-	Ins   int
-	Del   int
+	// Overview is a one-paragraph account of what the change did, assembled
+	// from the agent's per-file notes. It rides in the Summary section: the
+	// title says what the change is called, this says what it is about.
+	Overview string
+	Ins      int
+	Del      int
 	// HaveLines distinguishes a measured zero from an unmeasured one. A diff
 	// stat that could not be read is missing, and missing is not "0 changed".
 	HaveLines bool
@@ -63,6 +66,11 @@ func (b prBody) render() string {
 	var sb strings.Builder
 	sb.WriteString("## Summary\n\n")
 	sb.WriteString(mdText(b.Title, prBodyTitleMax))
+	// Backticks are replaced like mdCode does, for the opposite reason: in
+	// prose position one would open a code span that swallows what follows.
+	if ov := strings.ReplaceAll(mdText(b.Overview, prBodyOverviewMax), "`", "'"); ov != "" {
+		sb.WriteString("\n\n" + ov)
+	}
 	if scope := mdText(b.Scope, prBodyScopeMax); scope != "" {
 		sb.WriteString("\n\nScope: " + strings.TrimSuffix(scope, ".") + ".")
 	}
@@ -86,14 +94,7 @@ func (b prBody) changes() string {
 		shown = shown[:prBodyFileMax]
 	}
 	for _, path := range shown {
-		line := "- " + mdCode(path, prBodyPathMax)
-		// The note rides after the path in prose position. Backticks are
-		// replaced like mdCode does, for the opposite reason: here one would
-		// open a code span that swallows the next line's path.
-		if note := strings.ReplaceAll(mdText(b.Notes[path], prBodyNoteMax), "`", "'"); note != "" {
-			line += " — " + strings.TrimSuffix(note, ".")
-		}
-		lines = append(lines, line)
+		lines = append(lines, "- "+mdCode(path, prBodyPathMax))
 	}
 	if rest := len(b.Files) - len(shown); rest > 0 {
 		noun := "files"
