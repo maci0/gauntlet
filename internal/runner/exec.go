@@ -211,12 +211,14 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			callbacks.Done()
 		}
 		handle := func(line string) {
-			tailMu.Lock()
 			// Tail is a fixed ring in memory: it drops the oldest bytes
 			// rather than failing, and returns error only to satisfy io.Writer.
-			_, _ = tail.WriteString(line)
-			_, _ = tail.WriteString("\n")
-			tailMu.Unlock()
+			keep := func(s string) {
+				tailMu.Lock()
+				_, _ = tail.WriteString(s)
+				_, _ = tail.WriteString("\n")
+				tailMu.Unlock()
+			}
 
 			// In stream mode the agent emits JSON events, which carry usage and
 			// separate reasoning from visible output. A line that is not JSON
@@ -224,6 +226,16 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			// nothing is swallowed.
 			if o.Stream && !o.Raw {
 				if ev, ok := streamjson.Parse([]byte(line)); ok {
+					// The tail feeds the report-line parsers (SUBJECT:, PATH:),
+					// which anchor on line starts. What the tail keeps is the
+					// event's decoded visible text: inside the JSON envelope
+					// those lines sit in one escaped string where the anchors
+					// match nothing, which lost every streamed subject and note.
+					// The envelope's usage is reported live right here, so
+					// dropping it from the tail loses nothing.
+					if ev.Text != "" {
+						keep(ev.Text)
+					}
 					report(agent.Usage{
 						Output:   pick(ev.Usage.Output),
 						Thinking: pick(ev.Usage.Thinking),
@@ -233,6 +245,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 					return
 				}
 			}
+			keep(line)
 
 			observe(line)
 			if o.Sink == nil {

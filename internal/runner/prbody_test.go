@@ -140,40 +140,35 @@ func TestPRBodyBoundsEveryUntrustedValue(t *testing.T) {
 	}
 }
 
-func TestPRBodyRendersFileNotes(t *testing.T) {
-	// The diff shows which files moved; the note beside each path is the only
-	// place that says what was done to it. A file the agent described nothing
-	// for renders exactly as it would without notes: a bare path.
+func TestPRBodyRendersOverview(t *testing.T) {
+	// The diff shows which files moved; the overview is the only place that
+	// says what the change was about. It rides in the Summary section, and
+	// the file list stays bare paths.
 	body := prBody{
-		Title: "fix(cache): drop the stale entry before the refill",
-		Files: []string{"internal/cache/store.go", "internal/cache/store_test.go"},
-		Notes: map[string]string{
-			"internal/cache/store.go": "guard the refill against a stale read.",
-		},
-		Base: "main", Root: "main", Layer: 1,
+		Title:    "fix(cache): drop the stale entry before the refill",
+		Overview: "guard the refill against a stale read; drop the dead branch.",
+		Files:    []string{"internal/cache/store.go", "internal/cache/store_test.go"},
+		Base:     "main", Root: "main", Layer: 1,
 	}.render()
-	if !strings.Contains(body, "- `internal/cache/store.go` — guard the refill against a stale read\n") {
-		t.Fatalf("note missing or trailing period kept:\n%s", body)
+	if !strings.Contains(body, "\n\nguard the refill against a stale read; drop the dead branch.\n") {
+		t.Fatalf("overview missing from the summary:\n%s", body)
 	}
-	if !strings.Contains(body, "- `internal/cache/store_test.go`\n") {
-		t.Fatalf("a file without a note must render as a bare path:\n%s", body)
+	if !strings.Contains(body, "- `internal/cache/store.go`\n") ||
+		!strings.Contains(body, "- `internal/cache/store_test.go`\n") {
+		t.Fatalf("files must render as bare paths:\n%s", body)
 	}
 }
 
-func TestPRBodyNeutralizesHostileNotes(t *testing.T) {
-	// A note is agent output quoting repository content: injection with the
-	// repository's words. Newlines must not open a heading or a list item,
-	// and a backtick must not open a code span that swallows the next path.
+func TestPRBodyNeutralizesHostileOverview(t *testing.T) {
+	// The overview is agent output quoting repository content: injection with
+	// the repository's words. Newlines must not open a heading or a list item,
+	// and a backtick must not open a code span that swallows what follows.
 	long := strings.Repeat("z", 4000)
 	body := prBody{
-		Title: "chore: tidy",
-		Files: []string{"a.go", "b.go", strings.Repeat("p", 500)},
-		Notes: map[string]string{
-			"a.go":                   "done\n## Injected\n- item\n```go\ncode",
-			"b.go":                   "un`balanced " + long,
-			strings.Repeat("p", 500): long,
-		},
-		Base: "main", Root: "main", Layer: 1,
+		Title:    "chore: tidy",
+		Overview: "done\n## Injected\n- item\n```go\ncode un`balanced " + long,
+		Files:    []string{"a.go", "b.go", strings.Repeat("p", 500)},
+		Base:     "main", Root: "main", Layer: 1,
 	}.render()
 	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(line, "#") && line != "## Summary" &&

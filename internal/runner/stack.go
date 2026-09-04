@@ -544,15 +544,15 @@ func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, bod
 	return r.gh.Create(ctx, branch, base, body.Title, body.render())
 }
 
-// stackBody assembles what a layer's PR says about itself: the subject area
-// the review declared, the paths its commit touched with the agent's own
-// account of what was done to each, how big it is, and where it sits in the
-// chain. Anything git will not answer is left out rather than guessed at; a
-// body missing its file list still orients a reader, while one naming the
-// wrong files misleads them. Notes are matched against the commit's own
-// paths for the same reason: a note whose path the commit never touched
-// describes the wrong diff. A recovered layer has no notes — its agent ran
-// in a process that is gone — and renders as a bare path list.
+// stackBody assembles what a layer's PR says about itself: an overview of
+// what the change did, the subject area the review declared, the paths its
+// commit touched, how big it is, and where it sits in the chain. Anything git
+// will not answer is left out rather than guessed at; a body missing its file
+// list still orients a reader, while one naming the wrong files misleads
+// them. The overview is built only from notes whose paths the commit touched,
+// for the same reason: a note for an untouched path describes the wrong diff,
+// or was planted. A recovered layer has no notes — its agent ran in a process
+// that is gone — and renders without an overview.
 func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, base string,
 	layer int, notes []agent.FileNote) prBody {
 	b := prBody{Title: title, Base: base, Root: r.stackBase, Layer: layer}
@@ -563,17 +563,27 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 		b.Files = files
 	}
 	if len(notes) > 0 && len(b.Files) > 0 {
-		byKey := make(map[string]string, len(notes))
-		for _, n := range notes {
-			byKey[noteKey(n.Path)] = n.Note
-		}
+		touched := make(map[string]bool, len(b.Files))
 		for _, f := range b.Files {
-			if note, ok := byKey[noteKey(f)]; ok {
-				if b.Notes == nil {
-					b.Notes = make(map[string]string)
-				}
-				b.Notes[f] = note
+			touched[noteKey(f)] = true
+		}
+		var parts []string
+		seen := map[string]bool{}
+		for _, n := range notes {
+			// A note whose path the commit never touched describes the wrong
+			// diff, or was planted; it contributes nothing to the overview.
+			if !touched[noteKey(n.Path)] {
+				continue
 			}
+			part := strings.TrimSuffix(strings.TrimSpace(n.Note), ".")
+			if part == "" || seen[part] {
+				continue
+			}
+			seen[part] = true
+			parts = append(parts, part)
+		}
+		if len(parts) > 0 {
+			b.Overview = strings.Join(parts, "; ") + "."
 		}
 	}
 	if ins, del, ok := r.repo.DiffStat(ctx, dir, from, to); ok {

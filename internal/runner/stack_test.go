@@ -853,8 +853,9 @@ echo 'RESULT: changed=1'`)
 
 	for _, want := range []string{
 		"fix: add the first layer",
+		"\n\nseed the first fixture.\n",
 		"Scope: what the first one looks at.",
-		"- `first.txt` — seed the first fixture",
+		"- `first.txt`\n",
 		"1 file changed, 1 insertion, 0 deletions.",
 		"First layer of a stack, cut from `main`.",
 	} {

@@ -272,3 +272,26 @@ func TestAgentsRunInTheirOwnSession(t *testing.T) {
 		t.Fatalf("the agent shares the runner's session (%s): it holds the controlling terminal and can disable Ctrl-C", agent)
 	}
 }
+
+// The report lines (SUBJECT:, PATH:) arrive inside a stream event's JSON
+// string, where the parsers' line anchors match nothing: the tail must keep
+// the event's decoded text, not the envelope. Before this held, every
+// streamed run lost its commit subject to the generated fallback and its
+// per-file notes entirely.
+func TestStreamTailKeepsDecodedTextForReportParsers(t *testing.T) {
+	_, res := runFakeProc(t, `printf '%s\n' `+
+		`'{"type":"assistant","message":{"content":[{"type":"text",`+
+		`"text":"done\nPATH: a.go: guard the nil map write\n`+
+		`SUBJECT: fix: guard the nil map write\nRESULT: changed=1"}]}}'`,
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if want := "fix: guard the nil map write"; res.Subject != want {
+		t.Fatalf("subject = %q, want %q: the tail is not seeing decoded stream text", res.Subject, want)
+	}
+	if len(res.FileNotes) != 1 || res.FileNotes[0].Path != "a.go" ||
+		res.FileNotes[0].Note != "guard the nil map write" {
+		t.Fatalf("file notes = %+v", res.FileNotes)
+	}
+}
