@@ -15,10 +15,9 @@ agents, applying fixes to the working tree. One static binary, prompts embedded.
   using the versions CI pins via `uvx`. Rule selection is `pyproject.toml`.
 - `make test`: the suite with the race detector and shuffled order.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
-  in the Makefile. The floor is CI's number, not a local one: a machine with
-  agent CLIs installed covers paths a runner skips and reads about two points
-  high. It ratchets: raise it when CI reports higher, never lower it to make a
-  change fit.
+  in the Makefile. The floor is CI's number: a machine with agent CLIs
+  installed reads about two points high. Raise it when CI reports higher,
+  never lower it to make a change fit.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
   ignored. `TMPDIR` is set by the Makefile for that reason.
@@ -54,13 +53,12 @@ No package inside `internal/` imports `ui`, so a headless run costs nothing.
   the automation behind it. Write "the CLI", "the dashboard", or the package.
   `internal/prompt/rules/commit.md` states the rule for agents,
   `runner_test.go` pins it for a reviewed repository, and it holds for commits
-  written by hand here too. Two things sit outside it. A literal identifier the
-  message is about: `GAUNTLET_HOME`, `gauntlet pick`, `.gauntlet.lock`. And the
-  refs the runner cuts for itself, namespaced `gauntlet/...` on purpose so a
-  reviewed repository can list and delete them as a set (`StackBranchName`,
-  `AddWorktree`) -- a stacked PR body names its base branch for that reason,
-  since it is a ref the reader has to check out and GitHub prints it above the
-  diff either way.
+  written by hand here too. Two exceptions. A literal identifier the message
+  is about: `GAUNTLET_HOME`, `gauntlet pick`, `.gauntlet.lock`. And the refs
+  the runner cuts for itself (`StackBranchName`, `AddWorktree`), namespaced
+  `gauntlet/...` so a reviewed repository can list and delete them as a set.
+  That is why a stacked PR body names its base branch: the reader has to check
+  it out, and GitHub prints it above the diff either way.
 - **A conflicting merge is resolved or keeps its branch.** The conflict step
   may hand it to an agent in a scratch checkout; what comes back unresolved
   stays on its branch. Losing a review's entire output silently is worse than
