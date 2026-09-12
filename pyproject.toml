@@ -47,6 +47,7 @@ select = [
     "SIM",
     "SLF",
     "SLOT",
+    "T10",
     "TC",
     "TID",
     "UP",
@@ -61,4 +62,5 @@ select = [
 [tool.mypy]
 python_version = "3.11"
 strict = true
+warn_unreachable = true
 files = ["scripts"]
