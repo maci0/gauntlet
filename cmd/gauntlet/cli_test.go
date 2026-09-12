@@ -202,6 +202,7 @@ func TestListAndShowPromptWorkWithoutAgentCLIs(t *testing.T) {
 	}
 	t.Setenv("PATH", bin)
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	t.Setenv("GAUNTLET_STATE", "")
 	dir := t.TempDir()
 
 	devnull, err := os.Open(os.DevNull)
