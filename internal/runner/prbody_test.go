@@ -6,6 +6,7 @@ package runner
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestPRBodyDescribesTheChange(t *testing.T) {
@@ -191,4 +192,173 @@ func TestPRBodyNeutralizesHostileOverview(t *testing.T) {
 	if !strings.Contains(body, "…") {
 		t.Fatalf("nothing was truncated:\n%s", body)
 	}
+}
+
+// FuzzPRBodyRender drives prBody.render and its formatting helpers (mdText,
+// mdCode, changes, stackNote) with arbitrary untrusted inputs: titles,
+// scopes, overviews, branch names, and raw file lists. It pins the structural
+// and security invariants of the generated PR body: rendering never panics,
+// output size is strictly bounded, internal newlines in fields cannot break out
+// into multi-line injections, file lists are capped at prBodyFileMax, and code
+// spans always have balanced delimiters.
+func FuzzPRBodyRender(f *testing.F) {
+	seeds := []struct {
+		title     string
+		scope     string
+		overview  string
+		base      string
+		root      string
+		filesRaw  string
+		layer     int
+		ins       int
+		del       int
+		haveLines bool
+	}{
+		{
+			title:     "fix(cache): drop the stale entry before the refill",
+			scope:     "stale reads, cross-tenant bleed, stampedes",
+			overview:  "guard the refill against a stale read; drop the dead branch.",
+			base:      "gauntlet/stack/ab12cd34ef56/02-sec-review",
+			root:      "main",
+			filesRaw:  "internal/cache/store.go\x00internal/cache/store_test.go",
+			layer:     3,
+			ins:       41,
+			del:       12,
+			haveLines: true,
+		},
+		{
+			title:     "perf(index): stop rescanning the whole tree",
+			scope:     "",
+			overview:  "",
+			base:      "main",
+			root:      "main",
+			filesRaw:  "a.go",
+			layer:     1,
+			ins:       3,
+			del:       1,
+			haveLines: true,
+		},
+		{
+			title:     "fix: a\n## Injected\n- item",
+			scope:     "one\ntwo",
+			overview:  "done\n## Injected\n- item\n```go\ncode un`balanced",
+			base:      "b`base",
+			root:      "r`root",
+			filesRaw:  "a`.go\x00b\n## Also.go\x00c```.go",
+			layer:     2,
+			ins:       0,
+			del:       0,
+			haveLines: false,
+		},
+		{
+			title:     strings.Repeat("x", 4000),
+			scope:     strings.Repeat("y", 4000),
+			overview:  strings.Repeat("z", 4000),
+			base:      strings.Repeat("b", 4000),
+			root:      strings.Repeat("r", 4000),
+			filesRaw:  strings.Repeat("p.go\x00", 25),
+			layer:     -1,
+			ins:       -100,
+			del:       -200,
+			haveLines: true,
+		},
+		{
+			title:     "",
+			scope:     "",
+			overview:  "",
+			base:      "",
+			root:      "",
+			filesRaw:  "",
+			layer:     0,
+			ins:       0,
+			del:       0,
+			haveLines: false,
+		},
+	}
+	for _, s := range seeds {
+		f.Add(s.title, s.scope, s.overview, s.base, s.root, s.filesRaw, s.layer, s.ins, s.del, s.haveLines)
+	}
+
+	f.Fuzz(func(t *testing.T, title, scope, overview, base, root, filesRaw string, layer, ins, del int, haveLines bool) {
+		var files []string
+		if filesRaw != "" {
+			files = strings.Split(filesRaw, "\x00")
+		}
+		b := prBody{
+			Title:     title,
+			Scope:     scope,
+			Files:     files,
+			Overview:  overview,
+			Ins:       ins,
+			Del:       del,
+			HaveLines: haveLines,
+			Base:      base,
+			Root:      root,
+			Layer:     layer,
+		}
+
+		body := b.render()
+
+		if again := b.render(); again != body {
+			t.Fatalf("prBody.render is non-deterministic")
+		}
+
+		if runes := utf8.RuneCountInString(body); runes > prBodyMax+1 {
+			t.Fatalf("body length %d runes exceeds cap %d", runes, prBodyMax+1)
+		}
+
+		// Untrusted helper invariants
+		txt := mdText(title, prBodyTitleMax)
+		if strings.ContainsAny(txt, "\r\n") {
+			t.Fatalf("mdText contains newlines: %q", txt)
+		}
+
+		code := mdCode(base, prBodyPathMax)
+		if !strings.HasPrefix(code, "`") || !strings.HasSuffix(code, "`") {
+			t.Fatalf("mdCode not wrapped in backticks: %q", code)
+		}
+		if strings.Count(code, "`") != 2 {
+			t.Fatalf("mdCode has interior backtick: %q", code)
+		}
+		if strings.ContainsAny(code, "\r\n") {
+			t.Fatalf("mdCode contains newlines: %q", code)
+		}
+
+		// Changes section invariants
+		changes := b.changes()
+		fileLines := 0
+		for _, line := range strings.Split(changes, "\n") {
+			if strings.HasPrefix(line, "- `") {
+				fileLines++
+			}
+			if strings.HasPrefix(line, "- ") && !strings.HasPrefix(line, "- `") && !strings.HasPrefix(line, "- and ") {
+				t.Fatalf("Changes section forged list item: %q", line)
+			}
+			if strings.HasPrefix(line, "#") {
+				t.Fatalf("Changes section forged heading: %q", line)
+			}
+			if strings.HasPrefix(line, "```") {
+				t.Fatalf("Changes section opened code fence: %q", line)
+			}
+		}
+		if fileLines > prBodyFileMax {
+			t.Fatalf("changes listed %d files, cap is %d", fileLines, prBodyFileMax)
+		}
+
+		// Stack note invariants
+		note := b.stackNote()
+		for _, line := range strings.Split(note, "\n") {
+			if strings.HasPrefix(line, "#") {
+				t.Fatalf("Stack note forged heading: %q", line)
+			}
+			if strings.HasPrefix(line, "```") {
+				t.Fatalf("Stack note opened code fence: %q", line)
+			}
+		}
+
+		// Body line count bound: flattening guarantees bounded line count regardless of input size
+		if lines := len(strings.Split(body, "\n")); lines > 40 {
+			t.Fatalf("excessive lines in body: %d", lines)
+		}
+	})
 }
