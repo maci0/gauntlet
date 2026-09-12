@@ -36,15 +36,7 @@ export LC_ALL := C
 
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
-export TMPDIR ?= $(HOME)/.cache/gauntlet/test
-# HOME-empty would mkdir /.cache and go would then fail somewhere less obvious.
-ifeq ($(TMPDIR),/.cache/gauntlet/test)
-$(error HOME is unset; set HOME or TMPDIR to a disk-backed directory. Tests must not use tmpfs or a gitignored path inside this repo)
-endif
-# Every go command inherits TMPDIR, and go refuses to start when it does not
-# exist, so it is created at parse time rather than per target: a fresh CI
-# runner has no such directory. Quoted: HOME can contain spaces.
-$(shell mkdir -p "$(TMPDIR)")
+TMPDIR ?= $(HOME)/.cache/gauntlet/test
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
 # groups, the directory lock needs flock, prompt reads need O_NOFOLLOW, and hot
@@ -85,9 +77,9 @@ run: build ## build, then run one loop here with the dashboard
 	./$(BINARY) --once --tui
 
 .PHONY: test
+test: | test-tmpdir
 test: ## run all tests with the race detector, shuffled order
-	@mkdir -p "$(TMPDIR)"
-	$(GO) test $(GOTAGS) -race -shuffle=on ./...
+	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on ./...
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
 # test` so a green package here stays green in the full run. RUN is a go test
@@ -96,14 +88,15 @@ PKG ?= ./...
 RUN ?=
 
 .PHONY: test-pkg
+test-pkg: | test-tmpdir
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
-	@mkdir -p "$(TMPDIR)"
-	$(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
+	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
 
 .PHONY: cover
+cover: | test-tmpdir
 cover: ## test coverage summary, gated by COVER_MIN
-	@mkdir -p "$(TMPDIR)" $(DIST)
-	$(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
+	@mkdir -p $(DIST)
+	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
 	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
 		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
 		awk -v got="$${total%\%}" -v min="$(COVER_MIN)" 'BEGIN { \
@@ -117,6 +110,11 @@ cover: ## test coverage summary, gated by COVER_MIN
 # figure, kept a little under it to absorb the shuffle. It ratchets: raise it
 # when CI reports higher, never lower it to make a change fit.
 COVER_MIN ?= 74.0
+
+.PHONY: test-tmpdir
+test-tmpdir:
+	@test "$(TMPDIR)" != "/.cache/gauntlet/test" || { echo "HOME is unset; set HOME or TMPDIR to a disk-backed directory. Tests must not use tmpfs or a gitignored path inside this repo" >&2; exit 1; }
+	@mkdir -p "$(TMPDIR)"
 
 .PHONY: vet
 vet: ## run go vet
