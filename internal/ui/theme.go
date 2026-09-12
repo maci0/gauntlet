@@ -75,7 +75,7 @@ var (
 	styleThink = lipgloss.NewStyle().Foreground(cLavender)
 
 	panelStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
+			Border(lipgloss.NormalBorder()).
 			BorderForeground(cBorder).
 			Padding(0, 1)
 )
@@ -178,7 +178,7 @@ func styled(c lipgloss.TerminalColor, s string) string {
 	return lipgloss.NewStyle().Foreground(c).Render(s)
 }
 
-// panel wraps content in a titled rounded box, forcing exact inner dimensions.
+// panel wraps content in a titled instrument frame, forcing exact inner dimensions.
 // lipgloss Width() is deliberately avoided for the body: its wrapping
 // mishandles densely styled cells like braille charts.
 func panel(title, content string, innerW, innerH int) string {

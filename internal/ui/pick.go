@@ -23,7 +23,7 @@ import (
 // so the flags are learned rather than hidden.
 //
 // It is drawn as the dashboard is drawn, with the same instruments: the
-// wordmark and a spread header, titled rounded panels, one hue per agent
+// wordmark and a spread header, titled instrument panels, one hue per agent
 // everywhere it appears, and meters that show their unlit remainder. The two
 // screens are the same cockpit at two moments, so they read the same way.
 

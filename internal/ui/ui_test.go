@@ -90,7 +90,7 @@ func TestFrameFitsAtEverySize(t *testing.T) {
 				cfg.Agents = append(cfg.Agents, fmt.Sprintf("agent%02d", i))
 			}
 			frame := staticFrame(cfg, demoEvents(), 100, h)
-			opened, closed := strings.Count(frame, "╭"), strings.Count(frame, "╰")
+			opened, closed := strings.Count(frame, "┌"), strings.Count(frame, "└")
 			if opened != closed {
 				t.Fatalf("%d agents at %d rows: %d panels opened, %d closed, "+
 					"the frame ran off the pane:\n%s", agents, h, opened, closed, stripANSI(frame))
