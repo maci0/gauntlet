@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Preserve launcher run options when stacked PR mode is toggled off again.
+
 - Self-update authentication is now sent only to GitHub over HTTPS, preventing
   release metadata from forwarding a GitHub token to another host.
 - The run documentation now includes a quiesced backup and restore drill for

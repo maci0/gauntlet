@@ -134,6 +134,15 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 			p.concurrency().n = 4
 			p.optByFlag("--stacked-prs").on = true
 		}, "-C /home/dev/project --once --tui --stacked-prs"},
+		{"leaving stacked PRs restores prior choices", func(p *picker) {
+			p.optByFlag("--commit").on = true
+			p.optByFlag("--merge-into").idx = 1
+			p.concurrency().n = 4
+			p.focus = paneOptions
+			p.cursor[paneOptions] = 4
+			p.toggle()
+			p.toggle()
+		}, "-C /home/dev/project -j 4 --once --tui --commit --merge-into main"},
 		{"a subset of agents is passed, all of them is not", func(p *picker) {
 			p.agents[0] = true
 		}, "-C /home/dev/project -a claude --once --tui"},
@@ -534,9 +543,9 @@ func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
 	}
 }
 
-// Stack mode owns commits and the job count: turning it on has to clear the
-// flags the parser would refuse, and +/- must not sneak a -j back in.
-func TestPickStackedPRsClearConflictingOptions(t *testing.T) {
+// Stack mode owns commits and the job count: conflicting choices are kept for
+// later but omitted while stacking, and +/- must not sneak a -j back in.
+func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
 	p := demoPicker()
 	p.concurrency().n = 4
 	p.optByFlag("--push").on = true
@@ -552,17 +561,17 @@ func TestPickStackedPRsClearConflictingOptions(t *testing.T) {
 	if !p.stacked() {
 		t.Fatal("space did not turn stacked PRs on")
 	}
-	if p.concurrency().n != 1 {
-		t.Fatalf("jobs %d, want 1 after stacked PRs", p.concurrency().n)
+	if p.concurrency().n != 4 {
+		t.Fatalf("jobs %d, want preserved value 4 after stacked PRs", p.concurrency().n)
 	}
-	if p.optByFlag("--push").on || p.optByFlag("--commit").on {
-		t.Fatal("commit/push stayed on under stacked PRs")
+	if !p.optByFlag("--push").on {
+		t.Fatal("push choice was lost under stacked PRs")
 	}
-	if p.optByFlag("--merge-into").idx != 0 {
-		t.Fatal("a merge target stayed selected under stacked PRs")
+	if p.optByFlag("--merge-into").idx != 1 {
+		t.Fatal("merge target was lost under stacked PRs")
 	}
 	press(p, "+", "+")
-	if p.concurrency().n != 1 {
+	if p.concurrency().n != 4 {
 		t.Fatal("+ still raised jobs under stacked PRs")
 	}
 	if got := strings.Join(p.argv(), " "); got != "-C /home/dev/project --once --tui --stacked-prs" {
@@ -725,9 +734,9 @@ func TestPickSpaceCyclesConcurrency(t *testing.T) {
 	}
 }
 
-// Turning on stacked PRs via right arrow or 'l' must clear conflicting options
+// Turning on stacked PRs via right arrow or 'l' preserves conflicting options
 // just as space does.
-func TestPickRightArrowOnStackedPRsClearsConflicts(t *testing.T) {
+func TestPickRightArrowOnStackedPRsPreservesConflicts(t *testing.T) {
 	p := demoPicker()
 	p.concurrency().n = 4
 	p.optByFlag("--push").on = true
@@ -743,14 +752,14 @@ func TestPickRightArrowOnStackedPRsClearsConflicts(t *testing.T) {
 	if !p.stacked() {
 		t.Fatal("'l' did not turn stacked PRs on")
 	}
-	if p.concurrency().n != 1 {
-		t.Fatalf("jobs %d, want 1 after stacked PRs", p.concurrency().n)
+	if p.concurrency().n != 4 {
+		t.Fatalf("jobs %d, want preserved value 4 after stacked PRs", p.concurrency().n)
 	}
-	if p.optByFlag("--push").on || p.optByFlag("--commit").on {
-		t.Fatal("commit/push stayed on under stacked PRs")
+	if !p.optByFlag("--push").on {
+		t.Fatal("push choice was lost under stacked PRs")
 	}
-	if p.optByFlag("--merge-into").idx != 0 {
-		t.Fatal("a merge target stayed selected under stacked PRs")
+	if p.optByFlag("--merge-into").idx != 1 {
+		t.Fatal("merge target was lost under stacked PRs")
 	}
 }
 

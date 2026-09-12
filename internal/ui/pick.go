@@ -456,25 +456,7 @@ func (p *picker) adjust(d int) {
 		}
 	default:
 		o.on = d > 0
-		if o.flag == "--stacked-prs" && o.on {
-			p.clearStackedConflicts()
-		}
 	}
-}
-
-// clearStackedConflicts clears commit, push, merge-into, and resets concurrency
-// when stacked PR mode is turned on, since stack mode owns those behaviors.
-func (p *picker) clearStackedConflicts() {
-	if c := p.optByFlag("--commit"); c != nil {
-		c.on = false
-	}
-	if u := p.optByFlag("--push"); u != nil {
-		u.on = false
-	}
-	if m := p.optByFlag("--merge-into"); m != nil {
-		m.idx = 0
-	}
-	p.concurrency().n = 1
 }
 
 func (p *picker) toggle() {
@@ -526,9 +508,6 @@ func (p *picker) toggle() {
 			}
 		case optToggle:
 			o.on = !o.on
-			if o.flag == "--stacked-prs" && o.on {
-				p.clearStackedConflicts()
-			}
 		case optCycle:
 			p.adjust(+1)
 		}
