@@ -19,7 +19,7 @@ func Duration(d time.Duration) string {
 	if d < 0 {
 		d = 0
 	}
-	secs := int(d.Seconds())
+	secs := int64(d / time.Second)
 	switch {
 	case secs >= 3600:
 		return fmt.Sprintf("%dh%02dm", secs/3600, (secs%3600)/60)
