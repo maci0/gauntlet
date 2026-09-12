@@ -4,7 +4,10 @@
 package fuzzy
 
 import (
+	"slices"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 )
@@ -151,4 +154,82 @@ func BenchmarkClosest(b *testing.B) {
 		_ = Closest("quck", candidates)
 		_ = Closest("zzzzzz", candidates)
 	}
+}
+
+// FuzzClosest feeds arbitrary query strings to Closest and Fold. It pins their
+// robustness and correctness invariants: Closest never panics, returned hints
+// always belong to the candidate set and lie within the edit distance limit,
+// exact candidate matches always resolve with zero distance, and Fold is
+// idempotent and preserves rune count.
+func FuzzClosest(f *testing.F) {
+	candidates := []string{
+		"code-review", "sec-review", "quick", "standard", "a11y-review",
+		"error-review", "lint-review", "mobile-review", "privacy-review",
+		"api-review", "arch-review", "authz-review", "build-review",
+		"cli-review", "compat-review", "concurrency-review", "config-review",
+		"container-review", "db-review", "deps-review", "doc-review",
+		"fuzz-review", "gitops-review", "helm-review", "i18n-review",
+		"claude", "codex", "gemini", "opencode", "crush", "copilot", "amp", "dsh",
+		"codex🚀", "sécurity-review", "日本語-review",
+	}
+	seeds := []string{
+		"code-reveiw",
+		"CODE-REVIEW",
+		"secreview",
+		"quck",
+		"standart",
+		"zzzzzz",
+		"",
+		"codex",
+		"codex🚀",
+		"security-review",
+		"sécurity-review",
+		"日本-review",
+		"中国語-review",
+		"ſec-review",
+		"\u212Aode-review",
+		"sigma-revie\u03C2",
+		"a11y",
+		"fuzz",
+		"all",
+		"claud",
+		"gemini",
+		"\x00\x01\x02",
+		"review\r\n",
+		strings.Repeat("a", 200),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, want string) {
+		got := Closest(want, candidates)
+		if got != "" {
+			if !slices.Contains(candidates, got) {
+				t.Fatalf("Closest(%q) returned %q which is not in candidates", want, got)
+			}
+			d := editDistance(norm.NFC.String(want), norm.NFC.String(got))
+			if d > distance {
+				t.Fatalf("Closest(%q) = %q has distance %d > limit %d", want, got, d, distance)
+			}
+		}
+
+		folded := Fold(want)
+		if Fold(folded) != folded {
+			t.Fatalf("Fold is not idempotent on %q", want)
+		}
+		if utf8.RuneCountInString(folded) != utf8.RuneCountInString(want) {
+			t.Fatalf("Fold changed rune count of %q", want)
+		}
+
+		if want != "" && utf8.RuneCountInString(want) <= 64 {
+			withSelf := append(candidates[:len(candidates):len(candidates)], want)
+			selfMatch := Closest(want, withSelf)
+			if selfMatch == "" {
+				t.Fatalf("Closest(%q) failed to find itself in candidates", want)
+			}
+			if d := editDistance(norm.NFC.String(want), norm.NFC.String(selfMatch)); d != 0 {
+				t.Fatalf("Closest(%q) self-match has distance %d != 0", want, d)
+			}
+		}
+	})
 }

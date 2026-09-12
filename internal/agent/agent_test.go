@@ -121,6 +121,80 @@ func TestParseSpecsSuggestsClosest(t *testing.T) {
 	}
 }
 
+// FuzzParseSpecs feeds arbitrary input strings into ParseSpecs and pins its
+// contracts: it must never panic, must return either a non-empty list of valid,
+// deduplicated specs or a non-empty error message, must normalize tool names
+// to lowercase, and must enforce tool capabilities (models and reasoning effort).
+func FuzzParseSpecs(f *testing.F) {
+	seeds := []string{
+		"claude",
+		"claude:opus",
+		"claude:opus@high",
+		"claude:opus,codex:gpt-5-codex",
+		"codex@low",
+		"mixed",
+		"all",
+		"claud",
+		"dsh:anthropic/claude-3-5-sonnet:beta@low",
+		"",
+		",",
+		":::",
+		"@@@",
+		"claude@invalid-effort",
+		"mixed@high",
+		"claude:opus, claude:opus",
+		"inargv@low",
+		"noeffort@high",
+		"nomodel:m",
+		"\x00\x01\x02",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		specs, err := ParseSpecs(s)
+		if err != nil {
+			if specs != nil {
+				t.Fatalf("ParseSpecs(%q) returned specs with error: %v", s, err)
+			}
+			if err.Error() == "" {
+				t.Fatalf("ParseSpecs(%q) returned empty error", s)
+			}
+			return
+		}
+		if len(specs) == 0 {
+			t.Fatalf("ParseSpecs(%q) returned empty specs without error", s)
+		}
+		seen := map[Spec]bool{}
+		for _, sp := range specs {
+			if seen[sp] {
+				t.Fatalf("ParseSpecs(%q) returned duplicate spec %+v", s, sp)
+			}
+			seen[sp] = true
+			if !isValid(sp.Tool) {
+				t.Fatalf("ParseSpecs(%q) returned invalid tool %q", s, sp.Tool)
+			}
+			if sp.Tool != strings.ToLower(strings.TrimSpace(sp.Tool)) {
+				t.Fatalf("ParseSpecs(%q) tool name not normalized: %q", s, sp.Tool)
+			}
+			if !takesModel(sp.Tool) && sp.Model != "" {
+				t.Fatalf("ParseSpecs(%q) tool %q does not take model but got %q", s, sp.Tool, sp.Model)
+			}
+			if sp.Effort != "" {
+				if !takesEffort(sp.Tool) {
+					t.Fatalf("ParseSpecs(%q) tool %q does not take effort but got %q", s, sp.Tool, sp.Effort)
+				}
+				if !effortRe.MatchString(sp.Effort) {
+					t.Fatalf("ParseSpecs(%q) invalid effort %q", s, sp.Effort)
+				}
+			}
+			if sp.Tool == "dsh" && sp.Model != "" && !dshModelRe.MatchString(sp.Model) {
+				t.Fatalf("ParseSpecs(%q) invalid dsh model %q", s, sp.Model)
+			}
+		}
+	})
+}
+
 func TestSplitProvider(t *testing.T) {
 	p, n := splitProvider("openai/gpt-4")
 	if p != "openai" || n != "gpt-4" {
