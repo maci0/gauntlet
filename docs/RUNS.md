@@ -388,6 +388,48 @@ in that buffer, and the index row is written only when the process exits.
 Nothing here is replicated off the machine: `GAUNTLET_HOME` is a
 directory, and backups of it are yours.
 
+### Backup and restore
+
+Choose the backup schedule from how much run history and custom agent
+configuration you can afford to lose: an hourly copy gives an RPO of at most
+one hour, for example. The CLI has no RTO guarantee; measure the restore below
+with an archive the size of production and record the result in your own
+incident runbook.
+
+Stop running CLI processes before taking the copy so the archive cannot catch
+a journal line halfway through a write. Back up `runs/` and `agents.json` to a
+different failure domain; `index.jsonl`, locks, worktrees, and hot-reload state
+are intentionally excluded because they are derived or ephemeral:
+
+```sh
+state=${GAUNTLET_HOME:-"$HOME/.gauntlet"}
+set -- runs
+[ ! -f "$state/agents.json" ] || set -- "$@" agents.json
+tar -C "$state" -czf /path/on/other-storage/gauntlet-state.tgz \
+  "$@"
+tar -tzf /path/on/other-storage/gauntlet-state.tgz
+```
+
+Protect the destination with credentials and deletion controls independent of
+the machine holding `GAUNTLET_HOME`; another directory on the same disk does
+not protect against instance loss or malicious deletion.
+
+Restore into an empty directory first rather than overwriting live state:
+
+```sh
+mkdir /path/to/empty-restore
+tar -C /path/to/empty-restore -xzf /path/on/other-storage/gauntlet-state.tgz
+GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --limit 10
+GAUNTLET_HOME=/path/to/empty-restore gauntlet show <run-id>
+```
+
+The first command proves the derived index can be rebuilt; the second proves a
+journal can be read end to end. Only after both succeed should the restored
+directory replace the lost `GAUNTLET_HOME`. Run this drill after changing the
+archive job or upgrading across versions, and periodically with the largest
+archive, because a backup that has only been written has not been proven
+restorable.
+
 ## Updating and hot reload
 
 ```sh

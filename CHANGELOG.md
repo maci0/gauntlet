@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- The run documentation now includes a quiesced backup and restore drill for
+  durable state, including restore verification and explicit RPO/RTO guidance.
 - Build and help targets no longer create the test scratch directory; only
   test targets set up and use it.
 - Custom agent files are validated completely before any definitions are
