@@ -92,8 +92,11 @@ func githubToken() string {
 }
 
 func setGitHubAuth(req *http.Request) {
-	if tok := githubToken(); tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
+	if req.URL.Scheme == "https" &&
+		(req.URL.Hostname() == "api.github.com" || req.URL.Hostname() == "github.com") {
+		if tok := githubToken(); tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
 	}
 }
 

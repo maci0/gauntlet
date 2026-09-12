@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Self-update authentication is now sent only to GitHub over HTTPS, preventing
+  release metadata from forwarding a GitHub token to another host.
 - The run documentation now includes a quiesced backup and restore drill for
   durable state, including restore verification and explicit RPO/RTO guidance.
 - Build and help targets no longer create the test scratch directory; only

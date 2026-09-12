@@ -5,6 +5,7 @@ package selfupdate
 
 import (
 	"context"
+	"net/http"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -133,6 +134,29 @@ func TestGitHubTokenPrefersGHToken(t *testing.T) {
 	t.Setenv(envGitHubToken, "  ")
 	if got := githubToken(); got != "" {
 		t.Fatalf("whitespace-only token = %q, want empty", got)
+	}
+}
+
+func TestGitHubAuthStaysOnGitHubHTTPS(t *testing.T) {
+	t.Setenv(envGHToken, "secret")
+	for _, tc := range []struct {
+		url  string
+		want bool
+	}{
+		{"https://api.github.com/repos/owner/repo", true},
+		{"https://github.com/owner/repo/releases/download/v1/asset", true},
+		{"http://github.com/owner/repo", false},
+		{"https://github.com.evil.example/asset", false},
+		{"https://evil.example/asset", false},
+	} {
+		req, err := http.NewRequest(http.MethodGet, tc.url, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		setGitHubAuth(req)
+		if got := req.Header.Get("Authorization") != ""; got != tc.want {
+			t.Errorf("auth for %s = %v, want %v", tc.url, got, tc.want)
+		}
 	}
 }
 
