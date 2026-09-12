@@ -116,6 +116,15 @@ func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	}
 }
 
+func TestReleaseKeepsPublishedVersionsImmutable(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	for _, want := range []string{"--draft", "--json isDraft", `if [ "$draft" = false ]`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("release.yml must publish through a draft and refuse to overwrite a published release; missing %q", want)
+		}
+	}
+}
+
 func TestDistJobSmokeTestsHostBinary(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
 	if !strings.Contains(text, "gauntlet_ci_linux_amd64 version") {

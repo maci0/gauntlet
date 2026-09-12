@@ -76,19 +76,24 @@ jobs:
       # install an asset it cannot verify against it. sbom.txt is the module
       # inventory of what shipped, read back out of each built binary.
       #
-      # A half-published release (created, then an upload died) makes
-      # `gh release create` fail on every retry; the fallback clobbers the
-      # existing assets and refreshes the notes, so re-running this workflow
-      # heals it. The artifacts are reproducible and just passed the smoke
-      # test, so replacing them is safe; if no release exists, upload also
-      # fails and the job stays red.
+      # Create a draft so a failed upload is never visible to consumers. A
+      # retry may repair that draft, but an already-published version is
+      # immutable: never replace its assets or notes.
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --notes-file notes.md \
-            dist/gauntlet_* dist/checksums.txt dist/sbom.txt ||
-          { gh release upload "$GITHUB_REF_NAME" --clobber \
-              dist/gauntlet_* dist/checksums.txt dist/sbom.txt &&
-            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md; }
+          draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [ "$draft" = false ]; then
+            echo "release $GITHUB_REF_NAME is already published" >&2
+            exit 1
+          elif [ "$draft" = true ]; then
+            gh release upload "$GITHUB_REF_NAME" --clobber \
+              dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --notes-file notes.md \
+              dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+            gh release edit "$GITHUB_REF_NAME" --draft=false
+          fi

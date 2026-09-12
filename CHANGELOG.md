@@ -12,6 +12,9 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Releases are now assembled as drafts before becoming visible, and rerunning
+  a release refuses to replace an already-published version's assets or notes.
+
 - Invalid or unrepresentable elapsed values in the run index now fall back to
   the recorded start and end times instead of displaying a wrapped duration.
 
