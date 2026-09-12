@@ -546,9 +546,11 @@ func (m *model) pushFeed(l feedLine) {
 	// anchored to the lines it shows while history grows underneath, and
 	// nothing printed during a pause is discarded.
 	if m.paused || m.scroll > 0 {
-		m.scroll++
-		if maxBack := len(m.feed) - 1; m.scroll > maxBack {
-			m.scroll = max(maxBack, 0)
+		if m.filter.keep(l) {
+			m.scroll++
+			if maxBack := len(m.visibleFeed()) - 1; m.scroll > maxBack {
+				m.scroll = max(maxBack, 0)
+			}
 		}
 	}
 }
@@ -1146,6 +1148,9 @@ func (m *model) renderMinimal() string {
 		styleDim.Render("terminal too small for the dashboard"),
 		styleDim.Render(hint.String()),
 	)
+	if m.h > 0 && len(rows) > m.h {
+		rows = rows[:m.h]
+	}
 	for i, r := range rows {
 		rows[i] = clip(r, m.w)
 	}

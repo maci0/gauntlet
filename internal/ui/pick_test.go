@@ -676,3 +676,117 @@ func TestPickHomeEndJumpThePane(t *testing.T) {
 		t.Fatalf("home left cursor %d, want the first row", p.cursor[paneReviews])
 	}
 }
+
+// When a filter was kept with enter, pressing esc clears the filter rather
+// than abruptly quitting the application and discarding composed options.
+func TestPickEscClearsKeptFilterInsteadOfQuitting(t *testing.T) {
+	p := demoPicker()
+	press(p, "/", "s", "e", "c")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.typing || p.filter != "sec" {
+		t.Fatalf("filter should be kept at 'sec' while typing is false, got filter=%q typing=%t", p.filter, p.typing)
+	}
+	out, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc on a kept filter must not quit")
+	}
+	done, ok := out.(*picker)
+	if !ok || done.filter != "" {
+		t.Fatalf("esc should clear the filter, got filter=%q", done.filter)
+	}
+	// A second esc now that the filter is gone does quit.
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("esc on an unfiltered picker must quit")
+	}
+}
+
+// Pressing space on the concurrency option cycles it through 1..CPUs so
+// the primary toggle key works on every pane row instead of doing nothing.
+func TestPickSpaceCyclesConcurrency(t *testing.T) {
+	p := demoPicker()
+	p.cfg.CPUs = 4
+	p.focus = paneOptions
+	p.cursor[paneOptions] = 0 // concurrency
+	if p.concurrency().n != 1 {
+		t.Fatalf("initial concurrency=%d, want 1", p.concurrency().n)
+	}
+	press(p, " ")
+	if p.concurrency().n != 2 {
+		t.Fatalf("concurrency after space=%d, want 2", p.concurrency().n)
+	}
+	press(p, " ", " ")
+	if p.concurrency().n != 4 {
+		t.Fatalf("concurrency after two more spaces=%d, want 4", p.concurrency().n)
+	}
+	press(p, " ")
+	if p.concurrency().n != 1 {
+		t.Fatalf("concurrency after cycling past CPUs=%d, want 1", p.concurrency().n)
+	}
+}
+
+// Turning on stacked PRs via right arrow or 'l' must clear conflicting options
+// just as space does.
+func TestPickRightArrowOnStackedPRsClearsConflicts(t *testing.T) {
+	p := demoPicker()
+	p.concurrency().n = 4
+	p.optByFlag("--push").on = true
+	p.optByFlag("--merge-into").idx = 1
+	p.focus = paneOptions
+	for i, o := range p.opts {
+		if o.flag == "--stacked-prs" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	press(p, "l")
+	if !p.stacked() {
+		t.Fatal("'l' did not turn stacked PRs on")
+	}
+	if p.concurrency().n != 1 {
+		t.Fatalf("jobs %d, want 1 after stacked PRs", p.concurrency().n)
+	}
+	if p.optByFlag("--push").on || p.optByFlag("--commit").on {
+		t.Fatal("commit/push stayed on under stacked PRs")
+	}
+	if p.optByFlag("--merge-into").idx != 0 {
+		t.Fatal("a merge target stayed selected under stacked PRs")
+	}
+}
+
+// Hints for dimmed/inactive options must explain why they are inactive
+// and how to activate them.
+func TestPickHintExplainsDimmedOptions(t *testing.T) {
+	p := demoPicker()
+	p.focus = paneOptions
+	for i, o := range p.opts {
+		if o.flag == "--suggest-agent" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	if got := p.hint(); !strings.Contains(got, "suggest is off") {
+		t.Fatalf("suggest agent hint %q, want explanation that suggest is off", got)
+	}
+	for i, o := range p.opts {
+		if o.flag == "--merge-into" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	if got := p.hint(); !strings.Contains(got, "commits are off") {
+		t.Fatalf("merge into hint %q, want explanation that commits are off", got)
+	}
+}
+
+// When a filter is active, the footer documents esc:clear so the user
+// knows how to return to the full review catalog.
+func TestPickFooterShowsClearFilterWhenFilterActive(t *testing.T) {
+	p := demoPicker()
+	p.filter = "sec"
+	p.typing = false
+	footer := lastLine(stripANSI(p.View()))
+	if !strings.Contains(footer, "esc:clear") {
+		t.Fatalf("filtered footer %q, want esc:clear documented", footer)
+	}
+}

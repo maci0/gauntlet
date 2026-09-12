@@ -280,7 +280,13 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return p.filterKey(msg, key)
 	}
 	switch key {
-	case "ctrl+c", "q", "esc":
+	case "ctrl+c", "q":
+		return p, tea.Quit
+	case "esc":
+		if p.filter != "" {
+			p.filter = ""
+			return p, nil
+		}
 		return p, tea.Quit
 	case "?":
 		p.help = true
@@ -450,7 +456,25 @@ func (p *picker) adjust(d int) {
 		}
 	default:
 		o.on = d > 0
+		if o.flag == "--stacked-prs" && o.on {
+			p.clearStackedConflicts()
+		}
 	}
+}
+
+// clearStackedConflicts clears commit, push, merge-into, and resets concurrency
+// when stacked PR mode is turned on, since stack mode owns those behaviors.
+func (p *picker) clearStackedConflicts() {
+	if c := p.optByFlag("--commit"); c != nil {
+		c.on = false
+	}
+	if u := p.optByFlag("--push"); u != nil {
+		u.on = false
+	}
+	if m := p.optByFlag("--merge-into"); m != nil {
+		m.idx = 0
+	}
+	p.concurrency().n = 1
 }
 
 func (p *picker) toggle() {
@@ -494,22 +518,16 @@ func (p *picker) toggle() {
 			return
 		}
 		switch o.kind {
+		case optCount:
+			if p.cfg.CPUs > 1 && o.n >= p.cfg.CPUs {
+				o.n = 1
+			} else {
+				p.adjust(+1)
+			}
 		case optToggle:
 			o.on = !o.on
 			if o.flag == "--stacked-prs" && o.on {
-				// Stack mode owns commits, pushes, and the job count; the
-				// parser refuses the combination, so the screen must not
-				// compose it.
-				if c := p.optByFlag("--commit"); c != nil {
-					c.on = false
-				}
-				if u := p.optByFlag("--push"); u != nil {
-					u.on = false
-				}
-				if m := p.optByFlag("--merge-into"); m != nil {
-					m.idx = 0
-				}
-				p.concurrency().n = 1
+				p.clearStackedConflicts()
 			}
 		case optCycle:
 			p.adjust(+1)
@@ -908,11 +926,20 @@ func (p *picker) hint() string {
 	if p.typing {
 		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
 	}
+	if p.filterMissed(p.rows()) {
+		return "no reviews match this filter (esc clears it, / to edit)"
+	}
 	switch p.focus {
 	case paneOptions:
 		o := p.opts[p.cursor[paneOptions]]
 		if p.optionInert(&o) {
 			return "stacked PRs own this; turn that off to change it"
+		}
+		if o.flag == "--suggest-agent" && !p.suggest {
+			return "suggest is off; tick suggest in reviews to choose who suggests"
+		}
+		if o.flag == "--merge-into" && !p.committing() {
+			return "commits are off; turn on commit or push to choose a merge target"
 		}
 		return o.help
 	case paneAgents:
@@ -958,6 +985,12 @@ func (p *picker) renderKeys() string {
 		keys = []struct{ k, v string }{
 			{"⏎", "keep"}, {"esc", "clear"}, {"↑↓", "move"},
 		}
+	} else if p.filter != "" {
+		keys = []struct{ k, v string }{
+			{"⏎", "run"}, {"q", "cancel"}, {"esc", "clear"}, {"j/k", "move"},
+			{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
+			{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
+		}
 	}
 	var b strings.Builder
 	for _, k := range keys {
@@ -994,6 +1027,9 @@ func (p *picker) renderNarrow() string {
 		keys = "⏎ keep  esc clear"
 	}
 	rows = append(rows, styleDim.Render(keys))
+	if p.h > 0 && len(rows) > p.h {
+		rows = rows[:p.h]
+	}
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)
 	}
