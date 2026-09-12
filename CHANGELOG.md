@@ -48,6 +48,12 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- `container-review` and `infra-review` split Kubernetes workload
+  ownership more sharply now that `k8s-review` and `helm-review` exist:
+  manifest structure, probes, security context, and resource limits stay
+  with those reviews; `infra-review` keeps compose, CI/CD, and IaC wiring.
+  `container-review` will use `dockle`, `kubeconform`, and `conftest` when
+  they are on PATH. `lint-review` names the project linters it should run.
 - Stack branches are named `review/<NN>-<review>-<topic>` (e.g.
   `review/03-sec-review-input-validation`) instead of
   `gauntlet/stack/<tip>/<NN>-<review>`: the 1-based layer number keeps merge

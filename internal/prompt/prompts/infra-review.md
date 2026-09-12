@@ -21,16 +21,16 @@ Review the following:
 - Overly complex pipelines that are hard to debug or maintain
 
 2. Container configuration
-(pkg-review owns the image as a shipped artifact: contents, layers, labels, USER, FROM pin, multi-stage, image HEALTHCHECK; here cover how images are used in CI/CD, compose, and orchestration.)
-- Base image tag or digest unpinned in compose/CI/Helm when the file pulls an image (Dockerfile FROM belongs to pkg-review)
+(pkg-review owns the image as a shipped artifact: contents, layers, labels, USER, FROM pin, multi-stage, image HEALTHCHECK; Kubernetes workload manifests and pod specs belong to container-review and k8s-review; here own compose, CI/CD, and IaC container wiring.)
+- Base image tag or digest unpinned in compose/CI when the file pulls an image (Dockerfile FROM belongs to pkg-review; Helm chart images belong to helm-review)
 - Missing multi-stage builds or bloated image layers (note only; pkg-review)
-- Running containers as root in compose/k8s/CI (`user:`, `securityContext`, `runAsNonRoot`) when the image already defines a non-root USER (Dockerfile USER belongs to pkg-review)
+- Running containers as root in compose/CI (`user:`, `runAsNonRoot`) when the image already defines a non-root USER (Dockerfile USER belongs to pkg-review; Kubernetes manifests belong to container-review)
 - Secrets baked into images or passed via environment variables insecurely (here own CI, image, and IaC locations; application-source secrets belong to sec-review)
-- Missing health checks in compose/k8s/orchestrator probes (image HEALTHCHECK belongs to pkg-review)
+- Missing health checks in compose/orchestrator probes (image HEALTHCHECK belongs to pkg-review; Kubernetes probes belong to container-review)
 - Unnecessary packages or tools installed in production images (note only; pkg-review)
 - Missing .dockerignore leading to bloated build contexts
 - Layer ordering that defeats caching (note only; pkg-review)
-- Missing resource limits (memory, CPU) in orchestration configs
+- Missing resource limits (memory, CPU) in compose and IaC configs (Kubernetes resource limits belong to container-review)
 - Containers that depend on host-specific paths or configuration
 
 3. Infrastructure as code

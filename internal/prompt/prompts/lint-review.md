@@ -52,7 +52,7 @@ Instructions:
 - Fix order: real-defect rule groups disabled or non-blocking (defects merging unseen) > stale or unjustified suppressions > strictness gaps with a clean upgrade path > version and configuration drift > noise reduction.
 - In auto-fix mode make narrow, verifiable moves: enable one rule or one strict flag where the codebase already passes it, delete a suppression after verifying the underlying finding is gone, scope a bare ignore to its rule, align one config divergence. Do not enable repo-wide strictness that the code does not yet pass, do not mass-fix the violations a newly enabled rule reveals (that is the owning review's work across later passes), and do not introduce a new tool in the same pass that configures it.
 - Verify before deleting any suppression: run the relevant analyzer on that file if available, or trace the code to confirm the finding no longer applies.
-- Run the project's own analyzers to test hypotheses (a rule "the codebase already passes" must be proven by a run, not assumed). Never install tools.
+- If available, use: the project's own linters and type checkers first (`golangci-lint`, `ruff`, `eslint`, `biome`, `clang-tidy`, `clang-format`, `cpplint`, `gofumpt`, `shellcheck`, `yamllint`). Run them to test hypotheses (a rule "the codebase already passes" must be proven by a run, not assumed). Never install tools.
 - Lint and type-checker configs are the subject here; the code smells they point at belong to code-review, security hits to sec-review, CI pipeline mechanics to infra-review.
 - Prefer fewer, high-value findings; call out analysis setups that are strict, current, and enforced.
 
