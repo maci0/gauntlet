@@ -12,32 +12,36 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.19.0
+
+### Changed
+
 - The prompt review now leaves well-constructed prompts alone in auto-fix
   runs instead of asking for report-only praise.
-
 - Releases are now assembled as drafts before becoming visible, and rerunning
   a release refuses to replace an already-published version's assets or notes.
+- Pin the `govulncheck` executable used locally and in CI while continuing to
+  scan against the current vulnerability database.
+- Dashboard and launcher panels now use square instrument frames instead of
+  generic rounded cards.
+- The run documentation now includes a quiesced backup and restore drill for
+  durable state, including restore verification and explicit RPO/RTO guidance.
+
+### Fixed
 
 - Invalid or unrepresentable elapsed values in the run index now fall back to
   the recorded start and end times instead of displaying a wrapped duration.
-
-- Pin the `govulncheck` executable used locally and in CI while continuing to
-  scan against the current vulnerability database.
-
 - Deduplicate `--dirs` targets that name the same tree through symlinks.
-
-- Dashboard and launcher panels now use square instrument frames instead of
-  generic rounded cards.
 - Preserve launcher run options when stacked PR mode is toggled off again.
-
-- Self-update authentication is now sent only to GitHub over HTTPS, preventing
-  release metadata from forwarding a GitHub token to another host.
-- The run documentation now includes a quiesced backup and restore drill for
-  durable state, including restore verification and explicit RPO/RTO guidance.
 - Build and help targets no longer create the test scratch directory; only
   test targets set up and use it.
 - Custom agent files are validated completely before any definitions are
   registered, and blank executable names now fail at startup.
+
+### Security
+
+- Self-update authentication is now sent only to GitHub over HTTPS, preventing
+  release metadata from forwarding a GitHub token to another host.
 
 ## 1.18.0
 
