@@ -132,15 +132,3 @@ func (l *Lock) Release() {
 	_ = syscall.Flock(fd, syscall.LOCK_UN)
 	_ = syscall.Close(fd)
 }
-
-// RealPath resolves a path for own-artifact comparisons. Symlinks are resolved
-// so a repo file merely named like the lock is still seen as a real change.
-func RealPath(p string) string {
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		return real
-	}
-	return p
-}

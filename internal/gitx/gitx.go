@@ -22,6 +22,17 @@ import (
 	"time"
 )
 
+// RealPath returns p as an absolute path with existing symlinks resolved.
+func RealPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return p
+}
+
 // safeConfig disables every config value git will execute as a program during
 // ordinary read-only commands. A hostile target repo's .git/config (an
 // unpacked archive can carry one) would otherwise run arbitrary code in this

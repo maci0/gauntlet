@@ -329,7 +329,7 @@ func run(argv []string) int {
 
 	ownArtifacts := map[string]bool{}
 	if opts.logFile != "" {
-		ownArtifacts[runner.RealPath(opts.logFile)] = true
+		ownArtifacts[gitx.RealPath(opts.logFile)] = true
 	}
 	locked := false
 	lockAll := func() int {
@@ -344,7 +344,7 @@ func run(argv []string) int {
 				return exitUsage
 			}
 			d.lock = lock
-			ownArtifacts[runner.RealPath(lockPath)] = true
+			ownArtifacts[gitx.RealPath(lockPath)] = true
 		}
 		locked = true
 		return -1
@@ -1336,7 +1336,7 @@ func resolveDirs(opts *options) ([]string, error) {
 				return nil, fmt.Errorf("%s: not a directory: %s", label, abs)
 			}
 			added++
-			identity := runner.RealPath(abs)
+			identity := gitx.RealPath(abs)
 			if seen[identity] {
 				continue // one tree twice would just block on its own lock
 			}

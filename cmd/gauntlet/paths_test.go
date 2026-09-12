@@ -138,6 +138,20 @@ func TestResolveDirs(t *testing.T) {
 		}
 	})
 
+	t.Run("symlinked tree runs once", func(t *testing.T) {
+		link := filepath.Join(t.TempDir(), "tree")
+		if err := os.Symlink(base, link); err != nil {
+			t.Fatal(err)
+		}
+		got, err := resolveDirs(&options{dirs: []string{base, link}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 1 {
+			t.Fatalf("a symlinked duplicate would block on its own lock: %v", got)
+		}
+	})
+
 	t.Run("glob expands to directories only", func(t *testing.T) {
 		got, err := resolveDirs(&options{dirs: []string{filepath.Join(base, "d*")}})
 		if err != nil {
