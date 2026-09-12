@@ -259,7 +259,7 @@ func walk(node any, ev *Event, text, thinking *strings.Builder, depth int, inThi
 			switch {
 			case isString && thinkingTextKeys[lower]:
 				appendText(thinking, str)
-			case isNumberKey(lower):
+			case outputKeys[lower] || thinkingKeys[lower] || totalKeys[lower]:
 				assign(ev, lower, child)
 			case isString && textKeys[lower]:
 				if thinkingHere {
@@ -286,10 +286,6 @@ func isThinkingBlock(o *object) bool {
 	t, _ := o.get("type").(string)
 	t = strings.ToLower(t)
 	return strings.Contains(t, "thinking") || strings.Contains(t, "reasoning")
-}
-
-func isNumberKey(lower string) bool {
-	return outputKeys[lower] || thinkingKeys[lower] || totalKeys[lower]
 }
 
 // assign records a counter, keeping the largest value seen for that field on

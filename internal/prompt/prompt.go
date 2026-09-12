@@ -319,13 +319,9 @@ func sanitize(s string) string {
 		if r == ' ' {
 			return r
 		}
-		if !isPrintable(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
 	}, s)
-}
-
-func isPrintable(r rune) bool {
-	return !unicode.IsControl(r) && !unicode.Is(unicode.Cf, r)
 }
