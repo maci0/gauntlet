@@ -78,7 +78,7 @@ Instructions:
 - Do not review prompt templates inside application source (llm-review), shipped skills (skills-review), agent rule files (agentrules-review), general documentation (doc-review), or PRDs/ADRs/RFCs (specs-review).
 - Test factual claims (tool names, flags, standards) before flagging them; a wrong correction is worse than the original.
 - Prefer fewer, high-value findings; a prompt set re-litigated wholesale every pass is churn, not review.
-- Call out prompts that are well-constructed and should be left alone.
+- Leave well-constructed prompts alone.
 
 Missing prompts this repository warrants
 - A repository whose own rule files (AGENTS.md, CLAUDE.md, CONTRIBUTING.md, docs and ADRs) carry extensive, checkable, drift-prone subject matter may be missing a review of its own. Where that is clearly true, create it as `<topic>-review.md` beside the repository's other prompts, or at the repository root when it has none.

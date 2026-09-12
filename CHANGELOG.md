@@ -12,6 +12,9 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- The prompt review now leaves well-constructed prompts alone in auto-fix
+  runs instead of asking for report-only praise.
+
 - Releases are now assembled as drafts before becoming visible, and rerunning
   a release refuses to replace an already-published version's assets or notes.
 
