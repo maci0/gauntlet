@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Deduplicate `--dirs` targets that name the same tree through symlinks.
+
 - Dashboard and launcher panels now use square instrument frames instead of
   generic rounded cards.
 - Preserve launcher run options when stacked PR mode is toggled off again.

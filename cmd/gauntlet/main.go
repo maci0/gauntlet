@@ -1336,10 +1336,11 @@ func resolveDirs(opts *options) ([]string, error) {
 				return nil, fmt.Errorf("%s: not a directory: %s", label, abs)
 			}
 			added++
-			if seen[abs] {
+			identity := runner.RealPath(abs)
+			if seen[identity] {
 				continue // one tree twice would just block on its own lock
 			}
-			seen[abs] = true
+			seen[identity] = true
 			out = append(out, abs)
 		}
 		if globbed && added == 0 {
