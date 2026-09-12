@@ -189,9 +189,9 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	fmt.Fprintln(out)
 	fmt.Fprintf(out, "%s %s   %s %s   %s %s   %s %s\n",
 		pal.bold("Agents"), ratio(installed, len(agents)),
-		pal.bold("core"), ratio(coreHave, len(agent.CoreTools)),
-		pal.bold("recommended"), ratio(recHave, len(seenRec)),
-		pal.bold("stack-specific"), ratio(optHave, len(seenOpt)))
+		pal.bold("Core"), ratio(coreHave, len(agent.CoreTools)),
+		pal.bold("Recommended"), ratio(recHave, len(seenRec)),
+		pal.bold("Stack-specific"), ratio(optHave, len(seenOpt)))
 
 	// An explicit --bin is the user vouching for one exact file, so a
 	// runnable override counts as an agent even when nothing auto-detects.

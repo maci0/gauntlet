@@ -328,11 +328,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, tea.Quit
 		case " ":
-			m.paused = !m.paused
+			if !m.done {
+				m.paused = !m.paused
+				if !m.paused {
+					m.scroll = 0
+				}
+			}
 		case "j", "down":
 			m.scroll = max(0, m.scroll-1)
 		case "k", "up":
 			m.scroll = min(m.scroll+1, max(0, len(m.visibleFeed())-1))
+		case "pgdown":
+			_, _, _, feedH := m.sectionHeights()
+			m.scroll = max(0, m.scroll-max(feedH-1, 1))
+		case "pgup":
+			_, _, _, feedH := m.sectionHeights()
+			m.scroll = min(m.scroll+max(feedH-1, 1), max(0, len(m.visibleFeed())-1))
 		case "g", "home":
 			m.scroll = max(0, len(m.visibleFeed())-1)
 		case "G", "end":
@@ -1168,7 +1179,7 @@ func (m *model) renderHelp() string {
 		"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
 		"  ctrl+c x2   quit while a finish is draining (stops the run)",
 		"  space       pause the feed (output collects; reviews keep running)",
-		"  j / k       scroll the feed",
+		"  j / k       scroll the feed (or pgup / pgdn)",
 		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results and errors, and back",
 		"  ?, h        toggle this help",
@@ -1190,12 +1201,15 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	case m.quitArmed:
 		q = "stop now"
 	}
-	space := "pause"
-	if m.paused {
-		space = "resume"
-	}
 	keys := []struct{ k, d string }{
-		{"q", q}, {"?", "help"}, {"space", space},
+		{"q", q}, {"?", "help"},
+	}
+	if !m.done {
+		space := "pause"
+		if m.paused {
+			space = "resume"
+		}
+		keys = append(keys, struct{ k, d string }{"space", space})
 	}
 	if scrollable {
 		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
