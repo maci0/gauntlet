@@ -1122,6 +1122,79 @@ func TestParseAgentCmd(t *testing.T) {
 	}
 }
 
+// FuzzParseAgentCmd tests the --agent-cmd CLI parser against arbitrary input.
+// It must never panic, must require NAME=ARGV syntax with valid name characters
+// and a {prompt} placeholder, and must round-trip valid definitions.
+func FuzzParseAgentCmd(f *testing.F) {
+	seeds := []string{
+		"pi=pi --agent reviewer -p {prompt}",
+		"custom=custom -p {prompt} --model {model}",
+		"noequals",
+		"=argv",
+		"name=",
+		"name=no-placeholder",
+		"bad name=cmd {prompt}",
+		"x=x {prompt} {model} {effort}",
+		"",
+		"=",
+		"===",
+		"a=b c {prompt}",
+		"name=   \t\n  ",
+		"name\t=cmd {prompt}",
+		"name:foo=cmd {prompt}",
+		"name,foo=cmd {prompt}",
+		"name@foo=cmd {prompt}",
+		"name=x {prompt}\ny",
+		"name=cmd '{prompt}'",
+		"\x00=\x00 {prompt}",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		name, def, err := ParseAgentCmd(s)
+		if err != nil {
+			if name != "" || len(def.Argv) != 0 {
+				t.Fatalf("ParseAgentCmd(%q) returned non-empty name=%q def=%+v on error: %v", s, name, def, err)
+			}
+			if err.Error() == "" {
+				t.Fatalf("ParseAgentCmd(%q) returned empty error message", s)
+			}
+			return
+		}
+		if name == "" {
+			t.Fatalf("ParseAgentCmd(%q) accepted empty name", s)
+		}
+		if strings.ContainsAny(name, " \t,:=@") {
+			t.Fatalf("ParseAgentCmd(%q) accepted name with separator characters: %q", s, name)
+		}
+		if len(def.Argv) == 0 {
+			t.Fatalf("ParseAgentCmd(%q) returned empty Argv", s)
+		}
+		hasPrompt := false
+		for _, arg := range def.Argv {
+			if strings.Contains(arg, "{prompt}") {
+				hasPrompt = true
+				break
+			}
+		}
+		if !hasPrompt {
+			t.Fatalf("ParseAgentCmd(%q) accepted Argv without {prompt}: %v", s, def.Argv)
+		}
+
+		// Invariant: re-parsing the normalized NAME=ARGV must succeed and match.
+		resynthesized := name + "=" + strings.Join(def.Argv, " ")
+		name2, def2, err2 := ParseAgentCmd(resynthesized)
+		if err2 != nil {
+			t.Fatalf("re-parsing synthesized %q failed: %v", resynthesized, err2)
+		}
+		if name2 != name || !slices.Equal(def2.Argv, def.Argv) {
+			t.Fatalf("re-parsing synthesized %q yielded name=%q argv=%v, want name=%q argv=%v",
+				resynthesized, name2, def2.Argv, name, def.Argv)
+		}
+	})
+}
+
 func TestPiFamilyDefinitions(t *testing.T) {
 	// The pi family ships as definitions rather than code. Each one must
 	// produce a runnable argv with the prompt last.

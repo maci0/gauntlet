@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"math"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -70,6 +71,76 @@ func TestParseUsagePercent(t *testing.T) {
 			t.Errorf("parseUsagePercent(%q) = %v, %v; want %v", tc.in, got, err, tc.want)
 		}
 	}
+}
+
+// FuzzParseUsagePercent tests the provider usage probe output parser against
+// arbitrary process output. It must never panic, must reject non-finite or
+// out-of-range floats, and must strictly bound accepted percentages to [0, 100].
+func FuzzParseUsagePercent(f *testing.F) {
+	seeds := []string{
+		"42",
+		"  85.5\n",
+		"91%",
+		"0",
+		"100",
+		"100.0",
+		"probing...\n77\n",
+		"",
+		"\n \n",
+		"unknown",
+		"usage: 42",
+		"-1",
+		"100.1",
+		"101",
+		"NaN",
+		"nan",
+		"Inf",
+		"+Inf",
+		"-Inf",
+		"0%",
+		"100%",
+		"-0",
+		"+0",
+		"1e-5",
+		"1e2",
+		"1e3",
+		"0x10",
+		"99.9999999999999",
+		"line1\nline2\n50%",
+		"line1\nline2\n",
+		"50%\n\n\n",
+		"\x00",
+		"\xff\xfe",
+		"99.9 %",
+		"%50",
+		"50 %%",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		pct, err := parseUsagePercent(s)
+		if err != nil {
+			if pct != 0 {
+				t.Fatalf("parseUsagePercent(%q) returned non-zero pct %v on error: %v", s, pct, err)
+			}
+			if err.Error() == "" {
+				t.Fatalf("parseUsagePercent(%q) returned empty error message", s)
+			}
+			return
+		}
+		if math.IsNaN(pct) || math.IsInf(pct, 0) {
+			t.Fatalf("parseUsagePercent(%q) = %v, must not be NaN or Inf", s, pct)
+		}
+		if pct < 0 || pct > 100 {
+			t.Fatalf("parseUsagePercent(%q) = %v, outside valid percentage range [0, 100]", s, pct)
+		}
+		// Deterministic parsing
+		pct2, err2 := parseUsagePercent(s)
+		if err2 != nil || pct2 != pct {
+			t.Fatalf("parseUsagePercent(%q) non-deterministic: (%v, %v) vs (%v, %v)", s, pct, err, pct2, err2)
+		}
+	})
 }
 
 // probeScript writes a probe that prints the given answers in order, one per
