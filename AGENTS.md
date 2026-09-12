@@ -14,6 +14,8 @@ agents, applying fixes to the working tree. One static binary, prompts embedded.
 - `make check-scripts`: ruff, mypy `--strict`, and shellcheck on `scripts/`,
   using the versions CI pins via `uvx`. Rule selection is `pyproject.toml`.
 - `make test`: the suite with the race detector and shuffled order.
+- `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
+  with the same race, shuffle, and tag flags.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
   in the Makefile. The floor is CI's number: a machine with agent CLIs
   installed reads about two points high. Raise it when CI reports higher,
@@ -52,13 +54,14 @@ No package inside `internal/` imports `ui`, so a headless run costs nothing.
   PR titles and bodies say what changed, never "gauntlet", the review pass, or
   the automation behind it. Write "the CLI", "the dashboard", or the package.
   `internal/prompt/rules/commit.md` states the rule for agents,
-  `runner_test.go` pins it for a reviewed repository, and it holds for commits
-  written by hand here too. Two exceptions. A literal identifier the message
-  is about: `GAUNTLET_HOME`, `gauntlet pick`, `.gauntlet.lock`. And the refs
-  the runner cuts for itself (`StackBranchName`, `AddWorktree`), namespaced
-  `gauntlet/...` so a reviewed repository can list and delete them as a set.
-  That is why a stacked PR body names its base branch: the reader has to check
-  it out, and GitHub prints it above the diff either way.
+  `internal/runner/runner_test.go` pins it for a reviewed repository, and it
+  holds for commits written by hand here too. Two exceptions. A literal
+  identifier the message is about: `GAUNTLET_HOME`, `gauntlet pick`,
+  `.gauntlet.lock`. And the refs the runner cuts for itself (`AddWorktree`,
+  `AddStackWorktree`), namespaced `gauntlet/...` and `review/...` so a reviewed
+  repository can list and delete them as a set. That is why a stacked PR body
+  names its base branch: the reader has to check it out, and GitHub prints it
+  above the diff either way.
 - **A conflicting merge is resolved or keeps its branch.** The conflict step
   may hand it to an agent in a scratch checkout; what comes back unresolved
   stays on its branch. Losing a review's entire output silently is worse than
@@ -75,7 +78,8 @@ No package inside `internal/` imports `ui`, so a headless run costs nothing.
   output. Refresh them when the screen changes shape; they need uv, chromium,
   and ImageMagick, and nothing else in the build depends on them.
 - `README.md` is the landing page: keep it short; detail belongs in `docs/`.
-- A new flag is documented in `docs/CLI.md` and in the help table in
-  `cmd/gauntlet/usage.go`.
+- A new flag is documented in `docs/CLI.md`, the help table in
+  `cmd/gauntlet/usage.go`, and `goldenFlagNames`
+  (`cmd/gauntlet/contract_test.go`); flags are API.
 - `docs/IDEAS.md` records what was deliberately not built, and why. Move an
   entry out of it when it ships; do not leave both.
