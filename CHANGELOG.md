@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.18.0
+
 ### Added
 
 - `--max-reviews N` caps how many reviews one loop runs, however large the
