@@ -152,4 +152,3 @@ func BenchmarkClosest(b *testing.B) {
 		_ = Closest("zzzzzz", candidates)
 	}
 }
-

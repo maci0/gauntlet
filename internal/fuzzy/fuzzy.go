@@ -108,4 +108,3 @@ func editDistanceFolded(ar, br []rune, prevBuf, curBuf *[]int) int {
 	}
 	return prev[len(br)]
 }
-
