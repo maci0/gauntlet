@@ -93,6 +93,9 @@ func (c Custom) validate(name string) error {
 	if len(c.Argv) == 0 {
 		return fmt.Errorf("custom agent %q has no argv", name)
 	}
+	if strings.TrimSpace(c.Argv[0]) == "" {
+		return fmt.Errorf("custom agent %q has no executable", name)
+	}
 	foundPrompt := false
 	for _, a := range c.Argv {
 		if strings.Contains(a, promptPlaceholder) {
@@ -262,6 +265,17 @@ func LoadCustomFile(path string) error {
 	var defs map[string]Custom
 	if err := unmarshalStrict(data, &defs); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
+	}
+	// Validate the complete file before changing the registry. Otherwise map
+	// iteration can install some definitions before a later invalid one makes
+	// startup fail, leaving callers that recover from the error half-configured.
+	for name, def := range defs {
+		if err := def.validate(name); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		if isBuiltinTool(name) {
+			return fmt.Errorf("%s: %q is a built-in agent and cannot be redefined", path, name)
+		}
 	}
 	for name, def := range defs {
 		if err := Register(name, def); err != nil {

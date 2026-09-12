@@ -1085,6 +1085,7 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
 		"no argv":                {},
+		"blank executable":       {Argv: []string{" ", "{prompt}"}},
 		"no prompt":              {Argv: []string{"x", "--flag"}},
 		"usage without roots":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
 		"usage with blank roots": {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
@@ -1328,6 +1329,21 @@ func TestCustomAgentFileUsageWithoutRoots(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), path) {
 		t.Fatalf("error should name %s, got %v", path, err)
+	}
+}
+
+func TestCustomAgentFileValidationIsAtomic(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	path := filepath.Join(t.TempDir(), "agents.json")
+	body := `{"valid":{"argv":["valid","{prompt}"]},"invalid":{"argv":[]}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err == nil {
+		t.Fatal("invalid definitions should be rejected")
+	}
+	if _, ok := CustomDef("valid"); ok {
+		t.Fatal("a rejected file partially changed the agent registry")
 	}
 }
 

@@ -12,6 +12,9 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Custom agent files are validated completely before any definitions are
+  registered, and blank executable names now fail at startup.
+
 ## 1.18.0
 
 ### Added

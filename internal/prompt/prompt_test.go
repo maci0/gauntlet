@@ -533,6 +533,48 @@ func TestDiscoverProjectOverridesBundled(t *testing.T) {
 	}
 }
 
+// A project file that is the bundled body, byte for byte, changes nothing:
+// it is this repo's own prompt sources, or a vendored snapshot. Warn only
+// when the copy actually differs.
+func TestDiscoverIdenticalCopyOfBundledIsNotAnOverride(t *testing.T) {
+	dir := t.TempDir()
+	body, err := (Review{Name: "sec-review", Origin: Bundled}).Body()
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(dir, "sec-review.md"), body)
+	_, warnings, err := Discover(context.Background(), "", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "overrides") {
+			t.Fatalf("a byte-identical copy of the bundled body was reported as an override: %v", warnings)
+		}
+	}
+}
+
+// The files in internal/prompt/prompts are what the binary embeds. Discovering
+// this tree must not report them as overrides: they are the bundled set.
+func TestDiscoverThisRepoPromptSourcesAreNotOverrides(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("module root %s has no go.mod: %v", root, err)
+	}
+	_, warnings, err := Discover(context.Background(), "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, w := range warnings {
+		if strings.Contains(w, "overrides") {
+			t.Fatalf("this repo's prompt sources must match the bundled copies: %v", warnings)
+		}
+	}
+}
+
 // A project file that is the bundled body with a UTF-8 BOM is the same
 // prompt after stripBOM, so it must not be reported as an override.
 func TestDiscoverBOMCopyOfBundledIsNotAnOverride(t *testing.T) {
