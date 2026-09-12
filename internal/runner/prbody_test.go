@@ -327,7 +327,7 @@ func FuzzPRBodyRender(f *testing.F) {
 		// Changes section invariants
 		changes := b.changes()
 		fileLines := 0
-		for _, line := range strings.Split(changes, "\n") {
+		for line := range strings.SplitSeq(changes, "\n") {
 			if strings.HasPrefix(line, "- `") {
 				fileLines++
 			}
@@ -347,7 +347,7 @@ func FuzzPRBodyRender(f *testing.F) {
 
 		// Stack note invariants
 		note := b.stackNote()
-		for _, line := range strings.Split(note, "\n") {
+		for line := range strings.SplitSeq(note, "\n") {
 			if strings.HasPrefix(line, "#") {
 				t.Fatalf("Stack note forged heading: %q", line)
 			}
