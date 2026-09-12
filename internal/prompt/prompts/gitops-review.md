@@ -151,7 +151,7 @@ Small changes with high safety or reproducibility payoff.
 
 Important:
 - Base findings on delivery configuration actually in the tree, not on how GitOps repos usually look.
-- If you are not sure whether a posture is intentional, ask in Open Questions instead of asserting.
+- If you are not sure whether a posture is intentional, skip it.
 - Never guess the delivery tool: name the evidence, or review tool-agnostically and say so.
 - Respect the boundaries: manifest content belongs to k8s-review and container-review, chart authoring to helm-review, CI wiring to infra-review — do not re-report their ground here.
 - A small repo applied by one person with kubectl is not a finding; do not recommend adopting Argo CD or Flux for its own sake.
