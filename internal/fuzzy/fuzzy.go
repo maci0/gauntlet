@@ -23,21 +23,42 @@ import (
 // Normalization to NFC first keeps a decomposed spelling of the same name
 // from looking like several edits' worth of typos.
 func Closest(want string, candidates []string) string {
-	wantRunes := foldRunes(norm.NFC.String(want))
+	wantNorm := want
+	if !isASCII(want) {
+		wantNorm = norm.NFC.String(want)
+	}
+	wantRunes := foldRunes(wantNorm)
 	best, bestD := "", distance+1
 	var prev, cur []int
+	var candBuf []rune
 	for _, c := range candidates {
-		candNorm := norm.NFC.String(c)
-		candLen := utf8.RuneCountInString(candNorm)
+		candNorm := c
+		candLen := len(c)
+		if !isASCII(c) {
+			candNorm = norm.NFC.String(c)
+			candLen = utf8.RuneCountInString(candNorm)
+		}
 		if candLen-len(wantRunes) >= bestD || len(wantRunes)-candLen >= bestD {
 			continue
 		}
-		candRunes := foldRunes(candNorm)
-		if d := editDistanceFolded(wantRunes, candRunes, &prev, &cur); d < bestD {
+		candBuf = foldRunesInto(candNorm, candBuf[:0])
+		if d := editDistanceFolded(wantRunes, candBuf, &prev, &cur); d < bestD {
 			best, bestD = c, d
+			if bestD == 0 {
+				return best
+			}
 		}
 	}
 	return best
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // Fold canonicalizes case: every rune is mapped to the smallest rune of its
@@ -50,6 +71,12 @@ func Fold(s string) string {
 }
 
 func foldRune(r rune) rune {
+	if r < 128 {
+		if 'a' <= r && r <= 'z' {
+			return r - ('a' - 'A')
+		}
+		return r
+	}
 	lo := r
 	for t := unicode.SimpleFold(r); t != r; t = unicode.SimpleFold(t) {
 		if t < lo {
@@ -59,12 +86,15 @@ func foldRune(r rune) rune {
 	return lo
 }
 
-func foldRunes(s string) []rune {
-	runes := []rune(s)
-	for i, r := range runes {
-		runes[i] = foldRune(r)
+func foldRunesInto(s string, dst []rune) []rune {
+	for _, r := range s {
+		dst = append(dst, foldRune(r))
 	}
-	return runes
+	return dst
+}
+
+func foldRunes(s string) []rune {
+	return foldRunesInto(s, make([]rune, 0, len(s)))
 }
 
 // distance is how far a typo may stray and still earn a hint.
@@ -79,6 +109,9 @@ func editDistance(a, b string) int {
 }
 
 func editDistanceFolded(ar, br []rune, prevBuf, curBuf *[]int) int {
+	if len(br) > len(ar) {
+		ar, br = br, ar
+	}
 	needed := len(br) + 1
 	var prev, cur []int
 	if prevBuf != nil && cap(*prevBuf) >= needed {

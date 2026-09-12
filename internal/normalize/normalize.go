@@ -269,7 +269,10 @@ func stripControl(s string) string {
 }
 
 func isControl(r rune) bool {
-	return r != '\t' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r))
+	if r < 0x80 {
+		return r != '\t' && (r < ' ' || r == 0x7f)
+	}
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
 }
 
 // classify labels one line, tracking diff state across calls.
