@@ -134,3 +134,22 @@ func TestEditDistance(t *testing.T) {
 		}
 	}
 }
+
+func BenchmarkClosest(b *testing.B) {
+	candidates := []string{
+		"code-review", "sec-review", "quick", "standard", "a11y-review",
+		"error-review", "lint-review", "mobile-review", "privacy-review",
+		"api-review", "arch-review", "authz-review", "build-review",
+		"cli-review", "compat-review", "concurrency-review", "config-review",
+		"container-review", "db-review", "deps-review", "doc-review",
+		"fuzz-review", "gitops-review", "helm-review", "i18n-review",
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for b.Loop() {
+		_ = Closest("secreview", candidates)
+		_ = Closest("quck", candidates)
+		_ = Closest("zzzzzz", candidates)
+	}
+}
+
