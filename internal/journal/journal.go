@@ -96,7 +96,8 @@ type Summary struct {
 // timestamps: End.Sub(Start) is then the fallback, and a pair that moved
 // backwards is missing rather than a negative duration.
 func (s Summary) Duration() (time.Duration, bool) {
-	if s.Elapsed > 0 {
+	if s.Elapsed > 0 && !math.IsInf(s.Elapsed, 0) &&
+		s.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
 		return time.Duration(s.Elapsed * float64(time.Second)), true
 	}
 	if s.Start.IsZero() || s.End.IsZero() || s.End.Before(s.Start) {

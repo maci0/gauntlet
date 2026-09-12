@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1397,6 +1398,16 @@ func TestSummaryDurationPrefersMeasuredElapsed(t *testing.T) {
 	d, ok := s.Duration()
 	if !ok || d != 90*time.Minute {
 		t.Fatalf("Duration() = %s, %v; want 90m, true", d, ok)
+	}
+}
+
+func TestSummaryDurationRejectsUnrepresentableElapsed(t *testing.T) {
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for _, elapsed := range []float64{math.Inf(1), 1e20} {
+		s := Summary{Start: start, End: start.Add(time.Hour), Elapsed: elapsed}
+		if d, ok := s.Duration(); !ok || d != time.Hour {
+			t.Fatalf("Duration() with elapsed %g = %s, %v; want wall-clock fallback 1h, true", elapsed, d, ok)
+		}
 	}
 }
 

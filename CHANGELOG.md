@@ -12,6 +12,9 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Invalid or unrepresentable elapsed values in the run index now fall back to
+  the recorded start and end times instead of displaying a wrapped duration.
+
 - Pin the `govulncheck` executable used locally and in CI while continuing to
   scan against the current vulnerability database.
 
