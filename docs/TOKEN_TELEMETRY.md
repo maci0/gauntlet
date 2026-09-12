@@ -295,7 +295,7 @@ second.
 ```sh
 make build                    # transcripts and databases (what releases ship)
 make build TAGS=notoktop      # no transcript reading, agent output alone
-make build TAGS=              # and no database driver either: stdlib only
+make build TAGS=              # transcripts, but no database-backed counts
 gauntlet doctor               # says which build this is
 ```
 

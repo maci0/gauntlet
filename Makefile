@@ -18,9 +18,8 @@ export GOFLAGS += -mod=readonly
 # opencode keep their counters in databases rather than transcripts, and the
 # driver is pure Go, so cross-compilation is unaffected.
 #
-# TAGS=notoktop drops transcript reading; TAGS= drops the database driver too,
-# leaving a gauntlet that depends on nothing but the standard library and
-# reads only what agents print.
+# TAGS=notoktop drops transcript reading; TAGS= keeps transcript reading but
+# drops the database driver. Both builds retain the CLI and dashboard modules.
 TAGS    ?= sqlite
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
@@ -143,7 +142,7 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 			echo "needs gofmt:"; echo "$$unformatted"; exit 1; \
 		fi
 # The three documented build modes are checked: sqlite+toktop, notoktop, and
-# no tags at all (the stdlib-only binary TAGS= ships). CI tests all three; the
+# no tags at all (transcripts without database readers). CI tests all three; the
 # analysis step must see the same set or a mode only it compiles goes unvetted.
 	$(GO) fix -diff $(GOTAGS) ./...
 	$(GO) fix -diff ./...
