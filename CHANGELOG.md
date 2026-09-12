@@ -12,6 +12,9 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+- Pin the `govulncheck` executable used locally and in CI while continuing to
+  scan against the current vulnerability database.
+
 - Deduplicate `--dirs` targets that name the same tree through symlinks.
 
 - Dashboard and launcher panels now use square instrument frames instead of

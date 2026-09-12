@@ -26,8 +26,8 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, "-mod=readonly") {
 		t.Fatal("Makefile must pass -mod=readonly so a build cannot rewrite go.mod or go.sum")
 	}
-	if !strings.Contains(text, "GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@latest") {
-		t.Fatal("make vuln must clear GOFLAGS; govulncheck is fetched unpinned and is not a build input")
+	if !strings.Contains(text, "GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)") {
+		t.Fatal("make vuln must clear GOFLAGS and use the pinned govulncheck version")
 	}
 	if !strings.Contains(text, `mkdir -p "$(TMPDIR)"`) {
 		t.Fatal(`mkdir TMPDIR must quote the path: HOME can contain spaces`)

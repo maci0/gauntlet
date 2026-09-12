@@ -39,7 +39,6 @@ jobs:
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
-      # Unpinned on purpose: a scanner is worth only what its advisory
-      # database knows, and its result never becomes a build input to
-      # gauntlet itself, unlike the pinned modules in go.mod.
-      - run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      # The tool is pinned against upstream replacement or an incompatible
+      # release; govulncheck still reads the current advisory database.
+      - run: make vuln

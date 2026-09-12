@@ -8,8 +8,8 @@ GOFMT   ?= $(shell $(GO) env GOROOT)/bin/gofmt
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 # Honor go.sum: a missing or extra module must fail the command rather than
-# rewrite the manifests. `make vuln` clears this; govulncheck is not a build
-# input and is fetched unpinned on purpose.
+# rewrite the manifests. `make vuln` clears this because govulncheck is not a
+# build input.
 export GOFLAGS += -mod=readonly
 
 # Reading an agent's own session transcript is on by default: it lives in
@@ -28,6 +28,7 @@ GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 RUFF_VERSION ?= 0.16.4
 MYPY_VERSION ?= 2.3.1
 RICH_VERSION ?= 15.0.0
+GOVULNCHECK_VERSION ?= v1.7.0
 
 # Release artifacts must not depend on the build host's locale: the shell
 # orders glob expansion with strcoll, so checksums.txt and sbom.txt would
@@ -180,13 +181,12 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 	shellcheck scripts/shots.sh
 
 # Advisory scan of the dependency graph, the same invocation vulnscan.yml
-# runs on pull requests that touch go.mod or go.sum. Unpinned for the reason
-# stated there: a scanner is worth only what its advisory database knows,
-# and its result never becomes a build input to gauntlet itself. Needs
-# network on first use; everything else in this Makefile does not.
+# runs on pull requests that touch go.mod or go.sum. The executable is pinned
+# for reproducibility; it still reads the current vulnerability database.
+# Needs network on first use; everything else in this Makefile does not.
 .PHONY: vuln
 vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
-	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: install
 install: build ## install into ~/.local/bin

@@ -123,8 +123,11 @@ func TestDistJobSmokeTestsHostBinary(t *testing.T) {
 	}
 }
 
-func TestVulnscanRunsOnMainGoModPush(t *testing.T) {
+func TestVulnscanUsesLocalTargetAndRunsOnMainGoModPush(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "vulnscan.yml"))
+	if !strings.Contains(text, "run: make vuln") {
+		t.Fatal("vulnscan must use make vuln so its local and CI invocations stay identical")
+	}
 	if !strings.Contains(text, "push:") || !strings.Contains(text, "branches: [main]") {
 		t.Fatal("vulnscan must run on push to main of go.mod/go.sum, not only on pull requests and the weekly schedule")
 	}
