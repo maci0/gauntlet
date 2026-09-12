@@ -102,6 +102,7 @@ func captureStderrFor(t *testing.T, f func() int) (int, *bytes.Buffer) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	orig := os.Stderr
 	os.Stderr = w
 	code := f()

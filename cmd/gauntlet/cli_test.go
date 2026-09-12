@@ -30,6 +30,7 @@ func captureStderr(t *testing.T, f func() int) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	orig := os.Stderr
 	os.Stderr = w
 	code := f()
@@ -65,6 +66,7 @@ func captureParseStderr(t *testing.T, argv []string) (string, bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	orig := os.Stderr
 	os.Stderr = w
 	_, perr := parseFlags(argv)

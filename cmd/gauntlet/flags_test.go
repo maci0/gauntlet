@@ -459,6 +459,7 @@ func captureStdout(t *testing.T, f func()) string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	orig := os.Stdout
 	os.Stdout = w
 	f()
