@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.20.0
+
 ### Changed
 
 - Share process-group kill, WaitDelay, and capped stdout/stderr across git,
