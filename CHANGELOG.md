@@ -12,6 +12,10 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Changed
+
+- README dashboard and launcher screenshots now stamp the current release.
+
 ## 1.20.0
 
 ### Changed

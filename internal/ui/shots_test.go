@@ -26,7 +26,7 @@ func TestWriteShots(t *testing.T) {
 	lipgloss.SetHasDarkBackground(true)
 
 	cfg := demoConfig()
-	cfg.Version = "1.7.0"
+	cfg.Version = "1.20.0"
 	cfg.Dirs = []string{"/home/dev/src/acme/project"}
 	cfg.Reviews = []string{"sec-review", "code-review", "doc-review", "perf-review",
 		"test-review", "arch-review", "deps-review", "ux-review"}
@@ -48,7 +48,7 @@ func TestWriteShots(t *testing.T) {
 
 	rev := func(n, d string) PickReview { return PickReview{Name: n, Desc: d} }
 	p := newPicker(PickConfig{
-		Dir: "/home/dev/src/acme/project", Version: "1.7.0",
+		Dir: "/home/dev/src/acme/project", Version: "1.20.0",
 		Groups: []PickGroup{
 			{Name: "quick", Reviews: []PickReview{
 				rev("sec-review", "injection, secrets, and unsafe defaults"),
