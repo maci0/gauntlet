@@ -924,7 +924,10 @@ fi
 echo "RESULT: no-changes"`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
-	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	cfg.Retries = 2
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
 	r, got := runRecorded(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
@@ -1061,7 +1064,10 @@ exit 1`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
 	cfg.Jobs = 2
-	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	cfg.Retries = 2
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
 	r := runQuiet(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
@@ -1124,7 +1130,10 @@ echo "package scratch" > scratch.go
 exit 1`)
 
 	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
-	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	cfg.Retries = 2
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
 	r := runQuiet(t, cfg)
 
 	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
@@ -1185,7 +1194,10 @@ echo "RESULT: no-changes"`)
 
 	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
 	cfg.ContinueSessions = true
-	cfg.Retries, cfg.RetryDelay = 2, time.Millisecond
+	cfg.Retries = 2
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
 	// ResumeQueue pins the order: schedule() shuffles otherwise, and the
 	// assertion is that b-review's first try resumes a-review's session.
 	cfg.ResumeQueue = []string{"a-review", "b-review"}

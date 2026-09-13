@@ -17,6 +17,13 @@ import (
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
+func crushNote() string {
+	if haveSQLite {
+		return ", and crush's project database."
+	}
+	return " (crush reports nothing: its counters live in a SQLite database, build with -tags sqlite)."
+}
+
 // flagDoc is one row of the help screen.
 type flagDoc struct {
 	Short string // without the dash, empty when there is none

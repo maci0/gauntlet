@@ -18,19 +18,20 @@ import (
 // root and may import any of them. A new edge is a layering change; add it
 // here only when DESIGN.md says the direction is intentional.
 var allowedInternalImports = map[string][]string{
-	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome"},
+	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome", "internal/runx"},
 	"internal/fuzzy":        {},
 	"internal/gauntlethome": {},
-	"internal/ghx":          {},
-	"internal/gitx":         {},
+	"internal/ghx":          {"internal/runx"},
+	"internal/gitx":         {"internal/runx"},
 	"internal/humanize":     {},
 	"internal/journal":      {"internal/gauntlethome"},
 	"internal/normalize":    {},
-	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize"},
+	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize"},
 	"internal/runner": {
-		"internal/agent", "internal/ghx", "internal/gitx", "internal/humanize",
-		"internal/journal", "internal/normalize", "internal/prompt", "internal/streamjson",
+		"internal/agent", "internal/fuzzy", "internal/ghx", "internal/gitx", "internal/humanize",
+		"internal/journal", "internal/normalize", "internal/prompt", "internal/runx", "internal/streamjson",
 	},
+	"internal/runx":       {},
 	"internal/selfupdate": {},
 	"internal/streamjson": {},
 	"internal/ui":         {"internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},

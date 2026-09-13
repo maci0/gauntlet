@@ -15,5 +15,4 @@ func registerTranscript(string, *agent.UsageSpec) error { return nil }
 func enableOpenCodeDB() bool { return false }
 
 // tokenSourceLine tells doctor which token sources this build can read.
-const tokenSourceLine = "Token rates: from what agents print (this build opted out of reading session transcripts with -tags notoktop)" +
-	crushSourceNote + "."
+var tokenSourceLine = "Token rates: from what agents print (this build opted out of reading session transcripts with -tags notoktop)" + crushNote()

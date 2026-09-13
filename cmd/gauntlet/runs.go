@@ -13,12 +13,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl.
@@ -135,15 +135,7 @@ func runIndexer(ctx context.Context, bin string, args []string, dir string) int 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			// ESRCH: the group is already gone, which is the outcome asked for.
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
-	cmd.WaitDelay = indexerWaitGrace
+	runx.Guard(cmd, indexerWaitGrace)
 	if err := cmd.Run(); err != nil {
 		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode()

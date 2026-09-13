@@ -24,7 +24,7 @@ import (
 // from looking like several edits' worth of typos.
 func Closest(want string, candidates []string) string {
 	wantNorm := want
-	if !isASCII(want) {
+	if !IsASCII(want) {
 		wantNorm = norm.NFC.String(want)
 	}
 	wantRunes := foldRunes(wantNorm)
@@ -34,7 +34,7 @@ func Closest(want string, candidates []string) string {
 	for _, c := range candidates {
 		candNorm := c
 		candLen := len(c)
-		if !isASCII(c) {
+		if !IsASCII(c) {
 			candNorm = norm.NFC.String(c)
 			candLen = utf8.RuneCountInString(candNorm)
 		}
@@ -52,7 +52,8 @@ func Closest(want string, candidates []string) string {
 	return best
 }
 
-func isASCII(s string) bool {
+// IsASCII reports whether s is all bytes below 0x80.
+func IsASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 {
 			return false

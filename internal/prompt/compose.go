@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 //go:embed rules/*
@@ -284,7 +285,7 @@ func SuggestPrompt(set Set, names []string) string {
 		}
 		desc = strings.ReplaceAll(desc, "</catalog>", "</ catalog>")
 		desc = relevantTokenRe.ReplaceAllString(desc, "relevant-")
-		desc = clipRunes(desc, catalogDescMax)
+		desc = normalize.Truncate(desc, catalogDescMax)
 		b.WriteString("- " + name + ": " + desc + "\n")
 	}
 	return strings.ReplaceAll(rule("suggest.md"), "{reviews}", strings.TrimRight(b.String(), "\n"))
@@ -313,7 +314,7 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 		// The token is agent output and the pool is NFC-normalized at
 		// discovery; an agent that decomposed a name it copied must still
 		// match (see nfc).
-		name, reason := nfc(m[1]), clipRunes(strings.TrimSpace(sanitize(m[2])), catalogDescMax)
+		name, reason := nfc(m[1]), normalize.Truncate(strings.TrimSpace(sanitize(m[2])), catalogDescMax)
 		if !known[name] && known[name+"-review"] {
 			name += "-review"
 		}
@@ -328,28 +329,4 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 		picked = append(picked, Suggestion{Name: name, Reason: reason})
 	}
 	return picked, unknown
-}
-
-// clipRunes cuts s to at most max runes on a rune boundary. The budget
-// counts runes like every other display limit here (--list's truncateDesc,
-// normalize.Truncate), not bytes: a CJK string must keep its full allowance,
-// and the cut must not land inside a multibyte encoding. An ellipsis takes
-// the last place when a cut happened.
-func clipRunes(s string, max int) string {
-	if max <= 0 || utf8.RuneCountInString(s) <= max {
-		return s
-	}
-	if max == 1 {
-		return "…"
-	}
-	cut := len(s)
-	n := 0
-	for i := range s {
-		if n == max-1 {
-			cut = i
-			break
-		}
-		n++
-	}
-	return strings.TrimRight(s[:cut], " ") + "…"
 }

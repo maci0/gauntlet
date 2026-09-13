@@ -83,209 +83,201 @@ func Parse(line []byte) (Event, bool) {
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return Event{}, false
 	}
-	doc, ok := decode(trimmed)
-	if !ok {
-		return Event{}, false
-	}
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
 	var ev Event
 	var text, thinking strings.Builder
-	walk(doc, &ev, &text, &thinking, 0, false)
+	if err := extractValue(dec, &ev, &text, &thinking, 0, false); err != nil {
+		return Event{}, false
+	}
+	// Trailing bytes after the value mean the line is not one JSON document,
+	// which is the answer json.Unmarshal gave for the same input.
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return Event{}, false
+	}
 	ev.Text = strings.TrimRight(text.String(), "\n")
 	ev.Thinking = strings.TrimRight(thinking.String(), "\n")
 	return ev, true
 }
 
-// member is one key/value pair of a JSON object, kept where it was written.
-type member struct {
-	key string
-	val any
-}
-
-// object is a decoded JSON object that remembers the order of its keys.
-//
-// encoding/json decodes into map[string]any, and Go randomizes map iteration,
-// so walking that map concatenated an envelope's text fields in a different
-// order from one line to the next: two sibling blocks holding "FIRST" and
-// "SECOND" came out swapped about one line in ten. That is a feed that
-// reorders an agent's sentences and a transcript that does not match what the
-// agent said. The order belongs to the agent, so it is preserved rather than
-// replaced with an order of ours.
-type object struct{ members []member }
-
-// get returns the value written under key, last one wins, matching what
-// encoding/json does with a repeated key. Envelope records carry a handful of
-// fields and only one key is ever looked up, so a scan costs less than the map
-// it would replace.
-func (o *object) get(key string) any {
-	var out any
-	for _, m := range o.members {
-		if m.key == key {
-			out = m.val
-		}
-	}
-	return out
-}
-
 // errNotJSON marks input the decoder reached but cannot be a JSON value. It
-// never escapes decode, which reports the same "not JSON" the caller already
-// handles by falling back to text.
+// never escapes extractValue, which reports the same "not JSON" the caller
+// already handles by falling back to text.
 var errNotJSON = errors.New("not a JSON value")
-
-// decodeDepth bounds the decoder's recursion. encoding/json's scanner has a
-// nesting limit of its own, but it is thousands deep; a line arriving from an
-// agent is untrusted, and this is per output line. Anything past the bound is
-// consumed without being built, iteratively, so a nested tool payload still
-// leaves the line valid JSON -- it just contributes nothing, which is already
-// true of everything below walk's own maxDepth.
-const decodeDepth = 64
-
-// decode reads one JSON value, building objects that keep their key order.
-func decode(data []byte) (any, bool) {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	v, err := decodeValue(dec, 0)
-	if err != nil {
-		return nil, false
-	}
-	// Trailing bytes after the value mean the line is not one JSON document,
-	// which is the answer json.Unmarshal gave for the same input.
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return nil, false
-	}
-	return v, true
-}
-
-func decodeValue(dec *json.Decoder, depth int) (any, error) {
-	if depth > decodeDepth {
-		return nil, skipValue(dec)
-	}
-	tok, err := dec.Token()
-	if err != nil {
-		return nil, err
-	}
-	delim, isDelim := tok.(json.Delim)
-	if !isDelim {
-		return tok, nil // string, float64, bool, or nil
-	}
-	switch delim {
-	case '{':
-		obj := &object{}
-		for dec.More() {
-			keyTok, err := dec.Token()
-			if err != nil {
-				return nil, err
-			}
-			key, ok := keyTok.(string)
-			if !ok {
-				return nil, errNotJSON
-			}
-			val, err := decodeValue(dec, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			// A repeated key keeps both members rather than the last: the
-			// text of each is something the agent wrote, and dropping one
-			// would lose output. get is what resolves a lookup to one value.
-			obj.members = append(obj.members, member{key: key, val: val})
-		}
-		_, err := dec.Token() // the closing brace
-		return obj, err
-	case '[':
-		var arr []any
-		for dec.More() {
-			val, err := decodeValue(dec, depth+1)
-			if err != nil {
-				return nil, err
-			}
-			arr = append(arr, val)
-		}
-		_, err := dec.Token() // the closing bracket
-		return arr, err
-	}
-	return nil, errNotJSON // a closing delimiter where a value belongs
-}
-
-// skipValue consumes one value without building it, counting delimiters
-// rather than recursing: what it is called on is arbitrarily deep by
-// definition, so it must not add a stack frame per level. The decoder's
-// input is the line, so Token eventually EOFs; a closer with no matching
-// opener is not a value, the same answer decodeValue gives at shallower
-// depths.
-func skipValue(dec *json.Decoder) error {
-	open := 0
-	for {
-		tok, err := dec.Token()
-		if err != nil {
-			return err
-		}
-		if d, ok := tok.(json.Delim); ok {
-			if d == '{' || d == '[' {
-				open++
-			} else {
-				open--
-			}
-		}
-		if open < 0 {
-			return errNotJSON
-		}
-		if open == 0 {
-			return nil // a scalar, or the container just closed
-		}
-	}
-}
 
 // maxDepth bounds the walk. Agent envelopes nest a few levels; anything deeper
 // is a tool result payload, whose contents are not this package's business.
 const maxDepth = 8
 
-// walk descends one decoded line. The rule that makes this envelope-agnostic:
-// a text-ish key contributes text only when its value is a string, and any
-// container is descended into instead. That way "message" or "content" can be
-// a string in one agent's dialect and an object holding usage counters in
-// another's, and both work.
-//
-// inThinking is inherited: once inside a reasoning block, the plain text of
-// every nested part is reasoning too.
-func walk(node any, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) {
+// extractValue reads one JSON value and picks up text and usage as it goes.
+// Keys arrive in the order the agent wrote them, so sibling text fields
+// concatenate the way they were emitted rather than in a randomized map order.
+func extractValue(dec *json.Decoder, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
 	if depth > maxDepth {
-		return
+		return skipValue(dec)
 	}
-	switch v := node.(type) {
-	case *object:
-		thinkingHere := inThinking || isThinkingBlock(v)
-		for _, m := range v.members {
-			lower := strings.ToLower(m.key)
-			child := m.val
-			str, isString := child.(string)
-			switch {
-			case isString && thinkingTextKeys[lower]:
-				appendText(thinking, str)
-			case outputKeys[lower] || thinkingKeys[lower] || totalKeys[lower]:
-				assign(ev, lower, child)
-			case isString && textKeys[lower]:
-				if thinkingHere {
-					appendText(thinking, str)
-				} else {
-					appendText(text, str)
-				}
-			case isString:
-				// Some other string field: not content, not a counter.
-			default:
-				walk(child, ev, text, thinking, depth+1, thinkingHere)
-			}
-		}
-	case []any:
-		for _, child := range v {
-			walk(child, ev, text, thinking, depth+1, inThinking)
-		}
+	tok, err := dec.Token()
+	if err != nil {
+		return err
 	}
+	return extractFrom(dec, tok, ev, text, thinking, depth, inThinking)
 }
 
-// isThinkingBlock reports whether a record is a reasoning block, so the plain
-// text inside it is read as reasoning rather than as visible output.
-func isThinkingBlock(o *object) bool {
-	t, _ := o.get("type").(string)
+func extractFrom(dec *json.Decoder, tok json.Token, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
+	delim, isDelim := tok.(json.Delim)
+	if !isDelim {
+		return nil // string, float64, bool, or nil: not content on its own
+	}
+	if depth > maxDepth {
+		return skipRest(dec, delim)
+	}
+	switch delim {
+	case '{':
+		return extractObject(dec, ev, text, thinking, depth, inThinking)
+	case '[':
+		for dec.More() {
+			if err := extractValue(dec, ev, text, thinking, depth+1, inThinking); err != nil {
+				return err
+			}
+		}
+		_, err := dec.Token() // the closing bracket
+		return err
+	}
+	return errNotJSON // a closing delimiter where a value belongs
+}
+
+// objField is one object member held until the object's type is known, so a
+// reasoning block whose "type" arrives after its "text" still classifies the
+// text as thinking. Nested containers are extracted as they close, then
+// promoted if this object turns out to be a reasoning block.
+type objField struct {
+	key      string
+	str      string
+	hasStr   bool
+	num      any
+	hasNum   bool
+	nested   bool
+	text     string
+	thinking string
+}
+
+func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
+	var fields []objField
+	var typeStr string
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return errNotJSON
+		}
+		lower := strings.ToLower(key)
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		if delim, isDelim := tok.(json.Delim); isDelim {
+			var nested Event
+			var nText, nThink strings.Builder
+			if err := extractFrom(dec, delim, &nested, &nText, &nThink, depth+1, inThinking); err != nil {
+				return err
+			}
+			fields = append(fields, objField{
+				key: lower, nested: true,
+				text: nText.String(), thinking: nThink.String(),
+			})
+			ev.Usage.Output = max(ev.Usage.Output, nested.Usage.Output)
+			ev.Usage.Thinking = max(ev.Usage.Thinking, nested.Usage.Thinking)
+			ev.Usage.Total = max(ev.Usage.Total, nested.Usage.Total)
+			continue
+		}
+		switch v := tok.(type) {
+		case string:
+			if lower == "type" {
+				typeStr = v
+			}
+			fields = append(fields, objField{key: lower, str: v, hasStr: true})
+		case float64, json.Number:
+			fields = append(fields, objField{key: lower, num: v, hasNum: true})
+		}
+	}
+	if _, err := dec.Token(); err != nil { // the closing brace
+		return err
+	}
+
+	thinkingHere := inThinking || typeIsThinking(typeStr)
+	for _, f := range fields {
+		switch {
+		case f.hasStr && thinkingTextKeys[f.key]:
+			appendText(thinking, f.str)
+		case f.hasNum && (outputKeys[f.key] || thinkingKeys[f.key] || totalKeys[f.key]):
+			assign(ev, f.key, f.num)
+		case f.hasStr && (outputKeys[f.key] || thinkingKeys[f.key] || totalKeys[f.key]):
+			// a numeric counter that arrived as a string is not a count
+		case f.hasStr && textKeys[f.key]:
+			if thinkingHere {
+				appendText(thinking, f.str)
+			} else {
+				appendText(text, f.str)
+			}
+		case f.nested:
+			if thinkingHere && !inThinking {
+				appendText(thinking, f.text)
+			} else {
+				appendText(text, f.text)
+			}
+			appendText(thinking, f.thinking)
+		}
+	}
+	return nil
+}
+
+func typeIsThinking(t string) bool {
 	t = strings.ToLower(t)
 	return strings.Contains(t, "thinking") || strings.Contains(t, "reasoning")
+}
+
+// skipValue consumes one value without extracting, counting delimiters
+// rather than recursing: what it is called on is arbitrarily deep by
+// definition, so it must not add a stack frame per level. The decoder's
+// input is the line, so Token eventually EOFs; a closer with no matching
+// opener is not a value, the same answer extractValue gives at shallower
+// depths.
+func skipValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	if d, ok := tok.(json.Delim); ok {
+		return skipRest(dec, d)
+	}
+	return nil
+}
+
+func skipRest(dec *json.Decoder, first json.Delim) error {
+	if first != '{' && first != '[' {
+		return errNotJSON
+	}
+	open := 1
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		d, ok := tok.(json.Delim)
+		if !ok {
+			continue
+		}
+		if d == '{' || d == '[' {
+			open++
+		} else {
+			open--
+		}
+		if open == 0 {
+			return nil
+		}
+	}
 }
 
 // assign records a counter, keeping the largest value seen for that field on

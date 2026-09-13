@@ -59,10 +59,6 @@ type Config struct {
 	// connection, a CLI that died before it started. Zero keeps only the
 	// fallback to a different agent.
 	Retries int
-	// RetryDelay is the first wait between retries; it doubles from there.
-	// Zero means retryBaseDelay, which is what a run wants; tests set it low
-	// so a retry path costs milliseconds.
-	RetryDelay time.Duration
 
 	Commit bool
 	Push   bool
@@ -1135,8 +1131,9 @@ func (r *Runner) publishReviewEnd(res Result, loopNo int, promptSHA, lane string
 }
 
 // Retry delays. A rate limit or a dropped connection clears in seconds, so the
-// wait starts long enough to matter and doubles from there.
-const (
+// wait starts long enough to matter and doubles from there. retryBaseDelay is
+// a var so tests can shrink it; production always sees 5s.
+var (
 	retryBaseDelay = 5 * time.Second
 	retryMaxDelay  = 2 * time.Minute
 )
@@ -1226,10 +1223,7 @@ func (r *Runner) forgetSession(spec agent.Spec) {
 // keyed by review and attempt, so a seeded run replays it exactly no matter
 // how many lanes are retrying at once.
 func (r *Runner) backoff(review string, attempt int) time.Duration {
-	base := r.cfg.RetryDelay
-	if base <= 0 {
-		base = retryBaseDelay
-	}
+	base := retryBaseDelay
 	d := retryMaxDelay
 	if attempt < 32 {
 		if grown := base << attempt; grown > 0 && grown < retryMaxDelay {

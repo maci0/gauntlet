@@ -20,6 +20,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // RealPath returns p as an absolute path with existing symlinks resolved.
@@ -333,22 +335,12 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 	// looks up ssh on PATH, and a relative entry (notably ".") would pick up
 	// a planted executable in the reviewed tree.
 	cmd.Env = mergeGitEnv(extraEnv)
-	out := &cappedWriter{limit: gitOutputMax}
-	errBuf := &cappedWriter{limit: gitOutputMax}
-	cmd.Stdout, cmd.Stderr = out, errBuf
 	// The deadline kill takes the whole process group down, not just the git
 	// pid: git's own children (a hook, a merge driver) must not survive it as
 	// orphans. WaitDelay then bounds the wait on the output pipes such a
 	// child would still hold open. The same rules runProc and runIndexer
 	// enforce on their own children.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
-	cmd.WaitDelay = waitGrace
+	out, errBuf := runx.Bound(cmd, gitOutputMax, waitGrace)
 	err := cmd.Run()
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into
@@ -356,11 +348,11 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 		// stripped first: a remote stored as https://user:pass@host/... is
 		// otherwise echoed verbatim into the error the runner prints and
 		// journals.
-		if msg := redactUserinfo(strings.TrimSpace(errBuf.String())); msg != "" {
+		if msg := runx.RedactUserinfo(strings.TrimSpace(errBuf.String())); msg != "" {
 			return out.Bytes(), fmt.Errorf("%w: %s", err, msg)
 		}
 	}
-	if out.hit || errBuf.hit {
+	if out.Hit || errBuf.Hit {
 		if err == nil {
 			err = fmt.Errorf("git output exceeded %d bytes", gitOutputMax)
 		}
@@ -373,50 +365,7 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 // not fill RAM. A var so tests can shrink it; production always sees this.
 var gitOutputMax = 32 << 20
 
-// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
-// does not back-pressure the child into a hang. hit is set once the cap is
-// exceeded, so the caller can refuse a truncated listing.
-type cappedWriter struct {
-	buf   bytes.Buffer
-	limit int
-	hit   bool
-}
-
-func (w *cappedWriter) Write(p []byte) (int, error) {
-	if w.limit <= 0 {
-		return w.buf.Write(p)
-	}
-	if w.hit {
-		return len(p), nil
-	}
-	room := w.limit - w.buf.Len()
-	if len(p) <= room {
-		return w.buf.Write(p)
-	}
-	if room > 0 {
-		_, _ = w.buf.Write(p[:room])
-	}
-	w.hit = true
-	return len(p), nil
-}
-
-func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
-func (w *cappedWriter) String() string { return w.buf.String() }
-
-// userinfoRe matches the userinfo of a URL (the "alice:token@" in
-// https://alice:token@host/...), including ssh:// and git:// spellings git
-// prints. git@host:path SSH syntax has no "://", so it is left alone.
-var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/@\s'"]+@`)
-
-// redactUserinfo strips URL userinfo from s so a credential-bearing remote
-// does not land in an error string. Idempotent; strings with no "://" are
-// returned unchanged.
-func redactUserinfo(s string) string {
-	if !strings.Contains(s, "://") {
-		return s
-	}
-	return userinfoRe.ReplaceAllString(s, "$1")
-}
+func firstLine(s string) string { return runx.FirstLine(s) }
 
 // gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
 // operator already exported one, GIT_SSH_COMMAND=ssh. Git's own helpers (ssh,

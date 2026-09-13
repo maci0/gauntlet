@@ -454,8 +454,3 @@ func (r *Repo) ParentTip(ctx context.Context, ref string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
-
-func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
-	return redactUserinfo(line)
-}

@@ -320,8 +320,12 @@ func TestSuggestPromptCatalogBudgetCountsRunes(t *testing.T) {
 	if j := strings.IndexByte(line, '\n'); j >= 0 {
 		line = line[:j]
 	}
-	if n := utf8.RuneCountInString(line); n != catalogDescMax {
-		t.Fatalf("cut entry is %d code points, want %d: %q", n, catalogDescMax, line)
+	// Truncate keeps catalogDescMax runes of content and appends an ellipsis.
+	if n := utf8.RuneCountInString(line); n != catalogDescMax+1 {
+		t.Fatalf("cut entry is %d code points, want %d: %q", n, catalogDescMax+1, line)
+	}
+	if !strings.HasSuffix(line, "…") {
+		t.Fatalf("over-budget catalog entry was not clipped: %q", line)
 	}
 }
 
@@ -392,8 +396,8 @@ func TestParseSuggestionsCapsReason(t *testing.T) {
 	if len(unknown) != 0 || len(picked) != 1 {
 		t.Fatalf("picked %+v unknown %v", picked, unknown)
 	}
-	if n := utf8.RuneCountInString(picked[0].Reason); n > catalogDescMax {
-		t.Fatalf("reason is %d runes, want at most %d", n, catalogDescMax)
+	if n := utf8.RuneCountInString(picked[0].Reason); n > catalogDescMax+1 {
+		t.Fatalf("reason is %d runes, want at most %d", n, catalogDescMax+1)
 	}
 	if !strings.HasSuffix(picked[0].Reason, "…") {
 		t.Fatalf("over-budget reason was not clipped: %q", picked[0].Reason)
@@ -456,9 +460,9 @@ func FuzzParseSuggestions(f *testing.F) {
 				t.Fatalf("duplicate pick for %q", s.Name)
 			}
 			seen[s.Name] = true
-			if n := utf8.RuneCountInString(s.Reason); n > catalogDescMax {
+			if n := utf8.RuneCountInString(s.Reason); n > catalogDescMax+1 {
 				t.Fatalf("reason for %q is %d runes, want at most %d: %q",
-					s.Name, n, catalogDescMax, s.Reason)
+					s.Name, n, catalogDescMax+1, s.Reason)
 			}
 			for _, r := range s.Reason {
 				if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {

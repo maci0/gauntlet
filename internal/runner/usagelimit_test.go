@@ -10,21 +10,6 @@ import (
 	"testing"
 )
 
-func TestCappedWriterKeepsThenDiscards(t *testing.T) {
-	w := &cappedWriter{limit: 8}
-	n, err := w.Write([]byte("hello world"))
-	if err != nil || n != 11 {
-		t.Fatalf("Write = %d, %v", n, err)
-	}
-	if !w.hit || w.String() != "hello wo" {
-		t.Fatalf("got %q hit=%v", w.String(), w.hit)
-	}
-	n, err = w.Write([]byte("more"))
-	if err != nil || n != 4 || w.String() != "hello wo" {
-		t.Fatalf("discarded write: %d %v %q", n, err, w.String())
-	}
-}
-
 func TestParseUsagePercent(t *testing.T) {
 	// The probe's answer decides whether a run keeps spending. Reading a bad
 	// answer as a low number would spend the rest of the window; reading it as

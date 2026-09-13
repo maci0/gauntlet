@@ -13,8 +13,9 @@ import (
 	"regexp"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // dsh has no model flag: the headless profile's agent-default-model plugin
@@ -69,15 +70,7 @@ func dshDefaultProvider(base []string) (string, error) {
 		defer cancel()
 		argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error {
-			if cmd.Process != nil {
-				// ESRCH: the group is already gone, which is the outcome asked for.
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			}
-			return nil
-		}
-		cmd.WaitDelay = dshProbeGrace
+		runx.Guard(cmd, dshProbeGrace)
 		out, err := cmd.Output()
 		if err != nil {
 			dshProbeErr = fmt.Errorf("%s --dump-config failed: %w", argv[0], err)

@@ -18,6 +18,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -128,7 +129,7 @@ type markEntry struct {
 // once so peek does not allocate a copy per file per mark.
 func mark(text, says string) markEntry {
 	e := markEntry{text: text, says: says}
-	if isASCII(text) {
+	if fuzzy.IsASCII(text) {
 		e.needle = []byte(text)
 	}
 	return e
@@ -830,13 +831,4 @@ func asciiFold(dst, b []byte) []byte {
 		dst = append(dst, c)
 	}
 	return dst
-}
-
-func isASCII(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] >= 0x80 {
-			return false
-		}
-	}
-	return true
 }

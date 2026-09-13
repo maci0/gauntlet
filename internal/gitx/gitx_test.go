@@ -973,62 +973,6 @@ func TestChangedSinceNamesRecentWork(t *testing.T) {
 	}
 }
 
-func TestRedactUserinfo(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"", ""},
-		{"fatal: not a git repository", "fatal: not a git repository"},
-		{"https://github.com/owner/repo.git", "https://github.com/owner/repo.git"},
-		{"git@github.com:owner/repo.git", "git@github.com:owner/repo.git"},
-		{
-			"https://alice:s3cret@github.com/owner/repo.git",
-			"https://github.com/owner/repo.git",
-		},
-		{
-			"HTTPS://ALICE:S3CRET@github.com/owner/repo.git",
-			"HTTPS://github.com/owner/repo.git",
-		},
-		{
-			"https://alice@github.com/owner/repo.git",
-			"https://github.com/owner/repo.git",
-		},
-		{
-			"ssh://alice@github.com/owner/repo.git",
-			"ssh://github.com/owner/repo.git",
-		},
-		{
-			"fatal: unable to access 'https://alice:s3cret@github.com/owner/repo.git/': 403",
-			"fatal: unable to access 'https://github.com/owner/repo.git/': 403",
-		},
-		{
-			"https://alice:s3cret@github.com/owner/repo.git and https://bob:other@example.test/x.git",
-			"https://github.com/owner/repo.git and https://example.test/x.git",
-		},
-	}
-	for _, c := range cases {
-		if got := redactUserinfo(c.in); got != c.want {
-			t.Errorf("redactUserinfo(%q) = %q, want %q", c.in, got, c.want)
-		}
-		if got := redactUserinfo(c.want); got != c.want {
-			t.Errorf("redactUserinfo is not idempotent on %q: got %q", c.want, got)
-		}
-	}
-}
-
-func TestCappedWriterKeepsThenDiscards(t *testing.T) {
-	w := &cappedWriter{limit: 8}
-	n, err := w.Write([]byte("hello world"))
-	if err != nil || n != 11 {
-		t.Fatalf("Write = %d, %v", n, err)
-	}
-	if !w.hit || w.String() != "hello wo" {
-		t.Fatalf("got %q hit=%v", w.String(), w.hit)
-	}
-	n, err = w.Write([]byte("more"))
-	if err != nil || n != 4 || w.String() != "hello wo" {
-		t.Fatalf("discarded write: %d %v %q", n, err, w.String())
-	}
-}
-
 func TestExecGitCapsOutput(t *testing.T) {
 	r := newRepo(t)
 	old := gitOutputMax

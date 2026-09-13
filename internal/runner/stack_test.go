@@ -224,7 +224,9 @@ if [ -e partial.txt ]; then exit 9; fi
 echo clean > clean.txt
 echo 'RESULT: changed=1'`)
 	cfg.Retries = 1
-	cfg.RetryDelay = time.Millisecond
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
 
 	r := runQuiet(t, cfg)
 	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {

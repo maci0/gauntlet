@@ -10,7 +10,6 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,8 +17,9 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // usageProbeTimeout caps one probe. Reading a percentage is a fast call (a
@@ -85,26 +85,14 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	cmd.Stdin = nil
 	// Own process group and an explicit group kill, like every other
 	// subprocess here: a probe that forks must not outlive its own timeout.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
-	cmd.WaitDelay = usageProbeWait
-	// The probe is supposed to print one number. Without a cap, a command
-	// that dumps until the timeout fills RAM once per review.
-	out := &cappedWriter{limit: usageProbeMaxBytes}
-	errOut := &cappedWriter{limit: usageProbeMaxBytes}
-	cmd.Stdout, cmd.Stderr = out, errOut
+	out, errOut := runx.Bound(cmd, usageProbeMaxBytes, usageProbeWait)
 	if err := cmd.Run(); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {
-			return 0, fmt.Errorf("%w: %s", err, firstLine(detail))
+			return 0, fmt.Errorf("%w: %s", err, runx.FirstLine(detail))
 		}
 		return 0, err
 	}
-	if out.hit || errOut.hit {
+	if out.Hit || errOut.Hit {
 		return 0, fmt.Errorf("probe printed more than %d bytes", usageProbeMaxBytes)
 	}
 	return parseUsagePercent(out.String())
@@ -113,36 +101,6 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 // usageProbeMaxBytes is plenty for a percentage and a line or two of
 // narration. A var so tests can shrink it; production always sees this.
 var usageProbeMaxBytes = 4 << 10
-
-// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
-// does not back-pressure the child into a hang. hit is set once the cap is
-// exceeded, so the caller can refuse a truncated answer.
-type cappedWriter struct {
-	buf   bytes.Buffer
-	limit int
-	hit   bool
-}
-
-func (w *cappedWriter) Write(p []byte) (int, error) {
-	if w.limit <= 0 {
-		return w.buf.Write(p)
-	}
-	if w.hit {
-		return len(p), nil
-	}
-	room := w.limit - w.buf.Len()
-	if len(p) <= room {
-		return w.buf.Write(p)
-	}
-	if room > 0 {
-		_, _ = w.buf.Write(p[:room])
-	}
-	w.hit = true
-	return len(p), nil
-}
-
-func (w *cappedWriter) String() string { return w.buf.String() }
-func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
 
 // parseUsagePercent reads the probe's answer. Anything that is not a single
 // number in range is an error rather than a guess: a probe whose output drifts

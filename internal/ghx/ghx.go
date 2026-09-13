@@ -5,7 +5,6 @@
 package ghx
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,10 +13,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 const commandTimeout = 2 * time.Minute
@@ -61,7 +60,7 @@ func ParseRemote(raw string) (repo, host string, err error) {
 	// Errors quote the remote so the operator can see what was refused;
 	// userinfo is stripped first so a stored https://user:pass@host/... does
 	// not land in the terminal or the run journal.
-	shown := redactUserinfo(raw)
+	shown := runx.RedactUserinfo(raw)
 	if after, ok := strings.CutPrefix(raw, "git@"); ok {
 		left, path, ok := strings.Cut(after, ":")
 		if !ok {
@@ -212,7 +211,7 @@ func (c Client) Create(ctx context.Context, head, base, title, body string) (str
 // then failed. Anything that is not a valid URL for this host is ignored so
 // an error page or usage text cannot be taken for a successful create.
 func (c Client) createdURL(out []byte) (string, bool) {
-	raw := firstLine(strings.TrimSpace(string(out)))
+	raw := runx.FirstLine(strings.TrimSpace(string(out)))
 	if raw == "" {
 		return "", false
 	}
@@ -248,27 +247,17 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = c.Dir
 	cmd.Stdin = nil
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		}
-		return nil
-	}
 	// Like gitx: a child that escapes the process group must not keep Run
 	// blocked on the output pipes past the kill.
-	cmd.WaitDelay = waitGrace
-	out := &cappedWriter{limit: ghOutputMax}
-	errOut := &cappedWriter{limit: ghOutputMax}
-	cmd.Stdout, cmd.Stderr = out, errOut
+	out, errOut := runx.Bound(cmd, ghOutputMax, waitGrace)
 	if err := cmd.Run(); err != nil {
 		detail := strings.TrimSpace(errOut.String())
 		if detail != "" {
-			return out.Bytes(), fmt.Errorf("%w: %s", err, firstLine(detail))
+			return out.Bytes(), fmt.Errorf("%w: %s", err, runx.FirstLine(detail))
 		}
 		return out.Bytes(), err
 	}
-	if out.hit || errOut.hit {
+	if out.Hit || errOut.Hit {
 		return out.Bytes(), fmt.Errorf("gh output exceeded %d bytes", ghOutputMax)
 	}
 	return out.Bytes(), nil
@@ -277,53 +266,3 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 // ghOutputMax bounds stdout and stderr of one gh command. PR JSON lives far
 // below this; a hung or hostile listing must not fill RAM.
 const ghOutputMax = 8 << 20
-
-// cappedWriter keeps at most limit bytes, then discards the rest so a pipe
-// does not back-pressure the child into a hang. hit is set once the cap is
-// exceeded, so the caller can refuse a truncated answer.
-type cappedWriter struct {
-	buf   bytes.Buffer
-	limit int
-	hit   bool
-}
-
-func (w *cappedWriter) Write(p []byte) (int, error) {
-	if w.limit <= 0 {
-		return w.buf.Write(p)
-	}
-	if w.hit {
-		return len(p), nil
-	}
-	room := w.limit - w.buf.Len()
-	if len(p) <= room {
-		return w.buf.Write(p)
-	}
-	if room > 0 {
-		_, _ = w.buf.Write(p[:room])
-	}
-	w.hit = true
-	return len(p), nil
-}
-
-func (w *cappedWriter) Bytes() []byte  { return w.buf.Bytes() }
-func (w *cappedWriter) String() string { return w.buf.String() }
-
-func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
-	return redactUserinfo(line)
-}
-
-// userinfoRe matches the userinfo of a URL (the "alice:token@" in
-// https://alice:token@host/...). git@host:path SSH syntax has no "://", so
-// it is left alone.
-var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/@\s'"]+@`)
-
-// redactUserinfo strips URL userinfo from s so a credential-bearing remote
-// does not land in an error string. Idempotent; strings with no "://" are
-// returned unchanged.
-func redactUserinfo(s string) string {
-	if !strings.Contains(s, "://") {
-		return s
-	}
-	return userinfoRe.ReplaceAllString(s, "$1")
-}

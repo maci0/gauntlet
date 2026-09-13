@@ -24,6 +24,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 //go:embed prompts/*.md
@@ -133,10 +135,7 @@ func (r Review) Summary() string {
 		if s == "" {
 			break
 		}
-		if utf8.RuneCountInString(s) > summaryRuneMax {
-			s = string([]rune(s)[:summaryRuneMax])
-		}
-		return s
+		return normalize.Truncate(s, summaryRuneMax)
 	}
 	return r.Desc()
 }

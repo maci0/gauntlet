@@ -12,6 +12,15 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Changed
+
+- Share process-group kill, WaitDelay, and capped stdout/stderr across git,
+  gh, usage probes, dsh config dumps, and the indexer.
+- Parse agent JSON streams by extracting text and usage during decode instead
+  of building an intermediate tree.
+- Clip catalog descriptions, suggestion reasons, and review summaries with
+  the same rune-bounded ellipsis the rest of the binary uses.
+
 ## 1.19.0
 
 ### Changed

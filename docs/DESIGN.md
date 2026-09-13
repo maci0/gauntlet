@@ -38,6 +38,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
+| `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage*.go`, dropped by `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
@@ -48,16 +49,18 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`prompt`, `normalize`, `gitx`, `ghx`, `streamjson`, `humanize`, and
-`journal`; `ui` imports
+`prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, `humanize`, and
+`journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
+kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing
 else. The picker takes the file-signal suggester name from `PickConfig`
 rather than importing `runner` for it. `prompt` imports `gitx`, so project
 discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
-same hardened resolver and safe config as every other git invocation, and
-`humanize` so composed
-prompts spell timeouts the same way the rest of the binary does. `agent`
+same hardened resolver and safe config as every other git invocation,
+`normalize` so catalog and summary clips use the same rune-bounded ellipsis,
+and `humanize` so composed prompts spell timeouts the same way the rest of
+the binary does. `agent`
 and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere; the CLI
 uses it for unknown commands and flags too.
