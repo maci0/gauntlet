@@ -334,7 +334,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
 	fs.BoolVar(&o.stackedPRs, "stacked-prs", false,
-		"run reviews sequentially in one worktree and open a linear PR stack")
+		"run reviews sequentially in an isolated worktree and open a linear PR stack; -n starts a new stack from the previous tip")
 	fs.StringVar(&o.prBase, "pr-base", "",
 		"remote base branch fetched for --stacked-prs (default: current branch name)")
 	fs.StringVar(&o.pushRemote, "push-remote", "origin",
@@ -600,10 +600,13 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if o.mergeInto != "" {
 			return nil, errors.New("--stacked-prs creates unmerged PRs and conflicts with --merge-into")
 		}
-		if o.maxLoops > 1 {
-			return nil, errors.New("--stacked-prs runs one ordered review pass; --max-loops cannot exceed 1")
+		o.jobs = 1
+		// Default stacked is one pass, matching the original. An explicit
+		// --max-loops (including 0 = unlimited) is further isolated stacks,
+		// each a fresh worktree cut from the previous pass's last tip.
+		if !isFlagSet(fs, "max-loops", "n") && !once {
+			o.maxLoops = 1
 		}
-		o.jobs, o.maxLoops = 1, 1
 		if !gitx.Available() {
 			return nil, errors.New("--stacked-prs needs git")
 		}

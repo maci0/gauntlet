@@ -135,7 +135,7 @@ the unit of safe parallelism is **the directory**, not the agent.
 - Inside one directory, reviews run **one at a time** by default, exactly as
   the Python original does, editing the working tree in place.
 - `--jobs N` (N > 1) turns on **isolated parallel reviews**, described below.
-- `--stacked-prs` turns on one **isolated sequential stack**, described below.
+- `--stacked-prs` turns on an **isolated sequential stack**, described below.
 - A review that fails to launch or exits non-zero is retried on the same
   agent (`--retries`, default 2), then on further agents until the pool is
   exhausted. Timeouts are not retried. Each retry starts from the same
@@ -224,8 +224,10 @@ Rules the runner enforces:
 Stack mode separates three decisions that parallel mode couples: reviews are
 sequential, execution is isolated from the original checkout, and publication
 opens PRs instead of merging branches. One worktree advances through the
-selected review order. A changed review contributes exactly one commit and
-becomes the base of the next changed review.
+selected review order for a pass. A changed review contributes exactly one
+commit and becomes the base of the next changed review. `--max-loops` (default
+1; 0 is unlimited) starts each later pass in a fresh worktree cut from the
+previous pass's last published tip, so already-applied fixes stay in the tree.
 
 ```mermaid
 flowchart LR
@@ -253,14 +255,16 @@ The invariants are:
    exact head/base PR exists. Publication failure therefore stops scheduling.
 4. No-change and exhausted agent failures reset and delete their unpublished
    layer, leaving the preceding successful layer as the next base.
-5. Branch names derive from the initial base object id, review position, and
-   review name. Existing branches and PRs are checked before an agent starts,
-   which makes hot reload and repeated invocation convergent. A `gh pr create`
-   that fails after GitHub accepted it is recovered by that same head/base
-   lookup, so a lost response does not open a second PR or stop a published
-   layer.
+5. Branch names derive from the initial base object id, review position,
+   review name, and (after the first `--max-loops` pass) the pass number.
+   Existing branches and PRs are checked before an agent starts, which makes
+   hot reload and repeated invocation convergent. A `gh pr create` that fails
+   after GitHub accepted it is recovered by that same head/base lookup, so a
+   lost response does not open a second PR or stop a published layer.
 6. The worktree is disposable; local and remote branches are durable because
    they are the graph open PRs refer to. Nothing in this mode calls merge.
+   A later pass discards the previous worktree and cuts a new one from the
+   last published tip rather than re-fetching `--pr-base`.
 
 ### API-level cache reuse across reviews
 

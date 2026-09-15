@@ -124,6 +124,9 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	mode := "sequential, in place"
 	if opts.stackedPRs {
 		mode = "sequential, one worktree, linear PR stack"
+		if opts.maxLoops != 1 {
+			mode = "sequential, new worktree per loop, linear PR stacks"
+		}
 	} else if opts.jobs > 1 {
 		mode = fmt.Sprintf("%d lanes, worktree-isolated and merged back", opts.jobs)
 	}

@@ -188,7 +188,8 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"stack owns commits", []string{"--stacked-prs", "--commit"}, "owns its commits"},
 		{"stack owns pushes", []string{"--stacked-prs", "--push"}, "owns its commits"},
 		{"stack never merges", []string{"--stacked-prs", "--merge-into", "main"}, "conflicts"},
-		{"stack is one pass", []string{"--stacked-prs", "--max-loops", "2"}, "one ordered review pass"},
+		{"stack allows several passes", []string{"--stacked-prs", "--max-loops", "2"}, ""},
+		{"stack allows unlimited passes", []string{"--stacked-prs", "-n", "0"}, ""},
 		{"base needs stack", []string{"--pr-base", "main"}, "requires --stacked-prs"},
 		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs"},
 		{"empty dir", []string{"--dir", ""}, "--dir is empty"},
@@ -293,7 +294,24 @@ func TestStackedPRFlagsForceOneSequentialPass(t *testing.T) {
 		t.Fatalf("stack options were not retained: %+v", o)
 	}
 	if o.jobs != 1 || o.maxLoops != 1 {
-		t.Fatalf("stack mode must be one sequential pass: jobs=%d loops=%d", o.jobs, o.maxLoops)
+		t.Fatalf("stack mode defaults to one sequential pass: jobs=%d loops=%d", o.jobs, o.maxLoops)
+	}
+}
+
+func TestStackedPRFlagsHonorMaxLoops(t *testing.T) {
+	o, err := parseFlags([]string{"--stacked-prs", "-n", "3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.jobs != 1 || o.maxLoops != 3 {
+		t.Fatalf("explicit -n 3: jobs=%d loops=%d", o.jobs, o.maxLoops)
+	}
+	o, err = parseFlags([]string{"--stacked-prs", "--max-loops", "0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.jobs != 1 || o.maxLoops != 0 {
+		t.Fatalf("explicit -n 0 must stay unlimited: jobs=%d loops=%d", o.jobs, o.maxLoops)
 	}
 }
 

@@ -97,8 +97,8 @@ func TestMaxReviewsDoesNotRecapAResumeQueue(t *testing.T) {
 }
 
 // TestMaxReviewsTruncatesTheStackPass: stack mode never shuffles, so the cap
-// cuts the configured order itself — the single pass runs the first N
-// entries, which bounds the PR count at N.
+// cuts the configured order itself — each pass runs the first N entries,
+// which bounds that pass's PR count at N.
 func TestMaxReviewsTruncatesTheStackPass(t *testing.T) {
 	reviews := []string{"aa-review", "ab-review", "ac-review", "ad-review"}
 	agents := []agent.Spec{{Tool: "claude"}}

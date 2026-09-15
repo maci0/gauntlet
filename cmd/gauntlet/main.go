@@ -148,6 +148,13 @@ type dirHandoff struct {
 	// rename every layer and split the run into a new stack.
 	StackBase    string `json:"stack_base,omitempty"`
 	StackBaseTip string `json:"stack_base_tip,omitempty"`
+	// StackHead / StackHeadTip are the last published layer when the run was
+	// interrupted. The next --max-loops pass cuts from this tip so later
+	// rounds see earlier fixes. StackPublished is how many PRs are already
+	// in the chain, for layer numbers in later PR bodies.
+	StackHead      string `json:"stack_head,omitempty"`
+	StackHeadTip   string `json:"stack_head_tip,omitempty"`
+	StackPublished int    `json:"stack_published,omitempty"`
 }
 
 // Loops totals the loops finished before the reload.
@@ -505,7 +512,11 @@ func run(argv []string) int {
 		if opts.jobs > 1 {
 			rep.logf(now, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
 		} else if opts.stackedPRs {
-			rep.logf(now, "Stacked PR mode: sequential reviews in one isolated worktree")
+			if opts.maxLoops == 1 {
+				rep.logf(now, "Stacked PR mode: sequential reviews in one isolated worktree")
+			} else {
+				rep.logf(now, "Stacked PR mode: sequential reviews, new worktree per loop from the previous tip")
+			}
 		}
 	}
 	if opts.tui {
@@ -552,10 +563,14 @@ func run(argv []string) int {
 			// The stacked preflight (dirty consent included) already ran,
 			// before the suggest step; New reuses its result instead of
 			// checking or fetching again.
-			StackPrep:        d.prep,
-			MergeInto:        opts.mergeInto,
-			ResolveConflicts: opts.resolveConflicts,
-			Seed:             opts.seed,
+			StackPrep:            d.prep,
+			ResumeLoops:          carried.Loops,
+			ResumeStackHead:      carried.StackHead,
+			ResumeStackHeadTip:   carried.StackHeadTip,
+			ResumeStackPublished: carried.StackPublished,
+			MergeInto:            opts.mergeInto,
+			ResolveConflicts:     opts.resolveConflicts,
+			Seed:                 opts.seed,
 			// The dashboard renders the feed from these events, so --tui must
 			// not suppress them; only --quiet does.
 			Yolo: opts.yolo, Paths: opts.paths, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
@@ -1096,6 +1111,10 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 		}
 		if d.prep != nil {
 			dh.StackBase, dh.StackBaseTip = d.prep.Base, d.prep.BaseTip
+		}
+		if d.r != nil {
+			dh.StackHead, dh.StackHeadTip = d.r.StackHead()
+			dh.StackPublished = d.r.StackPublished()
 		}
 		h.Dirs[d.dir] = dh
 	}

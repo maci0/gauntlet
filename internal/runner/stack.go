@@ -175,32 +175,39 @@ func safeTag(tag string) string {
 // next layer's base only after its branch is pushed and its PR exists.
 func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	start := r.stackResumeIndex()
-	parent, parentTip := r.stackBase, r.stackBaseTip
+	parent, parentTip := r.stackHead, r.stackHeadTip
 	// Layer numbers count what was actually published, not schedule position:
 	// a review that changed nothing leaves no branch, so the two diverge as
 	// soon as one does, and a body claiming to be layer 5 of a three-branch
-	// chain sends its reader looking for branches that do not exist.
-	published := 0
+	// chain sends its reader looking for branches that do not exist. They
+	// continue across --max-loops passes so a later round's first PR does not
+	// read as the first layer of a new stack.
+	published := r.stackPublished
 
 	// A hot-reload successor receives only the unfinished suffix. Walk the
 	// completed prefix to recover the last published branch; an absent branch
 	// there was a no-change or failed review and correctly leaves the parent.
-	for i := range start {
-		var recovered bool
-		var err error
-		previous := parent
-		parent, parentTip, recovered, err = r.recoverStackLayer(
-			ctx, loopNo, i, r.cfg.Reviews[i], parent, parentTip, stackRecoverPrefix, published+1)
-		if parent != previous {
-			published++
+	// When the predecessor persisted the head, that walk would start from the
+	// last published tip rather than this pass's base and find nothing.
+	if r.cfg.ResumeStackHeadTip == "" {
+		for i := range start {
+			var recovered bool
+			var err error
+			previous := parent
+			parent, parentTip, recovered, err = r.recoverStackLayer(
+				ctx, loopNo, i, r.cfg.Reviews[i], parent, parentTip, stackRecoverPrefix, published+1)
+			if parent != previous {
+				published++
+				r.rememberStackHead(parent, parentTip, published)
+			}
+			if err != nil {
+				r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
+					gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, r.cfg.Reviews[i]), parent,
+					"recover completed stack", err)
+				return false
+			}
+			_ = recovered // every completed-prefix layer is recovered or collapsed
 		}
-		if err != nil {
-			r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
-				gitx.StackProvisionalBranch(r.stackBaseTip, i, r.cfg.Reviews[i]), parent,
-				"recover completed stack", err)
-			return false
-		}
-		_ = recovered // every completed-prefix layer is recovered or collapsed
 	}
 
 	r.setPending(r.cfg.Reviews[start:])
@@ -248,10 +255,11 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			ctx, loopNo, i, review, parent, parentTip, stackRecoverCurrent, published+1)
 		if parent != previous {
 			published++
+			r.rememberStackHead(parent, parentTip, published)
 		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, review,
-				gitx.StackProvisionalBranch(r.stackBaseTip, i, review), parent, "recover stack layer", err)
+				gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, review), parent, "recover stack layer", err)
 			return false
 		}
 		if handled {
@@ -259,7 +267,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 		// The layer starts under a deterministic provisional name and takes
 		// its topic name only once its commit subject exists.
-		branch := gitx.StackProvisionalBranch(r.stackBaseTip, i, review)
+		branch := gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, review)
 		if wt == nil {
 			wt, err = r.repo.AddStackWorktree(ctx, branch, r.cfg.RunID, parentTip)
 		} else {
@@ -316,7 +324,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		// cannot happen (no usable topic, or the name is taken locally or on
 		// the remote) keeps the provisional name, which is unique by
 		// construction; the stack stays publishable either way.
-		if final := r.stackFinalBranch(ctx, i, review, title, branch); final != "" {
+		if final := r.stackFinalBranch(ctx, loopNo, i, review, title, branch); final != "" {
 			if err := wt.RenameBranch(ctx, final); err != nil {
 				r.log("Keeping provisional stack branch %s: %v", branch, err)
 			} else {
@@ -357,7 +365,9 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			r.publishStackFailure(loopNo, review, branch, res.Base, err)
 			return false
 		}
+		r.rememberStackHead(parent, parentTip, published)
 	}
+	r.rememberStackHead(parent, parentTip, published)
 	return ctx.Err() == nil
 }
 
@@ -402,8 +412,8 @@ const (
 func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, parent, parentTip string,
 	pass stackRecoverPass, layer int) (next, nextTip string, handled bool, recoverErr error) {
 
-	prefix := gitx.StackBranchPrefix(scheduleIndex, review)
-	provisional := gitx.StackProvisionalBranch(r.stackBaseTip, scheduleIndex, review)
+	prefix := gitx.StackLoopPrefix(r.stackPass(loopNo), scheduleIndex, review)
+	provisional := gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), scheduleIndex, review)
 	locals, err := r.repo.LocalBranchesWithPrefix(ctx, prefix)
 	if err != nil {
 		return parent, parentTip, false, err
@@ -467,7 +477,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	// but never for a name the remote already knows: the remote must stay
 	// self-describing, and renaming under an open PR would strand its head.
 	if branch == provisional && !remoteFound {
-		if final := r.stackFinalBranch(ctx, scheduleIndex, review, title, branch); final != "" {
+		if final := r.stackFinalBranch(ctx, loopNo, scheduleIndex, review, title, branch); final != "" {
 			if err := r.repo.RenameBranch(ctx, branch, final); err != nil {
 				r.log("Keeping provisional stack branch %s: %v", branch, err)
 			} else {
@@ -504,8 +514,8 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 // stack's short base tip appended at the end, where nobody reads it; if even
 // that is taken, "" says to keep the provisional name, which is unique by
 // construction.
-func (r *Runner) stackFinalBranch(ctx context.Context, index int, review, subject, current string) string {
-	final := gitx.StackFinalBranch(index, review, subject)
+func (r *Runner) stackFinalBranch(ctx context.Context, loopNo, index int, review, subject, current string) string {
+	final := gitx.StackLoopFinalBranch(r.stackPass(loopNo), index, review, subject)
 	if final == "" || final == current {
 		return ""
 	}

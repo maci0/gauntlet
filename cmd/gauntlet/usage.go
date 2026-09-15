@@ -77,7 +77,7 @@ var helpGroups = []flagGroup{
 		{"t", "timeout", "DUR", fmt.Sprintf("per-review timeout: 90s, 30m, 1h, 2d (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
 		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true)"},
-		{"", "stacked-prs", "", "one isolated worktree; each changed review opens a PR based on the previous one"},
+		{"", "stacked-prs", "", "isolated worktree; each changed review opens a PR on the previous one; -n starts a new stack from the last tip"},
 		{"", "pr-base", "BRANCH", "remote base fetched for --stacked-prs (default: current branch name)"},
 		{"", "push-remote", "REMOTE", "remote receiving stacked PR branches (default: origin)"},
 		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent from the same tree, waiting longer each time (default %d)", defaultRetries)},
