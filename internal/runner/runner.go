@@ -62,8 +62,11 @@ type Config struct {
 
 	Commit bool
 	Push   bool
-	// StackedPRs runs the configured review order in one isolated worktree,
+	// StackedPRs runs the configured review order in an isolated worktree,
 	// publishing each changed review as a child PR of the previous one.
+	// MaxLoops (default 1) is how many of those passes to run: each pass
+	// gets a fresh worktree cut from the previous pass's last published tip,
+	// so later rounds see earlier fixes instead of reopening them.
 	StackedPRs bool
 	PRBase     string // initial remote base branch; empty means current branch name
 	PushRemote string // remote receiving stack branches; empty means origin
@@ -80,6 +83,17 @@ type Config struct {
 	// the store, so a remote base that advanced during the reload cannot
 	// rename the layers and split the run into a new stack.
 	ResumeStackTip string
+	// ResumeLoops is how many stacked (or sequential) loops a predecessor
+	// already finished. Stacked branch names include the 1-based pass, so a
+	// successor that continues loop 2 must not name its layers as loop 1.
+	ResumeLoops int
+	// ResumeStackHead and ResumeStackHeadTip are the last published layer
+	// when a stacked run is interrupted. The next pass cuts from this tip
+	// rather than from the original --pr-base, so already-applied fixes stay
+	// in the tree. Empty means the original base is still the head.
+	ResumeStackHead      string
+	ResumeStackHeadTip   string
+	ResumeStackPublished int
 	// StackPrep carries a preflight the CLI already ran (before the suggest
 	// step and the dirty-checkout consent it fronts). Nil makes New run
 	// PrepareStack itself.
@@ -144,6 +158,12 @@ type Runner struct {
 
 	stackBase    string
 	stackBaseTip string
+	// stackHead / stackHeadTip are the last published layer (branch name and
+	// commit), or the original base when nothing has published yet. Each
+	// stacked --max-loops pass cuts its worktree from this tip.
+	stackHead      string
+	stackHeadTip   string
+	stackPublished int
 	// stackReadRemote is where stack branches are read back from (ls-remote,
 	// fetch): the push URL when it differs from the fetch URL, else the
 	// remote name. Pushes keep using the remote name.
@@ -217,6 +237,27 @@ func (r *Runner) Pending() []string {
 	return append([]string(nil), r.pending...)
 }
 
+// StackHead is the last published stacked layer (branch name and tip), or the
+// original --pr-base when nothing has published yet. A hot-reload successor
+// cuts the next pass from this tip.
+func (r *Runner) StackHead() (branch, tip string) {
+	return r.stackHead, r.stackHeadTip
+}
+
+// StackPublished is how many layers this stacked run has opened PRs for.
+func (r *Runner) StackPublished() int { return r.stackPublished }
+
+// stackPass is the 1-based stacked pass a loop number belongs to, counting
+// loops a predecessor already finished so branch names stay stable across a
+// hot reload.
+func (r *Runner) stackPass(loopNo int) int { return r.cfg.ResumeLoops + loopNo }
+
+func (r *Runner) rememberStackHead(branch, tip string, published int) {
+	r.stackHead = branch
+	r.stackHeadTip = tip
+	r.stackPublished = published
+}
+
 // setPending records the not-yet-started reviews of the current loop.
 func (r *Runner) setPending(names []string) {
 	r.pendingMu.Lock()
@@ -288,11 +329,10 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	}
 	if cfg.StackedPRs {
 		cfg.Jobs = 1
-		cfg.MaxLoops = 1
 		if cfg.PushRemote == "" {
 			cfg.PushRemote = "origin"
 		}
-		// Stack mode never shuffles: its one pass walks cfg.Reviews in
+		// Stack mode never shuffles: each pass walks cfg.Reviews in
 		// configured order, and the resume suffix check indexes into it, so
 		// the cap truncates the schedule itself rather than the per-loop draw.
 		if n := cfg.MaxReviews; n > 0 && n < len(cfg.Reviews) {
@@ -330,6 +370,12 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		r.cfg.PRBase = prep.Base
 		r.gh = prep.GH
 		r.stackBase, r.stackBaseTip = prep.Base, prep.BaseTip
+		r.stackHead, r.stackHeadTip = prep.Base, prep.BaseTip
+		if cfg.ResumeStackHeadTip != "" {
+			r.stackHead = cfg.ResumeStackHead
+			r.stackHeadTip = cfg.ResumeStackHeadTip
+			r.stackPublished = cfg.ResumeStackPublished
+		}
 		r.stackReadRemote = prep.ReadRemote
 		if r.stackReadRemote == "" {
 			r.stackReadRemote = r.cfg.PushRemote

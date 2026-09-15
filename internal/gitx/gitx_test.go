@@ -1070,6 +1070,15 @@ func TestStackBranchNaming(t *testing.T) {
 		t.Fatalf("published names must extend the recovery prefix: %q %q", prov, final)
 	}
 
+	// Later stacked passes insert the loop number so they cannot recover as
+	// an earlier pass's layer; pass 1 stays on the historical form.
+	if got := StackLoopPrefix(2, 0, "sec-bolide"); got != "review/02-01-sec-bolide" {
+		t.Fatalf("loop-2 prefix = %q", got)
+	}
+	if got := StackLoopPrefix(1, 2, "sec-bolide"); got != prefix {
+		t.Fatalf("loop-1 prefix diverged from StackBranchPrefix: %q", got)
+	}
+
 	// A subject with no usable topic leaves the layer on its provisional name.
 	if got := StackFinalBranch(0, "sec-review", "☃ ☃ ☃"); got != "" {
 		t.Fatalf("unusable subject produced %q", got)

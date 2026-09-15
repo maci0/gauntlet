@@ -14,6 +14,12 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- `--stacked-prs` accepts `-n` / `--max-loops`. Default remains one ordered
+  pass. An explicit N (or `0` for unlimited) starts each later pass in a
+  fresh worktree cut from the previous pass's last published tip, so
+  already-applied fixes stay in the tree and a no-op review opens no second
+  PR. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch
+  names; later loops insert the loop number.
 - README dashboard and launcher screenshots now stamp the current release.
 
 ## 1.20.0

@@ -39,7 +39,8 @@ No package inside `internal/` imports `ui`, so a headless run costs nothing.
 - **Concurrency in one repository requires isolation.** Reviews run
   sequentially in place, as `--jobs N` persistent lane worktrees with a
   merge step, or as a stacked-PR pass (`--stacked-prs`) that advances one
-  isolated worktree sequentially. Those are the only modes, and every one
+  isolated worktree sequentially (a later `--max-loops` round cuts a new
+  worktree from the previous tip). Those are the only modes, and every one
   keeps the invariant: no flag lets two agents share a tree.
 - **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
   unlit meter shows its remainder, and no series is smoothed or interpolated.

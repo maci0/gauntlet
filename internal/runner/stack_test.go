@@ -969,3 +969,99 @@ echo 'RESULT: changed=1'`)
 		t.Fatalf("PR head is not the renamed branch:\n%s", state)
 	}
 }
+
+// A later --max-loops pass gets a fresh worktree cut from the previous pass's
+// last published tip, so already-applied fixes are in the tree. The same
+// writes then commit nothing and open no second PR.
+func TestStackedPRsLaterLoopDoesNotReopenAppliedFixes(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) printf 'first\n' > first.txt; echo 'SUBJECT: fix: add first layer' ;;
+  *second-review*) printf 'second\n' > second.txt; echo 'SUBJECT: fix: add second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+	cfg.MaxLoops = 2
+
+	r, _ := runRecorded(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 4 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 4 {
+		t.Fatalf("expected both passes to run the agent, got %q", started)
+	}
+	b1 := gitx.StackFinalBranch(0, "first-review", "fix: add first layer")
+	b2 := gitx.StackFinalBranch(1, "second-review", "fix: add second layer")
+	state, _ := os.ReadFile(statePath)
+	wantState := b1 + "|main|https://github.com/owner/repo/pull/1|owner\n" +
+		b2 + "|" + b1 + "|https://github.com/owner/repo/pull/2|owner\n"
+	if string(state) != wantState {
+		t.Fatalf("PR stack:\n%s\nwant:\n%s", state, wantState)
+	}
+	out, err := exec.Command("git", "-C", repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/review/02").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("loop 2 opened branches after a no-op: %s", out)
+	}
+}
+
+// When a later pass still finds work, its first layer is a child of the
+// previous pass's last published tip, not of --pr-base, and its branch name
+// includes the loop number so recovery cannot confuse the two passes.
+func TestStackedPRsLaterLoopStacksFromPreviousTip(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+case "$*" in
+  *first-review*)
+    if [ -f first.txt ]; then printf 'again\n' > first-again.txt
+    else printf 'first\n' > first.txt
+    fi
+    echo 'SUBJECT: fix: add first layer' ;;
+  *second-review*)
+    if [ -f second.txt ]; then printf 'again\n' > second-again.txt
+    else printf 'second\n' > second.txt
+    fi
+    echo 'SUBJECT: fix: add second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+	cfg.MaxLoops = 2
+
+	r, _ := runRecorded(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 4 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	l1a := gitx.StackFinalBranch(0, "first-review", "fix: add first layer")
+	l1b := gitx.StackFinalBranch(1, "second-review", "fix: add second layer")
+	l2a := gitx.StackLoopFinalBranch(2, 0, "first-review", "fix: add first layer")
+	l2b := gitx.StackLoopFinalBranch(2, 1, "second-review", "fix: add second layer")
+	if got := gitOut(t, repo, "rev-parse", l2a+"^"); got != gitOut(t, repo, "rev-parse", "refs/heads/"+l1b) {
+		t.Fatalf("loop 2 first parent = %s, want loop 1 last", got)
+	}
+	if got := gitOut(t, repo, "rev-parse", l2b+"^"); got != gitOut(t, repo, "rev-parse", "refs/heads/"+l2a) {
+		t.Fatalf("loop 2 second parent = %s, want loop 2 first", got)
+	}
+	if got := gitOut(t, repo, "diff", "--name-only", "refs/heads/"+l1b+"..refs/heads/"+l2a); got != "first-again.txt" {
+		t.Fatalf("loop 2 first incremental diff = %q", got)
+	}
+	if got := gitOut(t, repo, "diff", "--name-only", "refs/heads/"+l2a+"..refs/heads/"+l2b); got != "second-again.txt" {
+		t.Fatalf("loop 2 second incremental diff = %q", got)
+	}
+	state, _ := os.ReadFile(statePath)
+	wantState := l1a + "|main|https://github.com/owner/repo/pull/1|owner\n" +
+		l1b + "|" + l1a + "|https://github.com/owner/repo/pull/2|owner\n" +
+		l2a + "|" + l1b + "|https://github.com/owner/repo/pull/3|owner\n" +
+		l2b + "|" + l2a + "|https://github.com/owner/repo/pull/4|owner\n"
+	if string(state) != wantState {
+		t.Fatalf("PR stack:\n%s\nwant:\n%s", state, wantState)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
+		t.Fatalf("stack worktree survived:\n%s", list)
+	}
+}

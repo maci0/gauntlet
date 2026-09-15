@@ -90,27 +90,33 @@ comparison contains only that review's commit.
 | second changed review | first review branch | first review branch |
 | third changed review | second review branch | second review branch |
 
-The mode is one ordered, sequential pass; it does not shuffle reviews or use
-extra `--jobs` lanes. One persistent checkout lives under
-`.gauntlet/worktrees/` for the run, then is removed. Local and remote review
-branches survive because open PRs need them. The branch checked out in the
-original directory never moves and no stack branch is merged automatically.
+Each loop is one ordered, sequential pass; it does not shuffle reviews or use
+extra `--jobs` lanes. Default is one loop. `-n N` (or `-n 0` for unlimited)
+starts each later loop in a fresh worktree cut from the previous loop's last
+published tip, so agents see already-applied fixes and a no-op review opens
+no second PR. One checkout lives under `.gauntlet/worktrees/` for the current
+loop, then is removed. Local and remote review branches survive because open
+PRs need them. The branch checked out in the original directory never moves
+and no stack branch is merged automatically.
 
 ### How a branch is named
 
 A published layer is named `review/<NN>-<review>-<topic>`, e.g.
 `review/03-sec-bolide-input-validation`: `NN` is the layer's 1-based schedule
 position, which keeps merge order visible and sortable, and the topic is a
-short slug cut from the commit subject. The topic does not exist until the
-review has committed, so each layer starts under a deterministic provisional
-name (`review/<NN>-<review>-wip-<base>`), takes its topic name once the
-commit exists, and only then is pushed. A resumed run finds already-published
-layers by listing branches under the deterministic `review/<NN>-<review>`
-prefix, then verifies each candidate by commit graph -- a recovered layer
-must be a one-commit child of the previous layer's tip -- so a same-named
-leftover from an older stack is rejected by ancestry rather than mistaken for
-this run's work. When the topic name is already taken by such a leftover, the
-new layer appends the stack's short base commit at the end of the name.
+short slug cut from the commit subject. Later `--max-loops` passes insert the
+loop number (`review/02-03-sec-bolide-input-validation`) so they cannot be
+recovered as an earlier pass's layer; the first pass keeps the historical
+form. The topic does not exist until the review has committed, so each layer
+starts under a deterministic provisional name
+(`review/<NN>-<review>-wip-<base>`), takes its topic name once the commit
+exists, and only then is pushed. A resumed run finds already-published
+layers by listing branches under the deterministic prefix, then verifies each
+candidate by commit graph -- a recovered layer must be a one-commit child of
+the previous layer's tip -- so a same-named leftover from an older stack is
+rejected by ancestry rather than mistaken for this run's work. When the topic
+name is already taken by such a leftover, the new layer appends the stack's
+short base commit at the end of the name.
 
 ### What a PR says
 

@@ -522,8 +522,21 @@ func BranchSlug(s string) string {
 // visible and sortable, and the review stem says which pass wrote it. It is
 // computable before the review runs, which is what lets a repeated invocation
 // find layers it already published whatever topic they ended up named after.
+// It is the first-pass form; later --max-loops rounds use StackLoopPrefix.
 func StackBranchPrefix(index int, review string) string {
-	return fmt.Sprintf("review/%02d-%s", index+1, BranchSlug(review))
+	return StackLoopPrefix(1, index, review)
+}
+
+// StackLoopPrefix is StackBranchPrefix for stacked pass `loop` (1-based).
+// Pass 1 keeps the historical review/<NN>-<review> form so a one-pass run
+// and the first round of a multi-pass run recover the same branches. Later
+// passes insert the loop number (review/<loop>-<NN>-<review>) so they cannot
+// be mistaken for an earlier pass's layer.
+func StackLoopPrefix(loop, index int, review string) string {
+	if loop < 2 {
+		return fmt.Sprintf("review/%02d-%s", index+1, BranchSlug(review))
+	}
+	return fmt.Sprintf("review/%02d-%02d-%s", loop, index+1, BranchSlug(review))
 }
 
 // StackProvisionalBranch names a layer before its commit exists, when there
@@ -532,22 +545,32 @@ func StackBranchPrefix(index int, review string) string {
 // on one name; the -wip- marker is what publication or a recovery pass
 // renames away once the commit's subject is known.
 func StackProvisionalBranch(baseTip string, index int, review string) string {
+	return StackLoopProvisionalBranch(baseTip, 1, index, review)
+}
+
+// StackLoopProvisionalBranch is StackProvisionalBranch for stacked pass `loop`.
+func StackLoopProvisionalBranch(baseTip string, loop, index int, review string) string {
 	tip := BranchSlug(baseTip)
 	if len(tip) > 6 {
 		tip = tip[:6]
 	}
-	return StackBranchPrefix(index, review) + "-wip-" + tip
+	return StackLoopPrefix(loop, index, review) + "-wip-" + tip
 }
 
 // StackFinalBranch names a published layer after its commit subject, or ""
 // when the subject yields no usable topic, in which case the layer keeps its
 // provisional name.
 func StackFinalBranch(index int, review, subject string) string {
+	return StackLoopFinalBranch(1, index, review, subject)
+}
+
+// StackLoopFinalBranch is StackFinalBranch for stacked pass `loop`.
+func StackLoopFinalBranch(loop, index int, review, subject string) string {
 	topic := TopicSlug(subject)
 	if topic == "" {
 		return ""
 	}
-	return StackBranchPrefix(index, review) + "-" + topic
+	return StackLoopPrefix(loop, index, review) + "-" + topic
 }
 
 // topicSlugMax bounds the topic fragment of a branch name. The subject it is
