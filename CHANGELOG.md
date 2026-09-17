@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Commit steps retain their five-minute timeout when `--timeout 0` leaves
+  reviews unlimited, rather than allowing a stalled commit to block the run.
 - Custom agent files reject duplicate agent names and configuration keys instead
   of silently replacing earlier values.
 - Recovered run listings count completed loops across directories and hot reloads,

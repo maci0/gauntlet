@@ -157,7 +157,10 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	if err != nil {
 		r.log("Warning: could not read HEAD before the commit step: %v", err)
 	}
-	timeout := min(r.cfg.Timeout, commitTimeout)
+	timeout := r.cfg.Timeout
+	if timeout <= 0 || timeout > commitTimeout {
+		timeout = commitTimeout
+	}
 	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(),
 		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout})
 	if err != nil {

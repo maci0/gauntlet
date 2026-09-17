@@ -76,6 +76,14 @@ func TestMakefileVulnScansSelectedTags(t *testing.T) {
 			args := append([]string{"--no-print-directory", "-n", "vuln", "GO=go", "GOVULNCHECK_VERSION=v1.7.0"}, tc.args...)
 			cmd := exec.CommandContext(ctx, "make", args...)
 			cmd.Dir = moduleRoot(t)
+			for _, env := range os.Environ() {
+				key, _, _ := strings.Cut(env, "=")
+				switch key {
+				case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "TAGS":
+					continue
+				}
+				cmd.Env = append(cmd.Env, env)
+			}
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("make vuln dry run: %v\n%s", err, out)

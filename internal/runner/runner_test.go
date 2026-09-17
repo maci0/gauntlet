@@ -1561,6 +1561,46 @@ func TestUntrackedFilesDoNotBlockWorktreeMode(t *testing.T) {
 	}
 }
 
+func TestCommitStepTimeout(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		timeout time.Duration
+		want    time.Duration
+	}{
+		{"unlimited", 0, commitTimeout},
+		{"shorter", time.Minute, time.Minute},
+		{"equal", commitTimeout, commitTimeout},
+		{"longer", time.Hour, commitTimeout},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := testRepo(t)
+			if err := os.WriteFile(filepath.Join(repo, "main.go"), []byte("package main\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			bin := fakeAgent(t, t.TempDir(), "agy", `printf '%s\n' "$@" > commit-args
+exit 1`)
+			cfg := baseConfig(t, repo, prompt.Set{}, []string{"a-review"}, bin)
+			cfg.Agents = []agent.Spec{{Tool: "agy"}}
+			cfg.Bin = map[string]string{"agy": bin}
+			cfg.Timeout = tt.timeout
+			bus := NewBus()
+			defer bus.Close()
+			r, err := New(t.Context(), cfg, bus)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.runCommitStep(t.Context())
+			args, err := os.ReadFile(filepath.Join(repo, "commit-args"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := "--print-timeout\n" + tt.want.String() + "\n"; !strings.HasPrefix(string(args), want) {
+				t.Fatalf("commit command missing timeout %s: %s", tt.want, args)
+			}
+		})
+	}
+}
+
 // The offer gauntlet makes when --jobs meets a dirty tree: hand it to an
 // agent, and report whether the tree actually ended up clean, since the agent
 // saying so is not the same as git saying so.
