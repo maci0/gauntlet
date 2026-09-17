@@ -4,11 +4,76 @@
 package runner
 
 import (
+	"context"
 	"math"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
+
+func TestProbeUsageKillsRemainingGroupMembers(t *testing.T) {
+	for _, ending := range []string{"echo 42", "kill -TERM $$"} {
+		t.Run(ending, func(t *testing.T) {
+			dir := t.TempDir()
+			pidPath := filepath.Join(dir, "pid")
+			releasePath := filepath.Join(dir, "release")
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			probeDone := make(chan error, 1)
+			go func() {
+				_, err := probeUsage(ctx, []string{"/bin/sh", "-c",
+					`echo $$ > "$1"; while [ ! -e "$2" ]; do sleep 0.01; done; ` + ending,
+					"probe", pidPath, releasePath})
+				probeDone <- err
+				close(probeDone)
+			}()
+			defer func() {
+				cancel()
+				for range probeDone {
+				}
+			}()
+			var pid int
+			for pid == 0 {
+				data, _ := os.ReadFile(pidPath)
+				pid, _ = strconv.Atoi(strings.TrimSpace(string(data)))
+				if ctx.Err() != nil {
+					t.Fatal("probe did not start")
+				}
+				time.Sleep(time.Millisecond)
+			}
+			child := exec.Command("sleep", "30")
+			child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: pid}
+			if err := child.Start(); err != nil {
+				t.Fatal(err)
+			}
+			childDone := make(chan struct{})
+			go func() {
+				_ = child.Wait()
+				close(childDone)
+			}()
+			defer func() {
+				_ = child.Process.Kill()
+				<-childDone
+			}()
+			if err := os.WriteFile(releasePath, nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-probeDone; (err != nil) != (ending != "echo 42") {
+				t.Errorf("probe error = %v for %q", err, ending)
+			}
+			select {
+			case <-childDone:
+			case <-time.After(time.Second):
+				t.Fatal("process-group member survived probe completion")
+			}
+		})
+	}
+}
 
 func TestParseUsagePercent(t *testing.T) {
 	// The probe's answer decides whether a run keeps spending. Reading a bad

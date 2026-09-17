@@ -23,6 +23,8 @@ minor instead and were listed under Changed.
   history while it remains open for inspection.
 - Dashboard throughput sums lanes in stable order so replayed usage events
   produce identical rates, counting repeated configured lanes only once.
+- Usage probes kill remaining process-group members on every exit, preventing
+  background helpers from accumulating between reviews.
 - Suggestion parsing rejects malformed names instead of scheduling a review
   whose name matches only a prefix of the response.
 - `runs` exits with a failure and reports output errors on stderr when its
