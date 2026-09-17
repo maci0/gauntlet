@@ -65,25 +65,26 @@ func NewRunID(now time.Time) string {
 
 // Summary is the one-line record of a finished run, appended to index.jsonl.
 type Summary struct {
-	RunID     string    `json:"run_id"`
-	Path      string    `json:"path"`
-	Version   string    `json:"version"`
-	Dirs      []string  `json:"dirs"`
-	Agents    []string  `json:"agents,omitempty"`
-	Args      []string  `json:"args,omitempty"`
-	Start     time.Time `json:"start"`
-	End       time.Time `json:"end"`
-	Elapsed   float64   `json:"elapsed_s,omitempty"` // monotonic seconds; Duration
-	Loops     int       `json:"loops"`
-	Reviews   int       `json:"reviews"`
-	OK        int       `json:"ok"`
-	Failed    int       `json:"failed"`
-	Skipped   int       `json:"skipped,omitempty"`
-	Conflicts int       `json:"conflicts,omitempty"`
-	Ins       int       `json:"ins,omitempty"`
-	Del       int       `json:"del,omitempty"`
-	Tokens    int       `json:"tokens,omitempty"`
-	ExitCode  int       `json:"exit_code"`
+	RunID       string    `json:"run_id"`
+	Path        string    `json:"path"`
+	Version     string    `json:"version"`
+	Dirs        []string  `json:"dirs"`
+	Agents      []string  `json:"agents,omitempty"`
+	Args        []string  `json:"args,omitempty"`
+	Start       time.Time `json:"start"`
+	End         time.Time `json:"end"`
+	Elapsed     float64   `json:"elapsed_s,omitempty"` // monotonic seconds; Duration
+	Loops       int       `json:"loops"`
+	Reviews     int       `json:"reviews"`
+	OK          int       `json:"ok"`
+	Failed      int       `json:"failed"`
+	Skipped     int       `json:"skipped,omitempty"`
+	Conflicts   int       `json:"conflicts,omitempty"`
+	Interrupted int       `json:"interrupted,omitempty"`
+	Ins         int       `json:"ins,omitempty"`
+	Del         int       `json:"del,omitempty"`
+	Tokens      int       `json:"tokens,omitempty"`
+	ExitCode    int       `json:"exit_code"`
 }
 
 // Duration is how long the run lasted, and whether that span is known.
@@ -763,6 +764,8 @@ func summarizeFile(runID, path string) (Summary, error) {
 				s.Skipped++
 			case "conflict":
 				s.Conflicts++
+			case "interrupted":
+				s.Interrupted++
 			}
 			if e.Ins != nil {
 				s.Ins += *e.Ins

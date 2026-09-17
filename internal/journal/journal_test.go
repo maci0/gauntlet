@@ -1220,6 +1220,17 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	if s.Reviews != 7 || s.OK != 2 || s.Failed != 2 || s.Skipped != 1 || s.Conflicts != 1 {
 		t.Fatalf("status tally wrong: %+v", s)
 	}
+	data, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["interrupted"]) != "1" {
+		t.Fatalf("interrupted count missing from recovered summary: %s", data)
+	}
 }
 
 // Isolated reviews publish line counts on merge, not review_end. Sequential

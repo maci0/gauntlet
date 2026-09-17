@@ -902,6 +902,7 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 		s.Failed += c.Fail + c.Timeout
 		s.Skipped += c.Skipped
 		s.Conflicts += c.Conflict
+		s.Interrupted += c.Interrupted
 		ins, del, tokens, _, _, _ := d.stats.Totals()
 		s.Ins += ins
 		s.Del += del

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // TestRunIndexerKillsProcessGroup pins the rule runProc states for agents:
@@ -105,6 +106,34 @@ func writeScript(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWriteSummaryPreservesInterruptedCount(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	j, err := journal.Open(journal.NewRunID(start), start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.CloseQuiet()
+	stats := &runner.Stats{}
+	stats.Add(runner.Result{Status: runner.StatusOK})
+	stats.Add(runner.Result{Status: runner.StatusInterrupted})
+	stats.Add(runner.Result{Status: runner.StatusInterrupted})
+	writeSummary(j, start, time.Minute, []string{"/project"}, nil,
+		[]*dirRun{{stats: stats}}, 130)
+	data, err := os.ReadFile(filepath.Join(home, "index.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if string(fields["interrupted"]) != "2" || string(fields["reviews"]) != "3" || string(fields["ok"]) != "1" || string(fields["failed"]) != "0" {
+		t.Fatalf("unexpected summary counts: %s", data)
 	}
 }
 
