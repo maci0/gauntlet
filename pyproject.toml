@@ -62,6 +62,7 @@ select = [
 [tool.mypy]
 python_version = "3.11"
 strict = true
+disallow_any_unimported = true
 warn_unreachable = true
 enable_error_code = ["possibly-undefined"]
 files = ["scripts"]
