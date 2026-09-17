@@ -22,6 +22,10 @@ minor instead and were listed under Changed.
 - Narrow launcher panes retain concurrency and selected option values instead
   of hiding them. Panel titles stay within their assigned width so long titles
   cannot push adjacent panels past the terminal edge.
+- Deterministic-simulation guidance preserves cryptographic randomness in
+  production and confines seeded substitutes to tests or simulation mode.
+- Launcher help calls the existing state-summary helper instead of an undefined
+  method, restoring compilation.
 - Directory lock files keep their inode after release, preventing overlapping
   starts from acquiring separate locks for the same tree. Release clears the
   holder note instead of removing the file.

@@ -1042,6 +1042,10 @@ func (p *picker) helpLines() []string {
 		styleTitle.Render("compose a run"),
 		styleDim.Render("q  esc  ?  close this help"),
 		"",
+	}
+	lines = append(lines, p.stateLines()...)
+	lines = append(lines,
+		"",
 		"  tab          reviews, agents, and run options",
 		"  j / k        move within a pane",
 		"  space        toggle a review, a set, an agent, or a switch",
@@ -1056,9 +1060,72 @@ func (p *picker) helpLines() []string {
 		styleDim.Render("  Picking no reviews runs all of them."),
 		styleDim.Render("  suggest: an agent proposes the reviews; anything ticked is also scheduled."),
 		styleDim.Render("  stacked PRs: each changed review opens a PR on the previous one."),
-	}
+	)
 	if why := p.blocked(); why != "" {
 		lines = append(lines, "", styleWarn.Render("  "+why))
+	}
+	return lines
+}
+
+// stateLines spells the launcher's choices as full sentences, so a value the
+// panes clip (a long review name or description, an agent label, the current
+// option value) is still readable in text: the help overlay is the keyboard's
+// fallback view when the panes cannot hold a string whole. Empty sections are
+// left out rather than drawn as empty rows.
+func (p *picker) stateLines() []string {
+	var lines []string
+	if p.suggest {
+		who := "any agent"
+		if a := p.suggestAgent(); a != "" {
+			who = a
+		}
+		lines = append(lines, "  suggest is on; "+who+" proposes the reviews.")
+	} else {
+		lines = append(lines, "  suggest is off.")
+	}
+	for i, g := range p.cfg.Groups {
+		if n := p.groupOn(i); n > 0 {
+			lines = append(lines, fmt.Sprintf("  %s: %d of %d reviews selected",
+				g.Name, n, len(g.Reviews)))
+		}
+	}
+	var picked []string
+	for i, on := range p.agents {
+		if on {
+			picked = append(picked, p.cfg.Agents[i])
+		}
+	}
+	switch {
+	case len(p.cfg.Agents) == 0:
+	case len(picked) == 0:
+		lines = append(lines, "  agents: auto-detect (all "+fmt.Sprint(len(p.cfg.Agents))+" installed)")
+	case len(picked) == len(p.cfg.Agents):
+		lines = append(lines, "  agents: auto-detect (all "+fmt.Sprint(len(p.cfg.Agents))+" installed)")
+	default:
+		lines = append(lines, "  agents: "+strings.Join(picked, ", "))
+	}
+	for _, o := range p.opts {
+		switch o.kind {
+		case optCount:
+			if !p.optionInert(&o) && o.n != 1 {
+				lines = append(lines, fmt.Sprintf("  %s: %d of %d cpus",
+					o.label, o.n, max(p.cfg.CPUs, 1)))
+			}
+		case optCycle:
+			if o.idx != 0 && !p.optionInert(&o) {
+				if o.flag == "--merge-into" && !p.committing() {
+					break
+				}
+				if o.flag == "--suggest-agent" && !p.suggest {
+					break
+				}
+				lines = append(lines, "  "+o.label+": "+o.values[o.idx])
+			}
+		default:
+			if o.on && !p.optionInert(&o) {
+				lines = append(lines, "  "+o.label+" is on")
+			}
+		}
 	}
 	return lines
 }
