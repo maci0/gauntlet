@@ -647,6 +647,81 @@ func TestPickHelpOverlayScrollsAndRestoresFocus(t *testing.T) {
 	}
 }
 
+func TestPickHelpExposesFocusedControl(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(*picker)
+		want  []string
+	}{
+		{"review", func(p *picker) {
+			p.cfg.Groups[0].Reviews[0] = PickReview{
+				Name: "very-long-review-name-review", Desc: "a description with an otherwise unreachable ending", Project: true,
+			}
+			p.open[0] = true
+			p.cursor[paneReviews] = 2
+		}, []string{"very-long-review-name [project]", "not selected", "otherwise unreachable ending"}},
+		{"selected review", func(p *picker) {
+			p.open[0] = true
+			p.cursor[paneReviews] = 2
+			p.selected["sec-review"] = true
+		}, []string{"sec: selected", "hunt for vulnerabilities"}},
+		{"filtered group", func(p *picker) {
+			p.filter = "sec"
+			p.cursor[paneReviews] = 1
+		}, []string{"quick: expanded", "0 of 2 selected"}},
+		{"collapsed group", func(p *picker) {
+			p.cursor[paneReviews] = 1
+		}, []string{"quick: collapsed"}},
+		{"agent", func(p *picker) {
+			p.focus = paneAgents
+			p.cfg.Agents[0] = "agent-with-a-very-long-model-label"
+		}, []string{"agent-with-a-very-long-model-label", "not selected"}},
+		{"empty agents", func(p *picker) {
+			p.focus = paneAgents
+			p.cfg.Agents = nil
+		}, []string{"no agents installed"}},
+		{"off toggle", func(p *picker) {
+			p.focus = paneOptions
+			p.cursor[paneOptions] = 5
+		}, []string{"commit: off", "on this branch"}},
+		{"default cycle", func(p *picker) {
+			p.focus = paneOptions
+			p.cursor[paneOptions] = optSuggestAgent
+		}, []string{"suggest agent: from the pool", "suggest is off"}},
+		{"inert option", func(p *picker) {
+			p.focus = paneOptions
+			p.optByFlag("--stacked-prs").on = true
+		}, []string{"concurrency: 1", "stacked PRs own this"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := demoPicker()
+			tc.setup(p)
+			p.w, p.h = 40, 6
+			focus, cursor := p.focus, p.cursor
+			press(p, "?")
+			var seen strings.Builder
+			for range 150 {
+				view := stripANSI(p.View())
+				if lipgloss.Width(view) > p.w || lipgloss.Height(view) > p.h {
+					t.Fatalf("help exceeds the viewport: %s", view)
+				}
+				seen.WriteString(strings.Join(strings.Fields(view), " "))
+				seen.WriteByte('\n')
+				p.Update(tea.KeyMsg{Type: tea.KeyDown})
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(seen.String(), want) {
+					t.Errorf("focused control detail %q is unreachable", want)
+				}
+			}
+			p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+			if p.focus != focus || p.cursor != cursor || p.launch {
+				t.Fatal("reading control details changed focus or launched the run")
+			}
+		})
+	}
+}
+
 func TestPickHelpOverlayFitsThePane(t *testing.T) {
 	p := demoPicker()
 	p.help = true

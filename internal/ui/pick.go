@@ -1043,6 +1043,8 @@ func (p *picker) helpLines() []string {
 		styleDim.Render("q  esc  ?  close this help"),
 		"",
 	}
+	lines = append(lines, p.focusedLines()...)
+	lines = append(lines, "")
 	lines = append(lines, p.stateLines()...)
 	lines = append(lines,
 		"",
@@ -1065,6 +1067,55 @@ func (p *picker) helpLines() []string {
 		lines = append(lines, "", styleWarn.Render("  "+why))
 	}
 	return lines
+}
+
+func (p *picker) focusedLines() []string {
+	selection := func(on bool) string {
+		if on {
+			return "selected"
+		}
+		return "not selected"
+	}
+	var detail string
+	switch p.focus {
+	case paneReviews:
+		r := p.rowAt(p.cursor[paneReviews])
+		switch r.kind {
+		case rowSuggest:
+			detail = "suggest: " + selection(p.suggest)
+		case rowGroup:
+			state := "collapsed"
+			if p.open[r.group] || p.filter != "" {
+				state = "expanded"
+			}
+			g := p.cfg.Groups[r.group]
+			detail = fmt.Sprintf("%s: %s; %d of %d selected", g.Name, state, p.groupOn(r.group), len(g.Reviews))
+		case rowReview:
+			detail = reviewLabel(r.review) + ": " + selection(p.selected[r.review.Name])
+		}
+	case paneAgents:
+		if len(p.cfg.Agents) == 0 {
+			detail = "no agents installed"
+		} else {
+			i := p.cursor[paneAgents]
+			detail = p.cfg.Agents[i] + ": " + selection(p.agents[i])
+		}
+	case paneOptions:
+		o := p.opts[p.cursor[paneOptions]]
+		value := "off"
+		switch o.kind {
+		case optCount:
+			value = fmt.Sprint(o.n)
+		case optCycle:
+			value = o.values[o.idx]
+		case optToggle:
+			if o.on {
+				value = "on"
+			}
+		}
+		detail = o.label + ": " + value
+	}
+	return []string{"Focused control:", "  " + detail, "  " + p.hint()}
 }
 
 // stateLines spells the launcher's choices as full sentences, so a value the
