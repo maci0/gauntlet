@@ -14,6 +14,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Release builds stop when any binary's module inventory cannot be read,
+  instead of reporting success with an incomplete `sbom.txt`.
 - Custom agent files reject a top-level `null` instead of silently starting
   with built-in definitions; use `{}` for an empty configuration.
 - The launcher no longer blocks stacked PRs on a dirty checkout because of a

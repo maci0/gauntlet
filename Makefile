@@ -230,7 +230,7 @@ release: test dist ## build every platform and write dist/checksums.txt and dist
 	else \
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
-	@for f in $(DIST)/$(BINARY)_*; do \
+	@set -e; for f in $(DIST)/$(BINARY)_*; do \
 		echo "## $$f"; \
 		$(GO) version -m "$$f"; \
 	done > $(DIST)/sbom.txt
