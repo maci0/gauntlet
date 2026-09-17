@@ -27,6 +27,26 @@ func TestRedactUserinfo(t *testing.T) {
 		{"https://github.com/owner/repo.git", "https://github.com/owner/repo.git"},
 		{"git@github.com:owner/repo.git", "git@github.com:owner/repo.git"},
 		{
+			"fatal: unable to access 'https://alice:it's-secret@example.test/repo.git/': 403",
+			"fatal: unable to access 'https://example.test/repo.git/': 403",
+		},
+		{
+			"https://alice:secret@part@example.test",
+			"https://example.test",
+		},
+		{
+			"https://example.test/path/alice@example.test",
+			"https://example.test/path/alice@example.test",
+		},
+		{
+			"https://example.test?email=alice@example.test",
+			"https://example.test?email=alice@example.test",
+		},
+		{
+			"https://example.test#alice@example.test",
+			"https://example.test#alice@example.test",
+		},
+		{
 			"https://alice:s3cret@github.com/owner/repo.git",
 			"https://github.com/owner/repo.git",
 		},

@@ -74,7 +74,7 @@ func Bound(cmd *exec.Cmd, limit int, wait time.Duration) (out, errOut *Writer) {
 // userinfoRe matches the userinfo of a URL (the "alice:token@" in
 // https://alice:token@host/...), including ssh:// and git:// spellings git
 // prints. git@host:path SSH syntax has no "://", so it is left alone.
-var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/@\s'"]+@`)
+var userinfoRe = regexp.MustCompile(`(?i)((?:https?|ssh|git|ftps?)://)[^/?#\s"]*@`)
 
 // RedactUserinfo strips URL userinfo from s so a credential-bearing remote
 // does not land in an error string. Idempotent; strings with no "://" are

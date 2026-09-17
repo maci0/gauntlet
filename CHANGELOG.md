@@ -18,6 +18,8 @@ minor instead and were listed under Changed.
   instead of reporting success with an incomplete `sbom.txt`.
 - Database checks use saved query plans instead of connecting to existing
   databases or executing statements through `EXPLAIN ANALYZE`.
+- URL credential redaction handles apostrophes and embedded `@` characters
+  without mistaking query or fragment text for credentials.
 - Custom agent files reject a top-level `null` instead of silently starting
   with built-in definitions; use `{}` for an empty configuration.
 - The launcher no longer blocks stacked PRs on a dirty checkout because of a
