@@ -297,7 +297,6 @@ func Installed() []Spec {
 			specs = append(specs, Spec{Tool: t})
 		}
 	}
-	sort.Slice(specs, func(i, j int) bool { return specs[i].Tool < specs[j].Tool })
 	return specs
 }
 
