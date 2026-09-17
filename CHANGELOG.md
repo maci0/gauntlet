@@ -14,6 +14,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Custom agent files reject a top-level `null` instead of silently starting
+  with built-in definitions; use `{}` for an empty configuration.
 - `make vuln` scans the selected build tags, including the sqlite driver in
   the default CI scan, instead of silently scanning only the untagged build.
 - Custom agent files report validation errors in name order, so identical

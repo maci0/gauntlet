@@ -259,6 +259,9 @@ func LoadCustomFile(path string) error {
 	if err := unmarshalStrict(data, &defs); err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
+	if defs == nil {
+		return fmt.Errorf("%s: agent definitions must be a JSON object, not null", path)
+	}
 	// Validate the complete file before changing the registry. Otherwise map
 	// iteration can install some definitions before a later invalid one makes
 	// startup fail, leaving callers that recover from the error half-configured.

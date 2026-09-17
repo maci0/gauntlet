@@ -1398,6 +1398,30 @@ func TestCustomAgentFileValidationOrder(t *testing.T) {
 	}
 }
 
+func TestCustomAgentFileNull(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	path := filepath.Join(t.TempDir(), "agents.json")
+	before := CustomNames()
+	for _, body := range []string{"null", " \n null\t"} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		err := LoadCustomFile(path)
+		if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "must be a JSON object") {
+			t.Fatalf("want a configuration object error naming the file, got %v", err)
+		}
+		if !slices.Equal(CustomNames(), before) {
+			t.Fatal("a rejected file changed the agent registry")
+		}
+	}
+	if err := os.WriteFile(path, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err != nil {
+		t.Fatalf("an empty object is valid: %v", err)
+	}
+}
+
 func TestCustomAgentFileValidationIsAtomic(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	path := filepath.Join(t.TempDir(), "agents.json")
