@@ -7,12 +7,11 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-18 against commit a4813c5. This pass checked commit and
-push authority, usage probes, update/reload guarantees, subprocess limits,
-state permissions, and the dependency scan. Other inventory references retain
-the earlier baseline and need re-verification; this is not a full assurance
-claim. Owner and review cadence are organizational decisions; none is assigned
-here.
+Last reviewed: 2026-09-18 against commit 22c5ebd. This pass checked output
+classification, log-file storage, custom-agent configuration validation, and
+usage-probe cleanup. Other inventory references retain the earlier baseline
+and need re-verification; this is not a full assurance claim. Owner and review
+cadence are organizational decisions; none is assigned here.
 
 ## Risk-ranked summary
 
@@ -24,6 +23,7 @@ here.
 | R4 | Confidentiality of reviewed source: agents send code to third-party model APIs over the network | B2 | Inherent to the tool's purpose; users must know it |
 | R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching `@deepseek-ai/dsh` from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap (deliberate feature, unreviewed supply-chain hop) |
 | R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas; the usage limit fails open (`internal/runner/exec.go:99`, `internal/runner/usagelimit.go:44`) |
+| R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; regular files are tightened to 0600, but content is not generally secret-redacted and the destination is not confined (`cmd/gauntlet/main.go:210-240`) |
 
 The order reflects reachability and blast radius, not measured likelihood.
 R1/R3/R4 require only content reaching a launched agent; R2 requires control
@@ -56,6 +56,8 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   window (`internal/runner/exec.go`).
 - **Audit trail**: the journal under `~/.gauntlet`
   (`internal/journal/journal.go`) and the commits each run leaves behind.
+  Optional `--log` files also retain displayed output, potentially including
+  source and credentials quoted by an agent (`cmd/gauntlet/main.go:210-240`).
 
 ## Trust boundaries
 
@@ -123,7 +125,9 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   each agent's model provider. `gh` and `git push` use whatever credentials
   those tools already have.
 - **B6, gauntlet <-> local state.** `~/.gauntlet` (or `GAUNTLET_HOME`): the
-  JSONL journal, hot-reload handoff files, `agents.json`.
+  JSONL journal, hot-reload handoff files, `agents.json`. Optional `--log`
+  crosses into a separate operator-selected output path, not necessarily that
+  state directory (`cmd/gauntlet/main.go:210-240`).
 
 ## Entry points
 
@@ -140,7 +144,7 @@ Untrusted inputs with their validation point:
 | Environment: `PATH` | `pathNoCWD` (`agent.go:161`), `resolveGit`/`gitEnv` (`gitx.go:82-94,329-361`), `ghx.binary` (`ghx.go:86-97`) | cwd-relative and relative entries dropped for agent, git, git-child, and `gh` resolution |
 | Environment: `GAUNTLET_HOME`, `GH_TOKEN`/`GITHUB_TOKEN`, `TERM`/NO_COLOR, `GAUNTLET_STATE` | `gauntlethome.go:30`, `selfupdate.go:83-97`, `cmd/gauntlet/report.go:48-72`, `selfupdate/reload.go:18,192` | operator-controlled, same-user trust; `GAUNTLET_HOME` made absolute at resolution so the state root cannot depend on the current directory (`CustomFilePath`, `custom.go:294`); `--update-repo` is `owner/repo` only (`ParseRepo`, `selfupdate.go:60`) |
 | Agent stdout/stderr | pipes in `exec.go:108-118`; line scan `exec.go:300` | 4 MiB per line emitted in chunks (`exec.go:34-42`), escape/control/bidi strip before terminal (`normalize.go:332 Display`), width cap 2000 cols (`exec.go:46`), rate limit 200 lines/s (`runner.go:27`); even `--raw` passes `Display` (`exec.go:219-224`) |
-| Stream-JSON events from agents | `streamjson.Parse` at `exec.go:204` | envelope-agnostic parser; thinking lines sanitized + capped (`exec.go:360-374`) |
+| Stream-JSON events from agents | `internal/runner/exec.go:227-245`; `internal/streamjson/streamjson.go:81-99,107-138,217-244` | extraction depth capped at 8; objects marked role `tool`/`user` or type `user`/`tool_use`/`tool_result` contribute neither text nor usage; classification is not origin authentication; malformed JSON falls back to plain text and `--raw` bypasses classification |
 | Token counters parsed from output and transcripts | `exec.go:139-178,273-287`; transcript watch off with `-tags notoktop`, `usage_toktop.go:17`; custom roots `custom.go:69` | integers only; transcripts are other files under `$HOME` |
 | GitHub release metadata | `selfupdate.Check`, `selfupdate.go:139` | HTTPS, 4 MiB decode cap; `owner/repo` charset-checked before it is concatenated into the API path |
 | Release asset + `checksums.txt` | `applyTo`, `selfupdate.go:199` | checksums fetched first (1 MiB cap), asset streamed with 256 MiB cap, SHA-256 must match before rename into place; a listing entry counts only as 64 hex digits (`checksumFor`/`isHexDigest`, `selfupdate.go:328-358`) |
@@ -151,8 +155,9 @@ Untrusted inputs with their validation point:
 | Conflicted paths interpolated into the conflict prompt | `git diff -z` into `runConflictAgent`, `conflict.go:90-114`, then `ConflictPrompt` (`compose.go:185`) | a path is named only when it equals `normalize.Sanitize(p)` and `conflictPathOK` (control/Cf omitted, `RESOLVE:` and `</files>` omitted, 1024-rune cap); 50-file cap (over-cap skips the launch); list fenced in `<files>`; a dropped path is still scanned for markers, so it holds the branch with a human |
 | Helper-tool inventory appended to prompts | PATH probe at startup, `runner.go:327`, rendered `compose.go:90-114` | operator-machine facts crossing outward with every prompt: which helper binaries exist and that installing missing ones is forbidden |
 | File-signal suggester tree walk | `suggest_fast.go:535,645` | 100k files, depth 12, 2k file heads × 4 KiB; opens via `os.OpenRoot` so a symlink or path that escapes the reviewed tree is skipped (`suggest_fast.go:640-667`) |
-| `~/.gauntlet/agents.json` | `custom.LoadCustomFile`, `custom.go:253` | malformed file refuses startup rather than silently changing the agent set; unknown JSON keys are errors (`custom.go:273-278`); `CustomFilePath` returns empty when HOME is missing so a definitions file is never picked up from `./.gauntlet` in the reviewed tree (`custom.go:294`) |
-| `--usage-cmd` probe | `internal/runner/usagelimit.go:81-139` | argv-only, inherited cwd/environment (possibly the reviewed tree); 10s deadline, 4 KiB per output stream; final non-empty line parsed as finite 0-100; failure warns once and leaves the threshold unenforced |
+| `~/.gauntlet/agents.json` | `internal/agent/custom.go:250-348` | rejects null, unknown fields, duplicate keys, trailing data, and built-in redefinitions; validates all definitions before registration; `CustomFilePath` returns empty without a state root; file read has no size cap and follows symlinks, so state storage must remain trusted |
+| `--usage-cmd` probe | `internal/runner/usagelimit.go:82-141` | argv-only, inherited cwd/environment (possibly the reviewed tree); 10s deadline, 4 KiB per output stream; own process group killed on return as well as cancellation; final non-empty line parsed as finite 0-100; failure warns once and leaves the threshold unenforced |
+| `--log FILE` destination | `cmd/gauntlet/main.go:210-240` | append-open requests 0600; a successful regular-file stat triggers chmod to 0600 before output; no no-follow open, regular-file requirement, directory confinement, or size/rotation limit |
 | `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:66` | runs only for a `dsh:<model>` pin; own process group, 120s cap, SIGKILL on the group; provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:295`) |
 | Planted symlinks/FIFOs in the tree | prompt reads `prompt.go:249-297`, lock creation `runner/lock.go:43`, untracked counting `gitx.go:462-481` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stat after open |
 
@@ -256,6 +261,10 @@ privilege transition:
   operator-selected shell, relative executable, or script can still consume
   repository content. The probe has a 10-second deadline, a 5-second pipe
   wait bound, and 4 KiB per output stream; excess output fails the probe.
+  `runx.Bound` provides a process group and cancellation kill; a deferred
+  group kill also handles remaining group members after the direct child exits
+  (`internal/runner/usagelimit.go:89-90`). Neither prevents a child from
+  deliberately escaping its process group.
   Parsing takes the last non-empty line, accepts a trailing `%`, and rejects
   non-finite or out-of-range values (`internal/runner/usagelimit.go:103-139`).
   Failure warns once and leaves the usage threshold unenforced; later checks
@@ -272,11 +281,16 @@ commit step is journaled as its own event with the chosen agent
 the runner as author. Stacked publication adds a `pull_request` event carrying
 the exact head, base, status, and URL; the terminal summary repeats every URL.
 
-**B3.** Terminal escape injection and log spoofing from agent output:
-mitigated end to end; the composed prompt shown by `--show-prompt`
-(`modes.go:56-57`), the journal replayed by `show` (`runs.go:94`), the
-plain reporter (`report.go:84-88`), and the dashboard feed (`ui.go:523-528`)
-pass through the same stripping. Output buffering has line and tail caps, but
+**B3.** Display sanitization addresses terminal escape injection, not the
+truth or origin of printable content. The composed prompt shown by
+`--show-prompt` (`modes.go:56-57`), the journal replayed by `show`
+(`runs.go:94`), the plain reporter (`report.go:84-88`), and the dashboard feed
+(`ui.go:523-528`) pass through the same stripping. Stream classification
+excludes recognized tool/user objects before their text reaches the report
+parsers, but trusts the producer's role/type fields
+(`internal/streamjson/streamjson.go:217-244`,
+`internal/runner/exec.go:227-250`). A compromised agent can still supply false
+assistant text or plain-text report lines. Output buffering has line and tail caps, but
 `--raw` bypasses normalizer rate/width limits while retaining `Display`
 (`internal/runner/exec.go:254-264`). Parser bounds do not limit a child's disk
 writes, network traffic, CPU, or provider spend. A non-positive process timeout
@@ -321,6 +335,15 @@ storage must remain operator-controlled. A malicious agent already runs as
 that operator and can tamper with this evidence. The tree lock's symlink
 check is a separate control (`internal/runner/lock.go`), not protection for
 all local state.
+
+`--log` is a separate confidentiality and availability boundary: it retains
+output that the journal omits. Regular files are chmod'd to 0600 when stat
+succeeds, including existing files, but append-open follows symlinks and does
+not require a regular file (`cmd/gauntlet/main.go:221-240`). The operator must
+control the destination and its parent directories. Display sanitization does
+not redact arbitrary secrets (`internal/runner/exec.go:254-263`), and this
+writer has no rotation or size bound. Same-user agents can read or alter the
+log just as they can the journal.
 
 ## Mitigations map
 
@@ -421,6 +444,14 @@ the reviewed repository's author:
   conflicted paths named in the prompt. The agent edits those files; the
   runner commits and merges if markers are gone. Containment is the same
   advisory fence. Unresolved markers keep the branch.
+
+- **Tool-output laundering.** Repository text returned by a tool can contain
+  report-shaped prose. Recognized tool/user stream objects are excluded before
+  tail parsing, so their text and counters are not treated as the assistant's
+  report (`internal/streamjson/streamjson.go:217-244`,
+  `internal/runner/exec.go:227-250`). Regression coverage pins this class in
+  `internal/streamjson/streamjson_test.go`; unmarked output or an assistant
+  repeating the text remains unauthenticated.
 
 None of these is demonstrated here; evidence is the cited code paths.
 
