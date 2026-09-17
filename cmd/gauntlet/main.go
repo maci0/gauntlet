@@ -269,7 +269,10 @@ func run(argv []string) int {
 	case "show":
 		return cmdShow(stdout, opts.showRun)
 	case "version":
-		fmt.Fprintf(stdout, "gauntlet %s\n", version)
+		if _, err := fmt.Fprintf(stdout, "gauntlet %s\n", version); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the version: %v\n", err)
+			return exitFail
+		}
 		return exitOK
 	}
 

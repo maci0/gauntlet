@@ -83,6 +83,28 @@ func TestLogFilePermissions(t *testing.T) {
 	}
 }
 
+func TestVersionReportsOutputFailure(t *testing.T) {
+	for _, arg := range []string{"version", "--version", "-V"} {
+		t.Run(arg, func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			out, err := os.Open(os.DevNull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer out.Close()
+			original := os.Stdout
+			os.Stdout = out
+			defer func() { os.Stdout = original }()
+			code, diagnostic := captureStderrFor(t, func() int {
+				return run([]string{arg})
+			})
+			if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the version:") {
+				t.Fatalf("exit %d, stderr %q", code, diagnostic.String())
+			}
+		})
+	}
+}
+
 func TestParseErrorReportedOnce(t *testing.T) {
 	got := captureStderr(t, func() int { return run([]string{"--bogus-flag"}) })
 	if n := strings.Count(got, "flag provided but not defined"); n != 1 {

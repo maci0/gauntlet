@@ -24,6 +24,8 @@ minor instead and were listed under Changed.
 - Stream parsing no longer treats tool-payload and user-turn text as assistant
   output, so report lines and usage inside a tool result cannot replace the
   run's own subject, file notes, or counters.
+- Version output exits with a failure and reports errors on stderr when stdout
+  or the `--log` destination cannot be written.
 - Output rate limiting starts its first window at the first line, including
   when an injected clock starts near zero time.
 - Failed attempts stop retrying or falling back to another agent once the
