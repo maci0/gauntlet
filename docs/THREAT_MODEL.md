@@ -7,8 +7,12 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-02 against commit 798fa00. Owner and review cadence are
-organizational decisions; none is assigned here.
+Last reviewed: 2026-09-18 against commit a4813c5. This pass checked commit and
+push authority, usage probes, update/reload guarantees, subprocess limits,
+state permissions, and the dependency scan. Other inventory references retain
+the earlier baseline and need re-verification; this is not a full assurance
+claim. Owner and review cadence are organizational decisions; none is assigned
+here.
 
 ## Risk-ranked summary
 
@@ -19,7 +23,14 @@ organizational decisions; none is assigned here.
 | R3 | A prompt-injected or compromised agent reads every secret its user can: environment-inherited API keys, agent config stores, SSH keys, `~/.netrc` | B2/B5 | Consequence of R1; containerization is the documented answer (DESIGN.md non-goals) |
 | R4 | Confidentiality of reviewed source: agents send code to third-party model APIs over the network | B2 | Inherent to the tool's purpose; users must know it |
 | R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching `@deepseek-ai/dsh` from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap (deliberate feature, unreviewed supply-chain hop) |
-| R6 | DoS via oversized or hostile input | all | Well bounded; caps listed under Mitigations |
+| R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas; the usage limit fails open (`internal/runner/exec.go:99`, `internal/runner/usagelimit.go:44`) |
+
+The order reflects reachability and blast radius, not measured likelihood.
+R1/R3/R4 require only content reaching a launched agent; R2 requires control
+of the update publisher or executable path; R5 requires selecting the fallback.
+No server authentication boundary is claimed here: the operator's OS account
+supplies child-process authority (`internal/runner/exec.go:103-106`), and
+publication uses that account's Git credentials (`internal/runner/commit.go:95`).
 
 ## Assets
 
@@ -63,10 +74,12 @@ organizational decisions; none is assigned here.
   permissions from their own config; `cursor-agent` is invoked `--print -f`
   with no extra bypass flag in argv. Custom agents (`--agent-cmd`,
   `~/.gauntlet/agents.json`, the pi family in `custom.go`) use operator-defined
-  argv: gauntlet does not add a bypass flag. With `--push`, one launch per
-  loop is additionally granted git commit and remote-push authority
-  (`runCommitStep`, `internal/runner/commit.go:97`; prompt in
-  `internal/prompt/rules/commit.md`, composed at `compose.go:147`). The same
+  argv: gauntlet does not add a bypass flag. With `--commit` (also implied by
+  `--push`), one launch per loop receives commit instructions; the runner
+  verifies tracked-file cleanliness, strips attribution trailers, and performs
+  the requested push (`internal/runner/commit.go:137-224`). This divides
+  workflow responsibility, not OS authority: the agent still inherits the
+  user's credentials and can disobey the prompt's no-push instruction. The same
   hand-off exists outside a loop: when `--jobs` refuses a dirty tree,
   `commitFirst` offers to give the uncommitted work to one agent, consented
   by `--yes`/`--yolo` or an interactive confirmation, never on an unattended
@@ -96,10 +109,11 @@ organizational decisions; none is assigned here.
   publishing side of the same channel is GitHub Actions: `release.yml` builds
   and uploads the assets `update` verifies (the write token is in the
   environment only for that upload), and `vulnscan.yml` runs
-  govulncheck weekly and on every `go.mod`/`go.sum` change (actions pinned by
-  commit, runner images pinned, `persist-credentials: false`; the scanner
-  itself is deliberately unpinned because its result never becomes a build
-  input). Stacked
+  govulncheck weekly and on `go.mod`/`go.sum` pull-request changes and main
+  pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
+  the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
+  The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:30`,
+  invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-44`). Stacked
   publication is a second internet path: the `gh` CLI, resolved from an
   absolute-only PATH (`internal/ghx/ghx.go:81-97`), using the operator's own
   `gh` credentials, not the `GH_TOKEN` gauntlet reads for self-update.
@@ -138,7 +152,7 @@ Untrusted inputs with their validation point:
 | Helper-tool inventory appended to prompts | PATH probe at startup, `runner.go:327`, rendered `compose.go:90-114` | operator-machine facts crossing outward with every prompt: which helper binaries exist and that installing missing ones is forbidden |
 | File-signal suggester tree walk | `suggest_fast.go:535,645` | 100k files, depth 12, 2k file heads × 4 KiB; opens via `os.OpenRoot` so a symlink or path that escapes the reviewed tree is skipped (`suggest_fast.go:640-667`) |
 | `~/.gauntlet/agents.json` | `custom.LoadCustomFile`, `custom.go:253` | malformed file refuses startup rather than silently changing the agent set; unknown JSON keys are errors (`custom.go:273-278`); `CustomFilePath` returns empty when HOME is missing so a definitions file is never picked up from `./.gauntlet` in the reviewed tree (`custom.go:294`) |
-| `--usage-cmd` probe | `probeUsage`, `internal/runner/usagelimit.go:76` | whitespace-split argv, no shell; runs with gauntlet's cwd, not the reviewed tree; stdout parsed as one finite 0-100 number (`parseUsagePercent`, `usagelimit.go:107`); error or unparseable answer is reported once and ignored |
+| `--usage-cmd` probe | `internal/runner/usagelimit.go:81-139` | argv-only, inherited cwd/environment (possibly the reviewed tree); 10s deadline, 4 KiB per output stream; final non-empty line parsed as finite 0-100; failure warns once and leaves the threshold unenforced |
 | `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:66` | runs only for a `dsh:<model>` pin; own process group, 120s cap, SIGKILL on the group; provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:295`) |
 | Planted symlinks/FIFOs in the tree | prompt reads `prompt.go:249-297`, lock creation `runner/lock.go:43`, untracked counting `gitx.go:462-481` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stat after open |
 
@@ -215,8 +229,10 @@ privilege transition:
   (`commit.go:97`) execs one agent with
   `prompt.CommitPrompt`, which instructs it to run `git commit` and never
   to push; the runner strips injected AI attribution trailers from the new
-  commit (`StripAITrailers`) and pushes itself under `--push`, so a
-  compromised agent cannot talk its way into `git push`. Under `--yolo` a
+  commit (`StripAITrailers`) and pushes itself under `--push`
+  (`internal/runner/commit.go:200-216`). Neither trailer stripping nor a clean
+  tracked-file status is a security inspection of the committed content, and
+  neither prevents the agent from invoking Git itself. Under `--yolo` a
   rejected push escalates to a runner-side `git pull --rebase` and retry; a
   rebase conflict fails the step rather than returning to the agent. The
   same launch, offered standalone when a dirty tree blocks `--jobs`, is
@@ -230,22 +246,26 @@ privilege transition:
   paths and forbids git; the runner commits and merges the result, or keeps
   the original branch if markers remain. Same advisory fence, same
   permission-bypassed process, narrower file set.
-- **`--usage-cmd` (the usage-limit probe):** a command the operator names, run
-  between reviews to decide whether to stop starting them. It is split on
-  whitespace and handed to exec as argv, so no shell parses it and nothing in
-  it is expanded; it runs with gauntlet's own working directory rather than the
-  tree under review, so a reviewed repository cannot supply the executable it
-  resolves to, and its output is parsed as one finite number in 0-100 and
-  nothing else (`probeUsage` and `parseUsagePercent` in
-  `internal/runner/usagelimit.go`). The reviewed repository has no channel
-  into it. Its failure mode is chosen deliberately: a probe that errors or
-  answers unparseably is reported once and then ignored, so the worst a
-  broken probe does is leave the limit unenforced -- it cannot end a run
-  early, and it cannot extend one, because a missing answer is never read as
-  headroom. NaN and infinities are refused (`usagelimit.go:130`).
+- **`--usage-cmd` (the usage-limit probe):** the operator supplies argv to
+  decide whether more reviews start (`internal/runner/usagelimit.go:44-68`).
+  `probeUsage` uses `exec.CommandContext` without setting `Dir` or `Env`, so
+  it inherits the invocation directory and environment. That directory can
+  itself be the reviewed repository; there is no separate trusted probe
+  directory or the agent resolver's PATH filtering here
+  (`internal/runner/usagelimit.go:81-98`). No shell is added, but an
+  operator-selected shell, relative executable, or script can still consume
+  repository content. The probe has a 10-second deadline, a 5-second pipe
+  wait bound, and 4 KiB per output stream; excess output fails the probe.
+  Parsing takes the last non-empty line, accepts a trailing `%`, and rejects
+  non-finite or out-of-range values (`internal/runner/usagelimit.go:103-139`).
+  Failure warns once and leaves the usage threshold unenforced; later checks
+  may succeed. Spending can continue beyond the intended threshold, though
+  this does not enlarge the independently configured runtime budget. A valid
+  but false low reading also permits continued scheduling. The probe is
+  trusted telemetry, not an authenticated quota service.
 
-Repudiation is covered elsewhere: every run journals seed, schedule,
-outcomes, and the prompt fingerprint each launch ran under
+Repudiation is only partly addressed: when journaling is available, a run
+records seed, schedule, outcomes, and the prompt fingerprint each launch ran under
 (`internal/runner/event.go`, DESIGN.md "Run journal"), the
 commit step is journaled as its own event with the chosen agent
 (`commit.go:159-162`, kind at `event.go:24`), and worktree-mode commits carry
@@ -256,35 +276,51 @@ the exact head, base, status, and URL; the terminal summary repeats every URL.
 mitigated end to end; the composed prompt shown by `--show-prompt`
 (`modes.go:56-57`), the journal replayed by `show` (`runs.go:94`), the
 plain reporter (`report.go:84-88`), and the dashboard feed (`ui.go:523-528`)
-pass through the same stripping. DoS by output volume: bounded by line cap,
-rate limit, and the fixed ring buffer (DESIGN.md "Speed").
+pass through the same stripping. Output buffering has line and tail caps, but
+`--raw` bypasses normalizer rate/width limits while retaining `Display`
+(`internal/runner/exec.go:254-264`). Parser bounds do not limit a child's disk
+writes, network traffic, CPU, or provider spend. A non-positive process timeout
+also removes the per-launch deadline (`internal/runner/exec.go:278`).
 
-**B4.** Tampering with updates in transit: TLS + SHA-256 against
-`checksums.txt`, whose entries must parse as real digests
-(`selfupdate.go:328-358`). But both come from the same release over the same
-channel, so the checksum proves the download matches the listing, not that the
-publisher is benign. Compromise of the GitHub repo or its release process
-yields arbitrary code execution on every updating machine, amplified by hot
-reload re-exec'ing the new binary mid-run without user confirmation
-(`internal/selfupdate/reload.go:212`). No signed-release mechanism exists. The
+**B4.** Update metadata is requested over HTTPS; downloads are compared
+with SHA-256 entries in `checksums.txt`
+(`internal/selfupdate/selfupdate.go:149-165,219-245,330-360`). Asset and
+checksum URLs come from that metadata without an explicit HTTPS/host allowlist
+in `fetch` or `download` (`internal/selfupdate/selfupdate.go:282-307`).
+The checksum proves the download matches the listing, not that the publisher
+is benign: the same publisher controls both. Compromise of the GitHub repo
+or its release process yields arbitrary code execution on updating machines,
+amplified by hot reload re-exec'ing the new binary mid-run without user
+confirmation (`internal/selfupdate/reload.go:219-240`). No signed-release mechanism exists. The
 advisory scanner in CI (`vulnscan.yml`) watches the dependency graph, not this
 channel. The `bunx @deepseek-ai/dsh` fallback (and the `--dump-config` probe
 that uses the same argv) is a second fetch-and-execute path, from the npm
 registry rather than GitHub releases, with no checksum.
 
-**B5.** Secret egress: `GH_TOKEN` / `GITHUB_TOKEN` go only to GitHub
-(`selfupdate.go:83-97`, attached to the listing, checksums, and asset
-requests). Agent CLIs receive the inherited environment and
+**B5.** Secret egress: the updater explicitly attaches `GH_TOKEN` /
+`GITHUB_TOKEN` only to requests whose scheme is HTTPS and hostname is
+`api.github.com` or `github.com` (`internal/selfupdate/selfupdate.go:94-101`).
+This is a credential-attachment check, not validation of all release asset
+URLs: `fetch` and `download` use metadata-supplied URLs with the HTTP client's
+default redirect behavior (`internal/selfupdate/selfupdate.go:137,282-307`).
+Agent CLIs receive the inherited environment and
 hold their own stored credentials; anything the user can read, a runaway
 agent can read and send where its model provider accepts. No gauntlet-side
 control exists; the boundary is the operating system, hence the container
 guidance.
 
-**B6.** Journal and handoff files are operator-private (0600 files, 0700
-dirs, `journal.go:113,116,191,195`); the lock file refuses symlink takeover
-(`lock.go:43-58`). `agents.json` is never resolved into the working directory
-when HOME is missing (`custom.go:294`). Threats here require local same-user
-access, which already implies game over.
+**B6.** Journal creation requests 0600 files and 0700 directories
+(`internal/journal/journal.go:144-147,258-261`); handoffs use a sibling temp
+file and atomic rename (`internal/selfupdate/reload.go:131-162`). Creation
+modes do not tighten permissions on pre-existing paths or authenticate local
+state. Journal opens follow existing paths, so a protected state directory is
+a precondition, not an enforced property of any `GAUNTLET_HOME` value.
+`LoadState` reads and removes the environment-selected path without a size cap
+(`internal/selfupdate/reload.go:196-211`); invocation environment and state
+storage must remain operator-controlled. A malicious agent already runs as
+that operator and can tamper with this evidence. The tree lock's symlink
+check is a separate control (`internal/runner/lock.go`), not protection for
+all local state.
 
 ## Mitigations map
 
@@ -304,10 +340,10 @@ access, which already implies game over.
 | Output-volume DoS from a chatty agent | 4 MiB line cap emitted in chunks, bounded tail buffers (1 MiB suggest tail) | `exec.go:34-42,300-358,438-448` |
 | Oversized prompt files | 1 MiB read cap; argv-length pre-check with named failure | `prompt.go:36`, `agent.go:409-415,441-446` |
 | Runaway/hung agents | per-review timeout, process group SIGTERM then SIGKILL, stdin null device, own session (no controlling terminal, so Ctrl-C cannot be disabled from inside an agent), drain grace for stuck grandchildren | `exec.go:25-32,81-290,386-419` |
-| Commit step running away | separate 5-minute cap, same process discipline, journaled outcome; worktree mode takes commit authority back from the agent entirely | `commit.go:22-24,97-162` |
+| Commit step running away | separate 5-minute cap, same process discipline, journaled outcome; runner-side publication is workflow separation, not removal of agent credentials | `internal/runner/commit.go:24,160-180,200-224` |
 | Conflict step running away | separate 10-minute cap, same process discipline; unresolved markers keep the branch | `conflict.go:25,36-88` |
 | Unbounded downloads | 256 MiB asset, 4 MiB metadata, 1 MiB checksum caps; digest-shaped entries only; verify-before-rename, atomic replace | `selfupdate.go:107,163,217,297-319,328-358` |
-| Half-written binary executed by reload | two identical inode/size/mtime readings required | DESIGN.md "Hot reload", `selfupdate/reload.go:99-107` |
+| Partial binary observed by reload | two immediate identical stat readings reject visible changes, but do not prove completeness or authenticity; safe replacement depends on atomic writers | `internal/selfupdate/reload.go:83-113`; updater rename at `internal/selfupdate/selfupdate.go:253` |
 | Concurrent agents corrupting one tree | flock per directory; parallelism only across directories or with worktree isolation + serialized merges; a conflict is resolved in a scratch checkout or keeps its branch | `runner/lock.go`, DESIGN.md concurrency section |
 | Reviewed tree defining its own agents | `CustomFilePath` empty without HOME; argv is exec, not shell | `custom.go:223,294` |
 | Known-vulnerable dependencies shipping to users | govulncheck weekly and on dependency changes in CI | `.github/workflows/vulnscan.yml` |
@@ -335,9 +371,18 @@ technical backstop behind them.
    reported" to "fix shipped": no disclosure contact, no supported-version
    statement. Creating one requires an owner decision, so it is only noted
    here.
-4. **Secrets hygiene around spawned agents.** Gauntlet inherits the full
+4. **R6, resource and budget enforcement.** The launch path sets no OS
+   resource limits (`internal/runner/exec.go:99-106`); the optional usage
+   threshold is checked between reviews and fails open on probe errors
+   (`internal/runner/usagelimit.go:44-68`). Neither is a hard spend quota.
+5. **Secrets hygiene around spawned agents.** Gauntlet inherits the full
    operator environment to every agent; a scrubbed env or documented
    container workflow would shrink R3. Design decision, not a bug.
+6. **Probe trust and endpoint precision.** The usage probe inherits cwd and
+   environment with no trusted-directory or PATH isolation
+   (`internal/runner/usagelimit.go:81-98`), and updater credential
+   attachment does not constrain metadata-supplied asset URLs
+   (`internal/selfupdate/selfupdate.go:282-307`).
 
 ## Abuse cases
 
@@ -349,13 +394,13 @@ the reviewed repository's author:
   (`discover.go:104-111`). The planted body rides past the markers into an
   agent told to skip permissions or auto-approve. Enabling path: `Discover`
   -> `Compose` -> `BuildCmd` -> `runProc`.
-- **Exfiltration-by-push.** A crafted prompt convinces an agent to embed
-  secrets from outside the tree into an applied fix; with `--commit --push`
-  the commit step then hands that agent `git commit` and `git push` directly
-  (`commit.go:116`, `compose.go:147`), so poisoned content reaches the
-  remote without any runner-side inspection of what is being committed.
-  Containment forbids reading outside the tree, by prompt only, and the
-  commit prompt lifts the git-read-only rule for its launch by design.
+- **Exfiltration-by-push.** Repository instructions steer an agent into
+  including sensitive content in a change. With `--commit --push`, the agent
+  commits and the runner pushes after tracked-file and attribution checks
+  (`internal/runner/commit.go:200-216`). Those checks do not inspect the diff
+  for secrets or authorize its content. The same-user agent can also publish
+  directly despite the prompt prohibition. Containment is advisory, not a
+  credential or network restriction (`internal/runner/exec.go:103-106`).
 - **Consent-surfaced commit.** Refuse `--jobs` on a dirty tree and gauntlet
   offers to hand that tree, unreviewed, to an agent that commits it; `--yes`
   or `--yolo` on the original command is that consent, so an operator who
@@ -388,13 +433,12 @@ None of these is demonstrated here; evidence is the cited code paths.
   flock). It does not list the later git overlays (`attr.tree`, local
   driver blanks, `protocol.ext.allow=never`, `GIT_SSH_COMMAND=ssh`); those
   are additional, not contradictory.
-- Response readiness: the journal provides the audit trail
-  (o11y-review owns its structure); the reporting path is the gap listed
-  above.
-- This pass re-verified every file reference above against commit 798fa00
-  and folded in what the previous review (9269025) did not yet name: the
-  conflict-step agent, `Signals:`/`Summary:` as untrusted prompt metadata,
-  `extraSafe` git hardening (`.gitattributes` / local drivers), the
-  `dsh --dump-config` probe on the bunx path, `gh` as a second internet
-  channel, `CustomFilePath` refusing a missing HOME, the file-signal
-  suggester's `OpenRoot` peek, and NaN rejection in the usage probe.
+- Response readiness: the journal supports run reconstruction, not a complete
+  security audit. Agent output and live usage events are explicitly excluded
+  (`cmd/gauntlet/main.go:478`), writes are buffered, and write failures are
+  retained for reporting at close (`internal/journal/journal.go:156-183,194-211`).
+  It does not authenticate agent claims or record every child action; same-user
+  agents can alter local evidence. The disclosure and supported-version gaps
+  above remain undocumented organizational decisions.
+- Verification scope and baseline are recorded at the top. Older inventory
+  references are retained rather than represented as newly verified.
