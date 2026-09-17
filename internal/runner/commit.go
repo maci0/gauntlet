@@ -172,9 +172,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	// This launch becomes the CLI's most recent session in this directory,
 	// which is what the resume flags target. Resuming it from the next review
 	// would continue the commit conversation, so start that review fresh.
-	r.mu.Lock()
-	delete(r.sessionStarted, spec)
-	r.mu.Unlock()
+	r.forgetSession(spec)
 
 	r.log("Running %s step with %s", action, spec.Label())
 	r.st.addCommitRun()
