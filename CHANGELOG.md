@@ -44,10 +44,6 @@ minor instead and were listed under Changed.
 
 ## 1.21.0
 
-### Fixed
-
-- The commit step now strips Cursor-style AI attribution trailers (Co-Authored-By, Generated-by) from the new commit before anything leaves the machine. The agent only commits; the runner pushes, so injected trailers can no longer reach the remote.
-
 ### Changed
 
 - `--stacked-prs` accepts `-n` / `--max-loops`. Default remains one ordered
@@ -56,8 +52,25 @@ minor instead and were listed under Changed.
   already-applied fixes stay in the tree and a no-op review opens no second
   PR. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch
   names; later loops insert the loop number.
+
+## 1.20.1
+
+The changes below were present at tag `v1.20.1` but were left under
+Unreleased and later attributed to 1.21.0. The release workflow requires a
+matching version heading, so it could not publish binary assets for that
+tag. Source installs at `v1.20.1` include these changes, as does 1.21.0.
+
+### Fixed
+
+- The commit step strips `Co-Authored-By` and `Generated-by` attribution
+  trailers before the runner pushes the new commit.
+- agy print-mode launches request `--output-format stream-json` when
+  `--stream` is on and forward the runner's wait bound as `--print-timeout`,
+  instead of exiting at the agent's five-minute default during longer reviews.
+
+### Changed
+
 - README dashboard and launcher screenshots now stamp the current release.
-- agy print-mode launches now request `--output-format stream-json` when `--stream` is on, and forward the runner's wait bound as `--print-timeout`, so the CLI no longer exits at its 5m default while a longer review is still running.
 
 ## 1.20.0
 
