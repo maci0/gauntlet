@@ -319,13 +319,13 @@ review to no effect.
 
 The command is the operator's, not the agent's. It is split on whitespace and
 executed directly, so no shell parses it, and it runs in the directory
-gauntlet was started from rather than the tree under review. It has to print
-one number, optionally with a trailing `%`; anything else -- a label, an empty
-answer from a failed lookup, a value outside 0-100 -- is an error rather than
-a guess, because reading a bad answer as "plenty left" would spend the rest of
-the window and reading it as "full" would end the run for nothing. The first
-failure is reported and the limit is then ignored for the rest of the run: a
-probe that breaks must not be able to end a run early.
+gauntlet was started from rather than the tree under review. Its last nonempty
+stdout line must contain one finite number in 0-100, optionally with a trailing
+`%`; earlier lines are ignored. An empty answer, a label on the last line, or
+an invalid number is an error rather than a guessed percentage. Probe
+failures are ignored, with only the first failure reported. Checks continue
+between reviews; a later successful reading at or above the limit still ends
+the run gracefully.
 
 **Why a command, and not a number gauntlet reads itself.** The figure lives in
 the provider's API response headers -- for Anthropic,
