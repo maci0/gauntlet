@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -837,6 +838,31 @@ func TestRequestStopFinishesInFlightWork(t *testing.T) {
 	}
 }
 
+func TestLockReleasePreservesWaitingDescriptor(t *testing.T) {
+	path := LockPath(t.TempDir())
+	first, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(first.Release)
+	waiting, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { waiting.Close() })
+	first.Release()
+	if err := syscall.Flock(int(waiting.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("waiting descriptor cannot acquire the released lock: %v", err)
+	}
+	third, err := Acquire(path)
+	if third != nil {
+		third.Release()
+	}
+	if !errors.Is(err, ErrLocked) {
+		t.Fatalf("acquire while the waiting descriptor holds the lock: %v, want ErrLocked", err)
+	}
+}
+
 func TestLockKeepsTwoRunsApart(t *testing.T) {
 	dir := t.TempDir()
 	path := LockPath(dir)
@@ -852,9 +878,10 @@ func TestLockKeepsTwoRunsApart(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lock not released: %v", err)
 	}
+	second.Note("running")
 	second.Release()
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatal("lock file should be removed on release")
+	if data, err := os.ReadFile(path); err != nil || len(data) != 0 {
+		t.Fatalf("released lock file: %q, %v; want an empty persistent file", data, err)
 	}
 }
 

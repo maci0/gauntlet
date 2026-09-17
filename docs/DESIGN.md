@@ -558,3 +558,6 @@ name programs, so the port blanks every execution-bearing key it can reach.
 - Untrusted text (prompt names, descriptions, agent output) is sanitized of
   control and bidi-formatting characters before display.
 - A `flock` on `.gauntlet.lock` prevents concurrent runs in one directory.
+  Release clears the holder note but keeps the inode: unlinking it could leave
+  an opener locking the old inode while another run locks a newly created one.
+  Do not remove the file while runs can start.

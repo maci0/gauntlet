@@ -6,7 +6,6 @@ package runner
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -33,9 +32,8 @@ func LockPath(dir string) string { return filepath.Join(dir, gitx.LockName) }
 
 // Lock is an exclusive, advisory lock on one review directory.
 type Lock struct {
-	path string
-	mu   sync.Mutex
-	fd   int // -1 once released; guarded by mu
+	mu sync.Mutex
+	fd int // -1 once released; guarded by mu
 }
 
 // Acquire takes the directory lock. The descriptor stays open for the lifetime
@@ -77,7 +75,7 @@ func Acquire(path string) (*Lock, error) {
 	// it. The flock is gone, so the run it describes is gone too: clear it
 	// rather than let a dead run keep answering for this directory.
 	_ = syscall.Ftruncate(fd, 0)
-	return &Lock{path: path, fd: fd}, nil
+	return &Lock{fd: fd}, nil
 }
 
 // Note records what the holder is doing now, so the next gauntlet to try this
@@ -112,11 +110,6 @@ func readNote(fd int) string {
 	return normalize.Display(strings.TrimSpace(line))
 }
 
-// Release drops the lock and removes the file, so reviewed repos are not
-// littered with stray locks. It is safe to call twice: a hot reload releases
-// before the exec, and a failed exec leaves the deferred release to run on the
-// same lock. Closing an already-closed descriptor twice is not harmless, the
-// second close can land on a recycled fd, so Release marks the lock spent.
 func (l *Lock) Release() {
 	if l == nil {
 		return
@@ -128,7 +121,7 @@ func (l *Lock) Release() {
 	}
 	fd := l.fd
 	l.fd = -1
-	_ = os.Remove(l.path)
+	_ = syscall.Ftruncate(fd, 0)
 	_ = syscall.Flock(fd, syscall.LOCK_UN)
 	_ = syscall.Close(fd)
 }
