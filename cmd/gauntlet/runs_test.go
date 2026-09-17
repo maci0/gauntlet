@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -137,6 +138,55 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	if !strings.Contains(buf.String(), want) {
 		t.Fatalf("STARTED should be ISO local %q, got:\n%s", want, buf.String())
 	}
+}
+
+func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
+	for _, populated := range []bool{false, true} {
+		t.Run(strconv.FormatBool(populated), func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			if populated {
+				start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+				j, err := journal.Open(journal.NewRunID(start), start)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := j.Close(journal.Summary{Start: start, End: start.Add(time.Second)}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var rendered bytes.Buffer
+			if code := cmdRuns(&rendered, palette{}, 10); code != exitOK {
+				t.Fatalf("listing exited %d", code)
+			}
+			for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
+				sink := &listingFailWriter{remaining: limit}
+				code, diagnostic := captureStderrFor(t, func() int {
+					return cmdRuns(sink, palette{}, 10)
+				})
+				if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the run listing: "+io.ErrClosedPipe.Error()) {
+					t.Fatalf("limit %d: exit %d, stderr %q", limit, code, diagnostic.String())
+				}
+				if sink.String() != rendered.String()[:limit] {
+					t.Fatalf("limit %d: unexpected partial listing %q", limit, sink.String())
+				}
+			}
+		})
+	}
+}
+
+type listingFailWriter struct {
+	bytes.Buffer
+	remaining int
+}
+
+func (w *listingFailWriter) Write(p []byte) (int, error) {
+	n := min(len(p), w.remaining)
+	w.Buffer.Write(p[:n])
+	w.remaining -= n
+	if n < len(p) {
+		return n, io.ErrClosedPipe
+	}
+	return n, nil
 }
 
 func TestRunsListsMeasuredElapsedWhenTheWallClockJumped(t *testing.T) {

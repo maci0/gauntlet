@@ -22,21 +22,33 @@ import (
 )
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl.
-func cmdRuns(out io.Writer, pal palette, limit int) int {
+func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 	entries, err := journal.Recent(limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read run index: %v\n", err)
 		return exitFail
 	}
+	var werr error
+	defer func() {
+		if werr != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", werr)
+			code = exitFail
+		}
+	}()
+	write := func(format string, args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintf(out, format, args...)
+		}
+	}
 	if len(entries) == 0 {
-		fmt.Fprintf(out, "No runs recorded yet under %s\n", journal.Home())
+		write("No runs recorded yet under %s\n", journal.Home())
 		return exitOK
 	}
-	fmt.Fprintf(out, "%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
+	write("%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
 		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
 	// The column's name overstates what it counts; say so once, right where
 	// it first appears, or a run that only skipped reviews reads as broken.
-	fmt.Fprintln(out, pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
+	write("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
 	for _, e := range entries {
 		dur := "n/a"
 		if d, ok := e.Duration(); ok {
@@ -54,11 +66,11 @@ func cmdRuns(out io.Writer, pal palette, limit int) int {
 			tokens = humanize.Count(e.Tokens)
 		}
 		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
-		fmt.Fprintf(out, "%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
+		write("%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
 			e.RunID, e.Start.Local().Format("2006-01-02 15:04:05"), dur,
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
-	fmt.Fprintf(out, "\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
+	write("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
 	return exitOK
 }
 

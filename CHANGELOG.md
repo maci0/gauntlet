@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
 
 - Suggestion parsing rejects malformed names instead of scheduling a review
   whose name matches only a prefix of the response.
+- `runs` exits with a failure and reports output errors on stderr when its
+  listing cannot be written, including empty history and partial output.
 - Release builds stop when any binary's module inventory cannot be read,
   instead of reporting success with an incomplete `sbom.txt`.
 - Database checks use saved query plans instead of connecting to existing
