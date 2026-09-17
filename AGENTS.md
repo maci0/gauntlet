@@ -2,7 +2,8 @@
 
 The Go implementation of gauntlet: ~50 review prompts dispatched to installed AI coding
 agents, applying fixes to the working tree. One static binary, prompts embedded.
-`TAGS=notoktop` drops transcript reading; `TAGS=` drops the sqlite driver too.
+`TAGS=notoktop` drops transcript reading; `TAGS=` keeps transcript reading
+but drops the sqlite driver.
 
 ## Build and test
 
