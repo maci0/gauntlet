@@ -814,7 +814,7 @@ func (p *picker) View() string {
 	if p.w < 50 || p.h < 12 {
 		return p.renderNarrow()
 	}
-	leftW := clampi(p.w*3/5, 34, p.w-28)
+	leftW := clampi(p.w*3/5, min(34, p.w-28), p.w-28)
 	rightW := p.w - leftW - 1
 	// Chrome: header, two panel titles and borders on the right, the command
 	// line, the hint, and the keys.
@@ -1213,8 +1213,11 @@ func (p *picker) runPanel(w, h int) string {
 			// Concurrency against the machine, drawn like every other meter:
 			// the unlit remainder is the headroom left.
 			frac := float64(o.n) / float64(max(p.cfg.CPUs, 1))
-			right = meter(frac, 8, heatColor(frac)) + " " +
-				styleValue.Render(fmt.Sprint(o.n)) + styleDim.Render(fmt.Sprintf("/%d cpu", p.cfg.CPUs))
+			value := styleValue.Render(fmt.Sprint(o.n)) + styleDim.Render(fmt.Sprintf("/%d cpu", p.cfg.CPUs))
+			right = meter(frac, 8, heatColor(frac)) + " " + value
+			if lipgloss.Width(left)+lipgloss.Width(right)+1 > inner-2 {
+				right = value
+			}
 			if inert {
 				left = styleFaint.Render("  " + o.label)
 				right = styleFaint.Render(fmt.Sprint(o.n) + fmt.Sprintf("/%d cpu", p.cfg.CPUs))
@@ -1248,6 +1251,11 @@ func (p *picker) runPanel(w, h int) string {
 				}
 				left = styleFaint.Render(mark + o.label)
 			}
+		}
+		if right != "" {
+			bodyW := inner - 2
+			right = clip(right, max(bodyW/2, bodyW-lipgloss.Width(left)-1))
+			left = clip(left, bodyW-lipgloss.Width(right)-1)
 		}
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}

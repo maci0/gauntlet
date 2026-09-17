@@ -19,6 +19,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Narrow launcher panes retain concurrency and selected option values instead
+  of hiding them. Panel titles stay within their assigned width so long titles
+  cannot push adjacent panels past the terminal edge.
 - Directory lock files keep their inode after release, preventing overlapping
   starts from acquiring separate locks for the same tree. Release clears the
   holder note instead of removing the file.

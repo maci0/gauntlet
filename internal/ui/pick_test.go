@@ -806,6 +806,57 @@ func TestPickEscClearsKeptFilterInsteadOfQuitting(t *testing.T) {
 	}
 }
 
+func TestPickFrameFitsTerminal(t *testing.T) {
+	for _, width := range []int{50, 80, 160} {
+		p := demoPicker()
+		p.Update(tea.WindowSizeMsg{Width: width, Height: 30})
+		press(p, "tab", "tab", "+")
+		for line := range strings.SplitSeq(p.View(), "\n") {
+			if got := lipgloss.Width(line); got > width {
+				t.Errorf("width %d: row occupies %d columns: %q", width, got, stripANSI(line))
+			}
+		}
+	}
+}
+
+func TestPickRunOptionsKeepValuesInNarrowPanels(t *testing.T) {
+	for _, width := range []int{50, 60, 80, 100, 160} {
+		p := demoPicker()
+		p.Update(tea.WindowSizeMsg{Width: width, Height: 30})
+		press(p, "tab", "tab", "+")
+		view := stripANSI(p.View())
+		if !strings.Contains(view, "2/8 cpu") {
+			t.Fatalf("width %d hides the updated concurrency:\n%s", width, view)
+		}
+		if width == 160 && !strings.Contains(view, "▰▰▱▱▱▱▱▱ 2/8 cpu") {
+			t.Fatalf("wide panel lost its concurrency meter:\n%s", view)
+		}
+		p.suggest = true
+		press(p, "j", "right")
+		view = stripANSI(p.View())
+		found := false
+		for line := range strings.SplitSeq(view, "\n") {
+			if strings.Contains(line, "❯") && strings.Contains(line, "gauntlet") {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("width %d hides the selected suggester on its row:\n%s", width, view)
+		}
+		press(p, "j", "j", "j", "j", " ", "j", "j", "right")
+		view = stripANSI(p.View())
+		found = false
+		for line := range strings.SplitSeq(view, "\n") {
+			if strings.Contains(line, "❯") && strings.Contains(line, "main") {
+				found = true
+			}
+		}
+		if !found || !strings.Contains(strings.Join(p.argv(), " "), "--merge-into main") {
+			t.Fatalf("width %d hides or changes the selected merge target:\n%s", width, view)
+		}
+	}
+}
+
 // Pressing space on the concurrency option cycles it through 1..CPUs so
 // the primary toggle key works on every pane row instead of doing nothing.
 func TestPickSpaceCyclesConcurrency(t *testing.T) {
