@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -1035,8 +1036,8 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 // startReloadWatch arms the hot-reload watcher. When the executable changes,
 // every runner is asked to stop at its next quiescent point; the exec happens
 // after the summary is written.
-func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *runner.Bus) *atomicString {
-	var pending atomicString
+func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *runner.Bus) *atomic.Pointer[string] {
+	var pending atomic.Pointer[string]
 	if !opts.hotReload {
 		return &pending
 	}
@@ -1375,12 +1376,3 @@ func uniq(in []string) []string {
 	}
 	return out
 }
-
-// atomicString is a tiny holder for the pending reload path.
-type atomicString struct {
-	mu sync.Mutex
-	v  *string
-}
-
-func (a *atomicString) Store(v *string) { a.mu.Lock(); a.v = v; a.mu.Unlock() }
-func (a *atomicString) Load() *string   { a.mu.Lock(); defer a.mu.Unlock(); return a.v }

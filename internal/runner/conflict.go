@@ -119,18 +119,18 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		return false
 	}
 	spec := r.pickAgent("conflict", nil)
+	timeout := conflictTimeout
+	if r.cfg.Timeout > 0 {
+		timeout = min(r.cfg.Timeout, conflictTimeout)
+	}
 	argv, err := agent.BuildCmd(spec, prompt.ConflictPrompt(named),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool]})
+		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout})
 	if err != nil {
 		r.log("Cannot build the conflict command for %s: %v", spec.Label(), err)
 		return false
 	}
 	r.log("Resolving the %s conflict in %s with %s", review,
 		humanize.List(safePaths(paths), 3), spec.Label())
-	timeout := conflictTimeout
-	if r.cfg.Timeout > 0 {
-		timeout = min(r.cfg.Timeout, conflictTimeout)
-	}
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,

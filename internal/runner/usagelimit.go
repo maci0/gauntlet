@@ -122,7 +122,7 @@ func parseUsagePercent(s string) (float64, error) {
 	}
 	pct, err := strconv.ParseFloat(field, 64)
 	if err != nil {
-		return 0, fmt.Errorf("probe printed %q, want a percentage", firstLine(field))
+		return 0, fmt.Errorf("probe printed %q, want a percentage", runx.FirstLine(field))
 	}
 	// Before the range check, because a range check cannot catch these.
 	// ParseFloat accepts "NaN" and the infinities as valid floats, and every
@@ -131,15 +131,10 @@ func parseUsagePercent(s string) (float64, error) {
 	// "NaN" would read as "at or past the limit" and end the run on its very
 	// first check. None of the three is a measurement.
 	if math.IsNaN(pct) || math.IsInf(pct, 0) {
-		return 0, fmt.Errorf("probe printed %q, want a percentage", firstLine(field))
+		return 0, fmt.Errorf("probe printed %q, want a percentage", runx.FirstLine(field))
 	}
 	if pct < 0 || pct > 100 {
 		return 0, fmt.Errorf("probe printed %g, outside 0-100", pct)
 	}
 	return pct, nil
-}
-
-func firstLine(s string) string {
-	line, _, _ := strings.Cut(s, "\n")
-	return line
 }

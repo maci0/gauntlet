@@ -844,7 +844,7 @@ func (m *model) renderLanes(w, h int) string {
 
 		row := pad(styled(hue, trim(label, nameW)), nameW) + " " + work + "  " + stats
 		if sparkW := w - lipgloss.Width(row) - 2; sparkW > 4 {
-			row += "  " + sparkline(l.lines, sparkW)
+			row += "  " + chart(l.lines, sparkW, 1)
 		}
 		rows = append(rows, clip(row, w))
 	}

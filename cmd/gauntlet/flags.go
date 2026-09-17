@@ -162,27 +162,6 @@ func (f durationFlag) Set(v string) error {
 	return nil
 }
 
-// seedFlag accepts any Go integer literal, base 0 like the flag package's own
-// uint64 value (decimal, 0x hex, underscores), and rejects everything else
-// with the requirement spelled out rather than a bare "parse error".
-type seedFlag struct{ d *uint64 }
-
-func (f seedFlag) String() string {
-	if f.d == nil {
-		return ""
-	}
-	return strconv.FormatUint(*f.d, 10)
-}
-
-func (f seedFlag) Set(v string) error {
-	n, err := strconv.ParseUint(v, 0, 64)
-	if err != nil {
-		return errors.New("must be a nonnegative integer (decimal or 0x hex)")
-	}
-	*f.d = n
-	return nil
-}
-
 // Flag defaults the documentation quotes. They live here so docs/CLI.md, the
 // help table, and the parser cannot drift apart.
 const (
@@ -327,7 +306,14 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("n", "max-loops", func(n string) { fs.IntVar(&o.maxLoops, n, 0, "stop after N loops (0 = unlimited)") })
 	fs.IntVar(&o.maxReviews, "max-reviews", 0, "cap reviews per loop, cut after the seeded shuffle; "+
 		"a repeated review fills one slot per listing (0 = unlimited)")
-	fs.Var(seedFlag{&o.seed}, "seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)")
+	fs.Func("seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)", func(v string) error {
+		n, err := strconv.ParseUint(v, 0, 64)
+		if err != nil {
+			return errors.New("must be a nonnegative integer (decimal or 0x hex)")
+		}
+		o.seed = n
+		return nil
+	})
 	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
 	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // CurrentBranch returns the checked-out branch name. A detached HEAD is
@@ -205,7 +207,7 @@ func mergeNarration(out []byte, cause error) string {
 			return line
 		}
 	}
-	return firstLine(text)
+	return runx.FirstLine(text)
 }
 
 // Push sends the current branch to its upstream. It is used after a review
@@ -220,7 +222,21 @@ func (r *Repo) Push(ctx context.Context) error {
 		}
 		// The cause stays attached so callers can still match on it; the
 		// narration is kept beside it because git splits it across streams.
-		return fmt.Errorf("git push: %w: %s", err, firstLine(detail))
+		return fmt.Errorf("git push: %w: %s", err, runx.FirstLine(detail))
+	}
+	return nil
+}
+
+// PullRebase integrates the upstream into the current branch, replaying
+// local work on top. A conflict is reported, never resolved: the caller
+// decides what divergence means.
+func (r *Repo) PullRebase(ctx context.Context) error {
+	if out, err := r.run(ctx, gitPush, "pull", "--rebase"); err != nil {
+		detail := strings.TrimSpace(string(out))
+		if detail == "" {
+			return fmt.Errorf("git pull --rebase: %w", err)
+		}
+		return fmt.Errorf("git pull --rebase: %w: %s", err, runx.FirstLine(detail))
 	}
 	return nil
 }
@@ -234,7 +250,7 @@ func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 		// Like Push: the cause stays attached so callers can still match on
 		// it, with git's narration beside it because git splits the two
 		// across streams.
-		if detail := firstLine(strings.TrimSpace(string(out))); detail != "" {
+		if detail := runx.FirstLine(strings.TrimSpace(string(out))); detail != "" {
 			return fmt.Errorf("%w: %s", err, detail)
 		}
 		return err
@@ -247,7 +263,7 @@ func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string)
 	out, err := r.run(ctx, gitPush, "push", "--dry-run", "--", remote,
 		source+":refs/heads/"+branch)
 	if err != nil {
-		if detail := firstLine(strings.TrimSpace(string(out))); detail != "" {
+		if detail := runx.FirstLine(strings.TrimSpace(string(out))); detail != "" {
 			return fmt.Errorf("%w: %s", err, detail)
 		}
 		return err

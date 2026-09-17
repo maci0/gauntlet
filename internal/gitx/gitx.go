@@ -365,8 +365,6 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 // not fill RAM. A var so tests can shrink it; production always sees this.
 var gitOutputMax = 32 << 20
 
-func firstLine(s string) string { return runx.FirstLine(s) }
-
 // gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
 // operator already exported one, GIT_SSH_COMMAND=ssh. Git's own helpers (ssh,
 // a credential helper, diffie) inherit this, so a planted ./ssh cannot run.
