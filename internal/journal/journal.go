@@ -840,10 +840,16 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 // skipped, matching the index reader's tolerance for a killed process.
 func Events(runID string, visit func(map[string]any)) error {
 	return events(runID, nil, func(line []byte) {
+		dec := json.NewDecoder(bytes.NewReader(line))
+		dec.UseNumber()
 		var m map[string]any
-		if err := json.Unmarshal(line, &m); err == nil {
-			visit(m)
+		if err := dec.Decode(&m); err != nil {
+			return
 		}
+		if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+			return
+		}
+		visit(m)
 	})
 }
 

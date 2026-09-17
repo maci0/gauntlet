@@ -224,6 +224,38 @@ func TestRunsListsAfterDeletedIndex(t *testing.T) {
 	}
 }
 
+func TestShowPreservesExactNumbers(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Date(2026, 8, 26, 12, 0, 0, 0, time.UTC)
+	runID := journal.NewRunID(now)
+	j, err := journal.Open(runID, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.CloseQuiet()
+	for _, seed := range []uint64{1<<53 + 1, 18446744073709551615} {
+		j.Write(struct {
+			Kind    string      `json:"ev"`
+			Seed    uint64      `json:"seed"`
+			Elapsed json.Number `json:"elapsed_s"`
+		}{"run_start", seed, json.Number("1.0000000000000001")})
+	}
+	j.Flush()
+	var buf bytes.Buffer
+	if code := cmdShow(&buf, runID); code != exitOK {
+		t.Fatalf("show exited %d", code)
+	}
+	for _, want := range []string{
+		`"seed":9007199254740993`,
+		`"seed":18446744073709551615`,
+		`"elapsed_s":1.0000000000000001`,
+	} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("show lost %s: %s", want, buf.String())
+		}
+	}
+}
+
 func TestShowSanitizesReplayedEvents(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "20260826T120000Z-dead"

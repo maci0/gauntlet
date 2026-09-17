@@ -59,6 +59,35 @@ func TestHomeHonorsOverride(t *testing.T) {
 	}
 }
 
+func TestEventsSkipMalformedLines(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.CloseQuiet()
+	lines := []string{
+		`{"ev":"log","text":"first"}`,
+		`{"ev":"log"} {"ev":"log"}`,
+		`{"ev":"log"} false`,
+		`{"ev":"log"} junk`,
+		`{"ev":"log"`,
+		`{"ev":"log","text":"last"}  `,
+	}
+	if err := os.WriteFile(j.path, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := collect(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0]["text"] != "first" || got[1]["text"] != "last" {
+		t.Fatalf("replayed malformed lines or lost valid ones: %+v", got)
+	}
+}
+
 func TestWriteAndReplay(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)
@@ -176,8 +205,15 @@ func TestJournalSurvivesConcurrentWriters(t *testing.T) {
 		if e["ev"] != "review_end" || e["pad"] != pad {
 			t.Fatalf("torn event: %+v", e)
 		}
-		lane := int(e["lane"].(float64))
-		seqs[lane] = append(seqs[lane], int(e["seq"].(float64)))
+		lane, err := e["lane"].(json.Number).Int64()
+		if err != nil {
+			t.Fatal(err)
+		}
+		seq, err := e["seq"].(json.Number).Int64()
+		if err != nil {
+			t.Fatal(err)
+		}
+		seqs[lane] = append(seqs[lane], int(seq))
 	}
 	for lane, want := range seqs {
 		if len(want) != perLane {

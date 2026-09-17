@@ -18,6 +18,8 @@ minor instead and were listed under Changed.
   enabled, instead of silently running only the suggested subset.
 - `make check` analyzes all three shipped build modes even when `TAGS` is
   overridden, keeping local checks aligned with CI.
+- `show` preserves exact JSON numbers, including 64-bit RNG seeds, so a
+  seed copied from a recorded run replays the original schedule.
 
 ## 1.21.0
 
