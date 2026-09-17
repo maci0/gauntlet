@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
 
 - Output rate limiting starts its first window at the first line, including
   when an injected clock starts near zero time.
+- Failed attempts stop retrying or falling back to another agent once the
+  runtime budget is exhausted, including when it expires during backoff.
 - Hot reload counts a sequential loop completed during its final review, so
   the successor does not repeat finished work or exceed `--max-loops`.
 - `--show-prompt` exits with a failure and reports output errors on stderr

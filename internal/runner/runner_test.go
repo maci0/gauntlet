@@ -1027,6 +1027,56 @@ func TestReviewEventsCarryThePromptFingerprint(t *testing.T) {
 	}
 }
 
+func TestRetryStopsAtRuntimeBudget(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	for _, tc := range []struct {
+		name          string
+		retries       int
+		duringBackoff bool
+	}{
+		{name: "same agent", retries: 1},
+		{name: "fallback"},
+		{name: "during backoff", retries: 1, duringBackoff: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			start := time.Unix(100, 0)
+			bus := NewBus()
+			defer bus.Close()
+			events := bus.Subscribe(16)
+			calls := 0
+			bus.Now = func() time.Time {
+				calls++
+				if tc.duringBackoff && calls == 1 {
+					return start
+				}
+				return start.Add(time.Second)
+			}
+			r := &Runner{
+				cfg: Config{
+					Runtime: time.Second,
+					Retries: tc.retries,
+					Agents:  []agent.Spec{{Tool: "claude"}, {Tool: "codex"}},
+				},
+				bus: bus,
+				st:  &Stats{Start: start},
+			}
+			if _, retried := r.retry(context.Background(), "sec-review", 1, nil,
+				nil, r.cfg.Agents[0], 0); retried {
+				t.Fatal("retried after the runtime budget expired")
+			}
+			for len(events) > 0 {
+				ev := <-events
+				if !tc.duringBackoff || !strings.HasPrefix(ev.Text, "Retrying ") {
+					t.Fatalf("retry proceeded after budget exhaustion: %+v", ev)
+				}
+			}
+		})
+	}
+}
+
 func TestRetryWithoutSnapshotDoesNotRepeatWrites(t *testing.T) {
 	oldDelay := retryBaseDelay
 	retryBaseDelay = time.Millisecond

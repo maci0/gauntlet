@@ -1201,14 +1201,14 @@ var (
 func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, attempt int) (Result, bool) {
 
-	if ctx.Err() != nil {
+	if ctx.Err() != nil || r.budgetExhausted() {
 		return Result{}, false
 	}
 	if attempt < r.cfg.Retries {
 		delay := r.backoff(review, attempt)
 		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
-		if !sleepCtx(ctx, delay) {
+		if !sleepCtx(ctx, delay) || r.budgetExhausted() {
 			return Result{}, false
 		}
 		if !r.resetForRetry(ctx, review, wt) {

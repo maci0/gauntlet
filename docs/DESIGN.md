@@ -144,6 +144,8 @@ the unit of safe parallelism is **the directory**, not the agent.
   tree (including the user's uncommitted files) taken before the attempt.
   A missing snapshot or failed restoration blocks both retries and agent
   fallback rather than applying another attempt to unknown state.
+  The runtime budget is checked before retry or fallback and again after
+  backoff, before restoring the tree for another attempt.
 - Cancellation is a `context.Context` per review, plus process-group kill
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
 - One event bus fans out to a buffered channel per subscriber: the logger,
