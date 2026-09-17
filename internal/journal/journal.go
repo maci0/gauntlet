@@ -742,10 +742,9 @@ func summarizeFile(runID, path string) (Summary, error) {
 			seenDir[e.Dir] = true
 			s.Dirs = append(s.Dirs, e.Dir)
 		}
-		if e.Loop > s.Loops {
-			s.Loops = e.Loop
-		}
 		switch e.Ev {
+		case "loop_end":
+			s.Loops++
 		case "run_start":
 			if s.Version == "" {
 				s.Version = e.Version

@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
 
 - Custom agent files reject duplicate agent names and configuration keys instead
   of silently replacing earlier values.
+- Recovered run listings count completed loops across directories and hot reloads,
+  without counting an interrupted loop as finished.
 - The completed dashboard freezes elapsed time, budget consumption, and activity
   history while it remains open for inspection.
 - Dashboard throughput sums lanes in stable order so replayed usage events

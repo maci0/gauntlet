@@ -1085,6 +1085,78 @@ func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {
 	}
 }
 
+func TestRecentReconstructsCompletedLoops(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		events []indexEvent
+		want   int
+	}{
+		{
+			name: "multiple directories",
+			events: []indexEvent{
+				{Ev: "loop_end", Dir: "/one", Loop: 1},
+				{Ev: "loop_end", Dir: "/two", Loop: 1},
+				{Ev: "loop_end", Dir: "/one", Loop: 2},
+				{Ev: "run_end", Dir: "/one", Loop: 2},
+				{Ev: "run_end", Dir: "/two", Loop: 1},
+			},
+			want: 3,
+		},
+		{
+			name: "reload restarts loop numbering",
+			events: []indexEvent{
+				{Ev: "run_start", Dir: "/one"},
+				{Ev: "loop_end", Dir: "/one", Loop: 1},
+				{Ev: "run_end", Dir: "/one", Loop: 1},
+				{Ev: "run_start", Dir: "/one"},
+				{Ev: "loop_end", Dir: "/one", Loop: 1},
+				{Ev: "run_end", Dir: "/one", Loop: 1},
+			},
+			want: 2,
+		},
+		{
+			name: "unfinished loop",
+			events: []indexEvent{
+				{Ev: "loop_end", Dir: "/one", Loop: 1},
+				{Ev: "loop_start", Dir: "/one", Loop: 2},
+				{Ev: "review_end", Dir: "/one", Loop: 2, Status: "ok"},
+				{Ev: "run_end", Dir: "/one", Loop: 1},
+			},
+			want: 1,
+		},
+		{
+			name: "no completed loops",
+			events: []indexEvent{
+				{Ev: "loop_start", Dir: "/one", Loop: 1},
+				{Ev: "review_end", Dir: "/one", Loop: 1, Status: "interrupted"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+			j, err := Open(NewRunID(now), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer j.CloseQuiet()
+			for _, e := range tc.events {
+				j.Write(e)
+			}
+			j.CloseQuiet()
+			for range 2 {
+				runs, err := Recent(1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(runs) != 1 || runs[0].Loops != tc.want {
+					t.Fatalf("recovered runs = %+v, want %d completed loops", runs, tc.want)
+				}
+			}
+		})
+	}
+}
+
 func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)
