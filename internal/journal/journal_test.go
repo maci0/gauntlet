@@ -1157,6 +1157,38 @@ func TestRecentReconstructsCompletedLoops(t *testing.T) {
 	}
 }
 
+func TestRecentPreservesStartAcrossRepeatedRunStarts(t *testing.T) {
+	for _, dir := range []string{"/one", "/two"} {
+		t.Run(dir, func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			start := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+			end := start.Add(90 * time.Minute)
+			j, err := Open(NewRunID(start), start)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer j.CloseQuiet()
+			j.Write(indexEvent{Ev: "run_start", Dir: "/one", TS: start})
+			j.Write(indexEvent{Ev: "run_start", Dir: dir, TS: start.Add(time.Hour)})
+			j.Write(indexEvent{Ev: "run_end", Dir: dir, TS: end})
+			j.CloseQuiet()
+			for range 2 {
+				runs, err := Recent(1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(runs) != 1 {
+					t.Fatalf("recovered runs = %+v, want one run", runs)
+				}
+				if !runs[0].Start.Equal(start) || !runs[0].End.Equal(end) {
+					t.Fatalf("recovered interval = %s to %s, want %s to %s",
+						runs[0].Start, runs[0].End, start, end)
+				}
+			}
+		})
+	}
+}
+
 func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)

@@ -752,9 +752,6 @@ func summarizeFile(runID, path string) (Summary, error) {
 			if len(s.Agents) == 0 {
 				s.Agents = append([]string(nil), e.Agents...)
 			}
-			if !e.TS.IsZero() {
-				s.Start = e.TS
-			}
 		case "review_end":
 			s.Reviews++
 			switch e.Status {

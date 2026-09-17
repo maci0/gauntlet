@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Recovered run listings retain the original start time when hot reload or
+  multiple directories produce repeated run-start events.
 - Persistent review lanes discard staged and unstaged edits when advancing,
   so failed attempts cannot carry tracked changes into the next review.
 - Stream parsing no longer treats tool-payload and user-turn text as assistant
