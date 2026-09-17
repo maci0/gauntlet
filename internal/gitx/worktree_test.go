@@ -100,6 +100,64 @@ func TestResetToBaseRestoresAndConverges(t *testing.T) {
 	assertWorktreeMatchesBase(t, ctx, r, wt, base)
 }
 
+func TestAdvanceDiscardsFailedEdits(t *testing.T) {
+	for _, staged := range []bool{false, true} {
+		name := "unstaged"
+		if staged {
+			name = "staged"
+		}
+		t.Run(name, func(t *testing.T) {
+			r := newRepo(t)
+			ctx := context.Background()
+			base, err := r.Tip(ctx, "HEAD")
+			if err != nil {
+				t.Fatal(err)
+			}
+			wt, err := r.AddWorktree(ctx, "lane-0", "advance", base)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+			branch := wt.Branch
+			for _, path := range []string{"main.go", "scratch.go"} {
+				if err := os.WriteFile(filepath.Join(wt.Dir, path), []byte("failed edit\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			sub := &Repo{Dir: wt.Dir}
+			if staged {
+				if _, err := sub.run(ctx, gitNormal, "add", "-A"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 2 {
+				if err := wt.Advance(ctx, base); err != nil {
+					t.Fatal(err)
+				}
+				changes, err := sub.Status(ctx, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(changes.Tracked) != 0 || len(changes.Untracked) != 0 {
+					t.Fatalf("failed edits survived advancement: %+v", changes)
+				}
+				if wt.Branch != "" || wt.Base() != base {
+					t.Fatalf("advanced worktree: branch=%q base=%q", wt.Branch, wt.Base())
+				}
+				if tip, err := sub.Tip(ctx, "HEAD"); err != nil || tip != base {
+					t.Fatalf("HEAD=%q, want %q: %v", tip, base, err)
+				}
+				if current, err := sub.CurrentBranch(ctx); err != nil || current != "" {
+					t.Fatalf("checkout is not detached: %q: %v", current, err)
+				}
+				if tip, err := r.Tip(ctx, branch); err != nil || tip != base {
+					t.Fatalf("original branch moved: %q, want %q: %v", tip, base, err)
+				}
+			}
+		})
+	}
+}
+
 func TestStartBranchTwiceConverges(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

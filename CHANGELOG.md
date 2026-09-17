@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Persistent review lanes discard staged and unstaged edits when advancing,
+  so failed attempts cannot carry tracked changes into the next review.
 - Output rate limiting starts its first window at the first line, including
   when an injected clock starts near zero time.
 - Failed attempts stop retrying or falling back to another agent once the

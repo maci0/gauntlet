@@ -418,7 +418,7 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 // Branch == ""; the next review calls StartBranch to begin its own work.
 func (w *Worktree) Advance(ctx context.Context, newBase string) error {
 	sub := &Repo{Dir: w.Dir}
-	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--detach", newBase); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase); err != nil {
 		return fmt.Errorf("git checkout --detach: %w", err)
 	}
 	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {
