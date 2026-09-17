@@ -16,6 +16,8 @@ minor instead and were listed under Changed.
 
 - The launcher preserves all explicitly selected reviews when suggestions are
   enabled, instead of silently running only the suggested subset.
+- `make check` analyzes all three shipped build modes even when `TAGS` is
+  overridden, keeping local checks aligned with CI.
 
 ## 1.21.0
 

@@ -4,10 +4,13 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func makefileText(t *testing.T) string {
@@ -54,6 +57,31 @@ func TestAgentsMdDocumentsTheThreeTagSets(t *testing.T) {
 	}
 	if strings.Contains(text, "drop both") {
 		t.Fatal("AGENTS.md must not treat TAGS=notoktop as dropping toktop and sqlite together; TAGS= is the sqlite-off build")
+	}
+}
+
+func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
+	for _, tags := range []string{"sqlite", "", "notoktop"} {
+		t.Run("tags="+tags, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", "check", "TAGS="+tags, "GO=go", "GOFMT=gofmt", "GOFILES=.")
+			cmd.Dir = moduleRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make check dry run: %v\n%s", err, out)
+			}
+			var analysis []string
+			for line := range strings.SplitSeq(string(out), "\n") {
+				if strings.HasPrefix(line, "go fix ") || strings.HasPrefix(line, "go vet ") {
+					analysis = append(analysis, line)
+				}
+			}
+			want := "go fix -diff -tags sqlite ./...\ngo fix -diff ./...\ngo fix -diff -tags notoktop ./...\ngo vet -tags sqlite ./...\ngo vet ./...\ngo vet -tags notoktop ./..."
+			if got := strings.Join(analysis, "\n"); got != want {
+				t.Fatalf("analysis commands:\n%s\nwant:\n%s", got, want)
+			}
+		})
 	}
 }
 
