@@ -128,6 +128,83 @@ func TestReleaseKeepsPublishedVersionsImmutable(t *testing.T) {
 	}
 }
 
+func TestReleasePublicationClassification(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	_, step, ok := strings.Cut(text, "- name: Publish\n")
+	if !ok {
+		t.Fatal("release.yml has no Publish step")
+	}
+	_, body, ok := strings.Cut(step, "        run: |\n")
+	if !ok {
+		t.Fatal("Publish step has no shell body")
+	}
+	var script strings.Builder
+	script.WriteString(`gh() {
+  printf '%s\n' "$*" >> gh.log
+  if [ "$1 $2" = "release view" ]; then
+    if [ "$RELEASE_STATE" = missing ]; then return 1; fi
+    printf '%s\n' "$RELEASE_STATE"
+  fi
+}
+`)
+	for line := range strings.SplitSeq(body, "\n") {
+		if line == "" {
+			continue
+		}
+		code, ok := strings.CutPrefix(line, "          ")
+		if !ok {
+			break
+		}
+		script.WriteString(code + "\n")
+	}
+	for _, tc := range []struct {
+		tag        string
+		prerelease string
+	}{
+		{"v1.2.3", "false"},
+		{"v1.2.3-rc.1", "true"},
+		{"v1.2.3-rc.1+build.4", "true"},
+		{"v1.2.3+build-4", "false"},
+	} {
+		for _, state := range []string{"missing", "true", "false"} {
+			t.Run(tc.tag+"/"+state, func(t *testing.T) {
+				dir := t.TempDir()
+				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+				defer cancel()
+				cmd := exec.CommandContext(ctx, "bash", "-e", "-o", "pipefail", "-c", script.String())
+				cmd.Dir = dir
+				cmd.Env = append(os.Environ(), "GITHUB_REF_NAME="+tc.tag, "RELEASE_STATE="+state)
+				out, err := cmd.CombinedOutput()
+				calls := readRepoFile(t, filepath.Join(dir, "gh.log"))
+				if state == "false" {
+					if err == nil || !strings.Contains(string(out), "already published") {
+						t.Fatalf("published release must be refused: err=%v, output=%s", err, out)
+					}
+					if strings.Count(calls, "\n") != 1 {
+						t.Fatalf("published release was mutated: %s", calls)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatalf("publish: %v: %s", err, out)
+				}
+				var published bool
+				for call := range strings.SplitSeq(calls, "\n") {
+					if strings.Contains(call, "--draft=false") {
+						published = true
+						if !strings.Contains(call, "--prerelease="+tc.prerelease) {
+							t.Errorf("publication must set prerelease=%s: %s", tc.prerelease, call)
+						}
+					}
+				}
+				if !published {
+					t.Fatalf("release stayed a draft: %s", calls)
+				}
+			})
+		}
+	}
+}
+
 func TestReleaseRejectsEmptyNotes(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	_, step, ok := strings.Cut(text, "- name: Extract this version's CHANGELOG section\n")

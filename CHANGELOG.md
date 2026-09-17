@@ -19,6 +19,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Release tags with a prerelease suffix are published as GitHub prereleases,
+  including when retrying a draft, so stable installs and self-updates do not
+  select release candidates. Build metadata alone does not mark a prerelease.
 - Build recipes pin `GOAMD64=v1` and `GOARM64=v8.0`, preventing ambient CPU
   settings from producing binaries that require newer processors.
 - Recovered run listings retain the original start time when hot reload or

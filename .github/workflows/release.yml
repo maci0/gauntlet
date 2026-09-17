@@ -88,6 +88,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ github.token }}
         run: |
+          prerelease=false
+          case "${GITHUB_REF_NAME%%+*}" in
+            *-*) prerelease=true ;;
+          esac
           draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null || true)"
           if [ "$draft" = false ]; then
             echo "release $GITHUB_REF_NAME is already published" >&2
@@ -95,9 +99,11 @@ jobs:
           elif [ "$draft" = true ]; then
             gh release upload "$GITHUB_REF_NAME" --clobber \
               dist/gauntlet_* dist/checksums.txt dist/sbom.txt
-            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md --draft=false
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md \
+              --prerelease="$prerelease" --draft=false
           else
             gh release create "$GITHUB_REF_NAME" --draft --notes-file notes.md \
+              --prerelease="$prerelease" \
               dist/gauntlet_* dist/checksums.txt dist/sbom.txt
-            gh release edit "$GITHUB_REF_NAME" --draft=false
+            gh release edit "$GITHUB_REF_NAME" --prerelease="$prerelease" --draft=false
           fi
