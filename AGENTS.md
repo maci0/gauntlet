@@ -7,9 +7,9 @@ but drops the sqlite driver.
 
 ## Build and test
 
-- `make check`: gofmt once; `go fix -diff` and vet under `sqlite`, bare,
-  and `notoktop` tags. All must be clean; apply reported fixes under the
-  same three tag sets before committing.
+- `make check`: checks formatting without rewriting; `go fix -diff` and vet
+  under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
+  apply reported Go fixes under the same three tag sets before committing.
 - `make ci`: `make check` and `make test` for the selected `TAGS` (default
   `sqlite`), not the full CI matrix. CI also tests bare and `notoktop`
   builds on Linux and macOS and checks coverage, dist, and reproducibility.
