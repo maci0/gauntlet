@@ -175,18 +175,11 @@ func Compose(body string, timeout time.Duration, review string, yolo bool, tools
 		reviewBegin + "\n" + stripped + "\n" + reviewEnd + suffix
 }
 
-// CommitPrompt is the instruction for the post-review commit step.
-func CommitPrompt(push, yolo bool) string {
-	pushStep, mergeStep := "", ""
-	if push {
-		pushStep = "\n7. Push to the remote: `git push`"
-		if yolo {
-			mergeStep = "\n   If `git push` is rejected because the remote has diverged, " +
-				"run `git pull --rebase` to integrate the remote changes, " +
-				"resolve any conflicts, and push again."
-		}
-	}
-	return strings.NewReplacer("{push_step}", pushStep, "{merge_step}", mergeStep).
+// CommitPrompt is the instruction for the post-review commit step. The agent
+// only commits: the runner strips AI trailers and pushes afterwards, so the
+// prompt carries no push or divergence-recovery step of its own.
+func CommitPrompt() string {
+	return strings.NewReplacer("{push_step}", "", "{merge_step}", "").
 		Replace(rule("commit.md"))
 }
 

@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // Worktree is a private checkout: its own directory and branch, cut from a
@@ -349,7 +351,7 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 		if detail == "" {
 			return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
 		}
-		return nil, fmt.Errorf("git merge --squash %s: %w: %s", branch, err, firstLine(detail))
+		return nil, fmt.Errorf("git merge --squash %s: %w: %s", branch, err, runx.FirstLine(detail))
 	}
 	return paths, nil
 }

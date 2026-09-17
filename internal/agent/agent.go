@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -94,6 +95,7 @@ var streamFlags = map[string][]string{
 	"qwen":         {"--output-format", "stream-json"},
 	"kimi":         {"--output-format", "stream-json"},
 	"cursor-agent": {"--output-format", "stream-json"},
+	"agy":          {"--output-format", "stream-json"},
 	"grok":         {"--output-format", "streaming-messages-json"},
 	// clanker gained --stream for exactly this: one JSON usage line per model
 	// response, printed alongside its ordinary prose.
@@ -413,6 +415,10 @@ type BuildOpts struct {
 	// Stream asks for machine-readable output where the agent has it. Agents
 	// without one are unaffected, so a caller can set this unconditionally.
 	Stream bool
+	// Timeout is the bound the caller will wait. agy exits on its own
+	// --print-timeout (default 5m0s) unless this is forwarded; other agents
+	// ignore it. Zero leaves the CLI default.
+	Timeout time.Duration
 }
 
 // maxPromptArg bounds one exec argument. A composed prompt travels as a
@@ -443,6 +449,10 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		if flags, ok := continueFlags[spec.Tool]; ok {
 			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
 		}
+	}
+	if spec.Tool == "agy" && opts.Timeout > 0 {
+		cmd = splice(cmd, flagInsertAt(spec.Tool),
+			[]string{"--print-timeout", opts.Timeout.String()})
 	}
 	if opts.Binary != "" {
 		cmd[0] = opts.Binary

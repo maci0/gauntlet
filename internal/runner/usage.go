@@ -5,7 +5,6 @@ package runner
 
 import (
 	"context"
-	"time"
 )
 
 // transcriptReader follows an agent's own session transcript and reports the
@@ -41,12 +40,6 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 // race the join in runReview is there to close.
 var openTranscript = newTranscriptReader
 
-// watchTranscript returns a reader for one agent working in one directory.
-// since bounds what counts: anything written before it belongs to whatever ran
-// earlier.
-//
-// The implementation is chosen at build time; see usage_toktop.go and
-// usage_off.go.
-func watchTranscript(tool, dir string, since time.Time) transcriptReader {
-	return openTranscript(tool, dir, since)
-}
+// openTranscript's since bounds what counts: anything written before it
+// belongs to whatever ran earlier. The implementation is chosen at build
+// time; see usage_toktop.go and usage_off.go.

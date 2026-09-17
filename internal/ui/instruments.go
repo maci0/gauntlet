@@ -118,10 +118,6 @@ func meter(frac float64, w int, on lipgloss.TerminalColor) string {
 		styleTrack.Render(strings.Repeat("▱", w-filled))
 }
 
-// sparkline is a one-row braille trace, for lanes and small cells. A thumbnail
-// is a real instrument, scaled down.
-func sparkline(vals []float64, w int) string { return chart(vals, w, 1) }
-
 // statusGlyph is the review grid's cell: one column, one meaning.
 func statusGlyph(s runner.Status) (string, lipgloss.TerminalColor) {
 	switch s {

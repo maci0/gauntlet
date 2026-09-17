@@ -12,6 +12,10 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- The commit step now strips Cursor-style AI attribution trailers (Co-Authored-By, Generated-by) from the new commit before anything leaves the machine. The agent only commits; the runner pushes, so injected trailers can no longer reach the remote.
+
 ### Changed
 
 - `--stacked-prs` accepts `-n` / `--max-loops`. Default remains one ordered
@@ -21,6 +25,7 @@ minor instead and were listed under Changed.
   PR. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch
   names; later loops insert the loop number.
 - README dashboard and launcher screenshots now stamp the current release.
+- agy print-mode launches now request `--output-format stream-json` when `--stream` is on, and forward the runner's wait bound as `--print-timeout`, so the CLI no longer exits at its 5m default while a longer review is still running.
 
 ## 1.20.0
 

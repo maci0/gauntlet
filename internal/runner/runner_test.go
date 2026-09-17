@@ -645,6 +645,42 @@ echo "RESULT: changed=1"`)
 	}
 }
 
+// A commit step whose agent plants Cursor-style AI trailers must land
+// without them: the runner strips them from the new HEAD before pushing.
+func TestCommitStepStripsAITrailers(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in *"`+commitStepMarker+`"*)
+  git add -A
+  git commit -qm "work
+
+Co-Authored-By: Cursor <cursoragent@cursor.com>"
+  exit 0;;
+esac
+echo "// touched" >> main.go
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review"}, bin)
+	cfg.Commit = true
+
+	r := runQuiet(t, cfg)
+
+	if r.Stats().CommitRuns() != 1 || r.Stats().CommitFails() != 0 {
+		t.Fatalf("commit step not run once cleanly: runs=%d fails=%d",
+			r.Stats().CommitRuns(), r.Stats().CommitFails())
+	}
+	body := gitOut(t, repo, "log", "-1", "--format=%B")
+	for _, banned := range []string{"cursoragent", "Co-Authored-By"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("%q reached the history:\n%s", banned, body)
+		}
+	}
+	if !strings.Contains(body, "work") {
+		t.Fatalf("subject lost during the strip:\n%s", body)
+	}
+}
+
 // TestCommitStepSkipsACleanTree pins the early return: a review that changed
 // nothing must not spend a commit launch on an empty tree.
 func TestCommitStepSkipsACleanTree(t *testing.T) {

@@ -41,17 +41,21 @@ type CommitOpts struct {
 // CommitNow hands the working tree to one agent to commit, and reports
 // whether the tree ended up clean. It is the same prompt and the same
 // containment as the commit step inside a loop; what differs is that nothing
-// else is running, so the caller waits for it.
+// else is running, so the caller waits for it. The agent only commits: the
+// runner strips AI trailers and pushes, so injected attribution never
+// reaches the remote.
 func CommitNow(ctx context.Context, o CommitOpts) error {
-	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(o.Push, o.Yolo),
-		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool]})
-	if err != nil {
-		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
-	}
 	timeout := o.Timeout
 	if timeout <= 0 || timeout > commitTimeout {
 		timeout = commitTimeout
 	}
+	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(),
+		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout})
+	if err != nil {
+		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
+	}
+	repo := gitx.Open(o.Dir)
+	before, _ := repo.Tip(ctx, "HEAD")
 	var sink func(normalize.Line)
 	if o.Out != nil {
 		sink = func(l normalize.Line) { o.Out(l.Text) }
@@ -70,7 +74,35 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	case pr.ExitCode != 0:
 		return fmt.Errorf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode)
 	}
-	return unfinishedCommit(ctx, gitx.Open(o.Dir), nil)
+	if err := unfinishedCommit(ctx, repo, nil); err != nil {
+		return err
+	}
+	if _, err := repo.StripAITrailers(ctx, before); err != nil {
+		return fmt.Errorf("cannot strip AI trailers after the commit step: %w", err)
+	}
+	if o.Push {
+		if err := pushAfterCommit(ctx, repo, o.Yolo); err != nil {
+			return fmt.Errorf("cannot push after the commit step: %w", err)
+		}
+	}
+	return nil
+}
+
+// pushAfterCommit pushes the stripped commit, recovering from a divergent
+// remote in yolo mode the way the agent used to: pull --rebase, strip the
+// replayed commit, push again. A rebase conflict fails the step; the runner
+// has no resolver to hand it to.
+func pushAfterCommit(ctx context.Context, r *gitx.Repo, yolo bool) error {
+	if err := r.Push(ctx); err == nil || !yolo {
+		return err
+	}
+	if err := r.PullRebase(ctx); err != nil {
+		return err
+	}
+	if _, err := r.StripAITrailers(ctx, ""); err != nil {
+		return err
+	}
+	return r.Push(ctx)
 }
 
 // unfinishedCommit reports whether tracked files are still dirty after a
@@ -99,8 +131,9 @@ func unfinishedCommit(ctx context.Context, repo *gitx.Repo, own map[string]bool)
 	return nil
 }
 
-// runCommitStep asks an agent to commit (and optionally push) whatever the
-// reviews changed.
+// runCommitStep asks an agent to commit whatever the reviews changed, then
+// strips AI trailers and pushes from the runner. The agent never pushes:
+// anything it pushed would reach the remote with trailers still attached.
 func (r *Runner) runCommitStep(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
@@ -120,8 +153,13 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	if r.cfg.Push {
 		action = "commit+push"
 	}
-	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(r.cfg.Push, r.cfg.Yolo),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool]})
+	before, err := r.repo.Tip(ctx, "HEAD")
+	if err != nil {
+		r.log("Warning: could not read HEAD before the commit step: %v", err)
+	}
+	timeout := min(r.cfg.Timeout, commitTimeout)
+	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(),
+		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout})
 	if err != nil {
 		r.log("Cannot build %s command for %s: %v", action, spec.Label(), err)
 		r.st.addCommitFail()
@@ -137,7 +175,6 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 
 	r.log("Running %s step with %s", action, spec.Label())
 	r.st.addCommitRun()
-	timeout := min(r.cfg.Timeout, commitTimeout)
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: r.cfg.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
@@ -163,6 +200,18 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	if status == StatusOK {
 		if err := unfinishedCommit(ctx, r.repo, r.cfg.OwnArtifacts); err != nil {
 			r.log("%v", err)
+			status = StatusFail
+		}
+	}
+	if status == StatusOK {
+		if _, err := r.repo.StripAITrailers(ctx, before); err != nil {
+			r.log("Cannot strip AI trailers after the commit step: %v", err)
+			status = StatusFail
+		}
+	}
+	if status == StatusOK && r.cfg.Push {
+		if err := pushAfterCommit(ctx, r.repo, r.cfg.Yolo); err != nil {
+			r.log("Push after the commit step failed: %v", err)
 			status = StatusFail
 		}
 	}

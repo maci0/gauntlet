@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -512,6 +513,51 @@ func TestBuildCmdBinaryOverride(t *testing.T) {
 	}
 	if argv[0] != "/opt/claude" {
 		t.Fatalf("override ignored: %v", argv)
+	}
+}
+
+func TestBuildCmdAgyStreamAndPrintTimeout(t *testing.T) {
+	// agy --print-timeout defaults to 5m0s; without forwarding the runner's
+	// wait bound, a longer review dies inside agy first. stream-json is the
+	// same flag the other print-mode CLIs take; it is not guessed.
+	plain, err := BuildCmd(Spec{Tool: "agy"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPlain := []string{"agy", "--dangerously-skip-permissions", "-p", "P"}
+	if !slices.Equal(plain, wantPlain) {
+		t.Fatalf("default argv:\n got %v\nwant %v", plain, wantPlain)
+	}
+
+	streamed, err := BuildCmd(Spec{Tool: "agy"}, "P", BuildOpts{Stream: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(streamed, "stream-json") || !slices.Contains(streamed, "--output-format") {
+		t.Fatalf("Stream must ask for stream-json: %v", streamed)
+	}
+	if slices.Contains(streamed, "--print-timeout") {
+		t.Fatalf("zero Timeout must leave the CLI default: %v", streamed)
+	}
+
+	timeout := 30 * time.Minute
+	timed, err := BuildCmd(Spec{Tool: "agy"}, "P", BuildOpts{Timeout: timeout})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.Index(timed, "--print-timeout")
+	if i < 0 || i+1 >= len(timed) || timed[i+1] != timeout.String() {
+		t.Fatalf("Timeout must become --print-timeout %s: %v", timeout.String(), timed)
+	}
+
+	other, err := BuildCmd(Spec{Tool: "claude"}, "P", BuildOpts{
+		Timeout: timeout, Stream: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(other, "--print-timeout") {
+		t.Fatalf("non-agy agents must ignore Timeout: %v", other)
 	}
 }
 

@@ -213,16 +213,16 @@ privilege transition:
   authority as a worktree reset, bounded to putting back files the user
   already had. The commit step is itself an agent launch. `runCommitStep`
   (`commit.go:97`) execs one agent with
-  `prompt.CommitPrompt` (`compose.go:147`), which instructs it to run
-  `git commit`, and with `--push` also `git push`; under `--yolo` a rejected
-  push escalates to an agent-run `git pull --rebase` and retry
-  (`compose.go:151-155`). The same launch, offered standalone when a dirty
-  tree blocks `--jobs`, is gated on explicit consent (`main.go:1121-1152`).
-  The prompt is embedded text only (`rules/commit.md`), capped at 5 minutes
-  (`commit.go:22-24`), under the same process discipline as any review; but
-  this is gauntlet deliberately handing one agent git-write and remote-push
-  authority. A compromised agent does not need to talk its way into
-  `git push`: with `--push` it is told to.
+  `prompt.CommitPrompt`, which instructs it to run `git commit` and never
+  to push; the runner strips injected AI attribution trailers from the new
+  commit (`StripAITrailers`) and pushes itself under `--push`, so a
+  compromised agent cannot talk its way into `git push`. Under `--yolo` a
+  rejected push escalates to a runner-side `git pull --rebase` and retry; a
+  rebase conflict fails the step rather than returning to the agent. The
+  same launch, offered standalone when a dirty tree blocks `--jobs`, is
+  gated on explicit consent (`main.go:1121-1152`). The prompt is embedded
+  text only (`rules/commit.md`), capped at 5 minutes (`commit.go:22-24`),
+  under the same process discipline as any review.
 - **Conflict resolution:** `resolveConflict` (`conflict.go:36`) cuts a
   scratch checkout, replays the branch, and launches one agent with
   `ConflictPrompt` (`compose.go:165`, rules in `rules/conflict.md`) for up to

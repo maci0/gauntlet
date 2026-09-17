@@ -1024,6 +1024,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Continue: resume,
 		Binary:   r.cfg.Bin[spec.Tool],
 		Stream:   r.cfg.Stream,
+		Timeout:  r.cfg.Timeout,
 	})
 	if err != nil {
 		r.log("Cannot build command for %s: %v", spec.Label(), err)
@@ -1080,7 +1081,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// review, so a tick published after this review has ended is attributed
 	// to whatever that agent starts next.
 	watchCtx, stopWatch := context.WithCancel(ctx)
-	watcher := watchTranscript(spec.Tool, dir, start)
+	watcher := openTranscript(spec.Tool, dir, start)
 	var watchDone sync.WaitGroup
 	watchDone.Go(func() { watcher.Run(watchCtx, publishUsage) })
 

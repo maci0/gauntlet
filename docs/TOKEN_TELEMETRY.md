@@ -119,6 +119,7 @@ makes an agent exit instead of run:
 | qwen | `--output-format stream-json` |
 | kimi | `--output-format stream-json` |
 | cursor-agent | `--output-format stream-json` |
+| agy | `--output-format stream-json` |
 | grok | `--output-format streaming-messages-json` |
 | clanker | `--stream` |
 
@@ -164,7 +165,7 @@ from its own `--help`, transcript layouts from its own session files.
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | with `--opencode-db` | with `--opencode-db` | sessions in `~/.local/share/opencode/opencode.db` (XDG_DATA_HOME honored), one row per message with usage in a JSON column; the store holds every project on the machine, so reading it is opt-in |
-| agy | only if it prints a counter | no | no machine-readable mode and no transcript store found |
+| agy | with `--stream` | if reported | stream-json; no transcript store found |
 
 Every agent, including the last row, still contributes the always-available
 signal: the output line rate in the activity chart, plus any counter it prints,
