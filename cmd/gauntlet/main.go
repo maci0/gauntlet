@@ -174,12 +174,16 @@ func (h handoff) Loops() int {
 //
 // An old handoff with no elapsed field falls back to the wall-clock span
 // from StartedAt, which is what those binaries already measured against.
+// A handoff written before a wall clock that was later set back (or carrying
+// a corrupt negative) would otherwise resume in the future, so the run then
+// has extra runtime no clock reading can account for; treat that as a fresh
+// start instead.
 func resumeStart(now time.Time, prior handoff) time.Time {
 	elapsed := prior.Elapsed
 	if elapsed == 0 && !prior.StartedAt.IsZero() {
 		elapsed = now.Sub(prior.StartedAt)
 	}
-	return now.Add(-elapsed)
+	return now.Add(-max(elapsed, 0))
 }
 
 func run(argv []string) int {

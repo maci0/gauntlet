@@ -29,6 +29,8 @@ minor instead and were listed under Changed.
   overridden, keeping local checks aligned with CI.
 - `show` preserves exact JSON numbers, including 64-bit RNG seeds, so a
   seed copied from a recorded run replays the original schedule.
+- A resumed run whose handoff was written before the wall clock was set
+  back no longer resumes in the future with extra runtime.
 
 ## 1.21.0
 

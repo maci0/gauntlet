@@ -39,6 +39,20 @@ func TestResumeStartIgnoresAWallClockJumpWhenElapsedIsKnown(t *testing.T) {
 	}
 }
 
+func TestResumeStartDoesNotMoveIntoTheFuture(t *testing.T) {
+	now := time.Now()
+	for _, prior := range []handoff{
+		{StartedAt: now.Add(time.Hour)},
+		{Elapsed: -time.Minute},
+		{Elapsed: time.Duration(-1 << 63)},
+	} {
+		started := resumeStart(now, prior)
+		if got := now.Sub(started); got != 0 {
+			t.Errorf("invalid elapsed must resume at zero, got %s", got)
+		}
+	}
+}
+
 func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	// StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
 	// it under a regular file, so MkdirAll fails with ENOTDIR.
