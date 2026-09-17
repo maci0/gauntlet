@@ -386,7 +386,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 | `index.jsonl` | listing cache | rebuilt from `runs/` |
 | `.index.lock` | serializes index rebuilds and Close | ephemeral |
 | `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
-| `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one restarts the unfinished loop |
+| `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
 | `<repo>/.gauntlet.lock` | directory lock | ephemeral |
 | `<repo>/.gauntlet/worktrees/` | isolated checkouts | ephemeral; unmerged review branches stay in git |
 
