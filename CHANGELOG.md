@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Hot reload counts a sequential loop completed during its final review, so
+  the successor does not repeat finished work or exceed `--max-loops`.
 - Build and test recipes export `GOWORK=off`, so a `go.work` above the
   checkout can no longer add workspace modules or replace directives to the
   build; the dependency set is go.mod's and go.sum's alone.

@@ -626,8 +626,7 @@ func (r *Runner) budgetExhausted() bool {
 // This is the original's behavior, and the only mode that can review
 // uncommitted work.
 func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
-	r.schedule(loopNo)
-	for {
+	for range r.schedule(loopNo) {
 		if r.soft.Load() {
 			return false
 		}

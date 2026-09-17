@@ -829,6 +829,12 @@ func TestRequestStopFinishesInFlightWork(t *testing.T) {
 	if len(res) != 1 || res[0].Status != StatusOK {
 		t.Fatalf("in-flight work did not finish: %+v", res)
 	}
+	if pending := r.Pending(); len(pending) != 0 {
+		t.Fatalf("finished loop still has pending work: %v", pending)
+	}
+	if loops := r.Loops(); loops != 1 {
+		t.Fatalf("completed loop would replay after reload: got %d finished loops, want 1", loops)
+	}
 }
 
 func TestLockKeepsTwoRunsApart(t *testing.T) {
@@ -1820,6 +1826,9 @@ func softStopHandsOverTheLoop(t *testing.T, jobs int, agentScript string) {
 	}
 	if len(pending) != len(reviews)-done {
 		t.Fatalf("pending %v does not match %d finished reviews", pending, done)
+	}
+	if loops := first.Loops(); loops != 0 {
+		t.Fatalf("partial loop counted as complete: %d", loops)
 	}
 	// Nothing was killed: a soft stop lets in-flight agents finish.
 	if c := first.Stats().Counts(); c.Interrupted != 0 || c.Failures() != 0 {
