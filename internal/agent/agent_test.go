@@ -435,6 +435,49 @@ func TestParseSubjectTruncatesOnARuneBoundary(t *testing.T) {
 	}
 }
 
+func TestReportedTextTruncationKeepsGraphemes(t *testing.T) {
+	parsers := []struct {
+		name  string
+		limit int
+		parse func(*testing.T, string) string
+	}{
+		{"subject", subjectMax, func(t *testing.T, s string) string {
+			return ParseSubject([]byte("SUBJECT: " + s + "\n"))
+		}},
+		{"note", fileNoteMax, func(t *testing.T, s string) string {
+			notes := ParseFileNotes([]byte("PATH: file.go: " + s + "\n"))
+			if len(notes) != 1 {
+				t.Fatalf("got notes %+v", notes)
+			}
+			return notes[0].Note
+		}},
+		{"path", filePathMax, func(t *testing.T, s string) string {
+			notes := ParseFileNotes([]byte("PATH: " + s + ": changed\n"))
+			if len(notes) != 1 {
+				t.Fatalf("got notes %+v", notes)
+			}
+			return notes[0].Path
+		}},
+	}
+	for _, p := range parsers {
+		t.Run(p.name, func(t *testing.T) {
+			for _, cluster := range []string{"e\u0301", "q\u0307\u0323", "\U0001f1f5\U0001f1f1", "\u2708\ufe0f"} {
+				n := utf8.RuneCountInString(cluster)
+				for available := 1; available <= n; available++ {
+					prefix := strings.Repeat("x", p.limit-available)
+					want := prefix
+					if available == n {
+						want += cluster
+					}
+					if got := p.parse(t, prefix+cluster+"Z"); got != want {
+						t.Errorf("cluster %q with %d runes available: got %q, want %q", cluster, available, got, want)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestBuildCmdEffortFlags(t *testing.T) {
 	argv, err := BuildCmd(Spec{Tool: "claude", Model: "opus-5", Effort: "xhigh"}, "P", BuildOpts{})
 	if err != nil {

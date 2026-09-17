@@ -10,6 +10,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/rivo/uniseg"
 )
 
 // TailBytes is how much of an agent's output is kept for usage parsing. Usage
@@ -228,11 +230,13 @@ func cleanReportedLine(s string, maxRunes int) string {
 // here (compose's catalog budget, --list's columns), it counts runes.
 func truncateRunes(s string, max int) string {
 	n := 0
-	for i := range s {
-		if n == max {
-			return s[:i]
+	clusters := uniseg.NewGraphemes(s)
+	for clusters.Next() {
+		n += utf8.RuneCountInString(clusters.Str())
+		if n > max {
+			start, _ := clusters.Positions()
+			return s[:start]
 		}
-		n++
 	}
 	return s
 }

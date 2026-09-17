@@ -22,6 +22,8 @@ minor instead and were listed under Changed.
 - Directory lock files keep their inode after release, preventing overlapping
   starts from acquiring separate locks for the same tree. Release clears the
   holder note instead of removing the file.
+- Reported subjects and file notes truncate at whole grapheme boundaries within
+  their rune limits, preserving combining accents, flags, and variation selectors.
 - Release tags with a prerelease suffix are published as GitHub prereleases,
   including when retrying a draft, so stable installs and self-updates do not
   select release candidates. Build metadata alone does not mark a prerelease.
