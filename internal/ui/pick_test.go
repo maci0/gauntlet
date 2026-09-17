@@ -517,6 +517,34 @@ func TestPickFooterKeepsCriticalKeysVisible(t *testing.T) {
 	}
 }
 
+func TestPickHelpAgentSelection(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		agents   []string
+		selected []bool
+		want     string
+	}{
+		{"no installed agents", nil, nil, ""},
+		{"none selected", []string{"one", "two"}, []bool{false, false}, "  agents: auto-detect (all 2 installed)"},
+		{"all selected", []string{"one", "two"}, []bool{true, true}, "  agents: auto-detect (all 2 installed)"},
+		{"subset selected", []string{"one", "two", "three"}, []bool{true, false, true}, "  agents: one, three"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := newPicker(PickConfig{Agents: tc.agents})
+			p.agents = tc.selected
+			var got []string
+			for _, line := range p.helpLines() {
+				if strings.HasPrefix(line, "  agents:") {
+					got = append(got, line)
+				}
+			}
+			if text := strings.Join(got, "\n"); text != tc.want {
+				t.Fatalf("agent summary = %q, want %q", text, tc.want)
+			}
+		})
+	}
+}
+
 // ? opens a help overlay the way the dashboard does. q on that overlay
 // closes it rather than leaving the launcher, so a reader who opened help
 // does not cancel the run they were composing.

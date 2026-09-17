@@ -1140,20 +1140,12 @@ func (p *picker) stateLines() []string {
 				g.Name, n, len(g.Reviews)))
 		}
 	}
-	var picked []string
-	for i, on := range p.agents {
-		if on {
-			picked = append(picked, p.cfg.Agents[i])
+	if len(p.cfg.Agents) > 0 {
+		if picked := p.pickedAgents(); len(picked) > 0 {
+			lines = append(lines, "  agents: "+strings.Join(picked, ", "))
+		} else {
+			lines = append(lines, "  agents: auto-detect (all "+fmt.Sprint(len(p.cfg.Agents))+" installed)")
 		}
-	}
-	switch {
-	case len(p.cfg.Agents) == 0:
-	case len(picked) == 0:
-		lines = append(lines, "  agents: auto-detect (all "+fmt.Sprint(len(p.cfg.Agents))+" installed)")
-	case len(picked) == len(p.cfg.Agents):
-		lines = append(lines, "  agents: auto-detect (all "+fmt.Sprint(len(p.cfg.Agents))+" installed)")
-	default:
-		lines = append(lines, "  agents: "+strings.Join(picked, ", "))
 	}
 	for _, o := range p.opts {
 		switch o.kind {
