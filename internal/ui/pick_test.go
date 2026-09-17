@@ -113,6 +113,9 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 		{"everything selected is the default again", func(p *picker) {
 			p.toggleAll()
 		}, "-C /home/dev/project --once --tui"},
+		{"suggest preserves every explicitly selected review", func(p *picker) {
+			press(p, "a", " ")
+		}, "-C /home/dev/project --suggest -r quick,frontend --once --tui"},
 		{"push implies commit, so only push is passed", func(p *picker) {
 			p.optByFlag("--commit").on = true
 			p.optByFlag("--push").on = true

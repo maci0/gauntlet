@@ -683,7 +683,7 @@ func (p *picker) argv() []string {
 // leftovers by name with the -review suffix dropped, as the flag allows.
 func (p *picker) reviewArgs() string {
 	all := p.knownReviews
-	if p.chosen() == 0 || p.chosen() == len(all) {
+	if p.chosen() == 0 || (!p.suggest && p.chosen() == len(all)) {
 		return ""
 	}
 	var parts []string
