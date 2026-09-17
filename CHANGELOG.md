@@ -12,6 +12,11 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Changed
+
+- Stream parsing retains only text-bearing fields for deferred classification,
+  reducing allocations for metadata-heavy output without changing text or usage.
+
 ### Fixed
 
 - Suggestion parsing rejects malformed names instead of scheduling a review

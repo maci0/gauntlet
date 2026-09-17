@@ -181,10 +181,12 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			if err := extractFrom(dec, delim, &nested, &nText, &nThink, depth+1, inThinking); err != nil {
 				return err
 			}
-			fields = append(fields, objField{
-				key: lower, nested: true,
-				text: nText.String(), thinking: nThink.String(),
-			})
+			if nText.Len() > 0 || nThink.Len() > 0 {
+				fields = append(fields, objField{
+					key: lower, nested: true,
+					text: nText.String(), thinking: nThink.String(),
+				})
+			}
 			ev.Usage.Output = max(ev.Usage.Output, nested.Usage.Output)
 			ev.Usage.Thinking = max(ev.Usage.Thinking, nested.Usage.Thinking)
 			ev.Usage.Total = max(ev.Usage.Total, nested.Usage.Total)
@@ -195,7 +197,9 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			if lower == "type" {
 				typeStr = v
 			}
-			fields = append(fields, objField{key: lower, str: v, hasStr: true})
+			if textKeys[lower] || thinkingTextKeys[lower] {
+				fields = append(fields, objField{key: lower, str: v, hasStr: true})
+			}
 		case float64, json.Number:
 			if n, ok := asInt(v); ok {
 				assign(ev, lower, n)

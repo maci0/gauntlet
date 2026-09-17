@@ -133,6 +133,29 @@ func TestPlainTextIsNotJSON(t *testing.T) {
 	}
 }
 
+func TestMetadataDoesNotAffectTextClassification(t *testing.T) {
+	line := `{"text":"first",` + strings.Repeat(`"metadata":"ignored",`, 1000) +
+		`"empty":{},"usage":{"output_tokens":12},"nested":{"text":"second"},` +
+		`"OUTPUT_TOKENS":"99","THINKING":"third","CONTENT":"fourth","type":"reasoning"}`
+	ev, ok := Parse([]byte(line))
+	want := Event{Thinking: "first\nsecond\nthird\nfourth", Usage: Usage{Output: 12}}
+	if !ok || ev != want {
+		t.Fatalf("Parse with metadata = %+v, %v; want %+v, true", ev, ok, want)
+	}
+}
+
+func BenchmarkParseMetadata(b *testing.B) {
+	line := []byte(`{"text":"first",` + strings.Repeat(`"metadata":"ignored",`, 1000) +
+		`"usage":{"output_tokens":12},"nested":{"text":"second"},"type":"reasoning"}`)
+	b.SetBytes(int64(len(line)))
+	b.ReportAllocs()
+	for b.Loop() {
+		if _, ok := Parse(line); !ok {
+			b.Fatal("valid JSON was rejected")
+		}
+	}
+}
+
 func TestUnknownEnvelopeContributesNothingRatherThanGarbage(t *testing.T) {
 	// A shape nobody anticipated must not invent numbers or text.
 	line := `{"kind":"progress","phase":"indexing","files":420}`
