@@ -19,6 +19,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Build and test recipes export `GOWORK=off`, so a `go.work` above the
+  checkout can no longer add workspace modules or replace directives to the
+  build; the dependency set is go.mod's and go.sum's alone.
 - Commit steps retain their five-minute timeout when `--timeout 0` leaves
   reviews unlimited, rather than allowing a stalled commit to block the run.
 - Custom agent files reject duplicate agent names and configuration keys instead

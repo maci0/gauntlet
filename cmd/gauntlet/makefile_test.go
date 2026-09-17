@@ -29,6 +29,9 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, "-mod=readonly") {
 		t.Fatal("Makefile must pass -mod=readonly so a build cannot rewrite go.mod or go.sum")
 	}
+	if !strings.Contains(text, "export GOWORK := off") {
+		t.Fatal("Makefile must export GOWORK=off so an ambient go.work cannot join the build")
+	}
 	if !strings.Contains(text, "GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)") {
 		t.Fatal("make vuln must clear GOFLAGS and use the pinned govulncheck version")
 	}
@@ -37,6 +40,45 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	}
 	if !strings.Contains(text, "is not on PATH") {
 		t.Fatal("make install must say when ~/.local/bin is not on PATH")
+	}
+}
+
+func TestMakefileExportsBuildEnvironment(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-f", "-", "print-env")
+	cmd.Dir = moduleRoot(t)
+	for _, env := range os.Environ() {
+		key, _, _ := strings.Cut(env, "=")
+		switch key {
+		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GOFLAGS", "GOWORK":
+			continue
+		}
+		cmd.Env = append(cmd.Env, env)
+	}
+	cmd.Env = append(cmd.Env, "GOWORK=/nonexistent/go.work", "GOFLAGS=-buildvcs=false")
+	cmd.Stdin = strings.NewReader(strings.Join([]string{
+		"include Makefile",
+		"print-env:",
+		"\t@printf 'GOFLAGS=%s\\nGOWORK=%s\\n' \"$$GOFLAGS\" \"$$GOWORK\"",
+		"",
+	}, "\n"))
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make print-env: %v\n%s", err, out)
+	}
+	got := make(map[string]string)
+	for line := range strings.SplitSeq(string(out), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if ok {
+			got[key] = value
+		}
+	}
+	if env, want := got["GOFLAGS"], "-mod=readonly"; !strings.Contains(env, want) {
+		t.Fatalf("GOFLAGS in a recipe environment: %q, want it to contain %q", env, want)
+	}
+	if env := got["GOWORK"]; env != "off" {
+		t.Fatalf("GOWORK in a recipe environment: %q, want \"off\"", env)
 	}
 }
 

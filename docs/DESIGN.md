@@ -400,7 +400,9 @@ time, dirty flag) out, and nothing embeds a timestamp, so the same source
 built from a clone, a source tarball, or a dirty tree — in a different
 directory, under a different locale and timezone — yields identical bytes.
 Builds pass `-mod=readonly`, so a missing or extra module fails the command
-instead of rewriting go.mod or go.sum.
+instead of rewriting go.mod or go.sum, and make exports `GOWORK=off`, so an
+ambient go.work above the checkout cannot add its modules or replace
+directives to the build.
 The one input that cannot be normalized is the toolchain: a binary records
 the compiler version, so reproducing a release byte-for-byte means checking
 out the tag with a clean tree and the Go version the `go` line in `go.mod`
