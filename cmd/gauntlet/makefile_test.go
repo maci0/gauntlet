@@ -60,6 +60,35 @@ func TestAgentsMdDocumentsTheThreeTagSets(t *testing.T) {
 	}
 }
 
+func TestMakefileVulnScansSelectedTags(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "default", want: "-tags sqlite ./..."},
+		{name: "bare", args: []string{"TAGS="}, want: "./..."},
+		{name: "notoktop", args: []string{"TAGS=notoktop"}, want: "-tags notoktop ./..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			args := append([]string{"--no-print-directory", "-n", "vuln", "GO=go", "GOVULNCHECK_VERSION=v1.7.0"}, tc.args...)
+			cmd := exec.CommandContext(ctx, "make", args...)
+			cmd.Dir = moduleRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make vuln dry run: %v\n%s", err, out)
+			}
+			got := strings.Join(strings.Fields(string(out)), " ")
+			want := "GOFLAGS= go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 " + tc.want
+			if got != want {
+				t.Fatalf("scan command:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
 func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
 	for _, tags := range []string{"sqlite", "", "notoktop"} {
 		t.Run("tags="+tags, func(t *testing.T) {

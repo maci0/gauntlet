@@ -185,7 +185,7 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 # Needs network on first use; everything else in this Makefile does not.
 .PHONY: vuln
 vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
-	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
+	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(GOTAGS) ./...
 
 .PHONY: install
 install: build ## install into ~/.local/bin

@@ -14,6 +14,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- `make vuln` scans the selected build tags, including the sqlite driver in
+  the default CI scan, instead of silently scanning only the untagged build.
 - Timeout and cancellation kill remaining subprocess-group members even when
   the leader exits before children that ignore SIGTERM.
 - `show` exits with a failure when replay output cannot be written, rather
