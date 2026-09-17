@@ -1426,6 +1426,10 @@ func TestCustomAgentFileDuplicateKeys(t *testing.T) {
 		{"agent", `{"piclone":{"argv":["first","{prompt}"]},"piclone":{"argv":["second","{prompt}"]}}`, "piclone"},
 		{"argv", `{"piclone":{"argv":["first","{prompt}"],"argv":["second","{prompt}"]}}`, "argv"},
 		{"opt_in", `{"piclone":{"argv":["x","{prompt}"],"opt_in":true,"opt_in":false}}`, "opt_in"},
+		{"case variant", `{"piclone":{"argv":["x","{prompt}"],"opt_in":true,"OPT_IN":false}}`, "OPT_IN"},
+		{"case variant reversed", `{"piclone":{"argv":["x","{prompt}"],"OPT_IN":true,"opt_in":false}}`, "opt_in"},
+		{"nested case variant", `{"piclone":{"argv":["x","{prompt}"],"usage":{"roots":["/first"],"ROOTS":["/second"]}}}`, "ROOTS"},
+		{"unicode case variant", `{"piclone":{"argv":["x","{prompt}"],"stream":["--json"],"\u017ftream":[]}}`, "ſtream"},
 		{"escaped", `{"piclone":{"argv":["x","{prompt}"],"opt_in":true,"opt_\u0069n":false}}`, "opt_in"},
 		{"usage", `{"piclone":{"argv":["x","{prompt}"],"usage":{"roots":["/first"],"roots":["/second"]}}}`, "roots"},
 	} {
@@ -1447,6 +1451,20 @@ func TestCustomAgentFileDuplicateKeys(t *testing.T) {
 				t.Fatalf("rejected file changed the definition: %+v", got)
 			}
 		})
+	}
+}
+
+func TestCustomDefinitionsCaseMatching(t *testing.T) {
+	var defs map[string]Custom
+	body := `{"X":{"ARGV":["first","{prompt}"],"OPT_IN":true},"x":{"argv":["second","{prompt}"],"usage":{"ROOTS":["/sessions"]}}}`
+	if err := unmarshalStrict([]byte(body), &defs); err != nil {
+		t.Fatal(err)
+	}
+	if len(defs) != 2 || !slices.Equal(defs["X"].Argv, []string{"first", "{prompt}"}) || !defs["X"].OptIn {
+		t.Fatalf("case-sensitive names or case-insensitive fields changed: %+v", defs)
+	}
+	if defs["x"].Usage == nil || !slices.Equal(defs["x"].Usage.Roots, []string{"/sessions"}) {
+		t.Fatalf("nested case-insensitive field changed: %+v", defs["x"])
 	}
 }
 
@@ -1579,6 +1597,8 @@ func FuzzCustomDefinitions(f *testing.F) {
 		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{"roots":["~/.x"],"suffix":".jsonl","cumulative":true,"header_cwd":true}}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"],"optin":true}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"],"opt_in":true,"opt_in":false}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"opt_in":true,"OPT_IN":false}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"stream":[],"ſtream":[]}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{"roots":["/first"],"roots":["/second"]}}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"]},"x":{"argv":["y","{prompt}"]}}`),
 		[]byte(`{} {"x":{"argv":["x","{prompt}"]}}`),

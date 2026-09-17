@@ -301,10 +301,10 @@ func unmarshalStrict(data []byte, v any) error {
 		}
 		return err
 	}
-	return rejectDuplicateKeys(json.NewDecoder(bytes.NewReader(data)))
+	return rejectDuplicateKeys(json.NewDecoder(bytes.NewReader(data)), false)
 }
 
-func rejectDuplicateKeys(dec *json.Decoder) error {
+func rejectDuplicateKeys(dec *json.Decoder, foldCase bool) error {
 	token, err := dec.Token()
 	if err != nil {
 		return err
@@ -324,9 +324,16 @@ func rejectDuplicateKeys(dec *json.Decoder) error {
 			if keys[key] {
 				return fmt.Errorf("duplicate key %q", key)
 			}
+			if foldCase {
+				for previous := range keys {
+					if strings.EqualFold(previous, key) {
+						return fmt.Errorf("duplicate key %q", key)
+					}
+				}
+			}
 			keys[key] = true
 		}
-		if err := rejectDuplicateKeys(dec); err != nil {
+		if err := rejectDuplicateKeys(dec, true); err != nil {
 			return err
 		}
 	}
