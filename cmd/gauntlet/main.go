@@ -681,7 +681,7 @@ func run(argv []string) int {
 	if reloadFailed {
 		code = exitFail
 	}
-	writeSummary(jrnl, runID, origin, wall, dirs, agents, runs, code)
+	writeSummary(jrnl, origin, wall, dirs, agents, runs, code)
 	return code
 }
 
@@ -869,7 +869,7 @@ func releaseAll(runs []*dirRun) {
 }
 
 // writeSummary closes the journal with this run's index entry.
-func writeSummary(j *journal.Journal, runID string, start time.Time, elapsed time.Duration, dirs []string,
+func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, dirs []string,
 	agents []agent.Spec, runs []*dirRun, code int) {
 
 	s := journal.Summary{
