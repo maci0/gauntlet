@@ -5,6 +5,7 @@ package runner
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -193,17 +194,26 @@ func TestOverlongLineChunksOnRuneBoundary(t *testing.T) {
 	// One ASCII byte shifts every following 2-byte rune by an odd offset, so
 	// the flush at the cap lands strictly inside a rune. The line must also
 	// exceed scanLines' own read buffer for the chunking path to run at all.
-	line := "x" + strings.Repeat("é", 80000) + "\n"
-	var chunks []string
-	scanLines(strings.NewReader(line), func(line string) {
-		chunks = append(chunks, line)
-	})
-	if len(chunks) < 2 {
-		t.Fatalf("want several chunks, got %d", len(chunks))
-	}
-	for i, c := range chunks {
-		if !utf8.ValidString(c) {
-			t.Fatalf("chunk %d split a rune: %q...", i, c[:32])
+	for _, runeText := range []string{"é", "界", "\U00020000"} {
+		for _, ending := range []string{"\n", ""} {
+			t.Run(fmt.Sprintf("%d-byte/newline=%t", len(runeText), ending != ""), func(t *testing.T) {
+				want := "x" + strings.Repeat(runeText, 80000) + "tail"
+				var chunks []string
+				scanLines(strings.NewReader(want+ending), func(line string) {
+					chunks = append(chunks, line)
+				})
+				if len(chunks) < 2 {
+					t.Fatalf("want several chunks, got %d", len(chunks))
+				}
+				for i, c := range chunks {
+					if !utf8.ValidString(c) {
+						t.Fatalf("chunk %d split a rune: %.32q", i, c)
+					}
+				}
+				if got := strings.Join(chunks, ""); got != want {
+					t.Fatalf("chunking changed the output: got %d bytes, want %d", len(got), len(want))
+				}
+			})
 		}
 	}
 }
