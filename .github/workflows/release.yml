@@ -67,8 +67,8 @@ jobs:
             /^## / && found { exit }
             found { print }
           ' CHANGELOG.md > notes.md
-          if ! test -s notes.md; then
-            echo "no CHANGELOG.md section for $version; add one before tagging" >&2
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
             exit 1
           fi
 

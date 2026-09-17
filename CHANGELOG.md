@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
   elapsed.
 - In-place retries and agent fallback stop when the starting tree could not
   be snapshotted, preventing repeated writes on top of a failed attempt.
+- Releases reject whitespace-only changelog sections instead of publishing
+  without release notes.
 - The launcher preserves all explicitly selected reviews when suggestions are
   enabled, instead of silently running only the suggested subset.
 - `make check` analyzes all three shipped build modes even when `TAGS` is

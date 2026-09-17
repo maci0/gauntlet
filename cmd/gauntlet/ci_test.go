@@ -4,11 +4,14 @@
 package main
 
 import (
+	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 var (
@@ -122,6 +125,68 @@ func TestReleaseKeepsPublishedVersionsImmutable(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("release.yml must publish through a draft and refuse to overwrite a published release; missing %q", want)
 		}
+	}
+}
+
+func TestReleaseRejectsEmptyNotes(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	_, step, ok := strings.Cut(text, "- name: Extract this version's CHANGELOG section\n")
+	if !ok {
+		t.Fatal("release.yml has no release notes step")
+	}
+	_, body, ok := strings.Cut(step, "        run: |\n")
+	if !ok {
+		t.Fatal("release notes step has no shell body")
+	}
+	var script strings.Builder
+	for line := range strings.SplitSeq(body, "\n") {
+		if line == "" {
+			continue
+		}
+		code, ok := strings.CutPrefix(line, "          ")
+		if !ok {
+			break
+		}
+		script.WriteString(code + "\n")
+	}
+	for _, tc := range []struct {
+		name      string
+		changelog string
+		want      string
+	}{
+		{"valid", "## Unreleased\n\n## 1.2.3\n\n### Fixed\n\n- Preserve settings.\n\n## 1.2.2\n- Older fix.\n", "\n### Fixed\n\n- Preserve settings.\n\n"},
+		{"final section", "## 1.2.3\n- Preserve settings.\n", "- Preserve settings.\n"},
+		{"missing", "## 1.2.2\n- Older fix.\n", ""},
+		{"empty", "## 1.2.3\n", ""},
+		{"blank", "## 1.2.3\n\n\n", ""},
+		{"whitespace", "## 1.2.3\n \t \n\t\n", ""},
+		{"next section", "## 1.2.3\n\n## 1.2.2\n- Older fix.\n", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "CHANGELOG.md"), []byte(tc.changelog), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "bash", "-e", "-o", "pipefail", "-c", script.String())
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(), "GITHUB_REF_NAME=v1.2.3")
+			out, err := cmd.CombinedOutput()
+			if tc.want == "" {
+				if err == nil || !strings.Contains(string(out), "CHANGELOG.md") {
+					t.Fatalf("empty release notes must fail with a changelog error: err=%v, output=%s", err, out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("extract notes: %v: %s", err, out)
+			}
+			got := readRepoFile(t, filepath.Join(dir, "notes.md"))
+			if got != tc.want {
+				t.Fatalf("notes = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 
