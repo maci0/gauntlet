@@ -67,7 +67,11 @@ jobs:
             /^## / && found { exit }
             found { print }
           ' CHANGELOG.md > notes.md
-          if ! grep -q '[^[:space:]]' notes.md; then
+          if ! awk '
+            /^[[:space:]]*#+([[:space:]]|$)/ { next }
+            /[^[:space:]]/ { content = 1 }
+            END { exit !content }
+          ' notes.md; then
             echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
             exit 1
           fi
