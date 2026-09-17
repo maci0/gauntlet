@@ -301,7 +301,37 @@ func unmarshalStrict(data []byte, v any) error {
 		}
 		return err
 	}
-	return nil
+	return rejectDuplicateKeys(json.NewDecoder(bytes.NewReader(data)))
+}
+
+func rejectDuplicateKeys(dec *json.Decoder) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	keys := make(map[string]bool)
+	for dec.More() {
+		if delim == '{' {
+			token, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			key := token.(string)
+			if keys[key] {
+				return fmt.Errorf("duplicate key %q", key)
+			}
+			keys[key] = true
+		}
+		if err := rejectDuplicateKeys(dec); err != nil {
+			return err
+		}
+	}
+	_, err = dec.Token()
+	return err
 }
 
 // CustomFilePath is where agent definitions live by default: agents.json in

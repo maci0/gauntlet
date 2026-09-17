@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1367,6 +1368,57 @@ func TestCustomAgentFileUnknownField(t *testing.T) {
 	}
 }
 
+func TestCustomAgentFileDuplicateKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		key  string
+	}{
+		{"agent", `{"piclone":{"argv":["first","{prompt}"]},"piclone":{"argv":["second","{prompt}"]}}`, "piclone"},
+		{"argv", `{"piclone":{"argv":["first","{prompt}"],"argv":["second","{prompt}"]}}`, "argv"},
+		{"opt_in", `{"piclone":{"argv":["x","{prompt}"],"opt_in":true,"opt_in":false}}`, "opt_in"},
+		{"escaped", `{"piclone":{"argv":["x","{prompt}"],"opt_in":true,"opt_\u0069n":false}}`, "opt_in"},
+		{"usage", `{"piclone":{"argv":["x","{prompt}"],"usage":{"roots":["/first"],"roots":["/second"]}}}`, "roots"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Cleanup(resetCustom(t))
+			original := Custom{Argv: []string{"original", "{prompt}"}, OptIn: true}
+			if err := Register("piclone", original); err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "agents.json")
+			if err := os.WriteFile(path, []byte(tc.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			err := LoadCustomFile(path)
+			if err == nil || !strings.Contains(err.Error(), path) || !strings.Contains(err.Error(), "duplicate key "+strconv.Quote(tc.key)) {
+				t.Fatalf("want duplicate-key error naming the file and key, got %v", err)
+			}
+			if got, _ := CustomDef("piclone"); !reflect.DeepEqual(got, original) {
+				t.Fatalf("rejected file changed the definition: %+v", got)
+			}
+		})
+	}
+}
+
+func TestCustomAgentFileKeysInSeparateObjects(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	path := filepath.Join(t.TempDir(), "agents.json")
+	body := `{"first":{"argv":["first","{prompt}"],"usage":{"roots":["/first"]}},"second":{"argv":["second","{prompt}"],"usage":{"roots":["/second"]}}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first", "second"} {
+		got, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{})
+		if err != nil || !slices.Equal(got, []string{name, "PROMPT"}) {
+			t.Fatalf("%s: got %v, %v", name, got, err)
+		}
+	}
+}
+
 func TestCustomAgentFileUsageWithoutRoots(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	dir := t.TempDir()
@@ -1477,6 +1529,9 @@ func FuzzCustomDefinitions(f *testing.F) {
 		[]byte(`{"x":{"argv":["x","{prompt}"],"model":["--model","{model}"],"effort":["--effort","{effort}"],"opt_in":true}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{"roots":["~/.x"],"suffix":".jsonl","cumulative":true,"header_cwd":true}}}`),
 		[]byte(`{"x":{"argv":["x","{prompt}"],"optin":true}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"opt_in":true,"opt_in":false}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"],"usage":{"roots":["/first"],"roots":["/second"]}}}`),
+		[]byte(`{"x":{"argv":["x","{prompt}"]},"x":{"argv":["y","{prompt}"]}}`),
 		[]byte(`{} {"x":{"argv":["x","{prompt}"]}}`),
 		[]byte(`{}}`),
 		[]byte(`{}]`),

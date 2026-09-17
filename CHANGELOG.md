@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Custom agent files reject duplicate agent names and configuration keys instead
+  of silently replacing earlier values.
 - The completed dashboard freezes elapsed time, budget consumption, and activity
   history while it remains open for inspection.
 - Dashboard throughput sums lanes in stable order so replayed usage events

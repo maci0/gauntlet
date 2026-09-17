@@ -206,6 +206,7 @@ they are the separators `--agents`, `--bin`, and `--agent-cmd` parse by. On
 the same run, a `--agent-cmd` for a name the file also
 defines wins over the file's entry; the file is what survives for later runs.
 The file must be a JSON object (`{}` for no custom definitions, not `null`):
-comments, trailing commas, and unknown keys are refused at startup rather
-than half-read. `gauntlet doctor` lists
+comments, trailing commas, unknown keys, and duplicate keys within an object
+are refused at startup rather than half-read. Duplicate agent names are also
+refused; definitions must not rely on JSON key order to override values. `gauntlet doctor` lists
 every agent it knows, defined ones included, and the file it read them from.
