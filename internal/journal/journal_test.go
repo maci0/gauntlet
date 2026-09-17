@@ -843,6 +843,62 @@ func TestRecentRebuildsMissingIndex(t *testing.T) {
 
 // Close writes Args onto the index only. Rebuilding a healthy index would
 // drop them, so Recent must leave a matching index alone.
+func TestRecentPreservesSummariesWhenRunsCloseOutOfOrder(t *testing.T) {
+	for _, removeAnchor := range []bool{false, true} {
+		t.Run(fmt.Sprintf("remove-anchor=%v", removeAnchor), func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			now := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+			older, err := Open(NewRunID(now), now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(older.CloseQuiet)
+			later := now.Add(time.Hour)
+			newer, err := Open(NewRunID(later), later)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(newer.CloseQuiet)
+			newer.Write(map[string]any{"ev": "run_start", "ts": later, "dir": "/newer"})
+			want := Summary{
+				Dirs: []string{"/newer"}, Args: []string{"--once"},
+				Start: later, End: later.Add(time.Minute), Elapsed: 60, ExitCode: 1,
+			}
+			if err := newer.Close(want); err != nil {
+				t.Fatal(err)
+			}
+			if err := older.Close(Summary{Dirs: []string{"/older"}, Start: now}); err != nil {
+				t.Fatal(err)
+			}
+			if removeAnchor {
+				if err := os.Remove(older.path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for range 2 {
+				runs, err := Recent(1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(runs) != 1 || runs[0].RunID != newer.runID {
+					t.Fatalf("newest run missing: %+v", runs)
+				}
+				got := runs[0]
+				if !slices.Equal(got.Args, want.Args) || got.ExitCode != want.ExitCode || got.Elapsed != want.Elapsed {
+					t.Fatalf("recovery replaced the completed summary: %+v", got)
+				}
+			}
+			rows, err := readIndex(10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(rows) != 2 {
+				t.Fatalf("listing appended duplicate summaries: %+v", rows)
+			}
+		})
+	}
+}
+
 func TestRecentKeepsIndexArgsWhenHealthy(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)

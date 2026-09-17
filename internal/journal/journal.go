@@ -518,18 +518,21 @@ func recoverIndexTail(anchorID string) error {
 		if len(journals) == 0 {
 			return nil
 		}
-		s, err := summarizeFile(journals[0].id, journals[0].path)
-		if err != nil {
-			return fmt.Errorf("cannot reconstruct run %s: %w", journals[0].id, err)
-		}
-		if err := appendIndexLocked(s); err != nil {
-			return fmt.Errorf("cannot append reconstructed run %s to the index: %w", journals[0].id, err)
-		}
-		return nil
+		missing = journals[:1]
+	}
+	indexed, err := indexLookup(missing, nil)
+	if err != nil {
+		return err
 	}
 	for _, journal := range slices.Backward(missing) {
+		if _, ok := indexed[journal.id]; ok {
+			continue
+		}
 		s, err := summarizeFile(journal.id, journal.path)
 		if err != nil {
+			if !found {
+				return fmt.Errorf("cannot reconstruct run %s: %w", journal.id, err)
+			}
 			continue
 		}
 		if err := appendIndexLocked(s); err != nil {

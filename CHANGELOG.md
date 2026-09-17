@@ -14,6 +14,11 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Recovering the run index no longer appends a reconstructed row for a run
+  that already Closed: when runs close out of start order (a long run still
+  going when a short later one finishes), the duplicate row could replace the
+  completed summary in `runs` listings, losing args, exit code, and measured
+  elapsed.
 - The launcher preserves all explicitly selected reviews when suggestions are
   enabled, instead of silently running only the suggested subset.
 - `make check` analyzes all three shipped build modes even when `TAGS` is
