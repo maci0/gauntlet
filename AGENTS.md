@@ -10,8 +10,8 @@ but drops the sqlite driver.
 - `make check`: checks formatting without rewriting; `go fix -diff` and vet
   under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
   apply reported Go fixes under the same three tag sets before committing.
-- `make ci`: `make check` and `make test` for the selected `TAGS` (default
-  `sqlite`), not the full CI matrix. CI also tests bare and `notoktop`
+- `make ci`: `make check` across all three tag sets, then `make test` for
+  the selected `TAGS` (default `sqlite`). CI also tests bare and `notoktop`
   builds on Linux and macOS and checks coverage, dist, and reproducibility.
 - `make check-scripts`: ruff and mypy `--strict` via version-pinned `uvx`,
   plus shellcheck from PATH, on `scripts/`. Rule selection is `pyproject.toml`.
