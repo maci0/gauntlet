@@ -413,9 +413,11 @@ comparing; the second build strips the locale the Makefile pins, so it runs
 under the host's ambient one.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
-few seconds, and requires two identical readings before acting so a
-half-written binary is never executed. When it changes (self-update,
-`make install`, a fresh `go build`) the swap proceeds like this:
+five seconds and requires two immediately consecutive identical readings
+before acting (`internal/selfupdate/reload.go`, `Watcher.run`). Those readings
+do not prove a write is complete: safe replacement depends on the writer
+renaming a complete binary into place atomically, as self-update does.
+When a replacement is detected, the swap proceeds like this:
 
 1. Every runner is asked to stop softly. A soft stop never signals an agent:
    reviews in flight run to completion, including their commit, publication,
@@ -424,8 +426,10 @@ half-written binary is never executed. When it changes (self-update,
    are written to `~/.gauntlet/state/<run-id>.json`.
 3. The journal is flushed and closed **without** an index row, and the
    directory locks are released.
-4. `execve` replaces the process with the new binary, same pid, same argv,
-   same terminal, plus `GAUNTLET_STATE`.
+4. `execve` replaces the process with the new binary, same pid and terminal,
+   plus `GAUNTLET_STATE`. It receives the effective run arguments, not
+   necessarily the original argv, so a launcher-composed run does not reopen
+   the launcher and a suggested run does not repeat selection.
 5. The successor seeds its stats from the handoff, resumes the interrupted
    loop from its remaining reviews, subtracts finished loops from
    `--max-loops`, keeps the original start time for `--runtime`, and appends
