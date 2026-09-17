@@ -523,7 +523,7 @@ func (r *Runner) schedule(loopNo int) []string {
 	}
 	order := append([]string(nil), r.cfg.Reviews...)
 	for i := len(order) - 1; i > 0; i-- {
-		key := fmt.Sprintf("shuffle\x00%d\x00%d", loopNo, i)
+		key := fmt.Sprintf("shuffle\x00%d\x00%d", r.cfg.ResumeLoops+loopNo, i)
 		j := drawIndex(r.seed, key, i+1)
 		order[i], order[j] = order[j], order[i]
 	}

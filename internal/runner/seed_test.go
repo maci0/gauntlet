@@ -264,6 +264,38 @@ func TestScheduleReplaysAcrossAReload(t *testing.T) {
 	}
 }
 
+func TestScheduleResumesAfterCompletedLoops(t *testing.T) {
+	reviews := []string{"aa-review", "ab-review", "ac-review", "ad-review", "ae-review", "af-review"}
+	agents := []agent.Spec{{Tool: "claude"}}
+	cfg := seedConfig(t, reviews, agents, 7)
+	cfg.MaxReviews = 2
+	lineage, err := New(context.Background(), cfg, NewBus())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pending := range [][]string{nil, {"ad-review"}} {
+		cfg.ResumeLoops = 2
+		cfg.ResumeQueue = pending
+		succ, err := New(context.Background(), cfg, NewBus())
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := 1
+		if len(pending) > 0 {
+			if got := succ.schedule(first); !slices.Equal(got, pending) {
+				t.Fatalf("resume queue: got %v, want %v", got, pending)
+			}
+			first++
+		}
+		for loop := first; loop <= 3; loop++ {
+			want := lineage.schedule(cfg.ResumeLoops + loop)
+			if got := succ.schedule(loop); !slices.Equal(got, want) {
+				t.Fatalf("pending %v, local loop %d: got %v, want %v", pending, loop, got, want)
+			}
+		}
+	}
+}
+
 // TestRunStartCarriesTheSeed pins where replayability lives: the run-start
 // event records the effective seed, so a journal describes its own rerun.
 func TestRunStartCarriesTheSeed(t *testing.T) {
