@@ -788,7 +788,7 @@ func porcelainPath(line string) string {
 	if (line[0] == 'R' || line[0] == 'C') && strings.Contains(entry, " -> ") {
 		_, entry, _ = strings.Cut(entry, " -> ")
 	}
-	return unquoteC(strings.TrimSpace(entry))
+	return unquoteC(entry)
 }
 
 // unquoteC reverses git's C-style path quoting. The status call runs with
