@@ -160,7 +160,8 @@ type objField struct {
 
 func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
 	var fields []objField
-	var typeStr string
+	var typeStr, role string
+	var local Event
 	for dec.More() {
 		keyTok, err := dec.Token()
 		if err != nil {
@@ -187,9 +188,9 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 					text: nText.String(), thinking: nThink.String(),
 				})
 			}
-			ev.Usage.Output = max(ev.Usage.Output, nested.Usage.Output)
-			ev.Usage.Thinking = max(ev.Usage.Thinking, nested.Usage.Thinking)
-			ev.Usage.Total = max(ev.Usage.Total, nested.Usage.Total)
+			local.Usage.Output = max(local.Usage.Output, nested.Usage.Output)
+			local.Usage.Thinking = max(local.Usage.Thinking, nested.Usage.Thinking)
+			local.Usage.Total = max(local.Usage.Total, nested.Usage.Total)
 			continue
 		}
 		switch v := tok.(type) {
@@ -197,18 +198,29 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			if lower == "type" {
 				typeStr = v
 			}
+			if lower == "role" {
+				role = v
+			}
 			if textKeys[lower] || thinkingTextKeys[lower] {
 				fields = append(fields, objField{key: lower, str: v, hasStr: true})
 			}
 		case float64, json.Number:
 			if n, ok := asInt(v); ok {
-				assign(ev, lower, n)
+				assign(&local, lower, n)
 			}
 		}
 	}
 	if _, err := dec.Token(); err != nil { // the closing brace
 		return err
 	}
+
+	if role == "tool" || role == "user" || typeStr == "user" ||
+		typeStr == "tool_use" || typeStr == "tool_result" {
+		return nil
+	}
+	ev.Usage.Output = max(ev.Usage.Output, local.Usage.Output)
+	ev.Usage.Thinking = max(ev.Usage.Thinking, local.Usage.Thinking)
+	ev.Usage.Total = max(ev.Usage.Total, local.Usage.Total)
 
 	thinkingHere := inThinking || typeIsThinking(typeStr)
 	for _, f := range fields {

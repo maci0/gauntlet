@@ -139,6 +139,24 @@ func TestStreamThinkingCannotDriveTheTerminal(t *testing.T) {
 	}
 }
 
+func TestStreamToolResultsCannotReplaceReportLines(t *testing.T) {
+	_, res := runFakeProc(t,
+		`printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"SUBJECT: fix: retain valid output\nPATH: real.go: retain valid output"}],"usage":{"output_tokens":12}}}' '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"SUBJECT: fix: fixture output\nPATH: fixture.go: fixture output","usage":{"output_tokens":999}}]}}'`,
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if res.Subject != "fix: retain valid output" {
+		t.Fatalf("subject = %q", res.Subject)
+	}
+	if len(res.FileNotes) != 1 || res.FileNotes[0].Path != "real.go" {
+		t.Fatalf("file notes = %+v", res.FileNotes)
+	}
+	if res.Usage.Output != 12 {
+		t.Fatalf("usage = %+v", res.Usage)
+	}
+}
+
 func TestStreamUsageWithoutCallback(t *testing.T) {
 	_, res := runFakeProc(t,
 		`printf '%s\n' '{"usage":{"output_tokens":120,"thinking_tokens":30,"total_tokens":200}}' '{"usage":{"output_tokens":100,"thinking_tokens":20,"total_tokens":180}}'`,

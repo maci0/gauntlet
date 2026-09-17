@@ -88,6 +88,22 @@ func TestOpenAIShapedLine(t *testing.T) {
 	}
 }
 
+func TestToolPayloadsDoNotContributeAssistantOutput(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"tool_use","input":{"text":"fixture text","output_tokens":999}}`,
+		`{"content":[{"text":"fixture text","output_tokens":999}],"type":"tool_result"}`,
+		`{"content":"fixture text","role":"tool","usage":{"output_tokens":999}}`,
+		`{"message":{"content":"fixture text","role":"user"},"type":"user"}`,
+	} {
+		line := `{"type":"assistant","message":{"content":[{"type":"text","text":"done"},` + payload + `],"usage":{"output_tokens":12}}}`
+		ev, ok := Parse([]byte(line))
+		want := Event{Text: "done", Usage: Usage{Output: 12}}
+		if !ok || ev != want {
+			t.Errorf("Parse(%s) = %+v, %v; want %+v, true", line, ev, ok, want)
+		}
+	}
+}
+
 func TestThinkingBlocksAreSeparatedFromOutput(t *testing.T) {
 	line := `{"type":"assistant","message":{"content":[
 		{"type":"thinking","thinking":"the caller already checks nil"},

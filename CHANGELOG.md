@@ -21,6 +21,9 @@ minor instead and were listed under Changed.
 
 - Persistent review lanes discard staged and unstaged edits when advancing,
   so failed attempts cannot carry tracked changes into the next review.
+- Stream parsing no longer treats tool-payload and user-turn text as assistant
+  output, so report lines and usage inside a tool result cannot replace the
+  run's own subject, file notes, or counters.
 - Output rate limiting starts its first window at the first line, including
   when an injected clock starts near zero time.
 - Failed attempts stop retrying or falling back to another agent once the
