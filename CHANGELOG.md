@@ -23,6 +23,9 @@ minor instead and were listed under Changed.
   description in scrollable text when terminal panes clip them.
 - Stream lines, prompt descriptions, and PR summaries truncate at whole grapheme
   boundaries within their rune budgets, preserving combining accents and flags.
+- Changelog validation accepts SemVer prerelease and build-metadata headings,
+  so the release checks no longer block release candidates before publication.
+  Versions sort by SemVer precedence, and negative version components are refused.
 - Narrow launcher panes retain concurrency and selected option values instead
   of hiding them. Panel titles stay within their assigned width so long titles
   cannot push adjacent panels past the terminal edge.

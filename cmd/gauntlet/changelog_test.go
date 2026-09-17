@@ -6,8 +6,8 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -60,7 +60,7 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 			}
 			ver, ok := parseChangelogVersion(title)
 			if !ok {
-				t.Fatalf("CHANGELOG.md:%d: %q is not ## Unreleased or ## X.Y.Z; the release workflow matches those exact forms",
+				t.Fatalf("CHANGELOG.md:%d: %q is not a SemVer heading without a v prefix (prerelease and build metadata are allowed)",
 					n, line)
 			}
 			if prevVer != nil && !ver.less(*prevVer) {
@@ -156,36 +156,123 @@ func isChangelogGroup(name string) bool {
 	return slices.Contains(changelogGroups, name)
 }
 
-type changelogVersion struct{ major, minor, patch int }
+func TestParseChangelogVersion(t *testing.T) {
+	for _, text := range []string{
+		"0.0.0", "1.21.0", "1.22.0-rc.1", "1.22.0-rc.1+build.4",
+		"1.22.0+build-4", "1.22.0+001", "1.22.0-0", "1.22.0-01a",
+		"999999999999999999999999999999.0.0",
+	} {
+		t.Run(text, func(t *testing.T) {
+			got, ok := parseChangelogVersion(text)
+			if !ok || got.String() != text {
+				t.Fatalf("parseChangelogVersion(%q) = %q, %v", text, got, ok)
+			}
+		})
+	}
+	for _, text := range []string{
+		"", "v1.2.3", "1", "1.2", "1.2.3.4", "01.2.3", "1.02.3", "1.2.03",
+		"-1.2.3", "1.-2.3", "1.2.-3", "+1.2.3", "1.2.3-", "1.2.3+",
+		"1.2.3-rc..1", "1.2.3-01", "1.2.3-rc.01", "1.2.3+build..4",
+		"1.2.3+build+4", "1.2.3-rc_1", "1.2.3-β", "1.2.3\n", " 1.2.3",
+	} {
+		t.Run(text, func(t *testing.T) {
+			if got, ok := parseChangelogVersion(text); ok {
+				t.Fatalf("parseChangelogVersion(%q) accepted %q", text, got)
+			}
+		})
+	}
+}
+
+func TestChangelogVersionPrecedence(t *testing.T) {
+	ordered := []string{
+		"1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-beta",
+		"1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0",
+		"1.0.1", "1.1.0", "2.0.0-rc.9", "2.0.0-rc.10",
+		"2.0.0-rc.999999999999999999999999999999", "2.0.0", "10.0.0",
+	}
+	for i, text := range ordered {
+		v, ok := parseChangelogVersion(text)
+		if !ok {
+			t.Fatalf("rejected %q", text)
+		}
+		for j, other := range ordered {
+			o, ok := parseChangelogVersion(other)
+			if !ok {
+				t.Fatalf("rejected %q", other)
+			}
+			if got := v.less(o); got != (i < j) {
+				t.Errorf("%s.less(%s) = %v, want %v", text, other, got, i < j)
+			}
+		}
+		withBuild, ok := parseChangelogVersion(text + "+build-4")
+		if !ok || withBuild.less(v) || v.less(withBuild) {
+			t.Errorf("build metadata changed precedence for %s", text)
+		}
+	}
+}
+
+type changelogVersion string
+
+var changelogSemver = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-([0-9A-Za-z-]+)(\.[0-9A-Za-z-]+)*)?(\+([0-9A-Za-z-]+)(\.[0-9A-Za-z-]+)*)?$`)
 
 func (v changelogVersion) String() string {
-	return strconv.Itoa(v.major) + "." + strconv.Itoa(v.minor) + "." + strconv.Itoa(v.patch)
+	return string(v)
 }
 
 func (v changelogVersion) less(o changelogVersion) bool {
-	switch {
-	case v.major != o.major:
-		return v.major < o.major
-	case v.minor != o.minor:
-		return v.minor < o.minor
-	default:
-		return v.patch < o.patch
+	left, _, _ := strings.Cut(string(v), "+")
+	right, _, _ := strings.Cut(string(o), "+")
+	leftCore, leftPre, _ := strings.Cut(left, "-")
+	rightCore, rightPre, _ := strings.Cut(right, "-")
+	leftParts, rightParts := strings.Split(leftCore, "."), strings.Split(rightCore, ".")
+	for i, part := range leftParts {
+		if part != rightParts[i] {
+			return changelogNumberLess(part, rightParts[i])
+		}
 	}
+	if leftPre == "" || rightPre == "" {
+		return leftPre != "" && rightPre == ""
+	}
+	leftParts, rightParts = strings.Split(leftPre, "."), strings.Split(rightPre, ".")
+	for i := range min(len(leftParts), len(rightParts)) {
+		a, b := leftParts[i], rightParts[i]
+		if a == b {
+			continue
+		}
+		aNumeric, bNumeric := changelogNumeric(a), changelogNumeric(b)
+		if aNumeric && bNumeric {
+			return changelogNumberLess(a, b)
+		}
+		if aNumeric != bNumeric {
+			return aNumeric
+		}
+		return a < b
+	}
+	return len(leftParts) < len(rightParts)
+}
+
+func changelogNumberLess(a, b string) bool {
+	if len(a) != len(b) {
+		return len(a) < len(b)
+	}
+	return a < b
+}
+
+func changelogNumeric(s string) bool {
+	return strings.Trim(s, "0123456789") == ""
 }
 
 func parseChangelogVersion(s string) (changelogVersion, bool) {
-	parts := strings.Split(s, ".")
-	if len(parts) != 3 {
-		return changelogVersion{}, false
+	if !changelogSemver.MatchString(s) {
+		return "", false
 	}
-	maj, err1 := strconv.Atoi(parts[0])
-	min, err2 := strconv.Atoi(parts[1])
-	pat, err3 := strconv.Atoi(parts[2])
-	if err1 != nil || err2 != nil || err3 != nil {
-		return changelogVersion{}, false
+	version, _, _ := strings.Cut(s, "+")
+	if _, pre, ok := strings.Cut(version, "-"); ok {
+		for part := range strings.SplitSeq(pre, ".") {
+			if len(part) > 1 && part[0] == '0' && changelogNumeric(part) {
+				return "", false
+			}
+		}
 	}
-	if parts[0] != strconv.Itoa(maj) || parts[1] != strconv.Itoa(min) || parts[2] != strconv.Itoa(pat) {
-		return changelogVersion{}, false
-	}
-	return changelogVersion{maj, min, pat}, true
+	return changelogVersion(s), true
 }
