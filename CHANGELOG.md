@@ -24,6 +24,8 @@ minor instead and were listed under Changed.
   build; the dependency set is go.mod's and go.sum's alone.
 - Clearing a kept review search in the launcher moves the selection onto the
   first visible review instead of leaving it stranded off the restored list.
+- `--log` tightens a pre-existing log file to owner-only permissions before
+  writing, instead of leaving permissions from an earlier looser creation.
 - Commit steps retain their five-minute timeout when `--timeout 0` leaves
   reviews unlimited, rather than allowing a stalled commit to block the run.
 - Custom agent files reject duplicate agent names and configuration keys instead

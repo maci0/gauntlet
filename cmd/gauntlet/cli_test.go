@@ -46,8 +46,43 @@ func captureStderr(t *testing.T, f func() int) string {
 	return string(out)
 }
 
-// A bad flag is reported once: the flag package prints the message and the
-// usage screen, and run must not repeat the message after them.
+func TestLogFilePermissions(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("existing=%t", existing), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "output.log")
+			prefix := ""
+			if existing {
+				prefix = "previous output\n"
+				if err := os.WriteFile(path, []byte(prefix), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chmod(path, 0o666); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := captureStdout(t, func() {
+				if code := run([]string{"version", "--log", path}); code != exitOK {
+					t.Errorf("exit = %d, want %d", code, exitOK)
+				}
+			})
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Mode().Perm() != 0o600 {
+				t.Errorf("permissions = %o, want 600", info.Mode().Perm())
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := prefix + "gauntlet " + version + "\n"; string(data) != want || prefix+got != want {
+				t.Errorf("log = %q, stdout = %q, want %q", data, got, want)
+			}
+		})
+	}
+}
+
 func TestParseErrorReportedOnce(t *testing.T) {
 	got := captureStderr(t, func() int { return run([]string{"--bogus-flag"}) })
 	if n := strings.Count(got, "flag provided but not defined"); n != 1 {

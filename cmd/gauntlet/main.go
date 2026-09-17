@@ -212,7 +212,10 @@ func run(argv []string) int {
 	//
 	// 0600, like the journal: the file captures agent output, and reviews
 	// quote what they find in the target tree, credentials included. On a
-	// multi-user host that must not land world-readable.
+	// multi-user host that must not land world-readable. The 0600 in the
+	// open call applies only at creation, so a pre-existing file that a
+	// looser umask or an older run left group- or world-readable gets its
+	// permissions tightened before this run writes anything.
 	var logWriter io.Writer
 	if opts.logFile != "" {
 		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
@@ -225,6 +228,12 @@ func run(argv []string) int {
 				fmt.Fprintf(os.Stderr, "Warning: closing log file %s: %v\n", opts.logFile, err)
 			}
 		}()
+		if info, err := f.Stat(); err == nil && info.Mode().IsRegular() {
+			if err := f.Chmod(0o600); err != nil {
+				fmt.Fprintf(os.Stderr, "cannot secure log file %s: %v\n", opts.logFile, err)
+				return exitUsage
+			}
+		}
 		logWriter = f
 		stdout = io.MultiWriter(os.Stdout, f)
 		pal.on = false // escape codes would land in the file too
