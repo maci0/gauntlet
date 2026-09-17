@@ -36,6 +36,24 @@ func TestParseFileNotes(t *testing.T) {
 	}
 }
 
+func TestParseFileNotesLineBoundaries(t *testing.T) {
+	for _, newline := range []string{"\n", "\r\n"} {
+		for _, empty := range []string{"PATH:", "PATH: \t"} {
+			for _, next := range []string{"SUBJECT: fix: unrelated", "file.go: ordinary prose"} {
+				input := empty + newline + next + newline
+				if got := ParseFileNotes([]byte(input)); len(got) != 0 {
+					t.Errorf("ParseFileNotes(%q) = %+v, want no notes", input, got)
+				}
+			}
+			input := empty + newline + "\tPATH:\tfile.go: keep this\t" + newline
+			got := ParseFileNotes([]byte(input))
+			if len(got) != 1 || got[0] != (FileNote{Path: "file.go", Note: "keep this"}) {
+				t.Errorf("ParseFileNotes(%q) = %+v, want the valid note", input, got)
+			}
+		}
+	}
+}
+
 func TestParseFileNotesBounds(t *testing.T) {
 	var sb strings.Builder
 	for i := range fileNotesMax + 10 {

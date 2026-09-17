@@ -20,7 +20,7 @@ type FileNote struct {
 // fileNoteRe finds the per-file report lines. The payload after "PATH:" is
 // "<file>: <note>"; a line without the second separator names a file and
 // describes nothing, and is dropped rather than guessed at.
-var fileNoteRe = regexp.MustCompile(`(?im)^\s*PATH:\s*(.+?)\s*$`)
+var fileNoteRe = regexp.MustCompile(`(?im)^[ \t]*PATH:[ \t]*(.+?)[ \t]*$`)
 
 // fileNoteMax bounds one note and filePathMax one path. Both are untrusted
 // agent output headed for a PR body, which bounds them again for display;

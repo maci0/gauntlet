@@ -356,6 +356,12 @@ func TestParseSubject(t *testing.T) {
 		{"none printed", "PATH: x\nRESULT: changed=1", ""},
 		{"the last one wins", "SUBJECT: chore: first\nSUBJECT: feat: second\n", "feat: second"},
 		{"empty is no subject", "SUBJECT:   \n", ""},
+		{"empty before result", "SUBJECT: \t\nRESULT: changed=1", ""},
+		{"empty before prose", "SUBJECT:\n\nnot a subject", ""},
+		{"empty after valid", "SUBJECT: fix: keep this\nSUBJECT:\nRESULT: changed=1", "fix: keep this"},
+		{"empty before valid", "SUBJECT:\nSUBJECT: fix: keep this\n", "fix: keep this"},
+		{"CRLF empty before result", "SUBJECT: \t\r\nRESULT: changed=1\r\n", ""},
+		{"CRLF valid", "\tSUBJECT:\tfix: keep this\t\r\n", "fix: keep this"},
 		{"leading space is fine", "   SUBJECT: docs: explain the lock\n", "docs: explain the lock"},
 	}
 	for _, c := range cases {

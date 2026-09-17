@@ -178,7 +178,7 @@ func (t *Tail) Bytes() []byte {
 // The runner writes the commit in worktree mode, and only the agent knows
 // what the change was: without this the history reads "automated fixes" forty
 // times over.
-var subjectRe = regexp.MustCompile(`(?im)^\s*SUBJECT:\s*(.+?)\s*$`)
+var subjectRe = regexp.MustCompile(`(?im)^[ \t]*SUBJECT:[ \t]*(.+?)[ \t]*$`)
 
 // subjectMax bounds a commit subject. Git wraps a longer one badly, and the
 // line is agent output, which is untrusted text headed for a file people read.

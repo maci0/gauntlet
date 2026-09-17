@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Empty `SUBJECT:` and `PATH:` fields no longer consume the following output
+  line as a commit subject or file note.
 - Launcher help exposes the focused control's full name, state, value, and
   description in scrollable text when terminal panes clip them.
 - Stream lines, prompt descriptions, and PR summaries truncate at whole grapheme
