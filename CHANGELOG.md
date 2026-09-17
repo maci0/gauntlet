@@ -16,6 +16,9 @@ minor instead and were listed under Changed.
 
 - Custom agent files reject a top-level `null` instead of silently starting
   with built-in definitions; use `{}` for an empty configuration.
+- The launcher no longer blocks stacked PRs on a dirty checkout because of a
+  saved concurrency setting that stack mode ignores. Leaving stack mode restores
+  the setting and its clean-tree requirement.
 - `make vuln` scans the selected build tags, including the sqlite driver in
   the default CI scan, instead of silently scanning only the untagged build.
 - Custom agent files report validation errors in name order, so identical

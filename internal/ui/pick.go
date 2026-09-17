@@ -892,7 +892,7 @@ func (p *picker) blocked() string {
 	if len(p.cfg.Agents) == 0 {
 		return "no agent CLI is installed: install one (see: gauntlet doctor)"
 	}
-	if p.cfg.Dirty && p.concurrency().n > 1 {
+	if p.cfg.Dirty && p.concurrency().n > 1 && !p.stacked() {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
 	}
 	return ""

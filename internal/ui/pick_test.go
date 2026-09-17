@@ -582,6 +582,42 @@ func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
 	}
 }
 
+func TestPickStackedPRsIgnoreSavedConcurrencyOnDirtyTree(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Dirty = true
+	press(p, "+")
+	p.focus = paneOptions
+	for i, o := range p.opts {
+		if o.flag == "--stacked-prs" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	press(p, " ")
+	if got := p.blocked(); got != "" {
+		t.Fatalf("stacked launch blocked by an inactive option: %s", got)
+	}
+	if strings.Contains(stripANSI(p.View()), "clean tree") {
+		t.Fatal("stack mode still shows the concurrency warning")
+	}
+	press(p, " ")
+	if p.concurrency().n != 2 || p.blocked() == "" {
+		t.Fatal("leaving stack mode must restore concurrency and its validation")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.launch {
+		t.Fatal("parallel mode launched on a dirty tree")
+	}
+	press(p, " ")
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !p.launch || cmd == nil {
+		t.Fatal("stacked mode did not hand off to run preflight")
+	}
+	if got := strings.Join(p.argv(), " "); got != "-C /home/dev/project --once --tui --stacked-prs" {
+		t.Fatalf("stacked command includes inactive options: %s", got)
+	}
+}
+
 func TestPickHelpOverlayFitsThePane(t *testing.T) {
 	p := demoPicker()
 	p.help = true
