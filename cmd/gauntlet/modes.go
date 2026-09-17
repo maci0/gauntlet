@@ -64,8 +64,11 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	// fire against whoever inspected it here before deciding to run. The
 	// agent still receives the exact bytes; Display strips only what could
 	// drive or spoof the terminal.
-	fmt.Fprintln(out, normalize.Display(
-		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths)))
+	if _, err := fmt.Fprintln(out, normalize.Display(
+		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths))); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write the prompt: %v\n", err)
+		return exitFail
+	}
 	return exitOK
 }
 

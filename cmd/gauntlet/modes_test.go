@@ -100,6 +100,27 @@ func TestScheduleForTurnsFlagsIntoASchedule(t *testing.T) {
 	}
 }
 
+func TestShowPromptFailsWhenOutputCannotBeWritten(t *testing.T) {
+	set := promptPair(t)
+	opts := &options{showPrompt: "sec", timeout: 30 * time.Minute}
+	var rendered bytes.Buffer
+	if code := cmdShowPrompt(&rendered, set, opts); code != exitOK {
+		t.Fatalf("printing prompt exited %d", code)
+	}
+	for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
+		sink := &listingFailWriter{remaining: limit}
+		code, diagnostic := captureStderrFor(t, func() int {
+			return cmdShowPrompt(sink, set, opts)
+		})
+		if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the prompt: "+io.ErrClosedPipe.Error()) {
+			t.Fatalf("limit %d: exit %d, stderr %q", limit, code, diagnostic.String())
+		}
+		if sink.String() != rendered.String()[:limit] {
+			t.Fatalf("limit %d: unexpected partial prompt %q", limit, sink.String())
+		}
+	}
+}
+
 // TestShowPromptPrintsTheExactAgentText pins --show-prompt: a known review
 // prints the composed prompt (containment rules and substituted timeout
 // included), a short name resolves to its -review file, and an unknown name

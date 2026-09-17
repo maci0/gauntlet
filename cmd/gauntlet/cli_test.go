@@ -242,7 +242,7 @@ func TestListAndShowPromptWorkWithoutAgentCLIs(t *testing.T) {
 	t.Setenv("GAUNTLET_STATE", "")
 	dir := t.TempDir()
 
-	devnull, err := os.Open(os.DevNull)
+	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
