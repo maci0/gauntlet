@@ -30,6 +30,7 @@ minor instead and were listed under Changed.
   first visible review instead of leaving it stranded off the restored list.
 - `--log` tightens a pre-existing log file to owner-only permissions before
   writing, instead of leaving permissions from an earlier looser creation.
+- `make fmt` handles Go formatter paths containing spaces, matching `make check`.
 - Commit steps retain their five-minute timeout when `--timeout 0` leaves
   reviews unlimited, rather than allowing a stalled commit to block the run.
 - Custom agent files reject duplicate agent names and configuration keys instead

@@ -129,7 +129,7 @@ GOFILES = $(shell $(GO) list -mod=readonly -f '{{.Dir}}' ./...)
 fmt: ## rewrite all Go files with gofmt
 	@test -x "$(GOFMT)" || { echo "gofmt not found at $(GOFMT); install Go or set GOFMT to this toolchain's gofmt" >&2; exit 1; }
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }
-	$(GOFMT) -s -w $(GOFILES)
+	"$(GOFMT)" -s -w $(GOFILES)
 
 # CI tests all three tag configurations (see the matrix in ci.yml); check
 # compiles each of them so a break under one of them fails here and not

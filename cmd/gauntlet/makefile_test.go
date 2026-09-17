@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +137,43 @@ func TestMakefileVulnScansSelectedTags(t *testing.T) {
 				t.Fatalf("scan command:\n%s\nwant:\n%s", got, want)
 			}
 		})
+	}
+}
+
+func TestMakefileFmtWithSpacedToolchainPath(t *testing.T) {
+	dir := t.TempDir()
+	formatter := filepath.Join(dir, "go fmt")
+	if err := os.Symlink(filepath.Join(runtime.GOROOT(), "bin", "gofmt"), formatter); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Makefile"), []byte(makefileText(t)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(dir, "sample.go")
+	if err := os.WriteFile(source, []byte("package sample\nvar value=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "fmt", "GOFMT="+formatter, "GOFILES=sample.go")
+	cmd.Dir = dir
+	for _, env := range os.Environ() {
+		key, _, _ := strings.Cut(env, "=")
+		switch key {
+		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES":
+			continue
+		}
+		cmd.Env = append(cmd.Env, env)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("make fmt: %v\n%s", err, out)
+	}
+	got, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "package sample\n\nvar value = 1\n"; string(got) != want {
+		t.Fatalf("formatted source = %q, want %q", got, want)
 	}
 }
 
