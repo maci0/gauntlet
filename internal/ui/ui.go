@@ -277,12 +277,19 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		if m.done {
+			return m, nil
+		}
 		m.now = time.Time(msg)
 		m.sampleActivity()
 		return m, tick()
 
 	case doneMsg:
-		m.done = true
+		if !m.done {
+			m.now = time.Now()
+			m.sampleActivity()
+			m.done = true
+		}
 		return m, nil
 
 	case eventMsg:

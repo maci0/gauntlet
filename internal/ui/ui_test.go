@@ -52,6 +52,41 @@ func demoEvents() []runner.Event {
 	}
 }
 
+func TestCompletedDashboardFreezesClock(t *testing.T) {
+	cfg := demoConfig()
+	cfg.Started = time.Now().Add(-10 * time.Minute)
+	m := newModel(cfg)
+	m.w, m.h, m.ready = 120, 40, true
+	m.Update(tickMsg(time.Now()))
+	before := time.Now()
+	m.Update(doneMsg{})
+	after := time.Now()
+	finished := m.now
+	view := m.View()
+	activityLen := len(m.activity)
+
+	_, cmd := m.Update(tickMsg(finished.Add(time.Hour)))
+	if !m.now.Equal(finished) {
+		t.Fatalf("completed clock advanced from %v to %v", finished, m.now)
+	}
+	if cmd != nil {
+		t.Fatal("completed dashboard scheduled another tick")
+	}
+	if got := m.View(); got != view {
+		t.Fatalf("completed view changed after a later tick:\n%s", got)
+	}
+	if len(m.activity) != activityLen {
+		t.Fatal("completed dashboard added an idle activity sample")
+	}
+	if finished.Before(before) || finished.After(after) {
+		t.Fatalf("completion time %v outside [%v, %v]", finished, before, after)
+	}
+	m.Update(doneMsg{})
+	if !m.now.Equal(finished) {
+		t.Fatal("repeated completion changed the clock")
+	}
+}
+
 func TestStaticFrameHasEveryInstrument(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 120, 40)
 	for _, want := range []string{

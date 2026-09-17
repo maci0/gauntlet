@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- The completed dashboard freezes elapsed time, budget consumption, and activity
+  history while it remains open for inspection.
 - Suggestion parsing rejects malformed names instead of scheduling a review
   whose name matches only a prefix of the response.
 - `runs` exits with a failure and reports output errors on stderr when its
