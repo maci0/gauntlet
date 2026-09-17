@@ -169,6 +169,24 @@ func runOn(t *testing.T, cfg Config, bus *Bus) *Runner {
 	return r
 }
 
+func TestRunEndReportsCompletedLoops(t *testing.T) {
+	cfg := Config{
+		Dir: t.TempDir(), Reviews: []string{"missing-review"},
+		Agents: []agent.Spec{{Tool: "claude"}}, Jobs: 1, MaxLoops: 3,
+	}
+	r, events := runRecorded(t, cfg)
+	if r.Loops() != cfg.MaxLoops {
+		t.Fatalf("completed loops = %d, want %d", r.Loops(), cfg.MaxLoops)
+	}
+	if countKind(events, EvRunEnd) != 1 {
+		t.Fatalf("run-end events = %d, want 1", countKind(events, EvRunEnd))
+	}
+	last := events[len(events)-1]
+	if last.Kind != EvRunEnd || last.Loop != r.Loops() {
+		t.Fatalf("last event = %+v, want run_end with %d loops", last, r.Loops())
+	}
+}
+
 func TestSequentialRunEditsTreeAndCountsLines(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "sec-review", "doc-review")

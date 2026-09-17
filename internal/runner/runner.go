@@ -553,7 +553,9 @@ func (r *Runner) Run(ctx context.Context) {
 		Agents: agent.Labels(r.cfg.Agents), Total: r.perLoop(),
 		Seed: r.seed,
 	})
-	defer r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
+	defer func() {
+		r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
+	}()
 	if r.cfg.Jobs > 1 || r.cfg.StackedPRs {
 		defer r.repo.CleanWorktreeRoot()
 	}
