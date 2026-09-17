@@ -12,6 +12,8 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # build input.
 export GOFLAGS += -mod=readonly
 export GOWORK := off
+export GOAMD64 := v1
+export GOARM64 := v8.0
 
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for

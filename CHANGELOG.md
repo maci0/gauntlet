@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Build recipes pin `GOAMD64=v1` and `GOARM64=v8.0`, preventing ambient CPU
+  settings from producing binaries that require newer processors.
 - Recovered run listings retain the original start time when hot reload or
   multiple directories produce repeated run-start events.
 - Persistent review lanes discard staged and unstaged edits when advancing,
