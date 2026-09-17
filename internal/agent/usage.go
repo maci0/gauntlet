@@ -95,8 +95,16 @@ const maxPlausible = 1 << 40
 func maxMatch(pats []*regexp.Regexp, text string) int {
 	best := -1
 	for _, p := range pats {
-		for _, m := range p.FindAllStringSubmatch(text, -1) {
-			digits := strings.NewReplacer(",", "", "_", "").Replace(m[1])
+		for _, m := range p.FindAllStringSubmatchIndex(text, -1) {
+			end := m[3]
+			if end < len(text) {
+				next := text[end]
+				if next == 'e' || next == 'E' ||
+					(next == '.' && end+1 < len(text) && text[end+1] >= '0' && text[end+1] <= '9') {
+					continue
+				}
+			}
+			digits := strings.NewReplacer(",", "", "_", "").Replace(text[m[2]:end])
 			n, err := strconv.Atoi(digits)
 			if err == nil && n > best && n <= maxPlausible {
 				best = n

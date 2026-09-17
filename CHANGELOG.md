@@ -22,6 +22,8 @@ minor instead and were listed under Changed.
   databases or executing statements through `EXPLAIN ANALYZE`.
 - URL credential redaction handles apostrophes and embedded `@` characters
   without mistaking query or fragment text for credentials.
+- Token usage parsing ignores fractional and exponential counts instead of
+  recording their leading digits as whole-token counts.
 - Custom agent files reject a top-level `null` instead of silently starting
   with built-in definitions; use `{}` for an empty configuration.
 - The launcher no longer blocks stacked PRs on a dirty checkout because of a

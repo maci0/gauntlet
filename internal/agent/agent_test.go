@@ -598,11 +598,17 @@ func TestParseUsage(t *testing.T) {
 		{"session total json", `{"total_tokens":555}`, -1, 555},
 		{"line form output", "\nOutput tokens: 42\n", 42, -1},
 		{"line form total", "\nTotal tokens: 77\n", -1, 77},
+		{"sentence punctuation", "tokens used: 12,345.", -1, 12345},
 		{"cumulative max wins", `"output_tokens":10 ... "output_tokens":90`, 90, -1},
 		// A review reading source or transcripts prints other people's
 		// sentinels; taken as a count, one of those overflows the run total.
 		{"absurd counter ignored", `{"usage":{"total_tokens":9223372036854775807}}`, -1, -1},
 		{"absurd counter does not hide a real one", `"output_tokens":123456789012345 "output_tokens":900`, 900, -1},
+		{"fractional output ignored", `{"output_tokens":1.9}`, -1, -1},
+		{"exponential output ignored", `{"output_tokens":1e12}`, -1, -1},
+		{"fractional total ignored", "Total tokens: 12.5", -1, -1},
+		{"exponential total ignored", "tokens used: 2E+12", -1, -1},
+		{"invalid count does not hide a real one", `"output_tokens":90 "output_tokens":123.5`, 90, -1},
 		{"nothing", "no usage here", -1, -1},
 	}
 	for _, c := range cases {
