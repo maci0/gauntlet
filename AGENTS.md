@@ -7,13 +7,14 @@ but drops the sqlite driver.
 
 ## Build and test
 
-- `make check`: gofmt, `go fix -diff`, and vet, each under all three
-  shipped tag sets: default (`sqlite`), bare, and `-tags notoktop`. All
-  must be clean; run `go fix` under those same three tag sets before
-  committing if the fix step reports anything.
-- `make ci`: `make check` and `make test`, the Go checks a pull request runs.
-- `make check-scripts`: ruff, mypy `--strict`, and shellcheck on `scripts/`,
-  using the versions CI pins via `uvx`. Rule selection is `pyproject.toml`.
+- `make check`: gofmt once; `go fix -diff` and vet under `sqlite`, bare,
+  and `notoktop` tags. All must be clean; apply reported fixes under the
+  same three tag sets before committing.
+- `make ci`: `make check` and `make test` for the selected `TAGS` (default
+  `sqlite`), not the full CI matrix. CI also tests bare and `notoktop`
+  builds on Linux and macOS and checks coverage, dist, and reproducibility.
+- `make check-scripts`: ruff and mypy `--strict` via version-pinned `uvx`,
+  plus shellcheck from PATH, on `scripts/`. Rule selection is `pyproject.toml`.
 - `make test`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
   with the same race, shuffle, and tag flags.
