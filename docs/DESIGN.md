@@ -142,6 +142,8 @@ the unit of safe parallelism is **the directory**, not the agent.
   files the first attempt saw: an isolated review resets its worktree to
   the base commit, an in-place review restores a snapshot of the working
   tree (including the user's uncommitted files) taken before the attempt.
+  A missing snapshot or failed restoration blocks both retries and agent
+  fallback rather than applying another attempt to unknown state.
 - Cancellation is a `context.Context` per review, plus process-group kill
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
 - Events are published on one buffered channel per run and fanned out to the

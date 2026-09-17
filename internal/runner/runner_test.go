@@ -1021,6 +1021,42 @@ func TestReviewEventsCarryThePromptFingerprint(t *testing.T) {
 	}
 }
 
+func TestRetryWithoutSnapshotDoesNotRepeatWrites(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	for _, fallback := range []bool{false, true} {
+		t.Run(fmt.Sprintf("fallback=%t", fallback), func(t *testing.T) {
+			dir := t.TempDir()
+			set, _ := promptSet(t, "sec-review")
+			bin := fakeAgent(t, t.TempDir(), "writer", `echo applied >> changes.txt
+exit 1`)
+			cfg := baseConfig(t, dir, set, []string{"sec-review"}, bin)
+			if fallback {
+				cfg.Agents = []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
+				cfg.Bin["codex"] = bin
+			} else {
+				cfg.Retries = 2
+			}
+
+			r, events := runRecorded(t, cfg)
+			if got, err := os.ReadFile(filepath.Join(dir, "changes.txt")); err != nil || string(got) != "applied\n" {
+				t.Fatalf("failed attempt's writes were repeated: %q (%v)", got, err)
+			}
+			if c := r.Stats().Counts(); c.Failures() != 1 || c.OK != 0 {
+				t.Fatalf("counts: %+v", c)
+			}
+			if n := countKind(events, EvReviewStart); n != 1 {
+				t.Fatalf("started %d attempts without a snapshot, want 1", n)
+			}
+			if n := countKind(events, EvReviewEnd); n != 1 {
+				t.Fatalf("recorded %d review endings, want 1", n)
+			}
+		})
+	}
+}
+
 // Retries are bounded: with none configured, one failure is one failure.
 func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	repo := testRepo(t)

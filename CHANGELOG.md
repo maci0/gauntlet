@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
   going when a short later one finishes), the duplicate row could replace the
   completed summary in `runs` listings, losing args, exit code, and measured
   elapsed.
+- In-place retries and agent fallback stop when the starting tree could not
+  be snapshotted, preventing repeated writes on top of a failed attempt.
 - The launcher preserves all explicitly selected reviews when suggestions are
   enabled, instead of silently running only the suggested subset.
 - `make check` analyzes all three shipped build modes even when `TAGS` is

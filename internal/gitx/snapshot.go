@@ -23,9 +23,7 @@ type Snapshot struct {
 	fullTree  string
 }
 
-// Valid reports whether Restore can apply s. An invalid snapshot is a no-op
-// for the retry path: better to retry on the live tree than to refuse the
-// review because a snapshot could not be taken.
+// Valid reports whether Restore can apply s.
 func (s Snapshot) Valid() bool {
 	return isHex(s.fullTree) && isHex(s.indexTree) && isHex(s.head)
 }

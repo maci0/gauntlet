@@ -57,7 +57,10 @@ gauntlet -j 4 -a mixed --once
   worktree to the commit it was cut from. In-place reviews (`--jobs` 1)
   restore a snapshot of the working tree taken before the attempt, including
   uncommitted files that were already there, so your own dirty files survive
-  and the agent's debris does not.
+  and the agent's debris does not. If the snapshot is unavailable (including
+  outside a Git repository) or restoration fails, neither same-agent retries
+  nor fallback to another agent proceed. A missing snapshot leaves the failed
+  attempt's files untouched.
 - Lane checkouts are removed at the end of the loop; merged review branches
   are deleted; unmerged ones survive.
 

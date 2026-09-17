@@ -1246,7 +1246,8 @@ func (r *Runner) resetForRetry(ctx context.Context, review string, wt *gitx.Work
 		return true
 	}
 	if !r.retrySnap.Valid() {
-		return true
+		r.log("Cannot retry %s: the tree before the first attempt was not captured", review)
+		return false
 	}
 	if err := r.repo.Restore(ctx, r.retrySnap); err != nil {
 		r.log("Cannot restore the tree for %s before the retry: %v", review, err)
