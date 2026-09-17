@@ -155,7 +155,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	emitting.Store(true)
 	var callbacks sync.WaitGroup
 	report := func(u agent.Usage) {
-		if o.Usage == nil || !u.Known() || !emitting.Load() {
+		if !u.Known() || !emitting.Load() {
 			return
 		}
 		usageMu.Lock()
@@ -174,7 +174,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			live.Thinking, grew = u.Thinking, true
 		}
 		snapshot := live
-		if !grew {
+		if !grew || o.Usage == nil {
 			usageMu.Unlock()
 			return
 		}

@@ -138,6 +138,18 @@ func TestStreamThinkingCannotDriveTheTerminal(t *testing.T) {
 	}
 }
 
+func TestStreamUsageWithoutCallback(t *testing.T) {
+	_, res := runFakeProc(t,
+		`printf '%s\n' '{"usage":{"output_tokens":120,"thinking_tokens":30,"total_tokens":200}}' '{"usage":{"output_tokens":100,"thinking_tokens":20,"total_tokens":180}}'`,
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if res.Usage.Output != 120 || res.Usage.Thinking != 30 || res.Usage.Total != 200 {
+		t.Fatalf("usage = %+v, want output=120 thinking=30 total=200", res.Usage)
+	}
+}
+
 func TestOverlongLineDoesNotStallTheStream(t *testing.T) {
 	// One physical line past maxLineBytes used to end the read: the child
 	// then blocked on a full pipe until the timeout killed it. The whole
