@@ -153,8 +153,6 @@ type objField struct {
 	key      string
 	str      string
 	hasStr   bool
-	num      any
-	hasNum   bool
 	nested   bool
 	text     string
 	thinking string
@@ -199,7 +197,9 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			}
 			fields = append(fields, objField{key: lower, str: v, hasStr: true})
 		case float64, json.Number:
-			fields = append(fields, objField{key: lower, num: v, hasNum: true})
+			if n, ok := asInt(v); ok {
+				assign(ev, lower, n)
+			}
 		}
 	}
 	if _, err := dec.Token(); err != nil { // the closing brace
@@ -211,8 +211,6 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 		switch {
 		case f.hasStr && thinkingTextKeys[f.key]:
 			appendText(thinking, f.str)
-		case f.hasNum && (outputKeys[f.key] || thinkingKeys[f.key] || totalKeys[f.key]):
-			assign(ev, f.key, f.num)
 		case f.hasStr && (outputKeys[f.key] || thinkingKeys[f.key] || totalKeys[f.key]):
 			// a numeric counter that arrived as a string is not a count
 		case f.hasStr && textKeys[f.key]:
@@ -282,11 +280,7 @@ func skipRest(dec *json.Decoder, first json.Delim) error {
 
 // assign records a counter, keeping the largest value seen for that field on
 // this line: agents sometimes repeat a total in a nested summary.
-func assign(ev *Event, lower string, val any) {
-	n, ok := asInt(val)
-	if !ok || n <= 0 {
-		return
-	}
+func assign(ev *Event, lower string, n int) {
 	switch {
 	case thinkingKeys[lower]:
 		ev.Usage.Thinking = max(ev.Usage.Thinking, n)

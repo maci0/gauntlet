@@ -36,6 +36,27 @@ func TestAnthropicShapedLine(t *testing.T) {
 	}
 }
 
+func TestUsageKeepsMaximumRegardlessOfFieldOrder(t *testing.T) {
+	for _, line := range []string{
+		`{"output_tokens":12,"nested":{"output_tokens":7,"thinking_tokens":4,"total_tokens":20},"output_tokens":9,"text":"considering","type":"reasoning"}`,
+		`{"type":"reasoning","text":"considering","output_tokens":9,"nested":{"total_tokens":20,"thinking_tokens":4,"output_tokens":7},"output_tokens":12}`,
+		`{"output_tokens":7,"nested":{"output_tokens":12,"thinking_tokens":4,"total_tokens":20},"output_tokens":9,"text":"considering","type":"reasoning"}`,
+		`{"output_tokens":12,"nested":{"output_tokens":7,"thinking_tokens":4,"total_tokens":20},"output_tokens":1.5,"text":"considering","type":"reasoning"}`,
+	} {
+		ev, ok := Parse([]byte(line))
+		if !ok {
+			t.Fatalf("valid JSON was rejected: %s", line)
+		}
+		want := Event{
+			Thinking: "considering",
+			Usage:    Usage{Output: 12, Thinking: 4, Total: 20},
+		}
+		if ev != want {
+			t.Errorf("Parse(%s) = %+v, want %+v", line, ev, want)
+		}
+	}
+}
+
 func TestGeminiShapedLine(t *testing.T) {
 	line := `{"type":"assistant","content":{"parts":[{"text":"done"}]},
 		"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":17,
