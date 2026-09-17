@@ -19,6 +19,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Output rate limiting starts its first window at the first line, including
+  when an injected clock starts near zero time.
 - Hot reload counts a sequential loop completed during its final review, so
   the successor does not repeat finished work or exceed `--max-loops`.
 - `--show-prompt` exits with a failure and reports output errors on stderr

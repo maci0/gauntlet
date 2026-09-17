@@ -114,6 +114,30 @@ func TestRateLimitSummarizes(t *testing.T) {
 	}
 }
 
+func TestRateLimitWindowStartsAtFirstLine(t *testing.T) {
+	for _, start := range []time.Time{
+		{},
+		time.Time{}.Add(500 * time.Millisecond),
+		time.Unix(0, 0),
+	} {
+		t.Run(start.String(), func(t *testing.T) {
+			now := start
+			n := New(Config{MaxLinesPerSec: 1, Now: func() time.Time { return now }})
+			var out []Line
+			out = append(out, n.Push("first")...)
+			now = start.Add(750 * time.Millisecond)
+			out = append(out, n.Push("suppressed")...)
+			now = start.Add(time.Second)
+			out = append(out, n.Push("next window")...)
+			out = append(out, n.Flush()...)
+			want := "first|next window|… 1 lines suppressed (rate limit)"
+			if got := strings.Join(texts(out), "|"); got != want {
+				t.Fatalf("got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestClassify(t *testing.T) {
 	cases := []struct {
 		in   string

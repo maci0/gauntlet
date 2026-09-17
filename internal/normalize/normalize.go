@@ -193,7 +193,7 @@ func (n *Normalizer) allow() bool {
 		return true
 	}
 	now := n.cfg.Now()
-	if now.Sub(n.windowFrom) >= time.Second {
+	if n.inWindow == 0 || now.Sub(n.windowFrom) >= time.Second {
 		n.windowFrom, n.inWindow = now, 0
 		// Drops are not reported here: they accumulate in suppressed until
 		// Flush emits one summary line.
