@@ -89,6 +89,78 @@ func TestUsageNarrowTerminal(t *testing.T) {
 	}
 }
 
+func TestDurationFlag(t *testing.T) {
+	cases := map[string]time.Duration{
+		"90":          90 * time.Second,
+		"90s":         90 * time.Second,
+		"30m":         30 * time.Minute,
+		"1h":          time.Hour,
+		"2d":          48 * time.Hour,
+		"1H":          time.Hour,
+		"9223372036s": 9223372036 * time.Second,
+		"2562047h":    2562047 * time.Hour,
+		"106751d":     106751 * 24 * time.Hour,
+	}
+	for _, allowZero := range []bool{false, true} {
+		for in, want := range cases {
+			var got time.Duration
+			f := durationFlag{d: &got, allowZero: allowZero}
+			if err := f.Set(in); err != nil {
+				t.Errorf("Set(%q), allowZero=%v: %v", in, allowZero, err)
+				continue
+			}
+			if got != want {
+				t.Errorf("Set(%q), allowZero=%v: got %v, want %v", in, allowZero, got, want)
+			}
+		}
+		for _, in := range []string{"0", "0s", "0m", "0h", "0d"} {
+			got := time.Minute
+			f := durationFlag{d: &got, allowZero: allowZero}
+			err := f.Set(in)
+			if allowZero {
+				if err != nil || got != 0 {
+					t.Errorf("Set(%q), allowZero=true: got %v, %v", in, got, err)
+				}
+			} else if err == nil || got != time.Minute {
+				t.Errorf("Set(%q), allowZero=false: got %v, %v", in, got, err)
+			}
+		}
+		for _, bad := range []string{"", "-5m", "abc", "10y",
+			"9999999999999999999999d", "5124096h", "36893488148s", "177922d"} {
+			got := time.Minute
+			f := durationFlag{d: &got, allowZero: allowZero}
+			if err := f.Set(bad); err == nil {
+				t.Errorf("Set(%q), allowZero=%v should fail", bad, allowZero)
+			}
+			if got != time.Minute {
+				t.Errorf("Set(%q), allowZero=%v changed the value to %v", bad, allowZero, got)
+			}
+		}
+	}
+}
+
+func FuzzDurationFlag(f *testing.F) {
+	for _, seed := range []string{"90s", "30m", "1h", "2d", "", "0", "-5m", "d", "9999999999999999999d", "1.5h", "1h30m"} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, in string) {
+		for _, allowZero := range []bool{false, true} {
+			d := time.Minute
+			flag := durationFlag{d: &d, allowZero: allowZero}
+			if err := flag.Set(in); err != nil {
+				if d != time.Minute {
+					t.Fatalf("Set(%q) changed the value on error to %v", in, d)
+				}
+				continue
+			}
+			if d < 0 || (!allowZero && d == 0) {
+				t.Fatalf("Set(%q), allowZero=%v accepted %v", in, allowZero, d)
+			}
+			_ = flag.String()
+		}
+	})
+}
+
 func TestParseFlagsDefaults(t *testing.T) {
 	o, err := parseFlags(nil)
 	if err != nil {

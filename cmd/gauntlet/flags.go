@@ -148,18 +148,42 @@ func (f durationFlag) String() string {
 }
 
 func (f durationFlag) Set(v string) error {
-	var d time.Duration
-	var err error
-	if f.allowZero {
-		d, err = humanize.ParseDurationAllowZero(v)
-	} else {
-		d, err = humanize.ParseDuration(v)
-	}
+	d, err := parseDuration(v)
 	if err != nil {
 		return err
 	}
+	if !f.allowZero && d <= 0 {
+		return fmt.Errorf("duration must be positive: %q", v)
+	}
 	*f.d = d
 	return nil
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	trimmed := strings.TrimSpace(s)
+	if trimmed == "" {
+		return 0, fmt.Errorf("invalid duration: %q (e.g. 90s, 30m, 1h, 2d)", s)
+	}
+	unit := time.Second
+	digits := trimmed
+	switch last := trimmed[len(trimmed)-1]; last {
+	case 's', 'S':
+		digits = trimmed[:len(trimmed)-1]
+	case 'm', 'M':
+		unit, digits = time.Minute, trimmed[:len(trimmed)-1]
+	case 'h', 'H':
+		unit, digits = time.Hour, trimmed[:len(trimmed)-1]
+	case 'd', 'D':
+		unit, digits = 24*time.Hour, trimmed[:len(trimmed)-1]
+	}
+	n, err := strconv.Atoi(digits)
+	if err != nil || n < 0 {
+		return 0, fmt.Errorf("invalid duration: %q (e.g. 90s, 30m, 1h, 2d)", s)
+	}
+	if int64(n) > math.MaxInt64/int64(unit) {
+		return 0, fmt.Errorf("duration is too large: %q", s)
+	}
+	return time.Duration(n) * unit, nil
 }
 
 // Flag defaults the documentation quotes. They live here so docs/CLI.md, the

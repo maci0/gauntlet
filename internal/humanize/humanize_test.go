@@ -25,65 +25,6 @@ func TestDuration(t *testing.T) {
 	}
 }
 
-func TestParseDuration(t *testing.T) {
-	cases := map[string]time.Duration{
-		"90":  90 * time.Second,
-		"90s": 90 * time.Second,
-		"30m": 30 * time.Minute,
-		"1h":  time.Hour,
-		"2d":  48 * time.Hour,
-		"1H":  time.Hour,
-		// Largest value each unit can hold before time.Duration overflows.
-		"9223372036s": 9223372036 * time.Second,
-		"2562047h":    2562047 * time.Hour,
-		"106751d":     106751 * 24 * time.Hour,
-	}
-	for in, want := range cases {
-		got, err := ParseDuration(in)
-		if err != nil {
-			t.Errorf("ParseDuration(%q): %v", in, err)
-			continue
-		}
-		if got != want {
-			t.Errorf("ParseDuration(%q) = %v, want %v", in, got, want)
-		}
-	}
-	// Each of these wraps time.Duration into a positive, plausible-looking
-	// value (5124096h becomes ~25m26s) and must be rejected outright.
-	for _, bad := range []string{"", "0", "0s", "0m", "0h", "0d", "-5m", "abc", "10y",
-		"9999999999999999999999d", "5124096h", "36893488148s", "177922d"} {
-		if _, err := ParseDuration(bad); err == nil {
-			t.Errorf("ParseDuration(%q) should fail", bad)
-		}
-	}
-}
-
-func TestParseDurationAllowZero(t *testing.T) {
-	cases := map[string]time.Duration{
-		"0":   0,
-		"0s":  0,
-		"0m":  0,
-		"0h":  0,
-		"0d":  0,
-		"30m": 30 * time.Minute,
-	}
-	for in, want := range cases {
-		got, err := ParseDurationAllowZero(in)
-		if err != nil {
-			t.Errorf("ParseDurationAllowZero(%q): %v", in, err)
-			continue
-		}
-		if got != want {
-			t.Errorf("ParseDurationAllowZero(%q) = %v, want %v", in, got, want)
-		}
-	}
-	for _, bad := range []string{"", "-5m", "abc", "10y"} {
-		if _, err := ParseDurationAllowZero(bad); err == nil {
-			t.Errorf("ParseDurationAllowZero(%q) should fail", bad)
-		}
-	}
-}
-
 func TestCount(t *testing.T) {
 	cases := map[int]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567", -4321: "-4,321"}
 	for in, want := range cases {
@@ -112,25 +53,4 @@ func TestList(t *testing.T) {
 			t.Errorf("List(%v, %d) = %q, want %q", c.items, c.max, got, c.want)
 		}
 	}
-}
-
-// ParseDuration reads what a person typed after --timeout, and every shape
-// that is not a duration has to come back as an error rather than a panic or
-// a silent zero.
-func FuzzParseDuration(f *testing.F) {
-	for _, seed := range []string{"90s", "30m", "1h", "2d", "", "0", "-5m", "d", "9999999999999999999d", "1.5h", "1h30m"} {
-		f.Add(seed)
-	}
-	f.Fuzz(func(t *testing.T, in string) {
-		d, err := ParseDuration(in)
-		if err != nil {
-			return
-		}
-		if d <= 0 {
-			t.Fatalf("ParseDuration(%q) accepted %v: a review cannot run for no time", in, d)
-		}
-		// Whatever it accepted must round-trip through the formatter without
-		// panicking, since that is where every accepted value ends up.
-		_ = Duration(d)
-	})
 }

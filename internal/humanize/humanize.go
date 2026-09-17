@@ -8,7 +8,6 @@ package humanize
 
 import (
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -28,55 +27,6 @@ func Duration(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%ds", secs)
 	}
-}
-
-// ParseDuration accepts the CLI's duration syntax: a positive integer with an
-// optional s/m/h/d suffix (bare digits mean seconds).
-func ParseDuration(s string) (time.Duration, error) {
-	d, err := parseDuration(s)
-	if err != nil {
-		return 0, err
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("duration must be positive: %q", s)
-	}
-	return d, nil
-}
-
-// ParseDurationAllowZero is ParseDuration with zero allowed, for the flags
-// where 0 means "unlimited".
-func ParseDurationAllowZero(s string) (time.Duration, error) {
-	return parseDuration(s)
-}
-
-func parseDuration(s string) (time.Duration, error) {
-	trimmed := strings.TrimSpace(s)
-	if trimmed == "" {
-		return 0, fmt.Errorf("invalid duration: %q (e.g. 90s, 30m, 1h, 2d)", s)
-	}
-	unit := time.Second
-	digits := trimmed
-	switch last := trimmed[len(trimmed)-1]; last {
-	case 's', 'S':
-		digits = trimmed[:len(trimmed)-1]
-	case 'm', 'M':
-		unit, digits = time.Minute, trimmed[:len(trimmed)-1]
-	case 'h', 'H':
-		unit, digits = time.Hour, trimmed[:len(trimmed)-1]
-	case 'd', 'D':
-		unit, digits = 24*time.Hour, trimmed[:len(trimmed)-1]
-	}
-	n, err := strconv.Atoi(digits)
-	if err != nil || n < 0 {
-		return 0, fmt.Errorf("invalid duration: %q (e.g. 90s, 30m, 1h, 2d)", s)
-	}
-	// Bound the product before computing it: a wrapped time.Duration can come
-	// back positive and small (5124096h wraps to ~25m), and a sign check on
-	// the result would silently accept that.
-	if int64(n) > math.MaxInt64/int64(unit) {
-		return 0, fmt.Errorf("duration is too large: %q", s)
-	}
-	return time.Duration(n) * unit, nil
 }
 
 // Count renders an integer with thousands separators.
