@@ -146,10 +146,10 @@ the unit of safe parallelism is **the directory**, not the agent.
   fallback rather than applying another attempt to unknown state.
 - Cancellation is a `context.Context` per review, plus process-group kill
   (SIGTERM, then SIGKILL after 10s) exactly as the original.
-- Events are published on one buffered channel per run and fanned out to the
-  logger, the journal, and the TUI. Publishing never blocks the scheduler:
-  output and live usage ticks may be dropped when a subscriber's buffer is
-  full; results are never dropped.
+- One event bus fans out to a buffered channel per subscriber: the logger,
+  the journal, and the TUI. Output and live usage ticks may be dropped when a
+  subscriber's buffer is full; all other events block until delivered, so
+  subscribers must keep draining until the bus closes.
 - The event bus carries an injectable clock (`Bus.Now`). Event timestamps,
   review and loop elapsed times, the `--runtime` budget, and a zero `--seed`
   all read it, so a test that pins the clock also pins those. Stochastic

@@ -224,9 +224,7 @@ func newModel(cfg Config) *model {
 			}
 		}
 		for _, k := range keys {
-			m.lanes[k] = &laneState{label: k}
-			m.laneOrd = append(m.laneOrd, k)
-			m.hues.get(k)
+			m.lane(k)
 		}
 	}
 	m.orderDirty = len(m.order) > 0 // pre-seeded rows are not in sorted yet
@@ -497,8 +495,8 @@ func (m *model) apply(ev runner.Event) {
 // aggregateRate sums the measured throughput of every lane that reports it.
 func (m *model) aggregateRate() float64 {
 	total := 0.0
-	for _, l := range m.lanes {
-		total += l.tokenRate
+	for _, key := range m.laneOrd {
+		total += m.lanes[key].tokenRate
 	}
 	return total
 }

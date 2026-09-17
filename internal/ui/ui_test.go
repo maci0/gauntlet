@@ -87,6 +87,27 @@ func TestCompletedDashboardFreezesClock(t *testing.T) {
 	}
 }
 
+func TestUsageRateReplay(t *testing.T) {
+	for _, configured := range [][]string{
+		nil,
+		{"first", "second", "third"},
+		{"first", "second", "first", "third"},
+	} {
+		for replay := range 128 {
+			cfg := demoConfig()
+			cfg.Agents = configured
+			m := newModel(cfg)
+			for i, label := range []string{"first", "second", "third"} {
+				m.Update(eventMsg{Kind: runner.EvReviewStart, Review: label, Agent: label, Time: cfg.Started})
+				m.Update(eventMsg{Kind: runner.EvUsage, Agent: label, Tokens: i + 1, Time: cfg.Started.Add(10 * time.Second)})
+			}
+			if got, want := math.Float64bits(m.liveRate), uint64(0x3fe3333333333334); got != want {
+				t.Fatalf("agents %v replay %d: rate bits = %#x, want %#x", configured, replay, got, want)
+			}
+		}
+	}
+}
+
 func TestStaticFrameHasEveryInstrument(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 120, 40)
 	for _, want := range []string{

@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
 
 - The completed dashboard freezes elapsed time, budget consumption, and activity
   history while it remains open for inspection.
+- Dashboard throughput sums lanes in stable order so replayed usage events
+  produce identical rates, counting repeated configured lanes only once.
 - Suggestion parsing rejects malformed names instead of scheduling a review
   whose name matches only a prefix of the response.
 - `runs` exits with a failure and reports output errors on stderr when its
