@@ -24,6 +24,8 @@ minor instead and were listed under Changed.
 - Run-end summaries report the loops the run completed instead of always zero.
 - Agent configuration rejects case-variant duplicate fields, including nested
   usage fields, instead of silently letting JSON key order override settings.
+- Release concurrency is scoped per tag so unrelated tag pushes cannot cancel
+  queued releases. Runs for the same tag remain serialized.
 - Launcher help exposes the focused control's full name, state, value, and
   description in scrollable text when terminal panes clip them.
 - Stream lines, prompt descriptions, and PR summaries truncate at whole grapheme

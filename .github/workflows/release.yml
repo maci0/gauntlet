@@ -7,11 +7,8 @@ on:
 permissions:
   contents: write
 
-# Two tag pushes racing would both reach `gh release create`: serialize instead
-# of canceling, because killing a half-published release loses assets that
-# `gauntlet update` verifies against.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

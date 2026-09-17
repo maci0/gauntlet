@@ -101,6 +101,23 @@ func checkWorkflow(t *testing.T, name, text string) {
 	}
 }
 
+func TestReleaseConcurrencyIsPerTag(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	_, rest, ok := strings.Cut(text, "\nconcurrency:\n")
+	if !ok {
+		t.Fatal("release.yml has no workflow concurrency group")
+	}
+	block, _, _ := strings.Cut(rest, "\n\n")
+	for _, want := range []string{
+		"  group: release-${{ github.ref }}",
+		"  cancel-in-progress: false",
+	} {
+		if !strings.Contains("\n"+block+"\n", "\n"+want+"\n") {
+			t.Errorf("release concurrency must serialize each tag without canceling other tags; missing %q", want)
+		}
+	}
+}
+
 func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	if !strings.Contains(text, "GITHUB_TOKEN: \"\"") || !strings.Contains(text, "GH_TOKEN: \"\"") {
