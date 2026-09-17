@@ -63,4 +63,5 @@ select = [
 python_version = "3.11"
 strict = true
 warn_unreachable = true
+enable_error_code = ["possibly-undefined"]
 files = ["scripts"]
