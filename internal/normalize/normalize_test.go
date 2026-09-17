@@ -370,6 +370,38 @@ func TestTruncateKeepsUTF8Intact(t *testing.T) {
 	}
 }
 
+func TestTruncateKeepsGraphemesIntact(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		width int
+		want  string
+	}{
+		{"accent", "abe\u0301xyz", 3, "ab…"},
+		{"flag", "ab🇵🇱xyz", 3, "ab…"},
+		{"variation selector", "ab\u2708\ufe0fxyz", 3, "ab…"},
+		{"skin tone", "ab👍🏽xyz", 3, "ab…"},
+		{"joined emoji", "ab👩\u200d💻xyz", 4, "ab…"},
+		{"cluster fits", "abe\u0301xyz", 4, "abe\u0301…"},
+		{"exact fit", "abe\u0301", 4, "abe\u0301"},
+		{"oversized cluster", "e\u0301\u0302x", 2, "…"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Truncate(tc.input, tc.width); got != tc.want {
+				t.Fatalf("Truncate(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNormalizerTruncatesWholeGraphemes(t *testing.T) {
+	n := New(Config{MaxWidth: 3})
+	got := append(n.Push("abe\u0301xyz"), n.Flush()...)
+	if len(got) != 1 || got[0].Text != "ab…" {
+		t.Fatalf("normalized lines = %v, want [ab…]", texts(got))
+	}
+}
+
 // FuzzNormalizerStream drives the stateful pipeline (clean, diff tracking,
 // duplicate collapse, truncation) with an arbitrary line sequence, the same
 // path every raw agent output line takes. Pinned contracts: whatever the

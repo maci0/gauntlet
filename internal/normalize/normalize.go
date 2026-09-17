@@ -16,6 +16,9 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
+
+	"github.com/rivo/uniseg"
 )
 
 // Kind classifies a surviving line so a UI can color it and a summary can find
@@ -360,11 +363,13 @@ func Truncate(s string, w int) string {
 		return s
 	}
 	n := 0
-	for i := range s {
-		if n == w {
-			return s[:i] + "…"
+	g := uniseg.NewGraphemes(s)
+	for g.Next() {
+		n += utf8.RuneCountInString(g.Str())
+		if n > w {
+			start, _ := g.Positions()
+			return s[:start] + "…"
 		}
-		n++
 	}
 	return s
 }

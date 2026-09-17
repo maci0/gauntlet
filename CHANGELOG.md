@@ -21,6 +21,8 @@ minor instead and were listed under Changed.
 
 - Launcher help exposes the focused control's full name, state, value, and
   description in scrollable text when terminal panes clip them.
+- Stream lines, prompt descriptions, and PR summaries truncate at whole grapheme
+  boundaries within their rune budgets, preserving combining accents and flags.
 - Narrow launcher panes retain concurrency and selected option values instead
   of hiding them. Panel titles stay within their assigned width so long titles
   cannot push adjacent panels past the terminal edge.
