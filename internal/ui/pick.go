@@ -288,6 +288,19 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		if p.filter != "" {
 			p.filter = ""
+			// Clearing a search restores the full tree. The cursor held a
+			// row of the narrowed view; clamp first, then put it on the
+			// first review the widened tree shows, so the bar the keys act
+			// on is never stranded off the list (or on the suggest row).
+			p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
+			if r := p.rowAt(p.cursor[paneReviews]); r.kind != rowReview {
+				for i, cand := range p.rows() {
+					if cand.kind == rowReview {
+						p.cursor[paneReviews] = i
+						break
+					}
+				}
+			}
 			return p, nil
 		}
 		return p, tea.Quit
@@ -360,6 +373,7 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		p.filter, p.typing = "", false
 	case "enter":
 		p.typing = false // the filter stays, the keys go back to the panes
+		p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
 	case "backspace":
 		if p.filter != "" {
 			p.filter = trimLastCluster(p.filter)

@@ -756,6 +756,34 @@ func TestPickHomeEndJumpThePane(t *testing.T) {
 
 // When a filter was kept with enter, pressing esc clears the filter rather
 // than abruptly quitting the application and discarding composed options.
+func TestPickClearingKeptFilterKeepsCursorOnVisibleRow(t *testing.T) {
+	p := demoPicker()
+	p.selected["sec-review"] = true
+	press(p, "/", "review")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	p.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if p.rowAt(p.cursor[paneReviews]).review.Name != "a11y-review" {
+		t.Fatal("search did not reach the last review")
+	}
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil || p.filter != "" || p.typing {
+		t.Fatal("clearing the kept filter did not return to the catalog")
+	}
+	if view := stripANSI(p.View()); !strings.Contains(view, "❯") {
+		t.Fatalf("clearing search left no visible selection:\n%s", view)
+	}
+	if cur := p.cursor[paneReviews]; cur < 0 || cur >= len(p.rows()) {
+		t.Fatalf("cursor %d is outside the restored catalog", cur)
+	}
+	if !p.selected["sec-review"] {
+		t.Fatal("clearing search discarded a selected review")
+	}
+	press(p, " ")
+	if !p.selected["ux-review"] || !p.selected["a11y-review"] {
+		t.Fatal("toggle did not select the visible frontend group")
+	}
+}
+
 func TestPickEscClearsKeptFilterInsteadOfQuitting(t *testing.T) {
 	p := demoPicker()
 	press(p, "/", "s", "e", "c")
