@@ -284,6 +284,35 @@ func TestShowSanitizesReplayedEvents(t *testing.T) {
 	}
 }
 
+func TestShowReportsOutputFailure(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "log", "text": "replay output"})
+	if err := j.Close(journal.Summary{Start: start, End: start.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	var rendered bytes.Buffer
+	if code := cmdShow(&rendered, id); code != exitOK {
+		t.Fatalf("replay exited %d, want %d", code, exitOK)
+	}
+	if want := "  log           {\"text\":\"replay output\"}\n"; rendered.String() != want {
+		t.Fatalf("replay output = %q, want %q", rendered.String(), want)
+	}
+	out, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	if code := cmdShow(out, id); code != exitFail {
+		t.Fatalf("failed replay output exited %d, want %d", code, exitFail)
+	}
+}
+
 func TestShowRendersEventTimeFromOffsetStamp(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "20261101T063000Z-dead"

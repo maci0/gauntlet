@@ -89,7 +89,11 @@ func showTime(s string) string {
 func cmdShow(out io.Writer, runID string) int {
 	// One event in memory at a time: a long run's journal can be far larger
 	// than the screen it is being replayed onto.
+	var werr error
 	err := journal.Events(runID, func(ev map[string]any) {
+		if werr != nil {
+			return
+		}
 		ts := ""
 		if s, ok := ev["ts"].(string); ok {
 			ts = showTime(s)
@@ -104,8 +108,11 @@ func cmdShow(out io.Writer, runID string) int {
 		// overrides and other formatting characters through, and this line
 		// goes straight to a terminal: strip them here, where every other
 		// display surface already does.
-		fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
+		_, werr = fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
 	})
+	if err == nil {
+		err = werr
+	}
 	if err != nil {
 		// An id that names nothing is a bad argument, like an unknown review
 		// name for --show-prompt: usage error. A journal that exists but
