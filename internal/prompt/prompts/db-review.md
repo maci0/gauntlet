@@ -123,7 +123,7 @@ Review the following:
 
 Instructions:
 - Fix order: integrity (constraints, transaction boundaries, lost updates) > missing indexes on columns this repo's queries demonstrably filter or join on > reversible migration hygiene. Do not rewrite application query call sites (perf-review) or hunt injection independently (sec-review). Backups, PITR, alerting, and capacity planning (section 9) are operational: report-only, skip them in a fix pass. In auto-fix mode add a constraint or an index only when this repo's queries demonstrably use the column; do not write a data-backfill, drop a column, or introduce a new table.
-- If available, use: `EXPLAIN`/`EXPLAIN ANALYZE` on a local database (query plans), `sqlfluff` (SQL lint). Never run EXPLAIN ANALYZE against anything resembling a production connection string; never install tools.
+- If available, use: `sqlfluff` (SQL lint) and saved `EXPLAIN` output or other query-plan artifacts already in the repository. Do not connect to existing databases or run reviewed queries with `EXPLAIN ANALYZE`: it executes the statement and its side effects, even on a local database. Never install tools.
 - Inspect actual schema definitions, migration files, query code, and configuration.
 - Trace query patterns from application code to understand real access patterns.
 - Consider the expected data volume and growth rate when assessing design choices.
