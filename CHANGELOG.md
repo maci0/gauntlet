@@ -25,6 +25,9 @@ minor instead and were listed under Changed.
   produce identical rates, counting repeated configured lanes only once.
 - Usage probes kill remaining process-group members on every exit, preventing
   background helpers from accumulating between reviews.
+- The help overlays on the dashboard and launcher scroll when the terminal is
+  too short for them, so every instruction stays reachable by keyboard, and
+  wrap long lines instead of clipping them at the pane edge.
 - Suggestion parsing rejects malformed names instead of scheduling a review
   whose name matches only a prefix of the response.
 - `runs` exits with a failure and reports output errors on stderr when its

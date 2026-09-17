@@ -959,6 +959,50 @@ func TestHelpOverlayLeadsWithHowToClose(t *testing.T) {
 
 // The overlay is a full-screen view: it has to clip like every other one, or
 // a small terminal that advertised "?" wraps into a taller broken screen.
+func TestHelpOverlayScrollsAndReflows(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 40, 6, true
+	for i := range 15 {
+		m.conflicts = append(m.conflicts, fmt.Sprintf("branch-%d", i))
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
+	first := stripANSI(m.View())
+	if !strings.Contains(first, "scroll") {
+		t.Fatalf("help does not advertise scrolling: %s", first)
+	}
+	var seen strings.Builder
+	for range 150 {
+		view := stripANSI(m.View())
+		seen.WriteString(view)
+		seen.WriteByte('\n')
+		if lipgloss.Height(view) > m.h || lipgloss.Width(view) > m.w {
+			t.Fatalf("help exceeds the viewport: %s", view)
+		}
+		m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	for _, want := range []string{"branch-14", "interrupted", "press twice"} {
+		if !strings.Contains(seen.String(), want) {
+			t.Fatalf("help text %q is unreachable", want)
+		}
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyHome})
+	if got := stripANSI(m.View()); got != first {
+		t.Fatalf("home did not return to the first page: %s", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if !strings.Contains(stripANSI(m.View()), "interrupted") {
+		t.Fatal("end did not reach the last instruction")
+	}
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 80})
+	if !strings.Contains(stripANSI(m.View()), "close this help") {
+		t.Fatal("resizing did not clamp the scroll position")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.help || m.quitArmed || m.scroll != 0 {
+		t.Fatal("help navigation changed dashboard state")
+	}
+}
+
 func TestHelpOverlayFitsThePane(t *testing.T) {
 	m := newModel(demoConfig())
 	m.help, m.ready = true, true

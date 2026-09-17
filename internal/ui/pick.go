@@ -145,9 +145,10 @@ type picker struct {
 	agents   []bool          // per installed agent
 	opts     []option
 
-	cursor [paneCount]int
-	scroll [paneCount]int
-	help   bool
+	cursor     [paneCount]int
+	scroll     [paneCount]int
+	help       bool
+	helpScroll int
 
 	// The config is fixed for the life of a session, so two derived views of
 	// it are computed once instead of per render: every distinct review, and
@@ -273,6 +274,8 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c", "esc", "?":
 			p.help = false
+		default:
+			p.helpScroll = scrollHelp(p.helpScroll, key, p.helpLines(), p.w, p.h)
 		}
 		return p, nil
 	}
@@ -290,6 +293,7 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return p, tea.Quit
 	case "?":
 		p.help = true
+		p.helpScroll = 0
 		return p, nil
 	case "enter":
 		if p.blocked() != "" {
@@ -1016,6 +1020,10 @@ func (p *picker) renderNarrow() string {
 }
 
 func (p *picker) renderHelp() string {
+	return renderHelpPage(p.helpLines(), p.helpScroll, p.w, p.h)
+}
+
+func (p *picker) helpLines() []string {
 	lines := []string{
 		styleTitle.Render("compose a run"),
 		styleDim.Render("q  esc  ?  close this help"),
@@ -1038,7 +1046,7 @@ func (p *picker) renderHelp() string {
 	if why := p.blocked(); why != "" {
 		lines = append(lines, "", styleWarn.Render("  "+why))
 	}
-	return clipBlock(lines, p.w, p.h)
+	return lines
 }
 
 // window keeps the cursor inside the visible slice of a pane, scrolling only

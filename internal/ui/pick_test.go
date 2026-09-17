@@ -618,6 +618,35 @@ func TestPickStackedPRsIgnoreSavedConcurrencyOnDirtyTree(t *testing.T) {
 	}
 }
 
+func TestPickHelpOverlayScrollsAndRestoresFocus(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h = 40, 6
+	p.focus = paneOptions
+	p.cursor[paneOptions] = 2
+	press(p, "?")
+	first := stripANSI(p.View())
+	p.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if stripANSI(p.View()) == first {
+		t.Fatal("page down did not scroll help")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if stripANSI(p.View()) != first {
+		t.Fatal("page up did not return to the first page")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if !strings.Contains(stripANSI(p.View()), "previous one") {
+		t.Fatal("the end of the last instruction is unreachable")
+	}
+	press(p, "q")
+	if p.help || p.launch || p.focus != paneOptions || p.cursor[paneOptions] != 2 {
+		t.Fatal("help navigation changed the launcher's focus or selection")
+	}
+	press(p, "?")
+	if stripANSI(p.View()) != first {
+		t.Fatal("reopening help did not start at the top")
+	}
+}
+
 func TestPickHelpOverlayFitsThePane(t *testing.T) {
 	p := demoPicker()
 	p.help = true

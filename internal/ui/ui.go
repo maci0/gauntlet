@@ -162,15 +162,16 @@ type model struct {
 	feedView   []feedLine     // feed through the current filter, while feedDirty is false
 	feedDirty  bool           // the feed or the filter changed; feedView must be rebuilt
 
-	feed      []feedLine
-	scroll    int
-	filter    feedFilter
-	paused    bool
-	finishing bool // a graceful quit was asked for and is draining
-	help      bool
-	done      bool
-	reloading bool
-	quitArmed bool // q/esc was pressed once; a second press stops the run
+	feed       []feedLine
+	scroll     int
+	filter     feedFilter
+	paused     bool
+	finishing  bool // a graceful quit was asked for and is draining
+	help       bool
+	helpScroll int
+	done       bool
+	reloading  bool
+	quitArmed  bool // q/esc was pressed once; a second press stops the run
 
 	loop        int
 	counts      map[string]int
@@ -302,6 +303,8 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "q", "ctrl+c", "esc", "?", "h":
 				m.help = false
+			default:
+				m.helpScroll = scrollHelp(m.helpScroll, msg.String(), m.helpLines(), m.w, m.h)
 			}
 			return m, nil
 		}
@@ -366,6 +369,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "?", "h":
 			m.help = !m.help
+			m.helpScroll = 0
 		}
 	}
 	return m, nil
@@ -1163,6 +1167,10 @@ func (m *model) renderMinimal() string {
 }
 
 func (m *model) renderHelp() string {
+	return renderHelpPage(m.helpLines(), m.helpScroll, m.w, m.h)
+}
+
+func (m *model) helpLines() []string {
 	// Close keys first: while this overlay is up, q and esc close it, they
 	// do not stop the run. Listing quit first is how a reader kills a run
 	// they opened help to understand.
@@ -1196,7 +1204,7 @@ func (m *model) renderHelp() string {
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
 	)
-	return clipBlock(lines, m.w, m.h)
+	return lines
 }
 
 // footerKeys is the key legend for the full footer and the small-terminal
@@ -1249,6 +1257,57 @@ func clipBlock(lines []string, w, h int) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func helpRows(lines []string, w int) []string {
+	return strings.Split(lipgloss.NewStyle().Width(max(w, 1)).Render(strings.Join(lines, "\n")), "\n")
+}
+
+// renderHelpPage draws the overlay from its scroll position over a wrapped
+// copy of the help text, the visible page ending at the bottom edge, padded
+// so the frame stays one block. The last row is the overlay's own key legend:
+// closing and scrolling stay named whatever the pane shows, so a reader on
+// page one always knows how to reach the rest (WCAG 2.1.1: help content the
+// pane cuts must stay reachable by keyboard).
+func renderHelpPage(lines []string, scroll, w, h int) string {
+	if w <= 0 || h <= 0 {
+		return ""
+	}
+	rows := helpRows(lines, w)
+	viewport := max(h-1, 1)
+	start := clampi(scroll, 0, max(len(rows)-viewport, 0))
+	out := append([]string{}, rows[start:min(len(rows), start+viewport)]...)
+	for len(out) < viewport {
+		out = append(out, "")
+	}
+	out = append(out, styleDim.Render("q close  j/k scroll  pgup/pgdn  home/end"))
+	return clipBlock(out, w, h)
+}
+
+// scrollHelp moves the overlay's scroll position for one keypress, bounded so
+// the last help row can sit at the bottom edge. Arrows and paging keys reuse
+// the dashboard's feed bindings, so help answers the keys its own legend
+// already names; other keys leave the overlay untouched, and closing it
+// resets the position.
+func scrollHelp(scroll int, key string, lines []string, w, h int) int {
+	viewport := max(h-1, 1)
+	bound := max(len(helpRows(lines, w))-viewport, 0)
+	scroll = clampi(scroll, 0, bound)
+	switch key {
+	case "up", "k":
+		scroll--
+	case "down", "j":
+		scroll++
+	case "home", "g":
+		scroll = 0
+	case "end", "G":
+		scroll = bound
+	case "pgup":
+		scroll -= max(viewport-1, 1)
+	case "pgdown":
+		scroll += max(viewport-1, 1)
+	}
+	return clampi(scroll, 0, bound)
 }
 
 // spread lays left and right on one row, w columns wide.

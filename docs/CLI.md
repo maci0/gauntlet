@@ -54,7 +54,7 @@ several paths uses the first.
 | `+` / `-` | raise or lower concurrency, from any pane |
 | `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it. While typing, the key legend names those keys instead of run/cancel. |
 | `home` / `end` | first / last row in the focused pane |
-| `?` | toggle a help overlay; `q` / `esc` close it |
+| `?` | toggle a help overlay; `q` / `esc` close it. When the terminal is too short for the whole overlay it scrolls: `j` / `k` or the arrow keys page it, `pgup` / `pgdn` jump, and `home` / `end` reach the ends. |
 | `enter` / `q` | run the composed command / leave without running |
 
 ## Options
