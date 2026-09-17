@@ -262,16 +262,17 @@ func LoadCustomFile(path string) error {
 	// Validate the complete file before changing the registry. Otherwise map
 	// iteration can install some definitions before a later invalid one makes
 	// startup fail, leaving callers that recover from the error half-configured.
-	for name, def := range defs {
-		if err := def.validate(name); err != nil {
+	names := slices.Sorted(maps.Keys(defs))
+	for _, name := range names {
+		if err := defs[name].validate(name); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 		if isBuiltinTool(name) {
 			return fmt.Errorf("%s: %q is a built-in agent and cannot be redefined", path, name)
 		}
 	}
-	for name, def := range defs {
-		if err := Register(name, def); err != nil {
+	for _, name := range names {
+		if err := Register(name, defs[name]); err != nil {
 			return fmt.Errorf("%s: %w", path, err)
 		}
 	}

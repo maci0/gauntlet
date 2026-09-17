@@ -1378,6 +1378,26 @@ func TestCustomAgentFileUsageWithoutRoots(t *testing.T) {
 	}
 }
 
+func TestCustomAgentFileValidationOrder(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	path := filepath.Join(t.TempDir(), "agents.json")
+	for _, body := range []string{
+		`{"beta":{},"alpha":{}}`,
+		`{"alpha":{},"beta":{}}`,
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		want := path + `: custom agent "alpha" has no argv`
+		for range 100 {
+			err := LoadCustomFile(path)
+			if err == nil || err.Error() != want {
+				t.Fatalf("validation of %s: got %v, want %s", body, err, want)
+			}
+		}
+	}
+}
+
 func TestCustomAgentFileValidationIsAtomic(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	path := filepath.Join(t.TempDir(), "agents.json")
