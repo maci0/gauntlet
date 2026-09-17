@@ -11,6 +11,11 @@ configurations and a cross-compilation pass.
   else to pin.
 - GNU make and git, on Linux or macOS. The runner depends on POSIX semantics
   (process groups, flock, O_NOFOLLOW), so there is no Windows build.
+- A working C compiler for the race detector used by `make test`, `make
+  test-pkg`, `make cover`, and `make ci`: GCC or Clang on Linux, or the Xcode
+  Command Line Tools on macOS. `go env CGO_ENABLED` must report `1`; if cgo
+  was disabled in your environment, run tests with `CGO_ENABLED=1 make test`.
+  `make build` disables cgo and does not require a C compiler.
 
 ## Build and test
 
