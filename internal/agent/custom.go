@@ -96,14 +96,7 @@ func (c Custom) validate(name string) error {
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
-	foundPrompt := false
-	for _, a := range c.Argv {
-		if strings.Contains(a, promptPlaceholder) {
-			foundPrompt = true
-			break
-		}
-	}
-	if !foundPrompt {
+	if !containsPlaceholder(c.Argv, promptPlaceholder) {
 		return fmt.Errorf("custom agent %q: argv must contain %s", name, promptPlaceholder)
 	}
 	if c.Usage != nil {

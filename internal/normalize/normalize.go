@@ -81,7 +81,6 @@ var (
 	// as prose is unreadable: the sign at the start of the line is the whole
 	// meaning. These match the shapes that can only be a diff.
 	diffStartRe = regexp.MustCompile(`^(diff --git |index [0-9a-f]{4,}|--- (a/|/dev/null)|\+\+\+ (b/|/dev/null)|@@ .* @@|=== modified file)`)
-	hunkRe      = regexp.MustCompile(`^@@ .* @@`)
 )
 
 // Config tunes one Normalizer. The zero value is usable: no rate limiting.
@@ -316,9 +315,6 @@ func (n *Normalizer) classifyDiff(s string) (Kind, bool) {
 	}
 	if !n.inDiff {
 		return Plain, false
-	}
-	if hunkRe.MatchString(s) {
-		return DiffMeta, true
 	}
 	switch s[0] {
 	case '+':
