@@ -256,7 +256,7 @@ var (
 	// capture would stop mid-name. Punctuation, whitespace, and ':' stay out:
 	// the capture feeds a lookup against the discovered set and must not be
 	// able to carry protocol structure of its own.
-	suggestLineRe = regexp.MustCompile(`(?i)^\s*RELEVANT:\s*([\p{L}\p{M}\p{N}_-]+)\s*:?\s*(.*)$`)
+	suggestLineRe = regexp.MustCompile(`(?i)^\s*RELEVANT:\s*([\p{L}\p{M}\p{N}_-]+)(?:\s*:\s*|\s+|$)(.*)$`)
 )
 
 // SuggestPrompt asks an agent which reviews apply to this repository.

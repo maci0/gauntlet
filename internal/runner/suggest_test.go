@@ -87,3 +87,22 @@ func TestSuggestRefusesAnEmptyPoolBeforeLaunchingAnything(t *testing.T) {
 		t.Fatal("an empty pool reached an agent launch")
 	}
 }
+
+func TestSuggestRejectsMalformedNames(t *testing.T) {
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RELEVANT: sec-review.json: malformed name"`)
+	picked, _, err := Suggest(t.Context(), SuggestConfig{
+		Dir:     t.TempDir(),
+		Set:     set,
+		Pool:    []string{"sec-review"},
+		Only:    &agent.Spec{Tool: "claude"},
+		Bin:     map[string]string{"claude": bin},
+		Timeout: 5 * time.Second,
+	})
+	if err == nil || !strings.Contains(err.Error(), "no usable 'RELEVANT:' lines") {
+		t.Fatalf("malformed output did not fail triage: picks %+v, error %v", picked, err)
+	}
+	if len(picked) != 0 {
+		t.Fatalf("malformed output scheduled reviews: %+v", picked)
+	}
+}

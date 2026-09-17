@@ -396,6 +396,26 @@ func TestParseSuggestions(t *testing.T) {
 	}
 }
 
+func TestParseSuggestionsRequiresCompleteName(t *testing.T) {
+	for _, suffix := range []string{".json", "/other", ",doc-review", "`", "\"", "\x00", "\u200b"} {
+		t.Run(fmt.Sprintf("%q", suffix), func(t *testing.T) {
+			out := "RELEVANT: sec-review" + suffix + ": malformed name\nRELEVANT: doc-review: valid"
+			picked, _ := ParseSuggestions(out, []string{"sec-review", "doc-review"})
+			if len(picked) != 1 || picked[0].Name != "doc-review" || picked[0].Reason != "valid" {
+				t.Fatalf("malformed name accepted: %+v", picked)
+			}
+		})
+	}
+	for _, suffix := range []string{"", "   ", ": reason", " : reason", " reason", "\t: reason"} {
+		t.Run(fmt.Sprintf("valid %q", suffix), func(t *testing.T) {
+			picked, unknown := ParseSuggestions("RELEVANT: sec"+suffix, []string{"sec-review"})
+			if len(picked) != 1 || picked[0].Name != "sec-review" || len(unknown) != 0 {
+				t.Fatalf("valid name rejected: %+v, unknown %v", picked, unknown)
+			}
+		})
+	}
+}
+
 func TestParseSuggestionsCapsReason(t *testing.T) {
 	long := strings.Repeat("word ", catalogDescMax)
 	picked, unknown := ParseSuggestions("RELEVANT: sec-review: "+long+"\n", []string{"sec-review"})
