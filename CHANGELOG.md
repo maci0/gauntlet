@@ -14,6 +14,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Timeout and cancellation kill remaining subprocess-group members even when
+  the leader exits before children that ignore SIGTERM.
 - Recovering the run index no longer appends a reconstructed row for a run
   that already Closed: when runs close out of start order (a long run still
   going when a short later one finishes), the duplicate row could replace the

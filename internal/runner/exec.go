@@ -425,6 +425,7 @@ func emitStream(ev streamjson.Event, norm *normalize.Normalizer, emit func(norma
 // terminate kills the child's process group, escalating to SIGKILL, and
 // returns the resulting exit code.
 func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
+	defer killGroup(cmd, syscall.SIGKILL)
 	killGroup(cmd, syscall.SIGTERM)
 	term := time.NewTimer(killGrace)
 	defer term.Stop()
@@ -452,11 +453,8 @@ func killGroup(cmd *exec.Cmd, sig syscall.Signal) {
 	if cmd.Process == nil {
 		return
 	}
-	pid := cmd.Process.Pid
-	if pgid, err := syscall.Getpgid(pid); err == nil {
-		if err := syscall.Kill(-pgid, sig); err == nil {
-			return
-		}
+	if err := syscall.Kill(-cmd.Process.Pid, sig); err == nil {
+		return
 	}
 	_ = cmd.Process.Signal(sig)
 }

@@ -5,10 +5,13 @@ package runner
 
 import (
 	"context"
+	"io"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -42,6 +45,60 @@ func TestZeroTimeoutMeansUnlimited(t *testing.T) {
 	}
 	if res.Err != nil || res.ExitCode != 0 {
 		t.Fatalf("run failed: %+v", res)
+	}
+}
+
+func TestTerminateKillsChildrenAfterLeaderExits(t *testing.T) {
+	leader := exec.Command("sleep", "30")
+	leader.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := leader.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waitErr := make(chan error, 1)
+	leaderDone := make(chan struct{})
+	go func() {
+		waitErr <- leader.Wait()
+		close(leaderDone)
+	}()
+	t.Cleanup(func() {
+		_ = leader.Process.Kill()
+		<-leaderDone
+	})
+
+	child := exec.Command("sh", "-c", "trap '' TERM; printf x; exec sleep 30")
+	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pgid: leader.Process.Pid}
+	ready, err := child.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ready.Close()
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	childDone := make(chan struct{})
+	go func() {
+		_ = child.Wait()
+		close(childDone)
+	}()
+	t.Cleanup(func() {
+		_ = child.Process.Kill()
+		<-childDone
+	})
+	if err := ready.(*os.File).SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	var b [1]byte
+	if _, err := io.ReadFull(ready, b[:]); err != nil {
+		t.Fatal(err)
+	}
+
+	if code := terminate(leader, waitErr); code != 128+int(syscall.SIGTERM) {
+		t.Fatalf("leader exit code = %d", code)
+	}
+	select {
+	case <-childDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("SIGTERM-resistant child survived the leader's termination")
 	}
 }
 
