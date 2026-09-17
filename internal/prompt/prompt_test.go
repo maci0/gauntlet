@@ -717,14 +717,20 @@ func TestWalkProjectSkipsPromptDir(t *testing.T) {
 		}
 		return slices.Contains(found, kept)
 	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(dir, alias); err != nil {
+		t.Fatal(err)
+	}
 	for _, root := range []string{dir, "."} {
 		t.Chdir(dir)
-		found := walkProject(t.Context(), root, pd)
-		if inDirFound(root, found) {
-			t.Errorf("root %q: promptDir was walked: %v", root, found)
-		}
-		if !keptFound(root, found) {
-			t.Errorf("root %q: legitimate prompt dropped: %v", root, found)
+		for _, promptDir := range []string{pd, filepath.Join(alias, "prompts")} {
+			found := walkProject(t.Context(), root, promptDir)
+			if inDirFound(root, found) {
+				t.Errorf("root %q, promptDir %q: promptDir was walked: %v", root, promptDir, found)
+			}
+			if !keptFound(root, found) {
+				t.Errorf("root %q, promptDir %q: legitimate prompt dropped: %v", root, promptDir, found)
+			}
 		}
 	}
 }

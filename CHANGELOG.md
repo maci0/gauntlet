@@ -18,6 +18,8 @@ minor instead and were listed under Changed.
   the leader exits before children that ignore SIGTERM.
 - `show` exits with a failure when replay output cannot be written, rather
   than reporting success for a partial or missing replay.
+- Prompt discovery excludes `--prompt-dir` when a symlink gives the same
+  directory a different path, including macOS `/var` and `/private/var` aliases.
 - Recovering the run index no longer appends a reconstructed row for a run
   that already Closed: when runs close out of start order (a long run still
   going when a short later one finishes), the duplicate row could replace the

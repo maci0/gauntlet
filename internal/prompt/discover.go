@@ -129,14 +129,14 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 func walkProject(ctx context.Context, root, promptDir string) []string {
 	absPromptDir := ""
 	if promptDir != "" {
-		absPromptDir, _ = filepath.Abs(promptDir)
+		absPromptDir = gitx.RealPath(promptDir)
 	}
 	// One Abs for the whole walk, not one per directory: filepath.Abs reads
 	// the working directory every call, and the trees under review can hold
 	// tens of thousands of them. WalkDir yields root-joined paths, so a
 	// cleaned root makes the prefix cut below exact.
 	root = filepath.Clean(root)
-	absRoot, _ := filepath.Abs(root)
+	absRoot := gitx.RealPath(root)
 	abspath := func(path string) string {
 		return filepath.Join(absRoot, strings.TrimPrefix(path, root))
 	}
