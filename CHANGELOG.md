@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.22.0
+
 ### Changed
 
 - Stream parsing retains only text-bearing fields for deferred classification,
