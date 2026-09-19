@@ -12,6 +12,14 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- Pass `--add-dir` to `agy` so it knows which directory it is reviewing.
+  Without it the model received no workspace context and hallucinated paths
+  like `/home/user/repo`, failing every review that tried to list or edit
+  files. Especially visible with `--jobs` where the review runs in a
+  worktree the CLI has never seen before.
+
 ## 1.22.0
 
 ### Changed

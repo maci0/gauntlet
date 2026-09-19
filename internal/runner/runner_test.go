@@ -1695,7 +1695,7 @@ exit 1`)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if want := "--print-timeout\n" + tt.want.String() + "\n"; !strings.HasPrefix(string(args), want) {
+			if want := "--print-timeout\n" + tt.want.String() + "\n"; !strings.Contains(string(args), want) {
 				t.Fatalf("commit command missing timeout %s: %s", tt.want, args)
 			}
 		})

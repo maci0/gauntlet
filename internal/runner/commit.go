@@ -50,7 +50,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout})
+		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout, Dir: o.Dir})
 	if err != nil {
 		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
 	}
@@ -162,7 +162,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout})
+		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: r.cfg.Dir})
 	if err != nil {
 		r.log("Cannot build %s command for %s: %v", action, spec.Label(), err)
 		r.st.addCommitFail()

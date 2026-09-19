@@ -124,7 +124,7 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		timeout = min(r.cfg.Timeout, conflictTimeout)
 	}
 	argv, err := agent.BuildCmd(spec, prompt.ConflictPrompt(named),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout})
+		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: wt.Dir})
 	if err != nil {
 		r.log("Cannot build the conflict command for %s: %v", spec.Label(), err)
 		return false

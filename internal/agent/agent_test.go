@@ -609,6 +609,32 @@ func TestBuildCmdAgyStreamAndPrintTimeout(t *testing.T) {
 	if slices.Contains(other, "--print-timeout") {
 		t.Fatalf("non-agy agents must ignore Timeout: %v", other)
 	}
+
+	// Dir: agy needs --add-dir so the model knows which tree it reviews.
+	withDir, err := BuildCmd(Spec{Tool: "agy"}, "P", BuildOpts{Dir: "/tmp/lane-0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i = slices.Index(withDir, "--add-dir")
+	if i < 0 || i+1 >= len(withDir) || withDir[i+1] != "/tmp/lane-0" {
+		t.Fatalf("Dir must become --add-dir: %v", withDir)
+	}
+
+	noDir, err := BuildCmd(Spec{Tool: "agy"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(noDir, "--add-dir") {
+		t.Fatalf("empty Dir must leave --add-dir out: %v", noDir)
+	}
+
+	otherDir, err := BuildCmd(Spec{Tool: "claude"}, "P", BuildOpts{Dir: "/tmp/lane-0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(otherDir, "--add-dir") {
+		t.Fatalf("non-agy agents must ignore Dir: %v", otherDir)
+	}
 }
 
 func TestBuildCmdRefusesAPromptOverTheArgvLimit(t *testing.T) {

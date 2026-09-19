@@ -80,6 +80,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
 			Binary:  cfg.Bin[spec.Tool],
 			Timeout: cfg.Timeout,
+			Dir:     cfg.Dir,
 		})
 		if err != nil {
 			lastErr = fmt.Errorf("cannot launch %s to suggest reviews: %w", spec.Label(), err)

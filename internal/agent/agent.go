@@ -418,6 +418,13 @@ type BuildOpts struct {
 	// --print-timeout (default 5m0s) unless this is forwarded; other agents
 	// ignore it. Zero leaves the CLI default.
 	Timeout time.Duration
+	// Dir is the absolute path of the working directory the agent will run
+	// in. Most CLIs derive their workspace from the process cwd, so it is
+	// only the process Dir. agy needs --add-dir to know which tree it
+	// operates on; without it the model hallucinates paths. Empty leaves the
+	// flag out, which is fine only when Dir matches a directory agy already
+	// knows (the user's checkout, not a worktree cut for this review).
+	Dir string
 }
 
 // maxPromptArg bounds one exec argument. A composed prompt travels as a
@@ -452,6 +459,10 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	if spec.Tool == "agy" && opts.Timeout > 0 {
 		cmd = splice(cmd, flagInsertAt(spec.Tool),
 			[]string{"--print-timeout", opts.Timeout.String()})
+	}
+	if spec.Tool == "agy" && opts.Dir != "" {
+		cmd = splice(cmd, flagInsertAt(spec.Tool),
+			[]string{"--add-dir", opts.Dir})
 	}
 	if opts.Binary != "" {
 		cmd[0] = opts.Binary

@@ -1026,6 +1026,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Binary:   r.cfg.Bin[spec.Tool],
 		Stream:   r.cfg.Stream,
 		Timeout:  r.cfg.Timeout,
+		Dir:      dir,
 	})
 	if err != nil {
 		r.log("Cannot build command for %s: %v", spec.Label(), err)
