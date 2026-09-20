@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.22.1
+
 ### Fixed
 
 - Pass `--add-dir` to `agy` so it knows which directory it is reviewing.
