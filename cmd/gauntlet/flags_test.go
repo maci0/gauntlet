@@ -237,92 +237,220 @@ func TestSuggestComposesWithNamedReviews(t *testing.T) {
 
 func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 	cases := []struct {
-		name string
-		argv []string
-		want string // substring of the expected error, empty means success
+		name  string
+		argv  []string
+		want  string // substring of the expected error, empty means success
+		check func(t *testing.T, o *options)
 	}{
-		{"once implies one loop", []string{"--once"}, ""},
-		{"push implies commit", []string{"--push"}, ""},
-		{"continue-sessions in place", []string{"--continue-sessions"}, ""},
-		{"update-repo fork", []string{"--update-repo", "other/gauntlet"}, ""},
-		{"suggest with reviews", []string{"-s", "-r", "quick"}, ""},
-		{"suggest mixed in", []string{"-r", "suggest,sec"}, ""},
-		{"exclude suggest", []string{"-x", "suggest"}, "not a review name"},
-		{"once with max-loops", []string{"-1", "-n", "3"}, "conflicts"},
-		{"negative loops", []string{"-n", "-2"}, "must be >= 0"},
-		{"negative max-reviews", []string{"--max-reviews", "-1"}, "--max-reviews must be >= 0"},
-		{"zero max-reviews", []string{"--max-reviews", "0"}, ""},
-		{"positive max-reviews", []string{"--max-reviews", "3"}, ""},
-		{"negative seed", []string{"--seed", "-1"}, "must be a nonnegative integer"},
-		{"garbage seed", []string{"--seed", "soon"}, "must be a nonnegative integer"},
-		{"hex seed", []string{"--seed", "0x10"}, ""},
-		{"zero jobs", []string{"-j", "0"}, "must be >= 1"},
-		{"stack owns commits", []string{"--stacked-prs", "--commit"}, "owns its commits"},
-		{"stack owns pushes", []string{"--stacked-prs", "--push"}, "owns its commits"},
-		{"stack never merges", []string{"--stacked-prs", "--merge-into", "main"}, "conflicts"},
-		{"stack allows several passes", []string{"--stacked-prs", "--max-loops", "2"}, ""},
-		{"stack allows unlimited passes", []string{"--stacked-prs", "-n", "0"}, ""},
-		{"base needs stack", []string{"--pr-base", "main"}, "requires --stacked-prs"},
-		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs"},
-		{"empty dir", []string{"--dir", ""}, "--dir is empty"},
-		{"whitespace dir", []string{"--dir", "  "}, "--dir is empty"},
-		{"empty prompt-dir", []string{"--prompt-dir", ""}, "--prompt-dir is empty"},
-		{"whitespace prompt-dir", []string{"--prompt-dir", "  "}, "--prompt-dir is empty"},
-		{"empty log", []string{"--log", ""}, "--log is empty"},
-		{"empty dirs", []string{"--dirs", ""}, "--dirs is empty"},
-		{"empty dirs commas", []string{"--dirs", ",,,"}, "--dirs is empty"},
-		{"empty push-remote", []string{"--stacked-prs", "--push-remote", ""}, "--push-remote is empty"},
-		{"empty update-repo", []string{"--update-repo", ""}, "--update-repo is empty"},
-		{"update-repo URL", []string{"--update-repo", "https://github.com/maci0/gauntlet"}, "want owner/repo"},
-		{"update-repo extra path", []string{"--update-repo", "maci0/gauntlet/extra"}, "want owner/repo"},
-		{"update-repo no slash", []string{"--update-repo", "maci0"}, "want owner/repo"},
-		{"continue-sessions with jobs", []string{"--continue-sessions", "-j", "2"}, "cannot be used with --jobs"},
-		{"continue-sessions with stack", []string{"--continue-sessions", "--stacked-prs"}, "cannot be used with --jobs"},
-		{"negative limit", []string{"runs", "--limit", "-3"}, "--limit must be >= 1"},
-		{"zero limit", []string{"runs", "--limit", "0"}, "--limit must be >= 1"},
-		{"dirs with dir", []string{"--dirs", "a", "-C", "b"}, "conflicts"},
-		{"two modes", []string{"--list", "--dry-run"}, "mutually exclusive"},
-		{"unknown agent", []string{"-a", "nope"}, "unknown tool"},
-		{"bad duration", []string{"-t", "5x"}, "invalid duration"},
-		{"zero timeout", []string{"-t", "0"}, "must be positive"},
-		{"usage limit without a probe", []string{"--usage-limit", "80"}, "used together"},
-		{"usage probe without a limit", []string{"--usage-cmd", "true"}, "used together"},
+		{"once implies one loop", []string{"--once"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.maxLoops != 1 {
+				t.Fatalf("maxLoops = %d, want 1", o.maxLoops)
+			}
+		}},
+		{"push implies commit", []string{"--push"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.commit {
+				t.Fatal("push should set commit = true")
+			}
+			if !o.push {
+				t.Fatal("push should be true")
+			}
+		}},
+		{"continue-sessions in place", []string{"--continue-sessions"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.continueSessions {
+				t.Fatal("continueSessions should be true")
+			}
+		}},
+		{"update-repo fork", []string{"--update-repo", "other/gauntlet"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.updateRepo != "other/gauntlet" {
+				t.Fatalf("updateRepo = %q, want %q", o.updateRepo, "other/gauntlet")
+			}
+		}},
+		{"suggest with reviews", []string{"-s", "-r", "quick"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.suggest {
+				t.Fatal("suggest should be true")
+			}
+			if o.reviews != "quick" {
+				t.Fatalf("reviews = %q, want %q", o.reviews, "quick")
+			}
+		}},
+		{"suggest mixed in", []string{"-r", "suggest,sec"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.suggest {
+				t.Fatal("suggest mixed into reviews should set suggest = true")
+			}
+		}},
+		{"exclude suggest", []string{"-x", "suggest"}, "not a review name", nil},
+		{"once with max-loops", []string{"-1", "-n", "3"}, "conflicts", nil},
+		{"negative loops", []string{"-n", "-2"}, "must be >= 0", nil},
+		{"negative max-reviews", []string{"--max-reviews", "-1"}, "--max-reviews must be >= 0", nil},
+		{"zero max-reviews", []string{"--max-reviews", "0"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.maxReviews != 0 {
+				t.Fatalf("maxReviews = %d, want 0", o.maxReviews)
+			}
+		}},
+		{"positive max-reviews", []string{"--max-reviews", "3"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.maxReviews != 3 {
+				t.Fatalf("maxReviews = %d, want 3", o.maxReviews)
+			}
+		}},
+		{"negative seed", []string{"--seed", "-1"}, "must be a nonnegative integer", nil},
+		{"garbage seed", []string{"--seed", "soon"}, "must be a nonnegative integer", nil},
+		{"hex seed", []string{"--seed", "0x10"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.seed != 16 {
+				t.Fatalf("seed = %d, want 16", o.seed)
+			}
+		}},
+		{"zero jobs", []string{"-j", "0"}, "must be >= 1", nil},
+		{"stack owns commits", []string{"--stacked-prs", "--commit"}, "owns its commits", nil},
+		{"stack owns pushes", []string{"--stacked-prs", "--push"}, "owns its commits", nil},
+		{"stack never merges", []string{"--stacked-prs", "--merge-into", "main"}, "conflicts", nil},
+		{"stack allows several passes", []string{"--stacked-prs", "--max-loops", "2"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.stackedPRs {
+				t.Fatal("stackedPRs should be true")
+			}
+			if o.maxLoops != 2 {
+				t.Fatalf("maxLoops = %d, want 2", o.maxLoops)
+			}
+		}},
+		{"stack allows unlimited passes", []string{"--stacked-prs", "-n", "0"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.stackedPRs {
+				t.Fatal("stackedPRs should be true")
+			}
+			if o.maxLoops != 0 {
+				t.Fatalf("maxLoops = %d, want 0", o.maxLoops)
+			}
+		}},
+		{"base needs stack", []string{"--pr-base", "main"}, "requires --stacked-prs", nil},
+		{"remote needs stack", []string{"--push-remote", "fork"}, "requires --stacked-prs", nil},
+		{"empty dir", []string{"--dir", ""}, "--dir is empty", nil},
+		{"whitespace dir", []string{"--dir", "  "}, "--dir is empty", nil},
+		{"empty prompt-dir", []string{"--prompt-dir", ""}, "--prompt-dir is empty", nil},
+		{"whitespace prompt-dir", []string{"--prompt-dir", "  "}, "--prompt-dir is empty", nil},
+		{"empty log", []string{"--log", ""}, "--log is empty", nil},
+		{"empty dirs", []string{"--dirs", ""}, "--dirs is empty", nil},
+		{"empty dirs commas", []string{"--dirs", ",,,"}, "--dirs is empty", nil},
+		{"empty push-remote", []string{"--stacked-prs", "--push-remote", ""}, "--push-remote is empty", nil},
+		{"empty update-repo", []string{"--update-repo", ""}, "--update-repo is empty", nil},
+		{"update-repo URL", []string{"--update-repo", "https://github.com/maci0/gauntlet"}, "want owner/repo", nil},
+		{"update-repo extra path", []string{"--update-repo", "maci0/gauntlet/extra"}, "want owner/repo", nil},
+		{"update-repo no slash", []string{"--update-repo", "maci0"}, "want owner/repo", nil},
+		{"continue-sessions with jobs", []string{"--continue-sessions", "-j", "2"}, "cannot be used with --jobs", nil},
+		{"continue-sessions with stack", []string{"--continue-sessions", "--stacked-prs"}, "cannot be used with --jobs", nil},
+		{"negative limit", []string{"runs", "--limit", "-3"}, "--limit must be >= 1", nil},
+		{"zero limit", []string{"runs", "--limit", "0"}, "--limit must be >= 1", nil},
+		{"dirs with dir", []string{"--dirs", "a", "-C", "b"}, "conflicts", nil},
+		{"two modes", []string{"--list", "--dry-run"}, "mutually exclusive", nil},
+		{"unknown agent", []string{"-a", "nope"}, "unknown tool", nil},
+		{"bad duration", []string{"-t", "5x"}, "invalid duration", nil},
+		{"zero timeout", []string{"-t", "0"}, "must be positive", nil},
+		{"usage limit without a probe", []string{"--usage-limit", "80"}, "used together", nil},
+		{"usage probe without a limit", []string{"--usage-cmd", "true"}, "used together", nil},
 		// The probe is split on whitespace, so a blank one is no probe at
 		// all: it used to pass the pairing check above and leave the limit
 		// set and inert for the whole run.
 		{"blank usage probe", []string{"--usage-cmd", "   ", "--usage-limit", "80"},
-			"--usage-cmd is blank"},
-		{"usage probe and limit together", []string{"--usage-cmd", "sh -c 'echo 1'", "--usage-limit", "80"}, ""},
+			"--usage-cmd is blank", nil},
+		{"usage probe and limit together", []string{"--usage-cmd", "sh -c 'echo 1'", "--usage-limit", "80"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.usageLimit != 80 {
+				t.Fatalf("usageLimit = %f, want 80", o.usageLimit)
+			}
+			if len(o.usageArgv) == 0 {
+				t.Fatal("usageArgv should not be empty")
+			}
+		}},
 		// flag.Float64Var uses ParseFloat, which accepts these. A range
 		// check cannot reject NaN (every comparison against it is false),
 		// and the runner would then read pct < NaN as "at or past the limit".
-		{"usage limit NaN", []string{"--usage-cmd", "true", "--usage-limit", "NaN"}, "percentage"},
-		{"usage limit nan", []string{"--usage-cmd", "true", "--usage-limit", "nan"}, "percentage"},
-		{"usage limit Inf", []string{"--usage-cmd", "true", "--usage-limit", "Inf"}, "percentage"},
-		{"usage limit over 100", []string{"--usage-cmd", "true", "--usage-limit", "101"}, "percentage"},
-		{"trailing argument", []string{"extra"}, "unknown command"},
-		{"check outside update", []string{"--check"}, "--check requires 'gauntlet update'"},
-		{"limit outside runs", []string{"--limit", "5"}, "--limit requires 'gauntlet runs'"},
+		{"usage limit NaN", []string{"--usage-cmd", "true", "--usage-limit", "NaN"}, "percentage", nil},
+		{"usage limit nan", []string{"--usage-cmd", "true", "--usage-limit", "nan"}, "percentage", nil},
+		{"usage limit Inf", []string{"--usage-cmd", "true", "--usage-limit", "Inf"}, "percentage", nil},
+		{"usage limit over 100", []string{"--usage-cmd", "true", "--usage-limit", "101"}, "percentage", nil},
+		{"trailing argument", []string{"extra"}, "unknown command", nil},
+		{"check outside update", []string{"--check"}, "--check requires 'gauntlet update'", nil},
+		{"limit outside runs", []string{"--limit", "5"}, "--limit requires 'gauntlet runs'", nil},
 		{"limit under show", []string{"show", "20260825T000000Z-abcd", "--limit", "5"},
-			"--limit requires 'gauntlet runs'"},
-		{"check under update", []string{"update", "--check"}, ""},
-		{"limit under runs", []string{"runs", "--limit", "5"}, ""},
-		{"version wins over scoping", []string{"-V", "--limit", "5"}, ""},
-		{"stray jobs under runs", []string{"runs", "--jobs", "4"}, "does not apply to 'gauntlet runs'"},
-		{"stray max-reviews under runs", []string{"runs", "--max-reviews", "3"}, "does not apply to 'gauntlet runs'"},
-		{"stray short flag keeps its spelling", []string{"runs", "-j", "4"}, "-j does not apply"},
-		{"stray yolo under doctor", []string{"doctor", "--yolo"}, "does not apply to 'gauntlet doctor'"},
+			"--limit requires 'gauntlet runs'", nil},
+		{"check under update", []string{"update", "--check"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.command != "update" {
+				t.Fatalf("command = %q, want %q", o.command, "update")
+			}
+			if !o.checkOnly {
+				t.Fatal("checkOnly should be true")
+			}
+		}},
+		{"limit under runs", []string{"runs", "--limit", "5"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.command != "runs" {
+				t.Fatalf("command = %q, want %q", o.command, "runs")
+			}
+			if o.runsLimit != 5 {
+				t.Fatalf("runsLimit = %d, want 5", o.runsLimit)
+			}
+		}},
+		{"version wins over scoping", []string{"-V", "--limit", "5"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.command != "version" {
+				t.Fatalf("command = %q, want %q", o.command, "version")
+			}
+		}},
+		{"stray jobs under runs", []string{"runs", "--jobs", "4"}, "does not apply to 'gauntlet runs'", nil},
+		{"stray max-reviews under runs", []string{"runs", "--max-reviews", "3"}, "does not apply to 'gauntlet runs'", nil},
+		{"stray short flag keeps its spelling", []string{"runs", "-j", "4"}, "-j does not apply", nil},
+		{"stray yolo under doctor", []string{"doctor", "--yolo"}, "does not apply to 'gauntlet doctor'", nil},
 		{"stray tui under show", []string{"show", "20260825T000000Z-abcd", "--tui"},
-			"does not apply to 'gauntlet show'"},
+			"does not apply to 'gauntlet show'", nil},
 		{"stray limit under version", []string{"version", "--limit", "5"},
-			"does not apply to 'gauntlet version'"},
+			"does not apply to 'gauntlet version'", nil},
 		{"stray jobs under version", []string{"version", "--jobs", "4"},
-			"does not apply to 'gauntlet version'"},
-		{"global log follows version", []string{"version", "--log", "gauntlet.log"}, ""},
-		{"doctor reads its bin", []string{"doctor", "--bin", "claude=/bin/sh"}, ""},
-		{"pick reads its dir", []string{"pick", "-C", "."}, ""},
-		{"global log follows runs", []string{"runs", "--log", "gauntlet.log"}, ""},
-		{"no-color follows everything", []string{"runs", "--no-color"}, ""},
+			"does not apply to 'gauntlet version'", nil},
+		{"global log follows version", []string{"version", "--log", "gauntlet.log"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.logFile != "gauntlet.log" {
+				t.Fatalf("logFile = %q, want %q", o.logFile, "gauntlet.log")
+			}
+		}},
+		{"doctor reads its bin", []string{"doctor", "--bin", "claude=/bin/sh"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.command != "doctor" {
+				t.Fatalf("command = %q, want %q", o.command, "doctor")
+			}
+			if o.bin["claude"] != "/bin/sh" {
+				t.Fatalf("bin[claude] = %q, want %q", o.bin["claude"], "/bin/sh")
+			}
+		}},
+		{"pick reads its dir", []string{"pick", "-C", "."}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.command != "pick" {
+				t.Fatalf("command = %q, want %q", o.command, "pick")
+			}
+			if o.dir != "." {
+				t.Fatalf("dir = %q, want %q", o.dir, ".")
+			}
+		}},
+		{"global log follows runs", []string{"runs", "--log", "gauntlet.log"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.logFile != "gauntlet.log" {
+				t.Fatalf("logFile = %q, want %q", o.logFile, "gauntlet.log")
+			}
+		}},
+		{"no-color follows everything", []string{"runs", "--no-color"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if !o.noColor {
+				t.Fatal("noColor should be true")
+			}
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -330,6 +458,9 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 			if c.want == "" {
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
+				}
+				if c.check != nil {
+					c.check(t, o)
 				}
 				return
 			}

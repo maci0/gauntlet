@@ -403,6 +403,7 @@ func TestSquashInReportsAMergeNobodyCanResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() { _ = w.Remove(context.WithoutCancel(ctx)) }()
 	if _, err := w.SquashIn(ctx, "refs/heads/does-not-exist"); err == nil {
 		t.Fatal("merging a branch that does not exist should fail, not report a conflict")
 	}

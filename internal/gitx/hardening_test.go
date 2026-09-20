@@ -216,7 +216,10 @@ func TestMergeDriverDoesNotRunOnMerge(t *testing.T) {
 	gitIn(t, r.Dir, "commit", "-qam", "mainline")
 	r = Open(r.Dir)
 
-	_ = r.Merge(context.Background(), "other", "land other")
+	mr := r.Merge(context.Background(), "other", "land other")
+	if !mr.Conflict {
+		t.Fatalf("expected a merge conflict, got %+v", mr)
+	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("merge driver executed during Merge")
 	}

@@ -729,6 +729,10 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 			// no lane cleaned up. Conflict branches are not worth
 			// preserving from a cancelled run.
 			r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane*")
+			// Lane branches live under gauntlet/<tag>/lane-*, which the
+			// pattern above does not match because its separator is "/"
+			// where the pattern expects "-". Sweep them too.
+			r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"/lane-*")
 		}
 	}()
 

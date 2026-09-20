@@ -40,6 +40,7 @@ func TestSuggestTriesTheNextAgentAfterAFailure(t *testing.T) {
 
 	sawFallback := false
 	for seed := uint64(1); seed < 40 && !sawFallback; seed++ {
+		logs.Reset()
 		cfg.Seed = seed
 		picked, spec, err := Suggest(context.Background(), cfg)
 		if err != nil {

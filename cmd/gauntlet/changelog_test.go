@@ -83,8 +83,9 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 func TestChangelogMentionsEveryContractEnvVar(t *testing.T) {
 	text := readChangelog(t)
 	for _, name := range goldenEnvVars {
-		if !strings.Contains(text, name) {
-			t.Errorf("CHANGELOG.md does not mention %s; environment names are API and land in Unreleased in the same change as the snapshot", name)
+		needle := "`" + name + "`"
+		if !strings.Contains(text, needle) {
+			t.Errorf("CHANGELOG.md does not mention %s; environment names are API and land in Unreleased in the same change as the snapshot", needle)
 		}
 	}
 }

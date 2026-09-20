@@ -803,9 +803,6 @@ func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out) == 0 {
-		return // every branch was cleaned up by its own removal
-	}
 	// Remove leaves branches alone by design; what matters is that each one
 	// exists exactly once and no checkout survives.
 	if list, err := exec.Command("git", "-C", r.Dir, "worktree", "list").Output(); err != nil {
@@ -813,6 +810,7 @@ func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
 	} else if strings.Count(string(list), "\n") != 1 {
 		t.Errorf("checkouts survived:\n%s", list)
 	}
+	_ = out
 }
 
 // The tree scan asks git what belongs to the project, so ListFiles must be

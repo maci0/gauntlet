@@ -1002,7 +1002,7 @@ echo 'RESULT: changed=1'`)
 	if string(state) != wantState {
 		t.Fatalf("PR stack:\n%s\nwant:\n%s", state, wantState)
 	}
-	out, err := exec.Command("git", "-C", repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/review/02").Output()
+	out, err := exec.Command("git", "-C", repo, "for-each-ref", "--format=%(refname:short)", "refs/heads/review/02-0*").Output()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -67,8 +67,11 @@ func TestParseFileNotesBounds(t *testing.T) {
 		t.Fatalf("count = %d, want the cap %d", len(notes), fileNotesMax)
 	}
 	for _, n := range notes {
-		if len(n.Note) > 4*fileNoteMax || len(n.Path) > 4*filePathMax {
-			t.Fatalf("unbounded note or path: %d/%d", len(n.Note), len(n.Path))
+		if utf8.RuneCountInString(n.Note) > fileNoteMax {
+			t.Fatalf("note rune count %d exceeds max %d", utf8.RuneCountInString(n.Note), fileNoteMax)
+		}
+		if utf8.RuneCountInString(n.Path) > filePathMax {
+			t.Fatalf("path rune count %d exceeds max %d", utf8.RuneCountInString(n.Path), filePathMax)
 		}
 	}
 }

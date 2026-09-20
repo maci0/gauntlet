@@ -36,8 +36,10 @@ func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	run("commit", "-qm", "init")
 
 	ctx := context.Background()
-	if _, _, dirty := treeState(ctx, dir); dirty {
+	if branch, _, dirty := treeState(ctx, dir); dirty {
 		t.Fatal("a clean tree must not look dirty to the launcher")
+	} else if branch != "main" {
+		t.Fatalf("branch = %q, want %q", branch, "main")
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, "scratch.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
