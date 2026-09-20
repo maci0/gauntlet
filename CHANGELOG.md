@@ -20,6 +20,14 @@ minor instead and were listed under Changed.
   files. Especially visible with `--jobs` where the review runs in a
   worktree the CLI has never seen before.
 
+- Kill the agent's process group on the normal exit path, not only on
+  timeout and cancel. A grandchild that outlived the agent (a background
+  task, a language server) no longer survives as an orphaned process.
+
+- Sweep slash-separated lane branches (`gauntlet/<tag>/lane-*`) on cancel,
+  not only dash-separated ones. A cancelled `--jobs` run no longer leaves
+  leftover branches behind.
+
 ## 1.22.0
 
 ### Changed

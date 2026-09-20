@@ -132,6 +132,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// or the readers never see EOF.
 	outW.Close()
 	errW.Close()
+	// Kill the entire session group on all exit paths, including the normal
+	// one: a grandchild that outlived the agent (a background task, a
+	// language server) must not survive the review as an orphaned process.
+	// terminate already kills the group on the timeout and cancel paths;
+	// this catches the happy path where the agent exited on its own but a
+	// grandchild is still running. Matches probeUsage's defer killGroup.
+	defer killGroup(cmd, syscall.SIGKILL)
 	defer func() {
 		outR.Close()
 		errR.Close()
