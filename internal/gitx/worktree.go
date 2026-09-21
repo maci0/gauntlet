@@ -31,7 +31,7 @@ type Worktree struct {
 }
 
 func (w *Worktree) subRepo() *Repo {
-	if w == nil {
+	if w == nil || w.Dir == "" {
 		return nil
 	}
 	if w.sub == nil {
@@ -203,14 +203,46 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
 }
 
+// removeWorktreeDir removes a worktree checkout and its bookkeeping. It is
+// idempotent: an already-removed checkout, a missing directory, or an orphaned
+// checkout directory whose git metadata has already been pruned all converge
+// to a clean state.
+// Callers hold wtMu.
+func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
+	if dir == "" {
+		return nil
+	}
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	rel, err := filepath.Rel(root, dir)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("refusing to remove worktree path outside %s: %s", worktreeRoot, dir)
+	}
+	// A cancel during "git worktree add" can leave the entry locked;
+	// unlock it and try removing before falling back to manual cleanup.
+	_, _ = r.run(ctx, gitQuick, "worktree", "unlock", dir)
+	if _, err := r.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err != nil {
+		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove worktree dir: %w", err)
+		}
+		_, _ = r.run(ctx, gitNormal, "worktree", "prune")
+		return nil
+	}
+	if _, err := os.Stat(dir); err == nil {
+		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove worktree dir: %w", err)
+		}
+		_, _ = r.run(ctx, gitNormal, "worktree", "prune")
+	}
+	return nil
+}
+
 // abortWorktreeAdd drops a half-created checkout and, when named, its branch.
 // A cancel or kill can land after git has registered the worktree and created
 // the branch; both have to go. The caller still holds wtMu, and the context
 // is kept alive so a cancelled add does not skip the cleanup.
 func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 	cleanCtx := context.WithoutCancel(ctx)
-	_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
-	_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+	_ = r.removeWorktreeDir(cleanCtx, dir)
 	if branch != "" {
 		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
 	}
@@ -219,7 +251,9 @@ func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 // prepareWorktreeDir clears a leftover checkout at dir and creates its parent.
 // Callers hold wtMu.
 func (r *Repo) prepareWorktreeDir(ctx context.Context, dir string) error {
-	_, _ = r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
+	if err := r.removeWorktreeDir(ctx, dir); err != nil {
+		return err
+	}
 	return os.MkdirAll(filepath.Dir(dir), 0o755)
 }
 
@@ -272,7 +306,7 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 // same state a first call produces. A branch that already carries commits is
 // real output and is refused, matching reclaimEmptyBranch.
 func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
-	if w == nil || w.repo == nil {
+	if w == nil || w.repo == nil || w.Dir == "" {
 		return errors.New("nil stack worktree")
 	}
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
@@ -301,7 +335,7 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 // base, and deletes only that empty gauntlet branch. The next review can then
 // start another child without any failed or no-change branch in the stack.
 func (w *Worktree) DiscardCurrent(ctx context.Context) error {
-	if w == nil || w.repo == nil || w.Branch == "" {
+	if w == nil || w.repo == nil || w.Branch == "" || w.Dir == "" {
 		return nil
 	}
 	branch, base := w.Branch, w.base
@@ -327,6 +361,9 @@ func (w *Worktree) DiscardCurrent(ctx context.Context) error {
 // single commit per review, authored by the runner, with no AI attribution in
 // the message (the same rule the commit-step prompt enforces).
 func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) {
+	if w == nil || w.repo == nil || w.Dir == "" {
+		return false, errors.New("nil worktree")
+	}
 	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "add", "-A"); err != nil {
 		return false, fmt.Errorf("git add: %w", err)
@@ -355,6 +392,9 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 // It is how a conflict gets somewhere private to be resolved: the conflicted
 // state lives in a scratch checkout, never in the tree the user is working in.
 func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error) {
+	if w == nil || w.repo == nil || w.Dir == "" {
+		return nil, errors.New("nil worktree")
+	}
 	sub := w.subRepo()
 	out, err := sub.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
 	if err == nil {
@@ -389,6 +429,9 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 // commit. The paths inspected so far come back either way, with an error that
 // tells the caller the resolution is unverified.
 func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, error) {
+	if w == nil || w.Dir == "" {
+		return nil, errors.New("nil worktree")
+	}
 	var left []string
 	for _, p := range paths {
 		if err := ctx.Err(); err != nil {
@@ -422,6 +465,9 @@ func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, er
 // safe whatever the previous attempt actually did. Ignored files stay: only
 // git-visible debris is the retry's problem.
 func (w *Worktree) ResetToBase(ctx context.Context) error {
+	if w == nil || w.repo == nil || w.Dir == "" {
+		return nil
+	}
 	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "reset", "--hard", w.base); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
@@ -438,6 +484,9 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 // are cleaned up. After Advance the worktree is detached at newBase with
 // Branch == ""; the next review calls StartBranch to begin its own work.
 func (w *Worktree) Advance(ctx context.Context, newBase string) error {
+	if w == nil || w.repo == nil || w.Dir == "" {
+		return errors.New("nil worktree")
+	}
 	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase); err != nil {
 		return fmt.Errorf("git checkout --detach: %w", err)
@@ -463,23 +512,9 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	if dir == "" {
 		return nil
 	}
-	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err != nil {
-		// A cancel during "git worktree add" can leave the entry locked;
-		// unlock it and retry before giving up.
-		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", dir)
-		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err2 != nil {
-			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
-				_, _ = w.repo.run(ctx, gitNormal, "worktree", "prune")
-				w.Dir = ""
-				w.sub = nil
-				return nil
-			}
-			return fmt.Errorf("git worktree remove: %w", err2)
-		}
-	}
 	w.Dir = ""
 	w.sub = nil
-	return nil
+	return w.repo.removeWorktreeDir(ctx, dir)
 }
 
 // DeleteBranch removes a merged review branch. Unmerged branches need -D and
@@ -673,7 +708,7 @@ func isConventionalType(head string) bool {
 // how a layer sheds its provisional name once its commit subject is known.
 // The rename happens in the worktree so the checked-out HEAD follows it.
 func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
-	if w == nil || w.repo == nil || w.Branch == "" {
+	if w == nil || w.repo == nil || w.Branch == "" || w.Dir == "" {
 		return errors.New("no branch to rename")
 	}
 	if name == w.Branch {

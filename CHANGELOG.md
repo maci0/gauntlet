@@ -43,6 +43,7 @@ minor instead and were listed under Changed.
 - Surface Escape cancel and live-feed reset keys in the dashboard footer and help overlay, and display active filter queries and clear shortcuts in the narrow launcher fallback.
 - Prevent Escape from abruptly terminating an active run when quit is armed in the dashboard; Escape now cancels the quit prompt and resets paused or scrolled feeds to live output.
 - Make git worktree removal idempotent on already-removed checkouts, and prune git metadata when the checkout directory has already been deleted.
+- Clean orphaned worktree directories and prune stale metadata during worktree preparation, ensuring worktree creation and removal converge across interrupted runs.
 - Strip UTF-8 byte-order marks (BOM) when loading custom agent definitions (`agents.json`), preventing parse errors on Windows-formatted files.
 - Pad clipped lines with trailing spaces in dashboard panel formatting when multi-column wide characters are truncated, preventing misaligned panel borders.
 - Count Unicode code points instead of bytes when checking for short-flag misses, preventing single non-ASCII flags from triggering typo suggestions.

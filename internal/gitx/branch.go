@@ -159,8 +159,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	}
 	defer func() {
 		cleanCtx := context.WithoutCancel(ctx)
-		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
-		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
+		_ = r.removeWorktreeDir(cleanCtx, dir)
 	}()
 
 	sub := r.subRepo(dir)

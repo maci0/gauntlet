@@ -508,3 +508,108 @@ func TestRemoveMissingDirConverges(t *testing.T) {
 		t.Fatalf("Remove on deleted worktree dir failed: %v", err)
 	}
 }
+
+func TestAddWorktreeConvergesOnOrphanedDir(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Simulate an unmanaged/orphaned directory left by a crashed run
+	// where git metadata was pruned or never created.
+	tag := "run-l1-02"
+	slug := BranchSlug("sec-review")
+	orphanedDir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
+	if err := os.MkdirAll(orphanedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(orphanedDir, "leftover.txt"), []byte("debris\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	wt, err := r.AddWorktree(ctx, "sec-review", tag, base)
+	if err != nil {
+		t.Fatalf("AddWorktree failed on orphaned directory: %v", err)
+	}
+	defer func() { _ = wt.Remove(ctx) }()
+
+	// The worktree checkout must be functional and clean.
+	if _, err := os.Stat(filepath.Join(wt.Dir, "leftover.txt")); !os.IsNotExist(err) {
+		t.Fatal("leftover file from crashed run should have been cleaned up")
+	}
+}
+
+func TestRemovePrunedMetadataConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-03", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := wt.Dir
+
+	// Simulate worktree prune while dir remains (e.g. metadata removed manually or pruned).
+	// We prune git's metadata by temporarily renaming dir, running prune, and renaming back.
+	tmpDir := dir + "-tmp"
+	if err := os.Rename(dir, tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	r.PruneWorktrees(ctx)
+	if err := os.Rename(tmpDir, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	// wt.Remove must converge: remove the directory and succeed even though
+	// git's worktree metadata is no longer present.
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatalf("Remove on pruned metadata failed: %v", err)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("worktree dir %s should be removed", dir)
+	}
+}
+
+func TestRemovedWorktreeMethodsAreSafe(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-04", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	// All methods on removed worktree (with empty Dir) must return safe errors or no-op,
+	// never touching the parent repository.
+	if err := wt.ResetToBase(ctx); err != nil {
+		t.Fatalf("ResetToBase on removed worktree failed: %v", err)
+	}
+	if err := wt.DiscardCurrent(ctx); err != nil {
+		t.Fatalf("DiscardCurrent on removed worktree failed: %v", err)
+	}
+	if _, err := wt.CommitAll(ctx, "msg"); err == nil {
+		t.Fatal("CommitAll on removed worktree should return error")
+	}
+	if err := wt.Advance(ctx, base); err == nil {
+		t.Fatal("Advance on removed worktree should return error")
+	}
+	if _, err := wt.SquashIn(ctx, "branch"); err == nil {
+		t.Fatal("SquashIn on removed worktree should return error")
+	}
+	if err := wt.StartBranch(ctx, "branch", base); err == nil {
+		t.Fatal("StartBranch on removed worktree should return error")
+	}
+	if err := wt.RenameBranch(ctx, "new-name"); err == nil {
+		t.Fatal("RenameBranch on removed worktree should return error")
+	}
+}
