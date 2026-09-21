@@ -78,7 +78,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 	}
 
 	candidates := walkProject(ctx, projectRoot, promptDir)
-	ignored := (&gitx.Repo{Dir: projectRoot}).CheckIgnore(ctx, candidates)
+	ignored := gitx.Open(projectRoot).CheckIgnore(ctx, candidates)
 
 	seen := map[string]string{} // name -> winning path
 	for _, path := range candidates {

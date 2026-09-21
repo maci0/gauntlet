@@ -80,6 +80,50 @@ func TestApplyRefusesReleaseWithoutChecksums(t *testing.T) {
 	}
 }
 
+func TestApplyRefusesReleaseWithoutPlatformAsset(t *testing.T) {
+	rel := &Release{TagName: "v9.9.9"}
+	rel.Assets = append(rel.Assets, struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	}{Name: "checksums.txt", URL: "http://127.0.0.1:1/checksums.txt"})
+
+	target := filepath.Join(t.TempDir(), "gauntlet")
+	if _, err := applyTo(context.Background(), rel, target); err == nil ||
+		!strings.Contains(err.Error(), "has no asset") {
+		t.Fatalf("release without platform asset must be refused, got %v", err)
+	}
+}
+
+func TestApplyRefusesMissingChecksumEntry(t *testing.T) {
+	payload := []byte("#!/bin/sh\necho new\n")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/asset", func(w http.ResponseWriter, r *http.Request) { w.Write(payload) })
+	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(strings.Repeat("a", 64) + "  some_other_asset\n"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	name := assetName("9.9.9")
+	rel := &Release{TagName: "v9.9.9"}
+	rel.Assets = append(rel.Assets,
+		struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		}{Name: name, URL: srv.URL + "/asset"},
+		struct {
+			Name string `json:"name"`
+			URL  string `json:"browser_download_url"`
+		}{Name: "checksums.txt", URL: srv.URL + "/checksums.txt"},
+	)
+
+	target := filepath.Join(t.TempDir(), "gauntlet")
+	if _, err := applyTo(context.Background(), rel, target); err == nil ||
+		!strings.Contains(err.Error(), "checksums.txt has no entry for "+name) {
+		t.Fatalf("missing checksum entry must be refused, got %v", err)
+	}
+}
+
 func TestApplyReplacesTargetOnMatch(t *testing.T) {
 	payload := []byte("#!/bin/sh\necho new\n")
 	h := sha256.Sum256(payload)

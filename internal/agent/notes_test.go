@@ -31,6 +31,9 @@ func TestParseFileNotes(t *testing.T) {
 	if notes[1].Path != "b.go" || notes[1].Note != "lowercase prefix still counts" {
 		t.Fatalf("notes[1] = %+v", notes[1])
 	}
+	if notes[2].Path != "evil.go" || notes[2].Note != "textwith a bidi overrideand controls" {
+		t.Fatalf("notes[2] = %+v, want evil.go sanitized note", notes[2])
+	}
 	if strings.ContainsRune(notes[2].Note, '‮') || strings.ContainsRune(notes[2].Note, '\t') {
 		t.Fatalf("control and format characters survived: %q", notes[2].Note)
 	}

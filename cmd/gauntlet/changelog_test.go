@@ -152,6 +152,13 @@ func TestValidateChangelogSemVerCases(t *testing.T) {
 				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
 			wantErr: "major release 2.1.0 must reset minor and patch to 0",
 		},
+		{
+			name: "major bump resets minor but does not reset patch",
+			content: "## Unreleased\n\n" +
+				"## 2.0.1\n\n### Removed\n- Old command\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "major release 2.0.1 must reset minor and patch to 0",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

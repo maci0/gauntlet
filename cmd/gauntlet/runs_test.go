@@ -455,4 +455,12 @@ func TestShowTimeZero(t *testing.T) {
 	if got := showTime("0001-01-01T00:00:00Z"); got != "" {
 		t.Fatalf("showTime(zero) = %q, want empty", got)
 	}
+	if got := showTime("invalid-timestamp"); got != "" {
+		t.Fatalf("showTime(invalid) = %q, want empty", got)
+	}
+	stamp := time.Date(2026, 8, 25, 13, 15, 30, 0, time.UTC)
+	want := stamp.Local().Format("15:04:05")
+	if got := showTime(stamp.Format(time.RFC3339)); got != want {
+		t.Fatalf("showTime(RFC3339) = %q, want %q", got, want)
+	}
 }

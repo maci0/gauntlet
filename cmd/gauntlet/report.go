@@ -4,11 +4,12 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -266,7 +267,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		for l := range byAgent {
 			labels = append(labels, l)
 		}
-		sort.Strings(labels)
+		slices.Sort(labels)
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, pal.bold("Per-agent stats"))
 		for _, l := range labels {
@@ -287,7 +288,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		}
 	}
 	if len(failures) > 0 {
-		sort.Slice(failures, func(i, j int) bool { return failures[i].Review < failures[j].Review })
+		slices.SortFunc(failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, pal.bold("Failed reviews"))
 		for _, f := range failures {

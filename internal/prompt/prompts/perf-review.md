@@ -94,6 +94,7 @@ Review the following:
 
 Instructions:
 - Fix order: unbounded growth (no pagination, no limit, accumulating without bound) > N+1 queries and repeated redundant work > hot-path allocations and compilation in loops > cold-path and at-scale-only issues.
+- In auto-fix mode fix only categorically safe wins with a verified call path: add pagination or query limits to an unbounded fetch, move regex/template compilation out of a loop, or eliminate an N+1 query. Do not rewrite data structures, introduce caching layers, or make speculative micro-optimizations in one pass.
 - If available, use: `hyperfine` (command benchmarks), `perf`/`flamegraph` (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations), `bpftrace`. Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - When proposing a design-level performance change, sketch the four resources (network, disk, memory, CPU) times bandwidth and latency, and name which one the change buys. Sketches beat profiles in the design phase, which is when the 1000x wins are available.

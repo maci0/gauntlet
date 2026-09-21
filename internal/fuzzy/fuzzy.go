@@ -13,6 +13,14 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
+// NFC returns s in Unicode Normalization Form C.
+func NFC(s string) string {
+	if IsASCII(s) {
+		return s
+	}
+	return norm.NFC.String(s)
+}
+
 // Closest returns the candidate nearest want within a small edit distance,
 // compared case-insensitively and after Unicode normalization, or "" when
 // nothing is close enough.
@@ -22,14 +30,6 @@ import (
 // final and ordinary sigma), which ToLower misses on one side only.
 // Normalization to NFC first keeps a decomposed spelling of the same name
 // from looking like several edits' worth of typos.
-// NFC returns s in Unicode Normalization Form C.
-func NFC(s string) string {
-	if IsASCII(s) {
-		return s
-	}
-	return norm.NFC.String(s)
-}
-
 func Closest(want string, candidates []string) string {
 	wantNorm := NFC(want)
 	var wantArr [32]rune

@@ -75,8 +75,9 @@ Review the following:
 
 Instructions:
 - Fix order: packages that break on install or upgrade (missing deps, broken scriptlets, wrong permissions) > security issues (files owned by root writable by others, setuid without reason, secrets in package) > policy violations the target format enforces > hygiene (stray files, bloat, metadata gaps).
+- In auto-fix mode make narrow, verifiable fixes: fix file permissions, add a missing dependency in package metadata, correct a desktop-entry or systemd-unit syntax error, or set a missing USER/HEALTHCHECK in a Dockerfile. Do not rewrite packaging specs wholesale, re-architect container layers, or introduce new packaging formats in one pass.
 - If available, use: `lintian` (deb), `rpmlint` (rpm), `namcap` (PKGBUILD), `hadolint`/`dive` (container images), `desktop-file-validate`/`appstream-util validate` (desktop integration), `shellcheck` (maintainer scripts), `check-wheel-contents`/`npm pack --dry-run` (language packages). Never install tools.
-- The strongest evidence is building the package and inspecting its contents (`dpkg -c`, `rpm -qlp`, `makepkg`, `flatpak-builder`, `docker build` + `dive`); do this only when it is cheap and sandboxed (skip if a single build already takes more than 2 minutes), never against production registries, and never `docker run` or start the built image.
+- The strongest evidence is inspecting already-built package contents or dry-run renders (`dpkg -c`, `rpm -qlp`, `dive`, `check-wheel-contents`); do this only when it is cheap and sandboxed, never against production registries, and never start containers or run packages.
 - Be concrete: name the spec field, the manifest line, the scriptlet, the layer.
 - Distinguish policy violations (format rules) from packaging bugs (breaks install/upgrade) from hygiene (bloat, stray files).
 - Least privilege is the default judgment for all permissions; every broad grant needs a named reason.

@@ -50,7 +50,7 @@ Review the following:
 - Functions longer than ~70 lines (the scroll discontinuity). Split so the parent owns all branching and mutable state, and helpers are non-branchy and preferably pure
 - Recursion where a bounded loop would make the bound obvious. Recursion hides whether execution is bounded
 - Control flow scattered across helpers. Push `if`s up and `for`s down: one function owns switches and cases; leaves should not care about control flow
-- Compound boolean conditions and `else if` chains that hide cases. Split into nested `if`/`else` trees so every branch is visible, and consider whether each `if` needs a matching `else` that handles or asserts the negative space
+- Compound boolean conditions and `else if` chains that hide cases. Split into nested `if`/`else` trees so every branch is visible; verify that each `if` has a matching `else` that handles or asserts the negative space
 - Invariants stated as negations (`index >= length`) where the positive form (`index < length`) is the natural loop condition
 - Poor separation of concerns
 - Confusing control flow
@@ -130,6 +130,7 @@ Review the following:
 
 Instructions:
 - Fix order: unbounded loops/queues and missing invariant assertions > type-safety gaps and missing null checks with a concrete path > index/count/size mixups and implicit division rounding > duplication causing drift > inconsistent patterns. Cosmetic cleanups last.
+- In auto-fix mode fix the clearest and most localized issues first: add missing bounds or null guards on verified paths, eliminate copy-paste drift, or simplify complex nested logic in open files. Do not undertake broad architectural rewrites, mass renaming, or large-scale refactors in a single pass.
 - Do not add speculative assertions "for safety". An assertion needs a property the function already requires or a concrete path that can violate it.
 - If available, use: the project's own linter and type checker first (`ruff`, `mypy`, `cargo-clippy`, `eslint`, `oxlint`, `biome`, `staticcheck`, `gocritic`, `cppcheck`, `clang-tidy`), `jscpd` (duplication). `vulture`/`knip`/`ts-prune` may confirm an unused import in a file you already have open; do not treat their project-wide reports as a deletion list (minimalism-review). The linter's own config, strictness, and suppressions belong to lint-review. Never install tools.
 - Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.

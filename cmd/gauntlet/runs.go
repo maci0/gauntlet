@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,8 +29,12 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 		fmt.Fprintf(os.Stderr, "cannot read run index: %v\n", err)
 		return exitFail
 	}
+	bw := bufio.NewWriter(out)
 	var werr error
 	defer func() {
+		if err := bw.Flush(); werr == nil && err != nil {
+			werr = err
+		}
 		if werr != nil {
 			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", werr)
 			code = exitFail
@@ -37,7 +42,7 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 	}()
 	write := func(format string, args ...any) {
 		if werr == nil {
-			_, werr = fmt.Fprintf(out, format, args...)
+			_, werr = fmt.Fprintf(bw, format, args...)
 		}
 	}
 	if len(entries) == 0 {
@@ -105,6 +110,8 @@ func showTime(s string) string {
 func cmdShow(out io.Writer, runID string) int {
 	// One event in memory at a time: a long run's journal can be far larger
 	// than the screen it is being replayed onto.
+	bw := bufio.NewWriter(out)
+	defer bw.Flush()
 	var werr error
 	err := journal.Events(runID, func(ev map[string]any) {
 		if werr != nil {
@@ -124,8 +131,11 @@ func cmdShow(out io.Writer, runID string) int {
 		// overrides and other formatting characters through, and this line
 		// goes straight to a terminal: strip them here, where every other
 		// display surface already does.
-		_, werr = fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
+		_, werr = fmt.Fprintf(bw, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
 	})
+	if flushErr := bw.Flush(); err == nil && werr == nil && flushErr != nil {
+		werr = flushErr
+	}
 	if err == nil && werr != nil {
 		err = fmt.Errorf("cannot write the journal: %w", werr)
 	}

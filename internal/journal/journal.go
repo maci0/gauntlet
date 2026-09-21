@@ -33,7 +33,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -588,7 +587,7 @@ func walkJournals(visit func(namedJournal) bool) error {
 		}
 		return err
 	}
-	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
+	slices.Reverse(days)
 	for _, d := range days {
 		if !d.IsDir() {
 			continue
@@ -618,7 +617,7 @@ func journalsInDir(dir string) []namedJournal {
 		}
 		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
 	}
-	sort.Slice(batch, func(i, j int) bool { return batch[i].id > batch[j].id })
+	slices.Reverse(batch)
 	return batch
 }
 
@@ -999,7 +998,7 @@ func locateRun(runID string) (string, bool, error) {
 		}
 		return "", false, err
 	}
-	sort.Slice(days, func(i, j int) bool { return days[i].Name() > days[j].Name() })
+	slices.Reverse(days)
 	for _, d := range days {
 		p := filepath.Join(root, d.Name(), runID+".jsonl")
 		if _, err := os.Stat(p); err == nil {

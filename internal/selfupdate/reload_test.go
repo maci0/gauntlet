@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -211,6 +212,22 @@ func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
 	t.Setenv(stateEnv, "relative.json")
 	if _, err := LoadState(&v); err == nil {
 		t.Fatal("LoadState accepted relative path")
+	}
+
+	// Oversized file must be rejected
+	bigFile := filepath.Join(dir, "big.json")
+	f, err := os.Create(bigFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(maxHandoffBytes + 10); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	f.Close()
+	t.Setenv(stateEnv, bigFile)
+	if _, err := LoadState(&v); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("LoadState accepted oversized file: %v", err)
 	}
 }
 

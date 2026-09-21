@@ -81,6 +81,37 @@ func TestCountsTotalsAndFailures(t *testing.T) {
 	if !haveLines {
 		t.Error("haveLines should be set when any result measured lines")
 	}
+	// Empty stats should report zero totals and false haveLines.
+	empty := &Stats{}
+	if empty.Counts().Total() != 0 {
+		t.Fatalf("empty stats total = %d, want 0", empty.Counts().Total())
+	}
+	if len(empty.Failures()) != 0 {
+		t.Fatalf("empty stats has failures: %+v", empty.Failures())
+	}
+	eIns, eDel, eTokens, eTime, eTimed, eHaveLines := empty.Totals()
+	if eIns != 0 || eDel != 0 || eTokens != 0 || eTime != 0 || eTimed != 0 || eHaveLines {
+		t.Fatalf("empty Totals returned non-zero values: ins=%d del=%d tok=%d time=%v timed=%d haveLines=%v",
+			eIns, eDel, eTokens, eTime, eTimed, eHaveLines)
+	}
+
+	// Results with empty status (publication metadata recovered without agent)
+	// must be ignored by Counts and Failures.
+	st.Add(Result{Review: "metadata-only", Status: ""})
+	if st.Counts().Total() != 6 {
+		t.Fatalf("empty status must not increment total counts: got %d, want 6", st.Counts().Total())
+	}
+	if len(st.Failures()) != 4 {
+		t.Fatalf("empty status must not appear in failures: %+v", st.Failures())
+	}
+
+	// When no results have lines, haveLines must report false.
+	noLines := &Stats{}
+	noLines.Add(Result{Review: "x", Status: StatusOK, Ins: 10, Del: 5, HaveLines: false})
+	_, _, _, _, _, nlHaveLines := noLines.Totals()
+	if nlHaveLines {
+		t.Error("haveLines must be false when no result measured lines")
+	}
 }
 
 func TestCountsAdd(t *testing.T) {
@@ -125,6 +156,12 @@ func TestTokensPerSec(t *testing.T) {
 	}
 	if got := (AgentSummary{Tokens: 100, Elapsed: 500 * time.Millisecond}).TokensPerSec(); got != 0 {
 		t.Errorf("sub-second totals make any rate noise: %v", got)
+	}
+	if got := (AgentSummary{Tokens: 100, Elapsed: 0}).TokensPerSec(); got != 0 {
+		t.Errorf("zero elapsed must return 0: %v", got)
+	}
+	if got := (AgentSummary{Tokens: 100, Elapsed: -time.Second}).TokensPerSec(); got != 0 {
+		t.Errorf("negative elapsed must return 0: %v", got)
 	}
 	if got := (AgentSummary{Tokens: 100, Elapsed: 20 * time.Second}).TokensPerSec(); got != 5 {
 		t.Errorf("got %v, want 5", got)

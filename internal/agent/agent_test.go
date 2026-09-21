@@ -2113,10 +2113,19 @@ func TestToolBins(t *testing.T) {
 }
 
 func TestSplitTools(t *testing.T) {
-	found := map[string]string{"ast-grep": "/usr/bin/ast-grep"}
-	have, missing := SplitTools([]string{"rg", "ast-grep|sg"}, found)
-	// The alternative pair counts as present through its second name, and is
+	// The alternative pair counts as present through its second name ("sg"), and is
 	// reported by the first, which is what the rules call it.
+	foundSecond := map[string]string{"sg": "/usr/bin/sg"}
+	have, missing := SplitTools([]string{"rg", "ast-grep|sg"}, foundSecond)
+	if !slices.Equal(have, []string{"ast-grep"}) {
+		t.Fatalf("have = %v, want [ast-grep]", have)
+	}
+	if !slices.Equal(missing, []string{"rg"}) {
+		t.Fatalf("missing = %v, want [rg]", missing)
+	}
+
+	foundFirst := map[string]string{"ast-grep": "/usr/bin/ast-grep"}
+	have, missing = SplitTools([]string{"rg", "ast-grep|sg"}, foundFirst)
 	if !slices.Equal(have, []string{"ast-grep"}) {
 		t.Fatalf("have = %v, want [ast-grep]", have)
 	}
@@ -2129,7 +2138,7 @@ func TestSplitTools(t *testing.T) {
 	if len(have) != 1 || have[0] != "patchwork" || len(missing) != 1 || missing[0] != "rg" {
 		t.Fatalf("empty-path resolution must count as missing: have=%v missing=%v", have, missing)
 	}
-	have, missing = SplitTools(nil, found)
+	have, missing = SplitTools(nil, foundSecond)
 	if have != nil || missing != nil {
 		t.Fatalf("no entries should split to nothing, got %v and %v", have, missing)
 	}

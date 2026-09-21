@@ -4,7 +4,8 @@
 package runner
 
 import (
-	"sort"
+	"cmp"
+	"slices"
 	"sync"
 	"time"
 
@@ -221,7 +222,7 @@ func (s *Stats) ByAgent() []AgentSummary {
 	for _, a := range byLabel {
 		out = append(out, *a)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
+	slices.SortFunc(out, func(a, b AgentSummary) int { return cmp.Compare(a.Label, b.Label) })
 	return out
 }
 
@@ -238,6 +239,6 @@ func (s *Stats) Failures() []Result {
 			out = append(out, r)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Review < out[j].Review })
+	slices.SortFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
 	return out
 }

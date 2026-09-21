@@ -253,7 +253,7 @@ func hasASCIILetter(s string) bool {
 // (bidi overrides included) that can drive or spoof a terminal. Tabs become
 // spaces so alignment survives.
 func stripControl(s string) string {
-	if !strings.ContainsRune(s, '\t') && !strings.ContainsFunc(s, isControl) {
+	if !strings.ContainsFunc(s, needsStripControl) {
 		return s
 	}
 	var b strings.Builder
@@ -268,6 +268,13 @@ func stripControl(s string) string {
 		}
 	}
 	return b.String()
+}
+
+func needsStripControl(r rune) bool {
+	if r < 0x80 {
+		return r < ' ' || r == 0x7f
+	}
+	return isControl(r)
 }
 
 func isControl(r rune) bool {

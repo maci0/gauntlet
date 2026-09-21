@@ -100,6 +100,7 @@ Review the following:
 
 Instructions:
 - Fix order: missing application SIGTERM handling and preStop (every deployment drops requests) > secrets or certs baked into images (immediate security exposure) > missing health probes (platform cannot manage pod lifecycle) > security context gaps (privilege escalation risk) > resource requests absent (node stability) > resilience configuration (availability during maintenance) > observability gaps > hygiene.
+- In auto-fix mode make narrow, verifiable fixes: add the missing preStop hook or SIGTERM handler, wire an existing health endpoint to a probe, set securityContext fields (`runAsNonRoot`, `readOnlyRootFilesystem`, drop capabilities), or bound resource requests. Do not invent resource limit numbers or guess unverified probe endpoints; do not restructure pod architectures or introduce service meshes in one pass.
 - If available, use: `hadolint` (Dockerfile), `dockle` (image linter), `kube-score`/`kubesec` (security scoring of manifests), `kubeconform` (manifest schema validation), `conftest` (policy checks), a container image scanner such as `trivy` (image CVEs and secrets). Never install tools.
 - Review Kubernetes manifests, Helm templates, and Kustomize overlays; read a Dockerfile only to verify PID 1, USER, and probe paths named by those manifests. docker-compose belongs to infra-review. Do not query live cluster endpoints or running pods.
 - Verify that probe paths actually exist in the application source if it is in the repo; a probe pointing at a non-existent endpoint is worse than no probe.

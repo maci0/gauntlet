@@ -68,8 +68,8 @@ func TestGeminiShapedLine(t *testing.T) {
 	if ev.Usage.Output != 17 || ev.Usage.Thinking != 9 || ev.Usage.Total != 76 {
 		t.Fatalf("usage: %+v", ev.Usage)
 	}
-	if !strings.Contains(ev.Text, "done") {
-		t.Fatalf("text: %q", ev.Text)
+	if ev.Text != "done" {
+		t.Fatalf("text = %q, want %q", ev.Text, "done")
 	}
 }
 
