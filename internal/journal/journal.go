@@ -803,7 +803,7 @@ func summarizeFile(runID, path string) (Summary, error) {
 				s.Del += *e.Del
 			}
 			s.Tokens += e.Tokens
-		case "merge":
+		case "merge", "pull_request":
 			if e.Ins != nil {
 				s.Ins += *e.Ins
 			}
@@ -1048,6 +1048,12 @@ var reviewEndJSON = []byte(`"review_end"`)
 // reviews that keep landing work.
 var mergeJSON = []byte(`"merge"`)
 
+// pullRequestJSON gates for pull_request events the same way as merge.
+// An isolated stacked review (--stacked-prs) publishes its review_end before
+// its own commit exists, so the line counts it measured against that commit
+// ride on the pull_request event instead.
+var pullRequestJSON = []byte(`"pull_request"`)
+
 // History reports, per review, how a directory's own past runs went: how often
 // each review ran there and how often it actually changed something. It is the
 // only signal that improves with use, and it costs one pass over the recent
@@ -1083,7 +1089,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		// their decode; a line without either marker cannot be one of the two
 		// events counted here.
 		gate := func(line []byte) bool {
-			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON)
+			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON) || bytes.Contains(line, pullRequestJSON)
 		}
 		visit := func(line []byte) {
 			var e historyEvent
@@ -1111,7 +1117,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 					h.Changed++
 				}
 				out[e.Review] = h
-			case "merge":
+			case "merge", "pull_request":
 				// The run itself is already counted by this review's
 				// review_end; the merge only ever adds whether it landed
 				// measured work. The loop-step merge into --merge-into

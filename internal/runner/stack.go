@@ -357,7 +357,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 		res.URL = prURL
 		r.st.Add(res)
-		r.publishPullRequest(loopNo, review, branch, parent, prURL, false)
+		r.publishPullRequest(loopNo, review, branch, parent, prURL, false, res)
 		parent, published = branch, published+1
 		parentTip, err = r.repo.Tip(ctx, "refs/heads/"+branch)
 		if err != nil {
@@ -504,7 +504,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	if pass == stackRecoverCurrent {
 		r.st.Add(Result{Review: review, Branch: branch, Base: parent, URL: prURL})
 	}
-	r.publishPullRequest(loopNo, review, branch, parent, prURL, true)
+	r.publishPullRequest(loopNo, review, branch, parent, prURL, true, Result{})
 	return branch, branchTip, true, nil
 }
 
@@ -608,14 +608,18 @@ func noteKey(p string) string {
 	return strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./")
 }
 
-func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool) {
+func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool, res Result) {
 	verb := "Opened"
 	if reused {
 		verb = "Reused"
 	}
 	r.log("%s PR for %s (%s -> %s): %s", verb, review, branch, base, prURL)
-	r.bus.Publish(Event{Kind: EvPullRequest, Dir: r.cfg.Dir, Review: review,
-		Loop: loop, Branch: branch, Base: base, URL: prURL, Status: StatusOK})
+	ev := Event{Kind: EvPullRequest, Dir: r.cfg.Dir, Review: review,
+		Loop: loop, Branch: branch, Base: base, URL: prURL, Status: StatusOK}
+	if res.HaveLines {
+		ev.Ins, ev.Del = new(res.Ins), new(res.Del)
+	}
+	r.bus.Publish(ev)
 }
 
 func (r *Runner) publishStackFailure(loop int, review, branch, base string, err error) {

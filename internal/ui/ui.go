@@ -486,6 +486,15 @@ func (m *model) apply(ev runner.Event) {
 		if ev.Status == runner.StatusConflict {
 			m.conflicts = append(m.conflicts, ev.Review+" ("+ev.Branch+")")
 		}
+		if ev.Review != "" && ev.Ins != nil && ev.Del != nil {
+			r := m.review(ev.Review)
+			r.ins, r.del = *ev.Ins, *ev.Del
+		}
+	case runner.EvPullRequest:
+		if ev.Review != "" && ev.Ins != nil && ev.Del != nil {
+			r := m.review(ev.Review)
+			r.ins, r.del = *ev.Ins, *ev.Del
+		}
 	case runner.EvReload:
 		m.reloading = true
 		m.pushFeed(feedLine{text: ev.Text, kind: normalize.Result})

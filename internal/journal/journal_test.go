@@ -739,6 +739,44 @@ func TestHistoryCountsAMergedReviewsLines(t *testing.T) {
 	}
 }
 
+// A stacked-PR review journals its lines on the pull_request event, not on
+// review_end: the review_end publishes before the layer's commit exists.
+func TestHistoryCountsAPullRequestReviewsLines(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w/stack", "review": "sec-review", "status": "ok"},
+		{"ev": "pull_request", "dir": "/w/stack", "review": "sec-review", "status": "ok",
+			"branch": "gauntlet/s/sec-review", "ins": 9, "del": 3},
+		{"ev": "review_end", "dir": "/w/stack", "review": "perf-review", "status": "ok"},
+		{"ev": "pull_request", "dir": "/w/stack", "review": "perf-review", "status": "fail"},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	if err := j.Close(Summary{Dirs: []string{"/w/stack"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/stack")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("sec-review in /w/stack = %+v, want one run whose PR opened with lines", h)
+	}
+	if h := got["perf-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("perf-review in /w/stack = %+v, want one run whose PR failed", h)
+	}
+}
+
 // A review that never finished is not a run the suggester should learn from.
 // Counting skips, failures, timeouts, and interrupts as "finished without
 // changing a line" would demote reviews the operator cancelled or that never
@@ -1262,6 +1300,35 @@ func TestSummarizeFileTakesIsolatedLinesFromMerge(t *testing.T) {
 	}
 	if s.Reviews != 1 || s.OK != 1 || s.Ins != ins || s.Del != del {
 		t.Fatalf("isolated lines should come from merge once: %+v", s)
+	}
+}
+
+// Stacked PR reviews publish line counts on pull_request, not review_end.
+func TestSummarizeFileTakesIsolatedLinesFromPullRequest(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ins, del := 12, 4
+	j.Write(map[string]any{"ev": "review_end", "dir": "/w", "review": "sec-review", "status": "ok"})
+	j.Write(map[string]any{
+		"ev": "pull_request", "dir": "/w", "review": "sec-review", "status": "ok",
+		"ins": ins, "del": del,
+	})
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Reviews != 1 || s.OK != 1 || s.Ins != ins || s.Del != del {
+		t.Fatalf("stacked PR lines should come from pull_request: %+v", s)
 	}
 }
 

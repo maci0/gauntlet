@@ -347,6 +347,16 @@ echo "RESULT: changed=1"`)
 	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
 		t.Fatalf("merged branches should be deleted:\n%s", out)
 	}
+	var loopEnd *Event
+	for i := range got {
+		if got[i].Kind == EvLoopEnd {
+			loopEnd = &got[i]
+			break
+		}
+	}
+	if loopEnd == nil || loopEnd.Ins == nil || *loopEnd.Ins == 0 {
+		t.Fatalf("EvLoopEnd in parallel mode missing line counts: %+v", loopEnd)
+	}
 }
 
 func TestParallelModeKeepsConflictingBranches(t *testing.T) {

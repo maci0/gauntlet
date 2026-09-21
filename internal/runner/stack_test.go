@@ -169,6 +169,9 @@ echo 'RESULT: changed=1'`)
 		published[1].Branch != b2 || published[1].Base != b1 || published[1].URL == "" {
 		t.Fatalf("pull request event fields: %+v", published)
 	}
+	if published[0].Ins == nil || *published[0].Ins == 0 {
+		t.Fatalf("pull request event missing line counts: %+v", published[0])
+	}
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
 		t.Fatalf("stack worktree survived:\n%s", list)
 	}

@@ -347,7 +347,7 @@ func (r *Runner) Run(ctx context.Context) {
 		start := r.now()
 		before, haveBefore := r.sample(ctx)
 		beforeIns, beforeDel := 0, 0
-		if r.cfg.StackedPRs {
+		if r.cfg.StackedPRs || r.cfg.Jobs > 1 {
 			beforeIns, beforeDel, _, _, _, _ = r.st.Totals()
 		}
 
@@ -372,7 +372,7 @@ func (r *Runner) Run(ctx context.Context) {
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
 			Elapsed: r.now().Sub(start).Seconds(),
 		}
-		if r.cfg.StackedPRs {
+		if r.cfg.StackedPRs || r.cfg.Jobs > 1 {
 			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
 			if haveLines {
 				ins, del := afterIns-beforeIns, afterDel-beforeDel

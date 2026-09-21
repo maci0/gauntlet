@@ -28,6 +28,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Record loop line changes in parallel worktree mode (`--jobs > 1`) and preserve line metrics on pull request events in stacked-PR mode (`--stacked-prs`) across the journal, history, and dashboard.
 - Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.
 - Reject empty string arguments for `--show-prompt`, `--merge-into`, `--pr-base`, `--suggest-agent`, `--usage-cmd`, and `--exclude` at startup instead of silently accepting them.
 - Enforce placeholder validation on custom agent definitions (`model` requires `{model}`, `effort` requires `{effort}`, and forbid `{prompt}` in `stream` or `continue`).
