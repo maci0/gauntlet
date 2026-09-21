@@ -583,6 +583,15 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	}
 }
 
+func TestPadBlockWideCharAlignment(t *testing.T) {
+	// A 4-character CJK string is 8 columns. Clipping to 5 columns keeps 2 glyphs (4 columns).
+	// padBlock must pad the remaining 1 column with a space so the line width is exactly 5.
+	got := padBlock("認証認証", 5, 1)
+	if w := lipgloss.Width(got); w != 5 {
+		t.Fatalf("padBlock produced %d columns, want 5: %q", w, got)
+	}
+}
+
 // One hue per agent, and the vendor's own where there is one: a lane is
 // identifiable before its name is read. Two models of one vendor must still
 // be distinguishable, so the second takes the rotation.

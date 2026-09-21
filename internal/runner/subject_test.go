@@ -112,3 +112,31 @@ func TestClipSubjectPreservesGraphemeClusters(t *testing.T) {
 		t.Fatalf("clipSubject = %q, want %q", got, prefix)
 	}
 }
+
+func TestSubjectFromChangesDisambiguatesNFCNFD(t *testing.T) {
+	nfd := "a/cafe\u0301.go"
+	nfc := "b/café.go"
+	got := subjectFromChanges(gitx.Changes{Tracked: []string{nfd, nfc}})
+	if want := "chore: update a/café.go and b/café.go"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestCommitSubjectComposesAgentSubject(t *testing.T) {
+	nfd := "fix: cafe\u0301"
+	got := commitSubject(nfd, gitx.Changes{})
+	if want := "fix: café"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if got != norm.NFC.String(got) {
+		t.Fatalf("commitSubject returned unnormalized text: %q", got)
+	}
+}
+
+func TestNoteKeyNormalizesNFC(t *testing.T) {
+	nfd := "./a/cafe\u0301.go"
+	nfc := "a/café.go"
+	if noteKey(nfd) != noteKey(nfc) {
+		t.Fatalf("noteKey(%q) = %q, want matching %q", nfd, noteKey(nfd), noteKey(nfc))
+	}
+}

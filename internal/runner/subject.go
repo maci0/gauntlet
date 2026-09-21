@@ -29,7 +29,7 @@ const subjectMax = 72
 // project's, not the machinery's.
 func commitSubject(fromAgent string, ch gitx.Changes) string {
 	if s := strings.TrimSpace(fromAgent); s != "" {
-		return s
+		return norm.NFC.String(s)
 	}
 	return subjectFromChanges(ch)
 }
@@ -163,13 +163,13 @@ func displayNames(files []string) []string {
 	bases := make(map[string]int, len(files))
 	out := make([]string, len(files))
 	for _, f := range files {
-		bases[path.Base(filepath.ToSlash(f))]++
+		bases[commitToken(path.Base(filepath.ToSlash(f)))]++
 	}
 	for i, f := range files {
 		slash := filepath.ToSlash(f)
 		base := path.Base(slash)
 		name := base
-		if bases[base] > 1 {
+		if bases[commitToken(base)] > 1 {
 			name = slash
 		}
 		name = commitToken(name)

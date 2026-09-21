@@ -11,6 +11,8 @@ import (
 	"slices"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
@@ -603,9 +605,9 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 }
 
 // noteKey aligns an agent-printed path with a git-reported one: forward
-// slashes and no leading "./".
+// slashes, no leading "./", and NFC normalized.
 func noteKey(p string) string {
-	return strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./")
+	return norm.NFC.String(strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./"))
 }
 
 func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool, res Result) {

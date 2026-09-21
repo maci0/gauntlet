@@ -288,6 +288,7 @@ func LoadCustomFile(path string) error {
 		}
 		return err
 	}
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	var defs map[string]Custom
 	if err := unmarshalStrict(data, &defs); err != nil {
 		return fmt.Errorf("%s: %w", path, err)

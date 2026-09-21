@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/fuzzy"
@@ -995,7 +996,7 @@ func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	}
 	// A one-letter miss is one substitution from every short flag; guessing
 	// `-1` for `-Z` is noise.
-	if len(name) < 2 {
+	if utf8.RuneCountInString(name) < 2 {
 		return err
 	}
 	var names []string

@@ -1453,6 +1453,22 @@ func TestAgentsExampleJsonIsValid(t *testing.T) {
 	}
 }
 
+func TestCustomAgentFileBOM(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	path := filepath.Join(dir, "agents.json")
+	body := "\xef\xbb\xbf" + `{"bomagent":{"argv":["mytool","-p","{prompt}"]}}`
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err != nil {
+		t.Fatalf("failed to load agents.json with UTF-8 BOM: %v", err)
+	}
+	if _, ok := CustomDef("bomagent"); !ok {
+		t.Fatal("bomagent not registered")
+	}
+}
+
 // A misspelled key must refuse startup rather than silently change what the
 // definition does: an ignored "optin" would auto-detect an agent its author
 // had marked opt-in, and a dropped "usage" would quietly lose live tokens.

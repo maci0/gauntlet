@@ -766,6 +766,13 @@ func TestUnknownFlagSuggestsClosest(t *testing.T) {
 	if strings.Contains(err.Error(), "did you mean") {
 		t.Fatalf("a one-letter miss is too ambiguous to hint: %v", err)
 	}
+	_, err = parseFlags([]string{"-é"})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(err.Error(), "did you mean") {
+		t.Fatalf("a one-letter non-ASCII miss is too ambiguous to hint: %v", err)
+	}
 }
 
 func TestGlobalFlagsMayPrecedeSubcommand(t *testing.T) {
