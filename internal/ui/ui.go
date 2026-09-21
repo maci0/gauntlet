@@ -310,7 +310,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		key := msg.String()
 		switch key {
-		case "q", "esc":
+		case "q":
 			// q while the run is live is a hard stop. One press arms it so an
 			// accidental tap does not kill reviews; a second press, or q
 			// after the run has finished or is already draining, closes.
@@ -318,6 +318,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			m.quitArmed = true
+			return m, nil
+		case "esc":
+			if m.done || m.finishing {
+				return m, tea.Quit
+			}
+			if m.quitArmed {
+				m.quitArmed = false
+				return m, nil
+			}
+			if m.paused {
+				m.paused = false
+				m.scroll = 0
+				return m, nil
+			}
+			if m.scroll > 0 {
+				m.scroll = 0
+				return m, nil
+			}
 			return m, nil
 		default:
 			if m.quitArmed {
@@ -346,10 +364,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.scroll = max(0, m.scroll-1)
 		case "k", "up":
 			m.scroll = min(m.scroll+1, max(0, len(m.visibleFeed())-1))
-		case "pgdown":
+		case "pgdown", "pagedown":
 			_, _, _, feedH := m.sectionHeights()
 			m.scroll = max(0, m.scroll-max(feedH-1, 1))
-		case "pgup":
+		case "pgup", "pageup":
 			_, _, _, feedH := m.sectionHeights()
 			m.scroll = min(m.scroll+max(feedH-1, 1), max(0, len(m.visibleFeed())-1))
 		case "g", "home":
@@ -1201,7 +1219,7 @@ func (m *model) helpLines() []string {
 		}
 		lines = append(lines, "")
 	}
-	qLine := "  q, esc      stop the run, killing what is running (press twice)"
+	qLine := "  q           stop the run, killing what is running (press twice; esc cancels)"
 	if m.done {
 		qLine = "  q, esc      close (the run has finished)"
 	} else if m.finishing {
@@ -1317,9 +1335,9 @@ func scrollHelp(scroll int, key string, lines []string, w, h int) int {
 		scroll = 0
 	case "end", "G":
 		scroll = bound
-	case "pgup":
+	case "pgup", "pageup":
 		scroll -= max(viewport-1, 1)
-	case "pgdown":
+	case "pgdown", "pagedown", "space":
 		scroll += max(viewport-1, 1)
 	}
 	return clampi(scroll, 0, bound)

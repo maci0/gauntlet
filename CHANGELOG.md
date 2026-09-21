@@ -14,6 +14,8 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- Support Tab and Shift-Tab pane switching, Ctrl-W word deletion, and Ctrl-U line clearing while typing in the launcher review filter (`gauntlet pick`), and automatically focus the first matching review on Enter.
+- Support Page Up, Page Down, and Space keys in the live dashboard feed view and help overlay.
 - Support Page Up and Page Down keys (`pgup`, `pgdown`) in the interactive launcher (`gauntlet pick`) across reviews, agents, options, and filter search.
 - Ship template configuration files `agents.example.json` and `.env.example` with documented options and placeholder values.
 
@@ -27,6 +29,8 @@ minor instead and were listed under Changed.
 - Validate HTTP redirect target URLs in self-update against authorized release hosts.
 
 ### Fixed
+
+- Prevent Escape from abruptly terminating an active run when quit is armed in the dashboard; Escape now cancels the quit prompt and resets paused or scrolled feeds to live output.
 
 - Record loop line changes in parallel worktree mode (`--jobs > 1`) and preserve line metrics on pull request events in stacked-PR mode (`--stacked-prs`) across the journal, history, and dashboard.
 - Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.

@@ -379,6 +379,24 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	case "enter":
 		p.typing = false // the filter stays, the keys go back to the panes
 		p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
+		if r := p.rowAt(p.cursor[paneReviews]); r.kind != rowReview {
+			for i, cand := range p.rows() {
+				if cand.kind == rowReview {
+					p.cursor[paneReviews] = i
+					break
+				}
+			}
+		}
+	case "tab":
+		p.typing = false
+		p.focus = (p.focus + 1) % paneCount
+	case "shift+tab":
+		p.typing = false
+		p.focus = (p.focus + paneCount - 1) % paneCount
+	case "ctrl+u":
+		p.filter = ""
+	case "ctrl+w":
+		p.filter = trimLastWord(p.filter)
 	case "backspace":
 		if p.filter != "" {
 			p.filter = trimLastCluster(p.filter)
@@ -396,12 +414,24 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 			p.cursor[paneReviews] = n - 1
 		}
 	default:
-		if msg.Type == tea.KeyRunes || key == " " {
+		if key == " " {
+			p.filter += " "
+		} else if msg.Type == tea.KeyRunes {
 			p.filter += string(msg.Runes)
 		}
 	}
 	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
 	return p, nil
+}
+
+// trimLastWord removes the trailing word and any whitespace following it,
+// matching the standard terminal Ctrl-W editing shortcut.
+func trimLastWord(s string) string {
+	s = strings.TrimRight(s, " ")
+	if idx := strings.LastIndex(s, " "); idx >= 0 {
+		return s[:idx+1]
+	}
+	return ""
 }
 
 // trimLastCluster removes the final grapheme cluster of s. One backspace is

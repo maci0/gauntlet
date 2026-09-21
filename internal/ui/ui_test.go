@@ -1078,6 +1078,69 @@ func TestQuitClosesImmediatelyWhenDone(t *testing.T) {
 	}
 }
 
+// Pressing esc while quit is armed cancels the arming without killing the run.
+func TestEscCancelsQuitArming(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if !m.quitArmed {
+		t.Fatal("first q did not arm quit")
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc while quit armed stopped the run instead of cancelling")
+	}
+	if m.quitArmed {
+		t.Fatal("esc did not disarm quit confirmation")
+	}
+}
+
+// Pressing esc while feed is paused or scrolled back returns to live output.
+func TestEscResetsPauseAndScroll(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.feed = []feedLine{{text: "line1"}, {text: "line2"}, {text: "line3"}}
+	m.paused = true
+	m.scroll = 2
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.paused {
+		t.Fatal("esc did not unpause the feed")
+	}
+	if m.scroll != 0 {
+		t.Fatalf("esc did not reset scroll to live edge: got %d", m.scroll)
+	}
+}
+
+func TestFeedAndHelpPagingKeys(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	for i := range 50 {
+		m.feed = append(m.feed, feedLine{text: fmt.Sprintf("line %d", i)})
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if m.scroll == 0 {
+		t.Fatal("pgup did not scroll into history")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if m.scroll != 0 {
+		t.Fatalf("pgdown did not scroll back toward live edge: got %d", m.scroll)
+	}
+
+	// Space in help overlay pages down
+	lines := make([]string, 100)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("help row %d", i)
+	}
+	scrolled := scrollHelp(0, "space", lines, 80, 20)
+	if scrolled <= 0 {
+		t.Fatalf("space did not page down in help: got %d", scrolled)
+	}
+	paged := scrollHelp(0, "pagedown", lines, 80, 20)
+	if paged <= 0 {
+		t.Fatalf("pagedown did not page down in help: got %d", paged)
+	}
+}
+
 // The footer names the action space will take now, not the one it already took.
 func TestFooterSaysResumeWhenPaused(t *testing.T) {
 	m := newModel(demoConfig())

@@ -402,6 +402,63 @@ func TestPickBackspaceRemovesWholeCluster(t *testing.T) {
 	}
 }
 
+func TestPickFilterEditingAndNavigation(t *testing.T) {
+	p := demoPicker()
+	press(p, "/")
+	if !p.typing {
+		t.Fatal("/ did not enter filter typing mode")
+	}
+	press(p, "c", "o", "d", "e", " ", "t", "e", "s", "t")
+	if got, want := p.filter, "code test"; got != want {
+		t.Fatalf("filter is %q, want %q", got, want)
+	}
+	// Ctrl+w deletes the last word
+	p.Update(tea.KeyMsg{Type: tea.KeyCtrlW})
+	if got, want := p.filter, "code "; got != want {
+		t.Fatalf("ctrl+w left %q, want %q", got, want)
+	}
+	// Ctrl+u clears the entire filter
+	p.Update(tea.KeyMsg{Type: tea.KeyCtrlU})
+	if p.filter != "" {
+		t.Fatalf("ctrl+u left %q, want empty filter", p.filter)
+	}
+
+	// Tab exits filter and moves to next pane (paneAgents)
+	press(p, "s", "e", "c")
+	p.Update(tea.KeyMsg{Type: tea.KeyTab})
+	if p.typing {
+		t.Fatal("tab did not exit typing mode")
+	}
+	if p.focus != paneAgents {
+		t.Fatalf("tab focused pane %d, want paneAgents (%d)", p.focus, paneAgents)
+	}
+
+	// Shift+Tab from typing exits and moves to previous pane (paneOptions)
+	press(p, "/")
+	p.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	if p.typing {
+		t.Fatal("shift+tab did not exit typing mode")
+	}
+	if p.focus != paneOptions {
+		t.Fatalf("shift+tab focused pane %d, want paneOptions (%d)", p.focus, paneOptions)
+	}
+
+	// Enter moves cursor to the first matching review, not the suggest row
+	p.filter = ""
+	p.focus = paneReviews
+	p.cursor[paneReviews] = 0 // on suggest row
+	press(p, "/", "s", "e", "c")
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if p.typing {
+		t.Fatal("enter did not exit typing mode")
+	}
+	curRow := p.rowAt(p.cursor[paneReviews])
+	if curRow.kind != rowReview || curRow.review.Name != "sec-review" {
+		t.Fatalf("enter did not place cursor on matching review, got row kind=%d name=%q",
+			curRow.kind, curRow.review.Name)
+	}
+}
+
 // Worktree isolation needs a clean tree, so the launcher says so instead of
 // composing a command that fails on launch.
 func TestPickRefusesConcurrencyOnADirtyTree(t *testing.T) {
