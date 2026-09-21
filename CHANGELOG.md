@@ -12,6 +12,10 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Added
+
+- Support Page Up and Page Down keys (`pgup`, `pgdown`) in the interactive launcher (`gauntlet pick`) across reviews, agents, options, and filter search.
+
 ### Security
 
 - Isolate `--usage-cmd` process execution and PATH resolution from the reviewed

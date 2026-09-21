@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -555,7 +556,7 @@ func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
 		t.Fatal("? did not open help")
 	}
 	got := stripANSI(p.View())
-	for _, want := range []string{"close this help", "Picking no reviews runs all of them", "tab", "stacked PRs"} {
+	for _, want := range []string{"close this help", "Picking no reviews runs all of them", "tab", "stacked PRs", "pgup / pgdn"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help lost %q:\n%s", want, got)
 		}
@@ -854,6 +855,79 @@ func TestPickHomeEndJumpThePane(t *testing.T) {
 	p.Update(tea.KeyMsg{Type: tea.KeyHome})
 	if p.cursor[paneReviews] != 0 {
 		t.Fatalf("home left cursor %d, want the first row", p.cursor[paneReviews])
+	}
+}
+
+func TestPickPageUpDownJumpThePane(t *testing.T) {
+	reviews := make([]PickReview, 40)
+	for i := range reviews {
+		reviews[i] = PickReview{Name: fmt.Sprintf("rev-%02d", i), Desc: "test review"}
+	}
+	p := newPicker(PickConfig{
+		Groups: []PickGroup{
+			{Name: "all", Reviews: reviews},
+		},
+		Agents: []string{"a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9", "a10"},
+	})
+	p.w, p.h, p.ready = 100, 20, true
+	p.open[0] = true
+
+	step := max(p.paneHeight(paneReviews)-1, 1)
+	if step <= 1 {
+		t.Fatalf("step too small: %d", step)
+	}
+
+	// In paneReviews
+	p.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if p.cursor[paneReviews] != step {
+		t.Fatalf("pgdown moved cursor to %d, want %d", p.cursor[paneReviews], step)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if p.cursor[paneReviews] != step*2 {
+		t.Fatalf("second pgdown moved cursor to %d, want %d", p.cursor[paneReviews], step*2)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if p.cursor[paneReviews] != step {
+		t.Fatalf("pgup moved cursor to %d, want %d", p.cursor[paneReviews], step)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if p.cursor[paneReviews] != 0 {
+		t.Fatalf("second pgup moved cursor to %d, want 0", p.cursor[paneReviews])
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if p.cursor[paneReviews] != 0 {
+		t.Fatalf("pgup past top should clamp to 0, got %d", p.cursor[paneReviews])
+	}
+
+	// In filter typing mode
+	press(p, "/", "rev")
+	if !p.typing {
+		t.Fatal("expected picker to be in typing mode")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if p.cursor[paneReviews] == 0 {
+		t.Fatal("pgdown inside filterKey did not advance cursor")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnd})
+	if p.cursor[paneReviews] != len(p.rows())-1 {
+		t.Fatalf("end inside filterKey did not jump to end: got %d, want %d", p.cursor[paneReviews], len(p.rows())-1)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyHome})
+	if p.cursor[paneReviews] != 0 {
+		t.Fatalf("home inside filterKey did not jump to start: got %d", p.cursor[paneReviews])
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+
+	// In paneAgents
+	p.focus = paneAgents
+	agentStep := max(p.paneHeight(paneAgents)-1, 1)
+	p.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if p.cursor[paneAgents] != agentStep {
+		t.Fatalf("pgdown in paneAgents moved cursor to %d, want %d", p.cursor[paneAgents], agentStep)
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	if p.cursor[paneAgents] != 0 {
+		t.Fatalf("pgup in paneAgents moved cursor to %d, want 0", p.cursor[paneAgents])
 	}
 }
 

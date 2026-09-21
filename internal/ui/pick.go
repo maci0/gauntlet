@@ -341,6 +341,10 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.move(+1)
 	case "up", "k":
 		p.move(-1)
+	case "pgdown", "pagedown":
+		p.pageMove(+1)
+	case "pgup", "pageup":
+		p.pageMove(-1)
 	case "home":
 		p.cursor[p.focus] = 0
 	case "end":
@@ -381,6 +385,16 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		}
 	case "up", "down":
 		p.move(map[string]int{"up": -1, "down": +1}[key])
+	case "pgup", "pageup":
+		p.pageMove(-1)
+	case "pgdown", "pagedown":
+		p.pageMove(+1)
+	case "home":
+		p.cursor[paneReviews] = 0
+	case "end":
+		if n := p.paneLen(paneReviews); n > 0 {
+			p.cursor[paneReviews] = n - 1
+		}
 	default:
 		if msg.Type == tea.KeyRunes || key == " " {
 			p.filter += string(msg.Runes)
@@ -436,6 +450,32 @@ func (p *picker) move(d int) {
 		return
 	}
 	p.cursor[p.focus] = min(max(p.cursor[p.focus]+d, 0), n-1)
+}
+
+// paneHeight returns the visible content height of the given pane.
+func (p *picker) paneHeight(which pane) int {
+	free := max(4, p.h-9)
+	switch which {
+	case paneReviews:
+		reviewRows := len(p.rows())
+		if p.filterMissed(p.rows()) {
+			reviewRows++ // the fruitless-filter notice needs its own row
+		}
+		return clampi(reviewRows, 1, free)
+	case paneAgents:
+		runH := clampi(len(p.opts), 1, max(free-7, 1))
+		return clampi(len(p.cfg.Agents), 1, max(free-runH-6, 1))
+	case paneOptions:
+		return clampi(len(p.opts), 1, max(free-7, 1))
+	default:
+		return 1
+	}
+}
+
+// pageMove steps the focused pane's cursor by one visible page.
+func (p *picker) pageMove(d int) {
+	step := max(p.paneHeight(p.focus)-1, 1)
+	p.move(d * step)
 }
 
 func (p *picker) rowAt(i int) row {
@@ -820,21 +860,14 @@ func (p *picker) View() string {
 	}
 	leftW := clampi(p.w*3/5, min(34, p.w-28), p.w-28)
 	rightW := p.w - leftW - 1
-	// Chrome: header, two panel titles and borders on the right, the command
-	// line, the hint, and the keys.
-	free := max(4, p.h-9)
 	// Each panel costs three rows of chrome. The run pane is where the cost
 	// of a run is chosen, so it keeps its rows and the agent list gives first;
 	// both scroll rather than spilling off the screen.
-	runH := clampi(len(p.opts), 1, max(free-7, 1))
-	agentH := clampi(len(p.cfg.Agents), 1, max(free-runH-6, 1))
+	runH := p.paneHeight(paneOptions)
+	agentH := p.paneHeight(paneAgents)
 	// The tree takes what it needs and no more; the panels beside it are
 	// sized by the terminal, not by how many groups happen to be open.
-	reviewRows := len(p.rows())
-	if p.filterMissed(p.rows()) {
-		reviewRows++ // the fruitless-filter notice needs its own row
-	}
-	reviewH := clampi(reviewRows, 1, free)
+	reviewH := p.paneHeight(paneReviews)
 
 	right := lipgloss.JoinVertical(lipgloss.Left,
 		p.agentPanel(rightW, agentH),
@@ -1054,11 +1087,12 @@ func (p *picker) helpLines() []string {
 		"",
 		"  tab          reviews, agents, and run options",
 		"  j / k        move within a pane",
+		"  pgup / pgdn  move by page",
+		"  home / end   first / last row in this pane",
 		"  space        toggle a review, a set, an agent, or a switch",
 		"  ← / →        open or close a set; change a value",
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by name or description; enter keeps it, esc clears",
-		"  home / end   first / last row in this pane",
 		"  + / -        raise or lower concurrency",
 		"  enter        run the composed command",
 		"  q            leave without running",
