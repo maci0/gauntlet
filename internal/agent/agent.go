@@ -487,6 +487,12 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	}
 	if opts.Binary != "" {
 		cmd[0] = opts.Binary
+	} else if len(cmd) > 0 && (strings.HasPrefix(cmd[0], "~") || strings.Contains(cmd[0], "$")) {
+		expanded, err := gauntlethome.ExpandPath(cmd[0])
+		if err != nil {
+			return nil, fmt.Errorf("custom agent %q executable %s: %w", spec.Tool, cmd[0], err)
+		}
+		cmd[0] = expanded
 	}
 	for _, a := range cmd {
 		if len(a) > maxPromptArg {

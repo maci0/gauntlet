@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -971,6 +972,37 @@ func TestParseFlagsRejectsUnresolvableGauntletHome(t *testing.T) {
 	_, err := parseFlags([]string{"--list"})
 	if err == nil || !strings.Contains(err.Error(), "GAUNTLET_HOME") {
 		t.Fatalf("want GAUNTLET_HOME error, got %v", err)
+	}
+}
+
+func TestParseFlagsRejectsFileGauntletHome(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_HOME", file)
+	_, err := parseFlags([]string{"--list"})
+	if err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("want not a directory error, got %v", err)
+	}
+}
+
+func TestParseFlagsRejectsFilePromptDir(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := parseFlags([]string{"--prompt-dir", file})
+	if err == nil || !strings.Contains(err.Error(), "not a directory") {
+		t.Fatalf("want not a directory error, got %v", err)
+	}
+}
+
+func TestParseFlagsRejectsDirectoryLogFile(t *testing.T) {
+	dir := t.TempDir()
+	_, err := parseFlags([]string{"--log", dir})
+	if err == nil || !strings.Contains(err.Error(), "is a directory") {
+		t.Fatalf("want is a directory error, got %v", err)
 	}
 }
 

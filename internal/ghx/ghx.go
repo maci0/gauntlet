@@ -235,6 +235,7 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = c.Dir
+	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
 	// Like gitx: a child that escapes the process group must not keep Run
 	// blocked on the output pipes past the kill.

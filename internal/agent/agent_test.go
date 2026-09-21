@@ -569,6 +569,36 @@ func TestBuildCmdBinaryOverride(t *testing.T) {
 	}
 }
 
+func TestBuildCmdCustomExpandsPath(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	binDir := t.TempDir()
+	t.Setenv("GAUNTLET_TEST_AGENT_BIN", binDir)
+	if err := Register("mytool", Custom{Argv: []string{"$GAUNTLET_TEST_AGENT_BIN/tool", "-p", "{prompt}"}}); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := BuildCmd(Spec{Tool: "mytool"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(binDir, "tool")
+	if argv[0] != want {
+		t.Fatalf("argv[0] = %q, want %q", argv[0], want)
+	}
+}
+
+func TestBuildCmdCustomRefusesUnsetEnv(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	t.Setenv("GAUNTLET_TEST_UNSET_VAR", "x")
+	os.Unsetenv("GAUNTLET_TEST_UNSET_VAR")
+	if err := Register("badtool", Custom{Argv: []string{"$GAUNTLET_TEST_UNSET_VAR/tool", "-p", "{prompt}"}}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := BuildCmd(Spec{Tool: "badtool"}, "P", BuildOpts{})
+	if err == nil || !strings.Contains(err.Error(), "GAUNTLET_TEST_UNSET_VAR") {
+		t.Fatalf("want error mentioning GAUNTLET_TEST_UNSET_VAR, got %v", err)
+	}
+}
+
 func TestBuildCmdAgyStreamAndPrintTimeout(t *testing.T) {
 	// agy --print-timeout defaults to 5m0s; without forwarding the runner's
 	// wait bound, a longer review dies inside agy first. stream-json is the

@@ -420,8 +420,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
-		if _, err := gauntlethome.ExpandPath(h); err != nil {
+		exp, err := gauntlethome.ExpandPath(h)
+		if err != nil {
 			return nil, fmt.Errorf("GAUNTLET_HOME: %w", err)
+		}
+		if fi, err := os.Stat(exp); err == nil && !fi.IsDir() {
+			return nil, fmt.Errorf("GAUNTLET_HOME %s: not a directory", exp)
 		}
 	}
 
@@ -725,6 +729,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if err != nil {
 			return nil, fmt.Errorf("--prompt-dir: %w", err)
 		}
+		if fi, err := os.Stat(expanded); err == nil && !fi.IsDir() {
+			return nil, fmt.Errorf("--prompt-dir %s: not a directory", expanded)
+		}
 		o.promptDir = expanded
 	}
 	if isFlagSet(fs, "log") {
@@ -735,6 +742,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		expanded, err := gauntlethome.ExpandPath(o.logFile)
 		if err != nil {
 			return nil, fmt.Errorf("--log: %w", err)
+		}
+		if fi, err := os.Stat(expanded); err == nil && fi.IsDir() {
+			return nil, fmt.Errorf("--log %s: is a directory", expanded)
 		}
 		o.logFile = expanded
 	}

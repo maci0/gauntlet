@@ -36,6 +36,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Expand tildes and environment variables in custom agent executable paths at launch, and reject unresolvable variables.
+- Validate that GAUNTLET_HOME and --prompt-dir name directories and --log names a file at startup.
 - Align documented `GIT_SSH_COMMAND` default in `.env.example` with the runtime default (`ssh`).
 - Reject mismatched placeholders across custom agent `model`, `effort`, `stream`, and `continue` configurations.
 - Do not count opt-in agents launchable only via bunx (`dsh`) as usable auto-detectable CLIs in the doctor report, correctly reporting missing agents and exiting 1.
