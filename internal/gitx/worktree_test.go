@@ -470,3 +470,41 @@ func TestDeleteBranchesMatching(t *testing.T) {
 		t.Fatalf("unrelated branch should remain, got:\n%s", branches)
 	}
 }
+
+func TestRemoveTwiceConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatalf("first Remove failed: %v", err)
+	}
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatalf("second Remove on already-removed worktree failed: %v", err)
+	}
+}
+
+func TestRemoveMissingDirConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-01", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(wt.Dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatalf("Remove on deleted worktree dir failed: %v", err)
+	}
+}

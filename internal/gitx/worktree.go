@@ -451,21 +451,34 @@ func (w *Worktree) Advance(ctx context.Context, newBase string) error {
 }
 
 // Remove deletes the checkout. The branch is left alone: Merge decides
-// whether it is still needed.
+// whether it is still needed. It is idempotent: a second call on an
+// already-removed checkout is a safe no-op.
 func (w *Worktree) Remove(ctx context.Context) error {
 	if w == nil || w.repo == nil {
 		return nil
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
-	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err != nil {
+	dir := w.Dir
+	if dir == "" {
+		return nil
+	}
+	if _, err := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err != nil {
 		// A cancel during "git worktree add" can leave the entry locked;
 		// unlock it and retry before giving up.
-		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", w.Dir)
-		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err2 != nil {
+		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", dir)
+		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err2 != nil {
+			if _, statErr := os.Stat(dir); os.IsNotExist(statErr) {
+				_, _ = w.repo.run(ctx, gitNormal, "worktree", "prune")
+				w.Dir = ""
+				w.sub = nil
+				return nil
+			}
 			return fmt.Errorf("git worktree remove: %w", err2)
 		}
 	}
+	w.Dir = ""
+	w.sub = nil
 	return nil
 }
 
