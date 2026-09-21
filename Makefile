@@ -30,6 +30,7 @@ GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 RUFF_VERSION ?= 0.16.4
 MYPY_VERSION ?= 2.3.1
 RICH_VERSION ?= 15.0.0
+UV_VERSION ?= 0.12.6
 GOVULNCHECK_VERSION ?= v1.7.0
 
 # Release artifacts must not depend on the build host's locale: the shell
@@ -166,7 +167,7 @@ ci: check test ## Go pull-request checks: fmt, fix, vet, and the test suite
 .PHONY: check-scripts
 check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 	@command -v uvx >/dev/null 2>&1 || { \
-		echo "check-scripts: uvx not found on PATH." >&2; \
+		echo "check-scripts: uvx not found on PATH (install uv $(UV_VERSION): https://docs.astral.sh/uv/getting-started/installation/)" >&2; \
 		echo "CI runs: uvx ruff@$(RUFF_VERSION) check scripts" >&2; \
 		echo "         uvx ruff@$(RUFF_VERSION) format --check scripts" >&2; \
 		echo "         uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts" >&2; \
@@ -177,6 +178,10 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 		echo "check-scripts: shellcheck not found on PATH (CI uses the Ubuntu runner's copy)" >&2; \
 		exit 1; \
 	}
+	@got_uv=$$(uv version 2>/dev/null | awk '{print $$2}'); \
+		if [ -n "$$got_uv" ] && [ "$$got_uv" != "$(UV_VERSION)" ]; then \
+			echo "note: uv $$got_uv; CI pins $(UV_VERSION). Tools are version-locked, but resolver behavior can differ." >&2; \
+		fi
 	uvx ruff@$(RUFF_VERSION) check scripts
 	uvx ruff@$(RUFF_VERSION) format --check scripts
 	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts

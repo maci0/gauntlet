@@ -61,12 +61,16 @@ CI additionally runs the full suite under each tag configuration, then
 `make dist` and `make repro`. Reproduce the other two matrix legs locally
 with `make test TAGS=notoktop` and `make test TAGS=` when your change
 touches tagged files; you do not need dist or repro unless you touched the
-release path.
+release path. CI also runs `make cover` with a coverage floor (`COVER_MIN`
+in the Makefile); run `make cover` locally before pushing a change that
+removes tested code paths.
 
 A separate `scripts` job lints `scripts/` with ruff (rules in
 [pyproject.toml](pyproject.toml)), mypy `--strict`, and shellcheck on
-`scripts/shots.sh`. `make check-scripts` runs those same three steps with
-the versions CI pins. It needs `uv` (for `uvx`) and shellcheck on PATH.
+`scripts/shots.sh`. `make check-scripts` runs those same steps with
+the versions CI pins. It needs `uvx` (shipped with
+[uv](https://docs.astral.sh/uv/getting-started/installation/)) and
+shellcheck on PATH.
 
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph

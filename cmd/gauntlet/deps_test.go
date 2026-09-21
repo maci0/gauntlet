@@ -193,6 +193,7 @@ func TestScriptsToolPinsMatchCI(t *testing.T) {
 		{"ruff", makefilePin(makefile, "RUFF_VERSION"), toolAtPin(ci, "ruff")},
 		{"mypy", makefilePin(makefile, "MYPY_VERSION"), toolAtPin(ci, "mypy")},
 		{"rich", makefilePin(makefile, "RICH_VERSION"), richPin(ci)},
+		{"uv", makefilePin(makefile, "UV_VERSION"), uvSetupPin(ci)},
 	}
 	for _, c := range checks {
 		if c.makefile == "" {
@@ -457,6 +458,18 @@ func makefilePin(text, name string) string {
 func toolAtPin(text, tool string) string {
 	re := regexp.MustCompile(regexp.QuoteMeta(tool) + `@([0-9][0-9A-Za-z._-]*)`)
 	m := re.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// uvSetupPin extracts the version from the astral-sh/setup-uv action's
+// `version:` field (format: version: "0.12.6").
+var uvVersionField = regexp.MustCompile(`(?m)^\s+version:\s+"([0-9][0-9A-Za-z._-]*)"`)
+
+func uvSetupPin(text string) string {
+	m := uvVersionField.FindStringSubmatch(text)
 	if m == nil {
 		return ""
 	}
