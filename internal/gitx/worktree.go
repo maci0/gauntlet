@@ -309,6 +309,8 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	if w == nil || w.repo == nil || w.Dir == "" {
 		return errors.New("nil stack worktree")
 	}
+	w.repo.wtMu.Lock()
+	defer w.repo.wtMu.Unlock()
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
 		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
 	}
@@ -487,6 +489,8 @@ func (w *Worktree) Advance(ctx context.Context, newBase string) error {
 	if w == nil || w.repo == nil || w.Dir == "" {
 		return errors.New("nil worktree")
 	}
+	w.repo.wtMu.Lock()
+	defer w.repo.wtMu.Unlock()
 	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase); err != nil {
 		return fmt.Errorf("git checkout --detach: %w", err)

@@ -779,12 +779,20 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review string,
 	loopNo, laneIdx, reviewIdx int) Result {
 
+	if ctx.Err() != nil {
+		res := Result{Review: review, Agent: r.pickAgent(review, nil),
+			ExitCode: -1, Status: StatusInterrupted}
+		r.publishReviewEnd(res, loopNo, "", "")
+		return res
+	}
+
+	cleanCtx := context.WithoutCancel(ctx)
 	tag := fmt.Sprintf("%s-l%d-lane%d-%02d", r.cfg.RunID, loopNo, laneIdx, reviewIdx)
 
 	// Start from the latest HEAD so the review sees work merged by other
 	// lanes, not the stale tip from when the loop (or the last review) began.
 	base := wt.Base()
-	if tip, err := r.repo.Tip(ctx, "HEAD"); err != nil {
+	if tip, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
 		r.log("Cannot read HEAD before %s, using the lane's previous base: %v", review, err)
 	} else if tip != "" {
 		base = tip
@@ -793,15 +801,16 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	// Switch the lane to a review-specific branch from the current tip.
 	oldBranch := wt.Branch
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, gitx.BranchSlug(review))
-	if err := wt.StartBranch(ctx, branch, base); err != nil {
+	if err := wt.StartBranch(cleanCtx, branch, base); err != nil {
 		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
+		r.repo.DeleteBranch(cleanCtx, branch)
 		res := Result{Review: review, Agent: r.pickAgent(review, nil),
 			ExitCode: -1, Status: StatusSkipped, Detail: err.Error()}
 		r.publishReviewEnd(res, loopNo, "", "")
 		return res
 	}
 	if oldBranch != "" && oldBranch != branch {
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), oldBranch)
+		r.repo.DeleteBranch(cleanCtx, oldBranch)
 	}
 
 	// advance resets the lane to the current HEAD so it is ready for the next
