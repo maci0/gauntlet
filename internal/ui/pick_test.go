@@ -577,7 +577,7 @@ func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
 
 // Stack mode owns commits and the job count: conflicting choices are kept for
 // later but omitted while stacking, and +/- must not sneak a -j back in.
-func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
+func setupConflictingOptionsPicker() *picker {
 	p := demoPicker()
 	p.concurrency().n = 4
 	p.optByFlag("--push").on = true
@@ -589,9 +589,13 @@ func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
 			break
 		}
 	}
-	p.toggle()
+	return p
+}
+
+func assertConflictingOptionsPreserved(t *testing.T, p *picker) {
+	t.Helper()
 	if !p.stacked() {
-		t.Fatal("space did not turn stacked PRs on")
+		t.Fatal("stacked PRs was not turned on")
 	}
 	if p.concurrency().n != 4 {
 		t.Fatalf("jobs %d, want preserved value 4 after stacked PRs", p.concurrency().n)
@@ -602,6 +606,12 @@ func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
 	if p.optByFlag("--merge-into").idx != 1 {
 		t.Fatal("merge target was lost under stacked PRs")
 	}
+}
+
+func TestPickStackedPRsPreserveConflictingOptions(t *testing.T) {
+	p := setupConflictingOptionsPicker()
+	p.toggle()
+	assertConflictingOptionsPreserved(t, p)
 	press(p, "+", "+")
 	if p.concurrency().n != 4 {
 		t.Fatal("+ still raised jobs under stacked PRs")
@@ -1061,30 +1071,9 @@ func TestPickSpaceCyclesConcurrency(t *testing.T) {
 // Turning on stacked PRs via right arrow or 'l' preserves conflicting options
 // just as space does.
 func TestPickRightArrowOnStackedPRsPreservesConflicts(t *testing.T) {
-	p := demoPicker()
-	p.concurrency().n = 4
-	p.optByFlag("--push").on = true
-	p.optByFlag("--merge-into").idx = 1
-	p.focus = paneOptions
-	for i, o := range p.opts {
-		if o.flag == "--stacked-prs" {
-			p.cursor[paneOptions] = i
-			break
-		}
-	}
+	p := setupConflictingOptionsPicker()
 	press(p, "l")
-	if !p.stacked() {
-		t.Fatal("'l' did not turn stacked PRs on")
-	}
-	if p.concurrency().n != 4 {
-		t.Fatalf("jobs %d, want preserved value 4 after stacked PRs", p.concurrency().n)
-	}
-	if !p.optByFlag("--push").on {
-		t.Fatal("push choice was lost under stacked PRs")
-	}
-	if p.optByFlag("--merge-into").idx != 1 {
-		t.Fatal("merge target was lost under stacked PRs")
-	}
+	assertConflictingOptionsPreserved(t, p)
 }
 
 // Hints for dimmed/inactive options must explain why they are inactive

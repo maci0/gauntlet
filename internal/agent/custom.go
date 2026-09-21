@@ -96,13 +96,11 @@ func (c Custom) validate(name string) error {
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
+	prompts := 0
 	for _, a := range c.Argv {
 		if strings.TrimSpace(a) == "" {
 			return fmt.Errorf("custom agent %q: argv contains an empty argument", name)
 		}
-	}
-	prompts := 0
-	for _, a := range c.Argv {
 		if strings.Contains(a, promptPlaceholder) {
 			prompts++
 		}
