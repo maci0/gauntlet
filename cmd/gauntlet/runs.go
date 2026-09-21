@@ -66,8 +66,12 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 			tokens = humanize.Count(e.Tokens)
 		}
 		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
+		started := "n/a"
+		if !e.Start.IsZero() {
+			started = e.Start.Local().Format("2006-01-02 15:04:05")
+		}
 		write("%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
-			e.RunID, e.Start.Local().Format("2006-01-02 15:04:05"), dur,
+			e.RunID, started, dur,
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
 	write("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
@@ -91,7 +95,7 @@ func failedCell(pal palette, bad int) string {
 // close but not that inverse, and a stamp the encoder wrote must replay.
 func showTime(s string) string {
 	var t time.Time
-	if err := t.UnmarshalText([]byte(s)); err != nil {
+	if err := t.UnmarshalText([]byte(s)); err != nil || t.IsZero() {
 		return ""
 	}
 	return t.Local().Format("15:04:05")

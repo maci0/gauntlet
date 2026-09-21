@@ -20,6 +20,19 @@ minor instead and were listed under Changed.
 - Constrain self-update asset downloads to HTTPS endpoints on authorized GitHub
   release hosts, preventing plaintext transfers or untrusted third-party hosts.
 
+### Fixed
+
+- Parse duration flags with 64-bit integer precision so values above 2^31-1
+  nanoseconds parse without overflow on 32-bit platforms.
+- Format missing run start timestamps as `n/a` instead of `0001-01-01` in
+  `gauntlet runs`.
+- Generated commit subjects clip at whole grapheme boundaries within the 72-rune
+  limit, preserving combining accents, flags, and emoji sequences.
+- Filenames in generated commit subjects strip C1 controls, bidi overrides,
+  zero-width spaces, and Unicode line breaks, preventing terminal spoofing.
+- Display text sanitization strips Unicode line and paragraph separators (U+2028
+  and U+2029), preserving line integrity in output feeds and summaries.
+
 ## 1.22.1
 
 ### Fixed

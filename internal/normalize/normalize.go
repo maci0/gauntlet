@@ -196,7 +196,7 @@ func (n *Normalizer) allow() bool {
 		return true
 	}
 	now := n.cfg.Now()
-	if n.inWindow == 0 || now.Sub(n.windowFrom) >= time.Second {
+	if n.inWindow == 0 || now.Sub(n.windowFrom) >= time.Second || now.Sub(n.windowFrom) < 0 {
 		n.windowFrom, n.inWindow = now, 0
 		// Drops are not reported here: they accumulate in suppressed until
 		// Flush emits one summary line.
@@ -274,7 +274,8 @@ func isControl(r rune) bool {
 	if r < 0x80 {
 		return r != '\t' && (r < ' ' || r == 0x7f)
 	}
-	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+		unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
 // classify labels one line, tracking diff state across calls.
@@ -369,6 +370,25 @@ func Truncate(s string, w int) string {
 		if n > w {
 			start, _ := g.Positions()
 			return s[:start] + "…"
+		}
+	}
+	return s
+}
+
+// Clip cuts s to at most max code points, without splitting a grapheme
+// cluster (combining marks, emoji sequences, flags) or a UTF-8 sequence,
+// returning the prefix without an ellipsis.
+func Clip(s string, max int) string {
+	if max <= 0 {
+		return ""
+	}
+	n := 0
+	clusters := uniseg.NewGraphemes(s)
+	for clusters.Next() {
+		n += utf8.RuneCountInString(clusters.Str())
+		if n > max {
+			start, _ := clusters.Positions()
+			return s[:start]
 		}
 	}
 	return s

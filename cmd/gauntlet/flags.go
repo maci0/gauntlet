@@ -176,12 +176,12 @@ func parseDuration(s string) (time.Duration, error) {
 	case 'd', 'D':
 		unit, digits = 24*time.Hour, trimmed[:len(trimmed)-1]
 	}
-	n, err := strconv.Atoi(digits)
+	n, err := strconv.ParseInt(digits, 10, 64)
+	if errors.Is(err, strconv.ErrRange) || (err == nil && n > math.MaxInt64/int64(unit)) {
+		return 0, fmt.Errorf("duration is too large: %q", s)
+	}
 	if err != nil || n < 0 {
 		return 0, fmt.Errorf("invalid duration: %q (e.g. 90s, 30m, 1h, 2d)", s)
-	}
-	if int64(n) > math.MaxInt64/int64(unit) {
-		return 0, fmt.Errorf("duration is too large: %q", s)
 	}
 	return time.Duration(n) * unit, nil
 }

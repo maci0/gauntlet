@@ -10,11 +10,13 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 // subjectMax is the conventional 72-character cap for a generated subject.
@@ -187,7 +189,11 @@ func commitToken(s string) string {
 	// cannot sit on the 72-rune cut by itself.
 	s = norm.NFC.String(s)
 	s = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
+		if r == ' ' {
+			return r
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 			return -1
 		}
 		return r
@@ -199,12 +205,5 @@ func clipSubject(s string) string {
 	if utf8.RuneCountInString(s) <= subjectMax {
 		return s
 	}
-	n := 0
-	for i := range s {
-		if n == subjectMax {
-			return strings.TrimSpace(s[:i])
-		}
-		n++
-	}
-	return s
+	return strings.TrimSpace(normalize.Clip(s, subjectMax))
 }

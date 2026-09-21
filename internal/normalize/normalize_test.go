@@ -138,6 +138,22 @@ func TestRateLimitWindowStartsAtFirstLine(t *testing.T) {
 	}
 }
 
+func TestRateLimitClockStepBackward(t *testing.T) {
+	start := time.Unix(100, 0)
+	now := start
+	n := New(Config{MaxLinesPerSec: 1, Now: func() time.Time { return now }})
+	var out []Line
+	out = append(out, n.Push("line 1")...)
+	// Clock steps backward (NTP step or manual clock change)
+	now = start.Add(-10 * time.Second)
+	out = append(out, n.Push("line 2")...)
+	out = append(out, n.Flush()...)
+	want := "line 1|line 2"
+	if got := strings.Join(texts(out), "|"); got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
 func TestClassify(t *testing.T) {
 	cases := []struct {
 		in   string
@@ -321,25 +337,28 @@ func TestDiffModeEndsAtProse(t *testing.T) {
 
 func TestDisplayStripsTerminalDrivingBytes(t *testing.T) {
 	cases := map[string]string{
-		"plain text":      "RESULT: changed=3",
-		"csi colors":      "\x1b[32mok\x1b[0m",
-		"cursor moves":    "\x1b[2K\x1b[1G\x1b[31;1mx",
-		"osc title":       "\x1b]0;pwned\x07after",
-		"osc st":          "\x1b]8;;http://x\x1b\\link",
-		"controls":        "a\x00\x01\x07b",
-		"bidi override":   "user\u202Eevil",
-		"zero widths":     "hidden\u200binvisible\uFEFF!",
-		"tab":             "a\tb",
-		"unterminated":    "\x1b[31mno reset",
-		"lone esc":        "before\x1bafter",
-		"c1 controls":     "a\x9bb",
-		"carriage return": "left\rright",
+		"plain text":          "RESULT: changed=3",
+		"csi colors":          "\x1b[32mok\x1b[0m",
+		"cursor moves":        "\x1b[2K\x1b[1G\x1b[31;1mx",
+		"osc title":           "\x1b]0;pwned\x07after",
+		"osc st":              "\x1b]8;;http://x\x1b\\link",
+		"controls":            "a\x00\x01\x07b",
+		"bidi override":       "user\u202Eevil",
+		"zero widths":         "hidden\u200binvisible\uFEFF!",
+		"tab":                 "a\tb",
+		"unterminated":        "\x1b[31mno reset",
+		"lone esc":            "before\x1bafter",
+		"c1 controls":         "a\x9bb",
+		"carriage return":     "left\rright",
+		"line separator":      "line\u2028split",
+		"paragraph separator": "para\u2029split",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
 			got := Display(in)
 			for _, r := range got {
-				if r == 0x1b || (unicode.IsControl(r) && r != ' ') || unicode.Is(unicode.Cf, r) {
+				if r == 0x1b || (unicode.IsControl(r) && r != ' ') || unicode.Is(unicode.Cf, r) ||
+					unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
 					t.Fatalf("Display(%q) = %q still carries terminal-driving %q", in, got, r)
 				}
 			}
@@ -351,6 +370,37 @@ func TestDisplayStripsTerminalDrivingBytes(t *testing.T) {
 			}
 			if name == "bidi override" && got != "userevil" {
 				t.Fatalf("got %q, want \"userevil\"", got)
+			}
+			if name == "line separator" && got != "linesplit" {
+				t.Fatalf("got %q, want \"linesplit\"", got)
+			}
+			if name == "paragraph separator" && got != "parasplit" {
+				t.Fatalf("got %q, want \"parasplit\"", got)
+			}
+		})
+	}
+}
+
+func TestClipKeepsGraphemesIntact(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		width int
+		want  string
+	}{
+		{"accent", "abe\u0301xyz", 3, "ab"},
+		{"flag", "ab🇵🇱xyz", 3, "ab"},
+		{"variation selector", "ab\u2708\ufe0fxyz", 3, "ab"},
+		{"skin tone", "ab👍🏽xyz", 3, "ab"},
+		{"joined emoji", "ab👩\u200d💻xyz", 4, "ab"},
+		{"cluster fits", "abe\u0301xyz", 4, "abe\u0301"},
+		{"exact fit", "abe\u0301", 4, "abe\u0301"},
+		{"oversized cluster", "e\u0301\u0302x", 2, ""},
+		{"zero width", "abc", 0, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := Clip(tc.input, tc.width); got != tc.want {
+				t.Fatalf("Clip(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.want)
 			}
 		})
 	}

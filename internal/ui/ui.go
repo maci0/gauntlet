@@ -379,6 +379,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // ring, as a per-second rate.
 func (m *model) sampleActivity() {
 	elapsed := m.now.Sub(m.lastSample).Seconds()
+	if elapsed < 0 {
+		m.lastSample = m.now
+		return
+	}
 	if elapsed < 0.2 {
 		return
 	}
@@ -433,7 +437,8 @@ func (m *model) apply(ev runner.Event) {
 			}
 			l.liveTokens = ev.Tokens
 			if !l.lastAt.IsZero() {
-				if dt := ev.Time.Sub(l.lastAt).Seconds(); dt >= 0.5 {
+				dt := ev.Time.Sub(l.lastAt).Seconds()
+				if dt >= 0.5 {
 					if d := ev.Tokens - l.lastTokens; d > 0 {
 						// Smooth just enough that the number is readable
 						// without hiding a real change.
@@ -444,6 +449,8 @@ func (m *model) apply(ev runner.Event) {
 							l.tokenRate = 0.6*l.tokenRate + 0.4*rate
 						}
 					}
+					l.lastTokens, l.lastAt = ev.Tokens, ev.Time
+				} else if dt < 0 {
 					l.lastTokens, l.lastAt = ev.Tokens, ev.Time
 				}
 			} else {

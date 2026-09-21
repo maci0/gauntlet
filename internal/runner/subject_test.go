@@ -65,9 +65,11 @@ func TestSubjectFromChanges(t *testing.T) {
 }
 
 func TestSubjectFromChangesStripsControlsAndFits(t *testing.T) {
-	got := subjectFromChanges(gitx.Changes{Tracked: []string{"ok\x00.go"}})
-	if strings.ContainsRune(got, 0) {
-		t.Fatalf("control byte reached the subject: %q", got)
+	got := subjectFromChanges(gitx.Changes{Tracked: []string{"ok\x00\u0085\u202e\u200b\u2028.go"}})
+	if strings.ContainsRune(got, 0) || strings.ContainsRune(got, 0x85) ||
+		strings.ContainsRune(got, '\u202e') || strings.ContainsRune(got, '\u200b') ||
+		strings.ContainsRune(got, '\u2028') {
+		t.Fatalf("control/formatting/separator character reached the subject: %q", got)
 	}
 	if got != "chore: update ok.go" {
 		t.Fatalf("visible name did not survive sanitizing: %q", got)
@@ -93,5 +95,20 @@ func TestSubjectFromChangesComposesFilenames(t *testing.T) {
 	got := subjectFromChanges(gitx.Changes{Tracked: []string{nfd}})
 	if want := "chore: update café.go"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
+	}
+}
+
+func TestClipSubjectPreservesGraphemeClusters(t *testing.T) {
+	// "chore: update " is 14 runes. Fill 57 'a's (14 + 57 = 71 runes).
+	// Then a 2-rune cluster: "🇵🇱" (flag) or "e\u0301\u0302".
+	// 71 + 2 = 73 runes > 72. A naive rune cut at 72 splits the cluster.
+	prefix := "chore: update " + strings.Repeat("a", 57)
+	cluster := "🇵🇱"
+	got := clipSubject(prefix + cluster + ".go")
+	if strings.Contains(got, "🇵") {
+		t.Fatalf("clipSubject split the regional indicator sequence: %q", got)
+	}
+	if got != prefix {
+		t.Fatalf("clipSubject = %q, want %q", got, prefix)
 	}
 }

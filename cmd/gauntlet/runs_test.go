@@ -423,3 +423,36 @@ func TestShowRendersEventTimeFromOffsetStamp(t *testing.T) {
 		t.Fatalf("replay lost the event time prefix %s: %q", want, buf.String())
 	}
 }
+
+func TestRunsRendersMissingStartTimeAsNA(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	id := "20260102T150405Z-0001"
+	j, err := journal.Open(id, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Dirs: []string{"/tmp/proj"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	if strings.Contains(buf.String(), "0001-01-01") {
+		t.Fatalf("zero start time should not format as 0001-01-01, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "n/a") {
+		t.Fatalf("zero start time should format as n/a, got:\n%s", buf.String())
+	}
+}
+
+func TestShowTimeZero(t *testing.T) {
+	if got := showTime(""); got != "" {
+		t.Fatalf("showTime(\"\") = %q, want empty", got)
+	}
+	if got := showTime("0001-01-01T00:00:00Z"); got != "" {
+		t.Fatalf("showTime(zero) = %q, want empty", got)
+	}
+}

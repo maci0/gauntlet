@@ -1261,11 +1261,13 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 	// still benefits; then on the interval. Never on the startup path itself.
 	first := time.NewTimer(autoUpdateDelay)
 	defer first.Stop()
+	firstC := first.C
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-first.C:
+		case <-firstC:
+			firstC = nil
 		case <-t.C:
 		}
 		rel, err := selfupdate.Check(ctx, opts.updateRepo)
