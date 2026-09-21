@@ -446,6 +446,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		def  agent.Custom
 		name string
 	}
+	if isFlagSet(fs, "agent-cmd") && len(agentCmds) == 0 {
+		return nil, errors.New("--agent-cmd is empty: want NAME=ARGV")
+	}
 	defs := make([]namedDef, 0, len(agentCmds))
 	cmdDefs := map[string]string{}
 	for _, c := range agentCmds {
@@ -511,6 +514,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 	}
 
+	if isFlagSet(fs, "bin") && len(bins) == 0 {
+		return nil, errors.New("--bin is empty: want TOOL=PATH")
+	}
 	for _, b := range bins {
 		tool, path, err := agent.ParseBin(b)
 		if err != nil {
@@ -520,6 +526,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, fmt.Errorf("--bin given twice for %s: %s and %s", tool, prev, path)
 		}
 		o.bin[tool] = path
+	}
+	if isFlagSet(fs, "agents", "a") && len(agents) == 0 {
+		return nil, errors.New("--agents is empty")
 	}
 	if len(agents) > 0 {
 		specs, err := agent.ParseSpecs(strings.Join(agents, ","))

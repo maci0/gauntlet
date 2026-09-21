@@ -434,8 +434,16 @@ func run(argv []string) int {
 		d.set = set
 	}
 
-	// Informational modes act on the first directory, then exit.
+	// Informational modes print prompts or schedules, then exit.
 	if opts.showPrompt != "" {
+		for _, d := range runs {
+			if _, ok := d.set.Get(opts.showPrompt); ok {
+				return cmdShowPrompt(stdout, d.set, opts)
+			}
+			if _, ok := d.set.Get(opts.showPrompt + "-review"); ok {
+				return cmdShowPrompt(stdout, d.set, opts)
+			}
+		}
 		return cmdShowPrompt(stdout, runs[0].set, opts)
 	}
 
@@ -454,9 +462,17 @@ func run(argv []string) int {
 	}
 
 	if opts.list {
-		if err := listReviews(stdout, pal, runs[0].set, runs[0].reviews, opts.width); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write review listing: %v\n", err)
-			return exitFail
+		for i, d := range runs {
+			if len(runs) > 1 {
+				if i > 0 {
+					fmt.Fprintln(stdout)
+				}
+				fmt.Fprintln(stdout, pal.bold(d.dir))
+			}
+			if err := listReviews(stdout, pal, d.set, d.reviews, opts.width); err != nil {
+				fmt.Fprintf(os.Stderr, "cannot write review listing: %v\n", err)
+				return exitFail
+			}
 		}
 		return exitOK
 	}

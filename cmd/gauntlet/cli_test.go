@@ -282,6 +282,51 @@ func TestListAndShowPromptWorkWithoutAgentCLIs(t *testing.T) {
 	}
 }
 
+func TestListMultipleDirectories(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	t.Setenv("GAUNTLET_STATE", "")
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	out := captureStdout(t, func() {
+		code := run([]string{"--list", "--dirs", dir1 + "," + dir2})
+		if code != exitOK {
+			t.Errorf("--list --dirs exited %d, want %d", code, exitOK)
+		}
+	})
+
+	if !strings.Contains(out, dir1) || !strings.Contains(out, dir2) {
+		t.Errorf("--list output should include headers for both directories:\n%s", out)
+	}
+	if n := strings.Count(out, "Available reviews ("); n != 2 {
+		t.Errorf("expected 2 listings of Available reviews, got %d:\n%s", n, out)
+	}
+}
+
+func TestShowPromptDiscoversInSecondDirectory(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	t.Setenv("GAUNTLET_STATE", "")
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+
+	customPrompt := "# Custom Dir2 Review\nReviewing dir2 specifics.\n"
+	promptFile := filepath.Join(dir2, "dir2-review.md")
+	if err := os.WriteFile(promptFile, []byte(customPrompt), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		code := run([]string{"--show-prompt", "dir2", "--dirs", dir1 + "," + dir2})
+		if code != exitOK {
+			t.Errorf("--show-prompt exited %d, want %d", code, exitOK)
+		}
+	})
+
+	if !strings.Contains(out, "Reviewing dir2 specifics") {
+		t.Errorf("--show-prompt should find prompt in dir2:\n%s", out)
+	}
+}
+
 // A run id that names nothing is a bad argument (exit 2), while a journal
 // that exists but cannot be read is a general failure (exit 1). Scripts use
 // the difference to tell "I typed the wrong id" from "gauntlet broke".

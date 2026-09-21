@@ -41,6 +41,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Reject explicit empty `--agents`, `--bin`, and `--agent-cmd` flags with a usage error rather than silently ignoring them or falling back to auto-detection.
+- List scheduled and available reviews across all target directories under `--list` when multiple directories are configured via `--dirs`, and search all target trees for `--show-prompt`.
 - Adapt agent lane column widths for narrower terminals (<90 cols) so metrics are not clipped off in the live dashboard.
 - Document the Escape reset shortcut (`esc:live`) in the dashboard footer whenever the feed is paused at the live edge.
 - Show `:change` instead of `:open/close` for arrow keys in the launcher footer when focused on the options pane.
