@@ -155,3 +155,57 @@ func TestExpandPathTildeNeedsHome(t *testing.T) {
 		t.Fatalf("~/src with no HOME: got %q %v", got, err)
 	}
 }
+
+// FuzzExpandPath feeds arbitrary strings through ExpandPath and pins its
+// contract: it must never panic, must be deterministic, must leave paths
+// without '$' or leading '~/' untouched, and must never return a non-empty
+// string alongside an error.
+func FuzzExpandPath(f *testing.F) {
+	seeds := []string{
+		"~/src",
+		"~",
+		"~other/src",
+		"/plain/path",
+		"$GAUNTLET_FUZZ_DIR/sub",
+		"${GAUNTLET_FUZZ_DIR}/sub",
+		"$GAUNTLET_FUZZ_MISSING",
+		"${GAUNTLET_FUZZ_MISSING}/x",
+		"$GAUNTLET_FUZZ_EMPTY/x",
+		"$",
+		"${",
+		"$$",
+		"${}",
+		"~/~/~",
+		"\x00",
+		"relative/path",
+		"   ",
+		"",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Setenv("GAUNTLET_FUZZ_DIR", "/fuzz/path")
+	f.Setenv("GAUNTLET_FUZZ_EMPTY", "")
+	os.Unsetenv("GAUNTLET_FUZZ_MISSING")
+
+	f.Fuzz(func(t *testing.T, p string) {
+		got, err := ExpandPath(p)
+		if err != nil {
+			if got != "" {
+				t.Fatalf("ExpandPath(%q) returned non-empty string %q with error: %v", p, got, err)
+			}
+			return
+		}
+		// Invariant: if p has no $ and does not start with ~/, it must pass through unchanged.
+		if !strings.Contains(p, "$") && !strings.HasPrefix(p, "~"+string(os.PathSeparator)) {
+			if got != p {
+				t.Fatalf("ExpandPath(%q) = %q, want %q", p, got, p)
+			}
+		}
+		// Deterministic check
+		got2, err2 := ExpandPath(p)
+		if (err == nil) != (err2 == nil) || got != got2 {
+			t.Fatalf("ExpandPath(%q) is non-deterministic: (%q, %v) vs (%q, %v)", p, got, err, got2, err2)
+		}
+	})
+}

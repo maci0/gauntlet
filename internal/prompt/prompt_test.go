@@ -585,6 +585,76 @@ func TestExpandEmptySetIsErrorUnlessAllowed(t *testing.T) {
 	}
 }
 
+// FuzzSetExpand feeds arbitrary review lists through Set.Expand and verifies
+// its contract: it never panics, is deterministic, only returns reviews that
+// exist in the set when it succeeds, returns no elements on error, and cites
+// the offending flag in every error.
+func FuzzSetExpand(f *testing.F) {
+	seeds := []string{
+		"quick,sec",
+		"sec-review,doc-review",
+		"all",
+		"project",
+		"quick",
+		"sec",
+		"sec,sec",
+		"",
+		"   ",
+		",,",
+		"ALL,Quick",
+		"unknown",
+		"sce-review",
+		"doc,code,test,sec",
+		"caf\u00e9,cafe\u0301",
+		"\x00\x01\x02",
+		strings.Repeat("sec,", 50),
+		"quick,unknown,sec",
+		"all,frontend",
+		"-review",
+		"none",
+	}
+	for _, s := range seeds {
+		f.Add(s, "--reviews", false)
+		f.Add(s, "--exclude", true)
+	}
+
+	names := BundledNames()
+	byName := make(map[string]Review, len(names))
+	for _, n := range names {
+		byName[n] = Review{Name: n, Origin: Bundled}
+	}
+	set := Set{Names: names, byName: byName}
+
+	f.Fuzz(func(t *testing.T, list, flag string, emptyOK bool) {
+		got, err := set.Expand(list, flag, emptyOK)
+		if err != nil {
+			if got != nil {
+				t.Fatalf("Expand(%q, %q, %v) returned non-nil slice on error: %v", list, flag, emptyOK, got)
+			}
+			if flag != "" && !strings.Contains(err.Error(), flag) {
+				t.Fatalf("Expand error does not cite flag %q: %v", flag, err)
+			}
+			return
+		}
+		for _, name := range got {
+			if _, ok := set.Get(name); !ok {
+				t.Fatalf("Expand returned %q, which is not in the set", name)
+			}
+		}
+		if len(got) == 0 && !emptyOK {
+			for raw := range strings.SplitSeq(list, ",") {
+				if strings.TrimSpace(raw) != "" {
+					t.Fatalf("Expand returned empty slice without error on non-empty list %q with emptyOK=false", list)
+				}
+			}
+		}
+		got2, err2 := set.Expand(list, flag, emptyOK)
+		if (err == nil) != (err2 == nil) || !slices.Equal(got, got2) {
+			t.Fatalf("Expand is non-deterministic on %q: (%v, %v) vs (%v, %v)", list, got, err, got2, err2)
+		}
+	})
+}
+
 func TestDiscoverProjectOverridesBundled(t *testing.T) {
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "sec-review.md"), "Your goal is to check this project's own rules.\n")
