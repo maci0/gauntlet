@@ -538,10 +538,21 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 			return parent, parentTip, false, err
 		}
 	}
-	if pass == stackRecoverCurrent {
-		r.st.Add(Result{Review: review, Branch: branch, Base: parent, URL: prURL})
+	res := Result{
+		Review:  review,
+		Branch:  branch,
+		Base:    parent,
+		URL:     prURL,
+		Status:  StatusOK,
+		Subject: title,
 	}
-	r.publishPullRequest(loopNo, review, branch, parent, prURL, true, Result{})
+	if ins, del, ok := r.repo.DiffStat(ctx, r.cfg.Dir, parentTip, branchTip); ok {
+		res.Ins, res.Del, res.HaveLines = ins, del, true
+	}
+	if pass == stackRecoverCurrent {
+		r.st.Add(res)
+	}
+	r.publishPullRequest(loopNo, review, branch, parent, prURL, true, res)
 	return branch, branchTip, true, nil
 }
 

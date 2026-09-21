@@ -831,36 +831,42 @@ func unquoteC(s string) string {
 			break
 		}
 		i++
-		switch e := body[i]; {
-		case e == 'a':
+		switch e := body[i]; e {
+		case 'a':
 			b.WriteByte('\a')
 			i++
-		case e == 'b':
+		case 'b':
 			b.WriteByte('\b')
 			i++
-		case e == 'f':
+		case 'f':
 			b.WriteByte('\f')
 			i++
-		case e == 'n':
+		case 'n':
 			b.WriteByte('\n')
 			i++
-		case e == 'r':
+		case 'r':
 			b.WriteByte('\r')
 			i++
-		case e == 't':
+		case 't':
 			b.WriteByte('\t')
 			i++
-		case e == 'v':
+		case 'v':
 			b.WriteByte('\v')
 			i++
-		case e == '\\' || e == '"':
+		case '\\', '"':
 			b.WriteByte(e)
 			i++
-		case e >= '0' && e <= '7' && i+2 < len(body) &&
-			body[i+1] >= '0' && body[i+1] <= '7' &&
-			body[i+2] >= '0' && body[i+2] <= '7':
-			b.WriteByte((e-'0')<<6 | (body[i+1]-'0')<<3 | (body[i+2] - '0'))
-			i += 3
+		case '0', '1', '2', '3', '4', '5', '6', '7':
+			if i+2 < len(body) &&
+				body[i+1] >= '0' && body[i+1] <= '7' &&
+				body[i+2] >= '0' && body[i+2] <= '7' {
+				b.WriteByte((e-'0')<<6 | (body[i+1]-'0')<<3 | (body[i+2] - '0'))
+				i += 3
+			} else {
+				b.WriteByte('\\')
+				b.WriteByte(e)
+				i++
+			}
 		default:
 			b.WriteByte('\\')
 			b.WriteByte(e)

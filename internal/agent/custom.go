@@ -377,7 +377,10 @@ func rejectDuplicateKeys(dec *json.Decoder, foldCase bool) error {
 			if err != nil {
 				return err
 			}
-			key := token.(string)
+			key, ok := token.(string)
+			if !ok {
+				return fmt.Errorf("expected string key, got %T", token)
+			}
 			if keys[key] {
 				return fmt.Errorf("duplicate key %q", key)
 			}

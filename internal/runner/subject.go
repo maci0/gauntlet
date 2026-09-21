@@ -168,11 +168,11 @@ func displayNames(files []string) []string {
 	for i, f := range files {
 		slash := filepath.ToSlash(f)
 		base := path.Base(slash)
-		name := base
-		if bases[commitToken(base)] > 1 {
-			name = slash
+		tok := commitToken(base)
+		name := tok
+		if bases[tok] > 1 {
+			name = commitToken(slash)
 		}
-		name = commitToken(name)
 		if name == "" {
 			name = "file"
 		}

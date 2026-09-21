@@ -5,7 +5,9 @@ package runx
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -170,5 +172,23 @@ func TestAbsPATH(t *testing.T) {
 	want := "/usr/bin:/bin"
 	if got != want {
 		t.Fatalf("AbsPATH = %q, want %q", got, want)
+	}
+}
+
+func TestLookPath(t *testing.T) {
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "mytool")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	if got := LookPath("mytool"); got != bin {
+		t.Fatalf("LookPath(mytool) = %q, want %q", got, bin)
+	}
+	if got := LookPath(bin); got != bin {
+		t.Fatalf("LookPath(%q) = %q, want %q", bin, got, bin)
+	}
+	if got := LookPath("nonexistent"); got != "" {
+		t.Fatalf("LookPath(nonexistent) = %q, want empty", got)
 	}
 }

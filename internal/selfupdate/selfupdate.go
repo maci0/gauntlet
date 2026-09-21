@@ -333,7 +333,7 @@ func isLoopback(host string) bool {
 	return false
 }
 
-func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
+func getAsset(ctx context.Context, url string) (*http.Response, error) {
 	if err := validateAssetURL(url); err != nil {
 		return nil, err
 	}
@@ -346,10 +346,19 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", url, err)
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
 		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
+	return resp, nil
+}
+
+func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
+	resp, err := getAsset(ctx, url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return nil, err
@@ -363,22 +372,11 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 
 // download streams url into w and returns the hex SHA-256 of what was written.
 func download(ctx context.Context, url string, w io.Writer) (string, error) {
-	if err := validateAssetURL(url); err != nil {
-		return "", err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	resp, err := getAsset(ctx, url)
 	if err != nil {
 		return "", err
-	}
-	setGitHubAuth(req)
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", url, err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("%s returned %s", url, resp.Status)
-	}
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(resp.Body, maxAssetBytes+1))
 	if err != nil {

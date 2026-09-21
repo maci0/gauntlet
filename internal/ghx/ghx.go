@@ -10,9 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -96,13 +94,7 @@ func ParseRemote(raw string) (repo, host string, err error) {
 func Available() bool { return binary() != "" }
 
 func binary() string {
-	for _, dir := range filepath.SplitList(runx.AbsPATH()) {
-		path := filepath.Join(dir, "gh")
-		if fi, err := os.Stat(path); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
-			return path
-		}
-	}
-	return ""
+	return runx.LookPath("gh")
 }
 
 // Preflight proves gh is authenticated and can see the selected repository.

@@ -112,3 +112,23 @@ func CleanPATH(raw string) string {
 func AbsPATH() string {
 	return CleanPATH(os.Getenv("PATH"))
 }
+
+// LookPath searches for an executable binary named name across absolute PATH
+// directories, returning its absolute path or "" if not found. If name already
+// contains a path separator or is absolute, it is returned if it is a regular
+// executable file, or "" otherwise.
+func LookPath(name string) string {
+	if filepath.IsAbs(name) || strings.ContainsRune(name, os.PathSeparator) {
+		if fi, err := os.Stat(name); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return name
+		}
+		return ""
+	}
+	for _, dir := range filepath.SplitList(AbsPATH()) {
+		p := filepath.Join(dir, name)
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p
+		}
+	}
+	return ""
+}

@@ -16,7 +16,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -126,14 +125,8 @@ func probeEnv() []string {
 }
 
 func resolveProbe(name string) string {
-	if filepath.IsAbs(name) || strings.ContainsRune(name, os.PathSeparator) {
-		return name
-	}
-	for _, dir := range filepath.SplitList(runx.AbsPATH()) {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
-			return p
-		}
+	if p := runx.LookPath(name); p != "" {
+		return p
 	}
 	return name
 }
