@@ -853,17 +853,18 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	advance := func(deleteBranch bool) {
 		branchToDelete := wt.Branch
 		tip := base
-		if t, err := r.repo.Tip(ctx, "HEAD"); err != nil {
+		cleanCtx := context.WithoutCancel(ctx)
+		if t, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
 			r.log("Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
 				review, laneIdx, err)
 		} else if t != "" {
 			tip = t
 		}
-		if err := wt.Advance(context.WithoutCancel(ctx), tip); err != nil {
+		if err := wt.Advance(cleanCtx, tip); err != nil {
 			r.log("Cannot advance lane %d after %s: %v", laneIdx, review, err)
 		}
 		if deleteBranch && branchToDelete != "" {
-			r.repo.DeleteBranch(context.WithoutCancel(ctx), branchToDelete)
+			r.repo.DeleteBranch(cleanCtx, branchToDelete)
 		}
 	}
 

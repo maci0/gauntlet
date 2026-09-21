@@ -22,6 +22,11 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Abort and reset in-progress merges cleanly even when interrupted by a cancelled context, preventing unmerged index state from persisting.
+- Preserve the underlying error on retry failure when removing git worktrees.
+- Include unmerged-path inspection error context when squashing conflicted branches.
+- Warn on snapshot worktree cleanup failures and guard against nil repository references.
+- Abort prompt discovery directory traversal early when context is cancelled.
 - Parse duration flags with 64-bit integer precision so values above 2^31-1
   nanoseconds parse without overflow on 32-bit platforms.
 - Format missing run start timestamps as `n/a` instead of `0001-01-01` in

@@ -151,3 +151,40 @@ func TestMergeConflictDetailNamesTheConflict(t *testing.T) {
 		t.Fatalf("MergeInto Detail = %q, want the CONFLICT line", into.Detail)
 	}
 }
+
+func TestMergeAbortsEvenWhenContextCancelled(t *testing.T) {
+	r := newRepo(t)
+	base, err := r.Tip(context.Background(), "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(context.Background(), "conflicted", "run-1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = wt.Remove(context.WithoutCancel(context.Background())) })
+	if err := os.WriteFile(filepath.Join(wt.Dir, "file.txt"), []byte("from branch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.CommitAll(context.Background(), "branch commit"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.Dir, "file.txt"), []byte("from main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", "file.txt")
+	gitIn(t, r.Dir, "commit", "-m", "main commit")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	mr := r.Merge(ctx, wt.Branch, "try merge")
+	if mr.Merged {
+		t.Fatalf("canceled merge reported Merged: %+v", mr)
+	}
+	if _, err := r.run(context.Background(), gitNormal, "diff", "--cached", "--quiet"); err != nil {
+		t.Fatalf("staged changes left behind after canceled merge: %v", err)
+	}
+	if _, err := r.run(context.Background(), gitNormal, "diff", "--quiet"); err != nil {
+		t.Fatalf("unstaged changes left behind after canceled merge: %v", err)
+	}
+}

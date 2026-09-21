@@ -362,7 +362,7 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 	}
 	paths, uErr := sub.unmergedPaths(ctx)
 	if uErr != nil {
-		return nil, fmt.Errorf("git merge --squash %s: %w", branch, err)
+		return nil, fmt.Errorf("git merge --squash %s: %w (unmerged paths: %v)", branch, err, uErr)
 	}
 	if len(paths) == 0 {
 		// The merge failed for a reason no editing can fix (a bad ref, a
@@ -463,7 +463,7 @@ func (w *Worktree) Remove(ctx context.Context) error {
 		// unlock it and retry before giving up.
 		_, _ = w.repo.run(ctx, gitQuick, "worktree", "unlock", w.Dir)
 		if _, err2 := w.repo.run(ctx, gitNormal, "worktree", "remove", "--force", w.Dir); err2 != nil {
-			return fmt.Errorf("git worktree remove: %w", err)
+			return fmt.Errorf("git worktree remove: %w", err2)
 		}
 	}
 	return nil

@@ -116,8 +116,9 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 // progress, which `merge --abort` does not know about: the hard reset is what
 // covers both.
 func (r *Repo) abortMerge(ctx context.Context) {
-	_, _ = r.run(ctx, gitNormal, "merge", "--abort")
-	_, _ = r.run(ctx, gitNormal, "reset", "--hard", "HEAD")
+	cleanCtx := context.WithoutCancel(ctx)
+	_, _ = r.run(cleanCtx, gitNormal, "merge", "--abort")
+	_, _ = r.run(cleanCtx, gitNormal, "reset", "--hard", "HEAD")
 }
 
 // MergeInto merges branch into target, in a scratch checkout of target rather

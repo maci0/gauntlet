@@ -232,7 +232,7 @@ func (c Client) selector() string {
 func (c Client) validateURL(raw string) (string, error) {
 	u, err := url.ParseRequestURI(raw)
 	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), c.Host) {
-		return "", fmt.Errorf("gh returned an invalid PR URL for %s", c.Host)
+		return "", fmt.Errorf("gh returned an invalid PR URL %q for %s", runx.FirstLine(raw), c.Host)
 	}
 	return raw, nil
 }

@@ -752,7 +752,9 @@ func cleanupSnapshots(runs []*dirRun) {
 		if d.snapshot == nil {
 			continue
 		}
-		if err := d.snapshot.Remove(context.Background()); err == nil {
+		if err := d.snapshot.Remove(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: cannot remove snapshot worktree %s: %v\n", d.snapshot.Dir, err)
+		} else if d.repo != nil {
 			d.repo.CleanWorktreeRoot()
 		}
 	}

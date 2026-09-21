@@ -145,6 +145,9 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 	}
 	var found []string
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
 			return nil // unreadable subtree: nothing to discover in it
 		}
