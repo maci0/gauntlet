@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -427,9 +429,10 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 // trimLastWord removes the trailing word and any whitespace following it,
 // matching the standard terminal Ctrl-W editing shortcut.
 func trimLastWord(s string) string {
-	s = strings.TrimRight(s, " ")
-	if idx := strings.LastIndex(s, " "); idx >= 0 {
-		return s[:idx+1]
+	s = strings.TrimRightFunc(s, unicode.IsSpace)
+	if idx := strings.LastIndexFunc(s, unicode.IsSpace); idx >= 0 {
+		_, size := utf8.DecodeRuneInString(s[idx:])
+		return s[:idx+size]
 	}
 	return ""
 }

@@ -296,7 +296,7 @@ type Suggestion struct {
 func ParseSuggestions(out string, available []string) (picked []Suggestion, unknown []string) {
 	known := make(map[string]bool, len(available))
 	for _, a := range available {
-		known[a] = true
+		known[nfc(a)] = true
 	}
 	seen := map[string]bool{}
 	for line := range strings.SplitSeq(out, "\n") {

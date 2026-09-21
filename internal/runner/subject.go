@@ -183,15 +183,17 @@ func displayNames(files []string) []string {
 
 func commitToken(s string) string {
 	// Filenames arrive in whatever form the filesystem handed git (macOS
-	// writes NFD); compose first so the subject stores the same spelling
-	// discovery and signal matching already use, and so a combining mark
-	// cannot sit on the 72-rune cut by itself.
-	s = norm.NFC.String(s)
+	// writes NFD); compose so the subject stores the same spelling discovery
+	// and signal matching already use, and so a combining mark cannot sit on
+	// the 72-rune cut by itself. Sanitize first so dropping a hidden control
+	// character leaves the surrounding runes adjacent for composition.
 	s = normalize.Sanitize(s)
+	s = norm.NFC.String(s)
 	return strings.TrimSpace(s)
 }
 
 func clipSubject(s string) string {
+	s = norm.NFC.String(s)
 	if utf8.RuneCountInString(s) <= subjectMax {
 		return s
 	}

@@ -212,7 +212,7 @@ func TestOverlongLineChunksOnRuneBoundary(t *testing.T) {
 	// One ASCII byte shifts every following 2-byte rune by an odd offset, so
 	// the flush at the cap lands strictly inside a rune. The line must also
 	// exceed scanLines' own read buffer for the chunking path to run at all.
-	for _, runeText := range []string{"é", "界", "\U00020000"} {
+	for _, runeText := range []string{"é", "界", "\U00020000", "\uFFFD"} {
 		for _, ending := range []string{"\n", ""} {
 			t.Run(fmt.Sprintf("%d-byte/newline=%t", len(runeText), ending != ""), func(t *testing.T) {
 				want := "x" + strings.Repeat(runeText, 80000) + "tail"

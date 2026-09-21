@@ -80,7 +80,7 @@ Review the following:
 Instructions:
 - Fix order: dead code with zero callers (provably unreachable) > speculative generality (abstractions with one implementation, hooks nothing registers) > reinvented wheels replaceable by stdlib or existing dependency > overweight constructs simplifiable without behavior change.
 - In auto-fix mode act only on repo-internal symbols; anything exported or public-surface: skip, regardless of how unnecessary it looks.
-- If available, use: `vulture`/`knip`/`ts-prune`/`cargo-udeps` (dead code, unused dependencies), `tokei`/`cloc` (before/after line counts). Reports are leads, not proof; the removability trace below stays mandatory. Never install tools.
+- If available, use: `vulture`/`knip`/`ts-prune`/`cargo-udeps`/`deadcode`/`include-what-you-use` (dead code, unused dependencies and headers), `tokei`/`cloc` (before/after line counts). Reports are leads, not proof; the removability trace below stays mandatory. Never install tools.
 - Prove necessity by evidence: name the caller, the input, the requirement, or the test that fails without the code. Use the call graph and searches, not intuition; read whole functions and their callers, never fragments.
 - Prove removability the same way: before proposing a deletion, trace that nothing observable depends on it, including reflection, serialization, dynamic dispatch, and external consumers of public surface.
 - Behavior preservation is absolute. This review removes and simplifies expression, never features, validation at trust boundaries, security measures, accessibility, error handling that prevents data loss, or documented edge-case handling.

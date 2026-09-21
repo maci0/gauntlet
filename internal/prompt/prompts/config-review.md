@@ -107,7 +107,7 @@ Review the following:
 
 Instructions:
 - Fix order: dangerous defaults in production (debug on, open CORS) > missing validation of required values > inconsistent config patterns. Committed or hardcoded secrets: note the location; do not delete, move, or rewrite the value (sec-review owns that).
-- If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files). Never install tools.
+- If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files), `editorconfig-checker` (`.editorconfig` validation), `shfmt` (shell environment scripts). Never install tools.
 - Inspect actual configuration files, environment setup, and how configuration is consumed in code.
 - Trace configuration values from source to usage to verify correctness.
 - Consider what happens when the application runs with default configuration in production.

@@ -31,16 +31,19 @@ func texts(lines []Line) []string {
 
 func TestDropsNoise(t *testing.T) {
 	cases := map[string]string{
-		"empty":        "",
-		"spaces":       "   ",
-		"spinner":      "⠋",
-		"spinner run":  "  ⠙ ⠹ ⠸ ",
-		"box drawing":  "╭──────────╮",
-		"bullets":      "· · ·",
-		"ansi only":    "\x1b[2K\x1b[1G",
-		"osc title":    "\x1b]0;claude\x07",
-		"block ramp":   "▁▂▃▄▅▆▇█",
-		"control only": "\x00\x01\x02",
+		"empty":                     "",
+		"spaces":                    "   ",
+		"spinner":                   "⠋",
+		"spinner run":               "  ⠙ ⠹ ⠸ ",
+		"box drawing":               "╭──────────╮",
+		"box drawing unicode space": "╭───\u00a0──────╮",
+		"unicode spaces":            "\u00a0\u3000   ",
+		"spinner unicode space":     "  ⠙\u00a0⠹ ⠸ ",
+		"bullets":                   "· · ·",
+		"ansi only":                 "\x1b[2K\x1b[1G",
+		"osc title":                 "\x1b]0;claude\x07",
+		"block ramp":                "▁▂▃▄▅▆▇█",
+		"control only":              "\x00\x01\x02",
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {

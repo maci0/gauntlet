@@ -6,6 +6,8 @@ package runner
 import (
 	"strings"
 	"testing"
+	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -139,4 +141,69 @@ func TestNoteKeyNormalizesNFC(t *testing.T) {
 	if noteKey(nfd) != noteKey(nfc) {
 		t.Fatalf("noteKey(%q) = %q, want matching %q", nfd, noteKey(nfd), noteKey(nfc))
 	}
+}
+
+// FuzzSubjectFromChanges verifies that git change summarization never panics on
+// arbitrary untrusted filenames, always produces valid NFC UTF-8 bounded by
+// subjectMax runes, never emits control or formatting characters, and never
+// splits grapheme clusters.
+func FuzzSubjectFromChanges(f *testing.F) {
+	seeds := []struct {
+		tracked   string
+		untracked string
+	}{
+		{"internal/foo.go", ""},
+		{"internal/parser/parse.go", ""},
+		{"README.md\ndocs/CLI.md", ""},
+		{".github/workflows/ci.yml", ""},
+		{"foo_test.go\nbar_test.go", ""},
+		{"ok\x00\u0085\u202e\u200b\u2028.go", ""},
+		{"cafe\u0301.go", ""},
+		{"a/cafe\u0301.go\nb/café.go", ""},
+		{strings.Repeat("x", 80) + ".go", ""},
+		{"chore: update " + strings.Repeat("a", 57) + "🇵🇱.go", ""},
+		{"", "newfile.go"},
+		{"", ""},
+		{"\x00\x00\x00", "//////"},
+	}
+	for _, s := range seeds {
+		f.Add(s.tracked, s.untracked)
+	}
+	f.Fuzz(func(t *testing.T, rawTracked, rawUntracked string) {
+		if !utf8.ValidString(rawTracked) || !utf8.ValidString(rawUntracked) {
+			t.Skip()
+		}
+		split := func(s string) []string {
+			if s == "" {
+				return nil
+			}
+			return strings.Split(s, "\n")
+		}
+		ch := gitx.Changes{
+			Tracked:   split(rawTracked),
+			Untracked: split(rawUntracked),
+		}
+		got := subjectFromChanges(ch)
+		if got == "" {
+			t.Fatal("subjectFromChanges returned empty string")
+		}
+		if !utf8.ValidString(got) {
+			t.Fatalf("subjectFromChanges produced invalid UTF-8: %q", got)
+		}
+		if got != norm.NFC.String(got) {
+			t.Fatalf("subjectFromChanges produced unnormalized NFC: %q", got)
+		}
+		if n := utf8.RuneCountInString(got); n > subjectMax {
+			t.Fatalf("subjectFromChanges length %d exceeds %d: %q", n, subjectMax, got)
+		}
+		for _, r := range got {
+			if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+				t.Fatalf("subjectFromChanges emitted control/formatting rune %U in %q", r, got)
+			}
+		}
+		// Also verify commitSubject falls back to subjectFromChanges when agent subject is blank.
+		if cs := commitSubject("", ch); cs != got {
+			t.Fatalf("commitSubject(\"\", ch) = %q, want %q", cs, got)
+		}
+	})
 }

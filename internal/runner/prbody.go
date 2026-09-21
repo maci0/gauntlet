@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"strings"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
@@ -81,7 +83,7 @@ func (b prBody) render() string {
 		sb.WriteString("\n\n## Stack\n\n" + note)
 	}
 	sb.WriteString("\n")
-	return normalize.Truncate(sb.String(), prBodyMax)
+	return normalize.Truncate(norm.NFC.String(sb.String()), prBodyMax)
 }
 
 // changes lists the touched paths and the size of the change. Either half can
@@ -149,7 +151,7 @@ func mdText(s string, max int) string {
 		return r
 	}, s)
 	s = strings.Join(strings.Fields(normalize.Sanitize(s)), " ")
-	return normalize.Truncate(s, max)
+	return normalize.Truncate(norm.NFC.String(s), max)
 }
 
 // mdCode renders untrusted text as a Markdown code span. A backtick in a

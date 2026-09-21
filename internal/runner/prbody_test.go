@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestPRBodyDescribesTheChange(t *testing.T) {
@@ -361,4 +363,19 @@ func FuzzPRBodyRender(f *testing.F) {
 			t.Fatalf("excessive lines in body: %d", lines)
 		}
 	})
+}
+
+func TestPRBodyNormalizesNFCToPreventRuneSplitting(t *testing.T) {
+	nfdTitle := norm.NFD.String("fix(café): update entrée point")
+	body := prBody{
+		Title: nfdTitle,
+		Files: []string{norm.NFD.String("café.go")},
+	}.render()
+	nfcTitle := norm.NFC.String(nfdTitle)
+	if !strings.Contains(body, nfcTitle) {
+		t.Fatalf("render did not normalize title to NFC: %q", body)
+	}
+	if !strings.Contains(body, norm.NFC.String("café.go")) {
+		t.Fatalf("render did not normalize file to NFC: %q", body)
+	}
 }

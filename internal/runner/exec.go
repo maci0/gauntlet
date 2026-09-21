@@ -372,12 +372,12 @@ func scanLines(r io.Reader, handle func(line string)) {
 			buf = append(buf, chunk...)
 			if len(buf) >= maxLineBytes {
 				cut := len(buf)
-				if r, _ := utf8.DecodeLastRune(buf); r == utf8.RuneError {
+				if r, size := utf8.DecodeLastRune(buf); r == utf8.RuneError && size == 1 {
 					p := len(buf) - 1
 					for p > 0 && len(buf)-p < utf8.UTFMax && !utf8.RuneStart(buf[p]) {
 						p--
 					}
-					if p > 0 && utf8.RuneStart(buf[p]) {
+					if p > 0 && utf8.RuneStart(buf[p]) && !utf8.FullRune(buf[p:]) {
 						cut = p
 					}
 				}

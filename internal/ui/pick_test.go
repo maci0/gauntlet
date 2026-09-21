@@ -1205,3 +1205,20 @@ func TestPickerPreservesPromptDir(t *testing.T) {
 		t.Fatalf("argv missing --prompt-dir: %s", got)
 	}
 }
+
+func TestTrimLastWordWithUnicodeSpaces(t *testing.T) {
+	for _, tc := range []struct {
+		input string
+		want  string
+	}{
+		{"hello world", "hello "},
+		{"hello\u3000world", "hello\u3000"},
+		{"hello\u00a0world", "hello\u00a0"},
+		{"hello   ", ""},
+		{"single", ""},
+	} {
+		if got := trimLastWord(tc.input); got != tc.want {
+			t.Fatalf("trimLastWord(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}

@@ -53,32 +53,32 @@ var (
 
 	// A line made only of spinner glyphs, block/braille noise, or bullets
 	// carries no information once the animation is gone.
-	spinnerRe = regexp.MustCompile(`^[\s⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒⠁⠂⠄⡀⢀⠠⠐⠈|/\-\\●○◎◌⣿▁▂▃▄▅▆▇█▏▎▍▌▋▊▉·．]*$`)
+	spinnerRe = regexp.MustCompile(`^[\s\p{Z}⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⣾⣽⣻⢿⡿⣟⣯⣷◐◓◑◒⠁⠂⠄⡀⢀⠠⠐⠈|/\-\\●○◎◌⣿▁▂▃▄▅▆▇█▏▎▍▌▋▊▉·．]*$`)
 
 	// Box drawing only: agent CLIs frame their panels, which a dashboard
 	// re-frames anyway.
-	boxRe = regexp.MustCompile(`^[\s─│┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋╭╮╰╯═║╔╗╚╝╠╣╦╩╬▔▁]*$`)
+	boxRe = regexp.MustCompile(`^[\s\p{Z}─│┌┐└┘├┤┬┴┼━┃┏┓┗┛┣┫┳┻╋╭╮╰╯═║╔╗╚╝╠╣╦╩╬▔▁]*$`)
 
 	// Agent CLIs draw a gutter down the left of tool output: opencode uses
 	// "|", claude uses "⏺" and "⎿", codex uses "•". The gutter is decoration;
 	// what follows it is the line.
-	gutterRe = regexp.MustCompile(`^\s*(?:[|│┃⎿⏺•▌]+\s*)+`)
+	gutterRe = regexp.MustCompile(`^[\s\p{Z}]*(?:[|│┃⎿⏺•▌]+[\s\p{Z}]*)+`)
 
 	// After the gutter is gone, a line of nothing but punctuation carries no
 	// information. Bare "\x1b[0m" resets, which opencode prints between
 	// blocks, reduce to empty here.
-	punctOnlyRe = regexp.MustCompile(`^[\s|│┃⎿⏺•▌·:;,.\-_=+~^*]*$`)
+	punctOnlyRe = regexp.MustCompile(`^[\s\p{Z}|│┃⎿⏺•▌·:;,.\-_=+~^*]*$`)
 
 	// opencode's session header: "> build · ox-alpha-free" (mode and model).
 	opencodeHeaderRe = regexp.MustCompile(`^>\s+\S+\s+·\s+\S+\s*$`)
 
-	progressRe = regexp.MustCompile(`(?i)^\s*(reading|searching|scanning|thinking|indexing|analyzing|analysing|processing|loading|writing|compiling|running|checking|fetching|downloading|uploading|applying|saving|generating|querying|watching|waiting)\b`)
+	progressRe = regexp.MustCompile(`(?i)^[\s\p{Z}]*(reading|searching|scanning|thinking|indexing|analyzing|analysing|processing|loading|writing|compiling|running|checking|fetching|downloading|uploading|applying|saving|generating|querying|watching|waiting)\b`)
 
-	toolRe = regexp.MustCompile(`(?i)^\s*(?:[✓✔✗✘⏺⎿·•>]+\s*)?(bash|read|edit|write|grep|glob|list|search|patch|apply_patch|str_replace|multiedit|todowrite|todoread|webfetch|websearch|task|shell|exec)\b[\s(:]`)
+	toolRe = regexp.MustCompile(`(?i)^[\s\p{Z}]*(?:[✓✔✗✘⏺⎿·•>]+[\s\p{Z}]*)?(bash|read|edit|write|grep|glob|list|search|patch|apply_patch|str_replace|multiedit|todowrite|todoread|webfetch|websearch|task|shell|exec)\b[\s\p{Z}(:]`)
 
 	errorRe = regexp.MustCompile(`(?i)\b(error|failed|failure|exception|traceback|panic|fatal|refused|denied|timed out)\b`)
 
-	resultRe = regexp.MustCompile(`^\s*(RESULT|PATH|RELEVANT|COMMIT|SUBJECT):`)
+	resultRe = regexp.MustCompile(`^[\s\p{Z}]*(RESULT|PATH|RELEVANT|COMMIT|SUBJECT):`)
 
 	// Diff recognition. Agents paste unified diffs constantly, and a diff read
 	// as prose is unreadable: the sign at the start of the line is the whole
@@ -227,7 +227,7 @@ func clean(raw string) (string, bool) {
 	if g := gutterRe.FindString(s); g != "" && len(g) < len(s) {
 		s = s[len(g):]
 	}
-	s = strings.TrimRight(s, " \t")
+	s = strings.TrimRightFunc(s, unicode.IsSpace)
 	if s == "" {
 		return "", false
 	}

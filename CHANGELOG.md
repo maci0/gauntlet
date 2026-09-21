@@ -30,6 +30,10 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Normalize available review names to NFC in suggestion parsing, matching decomposed names against agent suggestions.
+- Normalize pull request body text to NFC before rune truncation, preserving combining characters on decomposed filenames and descriptions.
+- Recognize Unicode whitespace when stripping agent output noise, gutters, and trailing spacing in the line normalizer, and in launcher filter word trimming.
+- Distinguish complete Unicode replacement characters from incomplete multi-byte sequences at process output chunk boundaries.
 - Surface Escape cancel and live-feed reset keys in the dashboard footer and help overlay, and display active filter queries and clear shortcuts in the narrow launcher fallback.
 - Prevent Escape from abruptly terminating an active run when quit is armed in the dashboard; Escape now cancels the quit prompt and resets paused or scrolled feeds to live output.
 - Strip UTF-8 byte-order marks (BOM) when loading custom agent definitions (`agents.json`), preventing parse errors on Windows-formatted files.
