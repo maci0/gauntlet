@@ -150,8 +150,10 @@ func (c Counts) Failures() int { return c.Fail + c.Timeout + c.Skipped + c.Confl
 
 // Counts tallies the recorded results.
 func (s *Stats) Counts() Counts {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var c Counts
-	for _, r := range s.Results() {
+	for _, r := range s.results {
 		if r.Status == "" {
 			continue // publication metadata recovered without launching an agent
 		}
@@ -162,7 +164,9 @@ func (s *Stats) Counts() Counts {
 
 // Totals sums lines changed, tokens reported, and agent wall time.
 func (s *Stats) Totals() (ins, del, tokens int, agentTime time.Duration, timed int, haveLines bool) {
-	for _, r := range s.Results() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, r := range s.results {
 		if r.HaveLines {
 			ins += r.Ins
 			del += r.Del
@@ -196,8 +200,10 @@ func (a AgentSummary) TokensPerSec() float64 {
 
 // ByAgent breaks the run down per tool:model, in label order.
 func (s *Stats) ByAgent() []AgentSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	byLabel := map[string]*AgentSummary{}
-	for _, r := range s.Results() {
+	for _, r := range s.results {
 		if r.Status == "" {
 			continue
 		}
@@ -224,8 +230,10 @@ func (s *Stats) ByAgent() []AgentSummary {
 // prompt) is why exit code 1 exists alongside ok and interrupted, and the
 // detailed list must account for every nonzero exit the counts report.
 func (s *Stats) Failures() []Result {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var out []Result
-	for _, r := range s.Results() {
+	for _, r := range s.results {
 		if r.Status.Failed() {
 			out = append(out, r)
 		}

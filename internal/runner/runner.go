@@ -1087,6 +1087,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// review, so a tick published after this review has ended is attributed
 	// to whatever that agent starts next.
 	watchCtx, stopWatch := context.WithCancel(ctx)
+	defer stopWatch()
 	watcher := openTranscript(spec.Tool, dir, start)
 	var watchDone sync.WaitGroup
 	watchDone.Go(func() { watcher.Run(watchCtx, publishUsage) })

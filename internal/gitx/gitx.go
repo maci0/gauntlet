@@ -513,6 +513,9 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		}
 		p := filepath.Join(r.Dir, string(name))
 		if skipArtifacts {
+			if ownArtifacts[p] {
+				continue
+			}
 			if real, err := filepath.EvalSymlinks(p); err == nil && ownArtifacts[real] {
 				continue
 			}
@@ -647,11 +650,25 @@ func countLinesFrom(f *os.File) int {
 	return n
 }
 
+func (r *Repo) subRepo(dir string) *Repo {
+	var extra []string
+	ready := false
+	if r != nil {
+		extra = r.extraSafeConfig()
+		ready = true
+	}
+	return &Repo{
+		Dir:       dir,
+		extraSafe: extra,
+		safeReady: ready,
+	}
+}
+
 // DiffStat reports the lines changed between two commits, measured inside
 // dir (a worktree of this repo). Unlike a shared-tree sample, this is exact:
 // the range covers one review's own commit and nothing else.
 func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int, ok bool) {
-	sub := &Repo{Dir: dir}
+	sub := r.subRepo(dir)
 	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", from, to)
 	if err != nil {
 		return 0, 0, false
@@ -670,7 +687,7 @@ func (r *Repo) ChangedFiles(ctx context.Context, dir, from, to string) ([]string
 	if !Available() {
 		return nil, errors.New("git is not available")
 	}
-	sub := &Repo{Dir: dir}
+	sub := r.subRepo(dir)
 	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", from, to)
 	if err != nil {
 		return nil, err
@@ -708,7 +725,11 @@ func (r *Repo) statusPorcelain(ctx context.Context, ownArtifacts map[string]bool
 			continue
 		}
 		if len(ownArtifacts) > 0 {
-			if real, err := filepath.EvalSymlinks(filepath.Join(r.Dir, p)); err == nil && ownArtifacts[real] {
+			full := filepath.Join(r.Dir, p)
+			if ownArtifacts[full] {
+				continue
+			}
+			if real, err := filepath.EvalSymlinks(full); err == nil && ownArtifacts[real] {
 				continue
 			}
 		}

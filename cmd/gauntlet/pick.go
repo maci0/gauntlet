@@ -61,7 +61,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
-		return exitUsage
+		return exitFail
 	}
 	if !ok {
 		return exitOK

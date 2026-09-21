@@ -53,7 +53,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	body, err := rev.Body()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read prompt for %s: %v\n", name, err)
-		return exitUsage
+		return exitFail
 	}
 	// The point of --show-prompt is the exact text, and part of that text is
 	// what this machine has: probe the same way a run would.

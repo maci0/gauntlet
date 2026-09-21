@@ -360,7 +360,7 @@ func Display(s string) string {
 // combining mark zero, so display-width cutting lives with the dashboard,
 // which owns the column math.
 func Truncate(s string, w int) string {
-	if w <= 1 {
+	if w <= 1 || len(s) <= w {
 		return s
 	}
 	n := 0
@@ -381,6 +381,9 @@ func Truncate(s string, w int) string {
 func Clip(s string, max int) string {
 	if max <= 0 {
 		return ""
+	}
+	if len(s) <= max {
+		return s
 	}
 	n := 0
 	clusters := uniseg.NewGraphemes(s)

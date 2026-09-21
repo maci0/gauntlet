@@ -238,6 +238,7 @@ func parseFlags(argv []string) (*options, error) {
 	fs.Usage = func() {}
 	if err := fs.Parse(expandAttachedValues(fs, argv)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
+			printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout) && !o.noColor}, o.width)
 			return nil, errHelp
 		}
 		return nil, reportUsage(o, enhanceFlagError(err, fs))

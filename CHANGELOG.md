@@ -32,6 +32,14 @@ minor instead and were listed under Changed.
   zero-width spaces, and Unicode line breaks, preventing terminal spoofing.
 - Display text sanitization strips Unicode line and paragraph separators (U+2028
   and U+2029), preserving line integrity in output feeds and summaries.
+- Distinguish internal prompt read failures from bad review arguments in
+  `--show-prompt`, exiting 1 on I/O error instead of 2.
+- Distinguish interactive launcher runtime errors from usage errors in
+  `gauntlet pick`, exiting 1 on TUI failure instead of 2.
+- Exit 1 on directory lock acquisition errors other than existing locks instead
+  of reporting them as usage errors.
+- Ensure flag-requested help is rendered to stdout when `flag.ErrHelp` is returned
+  during parsing.
 
 ## 1.22.1
 

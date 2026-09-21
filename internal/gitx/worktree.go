@@ -27,6 +27,27 @@ type Worktree struct {
 	Branch string
 	base   string // the commit the checkout was cut from
 	repo   *Repo
+	sub    *Repo
+}
+
+func (w *Worktree) subRepo() *Repo {
+	if w == nil {
+		return nil
+	}
+	if w.sub == nil {
+		var extra []string
+		ready := false
+		if w.repo != nil {
+			extra = w.repo.extraSafeConfig()
+			ready = true
+		}
+		w.sub = &Repo{
+			Dir:       w.Dir,
+			extraSafe: extra,
+			safeReady: ready,
+		}
+	}
+	return w.sub
 }
 
 // Base returns the commit this worktree was cut from (or advanced to).
@@ -257,7 +278,7 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
 		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
 	}
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "-c", branch, base); err != nil {
 		tip, tipErr := w.repo.Tip(ctx, "refs/heads/"+branch)
 		baseTip, baseErr := w.repo.Tip(ctx, base)
@@ -287,7 +308,7 @@ func (w *Worktree) DiscardCurrent(ctx context.Context) error {
 	if err := w.ResetToBase(ctx); err != nil {
 		return err
 	}
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "--detach", base); err != nil {
 		return fmt.Errorf("git switch --detach: %w", err)
 	}
@@ -306,7 +327,7 @@ func (w *Worktree) DiscardCurrent(ctx context.Context) error {
 // single commit per review, authored by the runner, with no AI attribution in
 // the message (the same rule the commit-step prompt enforces).
 func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) {
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "add", "-A"); err != nil {
 		return false, fmt.Errorf("git add: %w", err)
 	}
@@ -334,7 +355,7 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 // It is how a conflict gets somewhere private to be resolved: the conflicted
 // state lives in a scratch checkout, never in the tree the user is working in.
 func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error) {
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	out, err := sub.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
 	if err == nil {
 		return nil, nil
@@ -401,7 +422,7 @@ func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, er
 // safe whatever the previous attempt actually did. Ignored files stay: only
 // git-visible debris is the retry's problem.
 func (w *Worktree) ResetToBase(ctx context.Context) error {
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "reset", "--hard", w.base); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
 	}
@@ -417,7 +438,7 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 // are cleaned up. After Advance the worktree is detached at newBase with
 // Branch == ""; the next review calls StartBranch to begin its own work.
 func (w *Worktree) Advance(ctx context.Context, newBase string) error {
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase); err != nil {
 		return fmt.Errorf("git checkout --detach: %w", err)
 	}
@@ -648,7 +669,7 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", name); err != nil {
 		return fmt.Errorf("invalid stack branch %q: %w", name, err)
 	}
-	sub := &Repo{Dir: w.Dir}
+	sub := w.subRepo()
 	// -m, never -M: a same-named branch holding real work is kept, and the
 	// failure is reported, matching reclaimEmptyBranch's rule.
 	if _, err := sub.run(ctx, gitNormal, "branch", "-m", w.Branch, name); err != nil {

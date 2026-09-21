@@ -3,10 +3,19 @@
 
 package runner
 
-import (
-	"fmt"
-	"hash/fnv"
+const (
+	fnvOffset64 = 14695981039346656037
+	fnvPrime64  = 1099511628211
 )
+
+func fnv64aString(s string) uint64 {
+	h := uint64(fnvOffset64)
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= fnvPrime64
+	}
+	return h
+}
 
 // Every stochastic choice the runner makes goes through these keyed draws
 // rather than one shared random stream. A stream's output depends on the order
@@ -20,9 +29,7 @@ import (
 
 // draw maps key to a pseudorandom word under seed.
 func draw(seed uint64, key string) uint64 {
-	h := fnv.New64a()
-	h.Write([]byte(key))
-	return mix64(seed ^ h.Sum64())
+	return mix64(seed ^ fnv64aString(key))
 }
 
 // mix64 is the splitmix64 finalizer. FNV alone leaves structured inputs
@@ -43,9 +50,34 @@ func drawIndex(seed uint64, key string, n int) int {
 		return 0
 	}
 	ceil := (^uint64(0) / uint64(n)) * uint64(n)
+	keyHash := fnv64aString(key)
+	keyHash ^= 0
+	keyHash *= fnvPrime64
+
 	for i := uint64(0); ; i++ {
-		if v := draw(seed, fmt.Sprintf("%s\x00%d", key, i)); v < ceil {
+		h := fnvAppendUint(keyHash, i)
+		if v := mix64(seed ^ h); v < ceil {
 			return int(v % uint64(n))
 		}
 	}
+}
+
+func fnvAppendUint(h uint64, val uint64) uint64 {
+	if val == 0 {
+		h ^= '0'
+		h *= fnvPrime64
+		return h
+	}
+	var buf [20]byte
+	pos := len(buf)
+	for val > 0 {
+		pos--
+		buf[pos] = byte('0' + (val % 10))
+		val /= 10
+	}
+	for _, b := range buf[pos:] {
+		h ^= uint64(b)
+		h *= fnvPrime64
+	}
+	return h
 }

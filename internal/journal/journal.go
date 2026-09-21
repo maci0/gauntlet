@@ -255,7 +255,7 @@ func appendIndex(s Summary) error {
 	})
 }
 
-func appendIndexLocked(s Summary) error {
+func appendIndexLocked(s Summary) (err error) {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
@@ -263,15 +263,16 @@ func appendIndexLocked(s Summary) error {
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	line, err := json.Marshal(s)
 	if err != nil {
-		f.Close()
 		return err
 	}
 	_, err = f.Write(append(line, '\n'))
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
 	return err
 }
 
@@ -669,6 +670,7 @@ func writeIndex(rows []Summary) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
+	sweepStaleTemps(Home(), ".index.jsonl-", 24*time.Hour)
 	tmp, err := os.CreateTemp(Home(), ".index.jsonl-*")
 	if err != nil {
 		return err
@@ -699,6 +701,25 @@ func writeIndex(rows []Summary) error {
 	return nil
 }
 
+func sweepStaleTemps(dir, prefix string, age time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-age)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || fi.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
+}
+
 // indexEvent is the subset of a journal line summarizeFile and History read.
 // Extra fields are ignored, matching Events.
 type indexEvent struct {
@@ -713,6 +734,17 @@ type indexEvent struct {
 	Tokens  int       `json:"tokens"`
 	Version string    `json:"version"`
 	Agents  []string  `json:"agents"`
+}
+
+// historyEvent holds only the fields History inspects, avoiding timestamp parsing
+// and agent list allocations on each event line.
+type historyEvent struct {
+	Ev     string `json:"ev"`
+	Dir    string `json:"dir"`
+	Review string `json:"review"`
+	Status string `json:"status"`
+	Ins    *int   `json:"ins"`
+	Del    *int   `json:"del"`
 }
 
 // summarizeFile rebuilds a Summary from one run's event stream. Args,
@@ -865,6 +897,10 @@ func events(runID string, gate func([]byte) bool, visit func([]byte)) error {
 	if err != nil {
 		return err
 	}
+	return eventsFile(path, gate, visit)
+}
+
+func eventsFile(path string, gate func([]byte) bool, visit func([]byte)) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
@@ -1049,10 +1085,11 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		// order of magnitude more output than history events. The gate skips
 		// their decode; a line without either marker cannot be one of the two
 		// events counted here.
-		_ = events(run.RunID, func(line []byte) bool {
+		gate := func(line []byte) bool {
 			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON)
-		}, func(line []byte) {
-			var e indexEvent
+		}
+		visit := func(line []byte) {
+			var e historyEvent
 			if err := json.Unmarshal(line, &e); err != nil {
 				return
 			}
@@ -1092,7 +1129,13 @@ func History(dir string) (map[string]ReviewHistory, error) {
 					out[e.Review] = h
 				}
 			}
-		})
+		}
+		if run.Path != "" {
+			if err := eventsFile(run.Path, gate, visit); err == nil {
+				continue
+			}
+		}
+		_ = events(run.RunID, gate, visit)
 	}
 	return out, nil
 }

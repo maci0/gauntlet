@@ -161,6 +161,38 @@ func TestShowPromptPrintsTheExactAgentText(t *testing.T) {
 	}
 }
 
+// A review name that names nothing is a usage error (exit 2), while a review
+// that exists in the set but whose body cannot be read is a general failure (exit 1).
+func TestShowPromptDistinguishesUnknownFromUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	promptPath := filepath.Join(dir, "sec-review.md")
+	if err := os.WriteFile(promptPath, []byte("Your goal is to test sec-review.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := prompt.Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code := cmdShowPrompt(io.Discard, set, &options{showPrompt: "unknown"})
+	if code != exitUsage {
+		t.Errorf("unknown review should exit %d, got %d", exitUsage, code)
+	}
+
+	if err := os.Remove(promptPath); err != nil {
+		t.Fatal(err)
+	}
+	code, diagnostic := captureStderrFor(t, func() int {
+		return cmdShowPrompt(io.Discard, set, &options{showPrompt: "sec"})
+	})
+	if code != exitFail {
+		t.Errorf("unreadable prompt body should exit %d, got %d", exitFail, code)
+	}
+	if !strings.Contains(diagnostic.String(), "cannot read prompt for sec-review") {
+		t.Errorf("expected read error diagnostic, got %q", diagnostic.String())
+	}
+}
+
 // TestShowPromptStripsTerminalEscapes pins the display boundary on
 // --show-prompt: a planted prompt's escape sequences and bidi controls must
 // not reach the terminal (an OSC 52 sequence overwrites the clipboard in many

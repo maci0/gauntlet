@@ -365,7 +365,7 @@ func run(argv []string) int {
 				if errors.Is(err, runner.ErrLocked) {
 					return exitLocked
 				}
-				return exitUsage
+				return exitFail
 			}
 			d.lock = lock
 			ownArtifacts[gitx.RealPath(lockPath)] = true

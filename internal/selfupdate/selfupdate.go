@@ -167,6 +167,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
 		return nil, fmt.Errorf("decode %s: %w", url, err)
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<20))
 	if rel.TagName == "" {
 		return nil, errors.New("release has no tag")
 	}
@@ -337,7 +338,9 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, limit))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, limit))
+	return data, err
 }
 
 // download streams url into w and returns the hex SHA-256 of what was written.
@@ -366,6 +369,7 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 	if n > maxAssetBytes {
 		return "", fmt.Errorf("asset exceeds %d bytes", int64(maxAssetBytes))
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxAssetBytes+1))
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 

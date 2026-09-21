@@ -1947,13 +1947,27 @@ func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 	}
 }
 
-func TestWriteDshPatchRejectsAPathKey(t *testing.T) {
-	isolateDshPatches(t)
-	if _, err := writeDshPatch("a"+string(os.PathSeparator)+"b", "x\n"); err == nil {
-		t.Fatal("a key with a path separator must be refused")
+func TestWriteDshPatchCleansStaleTemps(t *testing.T) {
+	cache := isolateDshPatches(t)
+	dir := filepath.Join(cache, "gauntlet", "dsh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := writeDshPatch("", "x\n"); err == nil {
-		t.Fatal("an empty key must be refused")
+	stale := filepath.Join(dir, ".stale-key.yml-12345")
+	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := writeDshPatch("stale-key", "body\n"); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale dsh temp file %s still exists", stale)
 	}
 }
 

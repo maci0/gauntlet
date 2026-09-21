@@ -126,8 +126,8 @@ func cmdShow(out io.Writer, runID string) int {
 		// display surface already does.
 		_, werr = fmt.Fprintf(out, "%s  %-13s %s\n", ts, kind, normalize.Sanitize(string(rest)))
 	})
-	if err == nil {
-		err = werr
+	if err == nil && werr != nil {
+		err = fmt.Errorf("cannot write the journal: %w", werr)
 	}
 	if err != nil {
 		// An id that names nothing is a bad argument, like an unknown review

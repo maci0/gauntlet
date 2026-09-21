@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Restore must put the checkout back to the snapshot even when the "agent"
@@ -106,4 +107,27 @@ func readFile(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+func TestSnapshotCleansStaleIndices(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitDir, err := r.gitDir(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(gitDir, "gauntlet-snap-old")
+	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-2 * time.Hour)
+	if err := os.Chtimes(stale, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Snapshot(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale snapshot file %s still exists", stale)
+	}
 }

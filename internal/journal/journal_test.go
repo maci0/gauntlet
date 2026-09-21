@@ -1642,3 +1642,25 @@ func TestSummaryDurationMissingWhenClockSteppedBack(t *testing.T) {
 		t.Fatalf("a zero summary reported %s as a duration", d)
 	}
 }
+
+func TestWriteIndexCleansStaleTemps(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	stale := filepath.Join(home, ".index.jsonl-stale")
+	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(stale, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := writeIndex([]Summary{{RunID: "test-run"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Errorf("stale index temp file %s still exists", stale)
+	}
+}

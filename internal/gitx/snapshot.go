@@ -89,6 +89,7 @@ func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	sweepStaleSnapshots(gitDir)
 	tmp, err := os.CreateTemp(gitDir, "gauntlet-snap-")
 	if err != nil {
 		return "", fmt.Errorf("cannot create a snapshot index: %w", err)
@@ -139,4 +140,25 @@ func (r *Repo) gitDir(ctx context.Context) (string, error) {
 
 func (r *Repo) runIndex(ctx context.Context, index string, timeout time.Duration, args ...string) ([]byte, error) {
 	return r.execGitEnv(ctx, nil, []string{"GIT_INDEX_FILE=" + index}, timeout, r.argv(args)...)
+}
+
+// sweepStaleSnapshots removes leftover gauntlet-snap-* index files from gitDir
+// that were left behind by a killed or crashed process.
+func sweepStaleSnapshots(gitDir string) {
+	entries, err := os.ReadDir(gitDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-time.Hour)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, "gauntlet-snap-") || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || fi.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(gitDir, name))
+	}
 }
