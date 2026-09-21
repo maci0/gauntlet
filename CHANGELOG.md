@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.23.0
+
 ### Added
 
 - Support Enter key to close the live dashboard once a run has finished, and support g and G keys for first and last row navigation in the launcher.
