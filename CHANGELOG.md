@@ -35,6 +35,7 @@ minor instead and were listed under Changed.
 - Pad clipped lines with trailing spaces in dashboard panel formatting when multi-column wide characters are truncated, preventing misaligned panel borders.
 - Count Unicode code points instead of bytes when checking for short-flag misses, preventing single non-ASCII flags from triggering typo suggestions.
 - Normalize file paths to NFC when correlating file notes to git changes in stacked PR summaries and commit subjects, matching decomposed macOS filenames with NFC text.
+- Strip relative build directory paths from release SBOM inventory headers to match asset filenames, and clean scratch files and stray binaries on make clean.
 
 - Record loop line changes in parallel worktree mode (`--jobs > 1`) and preserve line metrics on pull request events in stacked-PR mode (`--stacked-prs`) across the journal, history, and dashboard.
 - Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.

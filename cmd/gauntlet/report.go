@@ -318,16 +318,27 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 }
 
 // listReviews prints the available reviews, which are scheduled, and the sets.
-func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string, width int) {
+func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string, width int) error {
 	weight := map[string]int{}
 	for _, r := range scheduled {
 		weight[r]++
 	}
-	fmt.Fprintf(out, "Available reviews (%d):\n", set.Len())
+	var werr error
+	write := func(format string, args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintf(out, format, args...)
+		}
+	}
+	writeln := func(args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintln(out, args...)
+		}
+	}
+	write("Available reviews (%d):\n", set.Len())
 	// The marks below are only as readable as their legend: spell them out
 	// once, right where they first appear. wrapIndent indents only its
 	// continuation lines, so the first line carries its own.
-	fmt.Fprintln(out, pal.dim(strings.Repeat(" ", 4)+wrapIndent(
+	writeln(pal.dim(strings.Repeat(" ", 4) + wrapIndent(
 		"✓ scheduled   ○ available, not selected   xN selected with repeated weight   "+
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
@@ -354,12 +365,12 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			desc = "(no description)"
 		}
 		room := max(width-cells(prefix), 20)
-		fmt.Fprintln(out, prefix+pal.dim(trimCells(desc, room)))
+		writeln(prefix + pal.dim(trimCells(desc, room)))
 	}
 
-	fmt.Fprintln(out)
+	writeln()
 	names := prompt.SetNames()
-	fmt.Fprintf(out, "Sets usable with --reviews/--exclude (%d):\n", len(names))
+	write("Sets usable with --reviews/--exclude (%d):\n", len(names))
 	setCol := 0
 	for _, n := range names {
 		setCol = max(setCol, cells(n))
@@ -371,7 +382,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			if name == "project" {
 				count = len(set.ProjectNames())
 			}
-			fmt.Fprintf(out, "  %s %s (%d)\n", padCells(name, setCol), desc, count)
+			write("  %s %s (%d)\n", padCells(name, setCol), desc, count)
 			continue
 		}
 		var present []string
@@ -384,8 +395,9 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		if body == "" {
 			body = "(no members in this prompt dir)"
 		}
-		fmt.Fprintf(out, "  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
+		write("  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
 	}
+	return werr
 }
 
 // cells is how many terminal columns s occupies.

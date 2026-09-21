@@ -82,12 +82,23 @@ func toolsFor(review string) prompt.Tools {
 }
 
 // dryRun prints the planned schedule without launching anything.
-func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opts *options) {
+func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opts *options) error {
+	var werr error
+	write := func(format string, args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintf(out, format, args...)
+		}
+	}
+	writeln := func(args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintln(out, args...)
+		}
+	}
 	for _, d := range runs {
 		if len(runs) > 1 {
-			fmt.Fprintf(out, "\n%s\n", pal.bold(d.dir))
+			write("\n%s\n", pal.bold(d.dir))
 		}
-		fmt.Fprintln(out, pal.bold("Dry run")+pal.dim(": planned schedule for one loop"))
+		writeln(pal.bold("Dry run") + pal.dim(": planned schedule for one loop"))
 		names := append([]string(nil), d.reviews...)
 		capped := opts.maxReviews > 0 && opts.maxReviews < len(d.reviews)
 		if opts.stackedPRs {
@@ -109,19 +120,19 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			if rev.IsProject() {
 				origin = " [project]"
 			}
-			fmt.Fprintf(out, "  %s%s\n", padCells(n, col+1), origin)
+			write("  %s%s\n", padCells(n, col+1), origin)
 		}
-		fmt.Fprintln(out)
+		writeln()
 		repeats := len(d.reviews) - len(uniq(d.reviews))
 		extra := ""
 		if repeats > 0 {
 			extra = fmt.Sprintf(" (%d extra from repeats)", repeats)
 		}
 		if capped {
-			fmt.Fprintf(out, "Reviews per loop: %d of %d%s, capped by --max-reviews\n",
+			write("Reviews per loop: %d of %d%s, capped by --max-reviews\n",
 				opts.maxReviews, len(d.reviews), extra)
 		} else {
-			fmt.Fprintf(out, "Reviews per loop: %d%s\n", len(d.reviews), extra)
+			write("Reviews per loop: %d%s\n", len(d.reviews), extra)
 		}
 	}
 	mode := "sequential, in place"
@@ -137,23 +148,24 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	if opts.yolo {
 		yolo = "  |  YOLO"
 	}
-	fmt.Fprintf(out, "Agents: %s  |  timeout: %s  |  mode: %s%s\n",
+	write("Agents: %s  |  timeout: %s  |  mode: %s%s\n",
 		strings.Join(agent.Labels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
 	limit := "infinite"
 	if opts.maxLoops > 0 {
 		limit = fmt.Sprint(opts.maxLoops)
 	}
-	fmt.Fprintf(out, "Loop limit: %s\n", limit)
+	write("Loop limit: %s\n", limit)
 	if opts.runtime > 0 {
-		fmt.Fprintf(out, "Runtime budget: %s\n", humanize.Duration(opts.runtime))
+		write("Runtime budget: %s\n", humanize.Duration(opts.runtime))
 	}
 	if opts.commit || opts.push {
 		action := "commit"
 		if opts.push {
 			action = "commit+push"
 		}
-		fmt.Fprintf(out, "After each review: %s step (agent writes the message, no AI attribution)\n", action)
+		write("After each review: %s step (agent writes the message, no AI attribution)\n", action)
 	}
+	return werr
 }
 
 var (
@@ -243,7 +255,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		r := results[i]
 		if r.err != nil {
 			if errors.Is(r.err, context.Canceled) {
-				return errAborted
+				return r.err
 			}
 			return fmt.Errorf("%w: %s: %w", errAgentFailed, d.dir, r.err)
 		}

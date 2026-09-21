@@ -217,6 +217,11 @@ func TestMinimalViewCountsSkips(t *testing.T) {
 	}
 }
 
+var (
+	moreReviewsRe = regexp.MustCompile(`\+(\d+) more`)
+	moreAgentsRe  = regexp.MustCompile(`\+(\d+) more agents`)
+)
+
 // A grid that cannot hold every review says how many it dropped; a fitting
 // grid stays clean.
 func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
@@ -226,7 +231,7 @@ func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
 		cfg.Reviews = append(cfg.Reviews, fmt.Sprintf("r%03d-review", i))
 	}
 	frame := stripANSI(staticFrame(cfg, nil, 120, 30))
-	m := regexp.MustCompile(`\+(\d+) more`).FindStringSubmatch(frame)
+	m := moreReviewsRe.FindStringSubmatch(frame)
 	if m == nil {
 		t.Fatalf("an overflowing grid hid reviews without announcing it:\n%s", frame)
 	}
@@ -266,7 +271,7 @@ func TestHiddenAgentsAreAnnouncedNotSilent(t *testing.T) {
 	if drawn == 0 || drawn == total {
 		t.Fatalf("want some lanes drawn and some hidden, drew %d of %d:\n%s", drawn, total, frame)
 	}
-	m := regexp.MustCompile(`\+(\d+) more agents`).FindStringSubmatch(frame)
+	m := moreAgentsRe.FindStringSubmatch(frame)
 	if m == nil {
 		t.Fatalf("%d of %d lanes were dropped without announcing it:\n%s", total-drawn, total, frame)
 	}

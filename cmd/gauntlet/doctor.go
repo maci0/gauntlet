@@ -15,7 +15,25 @@ import (
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
 // the process exit code: 1 when no agent can be launched at all.
-func doctor(out io.Writer, pal palette, overrides map[string]string, width int) int {
+func doctor(out io.Writer, pal palette, overrides map[string]string, width int) (code int) {
+	var werr error
+	defer func() {
+		if werr != nil {
+			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", werr)
+			code = exitFail
+		}
+	}()
+	write := func(format string, args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintf(out, format, args...)
+		}
+	}
+	writeln := func(args ...any) {
+		if werr == nil {
+			_, werr = fmt.Fprintln(out, args...)
+		}
+	}
+
 	// One parallel probe for every binary, instead of one blocking lookup per
 	// question. This is the difference between a snappy doctor and a second of
 	// stat calls on a cold cache.
@@ -57,7 +75,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// are as real as the compiled-in ones and belong in the inventory.
 	agents := agent.AllNames()
 
-	fmt.Fprintln(out, pal.bold("Agent CLIs")+
+	writeln(pal.bold("Agent CLIs") +
 		pal.dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
@@ -101,11 +119,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				usable++
 			}
 		}
-		fmt.Fprintf(out, "  %s %s%s\n", mark(ok, "dim"), a, note)
+		write("  %s %s%s\n", mark(ok, "dim"), a, note)
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, pal.bold("Core tools")+pal.dim("  (used by every review)"))
+	writeln()
+	writeln(pal.bold("Core tools") + pal.dim("  (used by every review)"))
 	coreHave := 0
 	for _, c := range agent.CoreTools {
 		ok := have(c.Name)
@@ -113,11 +131,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			coreHave++
 		}
 		label := strings.ReplaceAll(c.Name, "|", " or ")
-		fmt.Fprintf(out, "  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
+		write("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
 	}
 
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, pal.bold("Per-review helpers")+pal.dim("  (* = worth installing anywhere)"))
+	writeln()
+	writeln(pal.bold("Per-review helpers") + pal.dim("  (* = worth installing anywhere)"))
 	reviews := make([]string, 0, len(agent.ReviewTools)+len(agent.ReviewsWithoutTools))
 	for r := range agent.ReviewTools {
 		reviews = append(reviews, r)
@@ -136,7 +154,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	for _, review := range reviews {
 		tools := agent.ReviewTools[review]
 		if len(tools) == 0 {
-			fmt.Fprintf(out, "  %-*s %s\n", nameCol, review, pal.dim("no external tools"))
+			write("  %-*s %s\n", nameCol, review, pal.dim("no external tools"))
 			continue
 		}
 		n := 0
@@ -172,7 +190,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			cells = append(cells, mark(ok, missing)+" "+label)
 		}
 		head := fmt.Sprintf("  %-*s %s ", nameCol, review, ratio(n, len(tools)))
-		fmt.Fprintln(out, head+strings.Join(cells, "  "))
+		writeln(head + strings.Join(cells, "  "))
 	}
 
 	recHave, optHave := 0, 0
@@ -191,8 +209,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	sort.Strings(missingRec)
 
-	fmt.Fprintln(out)
-	fmt.Fprintf(out, "%s %s   %s %s   %s %s   %s %s\n",
+	writeln()
+	write("%s %s   %s %s   %s %s   %s %s\n",
 		pal.bold("Agents"), ratio(installed, len(agents)),
 		pal.bold("Core"), ratio(coreHave, len(agent.CoreTools)),
 		pal.bold("Recommended"), ratio(recHave, len(seenRec)),
@@ -214,22 +232,22 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		if installed > 0 {
 			msg = "No auto-detectable agent CLI found: install one, or name an opt-in agent with --agents."
 		}
-		fmt.Fprintln(out, pal.red(msg))
+		writeln(pal.red(msg))
 		return exitFail
 	}
 	if len(missingRec) > 0 {
-		fmt.Fprintln(out, pal.dim("Worth installing: ")+wrapIndent(strings.Join(missingRec, " "), width, 2))
+		writeln(pal.dim("Worth installing: ") + wrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
 	// Where persistent definitions were read from, so a definition that
 	// misbehaves can be traced to its file (and to any GAUNTLET_HOME in
 	// play). Named only when the file exists: missing is missing.
 	if p := agent.CustomFilePath(); p != "" {
 		if _, err := os.Stat(p); err == nil {
-			fmt.Fprintln(out, pal.dim("Definitions: "+p))
+			writeln(pal.dim("Definitions: " + p))
 		}
 	}
-	fmt.Fprintln(out, pal.dim(tokenSourceLine))
-	fmt.Fprintln(out, pal.dim("Stack-specific tools only matter for the languages you review."))
+	writeln(pal.dim(tokenSourceLine))
+	writeln(pal.dim("Stack-specific tools only matter for the languages you review."))
 	return exitOK
 }
 

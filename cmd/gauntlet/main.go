@@ -399,6 +399,9 @@ func run(argv []string) int {
 				fmt.Fprintln(stdout, "Aborted.")
 				return exitOK
 			}
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return 128 + int(syscall.SIGINT)
+			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return exitUsage
@@ -412,6 +415,9 @@ func run(argv []string) int {
 	for _, d := range runs {
 		set, warnings, err := prompt.Discover(ctx, opts.promptDir, d.scanDir())
 		if err != nil {
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				return 128 + int(syscall.SIGINT)
+			}
 			if opts.promptDir != "" {
 				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
 			}
@@ -437,6 +443,9 @@ func run(argv []string) int {
 		if errors.Is(err, errAborted) {
 			return exitOK
 		}
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return 128 + int(syscall.SIGINT)
+		}
 		fmt.Fprintln(os.Stderr, err)
 		if errors.Is(err, errAgentFailed) {
 			return exitFail
@@ -445,11 +454,17 @@ func run(argv []string) int {
 	}
 
 	if opts.list {
-		listReviews(stdout, pal, runs[0].set, runs[0].reviews, opts.width)
+		if err := listReviews(stdout, pal, runs[0].set, runs[0].reviews, opts.width); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write review listing: %v\n", err)
+			return exitFail
+		}
 		return exitOK
 	}
 	if opts.dryRun {
-		dryRun(stdout, pal, runs, agents, opts)
+		if err := dryRun(stdout, pal, runs, agents, opts); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write dry run: %v\n", err)
+			return exitFail
+		}
 		return exitOK
 	}
 
@@ -599,6 +614,12 @@ func run(argv []string) int {
 			r, err = runner.New(ctx, cfg, bus)
 		}
 		if err != nil {
+			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+				bus.Close()
+				consumers.Wait()
+				jrnl.CloseQuiet()
+				return 128 + int(syscall.SIGINT)
+			}
 			fmt.Fprintln(os.Stderr, err)
 			bus.Close()
 			consumers.Wait()
@@ -1052,6 +1073,9 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 		if code == 0 {
 			continue
 		}
+		if ctx.Err() != nil {
+			return 128 + int(syscall.SIGINT)
+		}
 		switch {
 		case ictx.Err() == context.DeadlineExceeded:
 			fmt.Fprintf(os.Stderr, "semcode-index timed out after %v in %s\n",
@@ -1298,24 +1322,42 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) int {
 	rel, err := selfupdate.Check(ctx, opts.updateRepo)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return 128 + int(syscall.SIGINT)
+		}
 		fmt.Fprintf(os.Stderr, "cannot check for updates: %v\n", err)
 		return exitFail
 	}
 	if !rel.NewerThan(version) {
-		fmt.Fprintf(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName)
+		if _, err := fmt.Fprintf(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
+			return exitFail
+		}
 		return exitOK
 	}
-	fmt.Fprintf(out, "New release: %s (running %s)\n", pal.bold(rel.TagName), version)
+	if _, err := fmt.Fprintf(out, "New release: %s (running %s)\n", pal.bold(rel.TagName), version); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
+		return exitFail
+	}
 	if opts.checkOnly {
-		fmt.Fprintln(out, rel.HTMLURL)
+		if _, err := fmt.Fprintln(out, rel.HTMLURL); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
+			return exitFail
+		}
 		return exitOK
 	}
 	path, err := selfupdate.Apply(ctx, rel)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
+			return 128 + int(syscall.SIGINT)
+		}
 		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
 		return exitFail
 	}
-	fmt.Fprintf(out, "Installed %s to %s\n", rel.TagName, path)
+	if _, err := fmt.Fprintf(out, "Installed %s to %s\n", rel.TagName, path); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
+		return exitFail
+	}
 	return exitOK
 }
 

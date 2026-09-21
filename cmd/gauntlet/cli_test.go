@@ -305,11 +305,13 @@ func TestShowExitCodes(t *testing.T) {
 	}
 }
 
+var ansiEscapeRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
 // The FAILED column must line up with its header with color on: pad first,
 // color second, because escapes inside a width verb count as width.
 func TestRunsFailedCellStaysAlignedUnderColor(t *testing.T) {
 	strip := func(s string) string {
-		return regexp.MustCompile("\x1b\\[[0-9;]*m").ReplaceAllString(s, "")
+		return ansiEscapeRe.ReplaceAllString(s, "")
 	}
 	plain := failedCell(palette{}, 3)
 	colored := failedCell(palette{on: true}, 3)

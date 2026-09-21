@@ -575,9 +575,11 @@ func (m *model) pushFeed(l feedLine) {
 	// prompt names). Every line is sanitized here, once, so nothing reaches
 	// the terminal able to drive it; visible text is untouched.
 	l.text = normalize.Sanitize(l.text)
-	m.feed = append(m.feed, l)
-	if len(m.feed) > feedMax {
-		m.feed = m.feed[len(m.feed)-feedMax:]
+	if len(m.feed) >= feedMax {
+		copy(m.feed, m.feed[1:])
+		m.feed[len(m.feed)-1] = l
+	} else {
+		m.feed = append(m.feed, l)
 	}
 	m.feedDirty = true
 	// A paused or scrolled-back reader holds their place: the viewport stays
@@ -586,7 +588,11 @@ func (m *model) pushFeed(l feedLine) {
 	if m.paused || m.scroll > 0 {
 		if m.filter.keep(l) {
 			m.scroll++
-			if maxBack := len(m.visibleFeed()) - 1; m.scroll > maxBack {
+			maxBack := len(m.feed) - 1
+			if m.filter != feedAll {
+				maxBack = len(m.visibleFeed()) - 1
+			}
+			if m.scroll > maxBack {
 				m.scroll = max(maxBack, 0)
 			}
 		}
@@ -1027,21 +1033,25 @@ func (m *model) renderGrid(w, h int) string {
 // frames a second the scan would re-read every retained line for the same
 // answer.
 func (m *model) visibleFeed() []feedLine {
+	var feed []feedLine
 	if m.filter == feedAll {
-		return m.feed
-	}
-	if !m.feedDirty {
-		return m.feedView
-	}
-	out := make([]feedLine, 0, len(m.feed))
-	for _, l := range m.feed {
-		if m.filter.keep(l) {
-			out = append(out, l)
+		feed = m.feed
+	} else if !m.feedDirty {
+		feed = m.feedView
+	} else {
+		m.feedView = m.feedView[:0]
+		for _, l := range m.feed {
+			if m.filter.keep(l) {
+				m.feedView = append(m.feedView, l)
+			}
 		}
+		m.feedDirty = false
+		feed = m.feedView
 	}
-	m.feedView = out
-	m.feedDirty = false
-	return out
+	if maxBack := len(feed) - 1; m.scroll > maxBack {
+		m.scroll = max(maxBack, 0)
+	}
+	return feed
 }
 
 // feedTitle keeps the reader oriented while scrolled back or narrowed:

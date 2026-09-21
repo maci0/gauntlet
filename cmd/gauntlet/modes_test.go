@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -262,5 +263,41 @@ func TestDryRunReportsTheMaxReviewsCap(t *testing.T) {
 	}
 	if !strings.Contains(got, "capped by --max-reviews") {
 		t.Fatalf("stacked dry run does not report the cap:\n%s", got)
+	}
+}
+
+func TestInterruptedSuggestReturnsContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	d := &dirRun{dir: t.TempDir(), set: promptPair(t)}
+	opts := &options{suggest: true}
+	err := planReviews(ctx, []*dirRun{d}, opts, nil, io.Discard, palette{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestListReviewsReportsOutputFailure(t *testing.T) {
+	set := promptPair(t)
+	var rendered bytes.Buffer
+	if err := listReviews(&rendered, palette{}, set, set.Names, 100); err != nil {
+		t.Fatalf("listing exited %v", err)
+	}
+	sink := &listingFailWriter{remaining: rendered.Len() / 2}
+	if err := listReviews(sink, palette{}, set, set.Names, 100); err == nil {
+		t.Fatal("expected error on failed write")
+	}
+}
+
+func TestDryRunReportsOutputFailure(t *testing.T) {
+	set := promptPair(t)
+	d := &dirRun{dir: t.TempDir(), set: set, reviews: set.Names}
+	var rendered bytes.Buffer
+	if err := dryRun(&rendered, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err != nil {
+		t.Fatalf("dry run exited %v", err)
+	}
+	sink := &listingFailWriter{remaining: rendered.Len() / 2}
+	if err := dryRun(sink, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err == nil {
+		t.Fatal("expected error on failed write")
 	}
 }

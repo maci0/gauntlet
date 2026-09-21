@@ -4,6 +4,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -77,4 +79,29 @@ func TestDoctorCustomAgentCounting(t *testing.T) {
 	if !strings.Contains(out, "✓ custombot") {
 		t.Fatalf("doctor should show custombot as installed (code %d):\n%s", code, out)
 	}
+}
+
+func TestDoctorReportsOutputFailure(t *testing.T) {
+	sink := &doctorFailWriter{remaining: 0}
+	code, diagnostic := captureStderrFor(t, func() int {
+		return doctor(sink, palette{}, nil, 80)
+	})
+	if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write doctor report: "+io.ErrClosedPipe.Error()) {
+		t.Fatalf("exit %d, stderr %q", code, diagnostic.String())
+	}
+}
+
+type doctorFailWriter struct {
+	bytes.Buffer
+	remaining int
+}
+
+func (w *doctorFailWriter) Write(p []byte) (int, error) {
+	n := min(len(p), w.remaining)
+	w.Buffer.Write(p[:n])
+	w.remaining -= n
+	if n < len(p) {
+		return n, io.ErrClosedPipe
+	}
+	return n, nil
 }

@@ -27,10 +27,13 @@ func Closest(want string, candidates []string) string {
 	if !IsASCII(want) {
 		wantNorm = norm.NFC.String(want)
 	}
-	wantRunes := foldRunes(wantNorm)
+	var wantArr [32]rune
+	wantRunes := foldRunesInto(wantNorm, wantArr[:0])
 	best, bestD := "", distance+1
-	var prev, cur []int
-	var candBuf []rune
+	var prevArr, curArr [32]int
+	prev, cur := prevArr[:], curArr[:]
+	var candArr [32]rune
+	candBuf := candArr[:0]
 	for _, c := range candidates {
 		candNorm := c
 		candLen := len(c)
@@ -42,7 +45,9 @@ func Closest(want string, candidates []string) string {
 			continue
 		}
 		candBuf = foldRunesInto(candNorm, candBuf[:0])
-		if d := editDistanceFolded(wantRunes, candBuf, &prev, &cur); d < bestD {
+		var d int
+		d, prev, cur = editDistanceFolded(wantRunes, candBuf, prev, cur)
+		if d < bestD {
 			best, bestD = c, d
 			if bestD == 0 {
 				return best
@@ -106,25 +111,22 @@ const distance = 3
 // character outside ASCII costs up to three edits and two names sharing
 // prefix bytes can score spuriously close.
 func editDistance(a, b string) int {
-	return editDistanceFolded(foldRunes(a), foldRunes(b), nil, nil)
+	var prevArr, curArr [32]int
+	d, _, _ := editDistanceFolded(foldRunes(a), foldRunes(b), prevArr[:], curArr[:])
+	return d
 }
 
-func editDistanceFolded(ar, br []rune, prevBuf, curBuf *[]int) int {
+func editDistanceFolded(ar, br []rune, prev, cur []int) (int, []int, []int) {
 	if len(br) > len(ar) {
 		ar, br = br, ar
 	}
 	needed := len(br) + 1
-	var prev, cur []int
-	if prevBuf != nil && cap(*prevBuf) >= needed {
-		prev = (*prevBuf)[:needed]
-		cur = (*curBuf)[:needed]
-	} else {
+	if cap(prev) < needed {
 		prev = make([]int, needed)
 		cur = make([]int, needed)
-		if prevBuf != nil {
-			*prevBuf = prev
-			*curBuf = cur
-		}
+	} else {
+		prev = prev[:needed]
+		cur = cur[:needed]
 	}
 	for j := range prev {
 		prev[j] = j
@@ -140,5 +142,5 @@ func editDistanceFolded(ar, br []rune, prevBuf, curBuf *[]int) int {
 		}
 		prev, cur = cur, prev
 	}
-	return prev[len(br)]
+	return prev[len(br)], prev, cur
 }

@@ -392,3 +392,20 @@ func TestStreamTailKeepsDecodedTextForReportParsers(t *testing.T) {
 		t.Fatalf("file notes = %+v", res.FileNotes)
 	}
 }
+
+func TestScanLinesCarriageReturn(t *testing.T) {
+	input := "hello\r\nworld\r\nlast line\r"
+	var got []string
+	scanLines(strings.NewReader(input), func(line string) {
+		got = append(got, line)
+	})
+	want := []string{"hello", "world", "last line"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d lines, want %d: %v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("line %d: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}

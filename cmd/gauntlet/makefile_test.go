@@ -231,3 +231,30 @@ func TestMakefileCheckScriptsPreflight(t *testing.T) {
 		}
 	}
 }
+
+// Release artifacts must generate inventory names relative to the dist
+// directory without leaking build directory paths into sbom.txt.
+func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "cd $(DIST) && for f in $(BINARY)_*; do") {
+		t.Fatal("make release must generate sbom.txt inside $(DIST) so paths match checksums.txt without $(DIST)/ prefixes")
+	}
+}
+
+// make clean must sweep dist, build binaries, and scratch files.
+func TestMakefileCleanRemovesScratchAndBinaries(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "rm -rf $(DIST) $(BINARY) $(BINARY)_* .scratch") {
+		t.Fatal("make clean must remove dist, binaries, and scratch files")
+	}
+}
+
+// make repro must keep scratch and lint caches out of the test archives.
+func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
+	text := makefileText(t)
+	for _, want := range []string{"--exclude=./.scratch", "--exclude=./.ruff_cache", "--exclude=./.mypy_cache"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("make repro missing %q exclude", want)
+		}
+	}
+}

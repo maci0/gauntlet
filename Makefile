@@ -204,21 +204,16 @@ install: build ## install into ~/.local/bin
 
 .PHONY: clean
 clean: ## remove build artifacts
-	rm -rf $(DIST) $(BINARY)
+	rm -rf $(DIST) $(BINARY) $(BINARY)_* .scratch
 
-# Release artifacts are the binaries, checksums.txt (the contract `gauntlet
-# update` verifies against: see internal/selfupdate.assetName), and sbom.txt, a
-# module inventory read back out of each binary with `go version -m`: versions
-# and hashes of everything that shipped. Changing asset names or checksums.txt
-# breaks self-update for every installed binary.
+# A previous dist with a different VERSION or PLATFORMS must not leak into
+# this one: release globs dist/gauntlet_* both into checksums.txt and the
+# uploaded assets, so stale binaries here would ship as release artifacts.
+# checksums.txt and sbom.txt are rewritten by `release`; drop them here so
+# `make dist` cannot leave a previous version's inventory beside new binaries.
 .PHONY: dist
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
-	# A previous dist with a different VERSION or PLATFORMS must not leak into
-	# this one: release globs dist/gauntlet_* both into checksums.txt and the
-	# uploaded assets, so stale binaries here would ship as release artifacts.
-	# checksums.txt and sbom.txt are rewritten by `release`; drop them here so
-	# `make dist` cannot leave a previous version's inventory beside new binaries.
 	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.txt
 	@for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
@@ -228,20 +223,20 @@ dist: ## build every release platform into dist/
 			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
 	done
 
+# if/else, not `cmd && sum || fallback`: a sha256sum that exists but fails
+# mid-list would otherwise fall through to shasum and append a second,
+# conflicting copy of the entries to checksums.txt.
 .PHONY: release
 release: test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
-	# if/else, not `cmd && sum || fallback`: a sha256sum that exists but fails
-	# mid-list would otherwise fall through to shasum and append a second,
-	# conflicting copy of the entries to checksums.txt.
 	@if command -v sha256sum >/dev/null 2>&1; then \
 		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
-	@set -e; for f in $(DIST)/$(BINARY)_*; do \
+	@set -e; cd $(DIST) && for f in $(BINARY)_*; do \
 		echo "## $$f"; \
 		$(GO) version -m "$$f"; \
-	done > $(DIST)/sbom.txt
+	done > sbom.txt
 	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.txt)"
 
 # The same source must produce the same bytes wherever it is built: -trimpath
@@ -262,6 +257,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 	@rm -rf "$(REPRO_DIR)" && mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b" && \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
+			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
 			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \

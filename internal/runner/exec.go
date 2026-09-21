@@ -356,7 +356,10 @@ func scanLines(r io.Reader, handle func(line string)) {
 	br := bufio.NewReaderSize(r, 64<<10)
 	var buf []byte
 	emit := func(b []byte) {
-		handle(strings.TrimSuffix(string(b), "\r"))
+		if len(b) > 0 && b[len(b)-1] == '\r' {
+			b = b[:len(b)-1]
+		}
+		handle(string(b))
 	}
 	for {
 		chunk, err := br.ReadSlice('\n')
