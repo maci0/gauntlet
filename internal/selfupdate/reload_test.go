@@ -214,6 +214,12 @@ func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
 		t.Fatal("LoadState accepted relative path")
 	}
 
+	// Unclean / traversal path must be rejected
+	t.Setenv(stateEnv, filepath.Join(dir, "sub", "..", "run-1.json"))
+	if _, err := LoadState(&v); err == nil {
+		t.Fatal("LoadState accepted unclean path with ..")
+	}
+
 	// Oversized file must be rejected
 	bigFile := filepath.Join(dir, "big.json")
 	f, err := os.Create(bigFile)

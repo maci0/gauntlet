@@ -192,6 +192,7 @@ func padBlock(content string, innerW, innerH int) string {
 		lines = lines[:innerH]
 	}
 	for i, ln := range lines {
+		ln = strings.TrimRight(ln, "\r")
 		if lipgloss.Width(ln) > innerW {
 			ln = clip(ln, innerW)
 		}

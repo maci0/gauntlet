@@ -546,6 +546,20 @@ esac`)
 	}
 }
 
+func TestConflictHintQuotesSafely(t *testing.T) {
+	got := conflictHint("gauntlet/01-review", "fix: update $(touch /tmp/evil)")
+	want := "git merge --squash 'gauntlet/01-review' && git commit -m 'fix: update $(touch /tmp/evil)'"
+	if got != want {
+		t.Fatalf("conflictHint = %q, want %q", got, want)
+	}
+
+	gotQuotes := conflictHint("branch", "it's \"nested\"")
+	wantQuotes := "git merge --squash 'branch' && git commit -m 'it'\\''s \"nested\"'"
+	if gotQuotes != wantQuotes {
+		t.Fatalf("conflictHint quotes = %q, want %q", gotQuotes, wantQuotes)
+	}
+}
+
 // TestParallelModeWithNoChangesDeletesTheBranch pins the empty-review path:
 // a review that changed nothing leaves no branch behind. Its branch points at
 // the base commit, so keeping it would litter the repo with dead refs run

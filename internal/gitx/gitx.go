@@ -697,6 +697,7 @@ func (r *Repo) statusPorcelain(ctx context.Context, ownArtifacts map[string]bool
 		return err
 	}
 	for line := range strings.SplitSeq(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -780,6 +781,7 @@ func (r *Repo) CheckIgnore(ctx context.Context, paths []string) map[string]bool 
 // porcelainPath extracts the worktree path from a `git status --porcelain`
 // line (XY <path>, or the destination of a `orig -> dest` rename).
 func porcelainPath(line string) string {
+	line = strings.TrimRight(line, "\r")
 	if len(line) <= 3 {
 		return ""
 	}

@@ -152,3 +152,13 @@ func LookPath(name string) string {
 	}
 	return ""
 }
+
+// ShQuote returns a shell-escaped representation of s suitable for use as a single
+// argument in POSIX shells (sh, bash, zsh), enclosed in single quotes with interior
+// single quotes escaped as '\”.
+func ShQuote(s string) string {
+	if s == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}

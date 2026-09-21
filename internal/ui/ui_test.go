@@ -597,6 +597,17 @@ func TestPadBlockWideCharAlignment(t *testing.T) {
 	}
 }
 
+func TestPadBlockStripsCarriageReturns(t *testing.T) {
+	got := padBlock("hello\r\nworld\r", 10, 2)
+	if strings.Contains(got, "\r") {
+		t.Fatalf("padBlock result %q contains carriage return", got)
+	}
+	want := "hello     \nworld     "
+	if got != want {
+		t.Fatalf("padBlock = %q, want %q", got, want)
+	}
+}
+
 // One hue per agent, and the vendor's own where there is one: a lane is
 // identifiable before its name is read. Two models of one vendor must still
 // be distinguishable, so the second takes the rotation.

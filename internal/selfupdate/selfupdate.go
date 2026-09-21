@@ -17,6 +17,7 @@ package selfupdate
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -99,6 +100,8 @@ func setGitHubAuth(req *http.Request) {
 		if tok := githubToken(); tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
 		}
+	} else {
+		req.Header.Del("Authorization")
 	}
 }
 
@@ -256,7 +259,7 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if sum != expect {
+	if subtle.ConstantTimeCompare([]byte(sum), []byte(expect)) != 1 {
 		return "", fmt.Errorf("checksum mismatch for %s: got %s, want %s", want, sum, expect)
 	}
 	if err := tmp.Sync(); err != nil {

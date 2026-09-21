@@ -45,6 +45,8 @@ func TestPorcelainPath(t *testing.T) {
 		{`?? "weird\qescape"`, `weird\qescape`},
 		{"?? café.md", "café.md"},
 		{" M report.md\u00a0", "report.md\u00a0"},
+		{"?? file.go\r", "file.go"},
+		{" M file.go\r", "file.go"},
 		{"", ""},
 		{" M", ""},
 	}

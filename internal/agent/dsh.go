@@ -70,6 +70,8 @@ func dshDefaultProvider(base []string) (string, error) {
 		defer cancel()
 		argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Dir = os.TempDir()
+		cmd.Env = runx.AbsPATHEnv()
 		runx.Guard(cmd, dshProbeGrace)
 		out, err := cmd.Output()
 		if err != nil {

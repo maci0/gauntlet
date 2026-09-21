@@ -546,6 +546,7 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
 		return
 	}
 	for line := range strings.SplitSeq(string(out), "\n") {
+		line = strings.TrimRight(line, "\r")
 		name := strings.TrimSpace(line)
 		if name != "" {
 			r.DeleteBranch(ctx, name)

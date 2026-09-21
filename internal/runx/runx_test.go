@@ -214,3 +214,24 @@ func TestLookPath(t *testing.T) {
 		t.Fatalf("LookPath(nonexistent) = %q, want empty", got)
 	}
 }
+
+func TestShQuote(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", "''"},
+		{"simple", "'simple'"},
+		{"has spaces", "'has spaces'"},
+		{"it's working", `'it'\''s working'`},
+		{"$(touch /tmp/pwn)", `'$(touch /tmp/pwn)'`},
+		{"`rm -rf /`", "'`rm -rf /`'"},
+		{`"double quotes"`, `'"double quotes"'`},
+		{"multi'quote'test", `'multi'\''quote'\''test'`},
+	}
+	for _, tc := range cases {
+		if got := ShQuote(tc.in); got != tc.want {
+			t.Errorf("ShQuote(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}

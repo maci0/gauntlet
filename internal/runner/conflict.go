@@ -17,6 +17,7 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // conflictTimeout caps the conflict step. Resolving markers in a handful of
@@ -154,5 +155,5 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 
 // conflictHint is what a person runs to land a branch this run could not.
 func conflictHint(branch, message string) string {
-	return fmt.Sprintf("git merge --squash %s && git commit -m %q", branch, message)
+	return fmt.Sprintf("git merge --squash %s && git commit -m %s", runx.ShQuote(branch), runx.ShQuote(message))
 }

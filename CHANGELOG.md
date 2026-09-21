@@ -33,8 +33,15 @@ minor instead and were listed under Changed.
 - Constrain self-update asset downloads to HTTPS endpoints on authorized GitHub
   release hosts, preventing plaintext transfers or untrusted third-party hosts.
 - Validate HTTP redirect target URLs in self-update against authorized release hosts.
+- Strip authorization bearer tokens on self-update requests whenever redirected away from GitHub hosts to prevent token leakage.
+- Use constant-time comparison for self-update asset checksum verification against timing side-channels.
+- Reject unclean and path-traversal state file paths via `GAUNTLET_STATE`.
+- Shell-quote git conflict resolution hint commands with POSIX single-quoting to prevent shell injection via untrusted commit subjects.
+- Isolate agent, indexer, and dsh probe execution with absolute-only PATH environments and clean working directories to prevent relative binary resolution.
 
 ### Fixed
+
+- Strip trailing carriage returns in git status porcelain parsing, worktree cleanup, and UI block padding to prevent path corruption and rendering issues with CRLF line endings.
 
 - Expand tildes and environment variables in custom agent executable paths at launch, and reject unresolvable variables.
 - Validate that GAUNTLET_HOME and --prompt-dir name directories and --log names a file at startup.

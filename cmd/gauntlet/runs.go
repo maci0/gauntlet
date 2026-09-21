@@ -167,6 +167,7 @@ const indexerWaitGrace = 10 * time.Second
 func runIndexer(ctx context.Context, bin string, args []string, dir string) int {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	runx.Guard(cmd, indexerWaitGrace)
 	if err := cmd.Run(); err != nil {
