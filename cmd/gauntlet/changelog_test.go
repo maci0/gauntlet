@@ -4,6 +4,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -84,38 +85,154 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 // surface. Only a major release may contain removals.
 func TestChangelogSemVerBumps(t *testing.T) {
 	text := readChangelog(t)
+	for _, err := range validateChangelogSemVer(text) {
+		t.Errorf("CHANGELOG.md:%s", err)
+	}
+}
+
+func TestValidateChangelogSemVerCases(t *testing.T) {
+	cases := []struct {
+		name    string
+		content string
+		wantErr string
+	}{
+		{
+			name: "valid patch and minor bumps",
+			content: "## Unreleased\n\n### Added\n- Feature\n\n" +
+				"## 1.23.0\n\n### Added\n- New feature\n\n" +
+				"## 1.22.1\n\n### Fixed\n- Bug fix\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Earlier fix\n",
+			wantErr: "",
+		},
+		{
+			name: "unreleased contains removed",
+			content: "## Unreleased\n\n### Removed\n- Dropped flag\n\n" +
+				"## 1.22.1\n\n### Fixed\n- Bug fix\n",
+			wantErr: "Unreleased section contains ### Removed",
+		},
+		{
+			name: "patch release contains added",
+			content: "## Unreleased\n\n" +
+				"## 1.22.2\n\n### Added\n- New feature\n\n" +
+				"## 1.22.1\n\n### Fixed\n- Bug fix\n",
+			wantErr: "patch release 1.22.2 contains ### Added",
+		},
+		{
+			name: "patch release contains deprecated",
+			content: "## Unreleased\n\n" +
+				"## 1.22.2\n\n### Deprecated\n- Old feature\n\n" +
+				"## 1.22.1\n\n### Fixed\n- Bug fix\n",
+			wantErr: "patch release 1.22.2 contains ### Deprecated",
+		},
+		{
+			name: "minor release contains removed",
+			content: "## Unreleased\n\n" +
+				"## 1.23.0\n\n### Removed\n- Old command\n\n" +
+				"## 1.22.1\n\n### Fixed\n- Bug fix\n",
+			wantErr: "minor release 1.23.0 contains ### Removed",
+		},
+		{
+			name: "minor release fails to reset patch",
+			content: "## Unreleased\n\n" +
+				"## 1.23.1\n\n### Added\n- New feature\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "patch release 1.23.1 contains ### Added",
+		},
+		{
+			name: "minor bump does not reset patch when only fixed",
+			content: "## Unreleased\n\n" +
+				"## 1.23.1\n\n### Fixed\n- Fix\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "minor release 1.23.1 must reset patch to 0",
+		},
+		{
+			name: "major bump does not reset minor or patch",
+			content: "## Unreleased\n\n" +
+				"## 2.1.0\n\n### Removed\n- Old command\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "major release 2.1.0 must reset minor and patch to 0",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			errs := validateChangelogSemVer(tc.content)
+			if tc.wantErr == "" {
+				if len(errs) > 0 {
+					t.Fatalf("unexpected errors: %v", errs)
+				}
+			} else {
+				found := false
+				for _, e := range errs {
+					if strings.Contains(e, tc.wantErr) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Fatalf("expected error containing %q, got: %v", tc.wantErr, errs)
+				}
+			}
+		})
+	}
+}
+
+func validateChangelogSemVer(text string) []string {
 	var (
+		errs       []string
 		currentVer *changelogVersion
+		prevVer    *changelogVersion
 		groups     []string
 		lineNum    int
 	)
 	check := func(ver *changelogVersion, groups []string, line int) {
 		if ver == nil {
+			if slices.Contains(groups, "Removed") {
+				errs = append(errs, fmt.Sprintf("line %d: Unreleased section contains ### Removed; removals are breaking and require a major release", line))
+			}
 			return
 		}
 		// 1.0.1 and 1.0.2 are documented historical exceptions that shipped before contract guards.
 		if *ver == "1.0.1" || *ver == "1.0.2" {
+			prevVer = ver
 			return
 		}
 		maj, min, pat := ver.numbers()
 		if maj < 1 {
+			prevVer = ver
 			return // 0.x releases allowed breaking changes in minor
 		}
 		if pat > 0 {
 			if slices.Contains(groups, "Added") {
-				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Added; additions require a minor release", line, *ver)
+				errs = append(errs, fmt.Sprintf("line %d: patch release %s contains ### Added; additions require a minor release", line, *ver))
 			}
 			if slices.Contains(groups, "Deprecated") {
-				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Deprecated; deprecations require a minor release", line, *ver)
+				errs = append(errs, fmt.Sprintf("line %d: patch release %s contains ### Deprecated; deprecations require a minor release", line, *ver))
 			}
 			if slices.Contains(groups, "Removed") {
-				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Removed; removals are breaking and require a major release", line, *ver)
+				errs = append(errs, fmt.Sprintf("line %d: patch release %s contains ### Removed; removals are breaking and require a major release", line, *ver))
 			}
 		} else if min > 0 {
 			if slices.Contains(groups, "Removed") {
-				t.Errorf("CHANGELOG.md:%d: minor release %s contains ### Removed; removals are breaking and require a major release", line, *ver)
+				errs = append(errs, fmt.Sprintf("line %d: minor release %s contains ### Removed; removals are breaking and require a major release", line, *ver))
 			}
 		}
+		if prevVer != nil {
+			pMaj, pMin, pPat := prevVer.numbers()
+			if maj >= 1 && pMaj >= 1 {
+				if pMaj > maj {
+					if pMin != 0 || pPat != 0 {
+						errs = append(errs, fmt.Sprintf("line %d: major release %s must reset minor and patch to 0, got .%d.%d",
+							line, *prevVer, pMin, pPat))
+					}
+				} else if pMin > min {
+					if pPat != 0 {
+						errs = append(errs, fmt.Sprintf("line %d: minor release %s must reset patch to 0, got patch %d",
+							line, *prevVer, pPat))
+					}
+				}
+			}
+		}
+		prevVer = ver
 	}
 	for i, line := range strings.Split(text, "\n") {
 		n := i + 1
@@ -140,6 +257,7 @@ func TestChangelogSemVerBumps(t *testing.T) {
 		}
 	}
 	check(currentVer, groups, lineNum)
+	return errs
 }
 
 // A name on the environment-variable contract is something a consumer can

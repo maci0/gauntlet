@@ -35,6 +35,10 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Validate JSON key types when decoding custom agent definitions (`agents.json`), returning an error on non-string keys instead of panicking on type assertion.
+- Handle incomplete octal escape sequences without consuming invalid digits or malforming bytes in git filename unquoting (`unquoteC`).
+- Populate line metrics, review status, and subjects when recovering stacked PR layers.
+- Serialize stream sink and token usage callbacks during agent execution, retry interrupted lock note updates on EINTR, and synchronize watcher teardown during runner shutdown.
 - Normalize custom agent names and definition keys to NFC, rejecting duplicate keys across NFC and NFD spellings and aligning lookup forms.
 - Handle non-positive column budgets and 1-column cuts in terminal cell trimming, reserving width for the ellipsis and returning empty strings on non-positive bounds.
 - Use canonical review names when expanding review sets and displaying review prompts, preventing unnormalized names from reaching prompt composition.
