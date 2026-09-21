@@ -96,6 +96,11 @@ func (c Custom) validate(name string) error {
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
+	for _, a := range c.Argv {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("custom agent %q: argv contains an empty argument", name)
+		}
+	}
 	prompts := 0
 	for _, a := range c.Argv {
 		if strings.Contains(a, promptPlaceholder) {
@@ -108,11 +113,27 @@ func (c Custom) validate(name string) error {
 	if prompts > 1 {
 		return fmt.Errorf("custom agent %q: argv must contain %s exactly once", name, promptPlaceholder)
 	}
-	if containsPlaceholder(c.Model, promptPlaceholder) {
-		return fmt.Errorf("custom agent %q: model cannot contain %s", name, promptPlaceholder)
+	if len(c.Model) > 0 {
+		if !containsPlaceholder(c.Model, modelPlaceholder) {
+			return fmt.Errorf("custom agent %q: model must contain %s", name, modelPlaceholder)
+		}
+		if containsPlaceholder(c.Model, promptPlaceholder) {
+			return fmt.Errorf("custom agent %q: model cannot contain %s", name, promptPlaceholder)
+		}
 	}
-	if containsPlaceholder(c.Effort, promptPlaceholder) {
-		return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
+	if len(c.Effort) > 0 {
+		if !containsPlaceholder(c.Effort, effortPlaceholder) {
+			return fmt.Errorf("custom agent %q: effort must contain %s", name, effortPlaceholder)
+		}
+		if containsPlaceholder(c.Effort, promptPlaceholder) {
+			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
+		}
+	}
+	if containsPlaceholder(c.Stream, promptPlaceholder) {
+		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, promptPlaceholder)
+	}
+	if containsPlaceholder(c.Continue, promptPlaceholder) {
+		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, promptPlaceholder)
 	}
 	if c.Usage != nil {
 		if len(c.Usage.Roots) == 0 {

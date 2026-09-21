@@ -6,6 +6,7 @@ package selfupdate
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -227,5 +228,17 @@ func TestValidateAssetURL(t *testing.T) {
 		if (err == nil) != tc.ok {
 			t.Errorf("validateAssetURL(%q) err=%v, want ok=%v", tc.url, err, tc.ok)
 		}
+	}
+}
+
+func TestClientRedirectValidation(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://evil.example.com/malicious", http.StatusFound)
+	}))
+	defer ts.Close()
+
+	_, err := fetch(context.Background(), ts.URL, 1024)
+	if err == nil || !strings.Contains(err.Error(), "untrusted asset host") {
+		t.Fatalf("redirect to untrusted host should be refused, got: %v", err)
 	}
 }

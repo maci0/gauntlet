@@ -34,7 +34,7 @@ type Event struct {
 	// Usage is any token counters found on the line. A counter the line did
 	// not carry stays at zero, which is also what a zero counter reports:
 	// "none found" and "found, and it was nothing" are the same answer here,
-	// and the caller treats both as unknown (see runner.pick).
+	// and the caller treats both as unknown (see runner's pick helper).
 	Usage Usage
 }
 

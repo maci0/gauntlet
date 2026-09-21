@@ -104,7 +104,7 @@ Instructions:
 - In auto-fix mode take only the smallest safe wins: correct one wrong-direction import, move one clearly misplaced file, extract one obviously misplaced function. No renames, no tree restructuring, no layer introductions; large moves are design work, not a fix pass.
 - Do not evaluate design tradeoffs or technology selection (design-review), line-level quality (code-review), or necessity/deletion (minimalism-review). Here own folder/module structure, dependency direction, and layering.
 - Do not move or rewrite review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not move THREAT_MODEL.md or SECURITY.md (threat-review).
-- If available, use dependency-graph tools: `madge` (JS/TS circular deps), `pydeps`/`lint-imports` (Python), `go mod graph`, `cargo tree`. A rendered graph beats mentally tracing imports. Never install tools.
+- If available, use dependency-graph tools: `madge`/`depcruise` (JS/TS circular and forbidden deps), `pydeps`/`lint-imports` (Python), `go mod graph`, `cargo tree`. A rendered graph beats mentally tracing imports. Never install tools.
 - Map the actual structure before judging it. Understand what exists before recommending changes.
 - A repo with fewer than about 10 source files: skip layering and extension-point findings; only flag circular dependencies and wrong-direction imports.
 - Do not recommend enterprise patterns for small projects or startup patterns for large ones.

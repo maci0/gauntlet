@@ -46,7 +46,7 @@ func reportUsage(o *options, err error) error {
 }
 
 type options struct {
-	command string // "", doctor, update, runs, show, version
+	command string // "", help, pick, doctor, update, runs, show, version
 
 	// selection
 	reviews    string
@@ -468,6 +468,10 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 	}
 
+	if isFlagSet(fs, "usage-cmd") && strings.TrimSpace(o.usageCmd) == "" {
+		return nil, errors.New("--usage-cmd is blank: it is split on whitespace " +
+			"and executed directly, so it needs a command to run")
+	}
 	// Either flag alone is a misconfiguration worth refusing rather than
 	// silently ignoring: a limit with no probe never trips, and a probe with
 	// no limit spawns a process per review to no effect.
@@ -513,6 +517,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		o.agents = specs
 	}
+	if isFlagSet(fs, "suggest-agent") && strings.TrimSpace(suggestAgent) == "" {
+		return nil, errors.New("--suggest-agent is empty")
+	}
 	if suggestAgent == runner.FastSuggestAgent {
 		// Not an agent: gauntlet itself, reading the tree for signals.
 		o.suggestAgent = &agent.Spec{Tool: runner.FastSuggestAgent}
@@ -532,6 +539,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	// repo by accident.
 	o.reviewsSet = isFlagSet(fs, "reviews", "r")
 	o.reviews = strings.Join(reviews, ",")
+	if isFlagSet(fs, "exclude", "x") && len(exclude) == 0 {
+		return nil, errors.New("--exclude is empty")
+	}
 	o.exclude = strings.Join(exclude, ",")
 	o.dirs = dirs
 
@@ -603,6 +613,24 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	o.updateRepo = repo
 	if isFlagSet(fs, "dirs", "target-dirs") && len(dirs) == 0 {
 		return nil, errors.New("--dirs is empty")
+	}
+	if isFlagSet(fs, "merge-into") {
+		o.mergeInto = strings.TrimSpace(o.mergeInto)
+		if o.mergeInto == "" {
+			return nil, errors.New("--merge-into is empty")
+		}
+	}
+	if isFlagSet(fs, "pr-base") {
+		o.prBase = strings.TrimSpace(o.prBase)
+		if o.prBase == "" {
+			return nil, errors.New("--pr-base is empty")
+		}
+	}
+	if isFlagSet(fs, "show-prompt") {
+		o.showPrompt = strings.TrimSpace(o.showPrompt)
+		if o.showPrompt == "" {
+			return nil, errors.New("--show-prompt is empty")
+		}
 	}
 	if o.stackedPRs {
 		if o.commit || o.push {

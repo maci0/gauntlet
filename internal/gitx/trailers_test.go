@@ -114,3 +114,52 @@ func TestStripAITrailersSkipsUnmovedHEAD(t *testing.T) {
 		t.Fatal("unmoved HEAD was rewritten")
 	}
 }
+
+// FuzzStripAITrailers tests that stripping AI attribution lines from commit
+// messages is deterministic, idempotent, never panics on arbitrary input,
+// never drops non-trailer content, and never leaves trailing AI trailers.
+func FuzzStripAITrailers(f *testing.F) {
+	seeds := []string{
+		"fix: guard the nil map write\n\nCo-Authored-By: Cursor <cursoragent@cursor.com>\nGenerated-by: Cursor\n",
+		"fix: guard the nil map write\n\nSigned-off-by: test <test@example.invalid>\n",
+		"Co-Authored-By: Cursor <cursoragent@cursor.com>\nGenerated-by: Cursor",
+		"fix: something\r\n\r\nMade-with: Cursor\r\n",
+		"feat: test\n\n  co-authored-by: cursoragent\n",
+		"subject\n\nbody\n\nCo-Authored-By: Human <human@example.com>\n",
+		"",
+		"\n",
+		"\r\n",
+		"   \n\n  \n",
+		"only a subject line",
+		"subject\n\nCo-Authored-By: Cursor <cursoragent@cursor.com>\n\n\n",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, msg string) {
+		got := stripAITrailers(msg)
+		if again := stripAITrailers(msg); again != got {
+			t.Fatalf("stripAITrailers(%q) is not deterministic: %q vs %q", msg, got, again)
+		}
+		if second := stripAITrailers(got); second != got {
+			t.Fatalf("stripAITrailers is not idempotent on %q:\nfirst:  %q\nsecond: %q", msg, got, second)
+		}
+		if strings.TrimSpace(msg) != "" && strings.TrimSpace(got) == "" {
+			t.Fatalf("non-empty message %q became empty: %q", msg, got)
+		}
+		if got != msg {
+			if !strings.HasSuffix(got, "\n") {
+				t.Fatalf("cleaned message missing trailing newline: %q", got)
+			}
+			lines := strings.Split(strings.TrimSuffix(got, "\n"), "\n")
+			for _, l := range lines {
+				if aiTrailer(l) {
+					t.Fatalf("AI trailer %q survived in stripped message:\n%s", l, got)
+				}
+			}
+			if len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+				t.Fatalf("trailing blank line in cleaned message: %q", got)
+			}
+		}
+	})
+}

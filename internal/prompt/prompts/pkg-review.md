@@ -45,7 +45,7 @@ Review the following:
 6. Sandbox permissions (least privilege)
 - Flatpak `finish-args` broader than needed: `--filesystem=home` or `host` where a portal or subpath suffices; unneeded device/socket/dbus access
 - Snap plugs/slots requesting more than the app uses
-- Container images running as root without need; missing `USER`; unnecessary capabilities documented as required (compose/k8s `user`/`runAsNonRoot` belongs to infra-review)
+- Container images running as root without need; missing `USER`; unnecessary capabilities documented as required (compose `user` belongs to infra-review; Kubernetes pod securityContext `runAsNonRoot` belongs to container-review)
 - Sandbox escapes baked in as convenience (talk-name on session bus wildcards, `--device=all`)
 
 7. Container image as shipped artifact

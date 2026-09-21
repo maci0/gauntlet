@@ -15,6 +15,7 @@ minor instead and were listed under Changed.
 ### Added
 
 - Support Page Up and Page Down keys (`pgup`, `pgdown`) in the interactive launcher (`gauntlet pick`) across reviews, agents, options, and filter search.
+- Ship template configuration files `agents.example.json` and `.env.example` with documented options and placeholder values.
 
 ### Security
 
@@ -23,9 +24,13 @@ minor instead and were listed under Changed.
   cwd-relative PATH entries dropped.
 - Constrain self-update asset downloads to HTTPS endpoints on authorized GitHub
   release hosts, preventing plaintext transfers or untrusted third-party hosts.
+- Validate HTTP redirect target URLs in self-update against authorized release hosts.
 
 ### Fixed
 
+- Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.
+- Reject empty string arguments for `--show-prompt`, `--merge-into`, `--pr-base`, `--suggest-agent`, `--usage-cmd`, and `--exclude` at startup instead of silently accepting them.
+- Enforce placeholder validation on custom agent definitions (`model` requires `{model}`, `effort` requires `{effort}`, and forbid `{prompt}` in `stream` or `continue`).
 - Abort and reset in-progress merges cleanly even when interrupted by a cancelled context, preventing unmerged index state from persisting.
 - Preserve the underlying error on retry failure when removing git worktrees.
 - Include unmerged-path inspection error context when squashing conflicted branches.

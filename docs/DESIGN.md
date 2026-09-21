@@ -49,8 +49,8 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, `humanize`, and
-`journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
+`fuzzy`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`,
+`humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, and the `fuzzy` fold behind the picker's filter, and nothing

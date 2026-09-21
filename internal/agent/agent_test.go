@@ -1215,15 +1215,20 @@ func TestCustomAgentDropsArgumentsWithNothingToPutInThem(t *testing.T) {
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
-		"no argv":                   {},
-		"blank executable":          {Argv: []string{" ", "{prompt}"}},
-		"no prompt":                 {Argv: []string{"x", "--flag"}},
-		"multiple prompts":          {Argv: []string{"x", "{prompt}", "{prompt}"}},
-		"prompt in model":           {Argv: []string{"x", "{prompt}"}, Model: []string{"--m", "{prompt}"}},
-		"prompt in effort":          {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e", "{prompt}"}},
-		"usage without roots":       {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
-		"usage with blank roots":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
-		"usage with one blank root": {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid", ""}}},
+		"no argv":                    {},
+		"blank executable":           {Argv: []string{" ", "{prompt}"}},
+		"blank argument in argv":     {Argv: []string{"x", " ", "{prompt}"}},
+		"no prompt":                  {Argv: []string{"x", "--flag"}},
+		"multiple prompts":           {Argv: []string{"x", "{prompt}", "{prompt}"}},
+		"model without placeholder":  {Argv: []string{"x", "{prompt}"}, Model: []string{"--m"}},
+		"prompt in model":            {Argv: []string{"x", "{prompt}"}, Model: []string{"--m", "{prompt}"}},
+		"effort without placeholder": {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e"}},
+		"prompt in effort":           {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e", "{prompt}"}},
+		"prompt in stream":           {Argv: []string{"x", "{prompt}"}, Stream: []string{"--json", "{prompt}"}},
+		"prompt in continue":         {Argv: []string{"x", "{prompt}"}, Continue: []string{"-c", "{prompt}"}},
+		"usage without roots":        {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
+		"usage with blank roots":     {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
+		"usage with one blank root":  {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid", ""}}},
 	}
 	for name, def := range cases {
 		if err := Register("tmp", def); err == nil {
@@ -1430,6 +1435,21 @@ func TestCustomAgentFileRoundTrip(t *testing.T) {
 	}
 	if err := LoadCustomFile(bad); err == nil {
 		t.Fatal("malformed definitions should be rejected")
+	}
+}
+
+func TestAgentsExampleJsonIsValid(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	path := filepath.Join("..", "..", "agents.example.json")
+	if err := LoadCustomFile(path); err != nil {
+		t.Fatalf("agents.example.json failed to load or validate: %v", err)
+	}
+	def, ok := CustomDef("myagent")
+	if !ok {
+		t.Fatal("myagent not defined from agents.example.json")
+	}
+	if len(def.Argv) == 0 {
+		t.Fatal("myagent argv is empty")
 	}
 }
 

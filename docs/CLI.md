@@ -63,7 +63,8 @@ several paths uses the first.
 Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
 that is unset or empty is a usage error rather than expanding to nothing. An
-explicit empty `--prompt-dir` or `--log` is refused the same way `--dir` is.
+explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
+`--pr-base`, `--suggest-agent`, or `--exclude` is refused the same way `--dir` is.
 
 A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 `-j 3`, and `-j=3` are the same flag.
@@ -141,6 +142,13 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--hot-reload` | on | When this binary is replaced during a run (by `gauntlet update`, `make install`, or a rebuild), finish the reviews in flight and hand the rest of the loop to the new binary instead of exiting. |
 | `--auto-update` | off | During a run, check for a new release shortly after start and every six hours, install it, and hand over at the next safe point like a hot reload. A failed check is reported and the run goes on. |
 | `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from, as `owner/repo`. A URL or extra path segment is a usage error. |
+| `--check` | off | Report the latest release without installing. |
+
+**History**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--limit N` | `20` | How many past runs to list in `gauntlet runs`. |
 
 ## Environment variables
 
@@ -184,23 +192,30 @@ handoff file passed across the exec.)
 ```json
 {"myagent": {"argv": ["myagent", "-p", "{prompt}"],
              "stream": ["--mode", "json"],
+             "continue": ["--resume"],
              "usage": {"roots": ["~/.myagent/sessions"]}}}
 ```
 
 `argv` is required and must contain `{prompt}`. `stream` is the argument list
-that asks the CLI for machine-readable output (`--stream`), and `usage` says
-where it keeps session transcripts, which is what gives a defined agent live
-token counts. `model` (e.g. `["--model", "{model}"]`) is appended when a spec
-pins a model, and `effort` (e.g. `["--effort", "{effort}"]`) likewise when a
-spec pins a reasoning effort; without an `effort` list (or an `{effort}`
-placeholder in `argv`), `name:model@effort` is refused at startup. Every
-placeholder in an `argv` entry is expanded, so one argument may carry several
-(`"--opts=model={model},effort={effort}"`); the composed prompt is substituted
-as content, so a placeholder the review's own text happens to contain is left
-alone. An argument mentioning a `{model}` or `{effort}` the run did not pin is
-left out whole, the way an unused `model` block is, so the agent is never
-handed `--model=`; put settings that vary independently in arguments of their
-own. The argument holding `{prompt}` is always kept, whatever else it
+that asks the CLI for machine-readable output (`--stream`), `continue` is the
+argument list that resumes the agent's last session in this directory under
+`--continue-sessions`, and `usage` says where it keeps session transcripts,
+which is what gives a defined agent live token counts. `model` (e.g.
+`["--model", "{model}"]`) is appended when a spec pins a model, and `effort`
+(e.g. `["--effort", "{effort}"]`) likewise when a spec pins a reasoning
+effort; without an `effort` list (or an `{effort}` placeholder in `argv`),
+`name:model@effort` is refused at startup. When specified, `model` must contain
+the `{model}` placeholder, and `effort` must contain `{effort}`; neither `model`,
+`effort`, `stream`, nor `continue` may contain `{prompt}`. `opt_in` (boolean)
+keeps the agent out of auto-detection and `mixed`: it runs only when named
+explicitly with `--agents`. `note` is an optional explanatory string shown in
+`gauntlet doctor`. Every placeholder in an `argv` entry is expanded, so one
+argument may carry several (`"--opts=model={model},effort={effort}"`); the composed
+prompt is substituted as content, so a placeholder the review's own text happens
+to contain is left alone. An argument mentioning a `{model}` or `{effort}` the run
+did not pin is left out whole, the way an unused `model` block is, so the agent is
+never handed `--model=`; put settings that vary independently in arguments of
+their own. The argument holding `{prompt}` is always kept, whatever else it
 mentions. The name
 itself cannot contain spaces, commas, colons, equals signs, or at signs:
 they are the separators `--agents`, `--bin`, and `--agent-cmd` parse by. On

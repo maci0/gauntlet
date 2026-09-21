@@ -1,0 +1,13 @@
+{
+  "myagent": {
+    "argv": ["myagent", "-p", "{prompt}"],
+    "model": ["--model", "{model}"],
+    "effort": ["--effort", "{effort}"],
+    "stream": ["--mode", "json"],
+    "continue": ["--resume"],
+    "usage": {
+      "roots": ["~/.myagent/sessions"]
+    },
+    "note": "custom agent definition template"
+  }
+}

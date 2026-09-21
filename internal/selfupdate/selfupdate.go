@@ -136,7 +136,19 @@ func assetName(version string) string {
 	return fmt.Sprintf("gauntlet_%s_%s_%s", version, runtime.GOOS, runtime.GOARCH)
 }
 
-var client = &http.Client{Timeout: 5 * time.Minute}
+var client = &http.Client{
+	Timeout: 5 * time.Minute,
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return errors.New("stopped after 10 redirects")
+		}
+		if err := validateAssetURL(req.URL.String()); err != nil {
+			return fmt.Errorf("redirect: %w", err)
+		}
+		setGitHubAuth(req)
+		return nil
+	},
+}
 
 // Check queries the latest release. It is never called on the startup path:
 // a version check must not stand between the user and the first review.

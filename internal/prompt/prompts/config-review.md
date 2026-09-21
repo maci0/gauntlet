@@ -36,7 +36,7 @@ Review the following:
 - Missing secrets in example configuration or .env.example files (placeholder values only, never real secrets)
 - Secrets logged or included in error messages (note only; sec-review owns the redaction)
 - Secrets passed as command-line arguments (visible in process listings)
-- Missing integration with a secret manager (Vault, AWS Secrets Manager, etc.) (organizational: note only)
+- Missing integration with a secret manager (Vault, AWS Secrets Manager, etc.): organizational, out of scope for a fix pass; focus on configuration schema and validation
 - Shared secrets across environments (note only)
 - Missing secret rotation support or documentation (note only)
 

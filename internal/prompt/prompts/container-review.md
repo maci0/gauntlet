@@ -57,13 +57,13 @@ Review the following:
 - Configuration not validated at startup: missing required environment variables cause runtime failures deep in request handling rather than a clean startup error
 
 6. Image hygiene
-(pkg-review owns the full image artifact review; here flag the patterns that directly cause container-native failures: signal handling, secrets exposure, and digest reproducibility.)
-- Shell-form CMD/ENTRYPOINT not caught by pkg-review: impacts SIGTERM delivery in orchestrated environments
-- Secrets or private keys in any image layer: anyone with pull access extracts credentials
+(pkg-review owns the Dockerfile image artifact review: build context, layer ordering, multi-stage builds, base image tags, and HEALTHCHECK. Here own Deployment manifests and container-native runtime impact.)
+- Shell-form CMD/ENTRYPOINT: impacts SIGTERM delivery in orchestrated environments (note only; pkg-review owns Dockerfile entrypoint form; here own manifest preStop and graceful termination)
+- Secrets or private keys in any image layer: anyone with pull access extracts credentials (note only; pkg-review owns image layers)
 - Image referenced by mutable tag (`:latest`, `:stable`) in Deployment manifests: two pods in the same Deployment can run different code if the tag was pushed between scheduling events; non-reproducible rollbacks
-- Missing .dockerignore: `.git/` history (may contain secrets in old commits), `.env` files, and large build artifacts leak into the build context, slowing builds and potentially leaking credentials into the image
-- Multi-stage build absent: build tools (compilers, package managers, test frameworks) remain in the runtime image, expanding the CVE surface and image size without functional benefit
-- Base image on `latest` or an unversioned tag in the Dockerfile: non-reproducible builds; a base image update can silently break the application
+- Missing .dockerignore: build context leaks (note only; pkg-review owns image build context)
+- Multi-stage build absent: build tools remaining in the runtime image (note only; pkg-review owns multi-stage Dockerfiles)
+- Base image on `latest` or an unversioned tag in the Dockerfile: non-reproducible builds (note only; pkg-review owns base image tags; here own mutable tags in Kubernetes manifests)
 
 7. Resource management
 - CPU and memory requests absent: scheduler treats the pod as zero-resource, packs it onto already-loaded nodes, and the pod cannot receive QoS guarantees

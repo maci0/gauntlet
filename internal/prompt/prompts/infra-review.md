@@ -64,7 +64,6 @@ Review the following:
 - Database migrations not coordinated with application deployment
 - Missing deployment locks or concurrency controls
 - Manual deployment steps that should be automated
-- No clear ownership of deployment process (organizational: note only)
 - Missing deployment audit trail or change log
 
 6. Secret management
@@ -92,7 +91,6 @@ Review the following:
 - Missing automated backups for databases or persistent storage (note only; dr-review owns coverage)
 - No documented or tested restore procedure (note only; dr-review)
 - Missing redundancy for single points of failure
-- No defined RTO or RPO targets (organizational: note only)
 - Missing chaos engineering or failure testing (note only; do not add a chaos framework)
 - Monitoring gaps that could delay incident detection (note only; o11y-review owns application instrumentation)
 - Missing runbooks for common failure scenarios (note only unless a stub already exists)
@@ -116,7 +114,7 @@ Review the following:
 - Missing contribution guidelines or development workflow documentation (note only; doc-review owns the prose)
 
 Instructions:
-- Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation.
+- Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation. Team ownership and RTO/RPO targets are organizational: out of scope for a fix pass.
 - Do not create a CI pipeline, IaC stack, or compose file from scratch; fix what exists. Do not add new pipeline jobs, stages, or required checks; fix what existing stages already do (a secret in a step, an unpinned action, a missing `cache:` key, a test job that never invokes the test command).
 - Review the tree only: do not query live cloud APIs, remote Terraform/Pulumi state, or cluster endpoints. Drift against actual state that you cannot see in the repo: skip.
 - If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform). Never install tools.

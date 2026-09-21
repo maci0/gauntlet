@@ -1112,6 +1112,85 @@ func TestStackBranchNaming(t *testing.T) {
 	}
 }
 
+// FuzzTopicSlug drives commit-subject distillation and branch-slug generation
+// with arbitrary untrusted strings. The output forms git branch refs and worktree
+// directories, so it must never panic, must satisfy length bounds, must produce
+// valid ref characters, and must never generate leading/trailing hyphens or
+// consecutive hyphens.
+func FuzzTopicSlug(f *testing.F) {
+	seeds := []string{
+		"fix: guard the nil map write",
+		"feat(scope)!: breaking change description",
+		"chore: alpha bravo charlie delta echo foxtrot golf hotel india",
+		"fix: a..b //c ~^:? *[\\ @{ .lock",
+		"chore: " + strings.Repeat("wordy-", 20),
+		"not a conventional subject at all: with a colon later",
+		"feat: --leading and -trailing- ",
+		"☃ ☃ ☃",
+		"",
+		"-",
+		"--",
+		"a",
+		"123",
+		"fix: 123-456",
+		"refactor(core): update /path/to/file",
+		"\x00\x1f\t\n",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, subject string) {
+		topic := TopicSlug(subject)
+		if again := TopicSlug(subject); again != topic {
+			t.Fatalf("TopicSlug(%q) is not deterministic: %q vs %q", subject, topic, again)
+		}
+		if len(topic) > topicSlugMax {
+			t.Fatalf("TopicSlug(%q) exceeded topicSlugMax (%d): len=%d %q", subject, topicSlugMax, len(topic), topic)
+		}
+		if strings.HasPrefix(topic, "-") || strings.HasSuffix(topic, "-") {
+			t.Fatalf("TopicSlug(%q) has leading or trailing hyphen: %q", subject, topic)
+		}
+		if strings.Contains(topic, "--") {
+			t.Fatalf("TopicSlug(%q) has consecutive hyphens: %q", subject, topic)
+		}
+		for _, r := range topic {
+			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+				t.Fatalf("TopicSlug(%q) contains invalid character %q: %q", subject, r, topic)
+			}
+		}
+		if topic != "" {
+			if second := TopicSlug(topic); second != topic {
+				t.Fatalf("TopicSlug is not idempotent on %q: got %q, then %q", subject, topic, second)
+			}
+			branch := StackFinalBranch(0, "sec-review", subject)
+			if branch == "" {
+				t.Fatalf("non-empty topic %q produced empty StackFinalBranch for %q", topic, subject)
+			}
+			if strings.Contains(branch, "..") || strings.Contains(branch, "@{") ||
+				strings.Contains(branch, "//") || strings.HasSuffix(branch, "/") ||
+				strings.HasSuffix(branch, ".lock") || strings.HasSuffix(branch, ".") {
+				t.Fatalf("StackFinalBranch(%q) produced invalid ref name %q", subject, branch)
+			}
+		}
+
+		bSlug := BranchSlug(subject)
+		if again := BranchSlug(subject); again != bSlug {
+			t.Fatalf("BranchSlug(%q) is not deterministic: %q vs %q", subject, bSlug, again)
+		}
+		if bSlug == "" {
+			t.Fatalf("BranchSlug(%q) returned empty string", subject)
+		}
+		if strings.HasPrefix(bSlug, "-") || strings.HasSuffix(bSlug, "-") {
+			t.Fatalf("BranchSlug(%q) has leading or trailing hyphen: %q", subject, bSlug)
+		}
+		for _, r := range bSlug {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+				t.Fatalf("BranchSlug(%q) contains invalid character %q: %q", subject, r, bSlug)
+			}
+		}
+	})
+}
+
 func TestBranchesExcludeGauntletNamespaces(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

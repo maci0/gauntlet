@@ -318,8 +318,9 @@ limit with no probe never trips and a probe with no limit spawns a process per
 review to no effect.
 
 The command is the operator's, not the agent's. It is split on whitespace and
-executed directly, so no shell parses it, and it runs in the directory
-gauntlet was started from rather than the tree under review. Its last nonempty
+executed directly, so no shell parses it, and it runs in the system temporary
+directory with cwd-relative PATH entries dropped rather than in the tree under review.
+Its last nonempty
 stdout line must contain one finite number in 0-100, optionally with a trailing
 `%`; earlier lines are ignored. An empty answer, a label on the last line, or
 an invalid number is an error rather than a guessed percentage. Probe
