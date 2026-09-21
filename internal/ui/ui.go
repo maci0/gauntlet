@@ -1239,6 +1239,7 @@ func (m *model) helpLines() []string {
 		qLine,
 		"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
 		"  ctrl+c x2   quit while a finish is draining (stops the run)",
+		"  esc         cancel quit confirmation, or reset paused/scrolled feed to live",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed (or pgup / pgdn)",
 		"  g / G       jump to oldest / newest (home / end)",
@@ -1255,11 +1256,16 @@ func (m *model) helpLines() []string {
 // finished run says close, and a dead action (finish after the run ended) is
 // not advertised. scrollable is false on the fallback, which has no feed.
 func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
+	if m.quitArmed {
+		return []struct{ k, d string }{
+			{"q", "stop now"}, {"esc", "cancel"}, {"?", "help"},
+		}
+	}
 	q := "quit"
 	switch {
 	case m.done:
 		q = "close"
-	case m.quitArmed:
+	case m.finishing:
 		q = "stop now"
 	}
 	keys := []struct{ k, d string }{
@@ -1274,6 +1280,9 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	}
 	if scrollable {
 		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
+		if m.scroll > 0 {
+			keys = append(keys, struct{ k, d string }{"esc", "live"})
+		}
 	}
 	if !m.done && !m.finishing {
 		keys = append(keys, struct{ k, d string }{"s", "finish"})
@@ -1323,7 +1332,7 @@ func renderHelpPage(lines []string, scroll, w, h int) string {
 	for len(out) < viewport {
 		out = append(out, "")
 	}
-	out = append(out, styleDim.Render("q close  j/k scroll  pgup/pgdn  home/end"))
+	out = append(out, styleDim.Render("q/esc close  j/k scroll  pgup/pgdn  home/end"))
 	return clipBlock(out, w, h)
 }
 

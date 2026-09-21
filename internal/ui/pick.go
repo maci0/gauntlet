@@ -1088,7 +1088,11 @@ func (p *picker) renderNarrow() string {
 	}
 	keys := "⏎ run  q cancel  ? help"
 	if p.typing {
+		rows = append(rows, styleInfo.Render("filter: "+p.filter+"▏"))
 		keys = "⏎ keep  esc clear"
+	} else if p.filter != "" {
+		rows = append(rows, styleInfo.Render("filter: /"+p.filter))
+		keys = "⏎ run  esc clear  q cancel  ? help"
 	}
 	rows = append(rows, styleDim.Render(keys))
 	if p.h > 0 && len(rows) > p.h {
@@ -1115,12 +1119,12 @@ func (p *picker) helpLines() []string {
 	lines = append(lines, p.stateLines()...)
 	lines = append(lines,
 		"",
-		"  tab          reviews, agents, and run options",
-		"  j / k        move within a pane",
+		"  tab / shift+tab reviews, agents, and run options",
+		"  ↑ / ↓, j / k move within a pane",
 		"  pgup / pgdn  move by page",
 		"  home / end   first / last row in this pane",
 		"  space        toggle a review, a set, an agent, or a switch",
-		"  ← / →        open or close a set; change a value",
+		"  ← / →, h / l open or close a set; change a value",
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by name or description; enter keeps it, esc clears",
 		"  + / -        raise or lower concurrency",

@@ -851,6 +851,27 @@ func TestNarrowLauncherClipsToThePane(t *testing.T) {
 	}
 }
 
+func TestNarrowLauncherShowsActiveFilterAndClear(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h, p.ready = 40, 10, true
+	p.filter = "ux"
+	view := stripANSI(p.View())
+	if !strings.Contains(view, "filter: /ux") {
+		t.Fatalf("narrow view lost active filter label:\n%s", view)
+	}
+	if !strings.Contains(view, "esc clear") {
+		t.Fatalf("narrow view lost esc clear key hint:\n%s", view)
+	}
+	p.typing = true
+	viewTyping := stripANSI(p.View())
+	if !strings.Contains(viewTyping, "filter: ux") {
+		t.Fatalf("narrow view lost typing filter label:\n%s", viewTyping)
+	}
+	if !strings.Contains(viewTyping, "esc clear") {
+		t.Fatalf("narrow view lost esc clear while typing:\n%s", viewTyping)
+	}
+}
+
 // A filter is a search: bulk select and a set header must not reach through
 // it and toggle reviews the tree is not showing.
 func TestPickFilterBoundsBulkSelect(t *testing.T) {

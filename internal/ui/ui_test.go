@@ -1100,6 +1100,9 @@ func TestEscCancelsQuitArming(t *testing.T) {
 	if !m.quitArmed {
 		t.Fatal("first q did not arm quit")
 	}
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "esc:cancel") {
+		t.Fatalf("footer does not document esc:cancel while quit is armed:\n%s", got)
+	}
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if cmd != nil {
 		t.Fatal("esc while quit armed stopped the run instead of cancelling")
@@ -1116,6 +1119,9 @@ func TestEscResetsPauseAndScroll(t *testing.T) {
 	m.feed = []feedLine{{text: "line1"}, {text: "line2"}, {text: "line3"}}
 	m.paused = true
 	m.scroll = 2
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "esc:live") {
+		t.Fatalf("footer does not document esc:live while scrolled back:\n%s", got)
+	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.paused {
 		t.Fatal("esc did not unpause the feed")
