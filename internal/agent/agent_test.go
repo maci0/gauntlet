@@ -1456,6 +1456,58 @@ func TestAgentsExampleJsonIsValid(t *testing.T) {
 	if len(def.Argv) == 0 {
 		t.Fatal("myagent argv is empty")
 	}
+	if def.Usage == nil || def.Usage.Suffix != ".jsonl" || def.Usage.Cumulative || def.Usage.HeaderCwd {
+		t.Fatalf("myagent usage options unexpected: %+v", def.Usage)
+	}
+}
+
+func TestCustomAgentMismatchedPlaceholdersRejected(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	base := Custom{Argv: []string{"testagent", "-p", "{prompt}"}}
+
+	for _, tc := range []struct {
+		name string
+		def  Custom
+		want string
+	}{
+		{
+			name: "model with effort",
+			def:  Custom{Argv: base.Argv, Model: []string{"--model", "{model}", "--effort", "{effort}"}},
+			want: "model cannot contain {effort}",
+		},
+		{
+			name: "effort with model",
+			def:  Custom{Argv: base.Argv, Effort: []string{"--effort", "{effort}", "--model", "{model}"}},
+			want: "effort cannot contain {model}",
+		},
+		{
+			name: "stream with model",
+			def:  Custom{Argv: base.Argv, Stream: []string{"--model", "{model}"}},
+			want: "stream cannot contain {model}",
+		},
+		{
+			name: "stream with effort",
+			def:  Custom{Argv: base.Argv, Stream: []string{"--effort", "{effort}"}},
+			want: "stream cannot contain {effort}",
+		},
+		{
+			name: "continue with model",
+			def:  Custom{Argv: base.Argv, Continue: []string{"--model", "{model}"}},
+			want: "continue cannot contain {model}",
+		},
+		{
+			name: "continue with effort",
+			def:  Custom{Argv: base.Argv, Continue: []string{"--effort", "{effort}"}},
+			want: "continue cannot contain {effort}",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.def.validate("testagent")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("validate error = %v, want substring %q", err, tc.want)
+			}
+		})
+	}
 }
 
 func TestCustomAgentFileBOM(t *testing.T) {

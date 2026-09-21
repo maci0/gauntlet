@@ -206,6 +206,12 @@ func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
 	if _, err := os.Stat(subDir); err != nil {
 		t.Fatal("directory was deleted by LoadState")
 	}
+
+	// Relative path must be rejected
+	t.Setenv(stateEnv, "relative.json")
+	if _, err := LoadState(&v); err == nil {
+		t.Fatal("LoadState accepted relative path")
+	}
 }
 
 func TestSaveStateMarshalsWhatLoadStateReads(t *testing.T) {

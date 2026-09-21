@@ -124,6 +124,9 @@ func (c Custom) validate(name string) error {
 		if containsPlaceholder(c.Model, promptPlaceholder) {
 			return fmt.Errorf("custom agent %q: model cannot contain %s", name, promptPlaceholder)
 		}
+		if containsPlaceholder(c.Model, effortPlaceholder) {
+			return fmt.Errorf("custom agent %q: model cannot contain %s", name, effortPlaceholder)
+		}
 	}
 	if len(c.Effort) > 0 {
 		for _, a := range c.Effort {
@@ -137,6 +140,9 @@ func (c Custom) validate(name string) error {
 		if containsPlaceholder(c.Effort, promptPlaceholder) {
 			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
 		}
+		if containsPlaceholder(c.Effort, modelPlaceholder) {
+			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, modelPlaceholder)
+		}
 	}
 	for _, a := range c.Stream {
 		if strings.TrimSpace(a) == "" {
@@ -146,6 +152,12 @@ func (c Custom) validate(name string) error {
 	if containsPlaceholder(c.Stream, promptPlaceholder) {
 		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, promptPlaceholder)
 	}
+	if containsPlaceholder(c.Stream, modelPlaceholder) {
+		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, modelPlaceholder)
+	}
+	if containsPlaceholder(c.Stream, effortPlaceholder) {
+		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, effortPlaceholder)
+	}
 	for _, a := range c.Continue {
 		if strings.TrimSpace(a) == "" {
 			return fmt.Errorf("custom agent %q: continue contains an empty argument", name)
@@ -153,6 +165,12 @@ func (c Custom) validate(name string) error {
 	}
 	if containsPlaceholder(c.Continue, promptPlaceholder) {
 		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, promptPlaceholder)
+	}
+	if containsPlaceholder(c.Continue, modelPlaceholder) {
+		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, modelPlaceholder)
+	}
+	if containsPlaceholder(c.Continue, effortPlaceholder) {
+		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, effortPlaceholder)
 	}
 	if c.Usage != nil {
 		if len(c.Usage.Roots) == 0 {

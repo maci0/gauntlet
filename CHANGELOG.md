@@ -22,6 +22,7 @@ minor instead and were listed under Changed.
 
 ### Security
 
+- Require reload handoff state file paths via `GAUNTLET_STATE` to be absolute, preventing relative path resolution and deletion in the working tree.
 - Validate provider and model identifiers in dsh configuration overlays, preventing YAML injection and directory traversal.
 - Validate reload handoff state files before reading or removing, refusing non-regular files and symlinks via `GAUNTLET_STATE`.
 - Reject oversized responses in self-update checksum downloads instead of silently truncating.
@@ -35,6 +36,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Align documented `GIT_SSH_COMMAND` default in `.env.example` with the runtime default (`ssh`).
+- Reject mismatched placeholders across custom agent `model`, `effort`, `stream`, and `continue` configurations.
 - Do not count opt-in agents launchable only via bunx (`dsh`) as usable auto-detectable CLIs in the doctor report, correctly reporting missing agents and exiting 1.
 - Separate revision arguments and branch names with `--` across git worktree operations, diff statistics, trailer stripping, and commit subject extraction to prevent option injection and file name collision ambiguity.
 - Validate JSON key types when decoding custom agent definitions (`agents.json`), returning an error on non-string keys instead of panicking on type assertion.

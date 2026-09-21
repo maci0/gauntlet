@@ -7,7 +7,10 @@
     "continue": ["--resume"],
     "opt_in": false,
     "usage": {
-      "roots": ["~/.myagent/sessions"]
+      "roots": ["~/.myagent/sessions"],
+      "suffix": ".jsonl",
+      "cumulative": false,
+      "header_cwd": false
     },
     "note": "custom agent definition template"
   }

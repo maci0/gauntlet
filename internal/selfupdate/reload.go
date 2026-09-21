@@ -197,6 +197,9 @@ func LoadState(v any) (ok bool, err error) {
 	if !strings.HasSuffix(path, ".json") {
 		return false, fmt.Errorf("reload handoff %s: invalid state file extension", path)
 	}
+	if !filepath.IsAbs(path) {
+		return false, fmt.Errorf("reload handoff %s: path must be absolute", path)
+	}
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return false, fmt.Errorf("reload handoff %s: %w", path, err)
