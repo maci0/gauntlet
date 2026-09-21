@@ -118,7 +118,20 @@ def main() -> None:
     go = shutil.which("go")
     if go is None:
         raise SystemExit("go is not on PATH")
-    subprocess.run([go, "build", "-o", str(binary), "./cmd/gauntlet"], cwd=root, check=True)
+    subprocess.run(
+        [
+            go,
+            "build",
+            "-mod=readonly",
+            "-trimpath",
+            "-buildvcs=false",
+            "-o",
+            str(binary),
+            "./cmd/gauntlet",
+        ],
+        cwd=root,
+        check=True,
+    )
 
     scores: list[tuple[float, float]] = []
     for directory, picked in sorted(agent_picks().items()):

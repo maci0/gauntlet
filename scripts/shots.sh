@@ -9,6 +9,8 @@
 # Needs uv, a Chromium-based browser, and ImageMagick. This is a maintainer
 # task, not part of the build: the checked-in PNGs are what the README uses.
 set -euo pipefail
+export GOFLAGS="-mod=readonly"
+export GOWORK=off
 
 # Walk up to the module root rather than assuming where this script sits.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

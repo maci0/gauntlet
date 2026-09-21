@@ -12,6 +12,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # build input.
 export GOFLAGS += -mod=readonly
 export GOWORK := off
+export GOTOOLCHAIN := local
 export GOAMD64 := v1
 export GOARM64 := v8.0
 
@@ -197,8 +198,8 @@ vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs
 
 .PHONY: install
 install: build ## install into ~/.local/bin
-	install -d ~/.local/bin
-	install -m 0755 $(BINARY) ~/.local/bin/$(BINARY)
+	install -d "$(HOME)/.local/bin"
+	install -m 0755 $(BINARY) "$(HOME)/.local/bin/$(BINARY)"
 	@case ":$$PATH:" in *:"$(HOME)/.local/bin":*) ;; *) \
 		echo "note: $(HOME)/.local/bin is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
 
@@ -258,6 +259,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
 			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
+			--exclude=./__pycache__ \
 			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \

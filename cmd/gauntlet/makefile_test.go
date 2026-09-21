@@ -33,11 +33,17 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, "export GOWORK := off") {
 		t.Fatal("Makefile must export GOWORK=off so an ambient go.work cannot join the build")
 	}
+	if !strings.Contains(text, "export GOTOOLCHAIN := local") {
+		t.Fatal("Makefile must export GOTOOLCHAIN=local so builds use the local toolchain rather than downloading over the network")
+	}
 	if !strings.Contains(text, "GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)") {
 		t.Fatal("make vuln must clear GOFLAGS and use the pinned govulncheck version")
 	}
 	if !strings.Contains(text, `mkdir -p "$(TMPDIR)"`) {
 		t.Fatal(`mkdir TMPDIR must quote the path: HOME can contain spaces`)
+	}
+	if !strings.Contains(text, `install -d "$(HOME)/.local/bin"`) {
+		t.Fatal(`make install must quote destination path: HOME can contain spaces`)
 	}
 	if !strings.Contains(text, "is not on PATH") {
 		t.Fatal("make install must say when ~/.local/bin is not on PATH")
@@ -52,16 +58,16 @@ func TestMakefileExportsBuildEnvironment(t *testing.T) {
 	for _, env := range os.Environ() {
 		key, _, _ := strings.Cut(env, "=")
 		switch key {
-		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GOFLAGS", "GOWORK", "GOAMD64", "GOARM64":
+		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GOFLAGS", "GOWORK", "GOAMD64", "GOARM64", "GOTOOLCHAIN":
 			continue
 		}
 		cmd.Env = append(cmd.Env, env)
 	}
-	cmd.Env = append(cmd.Env, "GOWORK=/nonexistent/go.work", "GOFLAGS=-buildvcs=false", "GOAMD64=v3", "GOARM64=v9.0")
+	cmd.Env = append(cmd.Env, "GOWORK=/nonexistent/go.work", "GOFLAGS=-buildvcs=false", "GOAMD64=v3", "GOARM64=v9.0", "GOTOOLCHAIN=auto")
 	cmd.Stdin = strings.NewReader(strings.Join([]string{
 		"include Makefile",
 		"print-env:",
-		"\t@printf 'GOFLAGS=%s\\nGOWORK=%s\\nGOAMD64=%s\\nGOARM64=%s\\n' \"$$GOFLAGS\" \"$$GOWORK\" \"$$GOAMD64\" \"$$GOARM64\"",
+		"\t@printf 'GOFLAGS=%s\\nGOWORK=%s\\nGOAMD64=%s\\nGOARM64=%s\\nGOTOOLCHAIN=%s\\n' \"$$GOFLAGS\" \"$$GOWORK\" \"$$GOAMD64\" \"$$GOARM64\" \"$$GOTOOLCHAIN\"",
 		"",
 	}, "\n"))
 	out, err := cmd.CombinedOutput()
@@ -80,6 +86,9 @@ func TestMakefileExportsBuildEnvironment(t *testing.T) {
 	}
 	if env := got["GOWORK"]; env != "off" {
 		t.Fatalf("GOWORK in a recipe environment: %q, want \"off\"", env)
+	}
+	if env := got["GOTOOLCHAIN"]; env != "local" {
+		t.Fatalf("GOTOOLCHAIN in a recipe environment: %q, want \"local\"", env)
 	}
 	for key, want := range map[string]string{"GOAMD64": "v1", "GOARM64": "v8.0"} {
 		if env := got[key]; env != want {
@@ -252,7 +261,7 @@ func TestMakefileCleanRemovesScratchAndBinaries(t *testing.T) {
 // make repro must keep scratch and lint caches out of the test archives.
 func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 	text := makefileText(t)
-	for _, want := range []string{"--exclude=./.scratch", "--exclude=./.ruff_cache", "--exclude=./.mypy_cache"} {
+	for _, want := range []string{"--exclude=./.scratch", "--exclude=./.ruff_cache", "--exclude=./.mypy_cache", "--exclude=./__pycache__"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("make repro missing %q exclude", want)
 		}
