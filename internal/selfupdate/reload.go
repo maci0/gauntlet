@@ -237,7 +237,7 @@ func Reexec(path, statePath string, args []string) error {
 	env := os.Environ()
 	filtered := env[:0]
 	for _, kv := range env {
-		if len(kv) > len(stateEnv) && kv[:len(stateEnv)+1] == stateEnv+"=" {
+		if strings.HasPrefix(kv, stateEnv+"=") {
 			continue
 		}
 		filtered = append(filtered, kv)

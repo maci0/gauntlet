@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -172,6 +173,27 @@ func TestAbsPATH(t *testing.T) {
 	want := "/usr/bin:/bin"
 	if got != want {
 		t.Fatalf("AbsPATH = %q, want %q", got, want)
+	}
+}
+
+func TestAbsPATHEnv(t *testing.T) {
+	t.Setenv("PATH", ":/usr/bin::./local:/bin:")
+	env := AbsPATHEnv()
+	var got string
+	found := false
+	for _, kv := range env {
+		if after, ok := strings.CutPrefix(kv, "PATH="); ok {
+			got = after
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("PATH not found in AbsPATHEnv output")
+	}
+	want := "/usr/bin:/bin"
+	if got != want {
+		t.Fatalf("PATH in AbsPATHEnv = %q, want %q", got, want)
 	}
 }
 

@@ -181,7 +181,7 @@ func TestTrimCellsStaysInsideItsColumnBudget(t *testing.T) {
 		strings.Repeat("aé日 ", 20),         // mixed
 	} {
 		limit := cells(s)
-		for w := 2; w < limit+4; w++ {
+		for w := 0; w < limit+4; w++ {
 			got := trimCells(s, w)
 			if !utf8.ValidString(got) {
 				t.Fatalf("trimCells(%d) split a rune: %q", w, got)

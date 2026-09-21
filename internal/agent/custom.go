@@ -17,6 +17,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
@@ -236,6 +237,7 @@ var (
 
 // Register adds or replaces a custom agent definition.
 func Register(name string, def Custom) error {
+	name = fuzzy.NFC(name)
 	if err := def.validate(name); err != nil {
 		return err
 	}
@@ -252,7 +254,7 @@ func Register(name string, def Custom) error {
 func CustomDef(name string) (Custom, bool) {
 	customMu.RLock()
 	defer customMu.RUnlock()
-	d, ok := custom[name]
+	d, ok := custom[fuzzy.NFC(name)]
 	return d, ok
 }
 
@@ -381,17 +383,18 @@ func rejectDuplicateKeys(dec *json.Decoder, foldCase bool) error {
 			if !ok {
 				return fmt.Errorf("expected string key, got %T", token)
 			}
-			if keys[key] {
+			normKey := fuzzy.NFC(key)
+			if keys[normKey] {
 				return fmt.Errorf("duplicate key %q", key)
 			}
 			if foldCase {
 				for previous := range keys {
-					if strings.EqualFold(previous, key) {
+					if strings.EqualFold(previous, normKey) {
 						return fmt.Errorf("duplicate key %q", key)
 					}
 				}
 			}
-			keys[key] = true
+			keys[normKey] = true
 		}
 		if err := rejectDuplicateKeys(dec, true); err != nil {
 			return err

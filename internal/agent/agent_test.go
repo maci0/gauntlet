@@ -1542,6 +1542,15 @@ func TestCustomDefinitionsCaseMatching(t *testing.T) {
 	}
 }
 
+func TestCustomDefinitionsRejectNFCDuplicateKeys(t *testing.T) {
+	var defs map[string]Custom
+	// "café" in NFC vs NFD
+	body := `{"caf\u00e9":{"argv":["c1","{prompt}"]},"cafe\u0301":{"argv":["c2","{prompt}"]}}`
+	if err := unmarshalStrict([]byte(body), &defs); err == nil {
+		t.Fatal("expected unmarshalStrict to reject NFC/NFD duplicate keys")
+	}
+}
+
 func TestCustomAgentFileKeysInSeparateObjects(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	path := filepath.Join(t.TempDir(), "agents.json")

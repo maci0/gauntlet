@@ -369,21 +369,7 @@ var gitOutputMax = 32 << 20
 // operator already exported one, GIT_SSH_COMMAND=ssh. Git's own helpers (ssh,
 // a credential helper, diffie) inherit this, so a planted ./ssh cannot run.
 func gitEnv() []string {
-	env := os.Environ()
-	abs := runx.AbsPATH()
-	out := make([]string, 0, len(env)+2)
-	seenPATH := false
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "PATH=") {
-			out = append(out, "PATH="+abs)
-			seenPATH = true
-			continue
-		}
-		out = append(out, kv)
-	}
-	if !seenPATH {
-		out = append(out, "PATH="+abs)
-	}
+	out := runx.AbsPATHEnv()
 	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
 		out = append(out, "GIT_SSH_COMMAND=ssh")
 	}

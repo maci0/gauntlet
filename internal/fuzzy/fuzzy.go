@@ -22,11 +22,16 @@ import (
 // final and ordinary sigma), which ToLower misses on one side only.
 // Normalization to NFC first keeps a decomposed spelling of the same name
 // from looking like several edits' worth of typos.
-func Closest(want string, candidates []string) string {
-	wantNorm := want
-	if !IsASCII(want) {
-		wantNorm = norm.NFC.String(want)
+// NFC returns s in Unicode Normalization Form C.
+func NFC(s string) string {
+	if IsASCII(s) {
+		return s
 	}
+	return norm.NFC.String(s)
+}
+
+func Closest(want string, candidates []string) string {
+	wantNorm := NFC(want)
 	var wantArr [32]rune
 	wantRunes := foldRunesInto(wantNorm, wantArr[:0])
 	best, bestD := "", distance+1
@@ -35,10 +40,9 @@ func Closest(want string, candidates []string) string {
 	var candArr [32]rune
 	candBuf := candArr[:0]
 	for _, c := range candidates {
-		candNorm := c
+		candNorm := NFC(c)
 		candLen := len(c)
 		if !IsASCII(c) {
-			candNorm = norm.NFC.String(c)
 			candLen = utf8.RuneCountInString(candNorm)
 		}
 		if candLen-len(wantRunes) >= bestD || len(wantRunes)-candLen >= bestD {

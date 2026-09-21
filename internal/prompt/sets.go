@@ -128,9 +128,9 @@ func (s Set) Expand(list, flag string, emptyOK bool) ([]string, error) {
 			}
 			out = append(out, expanded...)
 		case s.byName[name].Name != "":
-			out = append(out, name)
+			out = append(out, s.byName[name].Name)
 		case s.byName[name+"-review"].Name != "":
-			out = append(out, name+"-review")
+			out = append(out, s.byName[name+"-review"].Name)
 		default:
 			unknown[name] = true
 		}

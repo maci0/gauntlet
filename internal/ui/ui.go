@@ -980,8 +980,8 @@ func (m *model) gridTitle() string {
 // for the whole set announces how many cells it dropped: a review missing
 // without a word reads as one that was never scheduled.
 func (m *model) renderGrid(w, h int) string {
-	cols := m.gridCols()
 	cellW := m.reviewCellWidth()
+	cols := max(w/cellW, 1)
 	names := m.sortedOrder()
 
 	capacity, hidden := cols*h, 0

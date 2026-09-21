@@ -853,21 +853,18 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		res.Ins, res.Del, res.HaveLines = ins, del, true
 	}
 
-	mr, resolved := func() (gitx.MergeResult, bool) {
-		r.mergeMu.Lock()
-		defer r.mergeMu.Unlock()
-		mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
-		resolved := false
-		if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
-			if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
-				mr, resolved = fixed, true
-			}
+	r.mergeMu.Lock()
+	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
+	resolved := false
+	if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
+		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
+			mr, resolved = fixed, true
 		}
-		if mr.Merged && r.cfg.Push {
-			r.pushLanded(ctx, review)
-		}
-		return mr, resolved
-	}()
+	}
+	if mr.Merged && r.cfg.Push {
+		r.pushLanded(ctx, review)
+	}
+	r.mergeMu.Unlock()
 
 	switch {
 	case mr.Merged:
@@ -1321,12 +1318,10 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 		return
 	}
 
-	mr := func() gitx.MergeResult {
-		r.mergeMu.Lock()
-		defer r.mergeMu.Unlock()
-		return r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
-			fmt.Sprintf("Merge branch '%s'", from))
-	}()
+	r.mergeMu.Lock()
+	mr := r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
+		fmt.Sprintf("Merge branch '%s'", from))
+	r.mergeMu.Unlock()
 
 	ev := Event{
 		Kind: EvMerge, Dir: r.cfg.Dir, Loop: loopNo,

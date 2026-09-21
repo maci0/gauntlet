@@ -50,6 +50,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 		}
 	}
 	rev, _ := set.Get(name)
+	name = rev.Name
 	body, err := rev.Body()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read prompt for %s: %v\n", name, err)

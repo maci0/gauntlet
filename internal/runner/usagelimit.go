@@ -87,7 +87,7 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	bin := resolveProbe(argv[0])
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...)
 	cmd.Dir = os.TempDir()
-	cmd.Env = probeEnv()
+	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
 	// Own process group and an explicit group kill, like every other
 	// subprocess here: a probe that forks must not outlive its own timeout.
@@ -103,25 +103,6 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 		return 0, fmt.Errorf("probe printed more than %d bytes", usageProbeMaxBytes)
 	}
 	return parseUsagePercent(out.String())
-}
-
-func probeEnv() []string {
-	env := os.Environ()
-	abs := runx.AbsPATH()
-	out := make([]string, 0, len(env)+1)
-	seen := false
-	for _, kv := range env {
-		if strings.HasPrefix(kv, "PATH=") {
-			out = append(out, "PATH="+abs)
-			seen = true
-			continue
-		}
-		out = append(out, kv)
-	}
-	if !seen {
-		out = append(out, "PATH="+abs)
-	}
-	return out
 }
 
 func resolveProbe(name string) string {

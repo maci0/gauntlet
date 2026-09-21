@@ -35,6 +35,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Normalize custom agent names and definition keys to NFC, rejecting duplicate keys across NFC and NFD spellings and aligning lookup forms.
+- Handle non-positive column budgets and 1-column cuts in terminal cell trimming, reserving width for the ellipsis and returning empty strings on non-positive bounds.
+- Use canonical review names when expanding review sets and displaying review prompts, preventing unnormalized names from reaching prompt composition.
 - Block the launcher (`gauntlet pick`) from starting an unconstrained run when an active review filter matches no reviews, displaying a clear warning.
 - Reject unresolvable environment variable references in `GAUNTLET_HOME` at startup and degrade `gauntlethome.Dir` safely instead of resolving unexpanded paths against the working tree.
 - Reject empty argument strings in custom agent `model`, `effort`, `stream`, and `continue` configurations, and reject whitespace-only usage suffixes.

@@ -421,8 +421,14 @@ func padCells(s string, w int) string {
 // trimCells cuts s to at most w terminal columns, ellipsis included, between
 // grapheme clusters so a cut never lands inside one.
 func trimCells(s string, w int) string {
-	if w <= 1 || cells(s) <= w {
+	if w <= 0 {
+		return ""
+	}
+	if cells(s) <= w {
 		return s
+	}
+	if w == 1 {
+		return "…"
 	}
 	var b strings.Builder
 	used := 0

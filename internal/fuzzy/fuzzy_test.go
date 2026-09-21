@@ -243,3 +243,15 @@ func FuzzClosest(f *testing.F) {
 		}
 	})
 }
+
+func TestNFC(t *testing.T) {
+	nfd := "cafe\u0301"
+	want := "caf\u00e9"
+	if got := NFC(nfd); got != want {
+		t.Fatalf("NFC(%q) = %q, want %q", nfd, got, want)
+	}
+	ascii := "hello world"
+	if got := NFC(ascii); got != ascii {
+		t.Fatalf("NFC(%q) = %q, want %q", ascii, got, ascii)
+	}
+}

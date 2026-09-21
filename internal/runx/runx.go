@@ -113,6 +113,26 @@ func AbsPATH() string {
 	return CleanPATH(os.Getenv("PATH"))
 }
 
+// AbsPATHEnv returns the current process environment with PATH replaced by AbsPATH.
+func AbsPATHEnv() []string {
+	env := os.Environ()
+	abs := AbsPATH()
+	out := make([]string, 0, len(env)+1)
+	seen := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			out = append(out, "PATH="+abs)
+			seen = true
+			continue
+		}
+		out = append(out, kv)
+	}
+	if !seen {
+		out = append(out, "PATH="+abs)
+	}
+	return out
+}
+
 // LookPath searches for an executable binary named name across absolute PATH
 // directories, returning its absolute path or "" if not found. If name already
 // contains a path separator or is absolute, it is returned if it is a regular
