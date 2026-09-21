@@ -14,7 +14,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -82,7 +84,10 @@ func (r *Runner) checkUsageLimit(ctx context.Context) {
 func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	ctx, cancel := context.WithTimeout(ctx, usageProbeTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	bin := resolveProbe(argv[0])
+	cmd := exec.CommandContext(ctx, bin, argv[1:]...)
+	cmd.Dir = os.TempDir()
+	cmd.Env = probeEnv()
 	cmd.Stdin = nil
 	// Own process group and an explicit group kill, like every other
 	// subprocess here: a probe that forks must not outlive its own timeout.
@@ -98,6 +103,48 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 		return 0, fmt.Errorf("probe printed more than %d bytes", usageProbeMaxBytes)
 	}
 	return parseUsagePercent(out.String())
+}
+
+func absPATH() string {
+	keep := make([]string, 0, 16)
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir != "" && filepath.IsAbs(dir) {
+			keep = append(keep, dir)
+		}
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
+}
+
+func probeEnv() []string {
+	env := os.Environ()
+	abs := absPATH()
+	out := make([]string, 0, len(env)+1)
+	seen := false
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "PATH=") {
+			out = append(out, "PATH="+abs)
+			seen = true
+			continue
+		}
+		out = append(out, kv)
+	}
+	if !seen {
+		out = append(out, "PATH="+abs)
+	}
+	return out
+}
+
+func resolveProbe(name string) string {
+	if filepath.IsAbs(name) || strings.ContainsRune(name, os.PathSeparator) {
+		return name
+	}
+	for _, dir := range filepath.SplitList(absPATH()) {
+		p := filepath.Join(dir, name)
+		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return p
+		}
+	}
+	return name
 }
 
 // usageProbeMaxBytes is plenty for a percentage and a line or two of

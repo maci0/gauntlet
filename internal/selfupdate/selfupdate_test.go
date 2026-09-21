@@ -206,3 +206,26 @@ func TestCheckRejectsMalformedRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateAssetURL(t *testing.T) {
+	for _, tc := range []struct {
+		url string
+		ok  bool
+	}{
+		{"https://github.com/maci0/gauntlet/releases/download/v1/asset", true},
+		{"https://api.github.com/repos/maci0/gauntlet/releases/assets/1", true},
+		{"https://objects.githubusercontent.com/github-production-release-asset-2e65be/1", true},
+		{"http://127.0.0.1:8080/asset", true},
+		{"http://localhost:8080/asset", true},
+		{"https://evil.example.com/asset", false},
+		{"http://github.com/asset", false},
+		{"ftp://github.com/asset", false},
+		{"javascript:alert(1)", false},
+		{"", false},
+	} {
+		err := validateAssetURL(tc.url)
+		if (err == nil) != tc.ok {
+			t.Errorf("validateAssetURL(%q) err=%v, want ok=%v", tc.url, err, tc.ok)
+		}
+	}
+}

@@ -12,6 +12,14 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Security
+
+- Isolate `--usage-cmd` process execution and PATH resolution from the reviewed
+  working tree, running the probe in the system temporary directory with
+  cwd-relative PATH entries dropped.
+- Constrain self-update asset downloads to HTTPS endpoints on authorized GitHub
+  release hosts, preventing plaintext transfers or untrusted third-party hosts.
+
 ## 1.22.1
 
 ### Fixed

@@ -298,3 +298,22 @@ func TestBrokenUsageProbeCannotEndTheRun(t *testing.T) {
 		})
 	}
 }
+
+func TestProbeUsageIsolatedFromRepo(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The probe must run with cmd.Dir isolated to os.TempDir(), not the caller's working directory.
+	got, err := probeUsage(ctx, []string{"/bin/sh", "-c", `[ "$PWD" != "$1" ] && echo 42 || echo 0`, "probe", cwd})
+	if err != nil {
+		t.Fatalf("probeUsage failed: %v", err)
+	}
+	if got != 42 {
+		t.Fatalf("probeUsage ran inside caller working directory %s", cwd)
+	}
+}

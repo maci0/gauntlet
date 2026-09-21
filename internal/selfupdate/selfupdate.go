@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -279,7 +281,49 @@ func sweepStaleTemps(dir, prefix string, age time.Duration) {
 	}
 }
 
+// validateAssetURL ensures the URL points to an authorized GitHub release
+// host over HTTPS (or loopback in tests), preventing cleartext transfers or
+// downloading assets from untrusted third-party hosts.
+func validateAssetURL(raw string) error {
+	u, err := url.ParseRequestURI(raw)
+	if err != nil {
+		return fmt.Errorf("invalid asset URL %q: %w", raw, err)
+	}
+	host := u.Hostname()
+	if u.Scheme == "https" {
+		if isAllowedHost(host) {
+			return nil
+		}
+		return fmt.Errorf("untrusted asset host %q in %s (want github.com)", host, raw)
+	}
+	if u.Scheme == "http" && isLoopback(host) {
+		return nil
+	}
+	return fmt.Errorf("untrusted asset URL %s: require https", raw)
+}
+
+func isAllowedHost(host string) bool {
+	switch host {
+	case "github.com", "api.github.com", "objects.githubusercontent.com":
+		return true
+	}
+	return isLoopback(host)
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	return false
+}
+
 func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
+	if err := validateAssetURL(url); err != nil {
+		return nil, err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -298,6 +342,9 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 
 // download streams url into w and returns the hex SHA-256 of what was written.
 func download(ctx context.Context, url string, w io.Writer) (string, error) {
+	if err := validateAssetURL(url); err != nil {
+		return "", err
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
