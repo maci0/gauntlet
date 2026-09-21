@@ -138,6 +138,16 @@ func TestEditDistance(t *testing.T) {
 	}
 }
 
+func foldRunes(s string) []rune {
+	return foldRunesInto(s, make([]rune, 0, len(s)))
+}
+
+func editDistance(a, b string) int {
+	var prevArr, curArr [32]int
+	d, _, _ := editDistanceFolded(foldRunes(a), foldRunes(b), prevArr[:], curArr[:])
+	return d
+}
+
 func BenchmarkClosest(b *testing.B) {
 	candidates := []string{
 		"code-review", "sec-review", "quick", "standard", "a11y-review",

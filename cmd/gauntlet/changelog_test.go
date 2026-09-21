@@ -105,6 +105,9 @@ func TestChangelogSemVerBumps(t *testing.T) {
 			if slices.Contains(groups, "Added") {
 				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Added; additions require a minor release", line, *ver)
 			}
+			if slices.Contains(groups, "Deprecated") {
+				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Deprecated; deprecations require a minor release", line, *ver)
+			}
 			if slices.Contains(groups, "Removed") {
 				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Removed; removals are breaking and require a major release", line, *ver)
 			}
@@ -202,6 +205,16 @@ func TestChangelogMentionsEveryContractSet(t *testing.T) {
 	for _, name := range prompt.SetNames() {
 		if !strings.Contains(text, "`"+name+"`") {
 			t.Errorf("CHANGELOG.md does not mention `%s`; set names are API and land in Unreleased in the same change as the snapshot", name)
+		}
+	}
+}
+
+func TestChangelogMentionsEveryContractExitCode(t *testing.T) {
+	text := readChangelog(t)
+	for _, code := range goldenExitCodes {
+		re := regexp.MustCompile(`(?i)\bexit(?:s|ing)?(?:\s+code)?\s+` + regexp.QuoteMeta(code) + `\b`)
+		if !re.MatchString(text) {
+			t.Errorf("CHANGELOG.md does not mention exit code %s; exit codes are API and land in Unreleased in the same change as the snapshot", code)
 		}
 	}
 }

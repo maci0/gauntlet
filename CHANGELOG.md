@@ -36,6 +36,13 @@ minor instead and were listed under Changed.
 - Count Unicode code points instead of bytes when checking for short-flag misses, preventing single non-ASCII flags from triggering typo suggestions.
 - Normalize file paths to NFC when correlating file notes to git changes in stacked PR summaries and commit subjects, matching decomposed macOS filenames with NFC text.
 - Strip relative build directory paths from release SBOM inventory headers to match asset filenames, and clean scratch files and stray binaries on make clean.
+- Prevent auto-update from repeatedly re-applying the already-installed release tag during an active run.
+- Unlock git worktrees before removal during merge cleanup, preventing leftover locked worktrees on failure.
+- Format branch listings cleanly when deleting matching review branches.
+- Derive journal date shards from the run ID timestamp instead of the local clock so midnight UTC crossings place journals in the matching shard, and validate run IDs on open.
+- Synchronize stacked PR head and publication state with the runner mutex, guard worktree branch renaming, and force-kill stalled command groups on drain timeout.
+- Check write errors on command output streams across subcommands (`gauntlet doctor`, `gauntlet runs`, `gauntlet show`, and `gauntlet pick`), exiting 1 on failure instead of reporting success.
+- Propagate cancellation exit code 130 when the interactive launcher or review planning is interrupted by context cancellation.
 
 - Record loop line changes in parallel worktree mode (`--jobs > 1`) and preserve line metrics on pull request events in stacked-PR mode (`--stacked-prs`) across the journal, history, and dashboard.
 - Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.

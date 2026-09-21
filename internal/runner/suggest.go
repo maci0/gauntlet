@@ -36,6 +36,9 @@ type SuggestConfig struct {
 // exit: the next agent is tried rather than giving up, because the alternative
 // is running the entire review set by accident.
 func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent.Spec, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, agent.Spec{}, err
+	}
 	if len(cfg.Pool) == 0 {
 		return nil, agent.Spec{}, errors.New("no reviews remain after filtering")
 	}

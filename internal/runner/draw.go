@@ -27,11 +27,6 @@ func fnv64aString(s string) uint64 {
 // run replay like a sequential one and lets a hot-reload successor pick up the
 // interrupted run's schedule as if the swap had never happened.
 
-// draw maps key to a pseudorandom word under seed.
-func draw(seed uint64, key string) uint64 {
-	return mix64(seed ^ fnv64aString(key))
-}
-
 // mix64 is the splitmix64 finalizer. FNV alone leaves structured inputs
 // correlated in low bits; this spreads them across the word so drawIndex's
 // modulo is honest.

@@ -34,6 +34,26 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Release notes are this version's CHANGELOG section: consumers read the
+      # changelog, not the commit log. A tag without that section is a mistake
+      # and fails here before spending time cross-compiling or running tests.
+      - name: Extract this version's CHANGELOG section
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            $0 == "## " ver { found = 1; next }
+            /^## / && found { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if ! awk '
+            /^[[:space:]]*#+([[:space:]]|$)/ { next }
+            /[^[:space:]]/ { content = 1 }
+            END { exit !content }
+          ' notes.md; then
+            echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
+            exit 1
+          fi
+
       - name: Build every platform
         run: make release VERSION="${GITHUB_REF_NAME#v}"
 
@@ -52,26 +72,6 @@ jobs:
             exit 1
           fi
           (cd dist && sha256sum -c checksums.txt)
-
-      # Release notes are this version's CHANGELOG section: consumers read the
-      # changelog, not the commit log. A tag without that section is a mistake
-      # and fails here instead of publishing auto-generated notes.
-      - name: Extract this version's CHANGELOG section
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          awk -v ver="$version" '
-            $0 == "## " ver { found = 1; next }
-            /^## / && found { exit }
-            found { print }
-          ' CHANGELOG.md > notes.md
-          if ! awk '
-            /^[[:space:]]*#+([[:space:]]|$)/ { next }
-            /[^[:space:]]/ { content = 1 }
-            END { exit !content }
-          ' notes.md; then
-            echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
-            exit 1
-          fi
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.txt is the module

@@ -42,7 +42,10 @@ def module_root() -> pathlib.Path:
 
 
 def gauntlet_home() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("GAUNTLET_HOME", pathlib.Path.home() / ".gauntlet"))
+    raw = os.environ.get("GAUNTLET_HOME")
+    if raw and raw.strip():
+        return pathlib.Path(raw.strip()).expanduser()
+    return pathlib.Path.home() / ".gauntlet"
 
 
 def agent_picks() -> dict[str, set[str]]:

@@ -99,22 +99,8 @@ func foldRunesInto(s string, dst []rune) []rune {
 	return dst
 }
 
-func foldRunes(s string) []rune {
-	return foldRunesInto(s, make([]rune, 0, len(s)))
-}
-
 // distance is how far a typo may stray and still earn a hint.
 const distance = 3
-
-// editDistance is Levenshtein distance over runes. Byte-based comparison
-// would charge one edit per UTF-8 continuation byte, so a single differing
-// character outside ASCII costs up to three edits and two names sharing
-// prefix bytes can score spuriously close.
-func editDistance(a, b string) int {
-	var prevArr, curArr [32]int
-	d, _, _ := editDistanceFolded(foldRunes(a), foldRunes(b), prevArr[:], curArr[:])
-	return d
-}
 
 func editDistanceFolded(ar, br []rune, prev, cur []int) (int, []int, []int) {
 	if len(br) > len(ar) {
