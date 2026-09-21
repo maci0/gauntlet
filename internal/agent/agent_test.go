@@ -1218,6 +1218,10 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 		"no argv":                    {},
 		"blank executable":           {Argv: []string{" ", "{prompt}"}},
 		"blank argument in argv":     {Argv: []string{"x", " ", "{prompt}"}},
+		"blank argument in model":    {Argv: []string{"x", "{prompt}"}, Model: []string{"--m", " ", "{model}"}},
+		"blank argument in effort":   {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e", " ", "{effort}"}},
+		"blank argument in stream":   {Argv: []string{"x", "{prompt}"}, Stream: []string{" "}},
+		"blank argument in continue": {Argv: []string{"x", "{prompt}"}, Continue: []string{""}},
 		"no prompt":                  {Argv: []string{"x", "--flag"}},
 		"multiple prompts":           {Argv: []string{"x", "{prompt}", "{prompt}"}},
 		"model without placeholder":  {Argv: []string{"x", "{prompt}"}, Model: []string{"--m"}},
@@ -1229,6 +1233,7 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 		"usage without roots":        {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
 		"usage with blank roots":     {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
 		"usage with one blank root":  {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid", ""}}},
+		"usage with blank suffix":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid"}, Suffix: "  "}},
 	}
 	for name, def := range cases {
 		if err := Register("tmp", def); err == nil {

@@ -53,7 +53,7 @@ Instructions:
 - For each finding name a concrete input that breaks: an NFD string, a specific emoji sequence, a Turkish i, a lone surrogate. A pattern with no demonstrable failing input is a low-severity note.
 - Establish the codebase's intended conventions first (encoding at boundaries, normalization form, length units) from code and docs; where no convention exists, that absence on identity-bearing paths is itself a finding.
 - Prefer explicit over default: named encodings at every boundary, one normalization form applied at ingestion, length units stated at each limit.
-- In auto-fix mode make narrow, verifiable fixes: add the explicit encoding to one boundary, normalize at one ingestion point that already has a clear convention elsewhere, fix one truncation to respect character boundaries, replace one hand-rolled escape with the library call. Do not migrate stored text, change a public API's normalization behavior, or introduce a confusables/policy library in one pass; report those with a sketch instead.
+- In auto-fix mode make narrow, verifiable fixes: add the explicit encoding to one boundary, normalize at one ingestion point that already has a clear convention elsewhere, fix one truncation to respect character boundaries, replace one hand-rolled escape with the library call. Do not migrate stored text, change a public API's normalization behavior, or introduce a confusables/policy library in one pass; leave those for standalone reporting.
 - Do not review translations, locale formatting, or RTL layout (i18n-review), and do not construct attack narratives (sec-review); name the owner instead.
 - Prefer fewer high-value findings; call out text handling that is verifiably correct so future passes leave it alone.
 

@@ -109,8 +109,8 @@ Review the following:
 - Missing topology or dependency documentation for incident response
 - No documented escalation path for different failure types
 - Missing known-issues documentation that could prevent unnecessary pages
-- Operational knowledge that exists only in team members' heads
-- Missing post-incident review process or follow-up tracking
+- Undocumented operational failure modes that lack runbook coverage in the repository
+- Post-incident remediation tracking absent from repository documentation
 
 Instructions:
 - Fix order: blind spots on critical request paths (no logging, no tracing, no metrics) > missing error tracking and alerting on failure modes > noisy or misleading observability (wrong levels, missing context, alert fatigue) > structural and consistency improvements.

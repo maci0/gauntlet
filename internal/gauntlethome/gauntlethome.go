@@ -32,7 +32,7 @@ func Dir() (string, bool) {
 		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {
 			return absolute(exp), true
 		}
-		return absolute(h), true
+		return ".gauntlet", false
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {

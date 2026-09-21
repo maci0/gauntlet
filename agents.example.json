@@ -5,6 +5,7 @@
     "effort": ["--effort", "{effort}"],
     "stream": ["--mode", "json"],
     "continue": ["--resume"],
+    "opt_in": false,
     "usage": {
       "roots": ["~/.myagent/sessions"]
     },

@@ -419,6 +419,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, err
 	}
 
+	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
+		if _, err := gauntlethome.ExpandPath(h); err != nil {
+			return nil, fmt.Errorf("GAUNTLET_HOME: %w", err)
+		}
+	}
+
 	// A file of definitions first, then the command line, which wins.
 	if path := agent.CustomFilePath(); path != "" {
 		if err := agent.LoadCustomFile(path); err != nil {

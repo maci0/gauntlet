@@ -58,7 +58,7 @@ Instructions:
 - Fix order: wrong-instant bugs corrupting stored data or money/billing periods > user-visible wrong times and missed/double-fired schedules > timeout and expiry defects > drift and precision issues > style-level cleanups (naming, redundant conversions).
 - Trace each finding to a concrete failure moment: name the transition, zone, or clock event that makes the code wrong, not just the pattern.
 - Prefer the platform's time library over hand-rolled arithmetic; prefer storing instants in UTC with explicit zone conversion at the edges, except where wall-time semantics are the requirement (name which one applies).
-- In auto-fix mode make narrow, verifiable fixes: switch one duration measurement to the monotonic clock, make one naive datetime aware, fix one unit mismatch, pin one parser to an explicit format and zone. Do not migrate stored data or change persisted formats in one pass; report those with a migration sketch instead.
+- In auto-fix mode make narrow, verifiable fixes: switch one duration measurement to the monotonic clock, make one naive datetime aware, fix one unit mismatch, pin one parser to an explicit format and zone. Do not migrate stored data or change persisted formats in one pass; leave those for standalone reporting.
 - Do not build clock-injection seams (dst-review owns that); use whatever seam already exists.
 - Prefer fewer high-value findings; call out time handling that is already correct so future passes leave it alone.
 

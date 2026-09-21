@@ -966,6 +966,14 @@ func TestGluedExpansionLeavesTheRestAlone(t *testing.T) {
 	}
 }
 
+func TestParseFlagsRejectsUnresolvableGauntletHome(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", "$GAUNTLET_MISSING_DIR/state")
+	_, err := parseFlags([]string{"--list"})
+	if err == nil || !strings.Contains(err.Error(), "GAUNTLET_HOME") {
+		t.Fatalf("want GAUNTLET_HOME error, got %v", err)
+	}
+}
+
 // FuzzExpandAttachedValues: argv is untrusted, and the expansion runs before
 // the flag package sees it. It must never panic, never lose or invent an
 // argument's bytes, and never touch anything after a positional.

@@ -57,7 +57,7 @@ Instructions:
 - Fix order: money and billing arithmetic > silent overflow/truncation corrupting stored data or IDs > NaN and division-by-zero reaching persistence or decisions > unit mismatches > precision and formatting cleanups.
 - For each finding, name a concrete input that produces a wrong result; a pattern with no reachable bad input is at most a low-severity note.
 - Prefer the decimal/arbitrary-precision type the platform already offers for money; prefer explicit checked/saturating operations over comment-only guarantees; prefer computing in the smallest indivisible unit (cents, satoshi, nanoseconds) at boundaries.
-- In auto-fix mode make narrow, verifiable fixes: guard one division, fix one truncating cast, replace one float equality with the correct comparison, align one unit mismatch, switch one money calculation to the codebase's existing decimal type. Do not introduce a new numeric or unit library, and do not migrate stored representations in one pass; report those with a sketch instead.
+- In auto-fix mode make narrow, verifiable fixes: guard one division, fix one truncating cast, replace one float equality with the correct comparison, align one unit mismatch, switch one money calculation to the codebase's existing decimal type. Do not introduce a new numeric or unit library, and do not migrate stored representations in one pass; leave those for standalone reporting.
 - Do not chase theoretical precision in code whose tolerance is documented and met; note the tolerance and move on.
 - Prefer fewer high-value findings; call out arithmetic that is verifiably correct so future passes leave it alone.
 

@@ -30,6 +30,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Reject unresolvable environment variable references in `GAUNTLET_HOME` at startup and degrade `gauntlethome.Dir` safely instead of resolving unexpanded paths against the working tree.
+- Reject empty argument strings in custom agent `model`, `effort`, `stream`, and `continue` configurations, and reject whitespace-only usage suffixes.
 - Normalize available review names to NFC in suggestion parsing, matching decomposed names against agent suggestions.
 - Normalize pull request body text to NFC before rune truncation, preserving combining characters on decomposed filenames and descriptions.
 - Recognize Unicode whitespace when stripping agent output noise, gutters, and trailing spacing in the line normalizer, and in launcher filter word trimming.

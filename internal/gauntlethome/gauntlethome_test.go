@@ -92,6 +92,17 @@ func TestDirWithoutUsableHomeDegrades(t *testing.T) {
 	}
 }
 
+func TestDirUnresolvableGauntletHomeDegrades(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", "$GAUNTLET_NONEXISTENT_DIR_VAR/state")
+	got, ok := Dir()
+	if ok {
+		t.Fatal("unresolvable GAUNTLET_HOME should not report a usable root")
+	}
+	if got != ".gauntlet" {
+		t.Fatalf("degraded root = %q, want %q", got, ".gauntlet")
+	}
+}
+
 func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

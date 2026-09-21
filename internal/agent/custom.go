@@ -112,6 +112,11 @@ func (c Custom) validate(name string) error {
 		return fmt.Errorf("custom agent %q: argv must contain %s exactly once", name, promptPlaceholder)
 	}
 	if len(c.Model) > 0 {
+		for _, a := range c.Model {
+			if strings.TrimSpace(a) == "" {
+				return fmt.Errorf("custom agent %q: model contains an empty argument", name)
+			}
+		}
 		if !containsPlaceholder(c.Model, modelPlaceholder) {
 			return fmt.Errorf("custom agent %q: model must contain %s", name, modelPlaceholder)
 		}
@@ -120,6 +125,11 @@ func (c Custom) validate(name string) error {
 		}
 	}
 	if len(c.Effort) > 0 {
+		for _, a := range c.Effort {
+			if strings.TrimSpace(a) == "" {
+				return fmt.Errorf("custom agent %q: effort contains an empty argument", name)
+			}
+		}
 		if !containsPlaceholder(c.Effort, effortPlaceholder) {
 			return fmt.Errorf("custom agent %q: effort must contain %s", name, effortPlaceholder)
 		}
@@ -127,8 +137,18 @@ func (c Custom) validate(name string) error {
 			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
 		}
 	}
+	for _, a := range c.Stream {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("custom agent %q: stream contains an empty argument", name)
+		}
+	}
 	if containsPlaceholder(c.Stream, promptPlaceholder) {
 		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, promptPlaceholder)
+	}
+	for _, a := range c.Continue {
+		if strings.TrimSpace(a) == "" {
+			return fmt.Errorf("custom agent %q: continue contains an empty argument", name)
+		}
 	}
 	if containsPlaceholder(c.Continue, promptPlaceholder) {
 		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, promptPlaceholder)
@@ -141,6 +161,9 @@ func (c Custom) validate(name string) error {
 			if strings.TrimSpace(r) == "" {
 				return fmt.Errorf("custom agent %q: usage.roots contains an empty directory path", name)
 			}
+		}
+		if c.Usage.Suffix != "" && strings.TrimSpace(c.Usage.Suffix) == "" {
+			return fmt.Errorf("custom agent %q: usage.suffix cannot be whitespace only", name)
 		}
 	}
 	return nil
