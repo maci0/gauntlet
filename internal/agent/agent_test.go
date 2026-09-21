@@ -1971,6 +1971,27 @@ func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 	}
 }
 
+func TestDshModelPatchRejectsInvalidIdentifiers(t *testing.T) {
+	isolateDshPatches(t)
+
+	for _, tc := range []struct {
+		prov, model string
+	}{
+		{"prov'evil", "model"},
+		{"prov", "model'evil"},
+		{"prov\nevil: true", "model"},
+		{"prov", "model\nevil: true"},
+		{"", "model"},
+		{"prov", ""},
+		{"prov space", "model"},
+		{"prov", "model space"},
+	} {
+		if _, err := dshModelPatch(tc.prov, tc.model); err == nil {
+			t.Errorf("dshModelPatch(%q, %q) succeeded, want rejection", tc.prov, tc.model)
+		}
+	}
+}
+
 func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 	isolateDshPatches(t)
 

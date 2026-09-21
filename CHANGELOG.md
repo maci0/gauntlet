@@ -21,6 +21,10 @@ minor instead and were listed under Changed.
 
 ### Security
 
+- Validate provider and model identifiers in dsh configuration overlays, preventing YAML injection and directory traversal.
+- Validate reload handoff state files before reading or removing, refusing non-regular files and symlinks via `GAUNTLET_STATE`.
+- Reject oversized responses in self-update checksum downloads instead of silently truncating.
+- Separate git branch names and patterns with `--` across merge, rename, and branch deletion operations.
 - Isolate `--usage-cmd` process execution and PATH resolution from the reviewed
   working tree, running the probe in the system temporary directory with
   cwd-relative PATH entries dropped.

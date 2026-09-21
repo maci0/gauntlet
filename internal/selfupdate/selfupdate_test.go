@@ -242,3 +242,16 @@ func TestClientRedirectValidation(t *testing.T) {
 		t.Fatalf("redirect to untrusted host should be refused, got: %v", err)
 	}
 }
+
+func TestFetchRejectsOversizedResponse(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("12345678901234567890"))
+	}))
+	defer ts.Close()
+
+	_, err := fetch(context.Background(), ts.URL, 10)
+	if err == nil || !strings.Contains(err.Error(), "exceeds 10 bytes") {
+		t.Fatalf("fetch should reject oversized response, got: %v", err)
+	}
+}

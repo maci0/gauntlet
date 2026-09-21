@@ -8,8 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -129,6 +131,9 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // belongs to a reload that died between the save and the exec, which nothing
 // will ever pick up again.
 func SaveState(dir, runID string, v any) (string, error) {
+	if runID == "" || strings.ContainsRune(runID, os.PathSeparator) || strings.Contains(runID, "..") {
+		return "", errors.New("invalid run id for state")
+	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
@@ -173,6 +178,11 @@ func sweepStaleHandoffs(dir string) {
 	sweepStaleTemps(dir, "", staleTempAge)
 }
 
+// maxHandoffBytes bounds the handoff file size. A legitimate state blob is a few
+// kilobytes; anything larger than 16 MiB is not a valid handoff and must not
+// exhaust memory.
+const maxHandoffBytes = 16 << 20
+
 // LoadState reads and removes the handoff blob named by GAUNTLET_STATE.
 //
 // ok is true only when a handoff was parsed. A normal start has none and
@@ -184,12 +194,30 @@ func LoadState(v any) (ok bool, err error) {
 	if path == "" {
 		return false, nil
 	}
-	data, err := os.ReadFile(path)
+	if !strings.HasSuffix(path, ".json") {
+		return false, fmt.Errorf("reload handoff %s: invalid state file extension", path)
+	}
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return false, fmt.Errorf("reload handoff %s: %w", path, err)
+	}
+	if !fi.Mode().IsRegular() {
+		return false, fmt.Errorf("reload handoff %s: not a regular file", path)
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false, fmt.Errorf("reload handoff %s: %w", path, err)
+	}
+	data, readErr := io.ReadAll(io.LimitReader(f, maxHandoffBytes+1))
+	_ = f.Close()
 	// Read once, then drop it: a stale handoff must not resurrect old counters
 	// on the next manual start.
 	_ = os.Remove(path)
-	if err != nil {
-		return false, fmt.Errorf("reload handoff %s: %w", path, err)
+	if readErr != nil {
+		return false, fmt.Errorf("reload handoff %s: %w", path, readErr)
+	}
+	if len(data) > maxHandoffBytes {
+		return false, fmt.Errorf("reload handoff %s exceeds %d bytes", path, maxHandoffBytes)
 	}
 	if err := json.Unmarshal(data, v); err != nil {
 		return false, fmt.Errorf("reload handoff %s: %w", path, err)

@@ -96,6 +96,9 @@ func dshPatchKey(provider, model string) string {
 // pins dsh's model, and returns its path. It lives in the user cache dir, not
 // a temp filesystem: it is small, reusable across runs, and never secret.
 func dshModelPatch(provider, model string) (string, error) {
+	if !dshModelRe.MatchString(provider) || !dshModelRe.MatchString(model) {
+		return "", fmt.Errorf("invalid provider %q or model %q", provider, model)
+	}
 	body := fmt.Sprintf("- id: agent-default-model\n  config:\n    provider: '%s'\n    model: '%s'\n",
 		provider, model)
 	return writeDshPatch(dshPatchKey(provider, model), body)
@@ -112,7 +115,7 @@ func dshModelPatch(provider, model string) (string, error) {
 // reader gets one whole file, and identical content makes old and new
 // interchangeable.
 func writeDshPatch(key, body string) (string, error) {
-	if key == "" || strings.ContainsRune(key, os.PathSeparator) {
+	if key == "" || strings.ContainsRune(key, os.PathSeparator) || strings.Contains(key, "..") {
 		return "", errors.New("invalid overlay key")
 	}
 	dshPatchMu.Lock()

@@ -150,6 +150,64 @@ func TestLoadStateRejectsGarbage(t *testing.T) {
 	}
 }
 
+func TestSaveStateRejectsInvalidRunID(t *testing.T) {
+	dir := t.TempDir()
+	for _, bad := range []string{"", "../escape", "sub/dir", "a/b", ".."} {
+		if _, err := SaveState(dir, bad, handoffBlob{Loops: 1}); err == nil {
+			t.Errorf("SaveState with runID %q succeeded, want error", bad)
+		}
+	}
+}
+
+func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
+	dir := t.TempDir()
+
+	// Non-.json extension
+	txtFile := filepath.Join(dir, "secret.txt")
+	if err := os.WriteFile(txtFile, []byte("sensitive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stateEnv, txtFile)
+	var v handoffBlob
+	if _, err := LoadState(&v); err == nil {
+		t.Fatal("LoadState accepted non-.json file")
+	}
+	// The file must NOT be deleted
+	if _, err := os.Stat(txtFile); err != nil {
+		t.Fatal("non-.json file was deleted by LoadState")
+	}
+
+	// Symlink must be rejected and target must NOT be deleted
+	realFile := filepath.Join(dir, "target.json")
+	if err := os.WriteFile(realFile, []byte("sensitive"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	symlink := filepath.Join(dir, "symlink.json")
+	if err := os.Symlink(realFile, symlink); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stateEnv, symlink)
+	if _, err := LoadState(&v); err == nil {
+		t.Fatal("LoadState accepted symlink")
+	}
+	if _, err := os.Stat(realFile); err != nil {
+		t.Fatal("target of symlink was deleted by LoadState")
+	}
+
+	// Directory must be rejected and NOT deleted
+	subDir := filepath.Join(dir, "nested.json")
+	if err := os.Mkdir(subDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stateEnv, subDir)
+	if _, err := LoadState(&v); err == nil {
+		t.Fatal("LoadState accepted directory")
+	}
+	if _, err := os.Stat(subDir); err != nil {
+		t.Fatal("directory was deleted by LoadState")
+	}
+}
+
 func TestSaveStateMarshalsWhatLoadStateReads(t *testing.T) {
 	// The two ends live on opposite sides of an exec, so their contract is
 	// exactly the JSON round trip.

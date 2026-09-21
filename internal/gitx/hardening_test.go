@@ -391,3 +391,17 @@ func TestSnapshotWorktreeHoldsOnlyTheCommit(t *testing.T) {
 		t.Fatal("uncommitted file reached the snapshot")
 	}
 }
+
+// Branch operations must separate flags from branch names with "--" so branch
+// names or patterns cannot inject options into git branch or merge commands.
+func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	// Deleting a non-existent branch name formatted like a flag must report
+	// branch not found, not fail with an unrecognized option.
+	r.DeleteBranch(ctx, "--abort")
+
+	// Deleting branches matching a pattern with dashed prefix
+	r.DeleteBranchesMatching(ctx, "--pattern*")
+}

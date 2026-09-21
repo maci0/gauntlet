@@ -83,7 +83,7 @@ type MergeResult struct {
 // labeling it a conflict would send a resolver to fix what no edit fixes and
 // count the review as MERGE CONFLICT instead of failed.
 func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
-	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
+	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", "--", branch)
 	if err != nil {
 		// A conflicted merge narrates on stdout and leaves unmerged entries in
 		// the index; other failures explain on stderr and leave the index
@@ -165,7 +165,7 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 
 	sub := r.subRepo(dir)
 	out, err := sub.run(ctx, gitSlow,
-		"merge", "--no-ff", "--no-verify", "-m", message, branch)
+		"merge", "--no-ff", "--no-verify", "-m", message, "--", branch)
 	if err == nil {
 		return MergeResult{Merged: true}
 	}
@@ -407,7 +407,7 @@ func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
-	if _, err := r.run(ctx, gitNormal, "branch", "-m", from, to); err != nil {
+	if _, err := r.run(ctx, gitNormal, "branch", "-m", "--", from, to); err != nil {
 		return fmt.Errorf("git branch -m %s %s: %w", from, to, err)
 	}
 	return nil

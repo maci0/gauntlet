@@ -350,9 +350,15 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s exceeds %d bytes", url, limit)
+	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, limit))
-	return data, err
+	return data, nil
 }
 
 // download streams url into w and returns the hex SHA-256 of what was written.

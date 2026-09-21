@@ -497,7 +497,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	// concerned, though its content is in the commit that just landed. This
 	// is only ever called after that commit succeeded, or for a branch that
 	// never left its base.
-	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
+	_, _ = r.run(ctx, gitNormal, "branch", "-D", "--", branch)
 }
 
 // DeleteBranchesMatching deletes every branch matching a glob pattern.
@@ -506,7 +506,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 // "checked out" in a worktree that was already removed from disk.
 func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
 	r.PruneWorktrees(ctx)
-	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", pattern)
+	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {
 		return
 	}
