@@ -20,7 +20,6 @@ import (
 	"sort"
 	"strings"
 	"syscall"
-	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -310,18 +309,7 @@ func nfc(s string) string {
 }
 
 // sanitize strips control and formatting characters from untrusted display
-// text: every Unicode Cc control (C0, C1, DEL) and Cf format character (bidi
-// overrides, zero widths, joiners, interlinear and tag characters), all of
-// which can drive or spoof a terminal or carry invisible text.
+// text (prompt descriptions, summary lines, warnings).
 func sanitize(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r == ' ' {
-			return r
-		}
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
-			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-			return -1
-		}
-		return r
-	}, s)
+	return normalize.Sanitize(s)
 }

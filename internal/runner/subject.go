@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
@@ -188,16 +187,7 @@ func commitToken(s string) string {
 	// discovery and signal matching already use, and so a combining mark
 	// cannot sit on the 72-rune cut by itself.
 	s = norm.NFC.String(s)
-	s = strings.Map(func(r rune) rune {
-		if r == ' ' {
-			return r
-		}
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
-			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-			return -1
-		}
-		return r
-	}, s)
+	s = normalize.Sanitize(s)
 	return strings.TrimSpace(s)
 }
 

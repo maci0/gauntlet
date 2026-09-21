@@ -146,6 +146,44 @@ type Config struct {
 	OwnArtifacts map[string]bool // real paths the runner itself created
 }
 
+// ErrDirtyTree is the one worktree precondition a caller can do something
+// about: the work is there, it simply is not committed. Callers that can ask
+// a person offer the commit step rather than stopping.
+var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
+
+// StackDirtyError asks the caller to surface the isolation boundary before a
+// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
+// technical blocker: they stay in the original checkout and the stack starts
+// from the selected remote branch. They are still important enough that an
+// interactive CLI must not silently omit them from review.
+type StackDirtyError struct {
+	Dir       string
+	Remote    string
+	Base      string
+	Tracked   []string
+	Untracked []string
+}
+
+func (e *StackDirtyError) Error() string {
+	if e == nil {
+		return "stacked PR confirmation required"
+	}
+	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
+		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
+		humanize.List(e.DisplayPaths(), 3))
+}
+
+// DisplayPaths returns sanitized tracked paths followed by sanitized
+// untracked paths, ready for terminal output. The exact paths remain in the
+// fields for programmatic handling; only their display form is altered.
+func (e *StackDirtyError) DisplayPaths() []string {
+	if e == nil {
+		return nil
+	}
+	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
+	return safePaths(paths)
+}
+
 // Runner executes Config until it is stopped, the loop limit is reached, or
 // the runtime budget runs out.
 type Runner struct {
@@ -206,113 +244,6 @@ type Runner struct {
 	// usageProbeFailed keeps a broken usage probe from narrating once per
 	// review. The first failure is worth a line; the rest are the same line.
 	usageProbeFailed atomic.Bool
-}
-
-// RequestStop asks the runner to finish the reviews already in flight and then
-// return. Unlike canceling the context, it never kills a running agent: the
-// reviews now running finish normally, including their commit and publication
-// or merge work.
-func (r *Runner) RequestStop() { r.soft.Store(true) }
-
-// RequestFinish asks the runner to stop starting reviews and end the run once
-// the ones already running are done, their results committed, pushed, and
-// merged as the flags ask. Reviews not yet started are dropped, not deferred:
-// nothing follows this run.
-func (r *Runner) RequestFinish() { r.finish.Store(true) }
-
-// dropPending clears the unstarted queue, for a run that is ending on purpose
-// and has no successor to hand it to.
-func (r *Runner) dropPending() {
-	r.pendingMu.Lock()
-	defer r.pendingMu.Unlock()
-	r.pending = nil
-}
-
-// Pending is what the current loop had not started when the runner stopped.
-// Handing it to a successor lets a hot reload finish the loop rather than
-// starting it over.
-func (r *Runner) Pending() []string {
-	r.pendingMu.Lock()
-	defer r.pendingMu.Unlock()
-	return append([]string(nil), r.pending...)
-}
-
-// StackHead is the last published stacked layer (branch name and tip), or the
-// original --pr-base when nothing has published yet. A hot-reload successor
-// cuts the next pass from this tip.
-func (r *Runner) StackHead() (branch, tip string) {
-	return r.stackHead, r.stackHeadTip
-}
-
-// StackPublished is how many layers this stacked run has opened PRs for.
-func (r *Runner) StackPublished() int { return r.stackPublished }
-
-// stackPass is the 1-based stacked pass a loop number belongs to, counting
-// loops a predecessor already finished so branch names stay stable across a
-// hot reload.
-func (r *Runner) stackPass(loopNo int) int { return r.cfg.ResumeLoops + loopNo }
-
-func (r *Runner) rememberStackHead(branch, tip string, published int) {
-	r.stackHead = branch
-	r.stackHeadTip = tip
-	r.stackPublished = published
-}
-
-// setPending records the not-yet-started reviews of the current loop.
-func (r *Runner) setPending(names []string) {
-	r.pendingMu.Lock()
-	r.pending = append(r.pending[:0], names...)
-	r.pendingMu.Unlock()
-}
-
-// takeNext pops the next review from the pending queue.
-func (r *Runner) takeNext() (string, bool) {
-	r.pendingMu.Lock()
-	defer r.pendingMu.Unlock()
-	if len(r.pending) == 0 {
-		return "", false
-	}
-	next := r.pending[0]
-	r.pending = r.pending[1:]
-	return next, true
-}
-
-// ErrDirtyTree is the one worktree precondition a caller can do something
-// about: the work is there, it simply is not committed. Callers that can ask
-// a person offer the commit step rather than stopping.
-var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
-
-// StackDirtyError asks the caller to surface the isolation boundary before a
-// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
-// technical blocker: they stay in the original checkout and the stack starts
-// from the selected remote branch. They are still important enough that an
-// interactive CLI must not silently omit them from review.
-type StackDirtyError struct {
-	Dir       string
-	Remote    string
-	Base      string
-	Tracked   []string
-	Untracked []string
-}
-
-func (e *StackDirtyError) Error() string {
-	if e == nil {
-		return "stacked PR confirmation required"
-	}
-	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
-		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
-		humanize.List(e.DisplayPaths(), 3))
-}
-
-// DisplayPaths returns sanitized tracked paths followed by sanitized
-// untracked paths, ready for terminal output. The exact paths remain in the
-// fields for programmatic handling; only their display form is altered.
-func (e *StackDirtyError) DisplayPaths() []string {
-	if e == nil {
-		return nil
-	}
-	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
-	return safePaths(paths)
 }
 
 // New prepares a runner. It opens the repository (if any) and validates the
@@ -388,164 +319,6 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	return r, nil
 }
 
-// resolveTools probes, in one parallel pass, every helper binary the
-// scheduled reviews might reach for. The answer goes into each prompt, so an
-// agent knows what is here before it starts guessing.
-func resolveTools(reviews []string) map[string]string {
-	var entries []string
-	for _, review := range reviews {
-		entries = append(entries, agent.ToolsFor(review)...)
-	}
-	return agent.ResolveMany(agent.ToolBins(entries))
-}
-
-// toolsFor splits one review's helpers into what this machine has and what it
-// does not, from the paths resolveTools probed once for the whole schedule.
-func (r *Runner) toolsFor(review string) prompt.Tools {
-	have, missing := agent.SplitTools(agent.ToolsFor(review), r.tools)
-	return prompt.Tools{Have: have, Missing: missing}
-}
-
-// Stats exposes the accumulated results.
-func (r *Runner) Stats() *Stats { return r.st }
-
-// now is the runner's clock: the bus's injected Now, or wall time.
-func (r *Runner) now() time.Time { return r.bus.now() }
-
-// seedOrClock returns the configured seed, or one derived from the clock when
-// unset, so production keeps its random shuffle while a seeded run replays it.
-// now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
-// be re-derived on replay instead of reproducing the original draws.
-func seedOrClock(seed uint64, now func() time.Time) uint64 {
-	if seed != 0 {
-		return seed
-	}
-	if now == nil {
-		now = time.Now
-	}
-	n := uint64(now().UnixNano())
-	if n == 0 {
-		n = 1
-	}
-	return n
-}
-
-// Loops is the number of completed loops.
-func (r *Runner) Loops() int {
-	r.loopMu.Lock()
-	defer r.loopMu.Unlock()
-	return r.loopCount
-}
-
-// safePaths renders worktree paths for an error or log line. They come from
-// git status against a possibly hostile tree: a file name may carry escape,
-// control, or bidi characters that survive unquoteC's decoding, so anything
-// headed for a message that is not sanitized downstream (a returned error the
-// caller prints raw) is stripped here. Matching and own-artifact comparison
-// still see the exact paths; only display text passes through this.
-func safePaths(paths []string) []string {
-	out := make([]string, len(paths))
-	for i, p := range paths {
-		out[i] = normalize.Sanitize(p)
-	}
-	return out
-}
-
-// prepareWorktreeMode enforces what isolated parallel reviews require: a git
-// repository and a clean tree. Concurrent agents in one working tree corrupt
-// each other, and a worktree is cut from a commit, so uncommitted work would
-// be invisible to every review and then collide with the merges.
-func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
-	if !gitx.Available() {
-		return errors.New("--jobs > 1 needs git: each review runs in its own worktree")
-	}
-	if !r.repo.HasBaseline() {
-		return fmt.Errorf("--jobs > 1 needs a git repository with at least one commit: %s", r.cfg.Dir)
-	}
-	// Only tracked modifications block: a review works from a commit, so
-	// uncommitted edits to files git knows about would be invisible to it and
-	// then collide with its merge. An untracked file is in nobody's way; it is
-	// simply not reviewed, which is worth saying once rather than refusing to
-	// run over.
-	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
-	if err != nil {
-		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
-	}
-	if len(changes.Tracked) > 0 {
-		// The paths are named in an error the caller may print raw, so they
-		// are sanitized here rather than left to every consumer.
-		return fmt.Errorf("%w: commit or stash your changes first, "+
-			"or run without --jobs to review the tree in place (%s)",
-			ErrDirtyTree, humanize.List(safePaths(changes.Tracked), 3))
-	}
-	if n := len(changes.Untracked); n > 0 {
-		r.log("%d untracked file(s) stay put and are not reviewed: %s",
-			n, humanize.List(changes.Untracked, 3))
-	}
-	r.repo.PruneWorktrees(ctx)
-	return nil
-}
-
-func (r *Runner) log(format string, args ...any) {
-	r.bus.Publish(Event{Kind: EvLog, Dir: r.cfg.Dir, Text: fmt.Sprintf(format, args...)})
-}
-
-// pickAgent samples an agent from the pool, skipping any the caller excluded
-// (a previous attempt at the same review). The sample is keyed by review
-// name, so lanes running concurrently cannot change each other's draws and a
-// seeded run replays regardless of scheduling.
-func (r *Runner) pickAgent(review string, exclude map[agent.Spec]bool) agent.Spec {
-	pool := make([]agent.Spec, 0, len(r.cfg.Agents))
-	for _, a := range r.cfg.Agents {
-		if !exclude[a] {
-			pool = append(pool, a)
-		}
-	}
-	if len(pool) == 0 {
-		pool = r.cfg.Agents
-	}
-	return pool[drawIndex(r.seed, "agent\x00"+review, len(pool))]
-}
-
-// schedule returns loop loopNo's review order and arms the pending queue. The
-// first call consumes a resume queue handed over by a previous process.
-//
-// The shuffle is a keyed draw per Fisher-Yates step, not a random stream: loop
-// 3's order is the same pure function of the seed whether this process has
-// scheduled two loops before it or inherited the run from a hot reload, which
-// is what lets the successor continue the interrupted schedule exactly.
-func (r *Runner) schedule(loopNo int) []string {
-	if len(r.resume) > 0 {
-		order := r.resume
-		r.resume = nil
-		r.setPending(order)
-		return order
-	}
-	order := append([]string(nil), r.cfg.Reviews...)
-	for i := len(order) - 1; i > 0; i-- {
-		key := fmt.Sprintf("shuffle\x00%d\x00%d", r.cfg.ResumeLoops+loopNo, i)
-		j := drawIndex(r.seed, key, i+1)
-		order[i], order[j] = order[j], order[i]
-	}
-	// The cap cuts after the shuffle, which always draws over the full list:
-	// capping first would change the draw keys and break seeded replay, and
-	// cutting here is what makes different loops sample different reviews.
-	if n := r.cfg.MaxReviews; n > 0 && n < len(order) {
-		order = order[:n]
-	}
-	r.setPending(order)
-	return order
-}
-
-// perLoop is how many reviews one loop schedules: the full list, or the
-// --max-reviews cap when it is smaller.
-func (r *Runner) perLoop() int {
-	if n := r.cfg.MaxReviews; n > 0 && n < len(r.cfg.Reviews) {
-		return n
-	}
-	return len(r.cfg.Reviews)
-}
-
 // Run executes loops until the context is canceled or a limit is reached.
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
@@ -619,6 +392,233 @@ func (r *Runner) Run(ctx context.Context) {
 		}
 	}
 }
+
+// RequestStop asks the runner to finish the reviews already in flight and then
+// return. Unlike canceling the context, it never kills a running agent: the
+// reviews now running finish normally, including their commit and publication
+// or merge work.
+func (r *Runner) RequestStop() { r.soft.Store(true) }
+
+// RequestFinish asks the runner to stop starting reviews and end the run once
+// the ones already running are done, their results committed, pushed, and
+// merged as the flags ask. Reviews not yet started are dropped, not deferred:
+// nothing follows this run.
+func (r *Runner) RequestFinish() { r.finish.Store(true) }
+
+// Pending is what the current loop had not started when the runner stopped.
+// Handing it to a successor lets a hot reload finish the loop rather than
+// starting it over.
+func (r *Runner) Pending() []string {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	return append([]string(nil), r.pending...)
+}
+
+// StackHead is the last published stacked layer (branch name and tip), or the
+// original --pr-base when nothing has published yet. A hot-reload successor
+// cuts the next pass from this tip.
+func (r *Runner) StackHead() (branch, tip string) {
+	return r.stackHead, r.stackHeadTip
+}
+
+// StackPublished is how many layers this stacked run has opened PRs for.
+func (r *Runner) StackPublished() int { return r.stackPublished }
+
+// Stats exposes the accumulated results.
+func (r *Runner) Stats() *Stats { return r.st }
+
+// Loops is the number of completed loops.
+func (r *Runner) Loops() int {
+	r.loopMu.Lock()
+	defer r.loopMu.Unlock()
+	return r.loopCount
+}
+
+// prepareWorktreeMode enforces what isolated parallel reviews require: a git
+// repository and a clean tree. Concurrent agents in one working tree corrupt
+// each other, and a worktree is cut from a commit, so uncommitted work would
+// be invisible to every review and then collide with the merges.
+func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
+	if !gitx.Available() {
+		return errors.New("--jobs > 1 needs git: each review runs in its own worktree")
+	}
+	if !r.repo.HasBaseline() {
+		return fmt.Errorf("--jobs > 1 needs a git repository with at least one commit: %s", r.cfg.Dir)
+	}
+	// Only tracked modifications block: a review works from a commit, so
+	// uncommitted edits to files git knows about would be invisible to it and
+	// then collide with its merge. An untracked file is in nobody's way; it is
+	// simply not reviewed, which is worth saying once rather than refusing to
+	// run over.
+	changes, err := r.repo.Status(ctx, r.cfg.OwnArtifacts)
+	if err != nil {
+		return fmt.Errorf("cannot read git status in %s: %w", r.cfg.Dir, err)
+	}
+	if len(changes.Tracked) > 0 {
+		// The paths are named in an error the caller may print raw, so they
+		// are sanitized here rather than left to every consumer.
+		return fmt.Errorf("%w: commit or stash your changes first, "+
+			"or run without --jobs to review the tree in place (%s)",
+			ErrDirtyTree, humanize.List(safePaths(changes.Tracked), 3))
+	}
+	if n := len(changes.Untracked); n > 0 {
+		r.log("%d untracked file(s) stay put and are not reviewed: %s",
+			n, humanize.List(changes.Untracked, 3))
+	}
+	r.repo.PruneWorktrees(ctx)
+	return nil
+}
+
+// schedule returns loop loopNo's review order and arms the pending queue. The
+// first call consumes a resume queue handed over by a previous process.
+//
+// The shuffle is a keyed draw per Fisher-Yates step, not a random stream: loop
+// 3's order is the same pure function of the seed whether this process has
+// scheduled two loops before it or inherited the run from a hot reload, which
+// is what lets the successor continue the interrupted schedule exactly.
+func (r *Runner) schedule(loopNo int) []string {
+	if len(r.resume) > 0 {
+		order := r.resume
+		r.resume = nil
+		r.setPending(order)
+		return order
+	}
+	order := append([]string(nil), r.cfg.Reviews...)
+	for i := len(order) - 1; i > 0; i-- {
+		key := fmt.Sprintf("shuffle\x00%d\x00%d", r.cfg.ResumeLoops+loopNo, i)
+		j := drawIndex(r.seed, key, i+1)
+		order[i], order[j] = order[j], order[i]
+	}
+	// The cap cuts after the shuffle, which always draws over the full list:
+	// capping first would change the draw keys and break seeded replay, and
+	// cutting here is what makes different loops sample different reviews.
+	if n := r.cfg.MaxReviews; n > 0 && n < len(order) {
+		order = order[:n]
+	}
+	r.setPending(order)
+	return order
+}
+
+// perLoop is how many reviews one loop schedules: the full list, or the
+// --max-reviews cap when it is smaller.
+func (r *Runner) perLoop() int {
+	if n := r.cfg.MaxReviews; n > 0 && n < len(r.cfg.Reviews) {
+		return n
+	}
+	return len(r.cfg.Reviews)
+}
+
+// takeNext pops the next review from the pending queue.
+func (r *Runner) takeNext() (string, bool) {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	if len(r.pending) == 0 {
+		return "", false
+	}
+	next := r.pending[0]
+	r.pending = r.pending[1:]
+	return next, true
+}
+
+// setPending records the not-yet-started reviews of the current loop.
+func (r *Runner) setPending(names []string) {
+	r.pendingMu.Lock()
+	r.pending = append(r.pending[:0], names...)
+	r.pendingMu.Unlock()
+}
+
+// dropPending clears the unstarted queue, for a run that is ending on purpose
+// and has no successor to hand it to.
+func (r *Runner) dropPending() {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	r.pending = nil
+}
+
+func (r *Runner) rememberStackHead(branch, tip string, published int) {
+	r.stackHead = branch
+	r.stackHeadTip = tip
+	r.stackPublished = published
+}
+
+// stackPass is the 1-based stacked pass a loop number belongs to, counting
+// loops a predecessor already finished so branch names stay stable across a
+// hot reload.
+func (r *Runner) stackPass(loopNo int) int { return r.cfg.ResumeLoops + loopNo }
+
+// pickAgent samples an agent from the pool, skipping any the caller excluded
+// (a previous attempt at the same review). The sample is keyed by review
+// name, so lanes running concurrently cannot change each other's draws and a
+// seeded run replays regardless of scheduling.
+func (r *Runner) pickAgent(review string, exclude map[agent.Spec]bool) agent.Spec {
+	pool := make([]agent.Spec, 0, len(r.cfg.Agents))
+	for _, a := range r.cfg.Agents {
+		if !exclude[a] {
+			pool = append(pool, a)
+		}
+	}
+	if len(pool) == 0 {
+		pool = r.cfg.Agents
+	}
+	return pool[drawIndex(r.seed, "agent\x00"+review, len(pool))]
+}
+
+// toolsFor splits one review's helpers into what this machine has and what it
+// does not, from the paths resolveTools probed once for the whole schedule.
+func (r *Runner) toolsFor(review string) prompt.Tools {
+	have, missing := agent.SplitTools(agent.ToolsFor(review), r.tools)
+	return prompt.Tools{Have: have, Missing: missing}
+}
+
+// resolveTools probes, in one parallel pass, every helper binary the
+// scheduled reviews might reach for. The answer goes into each prompt, so an
+// agent knows what is here before it starts guessing.
+func resolveTools(reviews []string) map[string]string {
+	var entries []string
+	for _, review := range reviews {
+		entries = append(entries, agent.ToolsFor(review)...)
+	}
+	return agent.ResolveMany(agent.ToolBins(entries))
+}
+
+// seedOrClock returns the configured seed, or one derived from the clock when
+// unset, so production keeps its random shuffle while a seeded run replays it.
+// now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
+// be re-derived on replay instead of reproducing the original draws.
+func seedOrClock(seed uint64, now func() time.Time) uint64 {
+	if seed != 0 {
+		return seed
+	}
+	if now == nil {
+		now = time.Now
+	}
+	n := uint64(now().UnixNano())
+	if n == 0 {
+		n = 1
+	}
+	return n
+}
+
+// safePaths renders worktree paths for an error or log line. They come from
+// git status against a possibly hostile tree: a file name may carry escape,
+// control, or bidi characters that survive unquoteC's decoding, so anything
+// headed for a message that is not sanitized downstream (a returned error the
+// caller prints raw) is stripped here. Matching and own-artifact comparison
+// still see the exact paths; only display text passes through this.
+func safePaths(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = normalize.Sanitize(p)
+	}
+	return out
+}
+
+func (r *Runner) log(format string, args ...any) {
+	r.bus.Publish(Event{Kind: EvLog, Dir: r.cfg.Dir, Text: fmt.Sprintf(format, args...)})
+}
+
+// now is the runner's clock: the bus's injected Now, or wall time.
+func (r *Runner) now() time.Time { return r.bus.now() }
 
 func (r *Runner) budgetExhausted() bool {
 	return r.cfg.Runtime > 0 && r.now().Sub(r.st.Start) >= r.cfg.Runtime

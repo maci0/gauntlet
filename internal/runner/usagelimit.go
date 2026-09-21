@@ -105,19 +105,9 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	return parseUsagePercent(out.String())
 }
 
-func absPATH() string {
-	keep := make([]string, 0, 16)
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir != "" && filepath.IsAbs(dir) {
-			keep = append(keep, dir)
-		}
-	}
-	return strings.Join(keep, string(os.PathListSeparator))
-}
-
 func probeEnv() []string {
 	env := os.Environ()
-	abs := absPATH()
+	abs := runx.AbsPATH()
 	out := make([]string, 0, len(env)+1)
 	seen := false
 	for _, kv := range env {
@@ -138,7 +128,7 @@ func resolveProbe(name string) string {
 	if filepath.IsAbs(name) || strings.ContainsRune(name, os.PathSeparator) {
 		return name
 	}
-	for _, dir := range filepath.SplitList(absPATH()) {
+	for _, dir := range filepath.SplitList(runx.AbsPATH()) {
 		p := filepath.Join(dir, name)
 		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
 			return p

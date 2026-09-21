@@ -370,7 +370,7 @@ var gitOutputMax = 32 << 20
 // a credential helper, diffie) inherit this, so a planted ./ssh cannot run.
 func gitEnv() []string {
 	env := os.Environ()
-	abs := absPATH()
+	abs := runx.AbsPATH()
 	out := make([]string, 0, len(env)+2)
 	seenPATH := false
 	for _, kv := range env {
@@ -413,16 +413,6 @@ func mergeGitEnv(extra []string) []string {
 		out = append(out, kv)
 	}
 	return append(out, extra...)
-}
-
-func absPATH() string {
-	keep := make([]string, 0, 16)
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir != "" && filepath.IsAbs(dir) {
-			keep = append(keep, dir)
-		}
-	}
-	return strings.Join(keep, string(os.PathListSeparator))
 }
 
 var (

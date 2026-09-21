@@ -96,10 +96,7 @@ func ParseRemote(raw string) (repo, host string, err error) {
 func Available() bool { return binary() != "" }
 
 func binary() string {
-	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
-		if dir == "" || !filepath.IsAbs(dir) {
-			continue
-		}
+	for _, dir := range filepath.SplitList(runx.AbsPATH()) {
 		path := filepath.Join(dir, "gh")
 		if fi, err := os.Stat(path); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
 			return path

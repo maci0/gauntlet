@@ -19,6 +19,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // Spec is one agent, optionally pinned to a model and a reasoning effort.
@@ -174,13 +175,7 @@ func pathNoCWD() string {
 	if raw == "" {
 		raw = "/usr/local/bin:/usr/bin:/bin"
 	}
-	keep := make([]string, 0, 16)
-	for _, p := range filepath.SplitList(raw) {
-		if p != "" && filepath.IsAbs(p) {
-			keep = append(keep, p)
-		}
-	}
-	return strings.Join(keep, string(os.PathListSeparator))
+	return runx.CleanPATH(raw)
 }
 
 // The cache is keyed by the PATH it was filled from. A memo that outlives its

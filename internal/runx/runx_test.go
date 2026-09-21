@@ -87,3 +87,17 @@ func TestFirstLineStripsUserinfo(t *testing.T) {
 		t.Fatalf("FirstLine = %q", got)
 	}
 }
+
+func TestCleanPATH(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{":/usr/bin::./bin:bin:/usr/local/bin:", "/usr/bin:/usr/local/bin"},
+		{"/bin", "/bin"},
+		{"relative/path:.:", ""},
+	}
+	for _, c := range cases {
+		if got := CleanPATH(c.in); got != c.want {
+			t.Errorf("CleanPATH(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

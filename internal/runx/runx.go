@@ -12,7 +12,9 @@ package runx
 
 import (
 	"bytes"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -91,4 +93,22 @@ func RedactUserinfo(s string) string {
 func FirstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
 	return RedactUserinfo(line)
+}
+
+// CleanPATH filters a PATH string to absolute directories only, dropping empty
+// and relative segments so subprocesses never resolve binaries from the
+// working directory.
+func CleanPATH(raw string) string {
+	keep := make([]string, 0, 16)
+	for _, dir := range filepath.SplitList(raw) {
+		if dir != "" && filepath.IsAbs(dir) {
+			keep = append(keep, dir)
+		}
+	}
+	return strings.Join(keep, string(os.PathListSeparator))
+}
+
+// AbsPATH returns the current environment's PATH filtered to absolute directories only.
+func AbsPATH() string {
+	return CleanPATH(os.Getenv("PATH"))
 }

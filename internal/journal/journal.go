@@ -201,17 +201,7 @@ func (j *Journal) Close(s Summary) error {
 	if j.indexed {
 		return j.err
 	}
-	if !j.closed {
-		// The same keep-the-first-error rule Flush and CloseQuiet follow: a
-		// mid-run write failure must not be eclipsed by a later flush result.
-		if err := j.w.Flush(); err != nil && j.err == nil {
-			j.err = err
-		}
-		if err := j.f.Close(); err != nil && j.err == nil {
-			j.err = err
-		}
-		j.closed = true
-	}
+	j.closeFileLocked()
 	s.RunID, s.Path = j.runID, j.path
 	if err := appendIndex(s); err != nil {
 		// An index failure is not sticky: a later Close retries the append.
@@ -286,6 +276,13 @@ func (j *Journal) CloseQuiet() {
 	}
 	j.mu.Lock()
 	defer j.mu.Unlock()
+	j.closeFileLocked()
+}
+
+// closeFileLocked flushes and closes the journal file under j.mu.
+// The same keep-the-first-error rule Flush and CloseQuiet follow: a
+// mid-run write failure must not be eclipsed by a later flush result.
+func (j *Journal) closeFileLocked() {
 	if j.closed {
 		return
 	}

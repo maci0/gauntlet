@@ -170,21 +170,7 @@ func SaveState(dir, runID string, v any) (string, error) {
 // than the shared retention window is a corpse. Best effort by design, like
 // the temp sweep: one that cannot run must not block the reload.
 func sweepStaleHandoffs(dir string) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-staleTempAge)
-	for _, e := range entries {
-		if !e.Type().IsRegular() {
-			continue
-		}
-		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, e.Name()))
-	}
+	sweepStaleTemps(dir, "", staleTempAge)
 }
 
 // LoadState reads and removes the handoff blob named by GAUNTLET_STATE.

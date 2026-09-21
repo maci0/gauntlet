@@ -127,6 +127,9 @@ type Bus struct {
 	Now func() time.Time
 }
 
+// NewBus returns a bus with no subscribers.
+func NewBus() *Bus { return &Bus{} }
+
 // now is the bus clock: the injected Now, or wall time. Nil-safe so New can
 // stamp a start time before the runner exists.
 func (b *Bus) now() time.Time {
@@ -135,9 +138,6 @@ func (b *Bus) now() time.Time {
 	}
 	return time.Now()
 }
-
-// NewBus returns a bus with no subscribers.
-func NewBus() *Bus { return &Bus{} }
 
 // Subscribe returns a channel receiving every future event. It is safe to call
 // while a run is publishing; the returned channel is closed by Close. On a
