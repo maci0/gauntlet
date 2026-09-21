@@ -269,8 +269,10 @@ func appendIndexLocked(s Summary) (err error) {
 	if err != nil {
 		return err
 	}
-	_, err = f.Write(append(line, '\n'))
-	return err
+	if _, err = f.Write(append(line, '\n')); err != nil {
+		return err
+	}
+	return f.Sync()
 }
 
 // CloseQuiet flushes and closes the journal without writing an index entry.

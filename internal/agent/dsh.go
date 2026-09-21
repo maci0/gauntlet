@@ -148,6 +148,9 @@ func writeDshPatch(key, body string) (string, error) {
 	if _, err := tmp.WriteString(body); err != nil {
 		return "", err
 	}
+	if err := tmp.Sync(); err != nil {
+		return "", err
+	}
 	if err := tmp.Close(); err != nil {
 		return "", err
 	}

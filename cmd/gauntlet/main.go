@@ -639,8 +639,10 @@ func run(argv []string) int {
 	graceful.arm(runs, runCtl)
 
 	reloadPath := startReloadWatch(ctx, opts, runs, bus)
+	var autoDone sync.WaitGroup
+	autoCtx, stopAuto := context.WithCancel(ctx)
 	if opts.autoUpdate {
-		go autoUpdateLoop(ctx, opts, bus)
+		autoDone.Go(func() { autoUpdateLoop(autoCtx, opts, bus) })
 	}
 
 	// One goroutine per directory: distinct trees, distinct locks, no shared
@@ -676,6 +678,8 @@ func run(argv []string) int {
 		stop()
 	}
 	workers.Wait()
+	stopAuto()
+	autoDone.Wait()
 	bus.Close()
 	consumers.Wait()
 

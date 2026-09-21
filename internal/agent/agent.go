@@ -204,6 +204,9 @@ func resolveStore(name, path, found string) {
 	resolveMu.Lock()
 	defer resolveMu.Unlock()
 	if resolvePath != path {
+		if path != pathNoCWD() {
+			return
+		}
 		resolvePath, resolveCache = path, map[string]string{}
 	}
 	resolveCache[name] = found

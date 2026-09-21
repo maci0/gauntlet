@@ -259,6 +259,9 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	if sum != expect {
 		return "", fmt.Errorf("checksum mismatch for %s: got %s, want %s", want, sum, expect)
 	}
+	if err := tmp.Sync(); err != nil {
+		return "", err
+	}
 	if err := tmp.Close(); err != nil {
 		return "", err
 	}
