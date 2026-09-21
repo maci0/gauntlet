@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -75,6 +76,67 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 	if !sawFirst {
 		t.Fatal("CHANGELOG.md has no ## Unreleased heading")
 	}
+}
+
+// A patch release must contain only fixes (or security fixes): new features
+// require a minor bump, and breaking changes require a major bump. A minor
+// release may add features but must not remove or break documented contract
+// surface. Only a major release may contain removals.
+func TestChangelogSemVerBumps(t *testing.T) {
+	text := readChangelog(t)
+	var (
+		currentVer *changelogVersion
+		groups     []string
+		lineNum    int
+	)
+	check := func(ver *changelogVersion, groups []string, line int) {
+		if ver == nil {
+			return
+		}
+		// 1.0.1 and 1.0.2 are documented historical exceptions that shipped before contract guards.
+		if *ver == "1.0.1" || *ver == "1.0.2" {
+			return
+		}
+		maj, min, pat := ver.numbers()
+		if maj < 1 {
+			return // 0.x releases allowed breaking changes in minor
+		}
+		if pat > 0 {
+			if slices.Contains(groups, "Added") {
+				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Added; additions require a minor release", line, *ver)
+			}
+			if slices.Contains(groups, "Removed") {
+				t.Errorf("CHANGELOG.md:%d: patch release %s contains ### Removed; removals are breaking and require a major release", line, *ver)
+			}
+		} else if min > 0 {
+			if slices.Contains(groups, "Removed") {
+				t.Errorf("CHANGELOG.md:%d: minor release %s contains ### Removed; removals are breaking and require a major release", line, *ver)
+			}
+		}
+	}
+	for i, line := range strings.Split(text, "\n") {
+		n := i + 1
+		switch {
+		case strings.HasPrefix(line, "### "):
+			groups = append(groups, strings.TrimPrefix(line, "### "))
+		case strings.HasPrefix(line, "## "):
+			title := strings.TrimPrefix(line, "## ")
+			check(currentVer, groups, lineNum)
+			groups = nil
+			lineNum = n
+			if title == "Unreleased" {
+				currentVer = nil
+				continue
+			}
+			ver, ok := parseChangelogVersion(title)
+			if ok {
+				currentVer = &ver
+			} else {
+				currentVer = nil
+			}
+		}
+	}
+	check(currentVer, groups, lineNum)
 }
 
 // A name on the environment-variable contract is something a consumer can
@@ -182,6 +244,26 @@ func TestParseChangelogVersion(t *testing.T) {
 			}
 		})
 	}
+	for _, tc := range []struct {
+		text string
+		maj  int
+		min  int
+		pat  int
+	}{
+		{"1.2.3", 1, 2, 3},
+		{"0.10.0", 0, 10, 0},
+		{"1.22.1", 1, 22, 1},
+		{"2.0.0-rc.1+build.4", 2, 0, 0},
+	} {
+		v, ok := parseChangelogVersion(tc.text)
+		if !ok {
+			t.Fatalf("rejected %q", tc.text)
+		}
+		maj, min, pat := v.numbers()
+		if maj != tc.maj || min != tc.min || pat != tc.pat {
+			t.Fatalf("%s.numbers() = (%d, %d, %d), want (%d, %d, %d)", tc.text, maj, min, pat, tc.maj, tc.min, tc.pat)
+		}
+	}
 }
 
 func TestChangelogVersionPrecedence(t *testing.T) {
@@ -218,6 +300,17 @@ var changelogSemver = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|
 
 func (v changelogVersion) String() string {
 	return string(v)
+}
+
+func (v changelogVersion) numbers() (major, minor, patch int) {
+	m := changelogSemver.FindStringSubmatch(string(v))
+	if len(m) < 4 {
+		return 0, 0, 0
+	}
+	maj, _ := strconv.Atoi(m[1])
+	min, _ := strconv.Atoi(m[2])
+	pat, _ := strconv.Atoi(m[3])
+	return maj, min, pat
 }
 
 func (v changelogVersion) less(o changelogVersion) bool {

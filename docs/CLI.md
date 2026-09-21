@@ -48,6 +48,7 @@ several paths uses the first.
 |---|---|
 | `tab` / `shift+tab` | move between reviews, agents, and run options |
 | `up`/`down`, `j`/`k` | move within a pane |
+| `pgup` / `pgdn` | move by page within a pane |
 | `space` | toggle a review, a whole set, an agent, or a switch. A set header toggles the members the filter is showing. |
 | `left`/`right`, `h`/`l` | collapse or expand a set; change the job count |
 | `a` | select all or none of what this pane is showing (the filter, if any, bounds it) |
