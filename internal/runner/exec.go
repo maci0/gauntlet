@@ -313,6 +313,10 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	select {
 	case <-drained:
 	case <-drain.C:
+		killGroup(cmd, syscall.SIGKILL)
+		outR.Close()
+		errR.Close()
+		<-drained
 	}
 	usageMu.Lock()
 	emitting.Store(false)

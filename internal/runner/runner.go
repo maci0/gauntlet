@@ -207,7 +207,7 @@ type Runner struct {
 	// remote name. Pushes keep using the remote name.
 	stackReadRemote string
 
-	mu             sync.Mutex // guards sessionStarted
+	mu             sync.Mutex // guards sessionStarted, stackHead, stackPublished
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
 	// tools is where this machine's helper binaries resolved to, probed once
@@ -418,11 +418,17 @@ func (r *Runner) Pending() []string {
 // original --pr-base when nothing has published yet. A hot-reload successor
 // cuts the next pass from this tip.
 func (r *Runner) StackHead() (branch, tip string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	return r.stackHead, r.stackHeadTip
 }
 
 // StackPublished is how many layers this stacked run has opened PRs for.
-func (r *Runner) StackPublished() int { return r.stackPublished }
+func (r *Runner) StackPublished() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.stackPublished
+}
 
 // Stats exposes the accumulated results.
 func (r *Runner) Stats() *Stats { return r.st }
@@ -536,6 +542,8 @@ func (r *Runner) dropPending() {
 }
 
 func (r *Runner) rememberStackHead(branch, tip string, published int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.stackHead = branch
 	r.stackHeadTip = tip
 	r.stackPublished = published
@@ -1068,14 +1076,13 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	best, bestThink := 0, 0
 	publishUsage := func(tokens, thinking int) {
 		usageMu.Lock()
+		defer usageMu.Unlock()
 		if tokens <= best && thinking <= bestThink {
-			usageMu.Unlock()
 			return
 		}
 		best = max(best, tokens)
 		bestThink = max(bestThink, thinking)
 		tokens, thinking = best, bestThink
-		usageMu.Unlock()
 		r.bus.Publish(Event{
 			Kind: EvUsage, Dir: r.cfg.Dir, Review: review,
 			Agent: spec.Label(), Loop: loopNo, Tokens: tokens, Thinking: thinking,

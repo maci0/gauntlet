@@ -669,6 +669,8 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", name); err != nil {
 		return fmt.Errorf("invalid stack branch %q: %w", name, err)
 	}
+	w.repo.wtMu.Lock()
+	defer w.repo.wtMu.Unlock()
 	sub := w.subRepo()
 	// -m, never -M: a same-named branch holding real work is kept, and the
 	// failure is reported, matching reclaimEmptyBranch's rule.
