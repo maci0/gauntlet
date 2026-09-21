@@ -122,6 +122,75 @@ func TestParseRepo(t *testing.T) {
 	}
 }
 
+// FuzzParseRepo processes repository identifiers passed via CLI or configuration
+// for self-update checks. The result is used directly in GitHub API URLs, so it
+// must never panic, must enforce the strict OWNER/REPO format, reject path traversal
+// or URL schemes, and be deterministic.
+func FuzzParseRepo(f *testing.F) {
+	seeds := []string{
+		"",
+		"   ",
+		DefaultRepo,
+		"maci0/gauntlet",
+		"org/.github",
+		"owner/repo",
+		"owner-name/repo_name.1",
+		"maci0",
+		"maci0/gauntlet/extra",
+		"https://github.com/maci0/gauntlet",
+		"git@github.com:maci0/gauntlet.git",
+		"maci0/gauntlet?foo=bar",
+		"maci0/gauntlet#frag",
+		"maci0/..",
+		"../gauntlet",
+		"maci0/.",
+		"./gauntlet",
+		"maci0/gauntlet repo",
+		"maci0/\x00gauntlet",
+		"maci0/gauntlet\r\nInjected-Header: evil",
+		strings.Repeat("a", 105) + "/repo",
+		"owner/" + strings.Repeat("b", 105),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	f.Fuzz(func(t *testing.T, raw string) {
+		got, err := ParseRepo(raw)
+		if again, errAgain := ParseRepo(raw); got != again || (err == nil) != (errAgain == nil) {
+			t.Fatalf("ParseRepo(%q) is not deterministic", raw)
+		}
+		if err != nil {
+			if got != "" {
+				t.Fatalf("ParseRepo(%q) returned repo %q on error: %v", raw, got, err)
+			}
+			return
+		}
+		if strings.TrimSpace(raw) == "" {
+			if got != DefaultRepo {
+				t.Fatalf("ParseRepo(%q) = %q, want DefaultRepo %q", raw, got, DefaultRepo)
+			}
+			return
+		}
+		if !repoNameRe.MatchString(got) {
+			t.Fatalf("ParseRepo(%q) accepted %q which does not match repoNameRe", raw, got)
+		}
+		owner, repo, ok := strings.Cut(got, "/")
+		if !ok || owner == "" || repo == "" {
+			t.Fatalf("ParseRepo(%q) returned %q without valid owner/repo cut", raw, got)
+		}
+		if !githubPart(owner) || !githubPart(repo) {
+			t.Fatalf("ParseRepo(%q) = %q, but owner or repo failed githubPart", raw, got)
+		}
+		if owner == "." || owner == ".." || repo == "." || repo == ".." {
+			t.Fatalf("ParseRepo(%q) accepted traversal segment in %q", raw, got)
+		}
+		if strings.Contains(got, "://") || strings.Contains(got, "@") {
+			t.Fatalf("ParseRepo(%q) = %q contains URL scheme or userinfo", raw, got)
+		}
+	})
+}
+
 func TestGitHubTokenPrefersGHToken(t *testing.T) {
 	t.Setenv(envGitHubToken, "from-github")
 	t.Setenv(envGHToken, "from-gh")
