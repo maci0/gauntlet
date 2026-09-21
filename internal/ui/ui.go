@@ -827,12 +827,19 @@ func (m *model) renderLanes(w, h int) string {
 	if len(m.cfg.Dirs) > 1 {
 		nameW = 24
 	}
+	revW := 20
+	meterW := 12
 	const (
-		revW     = 20
-		meterW   = 12
 		elapsedW = 7
 		statsW   = 52
 	)
+	if w < 90 {
+		revW = 14
+		meterW = 8
+		if len(m.cfg.Dirs) == 1 {
+			nameW = 12
+		}
+	}
 	rows := make([]string, 0, h)
 	// A lane that does not fit is announced, not dropped: an agent missing
 	// from the panel reads as one that is not running.
@@ -886,10 +893,14 @@ func (m *model) renderLanes(w, h int) string {
 		if t := l.thinkTokens + l.liveThinking; t > 0 {
 			think = "  " + styleThink.Render(thinkGlyph(m.now, l.lastThinkAt)+" "+humanize.Count(t))
 		}
-		stats := pad(fmt.Sprintf("%s done  %s fail  %s tok%s%s",
+		statLine := fmt.Sprintf("%s done  %s fail  %s tok%s%s",
 			styleValue.Render(fmt.Sprint(l.done)),
 			failStyle(l.failed).Render(fmt.Sprint(l.failed)),
-			styleDim.Render(tokens), rate, think), statsW)
+			styleDim.Render(tokens), rate, think)
+		stats := pad(statLine, statsW)
+		if w < 90 {
+			stats = statLine
+		}
 
 		row := pad(styled(hue, trim(label, nameW)), nameW) + " " + work + "  " + stats
 		if sparkW := w - lipgloss.Width(row) - 2; sparkW > 4 {
@@ -1285,7 +1296,7 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	}
 	if scrollable {
 		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
-		if m.scroll > 0 {
+		if m.paused || m.scroll > 0 {
 			keys = append(keys, struct{ k, d string }{"esc", "live"})
 		}
 	}

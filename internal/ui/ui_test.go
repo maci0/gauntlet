@@ -1297,3 +1297,28 @@ func TestSetMonochromeStripsStyle(t *testing.T) {
 		t.Fatalf("SetMonochrome left escape codes in place: %q", s)
 	}
 }
+
+func TestLanesKeepStatsAtEightyColumns(t *testing.T) {
+	cfg := demoConfig()
+	m := newModel(cfg)
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	frame := stripANSI(staticFrame(cfg, demoEvents(), 80, 24))
+	for _, want := range []string{"done", "fail", "tok"} {
+		if !strings.Contains(frame, want) {
+			t.Fatalf("80-column frame lost %q from agent lanes:\n%s", want, frame)
+		}
+	}
+}
+
+func TestFooterShowsEscLiveWhenPausedAtLiveEdge(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.feed = []feedLine{{text: "line1"}}
+	m.paused = true
+	m.scroll = 0
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "esc:live") {
+		t.Fatalf("footer does not document esc:live while paused at live edge:\n%s", got)
+	}
+}

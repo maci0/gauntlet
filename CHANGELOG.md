@@ -41,6 +41,11 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Adapt agent lane column widths for narrower terminals (<90 cols) so metrics are not clipped off in the live dashboard.
+- Document the Escape reset shortcut (`esc:live`) in the dashboard footer whenever the feed is paused at the live edge.
+- Show `:change` instead of `:open/close` for arrow keys in the launcher footer when focused on the options pane.
+- Prevent space and arrow keys from modifying inactive options (suggest agent when suggest is off, merge target when commits are off) in the launcher.
+- Explain that no agents are installed when viewing the agents pane hint with an empty agent pool.
 - Abort git rebase on pull conflicts to avoid leaving repositories in an uncleaned mid-rebase state.
 - Fall back to subsequent agents in the pool when command building fails for an agent candidate.
 - Preserve error context when resolving binary paths and checking baseline revisions during trailer stripping.

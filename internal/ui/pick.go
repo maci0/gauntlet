@@ -534,7 +534,7 @@ func (p *picker) expand(open bool) {
 
 func (p *picker) adjust(d int) {
 	o := &p.opts[p.cursor[paneOptions]]
-	if p.optionInert(o) {
+	if p.optionDisabled(o) {
 		return
 	}
 	switch o.kind {
@@ -586,7 +586,7 @@ func (p *picker) toggle() {
 		}
 	case paneOptions:
 		o := &p.opts[p.cursor[paneOptions]]
-		if p.optionInert(o) {
+		if p.optionDisabled(o) {
 			return
 		}
 		switch o.kind {
@@ -853,6 +853,21 @@ func (p *picker) optionInert(o *option) bool {
 	return false
 }
 
+// optionDisabled reports an option that is currently inactive: stacked-mode
+// overrides, suggest agent when suggest is off, or merge targets when commits are off.
+func (p *picker) optionDisabled(o *option) bool {
+	if p.optionInert(o) {
+		return true
+	}
+	if o.flag == "--suggest-agent" && !p.suggest {
+		return true
+	}
+	if o.flag == "--merge-into" && !p.committing() {
+		return true
+	}
+	return false
+}
+
 // committing reports whether the composed run produces commits at all, which
 // is what a merge target needs to mean anything.
 func (p *picker) committing() bool {
@@ -1011,6 +1026,9 @@ func (p *picker) hint() string {
 		}
 		return o.help
 	case paneAgents:
+		if len(p.cfg.Agents) == 0 {
+			return "no agent CLI is installed: install one (see: gauntlet doctor)"
+		}
 		return "the pool reviews are drawn from; none picked means auto-detect"
 	default:
 		switch r := p.rowAt(p.cursor[paneReviews]); r.kind {
@@ -1041,9 +1059,13 @@ func (p *picker) renderStatus() string {
 // move between rows or leave is stranded, so those come before niceties like
 // bulk selection. What fits is what is shown, never clipped mid-name.
 func (p *picker) renderKeys() string {
+	arrowAction := "open/close"
+	if p.focus == paneOptions {
+		arrowAction = "change"
+	}
 	keys := []struct{ k, v string }{
 		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
-		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
+		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
 		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 	}
 	if p.typing {
@@ -1056,7 +1078,7 @@ func (p *picker) renderKeys() string {
 	} else if p.filter != "" {
 		keys = []struct{ k, v string }{
 			{"⏎", "run"}, {"q", "cancel"}, {"esc", "clear"}, {"j/k", "move"},
-			{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", "open/close"},
+			{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
 			{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 		}
 	}
@@ -1412,15 +1434,14 @@ func (p *picker) runPanel(w, h int) string {
 			// A cycle row that cannot apply yet is drawn inert: the suggest
 			// agent without suggest, a merge target without commits.
 			value := o.values[o.idx]
-			applies := p.suggest && !inert
+			applies := !p.optionDisabled(&o)
 			chosen := styled(p.hues.get(value), value)
 			if o.flag == "--merge-into" {
-				applies = p.committing() && !inert
 				chosen = styleValue.Render(value)
 			}
 			left = "  " + o.label
 			switch {
-			case !applies || inert:
+			case !applies:
 				left = styleFaint.Render("  " + o.label)
 				right = styleFaint.Render(value)
 			case o.idx == 0:

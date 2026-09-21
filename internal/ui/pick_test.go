@@ -1241,3 +1241,59 @@ func TestTrimLastWordWithUnicodeSpaces(t *testing.T) {
 		}
 	}
 }
+
+func TestPickFooterShowsChangeInOptionsPane(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h, p.ready = 104, 30, true
+	p.focus = paneOptions
+	footer := lastLine(p.View())
+	if !strings.Contains(footer, ":change") {
+		t.Fatalf("options pane footer should show :change for arrow keys, got:\n%s", footer)
+	}
+	if strings.Contains(footer, ":open/close") {
+		t.Fatalf("options pane footer should not show :open/close, got:\n%s", footer)
+	}
+}
+
+func TestPickEmptyAgentsPaneHintExplainsNoneInstalled(t *testing.T) {
+	p := newPicker(PickConfig{
+		Dir:    "/home/dev/project",
+		Groups: []PickGroup{{Name: "quick", Reviews: []PickReview{{Name: "sec-review", Desc: "d"}}}},
+		Agents: nil,
+	})
+	p.focus = paneAgents
+	hint := p.hint()
+	if !strings.Contains(hint, "no agent CLI is installed") {
+		t.Fatalf("empty agents pane hint %q, want explanation that none are installed", hint)
+	}
+}
+
+func TestPickDisabledOptionsCannotBeModified(t *testing.T) {
+	p := demoPicker()
+	p.focus = paneOptions
+	// Suggest agent when suggest is off
+	for i, o := range p.opts {
+		if o.flag == "--suggest-agent" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	origSuggestIdx := p.opts[p.cursor[paneOptions]].idx
+	press(p, " ", "l", "h")
+	if p.opts[p.cursor[paneOptions]].idx != origSuggestIdx {
+		t.Fatal("suggest agent was modified while suggest was off")
+	}
+
+	// Merge into when committing is off
+	for i, o := range p.opts {
+		if o.flag == "--merge-into" {
+			p.cursor[paneOptions] = i
+			break
+		}
+	}
+	origMergeIdx := p.opts[p.cursor[paneOptions]].idx
+	press(p, " ", "l", "h")
+	if p.opts[p.cursor[paneOptions]].idx != origMergeIdx {
+		t.Fatal("merge into was modified while commits were off")
+	}
+}
