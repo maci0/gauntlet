@@ -55,7 +55,7 @@ Review the following:
 
 Instructions:
 - Fix order: breakage on a claimed, CI-tested platform > breakage on a claimed but untested platform > undeclared version/feature floors > claim-vs-CI drift (align the claim or the matrix) > dead platform branches.
-- If available, use: `shellcheck` (bashisms and POSIX-sh violations in scripts). Never install tools.
+- If available, use: `shellcheck` (bashisms and POSIX-sh violations in scripts), `vermin` (Python minimum version), `cargo-msrv` (Rust MSRV). Never install tools.
 - Establish the support matrix first (README, CI config, package metadata, release artifacts) and judge everything against it; do not invent platforms the project never claimed.
 - Prefer the platform-neutral API over adding a second platform branch; prefer a capability probe over an OS-name check.
 - In auto-fix mode make narrow, verifiable fixes: replace one hardcoded separator set with the path API, fix bashisms in one script (verified by shellcheck if present), add the missing branch to one conditional, correct one claim in the docs. Do not port the project to a new platform or restructure conditional-compilation layout in one pass.

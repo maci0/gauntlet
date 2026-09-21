@@ -54,7 +54,7 @@ Review the following:
 
 Instructions:
 - Fix order: leaks on hot paths of long-lived processes (per-request descriptors, pool drains, goroutine-per-request) > unbounded queues and maps on ingest paths > zombie/orphan process handling > listener and timer accumulation > cold-path and shutdown-time cleanups.
-- If available, use: `valgrind` (definite leaks in native code), `heaptrack` (allocation growth attribution). Judge reports against the leak's reachability from a hot path. Never install tools.
+- If available, use: `valgrind` (definite leaks in native code), `heaptrack` (allocation growth attribution), `bloaty` (binary size profiler). Judge reports against the leak's reachability from a hot path. Never install tools.
 - For each acquisition site, trace every exit path (success, error, timeout, cancellation, panic) to a release; one missing path is the finding. Name the path.
 - Rank by accumulation rate times lifetime: a per-request leak in a server outranks a per-startup leak a thousandfold.
 - In auto-fix mode make narrow, verifiable fixes: wrap one acquisition in the language's cleanup construct, return one pooled connection on the missed path, add the group-kill to one child timeout, bound one queue with the codebase's existing mechanism, remove one repeated listener registration. Do not restructure ownership models, introduce lifecycle frameworks, or change shutdown ordering in one pass.
