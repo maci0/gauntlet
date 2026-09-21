@@ -493,7 +493,7 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 // "checked out" in a worktree that was already removed from disk.
 func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
 	r.PruneWorktrees(ctx)
-	out, err := r.run(ctx, gitQuick, "branch", "--list", pattern)
+	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", pattern)
 	if err != nil {
 		return
 	}

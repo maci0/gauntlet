@@ -1265,6 +1265,7 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 	first := time.NewTimer(autoUpdateDelay)
 	defer first.Stop()
 	firstC := first.C
+	applied := ""
 	for {
 		select {
 		case <-ctx.Done():
@@ -1281,7 +1282,7 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 				Text: fmt.Sprintf("update check failed: %v", err)})
 			continue
 		}
-		if !rel.NewerThan(version) {
+		if !rel.NewerThan(version) || rel.TagName == applied {
 			continue
 		}
 		if _, err := selfupdate.Apply(ctx, rel); err != nil {
@@ -1289,6 +1290,7 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 				Text: fmt.Sprintf("auto-update to %s failed: %v", rel.TagName, err)})
 			continue
 		}
+		applied = rel.TagName
 		bus.Publish(runner.Event{Kind: runner.EvLog,
 			Text: fmt.Sprintf("updated to %s on disk; reloading at the next safe point", rel.TagName)})
 	}

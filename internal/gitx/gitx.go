@@ -545,7 +545,11 @@ func openRegular(path string) (*os.File, error) {
 	}
 	f := os.NewFile(uintptr(fd), path)
 	fi, err := f.Stat()
-	if err != nil || !fi.Mode().IsRegular() {
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
 		f.Close()
 		return nil, errors.New("not a regular file")
 	}

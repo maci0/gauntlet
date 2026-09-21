@@ -158,10 +158,12 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 		return MergeResult{Detail: fmt.Sprintf("cannot check out %s to merge into: %v", target, err)}
 	}
 	defer func() {
-		_, _ = r.run(context.WithoutCancel(ctx), gitNormal, "worktree", "remove", "--force", dir)
+		cleanCtx := context.WithoutCancel(ctx)
+		_, _ = r.run(cleanCtx, gitQuick, "worktree", "unlock", dir)
+		_, _ = r.run(cleanCtx, gitNormal, "worktree", "remove", "--force", dir)
 	}()
 
-	sub := &Repo{Dir: dir}
+	sub := r.subRepo(dir)
 	out, err := sub.run(ctx, gitSlow,
 		"merge", "--no-ff", "--no-verify", "-m", message, branch)
 	if err == nil {

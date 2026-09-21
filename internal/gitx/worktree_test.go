@@ -452,3 +452,21 @@ func TestHasCommitDistinguishesMissingFromError(t *testing.T) {
 		t.Fatal("outside a repository HasCommit must fail, not report the object missing")
 	}
 }
+
+func TestDeleteBranchesMatching(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-0")
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-1")
+	gitIn(t, r.Dir, "branch", "other-branch")
+
+	r.DeleteBranchesMatching(ctx, "gauntlet/run-lane*")
+
+	branches := gitOut(t, r.Dir, "branch", "--list", "--format=%(refname:short)")
+	if strings.Contains(branches, "gauntlet/run-lane") {
+		t.Fatalf("matching branches should be deleted, got:\n%s", branches)
+	}
+	if !strings.Contains(branches, "other-branch") {
+		t.Fatalf("unrelated branch should remain, got:\n%s", branches)
+	}
+}
