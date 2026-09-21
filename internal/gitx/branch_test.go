@@ -278,6 +278,8 @@ func TestPullRebaseAbortsOnConflict(t *testing.T) {
 	origin := newRepo(t)
 	cloneDir := t.TempDir()
 	gitOut(t, cloneDir, "clone", origin.Dir, ".")
+	gitIn(t, cloneDir, "config", "user.email", "test@example.invalid")
+	gitIn(t, cloneDir, "config", "user.name", "test")
 	r := Open(cloneDir)
 	ctx := context.Background()
 
