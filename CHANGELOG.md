@@ -41,6 +41,9 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Abort git rebase on pull conflicts to avoid leaving repositories in an uncleaned mid-rebase state.
+- Fall back to subsequent agents in the pool when command building fails for an agent candidate.
+- Preserve error context when resolving binary paths and checking baseline revisions during trailer stripping.
 - Strip trailing carriage returns in git status porcelain parsing, worktree cleanup, and UI block padding to prevent path corruption and rendering issues with CRLF line endings.
 
 - Expand tildes and environment variables in custom agent executable paths at launch, and reject unresolvable variables.

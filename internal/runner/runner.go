@@ -839,6 +839,10 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)
 		res.Status = StatusFail
+		r.bus.Publish(Event{
+			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
+			Branch: wt.Branch, Status: StatusFail, Text: err.Error(),
+		})
 		advance(true)
 		res.Branch = ""
 		return res
@@ -994,6 +998,10 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("Cannot build command for %s: %v", spec.Label(), err)
 		res.Status = StatusFail
 		res.Detail = err.Error()
+		r.forgetSession(spec)
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
+			return retry
+		}
 		r.publishReviewEnd(res, loopNo, promptSHA, lane)
 		return res
 	}

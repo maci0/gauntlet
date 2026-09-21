@@ -273,3 +273,37 @@ func TestParentTip(t *testing.T) {
 		t.Fatal("ParentTip on initial commit should return error")
 	}
 }
+
+func TestPullRebaseAbortsOnConflict(t *testing.T) {
+	origin := newRepo(t)
+	cloneDir := t.TempDir()
+	gitOut(t, cloneDir, "clone", origin.Dir, ".")
+	r := Open(cloneDir)
+	ctx := context.Background()
+
+	// Advance origin with a change to main.go
+	if err := os.WriteFile(filepath.Join(origin.Dir, "main.go"), []byte("package main\n\n// origin change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, origin.Dir, "commit", "-am", "origin edit")
+
+	// Create a conflicting change in clone
+	if err := os.WriteFile(filepath.Join(cloneDir, "main.go"), []byte("package main\n\n// clone change\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, cloneDir, "commit", "-am", "clone edit")
+
+	err := r.PullRebase(ctx)
+	if err == nil {
+		t.Fatal("PullRebase on conflicting branches should return error")
+	}
+
+	// Verify no rebase is left in progress
+	out, statusErr := r.run(ctx, gitQuick, "status")
+	if statusErr != nil {
+		t.Fatalf("git status failed after rebase abort: %v", statusErr)
+	}
+	if strings.Contains(string(out), "rebase in progress") {
+		t.Fatalf("repository left in rebase state after PullRebase error:\n%s", out)
+	}
+}

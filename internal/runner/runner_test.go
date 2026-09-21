@@ -1056,6 +1056,33 @@ echo "RESULT: no-changes"`)
 	}
 }
 
+// When BuildCmd fails for the first agent in a multi-agent pool, the runner
+// falls back to another agent rather than aborting the review.
+func TestBuildCmdFailureFallsBackToNextAgent(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"`)
+
+	// Register a custom agent with an unresolvable environment variable so BuildCmd fails.
+	t.Cleanup(func() { agent.Unregister("bad-agent") })
+	if err := agent.Register("bad-agent", agent.Custom{
+		Argv: []string{"$GAUNTLET_UNRESOLVABLE_NONEXISTENT_VAR/bad", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Agents = []agent.Spec{{Tool: "bad-agent"}, {Tool: "claude"}}
+
+	r, got := runRecorded(t, cfg)
+	if c := r.Stats().Counts(); c.OK != 1 || c.Failures() != 0 {
+		t.Fatalf("review failed instead of falling back: %+v", c)
+	}
+	if n := countKind(got, EvReviewEnd); n != 1 {
+		t.Fatalf("saw %d review_end events, want 1", n)
+	}
+}
+
 // Every launch is journaled with the fingerprint of the prompt text it was
 // composed from, so a run's output stays attributable to exact words after
 // the prompt file has changed or disappeared.

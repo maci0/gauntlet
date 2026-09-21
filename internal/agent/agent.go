@@ -670,7 +670,11 @@ func ParseBin(s string) (string, string, error) {
 	var resolved string
 	if strings.ContainsRune(expanded, os.PathSeparator) {
 		if p, err := exec.LookPath(expanded); err == nil {
-			resolved, _ = filepath.Abs(p)
+			abs, absErr := filepath.Abs(p)
+			if absErr != nil {
+				return "", "", fmt.Errorf("cannot resolve %s: %w", p, absErr)
+			}
+			resolved = abs
 		}
 	} else {
 		resolved = Resolve(expanded)

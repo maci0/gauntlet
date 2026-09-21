@@ -229,11 +229,19 @@ func (r *Repo) Push(ctx context.Context) error {
 	return nil
 }
 
+// abortRebase clears whatever a failed rebase left behind, so subsequent git
+// commands are not blocked by a mid-rebase state.
+func (r *Repo) abortRebase(ctx context.Context) {
+	cleanCtx := context.WithoutCancel(ctx)
+	_, _ = r.run(cleanCtx, gitNormal, "rebase", "--abort")
+}
+
 // PullRebase integrates the upstream into the current branch, replaying
 // local work on top. A conflict is reported, never resolved: the caller
 // decides what divergence means.
 func (r *Repo) PullRebase(ctx context.Context) error {
 	if out, err := r.run(ctx, gitPush, "pull", "--rebase"); err != nil {
+		r.abortRebase(ctx)
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
 			return fmt.Errorf("git pull --rebase: %w", err)

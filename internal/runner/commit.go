@@ -142,6 +142,9 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	if err == nil && len(dirty) == 0 {
 		return // nothing to commit
 	}
+	if ctx.Err() != nil {
+		return
+	}
 	if err != nil {
 		r.log("Warning: could not check git status before the commit step: %v", err)
 	}

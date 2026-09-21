@@ -268,6 +268,13 @@ func Register(name string, def Custom) error {
 	return nil
 }
 
+// Unregister removes a custom agent definition.
+func Unregister(name string) {
+	customMu.Lock()
+	delete(custom, fuzzy.NFC(name))
+	customMu.Unlock()
+}
+
 // CustomDef returns the definition for a custom agent.
 func CustomDef(name string) (Custom, bool) {
 	customMu.RLock()

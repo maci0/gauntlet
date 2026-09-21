@@ -70,7 +70,13 @@ func stripAITrailers(msg string) string {
 // --reset-author keeps the original author; --no-verify matches CommitAll.
 func (r *Repo) StripAITrailers(ctx context.Context, since string) (bool, error) {
 	head, err := r.Tip(ctx, "HEAD")
-	if err != nil || head == "" || (since != "" && head == since) {
+	if err != nil {
+		if !r.HasBaseline() {
+			return false, nil
+		}
+		return false, err
+	}
+	if head == "" || (since != "" && head == since) {
 		return false, nil
 	}
 	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%B", "HEAD", "--")
