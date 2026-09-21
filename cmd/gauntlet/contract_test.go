@@ -5,6 +5,7 @@ package main
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -112,6 +113,37 @@ func TestEnvVarNamesMatchTheContract(t *testing.T) {
 		got = append(got, e.Name)
 	}
 	assertSurfaceUnchanged(t, "environment variable", goldenEnvVars, got)
+}
+
+// docs/CLI.md is consumer-facing documentation of the contract surface.
+// A flag, environment variable, or exit code missing from docs/CLI.md is an
+// undocumented API or contract drift.
+func TestDocsCLIMatchesTheContract(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "CLI.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, name := range goldenFlagNames {
+		if len(name) < 2 {
+			continue
+		}
+		needle := "--" + name
+		if !strings.Contains(text, needle) {
+			t.Errorf("docs/CLI.md does not document flag %s; flags are consumer contract API", needle)
+		}
+	}
+	for _, env := range goldenEnvVars {
+		if !strings.Contains(text, env) {
+			t.Errorf("docs/CLI.md does not document environment variable %s; env vars are consumer contract API", env)
+		}
+	}
+	for _, code := range goldenExitCodes {
+		needle := "| " + code + " |"
+		if !strings.Contains(text, needle) {
+			t.Errorf("docs/CLI.md does not document exit code %s in its exit codes table; exit codes are consumer contract API", code)
+		}
+	}
 }
 
 // A package outside internal/ that is not a main package is importable by

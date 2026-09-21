@@ -38,6 +38,7 @@ minor instead and were listed under Changed.
 - Distinguish complete Unicode replacement characters from incomplete multi-byte sequences at process output chunk boundaries.
 - Surface Escape cancel and live-feed reset keys in the dashboard footer and help overlay, and display active filter queries and clear shortcuts in the narrow launcher fallback.
 - Prevent Escape from abruptly terminating an active run when quit is armed in the dashboard; Escape now cancels the quit prompt and resets paused or scrolled feeds to live output.
+- Make git worktree removal idempotent on already-removed checkouts, and prune git metadata when the checkout directory has already been deleted.
 - Strip UTF-8 byte-order marks (BOM) when loading custom agent definitions (`agents.json`), preventing parse errors on Windows-formatted files.
 - Pad clipped lines with trailing spaces in dashboard panel formatting when multi-column wide characters are truncated, preventing misaligned panel borders.
 - Count Unicode code points instead of bytes when checking for short-flag misses, preventing single non-ASCII flags from triggering typo suggestions.
@@ -50,7 +51,6 @@ minor instead and were listed under Changed.
 - Synchronize stacked PR head and publication state with the runner mutex, guard worktree branch renaming, and force-kill stalled command groups on drain timeout.
 - Check write errors on command output streams across subcommands (`gauntlet doctor`, `gauntlet runs`, `gauntlet show`, and `gauntlet pick`), exiting 1 on failure instead of reporting success.
 - Propagate cancellation exit code 130 when the interactive launcher or review planning is interrupted by context cancellation.
-
 - Record loop line changes in parallel worktree mode (`--jobs > 1`) and preserve line metrics on pull request events in stacked-PR mode (`--stacked-prs`) across the journal, history, and dashboard.
 - Correct documentation in CLI and runs reference for `--usage-cmd` execution directory, custom agent definition fields and validation rules, and missing `--check` and `--limit` option tables.
 - Reject empty string arguments for `--show-prompt`, `--merge-into`, `--pr-base`, `--suggest-agent`, `--usage-cmd`, and `--exclude` at startup instead of silently accepting them.
