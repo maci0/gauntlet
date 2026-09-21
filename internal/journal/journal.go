@@ -131,7 +131,14 @@ type Journal struct {
 // an id prefix with a directory misses by one day for every run in that
 // window. Rendering stays free to convert to local at display time.
 func Open(runID string, now time.Time) (*Journal, error) {
-	path := filepath.Join(Home(), "runs", now.UTC().Format("2006-01-02"), runID+".jsonl")
+	if !validRunID(runID) {
+		return nil, fmt.Errorf("invalid run id: %q", runID)
+	}
+	shard := shardFromRunID(runID)
+	if shard == "" {
+		shard = now.UTC().Format("2006-01-02")
+	}
+	path := filepath.Join(Home(), "runs", shard, runID+".jsonl")
 	// A hot reload continues the same run id in a new process, and a reload
 	// that crosses UTC midnight derives a different shard from the successor's
 	// clock. That would split one run's event stream over two files, and a

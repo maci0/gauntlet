@@ -566,6 +566,46 @@ func TestLocateRunUsesTheDateInAGeneratedID(t *testing.T) {
 	}
 }
 
+// Open must file a run under its generated date shard even if now has crossed
+// midnight before Open is called, so the file location always agrees with the
+// id and fast-path lookup in locateRun hits.
+func TestOpenUsesDateFromRunID(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	runTime := time.Date(2026, 8, 25, 23, 59, 59, 0, time.UTC)
+	id := NewRunID(runTime)
+	nextDay := time.Date(2026, 8, 26, 0, 0, 1, 0, time.UTC)
+
+	j, err := Open(id, nextDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	if err := j.Close(Summary{Start: runTime, End: runTime}); err != nil {
+		t.Fatal(err)
+	}
+
+	want := filepath.Join(home, "runs", "2026-08-25", id+".jsonl")
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("journal not created in run ID's date shard: %v", err)
+	}
+	wrong := filepath.Join(home, "runs", "2026-08-26", id+".jsonl")
+	if _, err := os.Stat(wrong); err == nil {
+		t.Fatalf("journal should not be created in nextDay shard")
+	}
+}
+
+func TestOpenRejectsInvalidRunID(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Now()
+	for _, bad := range []string{"", "../escape", "foo/bar", strings.Repeat("a", 129)} {
+		if _, err := Open(bad, now); err == nil {
+			t.Errorf("Open(%q) should have failed", bad)
+		}
+	}
+}
+
 func TestEventsUnknownRun(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	err := Events("nope", nil)
