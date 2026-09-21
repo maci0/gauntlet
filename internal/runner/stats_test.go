@@ -83,6 +83,22 @@ func TestCountsTotalsAndFailures(t *testing.T) {
 	}
 }
 
+func TestCountsAdd(t *testing.T) {
+	a := Counts{OK: 1, Fail: 2, Timeout: 3, Skipped: 4, Interrupted: 5, Conflict: 6}
+	b := Counts{OK: 10, Fail: 20, Timeout: 30, Skipped: 40, Interrupted: 50, Conflict: 60}
+	a.Add(b)
+	want := Counts{OK: 11, Fail: 22, Timeout: 33, Skipped: 44, Interrupted: 55, Conflict: 66}
+	if a != want {
+		t.Fatalf("Counts.Add got %+v, want %+v", a, want)
+	}
+	if a.Total() != 231 {
+		t.Fatalf("Total = %d, want 231", a.Total())
+	}
+	if a.Failures() != 165 {
+		t.Fatalf("Failures = %d, want 165", a.Failures())
+	}
+}
+
 func TestByAgentGroupsAndSorts(t *testing.T) {
 	st := &Stats{}
 	st.Add(Result{Status: StatusOK, Tokens: 50, Elapsed: 10 * time.Second,

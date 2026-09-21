@@ -188,3 +188,88 @@ func TestMergeAbortsEvenWhenContextCancelled(t *testing.T) {
 		t.Fatalf("unstaged changes left behind after canceled merge: %v", err)
 	}
 }
+
+func TestValidateBranchName(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	valid := []string{"main", "feature/layer", "patch-1", "review-fix"}
+	for _, name := range valid {
+		if err := r.ValidateBranchName(ctx, name); err != nil {
+			t.Errorf("ValidateBranchName(%q) = %v, want nil", name, err)
+		}
+	}
+
+	invalid := []string{
+		"-starts-with-dash",
+		"head..tail",
+		"bad~name",
+		"bad^name",
+		"bad:name",
+		"bad?name",
+		"bad*name",
+		"bad[name",
+		"bad@{name",
+		"bad\\name",
+		"",
+		" ",
+		"bad name",
+	}
+	for _, name := range invalid {
+		if err := r.ValidateBranchName(ctx, name); err == nil {
+			t.Errorf("ValidateBranchName(%q) accepted invalid branch name", name)
+		}
+	}
+}
+
+func TestCommitSubject(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	subject := "fix: test commit subject publication"
+	if err := os.WriteFile(filepath.Join(r.Dir, "file.txt"), []byte("data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", "file.txt")
+	gitIn(t, r.Dir, "commit", "-m", subject)
+
+	got, err := r.CommitSubject(ctx, "HEAD")
+	if err != nil {
+		t.Fatalf("CommitSubject failed: %v", err)
+	}
+	if got != subject {
+		t.Fatalf("CommitSubject = %q, want %q", got, subject)
+	}
+
+	if _, err := r.CommitSubject(ctx, "nonexistent-ref"); err == nil {
+		t.Fatal("CommitSubject on nonexistent ref should return error")
+	}
+}
+
+func TestParentTip(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	firstTip, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(r.Dir, "file2.txt"), []byte("second\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", "file2.txt")
+	gitIn(t, r.Dir, "commit", "-m", "second commit")
+
+	parent, err := r.ParentTip(ctx, "HEAD")
+	if err != nil {
+		t.Fatalf("ParentTip failed: %v", err)
+	}
+	if parent != firstTip {
+		t.Fatalf("ParentTip = %q, want %q", parent, firstTip)
+	}
+
+	if _, err := r.ParentTip(ctx, firstTip); err == nil {
+		t.Fatal("ParentTip on initial commit should return error")
+	}
+}

@@ -16,7 +16,42 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/ghx"
 	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/normalize"
 )
+
+// StackDirtyError asks the caller to surface the isolation boundary before a
+// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
+// technical blocker: they stay in the original checkout and the stack starts
+// from the selected remote branch. They are still important enough that an
+// interactive CLI must not silently omit them from review.
+type StackDirtyError struct {
+	Dir       string
+	Remote    string
+	Base      string
+	Tracked   []string
+	Untracked []string
+}
+
+func (e *StackDirtyError) Error() string {
+	if e == nil {
+		return "stacked PR confirmation required"
+	}
+	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
+		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
+		humanize.List(e.DisplayPaths(), 3))
+}
+
+// DisplayPaths returns sanitized tracked paths followed by sanitized
+// untracked paths, ready for terminal output. The exact paths remain in the
+// fields for programmatic handling; only their display form is altered.
+func (e *StackDirtyError) DisplayPaths() []string {
+	if e == nil {
+		return nil
+	}
+	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
+	return safePaths(paths)
+}
 
 // StackPrep is what stacked mode proves before any agent starts, the
 // suggestion agent included: the resolved base branch, the exact base commit

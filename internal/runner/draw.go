@@ -3,6 +3,8 @@
 
 package runner
 
+import "time"
+
 const (
 	fnvOffset64 = 14695981039346656037
 	fnvPrime64  = 1099511628211
@@ -75,4 +77,22 @@ func fnvAppendUint(h uint64, val uint64) uint64 {
 		h *= fnvPrime64
 	}
 	return h
+}
+
+// seedOrClock returns the configured seed, or one derived from the clock when
+// unset, so production keeps its random shuffle while a seeded run replays it.
+// now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
+// be re-derived on replay instead of reproducing the original draws.
+func seedOrClock(seed uint64, now func() time.Time) uint64 {
+	if seed != 0 {
+		return seed
+	}
+	if now == nil {
+		now = time.Now
+	}
+	n := uint64(now().UnixNano())
+	if n == 0 {
+		n = 1
+	}
+	return n
 }

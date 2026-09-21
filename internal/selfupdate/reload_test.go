@@ -4,6 +4,7 @@
 package selfupdate
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -207,5 +208,52 @@ func TestSaveStateReplacesWholeFile(t *testing.T) {
 		if e.Name() != "run-1.json" {
 			t.Fatalf("temp file left behind: %s", e.Name())
 		}
+	}
+}
+
+func TestFingerprintValidAndStat(t *testing.T) {
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty")
+	if err := os.WriteFile(empty, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fEmpty, err := stat(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fEmpty.valid() {
+		t.Fatal("empty file should not be a valid fingerprint")
+	}
+
+	nonEmpty := filepath.Join(dir, "nonempty")
+	if err := os.WriteFile(nonEmpty, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fNonEmpty, err := stat(nonEmpty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fNonEmpty.valid() {
+		t.Fatal("non-empty file should have a valid fingerprint")
+	}
+	if fNonEmpty.size != 4 {
+		t.Fatalf("size = %d, want 4", fNonEmpty.size)
+	}
+}
+
+func TestWatchContextCancel(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	w, err := Watch(ctx, 10*time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p, ok := <-w.Change:
+		if ok {
+			t.Fatalf("unexpected change notification on canceled context: %s", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Watch did not terminate when context was cancelled")
 	}
 }

@@ -2094,3 +2094,49 @@ func TestCustomAgentBinaryResolutionAndInstalled(t *testing.T) {
 		t.Fatalf("Installed() did not detect mybot (installed list: %v)", installed)
 	}
 }
+
+func TestMayCarryUsage(t *testing.T) {
+	for _, in := range []string{
+		"prompt token count: 50",
+		"Total Tokens: 120",
+		"output_tokens: 30",
+		"THINKING_TOKENS: 10",
+		"token",
+		"OKEN",
+	} {
+		if !MayCarryUsage(in) {
+			t.Errorf("MayCarryUsage(%q) = false, want true", in)
+		}
+	}
+	for _, in := range []string{
+		"",
+		"running review",
+		"checking callers",
+		"completed review step",
+		"fixed leak in pool.go",
+	} {
+		if MayCarryUsage(in) {
+			t.Errorf("MayCarryUsage(%q) = true, want false", in)
+		}
+	}
+}
+
+func TestAllProbeNames(t *testing.T) {
+	names := AllProbeNames()
+	if len(names) == 0 {
+		t.Fatal("AllProbeNames returned empty slice")
+	}
+	if !slices.IsSorted(names) {
+		t.Fatalf("AllProbeNames must be sorted: %v", names)
+	}
+	for _, want := range []string{"bunx", "git", "rg", "claude", "codex"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("AllProbeNames missing %q: %v", want, names)
+		}
+	}
+	for i := 1; i < len(names); i++ {
+		if names[i] == names[i-1] {
+			t.Errorf("AllProbeNames contains duplicate %q", names[i])
+		}
+	}
+}

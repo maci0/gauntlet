@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
 )
@@ -82,5 +83,30 @@ func TestBackoffIgnoresOtherDraws(t *testing.T) {
 	_ = r.pickAgent("some-other-review", nil)
 	if after := r.backoff("aa-review", 0); before != after {
 		t.Fatalf("an unrelated pick moved backoff from %s to %s", before, after)
+	}
+}
+
+func TestSeedOrClock(t *testing.T) {
+	// Explicit seed passes through untouched.
+	if got := seedOrClock(42, nil); got != 42 {
+		t.Fatalf("seedOrClock with explicit seed = %d, want 42", got)
+	}
+
+	// Zero seed derives from clock.
+	fixed := time.Unix(1234567890, 987654321)
+	clock := func() time.Time { return fixed }
+	if got := seedOrClock(0, clock); got != uint64(fixed.UnixNano()) {
+		t.Fatalf("seedOrClock from clock = %d, want %d", got, fixed.UnixNano())
+	}
+
+	// Zero UnixNano falls back to 1 (seed 0 means unset).
+	zeroClock := func() time.Time { return time.Unix(0, 0) }
+	if got := seedOrClock(0, zeroClock); got != 1 {
+		t.Fatalf("seedOrClock with zero clock = %d, want 1", got)
+	}
+
+	// Nil clock uses time.Now and returns non-zero.
+	if got := seedOrClock(0, nil); got == 0 {
+		t.Fatal("seedOrClock with nil clock returned 0")
 	}
 }

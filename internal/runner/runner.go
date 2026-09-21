@@ -151,39 +151,6 @@ type Config struct {
 // a person offer the commit step rather than stopping.
 var ErrDirtyTree = errors.New("--jobs > 1 needs a clean working tree")
 
-// StackDirtyError asks the caller to surface the isolation boundary before a
-// stacked run proceeds. Unlike parallel worktree mode, dirty files are not a
-// technical blocker: they stay in the original checkout and the stack starts
-// from the selected remote branch. They are still important enough that an
-// interactive CLI must not silently omit them from review.
-type StackDirtyError struct {
-	Dir       string
-	Remote    string
-	Base      string
-	Tracked   []string
-	Untracked []string
-}
-
-func (e *StackDirtyError) Error() string {
-	if e == nil {
-		return "stacked PR confirmation required"
-	}
-	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
-		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
-		humanize.List(e.DisplayPaths(), 3))
-}
-
-// DisplayPaths returns sanitized tracked paths followed by sanitized
-// untracked paths, ready for terminal output. The exact paths remain in the
-// fields for programmatic handling; only their display form is altered.
-func (e *StackDirtyError) DisplayPaths() []string {
-	if e == nil {
-		return nil
-	}
-	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
-	return safePaths(paths)
-}
-
 // Runner executes Config until it is stopped, the loop limit is reached, or
 // the runtime budget runs out.
 type Runner struct {
@@ -587,24 +554,6 @@ func resolveTools(reviews []string) map[string]string {
 		entries = append(entries, agent.ToolsFor(review)...)
 	}
 	return agent.ResolveMany(agent.ToolBins(entries))
-}
-
-// seedOrClock returns the configured seed, or one derived from the clock when
-// unset, so production keeps its random shuffle while a seeded run replays it.
-// now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
-// be re-derived on replay instead of reproducing the original draws.
-func seedOrClock(seed uint64, now func() time.Time) uint64 {
-	if seed != 0 {
-		return seed
-	}
-	if now == nil {
-		now = time.Now
-	}
-	n := uint64(now().UnixNano())
-	if n == 0 {
-		n = 1
-	}
-	return n
 }
 
 // safePaths renders worktree paths for an error or log line. They come from

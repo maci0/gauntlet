@@ -307,3 +307,34 @@ func TestListReviewsMarksWeightsAndLegend(t *testing.T) {
 		t.Errorf("a scheduled review was left unmarked:\n%s", got)
 	}
 }
+
+func TestPaletteColors(t *testing.T) {
+	off := palette{on: false}
+	if off.think("text") != "text" || off.bold("text") != "text" || off.dim("text") != "text" ||
+		off.red("text") != "text" || off.green("text") != "text" || off.yellow("text") != "text" || off.blue("text") != "text" {
+		t.Error("palette with color off should return plain text")
+	}
+
+	on := palette{on: true}
+	if on.think("text") != "\x1b[2;3mtext\x1b[0m" {
+		t.Errorf("on.think = %q", on.think("text"))
+	}
+	if on.bold("text") != "\x1b[1mtext\x1b[0m" {
+		t.Errorf("on.bold = %q", on.bold("text"))
+	}
+	if on.dim("text") != "\x1b[2mtext\x1b[0m" {
+		t.Errorf("on.dim = %q", on.dim("text"))
+	}
+	if on.red("text") != "\x1b[31mtext\x1b[0m" {
+		t.Errorf("on.red = %q", on.red("text"))
+	}
+	if on.green("text") != "\x1b[32mtext\x1b[0m" {
+		t.Errorf("on.green = %q", on.green("text"))
+	}
+	if on.yellow("text") != "\x1b[33mtext\x1b[0m" {
+		t.Errorf("on.yellow = %q", on.yellow("text"))
+	}
+	if on.blue("text") != "\x1b[34mtext\x1b[0m" {
+		t.Errorf("on.blue = %q", on.blue("text"))
+	}
+}

@@ -3,7 +3,12 @@
 
 package runx
 
-import "testing"
+import (
+	"context"
+	"os/exec"
+	"testing"
+	"time"
+)
 
 func TestWriterKeepsThenDiscards(t *testing.T) {
 	w := &Writer{Limit: 8}
@@ -99,5 +104,71 @@ func TestCleanPATH(t *testing.T) {
 		if got := CleanPATH(c.in); got != c.want {
 			t.Errorf("CleanPATH(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestWriterUnlimitedAndBytes(t *testing.T) {
+	w := &Writer{Limit: 0}
+	n, err := w.Write([]byte("hello world"))
+	if err != nil || n != 11 {
+		t.Fatalf("Write = %d, %v", n, err)
+	}
+	if w.Hit || string(w.Bytes()) != "hello world" || w.String() != "hello world" {
+		t.Fatalf("unlimited write: hit=%v, bytes=%q", w.Hit, string(w.Bytes()))
+	}
+	n, err = w.Write([]byte(" more"))
+	if err != nil || n != 5 || string(w.Bytes()) != "hello world more" {
+		t.Fatalf("second write: %d %v %q", n, err, string(w.Bytes()))
+	}
+}
+
+func TestGuard(t *testing.T) {
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "sleep", "5")
+	wait := 250 * time.Millisecond
+	Guard(cmd, wait)
+	if cmd.SysProcAttr == nil || !cmd.SysProcAttr.Setpgid {
+		t.Fatal("Guard must set Setpgid = true")
+	}
+	if cmd.WaitDelay != wait {
+		t.Fatalf("WaitDelay = %v, want %v", cmd.WaitDelay, wait)
+	}
+	if cmd.Cancel == nil {
+		t.Fatal("Guard must set Cancel func")
+	}
+	// Cancel before Start should not error or panic
+	if err := cmd.Cancel(); err != nil {
+		t.Fatalf("Cancel before start = %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Cancel(); err != nil {
+		t.Fatalf("Cancel running process = %v", err)
+	}
+	_ = cmd.Wait()
+}
+
+func TestBound(t *testing.T) {
+	ctx := context.Background()
+	cmd := exec.CommandContext(ctx, "sh", "-c", "printf '1234567890extra'; printf 'abcdefghijextra' >&2")
+	out, errOut := Bound(cmd, 10, time.Second)
+	if err := cmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if !out.Hit || out.String() != "1234567890" || string(out.Bytes()) != "1234567890" {
+		t.Fatalf("out: hit=%v str=%q bytes=%q", out.Hit, out.String(), string(out.Bytes()))
+	}
+	if !errOut.Hit || errOut.String() != "abcdefghij" || string(errOut.Bytes()) != "abcdefghij" {
+		t.Fatalf("errOut: hit=%v str=%q bytes=%q", errOut.Hit, errOut.String(), string(errOut.Bytes()))
+	}
+}
+
+func TestAbsPATH(t *testing.T) {
+	t.Setenv("PATH", ":/usr/bin::./local:/bin:")
+	got := AbsPATH()
+	want := "/usr/bin:/bin"
+	if got != want {
+		t.Fatalf("AbsPATH = %q, want %q", got, want)
 	}
 }

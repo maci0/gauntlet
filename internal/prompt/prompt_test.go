@@ -281,6 +281,26 @@ func TestSuggestPromptNeutralizesNameInjection(t *testing.T) {
 	}
 }
 
+func TestSetLenAndProjectNames(t *testing.T) {
+	s := Set{
+		Names: []string{"bundled-1", "project-1", "dir-1", "project-2"},
+		byName: map[string]Review{
+			"bundled-1": {Name: "bundled-1", Origin: Bundled},
+			"project-1": {Name: "project-1", Origin: Project},
+			"dir-1":     {Name: "dir-1", Origin: Dir},
+			"project-2": {Name: "project-2", Origin: Project},
+		},
+	}
+	if got := s.Len(); got != 4 {
+		t.Fatalf("Set.Len = %d, want 4", got)
+	}
+	proj := s.ProjectNames()
+	wantProj := []string{"project-1", "project-2"}
+	if !slices.Equal(proj, wantProj) {
+		t.Fatalf("Set.ProjectNames = %v, want %v", proj, wantProj)
+	}
+}
+
 // A long multibyte description is cut on a rune boundary, never mid-sequence:
 // the catalog goes into a prompt, and mojibake there is corruption the agent
 // reads as part of its instructions.

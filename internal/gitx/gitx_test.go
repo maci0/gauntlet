@@ -951,6 +951,46 @@ func TestNULOutputKeepsSpacesInNames(t *testing.T) {
 	}
 }
 
+func TestDiffStat(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	path := filepath.Join(r.Dir, "sample.txt")
+	if err := os.WriteFile(path, []byte("line1\nline2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", "sample.txt")
+	gitIn(t, r.Dir, "commit", "-qm", "add sample.txt")
+
+	ins, del, ok := r.DiffStat(ctx, r.Dir, base, "HEAD")
+	if !ok || ins != 2 || del != 0 {
+		t.Fatalf("DiffStat = +%d/-%d ok=%v, want +2/-0 ok=true", ins, del, ok)
+	}
+
+	// Modify line 2 and add line 3: 2 additions, 1 deletion
+	if err := os.WriteFile(path, []byte("line1\nchanged\nline3\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, r.Dir, "add", "sample.txt")
+	gitIn(t, r.Dir, "commit", "-qm", "modify sample.txt")
+
+	ins, del, ok = r.DiffStat(ctx, r.Dir, "HEAD~1", "HEAD")
+	if !ok || ins != 2 || del != 1 {
+		t.Fatalf("DiffStat = +%d/-%d ok=%v, want +2/-1 ok=true", ins, del, ok)
+	}
+
+	// Non-existent ref should return ok=false
+	ins, del, ok = r.DiffStat(ctx, r.Dir, "nonexistent-ref", "HEAD")
+	if ok || ins != 0 || del != 0 {
+		t.Fatalf("DiffStat on invalid ref = +%d/-%d ok=%v, want ok=false", ins, del, ok)
+	}
+}
+
 func TestChangedSinceNamesRecentWork(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
