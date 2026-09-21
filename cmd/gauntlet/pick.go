@@ -49,6 +49,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	branch, targets, dirty := treeState(ctx, dir)
 	argv, ok, err := ui.Pick(ui.PickConfig{
 		Dir:         dir,
+		PromptDir:   opts.promptDir,
 		Groups:      pickGroups(set),
 		Reserved:    append(prompt.SetNames(), prompt.Suggest),
 		FastSuggest: runner.FastSuggestAgent,

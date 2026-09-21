@@ -319,8 +319,9 @@ func run(argv []string) int {
 			if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
 				continue // BuildCmd falls back to bunx @deepseek-ai/dsh
 			}
-			if agent.Resolve(spec.Tool) == "" {
-				fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", spec.Tool)
+			bin := agent.Binary(spec.Tool)
+			if agent.Resolve(bin) == "" {
+				fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", bin)
 				return exitUsage
 			}
 		}

@@ -4,6 +4,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -52,5 +54,27 @@ func TestDoctorReviewCatalogMatchesTheBundledReviews(t *testing.T) {
 		sort.Strings(missing)
 		t.Fatalf("bundled reviews absent from doctor's catalog (add them to agent.ReviewTools or agent.ReviewsWithoutTools): %s",
 			strings.Join(missing, ", "))
+	}
+}
+
+func TestDoctorCustomAgentCounting(t *testing.T) {
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "mycustombin")
+	if err := os.WriteFile(binPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := agent.Register("custombot", agent.Custom{
+		Argv: []string{"mycustombin", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	code := doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "✓ custombot") {
+		t.Fatalf("doctor should show custombot as installed (code %d):\n%s", code, out)
 	}
 }

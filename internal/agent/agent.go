@@ -280,6 +280,22 @@ func executable(p string) error {
 	return nil
 }
 
+// Binary returns the executable name or path for an agent tool.
+// For built-in agents, this is the tool name itself.
+// For custom agents, it is the first argument of the agent's Argv definition.
+func Binary(tool string) string {
+	if def, ok := CustomDef(tool); ok && len(def.Argv) > 0 {
+		bin := def.Argv[0]
+		if strings.HasPrefix(bin, "~") || strings.Contains(bin, "$") {
+			if expanded, err := gauntlethome.ExpandPath(bin); err == nil && expanded != "" {
+				return expanded
+			}
+		}
+		return bin
+	}
+	return tool
+}
+
 // Installed lists agents eligible for auto-detection and "mixed", in name
 // order. Discovery is PATH-based: an agent whose binary is not on PATH under
 // its own name must be named explicitly (see --bin).
@@ -290,10 +306,14 @@ func Installed() []Spec {
 			names = append(names, t)
 		}
 	}
-	found := ResolveMany(names)
-	specs := make([]Spec, 0, len(found))
+	bins := make([]string, 0, len(names))
 	for _, t := range names {
-		if found[t] != "" {
+		bins = append(bins, Binary(t))
+	}
+	found := ResolveMany(bins)
+	specs := make([]Spec, 0, len(names))
+	for _, t := range names {
+		if found[Binary(t)] != "" {
 			specs = append(specs, Spec{Tool: t})
 		}
 	}

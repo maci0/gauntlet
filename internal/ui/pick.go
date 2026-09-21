@@ -30,14 +30,15 @@ import (
 // PickConfig is what the launcher needs to know about this machine: what can
 // be reviewed, what can review it, and how much of it can run at once.
 type PickConfig struct {
-	Dir     string      // the directory the composed run will review
-	Groups  []PickGroup // review sets, in display order
-	Agents  []string    // installed agent labels, empty when none were found
-	Branch  string      // the branch the reviews would run on, "" off a branch
-	Merge   []string    // other local branches, as merge targets
-	Dirty   bool        // tracked files have uncommitted changes, which worktrees refuse
-	CPUs    int         // the concurrency meter is drawn against this
-	Version string
+	Dir       string      // the directory the composed run will review
+	PromptDir string      // custom prompt directory, empty for bundled
+	Groups    []PickGroup // review sets, in display order
+	Agents    []string    // installed agent labels, empty when none were found
+	Branch    string      // the branch the reviews would run on, "" off a branch
+	Merge     []string    // other local branches, as merge targets
+	Dirty     bool        // tracked files have uncommitted changes, which worktrees refuse
+	CPUs      int         // the concurrency meter is drawn against this
+	Version   string
 	// Reserved are the words --reviews reads as something other than a
 	// review name: the set names and the suggest keyword. The launcher
 	// abbreviates a selection by dropping the "-review" suffix, and the
@@ -657,6 +658,9 @@ func (p *picker) argv() []string {
 	var out []string
 	if p.cfg.Dir != "" {
 		out = append(out, "-C", p.cfg.Dir)
+	}
+	if p.cfg.PromptDir != "" {
+		out = append(out, "--prompt-dir", p.cfg.PromptDir)
 	}
 	if p.suggest {
 		out = append(out, "--suggest")

@@ -19,7 +19,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// One parallel probe for every binary, instead of one blocking lookup per
 	// question. This is the difference between a snappy doctor and a second of
 	// stat calls on a cold cache.
-	found := agent.ResolveMany(append(agent.AllProbeNames(), agent.CustomNames()...))
+	probeNames := append(agent.AllProbeNames(), agent.CustomNames()...)
+	for _, n := range agent.CustomNames() {
+		probeNames = append(probeNames, agent.Binary(n))
+	}
+	found := agent.ResolveMany(probeNames)
 	have := func(name string) bool {
 		for alt := range strings.SplitSeq(name, "|") {
 			if found[alt] != "" {
@@ -57,15 +61,13 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		pal.dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
-		ok := found[a] != ""
-		if ok {
-			installed++
-		}
+		bin := agent.Binary(a)
+		ok := found[a] != "" || found[bin] != ""
 		note := ""
 		if def, defined := agent.CustomDef(a); defined {
 			// A definition names its own binary, which may not have been in
 			// the probe list.
-			if !ok && agent.Resolve(def.Argv[0]) != "" {
+			if !ok && agent.Resolve(bin) != "" {
 				ok = true
 			}
 			extra := "defined"
@@ -93,8 +95,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			ok = true // launchable, but only when named: bunx fetches on first use
 			note = pal.dim("  via bunx (@deepseek-ai/dsh); name it with --agents")
 		}
-		if ok && !agent.IsOptIn(a) {
-			usable++
+		if ok {
+			installed++
+			if !agent.IsOptIn(a) {
+				usable++
+			}
 		}
 		fmt.Fprintf(out, "  %s %s%s\n", mark(ok, "dim"), a, note)
 	}

@@ -1049,3 +1049,18 @@ func TestPickFooterShowsClearFilterWhenFilterActive(t *testing.T) {
 		t.Fatalf("filtered footer %q, want esc:clear documented", footer)
 	}
 }
+
+func TestPickerPreservesPromptDir(t *testing.T) {
+	p := newPicker(PickConfig{
+		Dir:       "/home/dev/project",
+		PromptDir: "/tmp/custom-prompts",
+		Groups:    []PickGroup{{Name: "quick", Reviews: []PickReview{{Name: "sec-review", Desc: "d"}}}},
+		Agents:    []string{"claude"},
+		CPUs:      8,
+	})
+	p.w, p.h, p.ready = 100, 30, true
+	got := strings.Join(p.argv(), " ")
+	if !strings.Contains(got, "--prompt-dir /tmp/custom-prompts") {
+		t.Fatalf("argv missing --prompt-dir: %s", got)
+	}
+}

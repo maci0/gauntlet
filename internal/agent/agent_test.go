@@ -2026,3 +2026,35 @@ func TestToolsForOrderAndAlts(t *testing.T) {
 		t.Fatalf("git must not be offered to agents: %v", got)
 	}
 }
+
+func TestCustomAgentBinaryResolutionAndInstalled(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "mybin")
+	if err := os.WriteFile(binPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if err := Register("mybot", Custom{
+		Argv: []string{"mybin", "-p", "{prompt}"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Binary("mybot"); got != "mybin" {
+		t.Fatalf("Binary(mybot) = %q, want mybin", got)
+	}
+
+	installed := Installed()
+	found := false
+	for _, sp := range installed {
+		if sp.Tool == "mybot" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("Installed() did not detect mybot (installed list: %v)", installed)
+	}
+}
