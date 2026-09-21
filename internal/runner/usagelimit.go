@@ -66,9 +66,10 @@ func (r *Runner) checkUsageLimit(ctx context.Context) {
 	if pct < r.cfg.UsageLimit {
 		return
 	}
-	r.log("Usage at %.1f%% of the provider's window, at or past the %.1f%% limit: "+
-		"finishing the review in flight and starting no more", pct, r.cfg.UsageLimit)
-	r.finish.Store(true)
+	if !r.finish.Swap(true) {
+		r.log("Usage at %.1f%% of the provider's window, at or past the %.1f%% limit: "+
+			"finishing the review in flight and starting no more", pct, r.cfg.UsageLimit)
+	}
 }
 
 // probeUsage runs the operator's command and reads a percentage off its

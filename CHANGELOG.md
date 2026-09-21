@@ -14,6 +14,7 @@ minor instead and were listed under Changed.
 
 ### Added
 
+- Support Enter key to close the live dashboard once a run has finished, and support g and G keys for first and last row navigation in the launcher.
 - Support Tab and Shift-Tab pane switching, Ctrl-W word deletion, and Ctrl-U line clearing while typing in the launcher review filter (`gauntlet pick`), and automatically focus the first matching review on Enter.
 - Support Page Up, Page Down, and Space keys in the live dashboard feed view and help overlay.
 - Support Page Up and Page Down keys (`pgup`, `pgdown`) in the interactive launcher (`gauntlet pick`) across reviews, agents, options, and filter search.
@@ -34,6 +35,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Block the launcher (`gauntlet pick`) from starting an unconstrained run when an active review filter matches no reviews, displaying a clear warning.
 - Reject unresolvable environment variable references in `GAUNTLET_HOME` at startup and degrade `gauntlethome.Dir` safely instead of resolving unexpanded paths against the working tree.
 - Reject empty argument strings in custom agent `model`, `effort`, `stream`, and `continue` configurations, and reject whitespace-only usage suffixes.
 - Normalize available review names to NFC in suggestion parsing, matching decomposed names against agent suggestions.

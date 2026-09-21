@@ -409,3 +409,19 @@ func TestScanLinesCarriageReturn(t *testing.T) {
 		}
 	}
 }
+
+func TestSinkSerializedAcrossStdoutAndStderr(t *testing.T) {
+	// A subprocess writing concurrently to stdout and stderr must not trigger
+	// data races on unsynchronized sink callbacks.
+	script := "for i in $(seq 1 200); do\n" +
+		"  echo \"out $i\"\n" +
+		"  echo \"err $i\" >&2\n" +
+		"done\n"
+	got, res := runFakeProc(t, script, func(o *procOpts) { o.Raw = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if len(got) < 400 {
+		t.Fatalf("got %d lines, want at least 400", len(got))
+	}
+}

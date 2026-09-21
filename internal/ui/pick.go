@@ -347,9 +347,9 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.pageMove(+1)
 	case "pgup", "pageup":
 		p.pageMove(-1)
-	case "home":
+	case "home", "g":
 		p.cursor[p.focus] = 0
-	case "end":
+	case "end", "G":
 		if n := p.paneLen(p.focus); n > 0 {
 			p.cursor[p.focus] = n - 1
 		}
@@ -983,6 +983,9 @@ func (p *picker) blocked() string {
 	if p.cfg.Dirty && p.concurrency().n > 1 && !p.stacked() {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
 	}
+	if p.filterMissed(p.rows()) {
+		return "no reviews match this filter (esc clears it, / to edit)"
+	}
 	return ""
 }
 
@@ -1125,7 +1128,7 @@ func (p *picker) helpLines() []string {
 		"  tab / shift+tab reviews, agents, and run options",
 		"  ↑ / ↓, j / k move within a pane",
 		"  pgup / pgdn  move by page",
-		"  home / end   first / last row in this pane",
+		"  home / end, g / G first / last row in this pane",
 		"  space        toggle a review, a set, an agent, or a switch",
 		"  ← / →, h / l open or close a set; change a value",
 		"  a            all or none of what this pane is showing",

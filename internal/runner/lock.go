@@ -91,8 +91,18 @@ func (l *Lock) Note(text string) {
 		return
 	}
 	line := append([]byte(normalize.Truncate(normalize.Sanitize(text), noteRunes)), '\n')
-	if _, err := syscall.Pwrite(l.fd, line, 0); err != nil {
-		return
+	for off := 0; off < len(line); {
+		n, err := syscall.Pwrite(l.fd, line[off:], int64(off))
+		if err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			return
+		}
+		if n <= 0 {
+			return
+		}
+		off += n
 	}
 	// A shorter note must not leave the tail of a longer one behind it.
 	_ = syscall.Ftruncate(l.fd, int64(len(line)))
@@ -102,12 +112,20 @@ func (l *Lock) Note(text string) {
 // descriptor is the one just opened, so no second path lookup can be raced.
 func readNote(fd int) string {
 	buf := make([]byte, noteLimit)
-	n, err := syscall.Pread(fd, buf, 0)
-	if err != nil || n <= 0 {
-		return ""
+	for {
+		n, err := syscall.Pread(fd, buf, 0)
+		if err != nil {
+			if errors.Is(err, syscall.EINTR) {
+				continue
+			}
+			return ""
+		}
+		if n <= 0 {
+			return ""
+		}
+		line, _, _ := strings.Cut(string(buf[:n]), "\n")
+		return normalize.Display(strings.TrimSpace(line))
 	}
-	line, _, _ := strings.Cut(string(buf[:n]), "\n")
-	return normalize.Display(strings.TrimSpace(line))
 }
 
 func (l *Lock) Release() {

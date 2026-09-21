@@ -1090,6 +1090,13 @@ func TestQuitClosesImmediatelyWhenDone(t *testing.T) {
 	if strings.Contains(lastLine(stripANSI(m.View())), "s:finish") {
 		t.Fatalf("a finished run still advertises finish:\n%s", lastLine(stripANSI(m.View())))
 	}
+	m = newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.done = true
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("enter on a finished run should close the dashboard")
+	}
 }
 
 // Pressing esc while quit is armed cancels the arming without killing the run.

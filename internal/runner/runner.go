@@ -853,18 +853,21 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		res.Ins, res.Del, res.HaveLines = ins, del, true
 	}
 
-	r.mergeMu.Lock()
-	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
-	resolved := false
-	if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
-		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
-			mr, resolved = fixed, true
+	mr, resolved := func() (gitx.MergeResult, bool) {
+		r.mergeMu.Lock()
+		defer r.mergeMu.Unlock()
+		mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
+		resolved := false
+		if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
+			if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
+				mr, resolved = fixed, true
+			}
 		}
-	}
-	if mr.Merged && r.cfg.Push {
-		r.pushLanded(ctx, review)
-	}
-	r.mergeMu.Unlock()
+		if mr.Merged && r.cfg.Push {
+			r.pushLanded(ctx, review)
+		}
+		return mr, resolved
+	}()
 
 	switch {
 	case mr.Merged:
@@ -1044,9 +1047,12 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	// review, so a tick published after this review has ended is attributed
 	// to whatever that agent starts next.
 	watchCtx, stopWatch := context.WithCancel(ctx)
-	defer stopWatch()
 	watcher := openTranscript(spec.Tool, dir, start)
 	var watchDone sync.WaitGroup
+	defer func() {
+		stopWatch()
+		watchDone.Wait()
+	}()
 	watchDone.Go(func() { watcher.Run(watchCtx, publishUsage) })
 
 	pr := runProc(ctx, procOpts{
@@ -1315,10 +1321,12 @@ func (r *Runner) runMergeStep(ctx context.Context, loopNo int) {
 		return
 	}
 
-	r.mergeMu.Lock()
-	mr := r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
-		fmt.Sprintf("Merge branch '%s'", from))
-	r.mergeMu.Unlock()
+	mr := func() gitx.MergeResult {
+		r.mergeMu.Lock()
+		defer r.mergeMu.Unlock()
+		return r.repo.MergeInto(context.WithoutCancel(ctx), r.cfg.MergeInto, from,
+			fmt.Sprintf("Merge branch '%s'", from))
+	}()
 
 	ev := Event{
 		Kind: EvMerge, Dir: r.cfg.Dir, Loop: loopNo,

@@ -329,6 +329,18 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	}
 }
 
+func TestPickGAndGKeysJumpToTopAndBottom(t *testing.T) {
+	p := demoPicker()
+	press(p, "G")
+	if last := len(p.rows()) - 1; p.cursor[paneReviews] != last {
+		t.Fatalf("G did not jump to last row (%d), got %d", last, p.cursor[paneReviews])
+	}
+	press(p, "g")
+	if p.cursor[paneReviews] != 0 {
+		t.Fatalf("g did not jump to first row, got %d", p.cursor[paneReviews])
+	}
+}
+
 // A filter that matches nothing hides the whole tree: the pane must say so
 // and name the way out, or silence reads as an empty prompt set.
 func TestPickEmptyFilterSaysSo(t *testing.T) {
@@ -340,6 +352,13 @@ func TestPickEmptyFilterSaysSo(t *testing.T) {
 	p.Update(tea.KeyMsg{Type: tea.KeyEnter}) // keep the filter, leave typing
 	if view := stripANSI(p.View()); !strings.Contains(view, "no reviews match this filter") {
 		t.Fatalf("the kept filter lost its empty state:\n%s", view)
+	}
+	if p.blocked() == "" {
+		t.Fatal("empty filter must be reported by blocked()")
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyEnter}) // try to launch while filter matches nothing
+	if p.launch {
+		t.Fatal("enter launched a run while active filter matched zero reviews")
 	}
 	p.filter = "vulnerab" // a match brings the tree back and the notice goes
 	if view := stripANSI(p.View()); strings.Contains(view, "no reviews match this filter") {

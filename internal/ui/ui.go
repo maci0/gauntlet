@@ -337,6 +337,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, nil
+		case "enter":
+			if m.done {
+				return m, tea.Quit
+			}
+			return m, nil
 		default:
 			if m.quitArmed {
 				m.quitArmed = false
@@ -1231,7 +1236,7 @@ func (m *model) helpLines() []string {
 	}
 	qLine := "  q           stop the run, killing what is running (press twice; esc cancels)"
 	if m.done {
-		qLine = "  q, esc      close (the run has finished)"
+		qLine = "  q, esc, enter close (the run has finished)"
 	} else if m.finishing {
 		qLine = "  q, esc      stop now (a finish is already draining)"
 	}

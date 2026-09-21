@@ -161,6 +161,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	var emitting atomic.Bool
 	emitting.Store(true)
 	var callbacks sync.WaitGroup
+	var usageReportMu sync.Mutex
 	report := func(u agent.Usage) {
 		if !u.Known() || !emitting.Load() {
 			return
@@ -187,7 +188,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		}
 		callbacks.Add(1)
 		usageMu.Unlock()
+		usageReportMu.Lock()
 		o.Usage(snapshot)
+		usageReportMu.Unlock()
 		callbacks.Done()
 	}
 	observe := func(line string) {
@@ -197,6 +200,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		report(agent.ParseUsage([]byte(line)))
 	}
 
+	var sinkMu sync.Mutex
 	pump := func(r io.Reader) {
 		norm := normalize.New(normalize.Config{
 			MaxLinesPerSec: o.MaxLinesPerSec,
@@ -214,7 +218,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			}
 			callbacks.Add(1)
 			usageMu.Unlock()
+			sinkMu.Lock()
 			o.Sink(l)
+			sinkMu.Unlock()
 			callbacks.Done()
 		}
 		handle := func(line string) {
