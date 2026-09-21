@@ -115,7 +115,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		}
 		if ok {
 			installed++
-			if !agent.IsOptIn(a) {
+			if !agent.IsOptIn(a) && !(a == "dsh" && found["dsh"] == "") {
 				usable++
 			}
 		}

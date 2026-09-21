@@ -244,7 +244,7 @@ func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 	cleanCtx := context.WithoutCancel(ctx)
 	_ = r.removeWorktreeDir(cleanCtx, dir)
 	if branch != "" {
-		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", branch)
+		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", "--", branch)
 	}
 }
 
@@ -274,7 +274,7 @@ func (r *Repo) reclaimEmptyBranch(ctx context.Context, branch, base string) erro
 	}
 	// A failure here is not swallowed for long: the worktree add then fails
 	// on the branch that is still there, with git's own words.
-	_, _ = r.run(ctx, gitNormal, "branch", "-D", branch)
+	_, _ = r.run(ctx, gitNormal, "branch", "-D", "--", branch)
 	return nil
 }
 
@@ -396,7 +396,7 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 		return nil, errors.New("nil worktree")
 	}
 	sub := w.subRepo()
-	out, err := sub.run(ctx, gitSlow, "merge", "--squash", "--no-verify", branch)
+	out, err := sub.run(ctx, gitSlow, "merge", "--squash", "--no-verify", "--", branch)
 	if err == nil {
 		return nil, nil
 	}
@@ -722,7 +722,7 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	sub := w.subRepo()
 	// -m, never -M: a same-named branch holding real work is kept, and the
 	// failure is reported, matching reclaimEmptyBranch's rule.
-	if _, err := sub.run(ctx, gitNormal, "branch", "-m", w.Branch, name); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "branch", "-m", "--", w.Branch, name); err != nil {
 		return fmt.Errorf("git branch -m %s %s: %w", w.Branch, name, err)
 	}
 	w.Branch = name

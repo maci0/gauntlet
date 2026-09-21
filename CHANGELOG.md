@@ -35,6 +35,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Do not count opt-in agents launchable only via bunx (`dsh`) as usable auto-detectable CLIs in the doctor report, correctly reporting missing agents and exiting 1.
+- Separate revision arguments and branch names with `--` across git worktree operations, diff statistics, trailer stripping, and commit subject extraction to prevent option injection and file name collision ambiguity.
 - Validate JSON key types when decoding custom agent definitions (`agents.json`), returning an error on non-string keys instead of panicking on type assertion.
 - Handle incomplete octal escape sequences without consuming invalid digits or malforming bytes in git filename unquoting (`unquoteC`).
 - Populate line metrics, review status, and subjects when recovering stacked PR layers.

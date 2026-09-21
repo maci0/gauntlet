@@ -470,7 +470,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	var diffErr, lsErr error
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		diff, diffErr = r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline)
+		diff, diffErr = r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline, "--")
 	})
 	wg.Go(func() {
 		untracked, lsErr = r.run(ctx, gitQuick, "ls-files", "--others", "--exclude-standard", "-z")
@@ -649,7 +649,7 @@ func (r *Repo) subRepo(dir string) *Repo {
 // the range covers one review's own commit and nothing else.
 func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int, ok bool) {
 	sub := r.subRepo(dir)
-	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", from, to)
+	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", from, to, "--")
 	if err != nil {
 		return 0, 0, false
 	}
@@ -668,7 +668,7 @@ func (r *Repo) ChangedFiles(ctx context.Context, dir, from, to string) ([]string
 		return nil, errors.New("git is not available")
 	}
 	sub := r.subRepo(dir)
-	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", from, to)
+	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", from, to, "--")
 	if err != nil {
 		return nil, err
 	}

@@ -73,7 +73,7 @@ func (r *Repo) StripAITrailers(ctx context.Context, since string) (bool, error) 
 	if err != nil || head == "" || (since != "" && head == since) {
 		return false, nil
 	}
-	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%B", "HEAD")
+	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%B", "HEAD", "--")
 	if err != nil {
 		return false, fmt.Errorf("git log: %w", err)
 	}

@@ -81,6 +81,29 @@ func TestDoctorCustomAgentCounting(t *testing.T) {
 	}
 }
 
+func TestDoctorDshViaBunxExitsOneWhenNoAutoDetectableAgent(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	dir := t.TempDir()
+	bunxPath := filepath.Join(dir, "bunx")
+	if err := os.WriteFile(bunxPath, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	var buf strings.Builder
+	code := doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "✓ dsh") || !strings.Contains(out, "via bunx") {
+		t.Fatalf("doctor should show dsh via bunx:\n%s", out)
+	}
+	if !strings.Contains(out, "No auto-detectable agent CLI found") {
+		t.Fatalf("doctor should report no auto-detectable agent found:\n%s", out)
+	}
+	if code != exitFail {
+		t.Fatalf("doctor exit code = %d, want %d (exitFail)", code, exitFail)
+	}
+}
+
 func TestDoctorReportsOutputFailure(t *testing.T) {
 	sink := &doctorFailWriter{remaining: 0}
 	code, diagnostic := captureStderrFor(t, func() int {

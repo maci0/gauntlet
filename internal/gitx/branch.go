@@ -455,7 +455,7 @@ func (r *Repo) ValidateBranchName(ctx context.Context, branch string) error {
 // CommitSubject returns the subject at ref, for completing publication after
 // a previous process committed or pushed but stopped before creating its PR.
 func (r *Repo) CommitSubject(ctx context.Context, ref string) (string, error) {
-	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%s", ref)
+	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%s", ref, "--")
 	if err != nil {
 		return "", err
 	}

@@ -404,4 +404,61 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 
 	// Deleting branches matching a pattern with dashed prefix
 	r.DeleteBranchesMatching(ctx, "--pattern*")
+
+	wt, err := r.AddWorktree(ctx, "lane", "test-tag", "HEAD")
+	if err != nil {
+		t.Fatalf("AddWorktree failed: %v", err)
+	}
+	defer wt.Remove(ctx)
+
+	// SquashIn with option-shaped branch name must not trigger git merge options.
+	if _, err := wt.SquashIn(ctx, "--abort"); err == nil {
+		t.Fatal("SquashIn on non-existent branch --abort should fail")
+	} else if strings.Contains(err.Error(), "expects no arguments") {
+		t.Fatalf("SquashIn failed with option injection error: %v", err)
+	}
+
+	// RenameBranch with option-shaped name must be rejected by ref format check
+	// or git branch -m with -- separator.
+	if err := wt.RenameBranch(ctx, "--new-branch"); err == nil {
+		t.Fatal("RenameBranch on --new-branch should fail")
+	}
+
+	// Aborting worktree add or reclaiming empty branch with dashed branch name.
+	r.abortWorktreeAdd(ctx, filepath.Join(r.Dir, "temp-wt"), "--abort")
+	tip, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.reclaimEmptyBranch(ctx, "--abort", tip); err != nil {
+		t.Fatalf("reclaimEmptyBranch failed: %v", err)
+	}
+
+	// A file named HEAD in the repository must not cause git log or diff to fail
+	// with "ambiguous argument 'HEAD': both revision and filename".
+	headFile := filepath.Join(r.Dir, "HEAD")
+	if err := os.WriteFile(headFile, []byte("collision\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(headFile)
+
+	subj, err := r.CommitSubject(ctx, "HEAD")
+	if err != nil {
+		t.Fatalf("CommitSubject failed with HEAD file present: %v", err)
+	}
+	if subj == "" {
+		t.Fatal("CommitSubject returned empty subject")
+	}
+
+	if _, err := r.StripAITrailers(ctx, ""); err != nil {
+		t.Fatalf("StripAITrailers failed with HEAD file present: %v", err)
+	}
+
+	if _, _, ok := r.DiffStat(ctx, r.Dir, "HEAD", "HEAD"); !ok {
+		t.Fatal("DiffStat failed with HEAD file present")
+	}
+
+	if _, err := r.ChangedFiles(ctx, r.Dir, "HEAD", "HEAD"); err != nil {
+		t.Fatalf("ChangedFiles failed with HEAD file present: %v", err)
+	}
 }
