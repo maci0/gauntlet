@@ -51,6 +51,9 @@ func TestParseSpecsRejects(t *testing.T) {
 	cases := []string{
 		"claud",          // typo
 		"agy:some-model", // agy takes no model
+		"agy:",           // agy takes no model
+		"claude:",        // empty model
+		"claude:@high",   // empty model before effort
 		"dsh:bad model!", // dsh models are spliced into YAML
 		"",               // nothing named
 	}
@@ -1212,11 +1215,15 @@ func TestCustomAgentDropsArgumentsWithNothingToPutInThem(t *testing.T) {
 func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	cases := map[string]Custom{
-		"no argv":                {},
-		"blank executable":       {Argv: []string{" ", "{prompt}"}},
-		"no prompt":              {Argv: []string{"x", "--flag"}},
-		"usage without roots":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
-		"usage with blank roots": {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
+		"no argv":                   {},
+		"blank executable":          {Argv: []string{" ", "{prompt}"}},
+		"no prompt":                 {Argv: []string{"x", "--flag"}},
+		"multiple prompts":          {Argv: []string{"x", "{prompt}", "{prompt}"}},
+		"prompt in model":           {Argv: []string{"x", "{prompt}"}, Model: []string{"--m", "{prompt}"}},
+		"prompt in effort":          {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e", "{prompt}"}},
+		"usage without roots":       {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{}},
+		"usage with blank roots":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
+		"usage with one blank root": {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid", ""}}},
 	}
 	for name, def := range cases {
 		if err := Register("tmp", def); err == nil {

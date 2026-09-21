@@ -765,6 +765,13 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 		t.Fatal("the glyph does not turn without the variable")
 	}
 
+	for _, off := range []string{"0", "false", "False", "no", "off", "  0  "} {
+		t.Setenv("GAUNTLET_NO_ANIMATION", off)
+		if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {
+			t.Fatalf("the glyph should turn under GAUNTLET_NO_ANIMATION=%q", off)
+		}
+	}
+
 	// The freeze must not touch the states that are already still.
 	if got := thinkGlyph(now, time.Time{}); got != "◌" {
 		t.Fatalf("a never-thinking lane reads %q, want the resting glyph", got)

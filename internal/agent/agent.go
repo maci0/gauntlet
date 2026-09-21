@@ -364,8 +364,11 @@ func ParseSpecs(s string) ([]Spec, error) {
 			return nil, fmt.Errorf("unknown tool: %q%s (valid: %s, or mixed for all)",
 				tool, hint, strings.Join(AllNames(), ", "))
 		}
-		if !takesModel(tool) && model != "" {
+		if !takesModel(tool) && (model != "" || hasModel) {
 			return nil, fmt.Errorf("%s does not support specifying a model: %q", tool, entry)
+		}
+		if hasModel && model == "" {
+			return nil, fmt.Errorf("empty model after %q in %q", ":", entry)
 		}
 		if effort != "" {
 			if !takesEffort(tool) {

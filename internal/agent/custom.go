@@ -96,18 +96,32 @@ func (c Custom) validate(name string) error {
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
-	if !containsPlaceholder(c.Argv, promptPlaceholder) {
+	prompts := 0
+	for _, a := range c.Argv {
+		if strings.Contains(a, promptPlaceholder) {
+			prompts++
+		}
+	}
+	if prompts == 0 {
 		return fmt.Errorf("custom agent %q: argv must contain %s", name, promptPlaceholder)
 	}
+	if prompts > 1 {
+		return fmt.Errorf("custom agent %q: argv must contain %s exactly once", name, promptPlaceholder)
+	}
+	if containsPlaceholder(c.Model, promptPlaceholder) {
+		return fmt.Errorf("custom agent %q: model cannot contain %s", name, promptPlaceholder)
+	}
+	if containsPlaceholder(c.Effort, promptPlaceholder) {
+		return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
+	}
 	if c.Usage != nil {
-		n := 0
-		for _, r := range c.Usage.Roots {
-			if strings.TrimSpace(r) != "" {
-				n++
-			}
-		}
-		if n == 0 {
+		if len(c.Usage.Roots) == 0 {
 			return fmt.Errorf("custom agent %q: usage.roots must name at least one directory", name)
+		}
+		for _, r := range c.Usage.Roots {
+			if strings.TrimSpace(r) == "" {
+				return fmt.Errorf("custom agent %q: usage.roots contains an empty directory path", name)
+			}
 		}
 	}
 	return nil

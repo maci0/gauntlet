@@ -62,7 +62,7 @@ func colorEnabled(f *os.File) bool {
 		return false
 	}
 	for _, name := range []string{envCLIColorForce, envForceColor} {
-		if v := os.Getenv(name); v != "" && v != "0" {
+		if v := strings.ToLower(strings.TrimSpace(os.Getenv(name))); v != "" && v != "0" && v != "false" && v != "no" && v != "off" {
 			return true
 		}
 	}

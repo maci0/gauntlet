@@ -40,6 +40,15 @@ minor instead and were listed under Changed.
   of reporting them as usage errors.
 - Ensure flag-requested help is rendered to stdout when `flag.ErrHelp` is returned
   during parsing.
+- Reject empty model specifications when a colon delimiter is provided in agent
+  specifications, and reject colons for tools that do not support models.
+- Validate custom agent definitions to require exactly one `{prompt}` placeholder
+  in `argv`, forbid `{prompt}` inside `model` or `effort` options, and reject
+  empty directory entries in `usage.roots`.
+- Expand leading `~` and environment variables in `GAUNTLET_HOME`, and treat
+  whitespace-only values as unset.
+- Recognize boolean false values (`false`, `no`, `off`, `0`) in `GAUNTLET_NO_ANIMATION`,
+  `CLICOLOR_FORCE`, and `FORCE_COLOR` instead of treating them as truthy.
 
 ## 1.22.1
 

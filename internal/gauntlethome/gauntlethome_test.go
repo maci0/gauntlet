@@ -40,6 +40,33 @@ func TestDirMakesRelativeGauntletHomeAbsolute(t *testing.T) {
 	}
 }
 
+func TestDirExpandsTildeGauntletHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", "~/custom_state")
+	got, ok := Dir()
+	if !ok {
+		t.Fatal("GAUNTLET_HOME with ~ set, but Dir reports no usable root")
+	}
+	want := filepath.Join(home, "custom_state")
+	if got != want {
+		t.Fatalf("Dir = %q, want %q", got, want)
+	}
+}
+
+func TestDirIgnoresWhitespaceOnlyGauntletHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", "   ")
+	got, ok := Dir()
+	if !ok {
+		t.Fatal("usable HOME set, but Dir reports no usable root")
+	}
+	if got != filepath.Join(home, ".gauntlet") {
+		t.Fatalf("Dir = %q, want %q", got, filepath.Join(home, ".gauntlet"))
+	}
+}
+
 func TestDirDefaultsToGauntletUnderHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", "")

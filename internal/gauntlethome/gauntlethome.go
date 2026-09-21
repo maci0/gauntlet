@@ -28,7 +28,10 @@ import (
 // a definitions file picked up from there would let the reviewed tree define
 // its own agents.
 func Dir() (string, bool) {
-	if h := os.Getenv("GAUNTLET_HOME"); h != "" {
+	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
+		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {
+			return absolute(exp), true
+		}
 		return absolute(h), true
 	}
 	home, err := os.UserHomeDir()

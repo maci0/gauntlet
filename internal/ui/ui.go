@@ -886,12 +886,16 @@ const motionStill = "◐"
 
 // motionOff reports whether the run asked for a still screen. Terminals have
 // no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION:
-// anything but empty or "0" freezes the dashboard's one animated glyph, whose
-// cycling otherwise starts on its own and outlives five seconds of reasoning
-// (WCAG 2.2.2: such motion must be stoppable).
+// anything but empty, "0", "false", "no", or "off" freezes the dashboard's
+// one animated glyph, whose cycling otherwise starts on its own and outlives
+// five seconds of reasoning (WCAG 2.2.2: such motion must be stoppable).
 func motionOff() bool {
 	v, ok := os.LookupEnv("GAUNTLET_NO_ANIMATION")
-	return ok && v != "" && v != "0"
+	if !ok {
+		return false
+	}
+	v = strings.ToLower(strings.TrimSpace(v))
+	return v != "" && v != "0" && v != "false" && v != "no" && v != "off"
 }
 
 // thinkGlyph animates only while reasoning is actively growing: a still glyph
