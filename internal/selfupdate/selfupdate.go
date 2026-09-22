@@ -323,7 +323,8 @@ func validateAssetURL(raw string) error {
 
 func isAllowedHost(host string) bool {
 	switch host {
-	case "github.com", "api.github.com", "objects.githubusercontent.com":
+	case "github.com", "api.github.com", "objects.githubusercontent.com",
+		"release-assets.githubusercontent.com":
 		return true
 	}
 	return isLoopback(host)

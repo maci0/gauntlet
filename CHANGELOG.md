@@ -12,6 +12,10 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- Accept release asset downloads from the GitHub release CDN host, fixing self-update checksum fetches redirected there.
+
 ## 1.23.1
 
 ### Fixed

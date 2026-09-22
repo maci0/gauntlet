@@ -285,6 +285,7 @@ func TestValidateAssetURL(t *testing.T) {
 		{"https://github.com/maci0/gauntlet/releases/download/v1/asset", true},
 		{"https://api.github.com/repos/maci0/gauntlet/releases/assets/1", true},
 		{"https://objects.githubusercontent.com/github-production-release-asset-2e65be/1", true},
+		{"https://release-assets.githubusercontent.com/github-production-release-asset/1", true},
 		{"http://127.0.0.1:8080/asset", true},
 		{"http://localhost:8080/asset", true},
 		{"https://evil.example.com/asset", false},
