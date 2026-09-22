@@ -301,11 +301,27 @@ func (n *Normalizer) classify(s string) Kind {
 		return Tool
 	case progressRe.MatchString(s):
 		return Progress
-	case errorRe.MatchString(s):
+	case maybeError(s) && errorRe.MatchString(s):
 		return Error
 	default:
 		return Plain
 	}
+}
+
+// maybeError is a case-insensitive trigram prefilter for errorRe: the regex
+// costs ~1.7µs per plain line, the Contains scan ~60ns. Every errorRe word
+// carries one of these trigrams; a line without any cannot match.
+func maybeError(s string) bool {
+	for i := 0; i+3 <= len(s); i++ {
+		a, b, c := s[i]|32, s[i+1]|32, s[i+2]|32
+		switch [3]byte{a, b, c} {
+		case [3]byte{'e', 'r', 'r'}, [3]byte{'f', 'a', 'i'}, [3]byte{'p', 'a', 'n'},
+			[3]byte{'f', 'a', 't'}, [3]byte{'d', 'e', 'n'}, [3]byte{'r', 'e', 'f'},
+			[3]byte{'t', 'i', 'm'}, [3]byte{'e', 'x', 'c'}, [3]byte{'t', 'r', 'a'}:
+			return true
+		}
+	}
+	return false
 }
 
 // classifyDiff recognizes unified-diff lines and reports whether the line was

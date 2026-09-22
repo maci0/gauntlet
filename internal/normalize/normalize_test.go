@@ -170,6 +170,8 @@ func TestClassify(t *testing.T) {
 		{"the build failed", Error},
 		{"Analyzing the module graph", Progress},
 		{"just some narration", Plain},
+		{"terror haunts the pantry: terror", Plain},
+		{"a timeout builds the tower: timeout", Plain},
 	}
 	for _, c := range cases {
 		got := push(New(Config{}), c.in)
@@ -178,6 +180,24 @@ func TestClassify(t *testing.T) {
 		}
 		if got[0].Kind != c.want {
 			t.Errorf("%q: got kind %v, want %v", c.in, got[0].Kind, c.want)
+		}
+	}
+}
+
+// TestMaybeErrorCoversErrorWords pins the prefilter contract: every word the
+// error regex matches must trip maybeError, or classify silently downgrades
+// Error lines to Plain. This is a work counter, not a timing gate: it holds
+// on a loaded machine.
+func TestMaybeErrorCoversErrorWords(t *testing.T) {
+	words := []string{"error", "failed", "failure", "exception", "traceback", "panic", "fatal", "refused", "denied", "timed out"}
+	for _, w := range words {
+		for _, s := range []string{w, "x " + w + " y", strings.ToUpper(w)} {
+			if !maybeError(s) {
+				t.Errorf("maybeError(%q) = false, errorRe matches", s)
+			}
+			if got := push(New(Config{}), "msg "+s); len(got) != 1 || got[0].Kind != Error {
+				t.Errorf("classify(%q) = %+v, want Error", s, got)
+			}
 		}
 	}
 }
