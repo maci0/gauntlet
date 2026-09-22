@@ -12,6 +12,12 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.23.1
+
+### Fixed
+
+- Speed up live feed classification by skipping the error-pattern match on lines without error trigrams.
+
 ## 1.23.0
 
 ### Added
