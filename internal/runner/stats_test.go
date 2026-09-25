@@ -150,6 +150,17 @@ func TestByAgentGroupsAndSorts(t *testing.T) {
 	}
 }
 
+func TestByAgentIgnoresNegativeElapsed(t *testing.T) {
+	st := &Stats{}
+	st.Add(Result{Status: StatusOK, Elapsed: 10 * time.Second, Agent: agent.Spec{Tool: "claude"}})
+	st.Add(Result{Status: StatusFail, Elapsed: -5 * time.Second, Agent: agent.Spec{Tool: "claude"}})
+
+	got := st.ByAgent()
+	if len(got) != 1 || got[0].Elapsed != 10*time.Second {
+		t.Fatalf("negative elapsed should not reduce agent elapsed, got %+v", got)
+	}
+}
+
 func TestTokensPerSec(t *testing.T) {
 	if got := (AgentSummary{Tokens: 0, Elapsed: time.Minute}).TokensPerSec(); got != 0 {
 		t.Errorf("no tokens means no rate: %v", got)

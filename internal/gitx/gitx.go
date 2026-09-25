@@ -458,7 +458,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.haveLast && time.Since(r.lastAt) < minSampleInterval {
+	if r.haveLast && time.Since(r.lastAt) >= 0 && time.Since(r.lastAt) < minSampleInterval {
 		return r.lastVal, true
 	}
 

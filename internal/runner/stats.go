@@ -216,7 +216,9 @@ func (s *Stats) ByAgent() []AgentSummary {
 		}
 		a.Counts.tally(r.Status)
 		a.Tokens += r.Tokens
-		a.Elapsed += r.Elapsed
+		if r.Elapsed > 0 {
+			a.Elapsed += r.Elapsed
+		}
 	}
 	out := make([]AgentSummary, 0, len(byLabel))
 	for _, a := range byLabel {

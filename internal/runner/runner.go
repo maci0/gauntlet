@@ -337,7 +337,7 @@ func (r *Runner) Run(ctx context.Context) {
 
 		ev := Event{
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
-			Elapsed: r.now().Sub(start).Seconds(),
+			Elapsed: max(r.now().Sub(start), 0).Seconds(),
 		}
 		if r.cfg.StackedPRs || r.cfg.Jobs > 1 {
 			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
@@ -1088,7 +1088,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	if out, think := watcher.Final(); out > 0 || think > 0 {
 		publishUsage(out, think)
 	}
-	res.Elapsed = r.now().Sub(start)
+	res.Elapsed = max(r.now().Sub(start), 0)
 	res.ExitCode = pr.ExitCode
 	res.Subject = pr.Subject
 	res.FileNotes = pr.FileNotes

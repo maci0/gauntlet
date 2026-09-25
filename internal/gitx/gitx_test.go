@@ -257,6 +257,28 @@ func TestSampleCountsUntrackedAndSkipsOwnArtifacts(t *testing.T) {
 	}
 }
 
+func TestSampleNegativeElapsedBypassesCache(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	st, ok := r.Sample(ctx, nil)
+	if !ok {
+		t.Fatal("sample failed")
+	}
+	r.mu.Lock()
+	r.lastAt = time.Now().Add(time.Hour) // clock stepped backwards into the past
+	r.mu.Unlock()
+
+	newFile := filepath.Join(r.Dir, "fresh.go")
+	if err := os.WriteFile(newFile, []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st2, ok2 := r.Sample(ctx, nil)
+	if !ok2 || st2.Ins == st.Ins {
+		t.Fatalf("negative elapsed should bypass cache and measure fresh, got %+v", st2)
+	}
+}
+
 func TestSampleNeedsABaseline(t *testing.T) {
 	if !Available() {
 		t.Skip("git is required for gitx tests")

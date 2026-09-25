@@ -53,6 +53,23 @@ func TestResumeStartDoesNotMoveIntoTheFuture(t *testing.T) {
 	}
 }
 
+func TestResumeOriginClamped(t *testing.T) {
+	now := time.Now()
+	for _, prior := range []handoff{
+		{StartedAt: now.Add(time.Hour)},
+		{StartedAt: time.Time{}},
+	} {
+		origin := prior.StartedAt
+		startedAt := resumeStart(now, prior)
+		if origin.IsZero() || origin.After(now) {
+			origin = startedAt
+		}
+		if origin.IsZero() || origin.After(now) {
+			t.Errorf("origin must be non-zero and not in future, got %v", origin)
+		}
+	}
+}
+
 func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	// StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
 	// it under a regular file, so MkdirAll fails with ENOTDIR.

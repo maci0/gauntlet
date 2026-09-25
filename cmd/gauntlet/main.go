@@ -348,6 +348,9 @@ func run(argv []string) int {
 	} else {
 		origin = prior.StartedAt
 		startedAt = resumeStart(now, prior)
+		if origin.IsZero() || origin.After(now) {
+			origin = startedAt
+		}
 	}
 
 	ownArtifacts := map[string]bool{}
@@ -705,7 +708,7 @@ func run(argv []string) int {
 	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
-		if code := doReload(*path, runID, origin, time.Since(startedAt), runs, prior, argv, stdout); code >= 0 {
+		if code := doReload(*path, runID, origin, max(time.Since(startedAt), 0), runs, prior, argv, stdout); code >= 0 {
 			// The exec failed, or the handoff could not be saved and the
 			// reload was aborted: no successor is coming, so finish the run
 			// here. Returning without the summary would orphan the whole
@@ -716,7 +719,7 @@ func run(argv []string) int {
 		}
 	}
 
-	wall := time.Since(startedAt)
+	wall := max(time.Since(startedAt), 0)
 	switch {
 	case !opts.tui:
 		summary(stdout, pal, runs, wall)
