@@ -277,7 +277,7 @@ func SuggestPrompt(set Set, names []string) string {
 		}
 		desc = strings.ReplaceAll(desc, "</catalog>", "</ catalog>")
 		desc = relevantTokenRe.ReplaceAllString(desc, "relevant-")
-		desc = normalize.Truncate(desc, catalogDescMax)
+		desc = normalize.Truncate(nfc(desc), catalogDescMax)
 		b.WriteString("- " + name + ": " + desc + "\n")
 	}
 	return strings.ReplaceAll(rule("suggest.md"), "{reviews}", strings.TrimRight(b.String(), "\n"))
@@ -306,7 +306,7 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 		// The token is agent output and the pool is NFC-normalized at
 		// discovery; an agent that decomposed a name it copied must still
 		// match (see nfc).
-		name, reason := nfc(m[1]), normalize.Truncate(strings.TrimSpace(sanitize(m[2])), catalogDescMax)
+		name, reason := nfc(m[1]), normalize.Truncate(nfc(strings.TrimSpace(sanitize(m[2]))), catalogDescMax)
 		if !known[name] && known[name+"-review"] {
 			name += "-review"
 		}

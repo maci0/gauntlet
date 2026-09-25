@@ -1094,6 +1094,37 @@ func TestNonASCIINameNormalizationRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPromptSummaryAndDescNormalization(t *testing.T) {
+	nfcText := "café entrée façade"
+	nfdText := norm.NFD.String(nfcText)
+	if nfdText == nfcText {
+		t.Fatal("test fixture is not decomposed")
+	}
+
+	dir := t.TempDir()
+	p1 := filepath.Join(dir, "p1-review.md")
+	write(t, p1, "Summary: "+nfdText+"\nYour goal is to audit "+nfdText+".\n")
+	r := Review{Name: "p1-review", Path: p1, Origin: Project}
+	if got := r.Summary(); got != nfcText {
+		t.Fatalf("Summary() = %q, want NFC %q", got, nfcText)
+	}
+	if got := r.Desc(); got != "audit "+nfcText+"." {
+		t.Fatalf("Desc() = %q, want NFC %q", got, "audit "+nfcText+".")
+	}
+
+	p2 := filepath.Join(dir, "p2-review.md")
+	write(t, p2, "Your goal is to audit "+nfdText+".\n")
+	rNoSummary := Review{Name: "p2-review", Path: p2, Origin: Project}
+	if got := rNoSummary.Summary(); got != "audit "+nfcText+"." {
+		t.Fatalf("Summary() fallback = %q, want NFC %q", got, "audit "+nfcText+".")
+	}
+
+	picked, _ := ParseSuggestions("RELEVANT: code-review: "+nfdText+"\n", []string{"code-review"})
+	if len(picked) != 1 || picked[0].Reason != nfcText {
+		t.Fatalf("ParseSuggestions reason = %q, want NFC %q", picked[0].Reason, nfcText)
+	}
+}
+
 func write(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {

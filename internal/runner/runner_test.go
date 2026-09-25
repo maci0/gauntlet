@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
@@ -990,6 +992,16 @@ func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
 	}
 	if strings.ContainsAny(msg, "\x1b\x07") {
 		t.Fatalf("control bytes reached the message: %q", msg)
+	}
+
+	nfdNote := norm.NFD.String("running café-review")
+	held.Note(nfdNote)
+	_, err = Acquire(path)
+	if !strings.Contains(err.Error(), "running café-review") {
+		t.Fatalf("NFC note missing from %q", err.Error())
+	}
+	if nfdNote != "running café-review" && strings.Contains(err.Error(), nfdNote) {
+		t.Fatalf("note remained in NFD form: %q", err.Error())
 	}
 }
 

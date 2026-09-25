@@ -91,7 +91,7 @@ func descFromBody(body string) string {
 			line = sanitize(line)
 			line = strings.TrimPrefix(line, "Your goal is to ")
 			line = strings.TrimPrefix(line, "Your goal is ")
-			return strings.TrimSpace(line)
+			return strings.TrimSpace(nfc(line))
 		}
 	}
 	return ""
@@ -138,7 +138,7 @@ func (r Review) Summary() string {
 		if s == "" {
 			break
 		}
-		return normalize.Truncate(s, summaryRuneMax)
+		return normalize.Truncate(nfc(s), summaryRuneMax)
 	}
 	return descFromBody(body)
 }

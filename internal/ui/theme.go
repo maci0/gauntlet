@@ -248,11 +248,32 @@ func widthTokens(s string) []string {
 	for i := 0; i < len(s); {
 		if s[i] == 0x1b {
 			j := i + 1
-			for j < len(s) {
-				r, size := utf8.DecodeRuneInString(s[j:])
-				j += size
-				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-					break
+			if j < len(s) {
+				switch s[j] {
+				case '[': // CSI sequence
+					j++
+					for j < len(s) {
+						r, size := utf8.DecodeRuneInString(s[j:])
+						j += size
+						if r >= '@' && r <= '~' {
+							break
+						}
+					}
+				case ']': // OSC sequence
+					j++
+					for j < len(s) {
+						r, size := utf8.DecodeRuneInString(s[j:])
+						if r == 0x07 || r == 0x1b {
+							if r == 0x07 {
+								j += size
+							}
+							break
+						}
+						j += size
+					}
+				default:
+					_, size := utf8.DecodeRuneInString(s[j:])
+					j += size
 				}
 			}
 			toks = append(toks, s[i:j])

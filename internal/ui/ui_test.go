@@ -667,6 +667,11 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	if got := clip(styledWide, 4); lipgloss.Width(got) != 4 {
 		t.Fatalf("clip produced %d columns, want 4: %q", lipgloss.Width(got), got)
 	}
+	// Non-letter CSI terminators (@ through ~) must not swallow subsequent text.
+	withCSI := "\x1b[3~abcdef"
+	if got := clip(withCSI, 4); lipgloss.Width(got) != 4 {
+		t.Fatalf("clip with CSI escape produced %d columns, want 4: %q", lipgloss.Width(got), got)
+	}
 }
 
 func TestPadBlockWideCharAlignment(t *testing.T) {

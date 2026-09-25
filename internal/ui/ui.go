@@ -1211,15 +1211,19 @@ func (m *model) renderMinimal() string {
 	// view can show the effect of are listed: scroll acts on a feed the
 	// fallback does not draw, so advertising it would name a dead key.
 	var hint strings.Builder
+	hintW := 0
 	for _, k := range m.footerKeys(false) {
 		seg := k.k + " " + k.d
-		if hint.Len() > 0 && hint.Len()+2+len(seg) > m.w {
+		segW := uniseg.StringWidth(seg)
+		if hintW > 0 && hintW+2+segW > m.w {
 			break
 		}
-		if hint.Len() > 0 {
+		if hintW > 0 {
 			hint.WriteString("  ")
+			hintW += 2
 		}
 		hint.WriteString(seg)
+		hintW += segW
 	}
 	rows := []string{
 		fmt.Sprintf("gauntlet %s  loop %d  %s  %s",

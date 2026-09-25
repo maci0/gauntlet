@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Measure footer key width in terminal cells in the minimal view, terminate ANSI CSI escape tokens on standard final characters in token width calculation, and normalize lock notes, prompt summaries, and suggestion reasons to NFC before truncation.
 - Fall back to default ssh when `GIT_SSH_COMMAND` is empty or whitespace, avoid parsing custom agent definitions for non-agent subcommands, and document motion reduction environment variables in example configuration.
 - Reject empty arguments and single dashes as unexpected positional arguments instead of silently swallowing them or misreporting them as unknown commands during subcommand peeling in the CLI.
 - Avoid re-publishing pull request events and double-counting line changes when resuming stacked pull requests, make branch renames idempotent when target matches source, and guard review history changed counts against duplicate merge and pull request events.

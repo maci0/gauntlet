@@ -11,6 +11,8 @@ import (
 	"sync"
 	"syscall"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
@@ -90,7 +92,7 @@ func (l *Lock) Note(text string) {
 	if l.fd < 0 {
 		return
 	}
-	line := append([]byte(normalize.Truncate(normalize.Sanitize(text), noteRunes)), '\n')
+	line := append([]byte(normalize.Truncate(norm.NFC.String(normalize.Sanitize(text)), noteRunes)), '\n')
 	for off := 0; off < len(line); {
 		n, err := syscall.Pwrite(l.fd, line[off:], int64(off))
 		if err != nil {
