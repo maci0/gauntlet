@@ -889,7 +889,7 @@ func expandAttachedValues(fs *flag.FlagSet, argv []string) []string {
 			out = append(out, arg)
 			continue
 		}
-		if arg[1] != '-' && len(name) > 1 {
+		if arg[1] != '-' && len(name) > 1 && name[0] < utf8.RuneSelf {
 			if f := fs.Lookup(name[:1]); f != nil && !isBoolFlag(f) {
 				out = append(out, arg[:2], arg[2:])
 				continue

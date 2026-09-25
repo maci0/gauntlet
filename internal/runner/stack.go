@@ -634,6 +634,7 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 				continue
 			}
 			part := strings.TrimSuffix(strings.TrimSpace(n.Note), ".")
+			part = norm.NFC.String(part)
 			if part == "" || seen[part] {
 				continue
 			}

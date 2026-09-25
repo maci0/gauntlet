@@ -531,6 +531,15 @@ func TestTrimRespectsDisplayWidth(t *testing.T) {
 	if got := trim("認証テスト", 10); got != "認証テスト" {
 		t.Fatalf("trim cut a fitting string: %q", got)
 	}
+	if got := trim("abc", 1); got != "…" {
+		t.Fatalf("trim(\"abc\", 1) = %q, want …", got)
+	}
+	if got := trim("abc", 0); got != "" {
+		t.Fatalf("trim(\"abc\", 0) = %q, want empty", got)
+	}
+	if got := trim("abc", -1); got != "" {
+		t.Fatalf("trim(\"abc\", -1) = %q, want empty", got)
+	}
 }
 
 // dirLabel cuts from the left, keeping the tail that identifies the tree.
@@ -554,6 +563,12 @@ func TestDirLabelCutsBetweenGraphemes(t *testing.T) {
 	}
 	if w := lipgloss.Width(got); w > 8 {
 		t.Fatalf("dirLabel is %d cells, want at most 8: %q", w, got)
+	}
+	if got := dirLabel("/path/to/repo", 1); got != "…" {
+		t.Fatalf("dirLabel(..., 1) = %q, want …", got)
+	}
+	if got := dirLabel("/path/to/repo", 0); got != "" {
+		t.Fatalf("dirLabel(..., 0) = %q, want empty", got)
 	}
 }
 

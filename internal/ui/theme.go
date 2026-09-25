@@ -145,7 +145,7 @@ func (h *hueMap) get(label string) lipgloss.AdaptiveColor {
 // dirLabel is a directory as a person recognizes it: the home prefix as "~",
 // and long paths cut from the left, since the tail is what identifies a tree.
 func dirLabel(dir string, w int) string {
-	if dir == "" {
+	if dir == "" || w <= 0 {
 		return ""
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -155,17 +155,20 @@ func dirLabel(dir string, w int) string {
 			dir = "~" + string(os.PathSeparator) + rest
 		}
 	}
-	if w > 1 && uniseg.StringWidth(dir) > w {
-		for uniseg.StringWidth(dir) > w-1 {
-			_, rest, _, _ := uniseg.FirstGraphemeClusterInString(dir, -1)
-			if rest == dir {
-				break
-			}
-			dir = rest
-		}
-		dir = "…" + dir
+	if uniseg.StringWidth(dir) <= w {
+		return dir
 	}
-	return dir
+	if w == 1 {
+		return "…"
+	}
+	for uniseg.StringWidth(dir) > w-1 {
+		_, rest, _, _ := uniseg.FirstGraphemeClusterInString(dir, -1)
+		if rest == dir {
+			break
+		}
+		dir = rest
+	}
+	return "…" + dir
 }
 
 // reviewShort is a review as the screens name it: the -review suffix is noise

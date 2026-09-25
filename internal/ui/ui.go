@@ -1412,11 +1412,14 @@ func pad(s string, w int) string {
 // between grapheme clusters: names come from the reviewed repository and
 // are neither always ASCII nor single-width. It is clip without the styling.
 func trim(s string, w int) string {
-	if w <= 1 {
-		return s
+	if w <= 0 {
+		return ""
 	}
 	if uniseg.StringWidth(s) <= w {
 		return s
+	}
+	if w == 1 {
+		return "…"
 	}
 	var b strings.Builder
 	visible := 0

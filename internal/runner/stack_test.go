@@ -13,8 +13,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"golang.org/x/text/unicode/norm"
 )
 
 func stackRepo(t *testing.T) (repo, remote string) {
@@ -1085,5 +1087,31 @@ echo 'RESULT: changed=1'`)
 	}
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
 		t.Fatalf("stack worktree survived:\n%s", list)
+	}
+}
+
+func TestStackBodyDeduplicatesNFCAndNFDNotes(t *testing.T) {
+	repo, _ := stackRepo(t)
+	gitOut(t, repo, "checkout", "-b", "feature")
+	f := filepath.Join(repo, "test.txt")
+	if err := os.WriteFile(f, []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, repo, "add", "test.txt")
+	gitOut(t, repo, "commit", "-m", "update test")
+
+	r := &Runner{repo: gitx.Open(repo)}
+	nfcNote := "résumé update"
+	nfdNote := norm.NFD.String(nfcNote)
+	if nfcNote == nfdNote {
+		t.Fatal("fixture not decomposed")
+	}
+	notes := []agent.FileNote{
+		{Path: "test.txt", Note: nfcNote},
+		{Path: "test.txt", Note: nfdNote},
+	}
+	body := r.stackBody(context.Background(), "test-review", "title", repo, "main", "feature", "main", 1, notes)
+	if body.Overview != nfcNote+"." {
+		t.Fatalf("Overview = %q, want %q", body.Overview, nfcNote+".")
 	}
 }

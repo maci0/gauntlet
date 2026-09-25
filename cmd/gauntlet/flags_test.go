@@ -1029,3 +1029,13 @@ func FuzzExpandAttachedValues(f *testing.F) {
 		}
 	})
 }
+
+func TestExpandAttachedValuesNonASCII(t *testing.T) {
+	fs, _ := buildFlagSet(&options{})
+	argv := []string{"-—help", "-éval", "-j4"}
+	got := expandAttachedValues(fs, argv)
+	want := []string{"-—help", "-éval", "-j", "4"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("expandAttachedValues(%v) = %v, want %v", argv, got, want)
+	}
+}
