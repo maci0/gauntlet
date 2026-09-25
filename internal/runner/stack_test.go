@@ -179,6 +179,14 @@ echo 'RESULT: changed=1'`)
 	if !strings.Contains(string(logBody), "pr create") {
 		t.Fatal("gh never created the PRs")
 	}
+	headBranch, headTip := r.StackHead()
+	b2Tip := gitOut(t, repo, "rev-parse", "refs/heads/"+b2)
+	if headBranch != b2 || headTip != b2Tip {
+		t.Fatalf("r.StackHead() = %q, %q; want %q, %q", headBranch, headTip, b2, b2Tip)
+	}
+	if got := r.StackPublished(); got != 2 {
+		t.Fatalf("r.StackPublished() = %d, want 2", got)
+	}
 }
 
 func TestStackedPRsCollapseNoChangeLayer(t *testing.T) {
@@ -461,6 +469,17 @@ func TestStackedPRsDirtyCheckoutNeedsConsentAndUsesRemoteBase(t *testing.T) {
 	if dirty.Remote != "origin" || dirty.Base != "main" ||
 		!strings.Contains(dirty.Error(), "main.go") || !strings.Contains(dirty.Error(), "untracked.txt") {
 		t.Fatalf("dirty stack detail = %+v (%v)", dirty, dirty)
+	}
+	display := dirty.DisplayPaths()
+	if len(display) != 2 || display[0] != "main.go" || display[1] != "untracked.txt" {
+		t.Fatalf("dirty.DisplayPaths() = %v, want [main.go, untracked.txt]", display)
+	}
+	var nilDirty *StackDirtyError
+	if nilDirty.DisplayPaths() != nil {
+		t.Fatalf("nil.DisplayPaths() = %v, want nil", nilDirty.DisplayPaths())
+	}
+	if nilDirty.Error() != "stacked PR confirmation required" {
+		t.Fatalf("nil.Error() = %q, want default message", nilDirty.Error())
 	}
 
 	cfg.AllowDirtyStack = true

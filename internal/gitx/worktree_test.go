@@ -613,3 +613,37 @@ func TestRemovedWorktreeMethodsAreSafe(t *testing.T) {
 		t.Fatal("RenameBranch on removed worktree should return error")
 	}
 }
+
+func TestCleanWorktreeRoot(t *testing.T) {
+	r := newRepo(t)
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+
+	// CleanWorktreeRoot when worktreeRoot does not exist is a safe no-op
+	r.CleanWorktreeRoot()
+
+	// When worktreeRoot is empty, CleanWorktreeRoot removes it and its parent .gauntlet
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.CleanWorktreeRoot()
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("CleanWorktreeRoot failed to remove empty root %s", root)
+	}
+	gauntletDir := filepath.Dir(root)
+	if _, err := os.Stat(gauntletDir); !os.IsNotExist(err) {
+		t.Fatalf("CleanWorktreeRoot failed to remove empty parent %s", gauntletDir)
+	}
+
+	// When worktreeRoot contains remaining files, os.Remove fails safely and preserves them
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	keepFile := filepath.Join(root, "remaining.txt")
+	if err := os.WriteFile(keepFile, []byte("preserve me"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.CleanWorktreeRoot()
+	if _, err := os.Stat(keepFile); err != nil {
+		t.Fatalf("CleanWorktreeRoot deleted non-empty root content: %v", err)
+	}
+}

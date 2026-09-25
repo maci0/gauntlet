@@ -255,3 +255,25 @@ func TestNFC(t *testing.T) {
 		t.Fatalf("NFC(%q) = %q, want %q", ascii, got, ascii)
 	}
 }
+
+func TestIsASCII(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"", true},
+		{"hello", true},
+		{"a-z A-Z 0-9 !@#$%^&*()", true},
+		{"\x00\x1f\x7f", true},
+		{"\x80", false},
+		{"hello\x80world", false},
+		{"café", false},
+		{"日本語", false},
+		{"codex🚀", false},
+	}
+	for _, c := range cases {
+		if got := IsASCII(c.in); got != c.want {
+			t.Errorf("IsASCII(%q) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}

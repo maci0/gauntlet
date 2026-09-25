@@ -72,6 +72,24 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 	}
 }
 
+func TestReporterConsumeDrainsUntilClosed(t *testing.T) {
+	var out bytes.Buffer
+	r := &reporter{out: &out}
+	ch := make(chan runner.Event, 3)
+	ch <- runner.Event{Kind: runner.EvLog, Text: "first"}
+	ch <- runner.Event{Kind: runner.EvLog, Text: "second"}
+	ch <- runner.Event{Kind: runner.EvLog, Text: "third"}
+	close(ch)
+
+	r.Consume(ch)
+	got := out.String()
+	for _, want := range []string{"first", "second", "third"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Consume missing %q:\n%s", want, got)
+		}
+	}
+}
+
 // The prefix is the event's instant, not when the line was printed: a
 // buffered log would otherwise shift every timestamp, and a replay would
 // disagree with the live run.

@@ -309,3 +309,93 @@ func TestPullRebaseAbortsOnConflict(t *testing.T) {
 		t.Fatalf("repository left in rebase state after PullRebase error:\n%s", out)
 	}
 }
+
+func TestPushBranchCanPushBranchAndFetchBranch(t *testing.T) {
+	origin := newRepo(t)
+	cloneDir := t.TempDir()
+	gitOut(t, cloneDir, "clone", origin.Dir, ".")
+	gitIn(t, cloneDir, "config", "user.email", "test@example.invalid")
+	gitIn(t, cloneDir, "config", "user.name", "test")
+	r := Open(cloneDir)
+	ctx := context.Background()
+
+	baseTip, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// CanPushBranch succeeds for valid commit to new branch
+	if err := r.CanPushBranch(ctx, "origin", baseTip, "review/01-sec"); err != nil {
+		t.Fatalf("CanPushBranch failed: %v", err)
+	}
+	// CanPushBranch fails for nonexistent commit
+	if err := r.CanPushBranch(ctx, "origin", "nonexistent-source-ref", "review/01-sec"); err == nil {
+		t.Fatal("CanPushBranch on nonexistent commit should return error")
+	}
+	// CanPushBranch fails for invalid remote
+	if err := r.CanPushBranch(ctx, "bad-remote", baseTip, "review/01-sec"); err == nil {
+		t.Fatal("CanPushBranch with invalid remote should return error")
+	}
+
+	// Create and push branch
+	gitIn(t, cloneDir, "branch", "review/01-sec", baseTip)
+	if err := r.PushBranch(ctx, "origin", "review/01-sec"); err != nil {
+		t.Fatalf("PushBranch failed: %v", err)
+	}
+
+	// Verify remote has the branch
+	remoteTip, found, err := r.RemoteBranchTip(ctx, "origin", "review/01-sec")
+	if err != nil || !found || remoteTip != baseTip {
+		t.Fatalf("RemoteBranchTip = %q, %v, %v; want %q, true, nil", remoteTip, found, err, baseTip)
+	}
+
+	// Fetch branch into a second clone that does not have it yet
+	secondClone := t.TempDir()
+	gitOut(t, secondClone, "clone", origin.Dir, ".")
+	r2 := Open(secondClone)
+	if err := r2.FetchBranch(ctx, "origin", "review/01-sec"); err != nil {
+		t.Fatalf("FetchBranch failed: %v", err)
+	}
+	fetchedTip, err := r2.Tip(ctx, "refs/heads/review/01-sec")
+	if err != nil || fetchedTip != baseTip {
+		t.Fatalf("Tip after FetchBranch = %q, %v; want %q", fetchedTip, err, baseTip)
+	}
+}
+
+func TestPush(t *testing.T) {
+	origin := newRepo(t)
+	gitIn(t, origin.Dir, "config", "receive.denyCurrentBranch", "ignore")
+	cloneDir := t.TempDir()
+	gitOut(t, cloneDir, "clone", origin.Dir, ".")
+	gitIn(t, cloneDir, "config", "user.email", "test@example.invalid")
+	gitIn(t, cloneDir, "config", "user.name", "test")
+	r := Open(cloneDir)
+	ctx := context.Background()
+
+	// Commit a change in the clone
+	if err := os.WriteFile(filepath.Join(cloneDir, "pushed.txt"), []byte("content\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, cloneDir, "add", "pushed.txt")
+	gitIn(t, cloneDir, "commit", "-m", "push test commit")
+
+	localTip, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Push(ctx); err != nil {
+		t.Fatalf("Push failed: %v", err)
+	}
+
+	originTip := gitOut(t, origin.Dir, "rev-parse", "HEAD")
+	if originTip != localTip {
+		t.Fatalf("origin tip = %s, want %s after Push", originTip, localTip)
+	}
+
+	// Push with no upstream or unpushed branch without upstream fails
+	gitIn(t, cloneDir, "checkout", "-b", "no-upstream")
+	if err := r.Push(ctx); err == nil {
+		t.Fatal("Push on branch without upstream should return error")
+	}
+}

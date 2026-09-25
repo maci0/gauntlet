@@ -359,3 +359,43 @@ exit 2
 		t.Fatal("Create succeeded with no PR and a failed gh")
 	}
 }
+
+func TestAvailable(t *testing.T) {
+	t.Setenv("PATH", "")
+	if Available() {
+		t.Fatal("Available() = true with empty PATH")
+	}
+
+	dir := t.TempDir()
+	ghBin := filepath.Join(dir, "gh")
+	if err := os.WriteFile(ghBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", dir)
+	if !Available() {
+		t.Fatal("Available() = false with mock gh in PATH")
+	}
+
+	// Containment: relative or empty PATH components must not pick up a planted executable in cwd.
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	plantedDir := t.TempDir()
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
+	if err := os.Chdir(plantedDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile("gh", []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", "")
+	if Available() {
+		t.Fatal("Available() found planted gh in cwd with empty PATH")
+	}
+	t.Setenv("PATH", ":/nonexistent")
+	if Available() {
+		t.Fatal("Available() found planted gh in cwd via empty PATH component")
+	}
+}

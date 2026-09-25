@@ -1119,6 +1119,14 @@ func TestStackBranchNaming(t *testing.T) {
 	if got := StackLoopPrefix(1, 2, "sec-bolide"); got != prefix {
 		t.Fatalf("loop-1 prefix diverged from StackBranchPrefix: %q", got)
 	}
+	provLoop2 := StackLoopProvisionalBranch("a3f2c19deadbeef", 2, 0, "sec-bolide")
+	if provLoop2 != "review/02-01-sec-bolide-wip-a3f2c1" {
+		t.Fatalf("loop-2 provisional = %q", provLoop2)
+	}
+	finalLoop2 := StackLoopFinalBranch(2, 0, "sec-bolide", "fix(input)!: validate the request body")
+	if finalLoop2 != "review/02-01-sec-bolide-validate-the-request-body" {
+		t.Fatalf("loop-2 final = %q", finalLoop2)
+	}
 
 	// A subject with no usable topic leaves the layer on its provisional name.
 	if got := StackFinalBranch(0, "sec-review", "☃ ☃ ☃"); got != "" {
@@ -1296,5 +1304,32 @@ func TestBranchListingByPrefixAndRename(t *testing.T) {
 	// -m refuses to overwrite: a same-named branch holding work survives.
 	if err := r.RenameBranch(ctx, "review/01-sec-review-final", "review/01-sec-reviewer-topic"); err == nil {
 		t.Fatal("rename over an existing branch must fail")
+	}
+}
+
+func TestRealPath(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real_file.txt")
+	if err := os.WriteFile(target, []byte("data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Normal path resolves to its absolute path
+	if got := RealPath(target); got != target {
+		t.Fatalf("RealPath(%q) = %q, want %q", target, got, target)
+	}
+
+	// Symlink resolves to real target
+	link := filepath.Join(dir, "link_to_file")
+	if err := os.Symlink(target, link); err == nil {
+		if got := RealPath(link); got != target {
+			t.Fatalf("RealPath(symlink %q) = %q, want %q", link, got, target)
+		}
+	}
+
+	// Non-existent path returns absolute path
+	missing := filepath.Join(dir, "missing.txt")
+	if got := RealPath(missing); got != missing {
+		t.Fatalf("RealPath(missing %q) = %q, want %q", missing, got, missing)
 	}
 }

@@ -91,6 +91,9 @@ func TestStateRootAgreement(t *testing.T) {
 	if got := agent.CustomFilePath(); got != filepath.Join(wantRel, "agents.json") {
 		t.Fatalf("CustomFilePath = %q, want agents.json under %q", got, wantRel)
 	}
+	if got := journal.StateDir(); got != filepath.Join(wantRel, "state") {
+		t.Fatalf("journal.StateDir = %q, want %q", got, filepath.Join(wantRel, "state"))
+	}
 }
 
 // resolveDirs turns flags into absolute directories. A quoted glob still

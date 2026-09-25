@@ -2326,3 +2326,82 @@ func TestAllProbeNames(t *testing.T) {
 		}
 	}
 }
+
+func TestAllNamesAndUnregister(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	names := AllNames()
+	if len(names) == 0 {
+		t.Fatal("AllNames returned empty slice")
+	}
+	if !slices.IsSorted(names) {
+		t.Fatalf("AllNames must be sorted: %v", names)
+	}
+	for _, v := range Valid {
+		if !slices.Contains(names, v) {
+			t.Errorf("AllNames missing built-in %q", v)
+		}
+	}
+
+	if err := Register("zzz-agent", Custom{Argv: []string{"zzz", "{prompt}"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("aaa-agent", Custom{Argv: []string{"aaa", "{prompt}"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	withCustom := AllNames()
+	if !slices.IsSorted(withCustom) {
+		t.Fatalf("AllNames with custom agents must be sorted: %v", withCustom)
+	}
+	if !slices.Contains(withCustom, "zzz-agent") || !slices.Contains(withCustom, "aaa-agent") {
+		t.Fatalf("AllNames missing registered custom agents: %v", withCustom)
+	}
+
+	Unregister("aaa-agent")
+	afterUnregister := AllNames()
+	if slices.Contains(afterUnregister, "aaa-agent") {
+		t.Fatal("Unregister did not remove aaa-agent from AllNames")
+	}
+	if _, ok := CustomDef("aaa-agent"); ok {
+		t.Fatal("CustomDef still found aaa-agent after Unregister")
+	}
+	if !slices.Contains(afterUnregister, "zzz-agent") {
+		t.Fatal("Unregister removed unrelated zzz-agent")
+	}
+}
+
+func TestResolveMany(t *testing.T) {
+	if got := ResolveMany(nil); len(got) != 0 {
+		t.Fatalf("ResolveMany(nil) = %v, want empty map", got)
+	}
+	if got := ResolveMany([]string{}); len(got) != 0 {
+		t.Fatalf("ResolveMany([]) = %v, want empty map", got)
+	}
+
+	dir := t.TempDir()
+	bin1 := filepath.Join(dir, "mock-agent-1")
+	bin2 := filepath.Join(dir, "mock-agent-2")
+	if err := os.WriteFile(bin1, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin2, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	names := []string{"mock-agent-1", "mock-agent-2", "definitely-not-installed-binary"}
+	for i := range 40 {
+		names = append(names, "nonexistent-"+strconv.Itoa(i))
+	}
+
+	resolved := ResolveMany(names)
+	if p, ok := resolved["mock-agent-1"]; !ok || p != bin1 {
+		t.Errorf("ResolveMany missing mock-agent-1: got %q, want %q", p, bin1)
+	}
+	if p, ok := resolved["mock-agent-2"]; !ok || p != bin2 {
+		t.Errorf("ResolveMany missing mock-agent-2: got %q, want %q", p, bin2)
+	}
+	if _, ok := resolved["definitely-not-installed-binary"]; ok {
+		t.Error("ResolveMany resolved nonexistent binary")
+	}
+}

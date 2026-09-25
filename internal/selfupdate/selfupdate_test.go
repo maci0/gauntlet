@@ -242,6 +242,15 @@ func TestAssetName(t *testing.T) {
 
 func TestNewerThan(t *testing.T) {
 	rel := &Release{TagName: "v1.2.3"}
+	if got := rel.Version(); got != "1.2.3" {
+		t.Fatalf("rel.Version() = %q, want %q", got, "1.2.3")
+	}
+	if got := (&Release{TagName: "1.2.3"}).Version(); got != "1.2.3" {
+		t.Fatalf("Version() without v = %q, want %q", got, "1.2.3")
+	}
+	if got := (&Release{}).Version(); got != "" {
+		t.Fatalf("empty Release.Version() = %q, want empty", got)
+	}
 	if !rel.NewerThan("1.0.0") {
 		t.Fatal("a different version should be installable")
 	}
