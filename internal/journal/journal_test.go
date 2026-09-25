@@ -847,6 +847,49 @@ func TestHistoryCountsAPullRequestReviewsLines(t *testing.T) {
 	}
 }
 
+// History must ignore duplicate merge and pull_request events so replayed or
+// retried publication does not inflate Changed beyond the number of runs.
+func TestHistoryIdempotentOnDuplicateEvents(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w/dup", "review": "sec-review", "status": "ok"},
+		{"ev": "pull_request", "dir": "/w/dup", "review": "sec-review", "status": "ok",
+			"branch": "gauntlet/s/sec-review", "ins": 9, "del": 3},
+		{"ev": "pull_request", "dir": "/w/dup", "review": "sec-review", "status": "ok",
+			"branch": "gauntlet/s/sec-review", "ins": 9, "del": 3},
+		{"ev": "review_end", "dir": "/w/dup", "review": "perf-review", "status": "ok"},
+		{"ev": "merge", "dir": "/w/dup", "review": "perf-review", "status": "ok",
+			"branch": "gauntlet/p/perf-review", "ins": 4, "del": 1},
+		{"ev": "merge", "dir": "/w/dup", "review": "perf-review", "status": "ok",
+			"branch": "gauntlet/p/perf-review", "ins": 4, "del": 1},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	if err := j.Close(Summary{Dirs: []string{"/w/dup"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/dup")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("sec-review in /w/dup = %+v, want Runs:1 Changed:1", h)
+	}
+	if h := got["perf-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("perf-review in /w/dup = %+v, want Runs:1 Changed:1", h)
+	}
+}
+
 // A review that never finished is not a run the suggester should learn from.
 // Counting skips, failures, timeouts, and interrupts as "finished without
 // changing a line" would demote reviews the operator cancelled or that never

@@ -1394,6 +1394,10 @@ func TestBranchListingByPrefixAndRename(t *testing.T) {
 	if _, err := r.Tip(ctx, "refs/heads/review/01-sec-review-final"); err != nil {
 		t.Fatalf("renamed branch missing: %v", err)
 	}
+	// Renaming to the same name is a no-op.
+	if err := r.RenameBranch(ctx, "review/01-sec-review-final", "review/01-sec-review-final"); err != nil {
+		t.Fatalf("renaming to the same name must succeed: %v", err)
+	}
 	// -m refuses to overwrite: a same-named branch holding work survives.
 	if err := r.RenameBranch(ctx, "review/01-sec-review-final", "review/01-sec-reviewer-topic"); err == nil {
 		t.Fatal("rename over an existing branch must fail")

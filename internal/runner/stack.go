@@ -551,8 +551,8 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	}
 	if pass == stackRecoverCurrent {
 		r.st.Add(res)
+		r.publishPullRequest(loopNo, review, branch, parent, prURL, true, res)
 	}
-	r.publishPullRequest(loopNo, review, branch, parent, prURL, true, res)
 	return branch, branchTip, true, nil
 }
 

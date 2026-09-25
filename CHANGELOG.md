@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Avoid re-publishing pull request events and double-counting line changes when resuming stacked pull requests, make branch renames idempotent when target matches source, and guard review history changed counts against duplicate merge and pull request events.
 - Skip review confirmation prompts during `--list` and `--dry-run` planning, parse stream JSON role and type values case-insensitively, ignore empty queries and candidates in fuzzy matching, and remove nonexistent review names from heuristic rules.
 - Guard against integer overflow and truncation in backoff jitter and token reasoning percentages, and protect dashboard meters, rate formatters, and elapsed durations against NaN and unrepresentable floats.
 - Guard dashboard chart rendering and note truncation against non-positive bounds, and handle nil receivers in usage tails and release metadata.

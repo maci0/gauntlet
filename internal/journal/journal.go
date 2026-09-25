@@ -1122,8 +1122,10 @@ func History(dir string) (map[string]ReviewHistory, error) {
 				}
 				if ins+del > 0 {
 					h := out[e.Review]
-					h.Changed++
-					out[e.Review] = h
+					if h.Changed < h.Runs {
+						h.Changed++
+						out[e.Review] = h
+					}
 				}
 			}
 		}

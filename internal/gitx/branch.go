@@ -409,6 +409,9 @@ func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix stri
 // holding real work and reports the failure. It takes wtMu like DeleteBranch:
 // a rename walks the registered worktrees to follow a checked-out branch.
 func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
+	if from == to {
+		return nil
+	}
 	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", to); err != nil {
 		return fmt.Errorf("invalid stack branch %q: %w", to, err)
 	}

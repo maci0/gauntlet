@@ -430,7 +430,7 @@ echo 'RESULT: changed=1'`)
 	}
 
 	cfg.ResumeQueue = r.Pending()
-	runQuiet(t, cfg)
+	_, resumeEvents := runRecorded(t, cfg)
 	started, _ := os.ReadFile(marker)
 	if strings.Count(string(started), "x") != 2 {
 		t.Fatalf("reload reran the completed prefix: %q", started)
@@ -438,6 +438,11 @@ echo 'RESULT: changed=1'`)
 	logBody, _ := os.ReadFile(logPath)
 	if strings.Count(string(logBody), "pr create") != 2 {
 		t.Fatalf("reload duplicated or missed a PR:\n%s", logBody)
+	}
+	for _, ev := range resumeEvents {
+		if ev.Kind == EvPullRequest && ev.Review == "first-review" {
+			t.Fatal("resumed run published EvPullRequest for already-completed prefix layer")
+		}
 	}
 }
 
