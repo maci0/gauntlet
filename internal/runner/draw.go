@@ -95,7 +95,11 @@ func seedOrClock(seed uint64, now func() time.Time) uint64 {
 	if now == nil {
 		now = time.Now
 	}
-	n := uint64(now().UnixNano())
+	t := now()
+	if t.IsZero() {
+		return 1
+	}
+	n := uint64(t.UnixNano())
 	if n == 0 {
 		n = 1
 	}

@@ -901,6 +901,12 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 	if got := thinkGlyph(now, time.Time{}); got != "◌" {
 		t.Fatalf("a never-thinking lane reads %q, want the resting glyph", got)
 	}
+	if got := thinkGlyph(time.Time{}, last); got != "◌" {
+		t.Fatalf("a zero clock reads %q, want the resting glyph", got)
+	}
+	if got := thinkGlyph(last.Add(-time.Second), last); got != "◌" {
+		t.Fatalf("clock step backwards reads %q, want the resting glyph", got)
+	}
 	if got := thinkGlyph(now.Add(thinkingStill+time.Second), last); got != "◌" {
 		t.Fatalf("a finished thought reads %q, want the resting glyph", got)
 	}

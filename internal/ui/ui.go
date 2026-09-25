@@ -962,7 +962,7 @@ func motionOff() bool {
 // Under GAUNTLET_NO_ANIMATION the turning glyph holds one frame instead, so
 // the state it carries survives the freeze.
 func thinkGlyph(now, last time.Time) string {
-	if last.IsZero() || now.Sub(last) > thinkingStill {
+	if last.IsZero() || now.IsZero() || now.Before(last) || now.Sub(last) > thinkingStill {
 		return "◌"
 	}
 	if motionOff() {

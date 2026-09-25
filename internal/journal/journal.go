@@ -993,22 +993,17 @@ func locateRun(runID string) (string, bool, error) {
 
 // shardFromRunID is the date directory NewRunID files a journal under:
 // YYYY-MM-DD from the leading YYYYMMDDTHHMMSSZ of a generated id. Anything
-// else (a custom name, a truncated stamp) returns "" so locateRun scans.
+// else (a custom name, a truncated stamp, an invalid calendar date or leap day)
+// returns "" so locateRun scans.
 func shardFromRunID(id string) string {
 	if len(id) < 16 || id[8] != 'T' || id[15] != 'Z' {
 		return ""
 	}
-	for i := range 8 {
-		if id[i] < '0' || id[i] > '9' {
-			return ""
-		}
+	t, err := time.Parse("20060102T150405Z", id[:16])
+	if err != nil {
+		return ""
 	}
-	for i := 9; i < 15; i++ {
-		if id[i] < '0' || id[i] > '9' {
-			return ""
-		}
-	}
-	return id[:4] + "-" + id[4:6] + "-" + id[6:8]
+	return t.UTC().Format("2006-01-02")
 }
 
 // ReviewHistory is what past runs did with one review in one directory.

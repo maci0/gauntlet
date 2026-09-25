@@ -552,10 +552,15 @@ func TestShardFromRunID(t *testing.T) {
 	for _, id := range []string{
 		"", "broken-run", "20260825", "20260825T131500",
 		"20260825X131500Z-1", "abcdefghT131500Z-1", "20260825TxxxxxxZ-1",
+		"20260230T131500Z-1", "20250229T131500Z-1", "20261301T131500Z-1",
+		"20260001T131500Z-1", "20260100T131500Z-1", "20260431T131500Z-1",
 	} {
 		if got := shardFromRunID(id); got != "" {
 			t.Errorf("%q: got shard %q, want empty so locateRun scans", id, got)
 		}
+	}
+	if got := shardFromRunID("20240229T120000Z-1"); got != "2024-02-29" {
+		t.Fatalf("leap day run id: shard %q, want 2024-02-29", got)
 	}
 }
 

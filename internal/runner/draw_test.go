@@ -116,6 +116,12 @@ func TestSeedOrClock(t *testing.T) {
 		t.Fatalf("seedOrClock with zero clock = %d, want 1", got)
 	}
 
+	// Zero Time falls back to 1 without invoking undefined UnixNano behavior.
+	uninitClock := func() time.Time { return time.Time{} }
+	if got := seedOrClock(0, uninitClock); got != 1 {
+		t.Fatalf("seedOrClock with uninitialized Time = %d, want 1", got)
+	}
+
 	// Nil clock uses time.Now and returns non-zero.
 	if got := seedOrClock(0, nil); got == 0 {
 		t.Fatal("seedOrClock with nil clock returned 0")
