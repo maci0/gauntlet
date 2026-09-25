@@ -1039,3 +1039,46 @@ func TestExpandAttachedValuesNonASCII(t *testing.T) {
 		t.Fatalf("expandAttachedValues(%v) = %v, want %v", argv, got, want)
 	}
 }
+
+func TestMalformedCustomAgentsDoesNotBlockNonAgentCommands(t *testing.T) {
+	home := t.TempDir()
+	badJSON := filepath.Join(home, "agents.json")
+	if err := os.WriteFile(badJSON, []byte("{ malformed json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_HOME", home)
+
+	for _, argv := range [][]string{
+		{"version"},
+		{"-V"},
+		{"runs"},
+		{"show", "20260825T000000Z-abcd"},
+		{"update"},
+	} {
+		o, err := parseFlags(argv)
+		if err != nil {
+			t.Fatalf("parseFlags(%v) failed with malformed agents.json: %v", argv, err)
+		}
+		if o == nil {
+			t.Fatalf("parseFlags(%v) returned nil options", argv)
+		}
+	}
+
+	// Commands that inspect or run agents must still reject malformed custom definitions.
+	if _, err := parseFlags([]string{"doctor"}); err == nil {
+		t.Fatal("doctor should fail with malformed agents.json")
+	}
+	if _, err := parseFlags([]string{"--once"}); err == nil {
+		t.Fatal("run should fail with malformed agents.json")
+	}
+}
+
+func TestVersionWinsOverScopingWithZeroLimit(t *testing.T) {
+	o, err := parseFlags([]string{"-V", "--limit", "0"})
+	if err != nil {
+		t.Fatalf("-V with --limit 0 should succeed, got %v", err)
+	}
+	if o.command != "version" {
+		t.Fatalf("command = %q, want version", o.command)
+	}
+}

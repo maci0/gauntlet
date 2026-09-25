@@ -418,6 +418,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
 		return nil, err
 	}
+	if o.command == "version" {
+		if err := validateLog(o, fs); err != nil {
+			return nil, err
+		}
+		return o, nil
+	}
 
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
 		exp, err := gauntlethome.ExpandPath(h)
@@ -429,56 +435,58 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 	}
 
-	// A file of definitions first, then the command line, which wins.
-	if path := agent.CustomFilePath(); path != "" {
-		if err := agent.LoadCustomFile(path); err != nil {
-			return nil, err
+	if o.usesAgents() {
+		// A file of definitions first, then the command line, which wins.
+		if path := agent.CustomFilePath(); path != "" {
+			if err := agent.LoadCustomFile(path); err != nil {
+				return nil, err
+			}
 		}
-	}
-	// A repeated --agent-cmd with a different definition is a typo, not a
-	// choice: the last one would silently win, which is how --bin came to
-	// refuse its own duplicates. The file loaded above is still overridden on
-	// purpose — the command line wins for its run — so this counts only what
-	// the command line itself said. Checking every entry before registering
-	// any also keeps a bad list from half-defining agents.
-	type namedDef struct {
-		raw  string
-		def  agent.Custom
-		name string
-	}
-	if isFlagSet(fs, "agent-cmd") && len(agentCmds) == 0 {
-		return nil, errors.New("--agent-cmd is empty: want NAME=ARGV")
-	}
-	defs := make([]namedDef, 0, len(agentCmds))
-	cmdDefs := map[string]string{}
-	for _, c := range agentCmds {
-		name, def, err := agent.ParseAgentCmd(c)
-		if err != nil {
-			return nil, fmt.Errorf("--agent-cmd %s: %w", c, err)
+		// A repeated --agent-cmd with a different definition is a typo, not a
+		// choice: the last one would silently win, which is how --bin came to
+		// refuse its own duplicates. The file loaded above is still overridden on
+		// purpose — the command line wins for its run — so this counts only what
+		// the command line itself said. Checking every entry before registering
+		// any also keeps a bad list from half-defining agents.
+		type namedDef struct {
+			raw  string
+			def  agent.Custom
+			name string
 		}
-		if prev, dup := cmdDefs[name]; dup && prev != c {
-			return nil, fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
+		if isFlagSet(fs, "agent-cmd") && len(agentCmds) == 0 {
+			return nil, errors.New("--agent-cmd is empty: want NAME=ARGV")
 		}
-		cmdDefs[name] = c
-		defs = append(defs, namedDef{raw: c, def: def, name: name})
-	}
-	for _, d := range defs {
-		if err := agent.Register(d.name, d.def); err != nil {
-			return nil, fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
+		defs := make([]namedDef, 0, len(agentCmds))
+		cmdDefs := map[string]string{}
+		for _, c := range agentCmds {
+			name, def, err := agent.ParseAgentCmd(c)
+			if err != nil {
+				return nil, fmt.Errorf("--agent-cmd %s: %w", c, err)
+			}
+			if prev, dup := cmdDefs[name]; dup && prev != c {
+				return nil, fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
+			}
+			cmdDefs[name] = c
+			defs = append(defs, namedDef{raw: c, def: def, name: name})
 		}
-	}
-	if o.openCodeDB && !enableOpenCodeDB() {
-		return nil, errors.New("--opencode-db needs a build with -tags sqlite")
-	}
-	// A definition may say where its agent keeps transcripts, which is what
-	// gives a non-built-in agent live token counts.
-	for _, name := range agent.CustomNames() {
-		def, ok := agent.CustomDef(name)
-		if !ok || def.Usage == nil {
-			continue
+		for _, d := range defs {
+			if err := agent.Register(d.name, d.def); err != nil {
+				return nil, fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
+			}
 		}
-		if err := registerTranscript(name, def.Usage); err != nil {
-			return nil, err
+		if o.openCodeDB && !enableOpenCodeDB() {
+			return nil, errors.New("--opencode-db needs a build with -tags sqlite")
+		}
+		// A definition may say where its agent keeps transcripts, which is what
+		// gives a non-built-in agent live token counts.
+		for _, name := range agent.CustomNames() {
+			def, ok := agent.CustomDef(name)
+			if !ok || def.Usage == nil {
+				continue
+			}
+			if err := registerTranscript(name, def.Usage); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -743,21 +751,34 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		o.promptDir = expanded
 	}
-	if isFlagSet(fs, "log") {
-		o.logFile = strings.TrimSpace(o.logFile)
-		if o.logFile == "" {
-			return nil, errors.New("--log is empty")
-		}
-		expanded, err := gauntlethome.ExpandPath(o.logFile)
-		if err != nil {
-			return nil, fmt.Errorf("--log: %w", err)
-		}
-		if fi, err := os.Stat(expanded); err == nil && fi.IsDir() {
-			return nil, fmt.Errorf("--log %s: is a directory", expanded)
-		}
-		o.logFile = expanded
+	if err := validateLog(o, fs); err != nil {
+		return nil, err
 	}
 	return o, nil
+}
+
+func validateLog(o *options, fs *flag.FlagSet) error {
+	if !isFlagSet(fs, "log") {
+		return nil
+	}
+	o.logFile = strings.TrimSpace(o.logFile)
+	if o.logFile == "" {
+		return errors.New("--log is empty")
+	}
+	expanded, err := gauntlethome.ExpandPath(o.logFile)
+	if err != nil {
+		return fmt.Errorf("--log: %w", err)
+	}
+	if fi, err := os.Stat(expanded); err == nil && fi.IsDir() {
+		return fmt.Errorf("--log %s: is a directory", expanded)
+	}
+	o.logFile = expanded
+	return nil
+}
+
+// usesAgents reports whether this command can launch or inspect agent definitions.
+func (o *options) usesAgents() bool {
+	return o.command == "" || o.command == "pick" || o.command == "doctor"
 }
 
 // needsAgents reports whether this invocation has to find a launchable agent

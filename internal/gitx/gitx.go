@@ -366,12 +366,26 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 var gitOutputMax = 32 << 20
 
 // gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
-// operator already exported one, GIT_SSH_COMMAND=ssh. Git's own helpers (ssh,
-// a credential helper, diffie) inherit this, so a planted ./ssh cannot run.
+// operator already exported a non-empty one, GIT_SSH_COMMAND=ssh. Git's own
+// helpers (ssh, a credential helper, diffie) inherit this, so a planted ./ssh
+// cannot run.
 func gitEnv() []string {
 	out := runx.AbsPATHEnv()
-	if _, set := os.LookupEnv("GIT_SSH_COMMAND"); !set {
+	v, set := os.LookupEnv("GIT_SSH_COMMAND")
+	if !set {
 		out = append(out, "GIT_SSH_COMMAND=ssh")
+	} else if strings.TrimSpace(v) == "" {
+		replaced := false
+		for i, kv := range out {
+			if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
+				out[i] = "GIT_SSH_COMMAND=ssh"
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			out = append(out, "GIT_SSH_COMMAND=ssh")
+		}
 	}
 	return out
 }

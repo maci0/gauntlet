@@ -251,6 +251,24 @@ func TestPlantedSSHOnRelativePATHDoesNotRun(t *testing.T) {
 	}
 }
 
+func TestEmptyGitSSHCommandDefaultsToSSH(t *testing.T) {
+	for _, val := range []string{"", "   "} {
+		t.Setenv("GIT_SSH_COMMAND", val)
+		env := gitEnv()
+		found := false
+		for _, kv := range env {
+			if kv == "GIT_SSH_COMMAND=ssh" {
+				found = true
+			} else if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
+				t.Fatalf("unexpected GIT_SSH_COMMAND entry: %q", kv)
+			}
+		}
+		if !found {
+			t.Fatalf("GIT_SSH_COMMAND=%q did not default to GIT_SSH_COMMAND=ssh", val)
+		}
+	}
+}
+
 func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
 	listing := strings.Join([]string{
 		"filter.evil.smudge=touch pwned",
