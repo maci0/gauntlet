@@ -30,6 +30,12 @@ func TestClosest(t *testing.T) {
 			t.Errorf("Closest(%q) = %q, want %q", tt.want, got, tt.got)
 		}
 	}
+	if got := Closest("", []string{"a", "b", "c"}); got != "" {
+		t.Errorf("Closest with empty query returned %q, want empty", got)
+	}
+	if got := Closest("a", []string{"", "something-long"}); got != "" {
+		t.Errorf("Closest with empty candidate returned %q, want empty", got)
+	}
 }
 
 func TestClosestNonASCII(t *testing.T) {

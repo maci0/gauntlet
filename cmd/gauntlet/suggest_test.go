@@ -228,3 +228,30 @@ func renameDir(t *testing.T, dir, name string) string {
 	}
 	return next
 }
+
+// --dry-run and --list never run reviews, so they must not prompt for
+// confirmation before displaying their output.
+func TestSuggestDryRunAndListDoNotAskForConfirmation(t *testing.T) {
+	for _, mode := range []string{"dry-run", "list"} {
+		t.Run(mode, func(t *testing.T) {
+			d, opts := suggestFixture(t, `echo "RELEVANT: sec-review: has auth code"`)
+			opts.yes = false
+			if mode == "dry-run" {
+				opts.dryRun = true
+			} else {
+				opts.list = true
+			}
+			var out bytes.Buffer
+			err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{})
+			if err != nil {
+				t.Fatalf("mode %s failed with: %v", mode, err)
+			}
+			if strings.Contains(out.String(), "Run these") || strings.Contains(out.String(), "[Y/n]") {
+				t.Fatalf("mode %s prompted for confirmation:\n%s", mode, out.String())
+			}
+			if len(d.reviews) != 1 || d.reviews[0] != "sec-review" {
+				t.Fatalf("mode %s scheduled %v, want sec-review", mode, d.reviews)
+			}
+		})
+	}
+}

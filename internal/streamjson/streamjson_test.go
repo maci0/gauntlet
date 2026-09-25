@@ -94,6 +94,10 @@ func TestToolPayloadsDoNotContributeAssistantOutput(t *testing.T) {
 		`{"content":[{"text":"fixture text","output_tokens":999}],"type":"tool_result"}`,
 		`{"content":"fixture text","role":"tool","usage":{"output_tokens":999}}`,
 		`{"message":{"content":"fixture text","role":"user"},"type":"user"}`,
+		`{"content":"fixture text","role":"USER","usage":{"output_tokens":999}}`,
+		`{"content":"fixture text","role":"TOOL","usage":{"output_tokens":999}}`,
+		`{"type":"TOOL_USE","input":{"text":"fixture text","output_tokens":999}}`,
+		`{"content":[{"text":"fixture text","output_tokens":999}],"type":"TOOL_RESULT"}`,
 	} {
 		line := `{"type":"assistant","message":{"content":[{"type":"text","text":"done"},` + payload + `],"usage":{"output_tokens":12}}}`
 		ev, ok := Parse([]byte(line))

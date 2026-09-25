@@ -288,9 +288,11 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			total += len(named)
 		}
 	}
-	if !confirm(out, opts, total) {
-		fmt.Fprintln(out, "Aborted.")
-		return errAborted
+	if !opts.list && !opts.dryRun {
+		if !confirm(out, opts, total) {
+			fmt.Fprintln(out, "Aborted.")
+			return errAborted
+		}
 	}
 	for i, d := range runs {
 		var scheduled []string

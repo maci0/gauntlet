@@ -32,6 +32,9 @@ func NFC(s string) string {
 // from looking like several edits' worth of typos.
 func Closest(want string, candidates []string) string {
 	wantNorm := NFC(want)
+	if wantNorm == "" {
+		return ""
+	}
 	var wantArr [32]rune
 	wantRunes := foldRunesInto(wantNorm, wantArr[:0])
 	best, bestD := "", distance+1
@@ -41,6 +44,9 @@ func Closest(want string, candidates []string) string {
 	candBuf := candArr[:0]
 	for _, c := range candidates {
 		candNorm := NFC(c)
+		if candNorm == "" {
+			continue
+		}
 		candLen := len(c)
 		if !IsASCII(c) {
 			candLen = utf8.RuneCountInString(candNorm)

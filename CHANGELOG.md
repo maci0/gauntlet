@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Skip review confirmation prompts during `--list` and `--dry-run` planning, parse stream JSON role and type values case-insensitively, ignore empty queries and candidates in fuzzy matching, and remove nonexistent review names from heuristic rules.
 - Guard against integer overflow and truncation in backoff jitter and token reasoning percentages, and protect dashboard meters, rate formatters, and elapsed durations against NaN and unrepresentable floats.
 
 - Bound narrow text trimming and directory labels in the dashboard to non-negative widths, avoid splitting multibyte arguments in attached flag values, and normalize stacked pull request overview notes to NFC.

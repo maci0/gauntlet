@@ -196,10 +196,10 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 		switch v := tok.(type) {
 		case string:
 			if lower == "type" {
-				typeStr = v
+				typeStr = strings.ToLower(v)
 			}
 			if lower == "role" {
-				role = v
+				role = strings.ToLower(v)
 			}
 			if textKeys[lower] || thinkingTextKeys[lower] {
 				fields = append(fields, objField{key: lower, str: v, hasStr: true})

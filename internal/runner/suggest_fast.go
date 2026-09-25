@@ -303,7 +303,7 @@ var fastRules = []rule{
 	// padded, sloppily typed, or carrying a vulnerability.
 	{"source files to read", weightNormal, present(func(s signals) bool { return s.files > 0 }),
 		[]string{"code-review", "sec-review", "minimalism-review", "slop-review",
-			"lint-review", "functionality-review", "structure-review"}},
+			"lint-review", "functionality-review"}},
 	{"a test suite", weightNormal, present(hasTests), []string{"test-review", "dst-review"}},
 	{"no tests found anywhere in the tree", weightStrong, absent(hasTests),
 		[]string{"test-review", "fuzz-review"}},
@@ -312,7 +312,7 @@ var fastRules = []rule{
 		[]string{"doc-review", "specs-review"}},
 	{"CI workflows", weightNormal, present(hasCI), []string{"infra-review", "build-review"}},
 	{"no CI configuration", weightNormal, absent(hasCI), []string{"build-review", "release-review"}},
-	{"a linter configuration", weightNormal, present(hasLinter), []string{"lint-review", "style-review"}},
+	{"a linter configuration", weightNormal, present(hasLinter), []string{"lint-review"}},
 	{"a Dockerfile or compose file", weightStrong, present(func(s signals) bool {
 		return s.anyName("dockerfile", "containerfile", "docker-compose.yml", "compose.yaml", "compose.yml")
 	}), []string{"container-review"}},
@@ -383,7 +383,7 @@ var fastRules = []rule{
 	}), []string{"sec-review", "privacy-review"}},
 	{"a tree with many parts", weightNormal, present(func(s signals) bool {
 		return s.files >= archMinFiles || s.anyPath("packages", "services", "apps", "crates", "modules", "cmd")
-	}), []string{"arch-review", "abstractions-review", "structure-review"}},
+	}), []string{"arch-review"}},
 
 	// What the files say inside. Directory names are a guess about a codebase;
 	// what it imports is a fact about it.
