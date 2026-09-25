@@ -193,7 +193,7 @@ type AgentSummary struct {
 // TokensPerSec is the agent's throughput, or 0 when there is nothing to divide
 // by. Sub-second totals make any rate noise, so they report 0.
 func (a AgentSummary) TokensPerSec() float64 {
-	if a.Tokens == 0 || a.Elapsed < time.Second {
+	if a.Tokens <= 0 || a.Elapsed < time.Second {
 		return 0
 	}
 	return float64(a.Tokens) / a.Elapsed.Seconds()

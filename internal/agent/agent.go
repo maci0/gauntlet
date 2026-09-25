@@ -485,7 +485,7 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = splice(cmd, flagInsertAt(spec.Tool),
 			[]string{"--add-dir", opts.Dir})
 	}
-	if opts.Binary != "" {
+	if opts.Binary != "" && len(cmd) > 0 {
 		cmd[0] = opts.Binary
 	} else if len(cmd) > 0 && (strings.HasPrefix(cmd[0], "~") || strings.Contains(cmd[0], "$")) {
 		expanded, err := gauntlethome.ExpandPath(cmd[0])

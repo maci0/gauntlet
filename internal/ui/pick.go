@@ -165,6 +165,9 @@ type picker struct {
 const optSuggestAgent = 1
 
 func newPicker(cfg PickConfig) *picker {
+	if cfg.CPUs < 1 {
+		cfg.CPUs = 1
+	}
 	seen := map[string]bool{}
 	knownReviews := []string{}
 	for _, g := range cfg.Groups {

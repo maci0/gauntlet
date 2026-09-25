@@ -658,7 +658,8 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 	free := max(m.h-chrome, 8)
 	lanes = clampi(len(m.laneOrd), 1, 8)
 	act = clampi(free/5, 3, 8)
-	gridRows := (len(m.order) + m.gridCols() - 1) / max(m.gridCols(), 1)
+	cols := max(m.gridCols(), 1)
+	gridRows := (len(m.order) + cols - 1) / cols
 	grid = clampi(gridRows, 1, max(free-act-lanes-3, 1))
 	feed = free - act - lanes - grid
 	if feed < 3 {
