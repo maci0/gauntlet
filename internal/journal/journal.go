@@ -682,7 +682,7 @@ func writeIndex(rows []Summary) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
-	sweepStaleTemps(Home(), ".index.jsonl-", 24*time.Hour)
+	gauntlethome.SweepStaleTemps(Home(), ".index.jsonl-", 24*time.Hour)
 	tmp, err := os.CreateTemp(Home(), ".index.jsonl-*")
 	if err != nil {
 		return err
@@ -711,25 +711,6 @@ func writeIndex(rows []Summary) error {
 		return err
 	}
 	return nil
-}
-
-func sweepStaleTemps(dir, prefix string, age time.Duration) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-age)
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
-			continue
-		}
-		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, name))
-	}
 }
 
 // indexEvent is the subset of a journal line summarizeFile and History read.

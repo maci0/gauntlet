@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/runx"
 )
 
@@ -136,7 +137,7 @@ func writeDshPatch(key, body string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	sweepStaleTemps(dir, "."+key+".yml-", 24*time.Hour)
+	gauntlethome.SweepStaleTemps(dir, "."+key+".yml-", 24*time.Hour)
 	path := filepath.Join(dir, key+".yml")
 	tmp, err := os.CreateTemp(dir, "."+key+".yml-*")
 	if err != nil {
@@ -161,23 +162,4 @@ func writeDshPatch(key, body string) (string, error) {
 	}
 	dshPatches[key] = path
 	return path, nil
-}
-
-func sweepStaleTemps(dir, prefix string, age time.Duration) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-age)
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
-			continue
-		}
-		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, name))
-	}
 }

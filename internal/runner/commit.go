@@ -205,18 +205,14 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		if err := unfinishedCommit(ctx, r.repo, r.cfg.OwnArtifacts); err != nil {
 			r.log("%v", err)
 			status = StatusFail
-		}
-	}
-	if status == StatusOK {
-		if _, err := r.repo.StripAITrailers(ctx, before); err != nil {
+		} else if _, err := r.repo.StripAITrailers(ctx, before); err != nil {
 			r.log("Cannot strip AI trailers after the commit step: %v", err)
 			status = StatusFail
-		}
-	}
-	if status == StatusOK && r.cfg.Push {
-		if err := pushAfterCommit(ctx, r.repo, r.cfg.Yolo); err != nil {
-			r.log("Push after the commit step failed: %v", err)
-			status = StatusFail
+		} else if r.cfg.Push {
+			if err := pushAfterCommit(ctx, r.repo, r.cfg.Yolo); err != nil {
+				r.log("Push after the commit step failed: %v", err)
+				status = StatusFail
+			}
 		}
 	}
 	if status == StatusFail || status == StatusTimeout {

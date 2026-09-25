@@ -129,8 +129,7 @@ func parseUsagePercent(s string) (float64, error) {
 	if i := strings.LastIndexByte(strings.TrimRight(field, "\n"), '\n'); i >= 0 {
 		field = strings.TrimSpace(field[i+1:])
 	}
-	field = strings.TrimSuffix(strings.TrimSpace(field), "%")
-	field = strings.TrimSpace(field)
+	field = strings.TrimSpace(strings.TrimSuffix(field, "%"))
 	if field == "" {
 		return 0, errors.New("probe printed no percentage")
 	}

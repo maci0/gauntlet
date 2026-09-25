@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Dir returns the state root and whether it rests on a usable HOME.
@@ -96,4 +97,25 @@ func ExpandPath(p string) (string, error) {
 		return "", fmt.Errorf("cannot expand ~: home directory is unknown")
 	}
 	return filepath.Join(home, after), nil
+}
+
+// SweepStaleTemps removes regular files in dir matching prefix whose modification
+// time is older than age. Best effort: failures are ignored.
+func SweepStaleTemps(dir, prefix string, age time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-age)
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil || fi.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(dir, name))
+	}
 }

@@ -48,7 +48,6 @@ func drawIndex(seed uint64, key string, n int) int {
 	}
 	ceil := (^uint64(0) / uint64(n)) * uint64(n)
 	keyHash := fnv64aString(key)
-	keyHash ^= 0
 	keyHash *= fnvPrime64
 
 	for i := uint64(0); ; i++ {

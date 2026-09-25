@@ -29,11 +29,9 @@ import (
 
 // cmdShowPrompt prints the exact text an agent would receive.
 func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
-	name := opts.showPrompt
-	if _, ok := set.Get(name); !ok {
-		if _, ok := set.Get(name + "-review"); ok {
-			name += "-review"
-		} else {
+	rev, ok := set.Get(opts.showPrompt)
+	if !ok {
+		if rev, ok = set.Get(opts.showPrompt + "-review"); !ok {
 			candidates := append([]string{}, set.Names...)
 			for _, n := range set.Names {
 				if stem, ok := strings.CutSuffix(n, "-review"); ok {
@@ -49,8 +47,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 			return exitUsage
 		}
 	}
-	rev, _ := set.Get(name)
-	name = rev.Name
+	name := rev.Name
 	body, err := rev.Body()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read prompt for %s: %v\n", name, err)

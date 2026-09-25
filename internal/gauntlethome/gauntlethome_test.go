@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestDirPrefersGauntletHome(t *testing.T) {
@@ -234,4 +235,33 @@ func FuzzExpandPath(f *testing.F) {
 			t.Fatalf("ExpandPath(%q) is non-deterministic: (%q, %v) vs (%q, %v)", p, got, err, got2, err2)
 		}
 	})
+}
+
+func TestSweepStaleTemps(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string) string {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	old := write(".prefix-old")
+	fresh := write(".prefix-new")
+	other := write("other")
+	past := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+
+	SweepStaleTemps(dir, ".prefix-", 24*time.Hour)
+
+	for _, p := range []string{fresh, other} {
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s must survive the sweep: %v", filepath.Base(p), err)
+		}
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("the old file should be gone (stat err=%v)", err)
+	}
 }
