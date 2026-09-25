@@ -23,6 +23,7 @@ minor instead and were listed under Changed.
 - Validate placeholder usage and argument conflicts across custom agent definitions, and degrade `GAUNTLET_HOME` directory resolution safely when pointing to a non-directory file.
 - Respect standard `NO_MOTION` and `REDUCED_MOTION` environment variables in the dashboard, and announce disabled states for inactive controls in the launcher help view.
 - Clarify launcher agent panel and options hints, keep filter prompt visible during zero-match search, and display paused status in the dashboard feed panel title.
+- Avoid treating closed signal channels as active signals or force-kill triggers in signal handling, and access stacked-PR runner state through synchronized methods.
 
 ## 1.23.2
 

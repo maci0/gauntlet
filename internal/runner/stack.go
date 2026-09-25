@@ -212,14 +212,14 @@ func safeTag(tag string) string {
 // next layer's base only after its branch is pushed and its PR exists.
 func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	start := r.stackResumeIndex()
-	parent, parentTip := r.stackHead, r.stackHeadTip
+	parent, parentTip := r.StackHead()
 	// Layer numbers count what was actually published, not schedule position:
 	// a review that changed nothing leaves no branch, so the two diverge as
 	// soon as one does, and a body claiming to be layer 5 of a three-branch
 	// chain sends its reader looking for branches that do not exist. They
 	// continue across --max-loops passes so a later round's first PR does not
 	// read as the first layer of a new stack.
-	published := r.stackPublished
+	published := r.StackPublished()
 
 	// A hot-reload successor receives only the unfinished suffix. Walk the
 	// completed prefix to recover the last published branch; an absent branch

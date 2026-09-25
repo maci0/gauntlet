@@ -94,3 +94,15 @@ func TestSigtermStopsImmediately(t *testing.T) {
 		t.Fatal("SIGTERM must not be softened into a finish request")
 	}
 }
+
+// A closed channel (such as during test cleanup or teardown) must return cleanly
+// without being misinterpreted as an interrupt or triggering a force-kill.
+func TestInterruptClosedChannelDoesNotForceKill(t *testing.T) {
+	ch, _, _, exited := driveInterrupts(t)
+	close(ch)
+	select {
+	case code := <-exited:
+		t.Fatalf("closing channel force-killed with code %d", code)
+	case <-time.After(50 * time.Millisecond):
+	}
+}

@@ -975,7 +975,10 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 		defer signal.Stop(quit)
 		for {
 			select {
-			case <-quit:
+			case _, ok := <-quit:
+				if !ok {
+					return
+				}
 				graceful.request(out)
 			case <-ctx.Done():
 				return
@@ -1000,8 +1003,12 @@ func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.Canc
 	out io.Writer, graceful *gracefulStop, exit func(int)) {
 	for {
 		var sig os.Signal
+		var ok bool
 		select {
-		case sig = <-ch:
+		case sig, ok = <-ch:
+			if !ok {
+				return
+			}
 		case <-ctx.Done():
 			return
 		}
@@ -1014,7 +1021,9 @@ func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.Canc
 		}
 		fmt.Fprintf(out, "\nSignal received (%s), terminating running reviews. Again to force-kill.\n", sig)
 		stop()
-		<-ch
+		if _, ok := <-ch; !ok {
+			return
+		}
 		fmt.Fprintln(out, "\nForce-killing.")
 		exit(128 + int(syscall.SIGINT))
 		return
