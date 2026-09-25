@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 128" role="img" aria-label="gauntlet">
+  <title>gauntlet</title>
+  <desc>Running the gauntlet: two facing rows of chevrons, the code's path arrowing through.</desc>
   <g fill="none" stroke-linecap="round" stroke-linejoin="round">
     <g stroke="#64798a" stroke-width="10">
       <polyline points="16,28 28,44 40,28"/>

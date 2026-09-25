@@ -819,10 +819,15 @@ func (m *model) activityTitle() string {
 		}
 	}
 	// The live-edge marker is text, so a resting or idle chart shows it dim
-	// but legible; only a real measurement rides the heat ramp.
+	// but legible; only a real measurement rides the heat ramp. Any active rate
+	// clears the 4.5:1 text floor (WCAG 1.4.3), starting at teal rather than
+	// the unlit track tone.
 	var fg lipgloss.TerminalColor = cDim
 	if cur > 0 {
 		fg = heatColor(clamp01(cur / 50))
+		if fg == cTrack {
+			fg = cTeal
+		}
 	}
 	return "ACTIVITY " + styleDim.Render("agent lines/s") + "  " +
 		lipgloss.NewStyle().Bold(true).Foreground(fg).Render("◆ "+value)

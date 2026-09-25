@@ -771,6 +771,31 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 	}
 }
 
+func TestActivityTitleClearsContrastFloors(t *testing.T) {
+	const darkBase, lightBase = "#1e1e2e", "#eff1f5"
+	m := newModel(demoConfig())
+	for _, rate := range []float64{0, 0.1, 0.5, 1.0, 10.0, 50.0} {
+		m.activity = []float64{rate}
+		title := m.activityTitle()
+		if !strings.Contains(title, "ACTIVITY") {
+			t.Fatalf("rate %f: activityTitle missing ACTIVITY header: %q", rate, title)
+		}
+	}
+	// Verify that a low positive rate (which falls into the cold end where heatColor is cTrack)
+	// gets floored to cTeal to preserve the 4.5:1 text contrast floor.
+	cur := 0.5
+	h := heatColor(clamp01(cur / 50))
+	if h != cTrack {
+		t.Fatalf("precondition failed: heatColor(%f) should have returned cTrack, got %v", cur/50, h)
+	}
+	if got := contrastRatio(t, cTeal.Dark, darkBase); got < 4.5 {
+		t.Errorf("cTeal dark is %.2f:1 on dark base, want >= 4.5", got)
+	}
+	if got := contrastRatio(t, cTeal.Light, lightBase); got < 4.5 {
+		t.Errorf("cTeal light is %.2f:1 on light base, want >= 4.5", got)
+	}
+}
+
 // The wordmark is the path-arrow teal, one hue: the README logos are a
 // single-color name next to that arrow, and a Catppuccin teal or a
 // per-letter gradient would be a color the mark does not use.

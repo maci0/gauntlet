@@ -387,7 +387,7 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		p.filter = ""
 	case "ctrl+w":
 		p.filter = trimLastWord(p.filter)
-	case "backspace":
+	case "backspace", "delete", "ctrl+h":
 		if p.filter != "" {
 			p.filter = trimLastCluster(p.filter)
 		}

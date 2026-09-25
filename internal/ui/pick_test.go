@@ -419,6 +419,16 @@ func TestPickBackspaceRemovesWholeCluster(t *testing.T) {
 	if got, want := p.filter, "caf"; got != want {
 		t.Fatalf("backspace left %q, want %q: the accent must not outlive its letter", got, want)
 	}
+	// Delete key also trims cluster for keyboards that send KeyDelete
+	p.Update(tea.KeyMsg{Type: tea.KeyDelete})
+	if got, want := p.filter, "ca"; got != want {
+		t.Fatalf("delete key left %q, want %q", got, want)
+	}
+	// Ctrl+H (traditional terminal backspace) trims cluster as well
+	p.Update(tea.KeyMsg{Type: tea.KeyCtrlH})
+	if got, want := p.filter, "c"; got != want {
+		t.Fatalf("ctrl+h left %q, want %q", got, want)
+	}
 }
 
 func TestPickFilterEditingAndNavigation(t *testing.T) {
