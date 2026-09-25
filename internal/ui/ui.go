@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -486,7 +487,10 @@ func (m *model) apply(ev runner.Event) {
 		r := m.review(ev.Review)
 		r.status = ev.Status
 		r.agentLbl = ev.Agent
-		r.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
+		if ev.Elapsed > 0 && !math.IsNaN(ev.Elapsed) && !math.IsInf(ev.Elapsed, 0) &&
+			ev.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
+			r.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
+		}
 		r.tokens = ev.Tokens
 		r.flash = ev.Time
 		if ev.Ins != nil && ev.Del != nil {
@@ -1168,7 +1172,8 @@ func (m *model) renderFooter() string {
 	if m.tokens > 0 || m.liveRate > 0 {
 		right += styleValue.Render(humanize.Count(m.tokens)) + styleDim.Render(" tok")
 		if m.thinking > 0 && m.tokens > 0 {
-			right += styleThink.Render(fmt.Sprintf("  ◌ %d%% think", 100*m.thinking/m.tokens))
+			pct := min(100, max(0, int(int64(m.thinking)*100/int64(m.tokens))))
+			right += styleThink.Render(fmt.Sprintf("  ◌ %d%% think", pct))
 		}
 		switch {
 		case m.liveRate > 0:

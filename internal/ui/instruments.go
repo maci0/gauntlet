@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -115,7 +116,9 @@ func tailCols(vals []float64, w int) ([]float64, float64) {
 	}
 	peak := 0.0
 	for _, v := range vs {
-		peak = max(peak, v)
+		if !math.IsNaN(v) && !math.IsInf(v, 0) {
+			peak = max(peak, v)
+		}
 	}
 	if peak <= 0 {
 		peak = 1
@@ -134,7 +137,7 @@ func meter(frac float64, w int, on lipgloss.TerminalColor) string {
 	}
 	frac = clamp01(frac)
 	filled := int(frac*float64(w) + 0.5)
-	filled = min(filled, w)
+	filled = max(0, min(filled, w))
 	return styled(on, strings.Repeat("▰", filled)) +
 		styleTrack.Render(strings.Repeat("▱", w-filled))
 }
@@ -166,7 +169,7 @@ func statusGlyph(s runner.Status) (string, lipgloss.TerminalColor) {
 // fmtRate formats a tokens-per-second figure compactly.
 func fmtRate(v float64) string {
 	switch {
-	case v <= 0:
+	case math.IsNaN(v) || math.IsInf(v, 0) || v <= 0:
 		return "n/a"
 	case v >= 1000:
 		return fmt.Sprintf("%.1fk", v/1000)
@@ -178,5 +181,11 @@ func fmtRate(v float64) string {
 }
 
 func clamp01(v float64) float64 {
-	return min(max(v, 0), 1)
+	if math.IsNaN(v) || v <= 0 {
+		return 0
+	}
+	if v >= 1 {
+		return 1
+	}
+	return v
 }

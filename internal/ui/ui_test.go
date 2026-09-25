@@ -597,6 +597,63 @@ func TestMeterShowsUnlitRemainder(t *testing.T) {
 	if got := stripANSI(meter(0, 10, cGreen)); strings.Count(got, "▱") != 10 {
 		t.Fatalf("empty meter should still draw its track: %q", got)
 	}
+	if got := stripANSI(meter(math.NaN(), 10, cGreen)); strings.Count(got, "▱") != 10 {
+		t.Fatalf("NaN meter should render as empty track: %q", got)
+	}
+	if got := stripANSI(meter(-1, 10, cGreen)); strings.Count(got, "▱") != 10 {
+		t.Fatalf("negative meter should render as empty track: %q", got)
+	}
+	if got := stripANSI(meter(2, 10, cGreen)); strings.Count(got, "▰") != 10 {
+		t.Fatalf("overflow meter should cap at full track: %q", got)
+	}
+}
+
+func TestClamp01HandlesNaNAndBounds(t *testing.T) {
+	if got := clamp01(math.NaN()); got != 0 {
+		t.Fatalf("clamp01(NaN) = %v, want 0", got)
+	}
+	if got := clamp01(-0.5); got != 0 {
+		t.Fatalf("clamp01(-0.5) = %v, want 0", got)
+	}
+	if got := clamp01(1.5); got != 1 {
+		t.Fatalf("clamp01(1.5) = %v, want 1", got)
+	}
+	if got := clamp01(0.75); got != 0.75 {
+		t.Fatalf("clamp01(0.75) = %v, want 0.75", got)
+	}
+}
+
+func TestFmtRateSpecialValues(t *testing.T) {
+	for _, v := range []float64{0, -1, math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if got := fmtRate(v); got != "n/a" {
+			t.Fatalf("fmtRate(%v) = %q, want n/a", v, got)
+		}
+	}
+	if got := fmtRate(50); got != "50.0" {
+		t.Fatalf("fmtRate(50) = %q, want 50.0", got)
+	}
+	if got := fmtRate(250); got != "250" {
+		t.Fatalf("fmtRate(250) = %q, want 250", got)
+	}
+	if got := fmtRate(1500); got != "1.5k" {
+		t.Fatalf("fmtRate(1500) = %q, want 1.5k", got)
+	}
+}
+
+func TestTailColsIgnoresNaN(t *testing.T) {
+	cols, peak := tailCols([]float64{10, math.NaN(), 20}, 3)
+	if peak != 20 {
+		t.Fatalf("tailCols peak with NaN = %v, want 20", peak)
+	}
+	if len(cols) != 3 {
+		t.Fatalf("tailCols len = %d, want 3", len(cols))
+	}
+}
+
+func TestHeatColorNaN(t *testing.T) {
+	if got := heatColor(math.NaN()); got != cTrack {
+		t.Fatalf("heatColor(NaN) = %v, want cTrack (%v)", got, cTrack)
+	}
 }
 
 func TestClipKeepsVisibleWidth(t *testing.T) {

@@ -10,6 +10,7 @@
 package ui
 
 import (
+	"math"
 	"os"
 	"strings"
 	"sync"
@@ -271,7 +272,7 @@ func widthTokens(s string) []string {
 // instrument stroke and must clear 3:1 (SC 1.4.11).
 func heatColor(f float64) lipgloss.TerminalColor {
 	switch {
-	case f <= 0.02:
+	case math.IsNaN(f) || f <= 0.02:
 		return cTrack
 	case f < 0.25:
 		return cTeal

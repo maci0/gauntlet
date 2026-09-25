@@ -6,6 +6,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -21,6 +22,16 @@ func TestDrawIndexIsDeterministicAndBounded(t *testing.T) {
 	}
 	if got := drawIndex(42, "any", 1); got != 0 {
 		t.Fatalf("drawIndex(n=1) = %d, want 0", got)
+	}
+	if got := drawIndex64(42, "any", 0); got != 0 {
+		t.Fatalf("drawIndex64(n=0) = %d, want 0", got)
+	}
+	if got := drawIndex64(42, "any", 1); got != 0 {
+		t.Fatalf("drawIndex64(n=1) = %d, want 0", got)
+	}
+	big := int64(math.MaxInt32) + 50000
+	if got := drawIndex64(42, "big", big); got < 0 || got >= big {
+		t.Fatalf("drawIndex64(big) = %d, out of range [0, %d)", got, big)
 	}
 	for n := 1; n <= 17; n++ {
 		for i := range 200 {

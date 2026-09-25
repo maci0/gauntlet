@@ -266,6 +266,19 @@ func TestUsageLimitUnderThresholdRunsEverything(t *testing.T) {
 	}
 }
 
+func TestUsageLimitNaNIgnored(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "first-review", "second-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", "true")
+	cfg := baseConfig(t, repo, set, []string{"first-review", "second-review"}, bin)
+	cfg.UsageCmd = probeScript(t, "10")
+	cfg.UsageLimit = math.NaN()
+
+	if got := runQuiet(t, cfg).Stats().Counts(); got.OK != 2 {
+		t.Fatalf("ran %d reviews, want 2 with NaN limit: %+v", got.OK, got)
+	}
+}
+
 func TestBrokenUsageProbeCannotEndTheRun(t *testing.T) {
 	// Failing open is deliberate. A probe that exits nonzero, or answers with
 	// something that is not a percentage, must be reported and ignored -- not

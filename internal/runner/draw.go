@@ -43,6 +43,12 @@ func mix64(x uint64) uint64 {
 // above the largest multiple of n are rejected rather than wrapped. Rejection
 // is vanishingly rare and each try mixes a fresh word, so the loop terminates.
 func drawIndex(seed uint64, key string, n int) int {
+	return int(drawIndex64(seed, key, int64(n)))
+}
+
+// drawIndex64 is drawIndex over int64, so callers with durations or 64-bit
+// bounds never truncate on 32-bit platforms.
+func drawIndex64(seed uint64, key string, n int64) int64 {
 	if n <= 1 {
 		return 0
 	}
@@ -53,7 +59,7 @@ func drawIndex(seed uint64, key string, n int) int {
 	for i := uint64(0); ; i++ {
 		h := fnvAppendUint(keyHash, i)
 		if v := mix64(seed ^ h); v < ceil {
-			return int(v % uint64(n))
+			return int64(v % uint64(n))
 		}
 	}
 }

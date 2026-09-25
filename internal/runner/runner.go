@@ -1261,8 +1261,8 @@ func (r *Runner) backoff(review string, attempt int) time.Duration {
 			d = grown
 		}
 	}
-	jitter := drawIndex(r.seed, fmt.Sprintf("backoff\x00%s\x00%d", review, attempt),
-		int(d/2)+1)
+	jitter := drawIndex64(r.seed, fmt.Sprintf("backoff\x00%s\x00%d", review, attempt),
+		int64(d/2)+1)
 	return d/2 + time.Duration(jitter)
 }
 

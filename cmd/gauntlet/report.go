@@ -7,6 +7,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -122,9 +123,14 @@ func (r *reporter) handle(ev runner.Event) {
 		if ev.Ins != nil && ev.Del != nil {
 			lines = fmt.Sprintf(", +%d/-%d lines", *ev.Ins, *ev.Del)
 		}
+		var loopElapsed time.Duration
+		if ev.Elapsed > 0 && !math.IsNaN(ev.Elapsed) && !math.IsInf(ev.Elapsed, 0) &&
+			ev.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
+			loopElapsed = time.Duration(ev.Elapsed * float64(time.Second))
+		}
 		fmt.Fprintln(r.out)
 		r.logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
-			humanize.Duration(time.Duration(ev.Elapsed*float64(time.Second))), lines)
+			humanize.Duration(loopElapsed), lines)
 		fmt.Fprintln(r.out)
 	}
 }
@@ -232,7 +238,8 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		if thinking > 0 {
 			// Only agents that disclose the split contribute here, so this is
 			// a floor on reasoning, not a measurement of every agent.
-			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(thinking), 100*thinking/tokens)
+			pct := min(100, max(0, int(int64(thinking)*100/int64(tokens))))
+			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(thinking), pct)
 		}
 		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"), humanize.Count(tokens), rate, note)
 	}

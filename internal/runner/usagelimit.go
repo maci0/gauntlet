@@ -44,7 +44,7 @@ const usageProbeWait = 5 * time.Second
 // Called where the loops decide whether to start another review, so the cost
 // is one short-lived process per review, not per line of agent output.
 func (r *Runner) checkUsageLimit(ctx context.Context) {
-	if len(r.cfg.UsageCmd) == 0 || r.cfg.UsageLimit <= 0 {
+	if len(r.cfg.UsageCmd) == 0 || r.cfg.UsageLimit <= 0 || math.IsNaN(r.cfg.UsageLimit) {
 		return
 	}
 	// Already quitting: the answer cannot change the outcome, and a probe per
