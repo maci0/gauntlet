@@ -21,6 +21,7 @@ minor instead and were listed under Changed.
 - Avoid parsing trailing uninitialized bytes on short index reads in the journal.
 - Surface remote error messages from GitHub API responses when release or asset checks fail in self-update.
 - Validate placeholder usage and argument conflicts across custom agent definitions, and degrade `GAUNTLET_HOME` directory resolution safely when pointing to a non-directory file.
+- Respect standard `NO_MOTION` and `REDUCED_MOTION` environment variables in the dashboard, and announce disabled states for inactive controls in the launcher help view.
 
 ## 1.23.2
 

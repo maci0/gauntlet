@@ -929,17 +929,24 @@ const (
 const motionStill = "◐"
 
 // motionOff reports whether the run asked for a still screen. Terminals have
-// no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION:
-// anything but empty, "0", "false", "no", or "off" freezes the dashboard's
-// one animated glyph, whose cycling otherwise starts on its own and outlives
-// five seconds of reasoning (WCAG 2.2.2: such motion must be stoppable).
+// no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION,
+// NO_MOTION, or REDUCED_MOTION: anything but empty, "0", "false", "no", or "off"
+// freezes the dashboard's one animated glyph, whose cycling otherwise starts
+// on its own and outlives five seconds of reasoning (WCAG 2.2.2: such motion
+// must be stoppable).
 func motionOff() bool {
-	v, ok := os.LookupEnv("GAUNTLET_NO_ANIMATION")
-	if !ok {
-		return false
+	for _, env := range []string{"GAUNTLET_NO_ANIMATION", "NO_MOTION", "REDUCED_MOTION"} {
+		if v, ok := os.LookupEnv(env); ok {
+			v = strings.ToLower(strings.TrimSpace(v))
+			if v != "" && v != "0" && v != "false" && v != "no" && v != "off" {
+				return true
+			}
+			if env == "GAUNTLET_NO_ANIMATION" && (v == "0" || v == "false" || v == "no" || v == "off") {
+				return false
+			}
+		}
 	}
-	v = strings.ToLower(strings.TrimSpace(v))
-	return v != "" && v != "0" && v != "false" && v != "no" && v != "off"
+	return false
 }
 
 // thinkGlyph animates only while reasoning is actively growing: a still glyph

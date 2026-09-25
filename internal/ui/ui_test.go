@@ -790,6 +790,20 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 		t.Fatal("the glyph does not turn without the variable")
 	}
 
+	for _, env := range []string{"NO_MOTION", "REDUCED_MOTION"} {
+		t.Setenv(env, "1")
+		if got := thinkGlyph(now, last); got != motionStill {
+			t.Fatalf("glyph %q under %s=1, want held frame %q", got, env, motionStill)
+		}
+		// Explicit GAUNTLET_NO_ANIMATION=0 overrides generic variables
+		t.Setenv("GAUNTLET_NO_ANIMATION", "0")
+		if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {
+			t.Fatalf("GAUNTLET_NO_ANIMATION=0 should override %s=1", env)
+		}
+		t.Setenv("GAUNTLET_NO_ANIMATION", "")
+		t.Setenv(env, "")
+	}
+
 	for _, off := range []string{"0", "false", "False", "no", "off", "  0  "} {
 		t.Setenv("GAUNTLET_NO_ANIMATION", off)
 		if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {

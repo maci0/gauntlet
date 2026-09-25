@@ -1212,6 +1212,9 @@ func (p *picker) focusedLines() []string {
 			}
 		}
 		detail = o.label + ": " + value
+		if p.optionDisabled(&o) {
+			detail += " (disabled)"
+		}
 	}
 	return []string{"Focused control:", "  " + detail, "  " + p.hint()}
 }

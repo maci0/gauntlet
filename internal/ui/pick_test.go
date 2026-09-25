@@ -806,7 +806,7 @@ func TestPickHelpExposesFocusedControl(t *testing.T) {
 		{"inert option", func(p *picker) {
 			p.focus = paneOptions
 			p.optByFlag("--stacked-prs").on = true
-		}, []string{"concurrency: 1", "stacked PRs own this"}},
+		}, []string{"concurrency: 1 (disabled)", "stacked PRs own this"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := demoPicker()
