@@ -287,6 +287,7 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		}},
 		{"exclude suggest", []string{"-x", "suggest"}, "not a review name", nil},
 		{"once with max-loops", []string{"-1", "-n", "3"}, "conflicts", nil},
+		{"once with zero max-loops", []string{"--once", "--max-loops", "0"}, "conflicts", nil},
 		{"negative loops", []string{"-n", "-2"}, "must be >= 0", nil},
 		{"negative max-reviews", []string{"--max-reviews", "-1"}, "--max-reviews must be >= 0", nil},
 		{"zero max-reviews", []string{"--max-reviews", "0"}, "", func(t *testing.T, o *options) {

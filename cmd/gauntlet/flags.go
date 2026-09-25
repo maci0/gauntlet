@@ -600,7 +600,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 
 	if once {
-		if o.maxLoops != 0 {
+		if isFlagSet(fs, "max-loops", "n") {
 			return nil, errors.New("--once conflicts with --max-loops")
 		}
 		o.maxLoops = 1
