@@ -84,7 +84,7 @@ Instructions:
 - If available, use: `cargo-semver-checks` (Rust semver violations), `api-extractor` (TS public-surface diff), `oasdiff` (OpenAPI breaking changes), `git-cliff` or the project's changelog tooling (notes vs actual diff). Never install tools.
 - Be concrete. Name the symbol, the version, the changelog line, or the manifest field.
 - For compatibility claims, state the before and after and why it breaks a consumer.
-- Distinguish confirmed breaks from likely breaks from things needing maintainer confirmation.
+- Distinguish confirmed breaks from likely breaks; skip if deciding requires maintainer confirmation or if the breaking change was intentional.
 - Separate "wrong version number" from "missing changelog" from "actual breaking change."
 - Do not report build reproducibility (build-review), deployment topology (infra-review), API design consistency (api-review), or SDK surface design (sdk-review). Here own version numbers, changelogs, and deprecation lifecycle.
 - Prefer fewer high-value findings over many weak ones.

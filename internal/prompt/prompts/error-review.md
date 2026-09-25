@@ -106,7 +106,7 @@ Instructions:
 - In auto-fix mode stop swallowing a traced error, add cleanup on an existing error path, or add a timeout on an existing external call. Do not introduce a circuit-breaker library, dead-letter queue, or bulkhead framework in one pass.
 - Do not change documented feature behavior to match a guessed contract (functionality-review owns intended-vs-actual). Here own how failures are signaled, cleaned up, retried, and isolated.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
-- LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry on the HTTP call (a simple retry loop, not a circuit-breaker library). If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review).
+- LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry on the HTTP call (a simple retry loop, not a circuit-breaker library). If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review). Performance bottlenecks and latency optimization on error or retry paths belong to perf-review.
 - Trace error paths from origin to final handler. Check that context is preserved at each step.
 - Look for catch blocks, error handlers, and recovery code. Verify they are correct, not just present.
 - Trace one request path with every external call failed; a crash or silent data loss is the finding.

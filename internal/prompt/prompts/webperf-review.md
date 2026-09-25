@@ -82,7 +82,7 @@ Instructions:
 - Measure what you claim: state the transferred size, the request count, or the timing before and after. Where you cannot measure, fix only categorically safe wins (an unused field, a missing `defer`, a heavy library loaded up front) and skip anything whose benefit needs numbers.
 - Judge against the audience: an internal dashboard on a LAN and a public page on mobile networks do not have the same budget. Say which you assumed.
 - Never trade away accessibility, correctness, or content for speed. Deferring something means it still arrives and still works, with a visible state while it is missing.
-- Do not report server-side or algorithmic performance (perf-review), interaction design (ux-review), dependency health (deps-review), or API cache-contract design on JSON/RPC responses (api-review). Here own what the browser downloads.
+- Do not report server-side or algorithmic performance (perf-review), interaction design (ux-review), decorative visual styling (uislop-review), dependency health (deps-review), or API cache-contract design on JSON/RPC responses (api-review). Here own what the browser downloads.
 - Prefer fewer high-value findings; call out what is already fast and well-engineered so later passes leave it alone.
 
 For each finding include:

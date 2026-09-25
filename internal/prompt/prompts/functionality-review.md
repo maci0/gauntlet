@@ -73,7 +73,7 @@ Instructions:
 - Distinguish between:
   - confirmed defects (clear mismatch with intended behavior)
   - likely defects (probable, needs a quick check)
-  - potential defects that need verification or maintainer input
+  - potential defects that need verification (skip if unverifiable or if deciding requires maintainer intent)
 - Separate "missing feature" from "broken feature" from "undocumented behavior".
 - Do not report style, naming, or structural issues: those belong to code-review, slop-review, and arch-review.
 - Do not restyle working code or chase local logic style (code-review). Here own a user-facing or tested contract the implementation violates (CLI help, README examples, changelog, tests). Comments and docstrings that have gone stale next to the code they describe belong to doc-review; if tests agree with the code and docs do not, leave the docs.

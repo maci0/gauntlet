@@ -134,7 +134,7 @@ Instructions:
 - Do not add speculative assertions "for safety". An assertion needs a property the function already requires or a concrete path that can violate it.
 - If available, use: the project's own linter and type checker first (`ruff`, `mypy`, `cargo-clippy`, `eslint`, `oxlint`, `biome`, `staticcheck`, `gocritic`, `cppcheck`, `clang-tidy`), `jscpd` (duplication). `vulture`/`knip`/`ts-prune` may confirm an unused import in a file you already have open; do not treat their project-wide reports as a deletion list (minimalism-review). The linter's own config, strictness, and suppressions belong to lint-review. Never install tools.
 - Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.
-- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Do not rewrite tests (test-review).
+- Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Do not rewrite tests (test-review). System architecture, module boundaries, and subsystem design belong to arch-review and design-review; here own in-module code quality, logic correctness, and local consistency.
 - Be concrete, not generic.
 - Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.

@@ -81,7 +81,7 @@ Instructions:
 - Be concrete: name the spec field, the manifest line, the scriptlet, the layer.
 - Distinguish policy violations (format rules) from packaging bugs (breaks install/upgrade) from hygiene (bloat, stray files).
 - Least privilege is the default judgment for all permissions; every broad grant needs a named reason.
-- Do not restructure the build system, CI/CD, or version scheme: those belong to build-, infra-, and release-review.
+- Do not restructure the build system, CI/CD, or version scheme: those belong to build-review, infra-review, and release-review. Maintain scriptlet idempotency on re-installs and upgrades (idempotency-review owns idempotency analysis).
 - Prefer fewer high-value findings over many weak ones.
 - Call out formats that are packaged cleanly and should not be disturbed.
 

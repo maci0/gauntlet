@@ -83,7 +83,7 @@ Instructions:
 - Prefer fixes in this order: make the operation naturally idempotent > add a unique constraint the database enforces > add an application-level dedup ledger > add an advisory lock. Application-level checks that read-then-write are the weakest and can fail under concurrency.
 - In auto-fix mode make one operation naturally idempotent or add a unique constraint / idempotency-key check at one proven retry site. Do not introduce an outbox, saga, or dedup ledger in one pass.
 - Never add a dedup mechanism whose state can grow without bound; a retention window is part of the fix.
-- Do not report retry policy, race conditions, or schema design themselves: those belong to error-, concurrency-, and db-review.
+- Do not report retry policy, race conditions, or schema design themselves: those belong to error-review, concurrency-review, and db-review. Kubernetes Job manifest immutability belongs to k8s-review (here own the job's internal re-run safety); package scriptlet idempotency belongs to pkg-review.
 - Prefer fewer high-value findings; call out operations that are already provably idempotent so they are left alone.
 
 For each finding include:

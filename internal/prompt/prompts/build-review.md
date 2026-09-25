@@ -95,8 +95,8 @@ Instructions:
 - Follow reproducible-builds.org practice for fixes: honor `SOURCE_DATE_EPOCH`, map build paths out, normalize archive metadata, pin locale/timezone, sort explicitly.
 - Be concrete. Point at the specific rule, script line, or config key.
 - Prefer verifiable claims: "this Makefile target lacks `foo.h` as a prerequisite, so editing it does not trigger a rebuild."
-- Distinguish confirmed issues from likely issues from things needing maintainer confirmation.
-- Do not report runtime code quality, test design, or deployment concerns: those belong to other reviews.
+- Distinguish confirmed issues from likely issues; skip if deciding requires maintainer confirmation.
+- Do not report runtime code quality (code-review), test design (test-review), or deployment/pipeline concerns (infra-review, gitops-review).
 - Prefer fewer high-value findings over many weak ones.
 - Call out where the build is already reproducible/hermetic and should not be disturbed.
 
