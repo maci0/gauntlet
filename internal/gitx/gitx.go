@@ -405,6 +405,7 @@ var (
 	insRe   = regexp.MustCompile(`(\d+) insertion`)
 	delRe   = regexp.MustCompile(`(\d+) deletion`)
 	nulByte = []byte{0}
+	nlByte  = []byte{'\n'}
 )
 
 // parseShortstat reads the counts out of a `git diff --shortstat` output.
@@ -611,7 +612,7 @@ func countLinesFrom(f *os.File) int {
 				return 0 // binary: no line count to speak of
 			}
 			first = false
-			n += bytes.Count(buf[:c], []byte{'\n'})
+			n += bytes.Count(buf[:c], nlByte)
 			read += c
 			last = buf[c-1]
 		}

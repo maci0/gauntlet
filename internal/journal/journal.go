@@ -515,24 +515,24 @@ func summariesFor(want []namedJournal, lookup map[string]Summary) []Summary {
 // journal, rearranged tree), only the true newest is appended, so a full
 // walk cannot duplicate every existing row.
 func recoverIndexTail(anchorID string) error {
-	journals, err := listJournals()
+	var missing []namedJournal
+	found := false
+	err := walkJournals(func(j namedJournal) bool {
+		if j.id == anchorID {
+			found = true
+			return false
+		}
+		missing = append(missing, j)
+		return true
+	})
 	if err != nil {
 		return err
 	}
-	var missing []namedJournal
-	found := false
-	for _, journal := range journals {
-		if journal.id == anchorID {
-			found = true
-			break
-		}
-		missing = append(missing, journal)
-	}
 	if !found {
-		if len(journals) == 0 {
+		if len(missing) == 0 {
 			return nil
 		}
-		missing = journals[:1]
+		missing = missing[:1]
 	}
 	indexed, err := indexLookup(missing, nil)
 	if err != nil {
@@ -722,8 +722,8 @@ type indexEvent struct {
 	Review  string    `json:"review"`
 	Status  string    `json:"status"`
 	Loop    int       `json:"loop"`
-	Ins     *int      `json:"ins"`
-	Del     *int      `json:"del"`
+	Ins     int       `json:"ins"`
+	Del     int       `json:"del"`
 	Tokens  int       `json:"tokens"`
 	Version string    `json:"version"`
 	Agents  []string  `json:"agents"`
@@ -736,8 +736,8 @@ type historyEvent struct {
 	Dir    string `json:"dir"`
 	Review string `json:"review"`
 	Status string `json:"status"`
-	Ins    *int   `json:"ins"`
-	Del    *int   `json:"del"`
+	Ins    int    `json:"ins"`
+	Del    int    `json:"del"`
 }
 
 // summarizeFile rebuilds a Summary from one run's event stream. Args,
@@ -792,20 +792,12 @@ func summarizeFile(runID, path string) (Summary, error) {
 			case "interrupted":
 				s.Interrupted++
 			}
-			if e.Ins != nil {
-				s.Ins += *e.Ins
-			}
-			if e.Del != nil {
-				s.Del += *e.Del
-			}
+			s.Ins += e.Ins
+			s.Del += e.Del
 			s.Tokens += e.Tokens
 		case "merge", "pull_request":
-			if e.Ins != nil {
-				s.Ins += *e.Ins
-			}
-			if e.Del != nil {
-				s.Del += *e.Del
-			}
+			s.Ins += e.Ins
+			s.Del += e.Del
 		}
 	}
 	if err := sc.Err(); err != nil {
@@ -988,6 +980,9 @@ func locateRun(runID string) (string, bool, error) {
 	}
 	slices.Reverse(days)
 	for _, d := range days {
+		if !d.IsDir() {
+			continue
+		}
 		p := filepath.Join(root, d.Name(), runID+".jsonl")
 		if _, err := os.Stat(p); err == nil {
 			return p, true, nil
@@ -1093,13 +1088,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			if e.Dir != dir || e.Review == "" {
 				return
 			}
-			ins, del := 0, 0
-			if e.Ins != nil {
-				ins = *e.Ins
-			}
-			if e.Del != nil {
-				del = *e.Del
-			}
+			ins, del := e.Ins, e.Del
 			switch e.Ev {
 			case "review_end":
 				if e.Status != "" && e.Status != "ok" {

@@ -159,7 +159,8 @@ type objField struct {
 }
 
 func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
-	var fields []objField
+	var fieldsArr [8]objField
+	fields := fieldsArr[:0]
 	var typeStr, role string
 	var local Event
 	for dec.More() {
