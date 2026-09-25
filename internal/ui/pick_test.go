@@ -1168,9 +1168,14 @@ func TestPickSpaceCyclesConcurrency(t *testing.T) {
 // Turning on stacked PRs via right arrow or 'l' preserves conflicting options
 // just as space does.
 func TestPickRightArrowOnStackedPRsPreservesConflicts(t *testing.T) {
-	p := setupConflictingOptionsPicker()
-	press(p, "l")
-	assertConflictingOptionsPreserved(t, p)
+	for _, key := range []tea.KeyMsg{
+		{Type: tea.KeyRight},
+		{Type: tea.KeyRunes, Runes: []rune("l")},
+	} {
+		p := setupConflictingOptionsPicker()
+		p.Update(key)
+		assertConflictingOptionsPreserved(t, p)
+	}
 }
 
 // Hints for dimmed/inactive options must explain why they are inactive

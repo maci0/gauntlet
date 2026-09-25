@@ -145,4 +145,12 @@ func TestBusConcurrentClose(t *testing.T) {
 	bus.Close()
 	wg.Wait()
 	drained.Wait()
+
+	// After Close, new subscriptions return an already closed channel.
+	ch := bus.Subscribe(1)
+	if _, ok := <-ch; ok {
+		t.Fatal("bus subscription after Close is not closed")
+	}
+	// Publishing after Close must be dropped and never panic.
+	bus.Publish(Event{Kind: EvLog, Text: "after close"})
 }

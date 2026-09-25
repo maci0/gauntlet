@@ -834,7 +834,17 @@ func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
 	} else if strings.Count(string(list), "\n") != 1 {
 		t.Errorf("checkouts survived:\n%s", list)
 	}
-	_ = out
+
+	branches := strings.Fields(string(out))
+	if len(branches) != n {
+		t.Fatalf("branches count = %d, want %d: %q", len(branches), n, string(out))
+	}
+	for i := range n {
+		wantBranch := fmt.Sprintf("gauntlet/run/review-%d", i)
+		if !slices.Contains(branches, wantBranch) {
+			t.Errorf("missing branch %s in:\n%s", wantBranch, string(out))
+		}
+	}
 }
 
 // The tree scan asks git what belongs to the project, so ListFiles must be

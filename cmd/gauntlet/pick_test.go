@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -54,5 +55,48 @@ func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	}
 	if _, _, dirty := treeState(ctx, dir); !dirty {
 		t.Fatal("an uncommitted tracked edit must still block --jobs in the launcher")
+	}
+}
+
+func TestTreeStateTargetsAndNonRepo(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	ctx := context.Background()
+
+	// Non-git directory returns empty branch and no dirty flag.
+	nonGit := t.TempDir()
+	if b, targets, dirty := treeState(ctx, nonGit); b != "" || len(targets) != 0 || dirty {
+		t.Fatalf("treeState on non-git dir: got (%q, %v, %v), want (\"\", nil, false)", b, targets, dirty)
+	}
+
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("config", "user.email", "test@example.invalid")
+	run("config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run("add", "-A")
+	run("commit", "-qm", "init")
+	run("branch", "feature-1")
+	run("branch", "feature-2")
+
+	branch, targets, dirty := treeState(ctx, dir)
+	if branch != "main" || dirty {
+		t.Fatalf("treeState on clean repo: got (%q, %v, %v), want branch main, dirty false", branch, targets, dirty)
+	}
+	slices.Sort(targets)
+	wantTargets := []string{"feature-1", "feature-2"}
+	if !slices.Equal(targets, wantTargets) {
+		t.Fatalf("targets = %v, want %v", targets, wantTargets)
 	}
 }

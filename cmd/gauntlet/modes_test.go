@@ -301,3 +301,31 @@ func TestDryRunReportsOutputFailure(t *testing.T) {
 		t.Fatal("expected error on failed write")
 	}
 }
+
+func TestConfirmYesYoloAndNonInteractive(t *testing.T) {
+	var out bytes.Buffer
+	if !confirm(&out, &options{yes: true}, 5) {
+		t.Fatal("confirm with yes=true should return true")
+	}
+	if !strings.Contains(out.String(), "Proceeding without confirmation.") {
+		t.Fatalf("unexpected output: %s", out.String())
+	}
+
+	out.Reset()
+	if !confirm(&out, &options{yolo: true}, 5) {
+		t.Fatal("confirm with yolo=true should return true")
+	}
+	if !strings.Contains(out.String(), "Proceeding without confirmation.") {
+		t.Fatalf("unexpected output: %s", out.String())
+	}
+
+	out.Reset()
+	if !stdinIsTerminal() {
+		if !confirm(&out, &options{}, 5) {
+			t.Fatal("confirm when stdin is not a terminal should return true")
+		}
+		if !strings.Contains(out.String(), "stdin is not a terminal: proceeding without confirmation.") {
+			t.Fatalf("unexpected output: %s", out.String())
+		}
+	}
+}
