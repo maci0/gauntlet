@@ -74,12 +74,6 @@ func stripReportSections(text string) string {
 	return strings.Join(out, "\n")
 }
 
-// Compose builds the exact text an agent receives: header, stripped review
-// body between markers, then the auto-fix suffix.
-//
-// The body (especially a project-local *-review.md) is the task, not authority
-// over the ground rules. Markers keep it from blending into the suffix, and a
-// body that already contains the end marker is escaped.
 // Tools is what the machine running a review actually has, as the prompt
 // names it: what to reach for, and what not to go looking for. Both halves
 // are worth saying. An agent that does not know cppcheck is here will read
@@ -141,7 +135,12 @@ func pathsNote(paths []string) string {
 		"or delete a file outside that list."
 }
 
-// Compose builds the text one agent receives for one review. paths is the
+// Compose builds the exact text an agent receives: header, stripped review
+// body between markers, then the auto-fix suffix.
+//
+// The body (especially a project-local *-review.md) is the task, not authority
+// over the ground rules. Markers keep it from blending into the suffix, and a
+// body that already contains the end marker is escaped. paths is the
 // operator's --paths scope; empty means the whole tree, and the prompt is then
 // byte-identical to a run without the flag.
 func Compose(body string, timeout time.Duration, review string, yolo bool, tools Tools, paths []string) string {

@@ -125,19 +125,22 @@ short base commit at the end of the name.
 
 The title is the commit subject the agent wrote for its change. The body adds
 what the title has no room for: what can be read back from the branch itself,
-plus the agent's own one-line account of each file it reported on.
+plus the agent's own one-line account of each file it reported on, combined
+into an overview paragraph.
 
 ```markdown
 ## Summary
 
 fix(cache): drop the stale entry before the refill
 
+guard the refill against a stale read; cover the refill race.
+
 Scope: stale reads, cross-tenant bleed, stampedes.
 
 ## Changes
 
-- `internal/cache/store.go` — guard the refill against a stale read
-- `internal/cache/store_test.go` — cover the refill race
+- `internal/cache/store.go`
+- `internal/cache/store_test.go`
 
 2 files changed, 41 insertions, 12 deletions.
 
@@ -150,16 +153,16 @@ merges first.
 
 `Scope` is the review's own `Summary:` line, or its goal sentence when it
 declares none; a prompt with neither leaves the line out. The per-file notes
-are the `PATH:` lines the review printed; a file the agent described nothing
-for renders as a bare path, and a note naming a file the commit never touched
-is dropped. The path list stops at ten and counts the rest. The layer number
-counts published branches, not schedule positions, so a review that changed
-nothing does not leave a gap in the numbering. No body names the agent that
-wrote the change or the pass it came from, for the same reason commit
-subjects do not. Every value read out of the reviewed repository -- an
-agent's subject, a note, a prompt's summary, a path -- is flattened to one
-line and length-bounded before it becomes Markdown, and the whole body is
-capped.
+are the `PATH:` lines the review printed; a note naming a file the commit never
+touched is dropped, and the rest are assembled into an overview paragraph under
+`## Summary`. The touched files under `## Changes` stay bare paths. The path
+list stops at ten and counts the rest. The layer number counts published
+branches, not schedule positions, so a review that changed nothing does not
+leave a gap in the numbering. No body names the agent that wrote the change or
+the pass it came from, for the same reason commit subjects do not. Every value
+read out of the reviewed repository -- an agent's subject, a note, a prompt's
+summary, a path -- is flattened to one line and length-bounded before it becomes
+Markdown, and the whole body is capped.
 
 Every check runs before any agent starts, the `--suggest` agent included.
 When the original checkout has tracked or untracked changes, gauntlet names

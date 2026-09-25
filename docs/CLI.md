@@ -54,7 +54,7 @@ several paths uses the first.
 | `a` | select all or none of what this pane is showing (the filter, if any, bounds it) |
 | `+` / `-` | raise or lower concurrency, from any pane |
 | `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it. While typing, the key legend names those keys instead of run/cancel. |
-| `home` / `end` | first / last row in the focused pane |
+| `home` / `end`, `g` / `G` | first / last row in the focused pane |
 | `?` | toggle a help overlay; `q` / `esc` close it. When the terminal is too short for the whole overlay it scrolls: `j` / `k` or the arrow keys page it, `pgup` / `pgdn` jump, and `home` / `end` reach the ends. |
 | `enter` / `q` | run the composed command / leave without running |
 
@@ -157,7 +157,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | Variable | Effect |
 |---|---|
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. |
-| `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. |
+| `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`. Wins if both are set, matching GitHub CLI. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |

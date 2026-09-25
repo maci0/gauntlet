@@ -29,7 +29,7 @@ const (
 	Plain    Kind = iota // ordinary narration
 	Tool                 // the agent invoking a tool or touching a file
 	Error                // something the agent reports as broken
-	Result               // the run's own protocol lines: RESULT:, PATH:, RELEVANT:
+	Result               // the run's own protocol lines: RESULT:, PATH:, RELEVANT:, COMMIT:, SUBJECT:
 	Progress             // "reading…", "searching…": kept, but collapsed by verb
 	DiffAdd              // an added line in a unified diff
 	DiffDel              // a removed line in a unified diff
