@@ -649,7 +649,7 @@ func (r *Repo) subRepo(dir string) *Repo {
 // the range covers one review's own commit and nothing else.
 func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int, ok bool) {
 	sub := r.subRepo(dir)
-	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", from, to, "--")
+	out, err := sub.run(ctx, gitNormal, "diff", "--shortstat", "--end-of-options", from, to, "--")
 	if err != nil {
 		return 0, 0, false
 	}
@@ -668,7 +668,7 @@ func (r *Repo) ChangedFiles(ctx context.Context, dir, from, to string) ([]string
 		return nil, errors.New("git is not available")
 	}
 	sub := r.subRepo(dir)
-	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", from, to, "--")
+	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", from, to, "--")
 	if err != nil {
 		return nil, err
 	}

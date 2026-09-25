@@ -461,4 +461,49 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 	if _, err := r.ChangedFiles(ctx, r.Dir, "HEAD", "HEAD"); err != nil {
 		t.Fatalf("ChangedFiles failed with HEAD file present: %v", err)
 	}
+
+	// abortMerge with HEAD file present must succeed without ambiguous argument error.
+	r.abortMerge(ctx)
+
+	// ResetToBase with HEAD file present must succeed.
+	if err := wt.ResetToBase(ctx); err != nil {
+		t.Fatalf("ResetToBase failed with HEAD file present: %v", err)
+	}
+
+	// CommitSubject with option-shaped ref must not execute git log flags like --output.
+	marker := filepath.Join(t.TempDir(), "pwned_log")
+	if _, err := r.CommitSubject(ctx, "--output="+marker); err == nil {
+		t.Fatal("CommitSubject with --output flag should fail")
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("CommitSubject executed --output and created file")
+	}
+
+	// DiffStat with option-shaped ref must not execute git diff flags like --output.
+	diffMarker := filepath.Join(t.TempDir(), "pwned_diff")
+	if _, _, ok := r.DiffStat(ctx, r.Dir, "--output="+diffMarker, "HEAD"); ok {
+		t.Fatal("DiffStat with --output flag should not report ok")
+	}
+	if _, err := os.Stat(diffMarker); !os.IsNotExist(err) {
+		t.Fatal("DiffStat executed --output and created file")
+	}
+
+	// ChangedFiles with option-shaped ref must not execute git diff flags like --output.
+	changedMarker := filepath.Join(t.TempDir(), "pwned_changed")
+	if _, err := r.ChangedFiles(ctx, r.Dir, "--output="+changedMarker, "HEAD"); err == nil {
+		t.Fatal("ChangedFiles with --output flag should fail")
+	}
+	if _, err := os.Stat(changedMarker); !os.IsNotExist(err) {
+		t.Fatal("ChangedFiles executed --output and created file")
+	}
+
+	// Tip with option-shaped ref must be treated as a single ref and fail, not run --branches.
+	if _, err := r.Tip(ctx, "--branches"); err == nil {
+		t.Fatal("Tip with --branches flag should fail")
+	}
+
+	// ParentTip with option-shaped ref must be treated as a single ref and fail.
+	if _, err := r.ParentTip(ctx, "--branches"); err == nil {
+		t.Fatal("ParentTip with --branches flag should fail")
+	}
 }

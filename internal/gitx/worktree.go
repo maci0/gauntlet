@@ -471,7 +471,7 @@ func (w *Worktree) ResetToBase(ctx context.Context) error {
 		return nil
 	}
 	sub := w.subRepo()
-	if _, err := sub.run(ctx, gitNormal, "reset", "--hard", w.base); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "reset", "--hard", w.base, "--"); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
 	}
 	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {
@@ -492,7 +492,7 @@ func (w *Worktree) Advance(ctx context.Context, newBase string) error {
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
 	sub := w.subRepo()
-	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase); err != nil {
+	if _, err := sub.run(ctx, gitNormal, "checkout", "--quiet", "--force", "--detach", newBase, "--"); err != nil {
 		return fmt.Errorf("git checkout --detach: %w", err)
 	}
 	if _, err := sub.run(ctx, gitNormal, "clean", "-fd"); err != nil {

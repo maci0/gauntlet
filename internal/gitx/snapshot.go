@@ -66,7 +66,7 @@ func (r *Repo) Restore(ctx context.Context, s Snapshot) error {
 	if !s.Valid() {
 		return errors.New("invalid snapshot")
 	}
-	if _, err := r.run(ctx, gitNormal, "reset", "--hard", s.head); err != nil {
+	if _, err := r.run(ctx, gitNormal, "reset", "--hard", s.head, "--"); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
 	}
 	if _, err := r.run(ctx, gitNormal, "read-tree", "-u", "--reset", s.fullTree); err != nil {

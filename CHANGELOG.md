@@ -12,6 +12,12 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Security
+
+- Guard git rev-parse, log, and diff commands with `--end-of-options` to prevent option injection and arbitrary file write via option-shaped ref arguments, and separate revisions with `--` during hard resets.
+- Resolve relative executable paths containing path separators to absolute paths in `runx.LookPath`, preventing unintended binary lookup or execution from working directory changes.
+- Use `os.Lstat` and regular-file checks when inspecting prompt files during discovery, refusing symlinks and special files.
+
 ### Fixed
 
 - Guard against integer overflow and truncation in backoff jitter and token reasoning percentages, and protect dashboard meters, rate formatters, and elapsed durations against NaN and unrepresentable floats.

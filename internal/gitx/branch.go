@@ -47,7 +47,7 @@ func (r *Repo) Branches(ctx context.Context) []string {
 
 // Tip returns the commit the given ref points at.
 func (r *Repo) Tip(ctx context.Context, ref string) (string, error) {
-	out, err := r.run(ctx, gitQuick, "rev-parse", ref)
+	out, err := r.run(ctx, gitQuick, "rev-parse", "--verify", "--end-of-options", ref)
 	if err != nil {
 		return "", err
 	}
@@ -118,7 +118,7 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 func (r *Repo) abortMerge(ctx context.Context) {
 	cleanCtx := context.WithoutCancel(ctx)
 	_, _ = r.run(cleanCtx, gitNormal, "merge", "--abort")
-	_, _ = r.run(cleanCtx, gitNormal, "reset", "--hard", "HEAD")
+	_, _ = r.run(cleanCtx, gitNormal, "reset", "--hard", "HEAD", "--")
 }
 
 // MergeInto merges branch into target, in a scratch checkout of target rather
@@ -463,7 +463,7 @@ func (r *Repo) ValidateBranchName(ctx context.Context, branch string) error {
 // CommitSubject returns the subject at ref, for completing publication after
 // a previous process committed or pushed but stopped before creating its PR.
 func (r *Repo) CommitSubject(ctx context.Context, ref string) (string, error) {
-	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%s", ref, "--")
+	out, err := r.run(ctx, gitQuick, "log", "-1", "--format=%s", "--end-of-options", ref, "--")
 	if err != nil {
 		return "", err
 	}
@@ -474,7 +474,7 @@ func (r *Repo) CommitSubject(ctx context.Context, ref string) (string, error) {
 // commit each, so this proves a recovered branch is based on the expected
 // preceding layer rather than merely sharing some older ancestor.
 func (r *Repo) ParentTip(ctx context.Context, ref string) (string, error) {
-	out, err := r.run(ctx, gitQuick, "rev-parse", ref+"^")
+	out, err := r.run(ctx, gitQuick, "rev-parse", "--verify", "--end-of-options", ref+"^")
 	if err != nil {
 		return "", err
 	}

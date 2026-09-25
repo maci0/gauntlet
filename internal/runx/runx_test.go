@@ -226,6 +226,19 @@ func TestLookPath(t *testing.T) {
 	if got := LookPath("nonexistent"); got != "" {
 		t.Fatalf("LookPath(nonexistent) = %q, want empty", got)
 	}
+
+	relBin := filepath.Join(".", "mytool")
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(oldWd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if got := LookPath(relBin); got != bin {
+		t.Fatalf("LookPath(%q) = %q, want absolute %q", relBin, got, bin)
+	}
 }
 
 func TestShQuote(t *testing.T) {

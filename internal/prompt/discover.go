@@ -241,8 +241,8 @@ func sameContent(prev Review, path string) bool {
 	if err != nil {
 		return false
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() {
 		return false
 	}
 	// Body strips a UTF-8 BOM, so a file that is the body plus that mark is
@@ -275,8 +275,8 @@ func sameFile(a, b string) bool {
 }
 
 func fileSize(path string) (int64, bool) {
-	fi, err := os.Stat(path)
-	if err != nil || fi.Size() < 0 {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() < 0 {
 		return 0, false
 	}
 	return fi.Size(), true

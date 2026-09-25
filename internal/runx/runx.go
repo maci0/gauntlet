@@ -148,9 +148,19 @@ func AbsPATHEnv() []string {
 // contains a path separator or is absolute, it is returned if it is a regular
 // executable file, or "" otherwise.
 func LookPath(name string) string {
-	if filepath.IsAbs(name) || strings.ContainsRune(name, os.PathSeparator) {
+	if filepath.IsAbs(name) {
 		if fi, err := os.Stat(name); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
 			return name
+		}
+		return ""
+	}
+	if strings.ContainsRune(name, os.PathSeparator) {
+		abs, err := filepath.Abs(name)
+		if err != nil {
+			return ""
+		}
+		if fi, err := os.Stat(abs); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+			return abs
 		}
 		return ""
 	}
