@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os/exec"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/runx"
@@ -240,6 +241,7 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	// Like gitx: a child that escapes the process group must not keep Run
 	// blocked on the output pipes past the kill.
 	out, errOut := runx.Bound(cmd, ghOutputMax, waitGrace)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	if err := cmd.Run(); err != nil {
 		detail := strings.TrimSpace(errOut.String())
 		if detail != "" {

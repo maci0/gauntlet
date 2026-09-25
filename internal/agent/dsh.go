@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -58,13 +59,18 @@ func parseDshProvider(dump string) string {
 // gives up on an unreapable child.
 const dshProbeGrace = 10 * time.Second
 
+// dshDumpMaxBytes bounds stdout and stderr of dsh --dump-config. A YAML dump
+// is tens of kilobytes; an unbounded read must not exhaust RAM.
+const dshDumpMaxBytes = 4 << 20
+
 // dshDefaultProvider probes the headless profile's configured provider once
 // per process. A failed probe keeps its error, not just an empty result, so
 // the caller can say why a bare dsh:model could not be resolved.
 //
 // The probe runs in its own process group and the deadline kill takes down the
 // whole group: Output reads through a pipe, and a grandchild that outlived the
-// killed child would hold that pipe open and hang this call forever.
+// killed child would hold that pipe open and hang this call forever. KillGroup
+// is deferred so grandchildren are reaped on normal exit as well.
 func dshDefaultProvider(base []string) (string, error) {
 	dshProbeOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
@@ -73,13 +79,22 @@ func dshDefaultProvider(base []string) (string, error) {
 		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 		cmd.Dir = os.TempDir()
 		cmd.Env = runx.AbsPATHEnv()
-		runx.Guard(cmd, dshProbeGrace)
-		out, err := cmd.Output()
-		if err != nil {
+		cmd.Stdin = nil
+		out, errOut := runx.Bound(cmd, dshDumpMaxBytes, dshProbeGrace)
+		defer runx.KillGroup(cmd, syscall.SIGKILL)
+		if err := cmd.Run(); err != nil {
+			if detail := strings.TrimSpace(errOut.String()); detail != "" {
+				dshProbeErr = fmt.Errorf("%s --dump-config failed: %w: %s", argv[0], err, runx.FirstLine(detail))
+				return
+			}
 			dshProbeErr = fmt.Errorf("%s --dump-config failed: %w", argv[0], err)
 			return
 		}
-		dshProvider = parseDshProvider(string(out))
+		if out.Hit || errOut.Hit {
+			dshProbeErr = fmt.Errorf("%s --dump-config output exceeded %d bytes", argv[0], dshDumpMaxBytes)
+			return
+		}
+		dshProvider = parseDshProvider(out.String())
 		if dshProvider == "" {
 			dshProbeErr = errors.New("the headless profile config has no agent-default-model provider")
 		}

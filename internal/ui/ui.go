@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -507,7 +508,10 @@ func (m *model) apply(ev runner.Event) {
 		}
 	case runner.EvMerge, runner.EvPullRequest:
 		if ev.Kind == runner.EvMerge && ev.Status == runner.StatusConflict {
-			m.conflicts = append(m.conflicts, ev.Review+" ("+ev.Branch+")")
+			entry := ev.Review + " (" + ev.Branch + ")"
+			if !slices.Contains(m.conflicts, entry) {
+				m.conflicts = append(m.conflicts, entry)
+			}
 		}
 		if ev.Review != "" && ev.Ins != nil && ev.Del != nil {
 			r := m.review(ev.Review)

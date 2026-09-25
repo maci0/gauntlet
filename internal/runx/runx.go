@@ -51,16 +51,24 @@ func (w *Writer) Write(p []byte) (int, error) {
 func (w *Writer) Bytes() []byte  { return w.buf.Bytes() }
 func (w *Writer) String() string { return w.buf.String() }
 
+// KillGroup signals the whole process group, falling back to the process itself
+// when the group is already gone.
+func KillGroup(cmd *exec.Cmd, sig syscall.Signal) {
+	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
+		return
+	}
+	if err := syscall.Kill(-cmd.Process.Pid, sig); err == nil {
+		return
+	}
+	_ = cmd.Process.Signal(sig)
+}
+
 // Guard puts cmd in its own process group, kills the group on Cancel, and
 // bounds how long Wait may sit on output pipes a grandchild still holds.
 func Guard(cmd *exec.Cmd, wait time.Duration) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
-		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
-				_ = cmd.Process.Signal(syscall.SIGKILL)
-			}
-		}
+		KillGroup(cmd, syscall.SIGKILL)
 		return nil
 	}
 	cmd.WaitDelay = wait

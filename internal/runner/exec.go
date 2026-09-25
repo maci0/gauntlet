@@ -478,13 +478,7 @@ func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
 // killGroup signals the whole process group, falling back to the pid when the
 // group is already gone.
 func killGroup(cmd *exec.Cmd, sig syscall.Signal) {
-	if cmd.Process == nil {
-		return
-	}
-	if err := syscall.Kill(-cmd.Process.Pid, sig); err == nil {
-		return
-	}
-	_ = cmd.Process.Signal(sig)
+	runx.KillGroup(cmd, sig)
 }
 
 func exitCode(cmd *exec.Cmd, err error) int {

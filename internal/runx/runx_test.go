@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -245,5 +246,31 @@ func TestShQuote(t *testing.T) {
 		if got := ShQuote(tc.in); got != tc.want {
 			t.Errorf("ShQuote(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestKillGroup(t *testing.T) {
+	// Nil cmd or process should not panic
+	KillGroup(nil, syscall.SIGKILL)
+	KillGroup(&exec.Cmd{}, syscall.SIGKILL)
+	KillGroup(&exec.Cmd{Process: &os.Process{Pid: 0}}, syscall.SIGKILL)
+	KillGroup(&exec.Cmd{Process: &os.Process{Pid: -1}}, syscall.SIGKILL)
+
+	cmd := exec.Command("sleep", "30")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	KillGroup(cmd, syscall.SIGKILL)
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected killed process to return exit error")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("process was not terminated by KillGroup")
 	}
 }

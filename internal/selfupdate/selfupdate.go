@@ -180,15 +180,18 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 			Message string `json:"message"`
 		}
 		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
+			drainBody(resp, 64<<10)
 			return nil, fmt.Errorf("github returned %s for %s: %s", resp.Status, url, ghErr.Message)
 		}
+		drainBody(resp, 64<<10)
 		return nil, fmt.Errorf("github returned %s for %s", resp.Status, url)
 	}
 	var rel Release
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
+		drainBody(resp, 4<<20)
 		return nil, fmt.Errorf("decode %s: %w", url, err)
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4<<20))
+	drainBody(resp, 4<<20)
 	if rel.TagName == "" {
 		return nil, errors.New("release has no tag")
 	}
@@ -364,13 +367,21 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 			Message string `json:"message"`
 		}
 		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
+			drainBody(resp, 64<<10)
 			resp.Body.Close()
 			return nil, fmt.Errorf("%s returned %s: %s", url, resp.Status, ghErr.Message)
 		}
+		drainBody(resp, 64<<10)
 		resp.Body.Close()
 		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}
 	return resp, nil
+}
+
+func drainBody(resp *http.Response, limit int64) {
+	if resp != nil && resp.Body != nil {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, limit))
+	}
 }
 
 func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
@@ -384,9 +395,10 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(data)) > limit {
+		drainBody(resp, maxAssetBytes)
 		return nil, fmt.Errorf("%s exceeds %d bytes", url, limit)
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, limit))
+	drainBody(resp, limit)
 	return data, nil
 }
 
@@ -403,9 +415,10 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 		return "", err
 	}
 	if n > maxAssetBytes {
+		drainBody(resp, maxAssetBytes)
 		return "", fmt.Errorf("asset exceeds %d bytes", int64(maxAssetBytes))
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, maxAssetBytes+1))
+	drainBody(resp, maxAssetBytes+1)
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 

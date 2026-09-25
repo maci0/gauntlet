@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/humanize"
@@ -170,6 +171,7 @@ func runIndexer(ctx context.Context, bin string, args []string, dir string) int 
 	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	runx.Guard(cmd, indexerWaitGrace)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	if err := cmd.Run(); err != nil {
 		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode()
