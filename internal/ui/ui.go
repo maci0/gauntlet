@@ -322,9 +322,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitArmed = true
 			return m, nil
 		case "esc":
-			if m.done || m.finishing {
-				return m, tea.Quit
-			}
 			if m.quitArmed {
 				m.quitArmed = false
 				return m, nil
@@ -337,6 +334,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.scroll > 0 {
 				m.scroll = 0
 				return m, nil
+			}
+			if m.done || m.finishing {
+				return m, tea.Quit
 			}
 			return m, nil
 		case "enter":
@@ -351,6 +351,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		switch key {
 		case "ctrl+c":
+			if m.done {
+				return m, tea.Quit
+			}
 			// Staged like the terminal's Ctrl-C: the first asks for the
 			// graceful quit the `s` key makes, the second closes the
 			// dashboard, which stops the run.
@@ -1240,6 +1243,15 @@ func (m *model) renderMinimal() string {
 	}
 	if len(m.conflicts) > 0 {
 		rows = append(rows, styleWarn.Render("unmerged: "+strings.Join(m.conflicts, ", ")))
+	}
+	var active []string
+	for _, label := range m.laneOrd {
+		if l := m.lanes[label]; l != nil && l.review != "" {
+			active = append(active, fmt.Sprintf("%s: %s", label, reviewShort(l.review)))
+		}
+	}
+	if len(active) > 0 {
+		rows = append(rows, styleInfo.Render("running: "+strings.Join(active, ", ")))
 	}
 	rows = append(rows,
 		styleDim.Render("terminal too small for the dashboard"),

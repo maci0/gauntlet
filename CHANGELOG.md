@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Reset feed scroll to live output before quitting on Esc in the completed dashboard, quit immediately on Ctrl+C when a run has finished, show in-flight reviews in the minimal dashboard view, and step into the first review when expanding an already-open group in the launcher.
 - Floor live activity rate marker to teal to clear the text contrast floor on low rates, support delete and ctrl+h in launcher filter input, and add accessible SVG title and desc metadata.
 - Avoid counting interrupted reviews as failures in dashboard lane statistics.
 - Validate ISO 8601 calendar dates and leap years with standard time parsing when resolving journal run shards, guard thinking glyph animation against uninitialized clocks and backward time steps, and avoid undefined Unix time calculations on zero timestamps in seed derivation.

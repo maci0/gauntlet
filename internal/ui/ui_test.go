@@ -1283,6 +1283,63 @@ func TestEscResetsPauseAndScroll(t *testing.T) {
 	}
 }
 
+// Pressing esc on a completed run resets feed scroll to live edge rather than
+// quitting and losing the inspection context; a second esc at live edge quits.
+func TestEscOnDoneResetsScrollBeforeQuit(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.feed = []feedLine{{text: "line1"}, {text: "line2"}, {text: "line3"}}
+	m.done = true
+	m.scroll = 2
+	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "esc:live") {
+		t.Fatalf("completed footer does not document esc:live while scrolled back:\n%s", got)
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc while scrolled on done quit the dashboard instead of resetting scroll")
+	}
+	if m.scroll != 0 {
+		t.Fatalf("esc did not reset scroll to live edge: got %d", m.scroll)
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("esc at live edge on completed run did not quit")
+	}
+}
+
+// Ctrl+C on a completed run must quit immediately without needing a second press.
+func TestCtrlCOnDoneQuitsImmediately(t *testing.T) {
+	finished := false
+	cfg := demoConfig()
+	cfg.OnFinish = func() { finished = true }
+	m := newModel(cfg)
+	m.done = true
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c on completed dashboard did not quit immediately")
+	}
+	if finished {
+		t.Fatal("ctrl+c on completed dashboard triggered OnFinish")
+	}
+}
+
+// The minimal view shows running reviews so a user on a small terminal has
+// visibility into what is currently executing.
+func TestMinimalViewShowsActiveReviews(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 50, 15, true
+	m.apply(runner.Event{
+		Kind:   runner.EvReviewStart,
+		Review: "sec-review",
+		Agent:  "claude",
+		Time:   time.Now(),
+	})
+	got := stripANSI(m.renderMinimal())
+	if !strings.Contains(got, "running: claude: sec") {
+		t.Fatalf("minimal view missing running review:\n%s", got)
+	}
+}
+
 func TestFeedAndHelpPagingKeys(t *testing.T) {
 	m := newModel(demoConfig())
 	m.w, m.h, m.ready = 100, 30, true

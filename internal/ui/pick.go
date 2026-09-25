@@ -520,10 +520,18 @@ func (p *picker) rowAt(i int) row {
 
 // expand opens or closes the group the cursor is in. Closing from a member
 // moves the cursor up to its header, so the cursor never lands off-screen.
+// Opening an already-expanded group steps into its first review.
 func (p *picker) expand(open bool) {
 	r := p.rowAt(p.cursor[paneReviews])
 	if r.kind == rowSuggest {
 		return
+	}
+	if open && r.kind == rowGroup && (p.open[r.group] || p.filter != "") {
+		rows := p.rows()
+		if cur := p.cursor[paneReviews]; cur+1 < len(rows) && rows[cur+1].kind == rowReview {
+			p.cursor[paneReviews] = cur + 1
+			return
+		}
 	}
 	p.open[r.group] = open
 	if !open {

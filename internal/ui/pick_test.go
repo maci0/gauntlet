@@ -938,6 +938,35 @@ func TestPickFilterBoundsGroupToggle(t *testing.T) {
 	}
 }
 
+func TestPickExpandStepsIntoFirstMemberWhenAlreadyOpen(t *testing.T) {
+	p := demoPicker()
+	p.cursor[paneReviews] = 1 // quick group header (collapsed)
+	if p.open[0] {
+		t.Fatal("group should start collapsed")
+	}
+	press(p, "l") // expands group
+	if !p.open[0] {
+		t.Fatal("l did not expand group")
+	}
+	if p.cursor[paneReviews] != 1 {
+		t.Fatalf("first l should keep cursor on header, got %d", p.cursor[paneReviews])
+	}
+	press(p, "l") // group is already expanded; steps into first child
+	if p.cursor[paneReviews] != 2 {
+		t.Fatalf("second l on open group should step into first review, got %d", p.cursor[paneReviews])
+	}
+	if r := p.rowAt(p.cursor[paneReviews]); r.kind != rowReview || r.review.Name != "sec-review" {
+		t.Fatalf("cursor expected on sec-review, got %+v", r)
+	}
+	press(p, "h") // collapses group and returns to header
+	if p.open[0] {
+		t.Fatal("h should collapse group")
+	}
+	if p.cursor[paneReviews] != 1 {
+		t.Fatalf("h should return cursor to header, got %d", p.cursor[paneReviews])
+	}
+}
+
 // While the filter is open, enter keeps it and q types. The footer has to
 // name those keys, or it keeps advertising a launch the key no longer does.
 func TestPickFilterFooterNamesFilterKeys(t *testing.T) {
