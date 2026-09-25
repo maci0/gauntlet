@@ -22,7 +22,7 @@ minor instead and were listed under Changed.
 
 - Skip review confirmation prompts during `--list` and `--dry-run` planning, parse stream JSON role and type values case-insensitively, ignore empty queries and candidates in fuzzy matching, and remove nonexistent review names from heuristic rules.
 - Guard against integer overflow and truncation in backoff jitter and token reasoning percentages, and protect dashboard meters, rate formatters, and elapsed durations against NaN and unrepresentable floats.
-
+- Guard dashboard chart rendering and note truncation against non-positive bounds, and handle nil receivers in usage tails and release metadata.
 - Bound narrow text trimming and directory labels in the dashboard to non-negative widths, avoid splitting multibyte arguments in attached flag values, and normalize stacked pull request overview notes to NFC.
 - Correct the review count across the landing page and design docs, and document the dashboard Enter-to-close and paging keys.
 - Clamp reload and review elapsed durations to non-negative values, guard git sample caching against negative intervals, and fall back to reconstructed start time when resume origin is zero or in the future.
