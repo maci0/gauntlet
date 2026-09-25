@@ -1082,6 +1082,9 @@ func (m *model) visibleFeed() []feedLine {
 // live edge, or a quiet feed from a filtered one.
 func (m *model) feedTitle() string {
 	title := "FEED"
+	if m.paused {
+		title += "  " + styleWarn.Render("paused")
+	}
 	if l := m.filter.label(); l != "" {
 		title += "  " + styleInfo.Render(l)
 	}
@@ -1377,7 +1380,7 @@ func scrollHelp(scroll int, key string, lines []string, w, h int) int {
 		scroll = 0
 	case "end", "G":
 		scroll = bound
-	case "pgup", "pageup":
+	case "pgup", "pageup", "b":
 		scroll -= max(viewport-1, 1)
 	case "pgdown", "pagedown", "space":
 		scroll += max(viewport-1, 1)

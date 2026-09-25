@@ -190,7 +190,7 @@ func newPicker(cfg PickConfig) *picker {
 				// FastSuggest is the suggester that is not an agent: it reads
 				// the tree for signals, costs nothing, and answers at once.
 				values: suggestAgentValues(cfg),
-				help:   "who proposes the reviews; gauntlet reads the files instead of asking a model"},
+				help:   "who proposes the reviews for a suggested run"},
 			{kind: optToggle, label: "once", flag: "--once", on: true,
 				help: "one loop, then stop"},
 			{kind: optToggle, label: "dashboard", flag: "--tui", on: true,
@@ -370,6 +370,7 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "esc", "ctrl+c":
 		p.filter, p.typing = "", false
+		p.clampReviewCursor()
 	case "enter":
 		p.typing = false // the filter stays, the keys go back to the panes
 		p.clampReviewCursor()
@@ -1007,6 +1008,9 @@ func (p *picker) blocked() string {
 // than any pane column, so the status line is where one is read whole.
 func (p *picker) hint() string {
 	if p.typing {
+		if p.filterMissed(p.rows()) {
+			return "filter: " + p.filter + "▏  (no reviews match)  ⏎ keep it, esc clear it"
+		}
 		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
 	}
 	if p.filterMissed(p.rows()) {
@@ -1018,8 +1022,17 @@ func (p *picker) hint() string {
 		if p.optionInert(&o) {
 			return "stacked PRs own this; turn that off to change it"
 		}
-		if o.flag == "--suggest-agent" && !p.suggest {
-			return "suggest is off; tick suggest in reviews to choose who suggests"
+		if o.flag == "--suggest-agent" {
+			switch {
+			case !p.suggest:
+				return "suggest is off; tick suggest in reviews to choose who suggests"
+			case p.suggestAgent() == p.cfg.FastSuggest && p.cfg.FastSuggest != "":
+				return "gauntlet reads the files for signals instead of asking a model"
+			case p.suggestAgent() == "":
+				return "sample an agent from the installed pool to propose reviews"
+			default:
+				return fmt.Sprintf("use %s to read the repo and propose reviews", p.suggestAgent())
+			}
 		}
 		if o.flag == "--merge-into" && !p.committing() {
 			return "commits are off; turn on commit or push to choose a merge target"
@@ -1048,6 +1061,9 @@ func (p *picker) hint() string {
 // renderStatus is the line under the command: what is blocking a launch if
 // anything is, otherwise what the cursor is on.
 func (p *picker) renderStatus() string {
+	if p.typing {
+		return clip(styleDim.Render(p.hint()), p.w)
+	}
 	if why := p.blocked(); why != "" {
 		return clip(styleWarn.Render("⚠ "+why), p.w)
 	}
@@ -1060,8 +1076,11 @@ func (p *picker) renderStatus() string {
 // bulk selection. What fits is what is shown, never clipped mid-name.
 func (p *picker) renderKeys() string {
 	arrowAction := "open/close"
-	if p.focus == paneOptions {
+	switch p.focus {
+	case paneOptions:
 		arrowAction = "change"
+	case paneAgents:
+		arrowAction = "pane"
 	}
 	keys := []struct{ k, v string }{
 		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
@@ -1400,8 +1419,19 @@ func (p *picker) agentPanel(w, h int) string {
 			checkbox(p.agents[i])+" "+styled(p.hues.get(label), label), ""))
 	}
 	title := "AGENTS"
-	if len(p.pickedAgents()) == 0 {
+	checked := 0
+	for _, on := range p.agents {
+		if on {
+			checked++
+		}
+	}
+	switch {
+	case checked == 0:
 		title += styleDim.Render("  none picked: auto-detect")
+	case checked == len(p.cfg.Agents):
+		title += styleDim.Render("  all picked")
+	default:
+		title += styleDim.Render(fmt.Sprintf("  %d of %d picked", checked, len(p.cfg.Agents)))
 	}
 	if hidden := len(p.cfg.Agents) - (to - from); hidden > 0 {
 		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))

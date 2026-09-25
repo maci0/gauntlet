@@ -1336,3 +1336,23 @@ func TestFooterShowsEscLiveWhenPausedAtLiveEdge(t *testing.T) {
 		t.Fatalf("footer does not document esc:live while paused at live edge:\n%s", got)
 	}
 }
+
+func TestFeedTitleMarksPaused(t *testing.T) {
+	m := newModel(demoConfig())
+	m.paused = true
+	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "paused") {
+		t.Fatalf("feed title %q, want paused indicator", got)
+	}
+}
+
+func TestScrollHelpSupportsBForPageUp(t *testing.T) {
+	lines := make([]string, 50)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+	scroll := 30
+	newScroll := scrollHelp(scroll, "b", lines, 80, 20)
+	if newScroll >= scroll {
+		t.Fatalf("key 'b' did not scroll up: before %d, after %d", scroll, newScroll)
+	}
+}

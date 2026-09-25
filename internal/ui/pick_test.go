@@ -1297,3 +1297,58 @@ func TestPickDisabledOptionsCannotBeModified(t *testing.T) {
 		t.Fatal("merge into was modified while commits were off")
 	}
 }
+
+func TestPickFooterShowsPaneInAgentsPane(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h, p.ready = 104, 30, true
+	p.focus = paneAgents
+	footer := lastLine(p.View())
+	if !strings.Contains(footer, ":pane") {
+		t.Fatalf("agents pane footer should show :pane for arrow keys, got:\n%s", footer)
+	}
+	if strings.Contains(footer, ":open/close") {
+		t.Fatalf("agents pane footer should not show :open/close, got:\n%s", footer)
+	}
+}
+
+func TestPickAgentPanelTitleWhenAllPicked(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h, p.ready = 104, 30, true
+	p.focus = paneAgents
+	press(p, "a") // selects all agents
+	view := stripANSI(p.View())
+	if !strings.Contains(view, "AGENTS  all picked") {
+		t.Fatalf("agents panel title should show 'AGENTS  all picked' when all are selected, got:\n%s", view)
+	}
+}
+
+func TestPickSuggestAgentHint(t *testing.T) {
+	p := demoPicker()
+	p.suggest = true
+	p.focus = paneOptions
+	p.cursor[paneOptions] = optSuggestAgent
+
+	// FastSuggest agent
+	p.opts[optSuggestAgent].idx = 1
+	if got := p.hint(); !strings.Contains(got, "reads the files for signals") {
+		t.Fatalf("fast suggest hint should explain file signals, got %q", got)
+	}
+
+	// Model agent
+	p.opts[optSuggestAgent].idx = 2 // claude
+	if got := p.hint(); !strings.Contains(got, "use claude to read the repo") {
+		t.Fatalf("agent suggest hint should name the agent, got %q", got)
+	}
+}
+
+func TestPickFilterTypingShowsPromptEvenWithNoMatches(t *testing.T) {
+	p := demoPicker()
+	press(p, "/", "z", "z", "z")
+	status := stripANSI(p.renderStatus())
+	if !strings.Contains(status, "filter: zzz") {
+		t.Fatalf("typing mode should keep the filter prompt visible, got %q", status)
+	}
+	if !strings.Contains(status, "no reviews match") {
+		t.Fatalf("typing mode should indicate no matches, got %q", status)
+	}
+}
