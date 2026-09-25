@@ -524,6 +524,9 @@ func (w *Worktree) Remove(ctx context.Context) error {
 // halfway through its own update fails exactly the way their doc comment
 // describes. The failure would be swallowed here, leaving the branch stranded.
 func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
+	if r == nil || !Available() {
+		return
+	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
 	// -D, not -d: a squashed branch is not "merged" as far as git is
@@ -538,6 +541,9 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 // Prunes stale worktree registrations first so a branch is not rejected as
 // "checked out" in a worktree that was already removed from disk.
 func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
+	if r == nil || !Available() {
+		return
+	}
 	r.PruneWorktrees(ctx)
 	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {
@@ -555,6 +561,9 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
 // is what a killed run leaves behind.
 func (r *Repo) PruneWorktrees(ctx context.Context) {
+	if r == nil || !Available() {
+		return
+	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
 	_, _ = r.run(ctx, gitNormal, "worktree", "prune")
@@ -564,6 +573,9 @@ func (r *Repo) PruneWorktrees(ctx context.Context) {
 // left in it, so a finished run leaves no trace in the reviewed tree.
 // os.Remove on a non-empty directory fails, which is the intended guard.
 func (r *Repo) CleanWorktreeRoot() {
+	if r == nil {
+		return
+	}
 	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
 	_ = os.Remove(root)
 	_ = os.Remove(filepath.Dir(root))

@@ -48,6 +48,7 @@ minor instead and were listed under Changed.
 - Avoid treating closed signal channels as active signals or force-kill triggers in signal handling, and access stacked-PR runner state through synchronized methods.
 - Bound and reclaim subprocess process groups across dsh probing, GitHub CLI calls, and indexing, and drain HTTP response bodies on self-update error paths.
 - Correct stacked pull request body documentation and example in `docs/RUNS.md`, document launcher navigation keys in `docs/CLI.md`, and fix misplaced type docstrings.
+- Reclaim git subprocess process groups on command exit, guard repository operations against nil instances, and default pull request validation to GitHub when host is unspecified.
 
 ## 1.23.2
 

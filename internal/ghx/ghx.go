@@ -103,8 +103,8 @@ func (c Client) Preflight(ctx context.Context) error {
 	if !Available() {
 		return errors.New("stacked PRs need the gh CLI")
 	}
-	if _, err := c.run(ctx, "auth", "status", "--hostname", c.Host); err != nil {
-		return fmt.Errorf("gh is not authenticated for %s: %w", c.Host, err)
+	if _, err := c.run(ctx, "auth", "status", "--hostname", c.host()); err != nil {
+		return fmt.Errorf("gh is not authenticated for %s: %w", c.host(), err)
 	}
 	if _, err := c.run(ctx, "repo", "view", c.selector(), "--json", "nameWithOwner"); err != nil {
 		return fmt.Errorf("cannot access GitHub repository %s: %w", c.Repo, err)
@@ -184,7 +184,8 @@ func (c Client) Create(ctx context.Context, head, base, title, body string) (str
 	if url, ok := c.createdURL(out); ok {
 		return url, nil
 	}
-	if url, findErr := c.Find(ctx, head, base); findErr == nil && url != "" {
+	url, findErr := c.Find(ctx, head, base)
+	if findErr == nil && url != "" {
 		return url, nil
 	}
 	if err != nil {
@@ -192,6 +193,9 @@ func (c Client) Create(ctx context.Context, head, base, title, body string) (str
 	}
 	prURL := strings.TrimSpace(string(out))
 	if prURL == "" {
+		if findErr != nil {
+			return "", fmt.Errorf("gh pr create returned no URL (recovery find: %w)", findErr)
+		}
 		return "", errors.New("gh pr create returned no URL")
 	}
 	return c.validateURL(prURL)
@@ -212,17 +216,24 @@ func (c Client) createdURL(out []byte) (string, bool) {
 	return u, true
 }
 
+func (c Client) host() string {
+	if c.Host == "" {
+		return "github.com"
+	}
+	return c.Host
+}
+
 func (c Client) selector() string {
-	if c.Host == "" || c.Host == "github.com" {
+	if c.host() == "github.com" {
 		return c.Repo
 	}
-	return c.Host + "/" + c.Repo
+	return c.host() + "/" + c.Repo
 }
 
 func (c Client) validateURL(raw string) (string, error) {
 	u, err := url.ParseRequestURI(raw)
-	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), c.Host) {
-		return "", fmt.Errorf("gh returned an invalid PR URL %q for %s", runx.FirstLine(raw), c.Host)
+	if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Hostname(), c.host()) {
+		return "", fmt.Errorf("gh returned an invalid PR URL %q for %s", runx.FirstLine(raw), c.host())
 	}
 	return raw, nil
 }

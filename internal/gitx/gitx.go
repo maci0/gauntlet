@@ -341,6 +341,7 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 	// child would still hold open. The same rules runProc and runIndexer
 	// enforce on their own children.
 	out, errBuf := runx.Bound(cmd, gitOutputMax, waitGrace)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	err := cmd.Run()
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into

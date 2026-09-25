@@ -83,6 +83,9 @@ type MergeResult struct {
 // labeling it a conflict would send a resolver to fix what no edit fixes and
 // count the review as MERGE CONFLICT instead of failed.
 func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
+	if r == nil || !Available() {
+		return MergeResult{Detail: "git is not available"}
+	}
 	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", "--", branch)
 	if err != nil {
 		// A conflicted merge narrates on stdout and leaves unmerged entries in
@@ -133,7 +136,7 @@ func (r *Repo) abortMerge(ctx context.Context) {
 // nothing moves, exactly as a review branch that will not merge is kept for a
 // human.
 func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) MergeResult {
-	if !Available() {
+	if r == nil || !Available() {
 		return MergeResult{Detail: "git is not available"}
 	}
 	if _, err := r.Tip(ctx, "refs/heads/"+target); err != nil {
@@ -217,6 +220,9 @@ func mergeNarration(out []byte, cause error) string {
 // until the end, and a failure is reported rather than fatal: the work is
 // committed either way, and the next push will carry it.
 func (r *Repo) Push(ctx context.Context) error {
+	if r == nil || !Available() {
+		return errors.New("git is not available")
+	}
 	if out, err := r.run(ctx, gitPush, "push"); err != nil {
 		detail := strings.TrimSpace(string(out))
 		if detail == "" {
@@ -240,6 +246,9 @@ func (r *Repo) abortRebase(ctx context.Context) {
 // local work on top. A conflict is reported, never resolved: the caller
 // decides what divergence means.
 func (r *Repo) PullRebase(ctx context.Context) error {
+	if r == nil || !Available() {
+		return errors.New("git is not available")
+	}
 	if out, err := r.run(ctx, gitPush, "pull", "--rebase"); err != nil {
 		r.abortRebase(ctx)
 		detail := strings.TrimSpace(string(out))
@@ -254,6 +263,9 @@ func (r *Repo) PullRebase(ctx context.Context) error {
 // PushBranch publishes one stack layer under the same local and remote name.
 // It never force-pushes: a divergent remote branch is preserved and reported.
 func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
+	if r == nil || !Available() {
+		return errors.New("git is not available")
+	}
 	out, err := r.run(ctx, gitPush, "push", "--set-upstream", "--", remote,
 		"refs/heads/"+branch+":refs/heads/"+branch)
 	if err != nil {
@@ -270,6 +282,9 @@ func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 
 // CanPushBranch checks new-branch permission without changing the remote.
 func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string) error {
+	if r == nil || !Available() {
+		return errors.New("git is not available")
+	}
 	out, err := r.run(ctx, gitPush, "push", "--dry-run", "--", remote,
 		source+":refs/heads/"+branch)
 	if err != nil {
