@@ -69,6 +69,7 @@ jobs:
           # Pin uv itself, not just the tools it runs: this job's verdict must
           # depend on the commit, not on what uv released this week.
           version: "0.12.6"
+          enable-cache: true
       # ruff, mypy, and rich are pinned for the same reason every other
       # toolchain in the repository is: a new upstream release must not turn
       # a green tree red with no code change, and the two ruff steps must
