@@ -44,8 +44,8 @@ const (
 func ParseFileNotes(tail []byte) []FileNote {
 	var notes []FileNote
 	index := make(map[string]int)
-	for _, m := range fileNoteRe.FindAllStringSubmatch(string(tail), -1) {
-		path, note, ok := strings.Cut(m[1], ": ")
+	for _, m := range fileNoteRe.FindAllSubmatch(tail, -1) {
+		path, note, ok := strings.Cut(string(m[1]), ": ")
 		if !ok {
 			continue
 		}
@@ -81,9 +81,9 @@ const subjectMax = 100
 // printed none. The last one wins: an agent that revises itself means the
 // later line.
 func ParseSubject(tail []byte) string {
-	matches := subjectRe.FindAllStringSubmatch(string(tail), -1)
+	matches := subjectRe.FindAllSubmatch(tail, -1)
 	for _, m := range slices.Backward(matches) {
-		if s := cleanReportedLine(m[1], subjectMax); s != "" {
+		if s := cleanReportedLine(string(m[1]), subjectMax); s != "" {
 			return s
 		}
 	}

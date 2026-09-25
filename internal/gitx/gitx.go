@@ -402,8 +402,9 @@ func mergeGitEnv(extra []string) []string {
 }
 
 var (
-	insRe = regexp.MustCompile(`(\d+) insertion`)
-	delRe = regexp.MustCompile(`(\d+) deletion`)
+	insRe   = regexp.MustCompile(`(\d+) insertion`)
+	delRe   = regexp.MustCompile(`(\d+) deletion`)
+	nulByte = []byte{0}
 )
 
 // parseShortstat reads the counts out of a `git diff --shortstat` output.
@@ -483,7 +484,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	st := parseShortstat(diff)
 	skipArtifacts := len(ownArtifacts) > 0
 	var live []string
-	for name := range bytes.SplitSeq(untracked, []byte{0}) {
+	for name := range bytes.SplitSeq(untracked, nulByte) {
 		if len(name) == 0 {
 			continue
 		}
@@ -524,26 +525,26 @@ func (r *Repo) Invalidate() {
 // opening a writer-less FIFO would block forever. O_NONBLOCK is cleared once
 // the descriptor is known to be a regular file. O_CLOEXEC keeps the descriptor
 // out of a child that forks while the read is in flight.
-func openRegular(path string) (*os.File, error) {
+func openRegular(path string) (*os.File, os.FileInfo, error) {
 	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	f := os.NewFile(uintptr(fd), path)
 	fi, err := f.Stat()
 	if err != nil {
 		f.Close()
-		return nil, err
+		return nil, nil, err
 	}
 	if !fi.Mode().IsRegular() {
 		f.Close()
-		return nil, errors.New("not a regular file")
+		return nil, nil, errors.New("not a regular file")
 	}
 	// O_NONBLOCK was only to refuse a planted FIFO; the line count reads
 	// through this descriptor and must not get EAGAIN. There is nothing to
 	// do if the kernel refuses.
 	_ = syscall.SetNonblock(fd, false)
-	return f, nil
+	return f, fi, nil
 }
 
 // countLinesCached counts the newlines in a regular file through the repo's
@@ -570,17 +571,12 @@ func (r *Repo) pruneLineCounts(live []string) {
 }
 
 func (r *Repo) countLinesCached(path string) int {
-	f, err := openRegular(path)
+	f, fi, err := openRegular(path)
 	if err != nil {
 		delete(r.lineCounts, path)
 		return 0
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		delete(r.lineCounts, path)
-		return 0
-	}
 	size, mod := fi.Size(), fi.ModTime()
 	if e, ok := r.lineCounts[path]; ok && e.size == size && e.modTime.Equal(mod) {
 		return e.lines
@@ -940,7 +936,7 @@ func splitNUL(out []byte) []string {
 	// and substrings of it beat a copy per path. Count the NULs so the slice
 	// is sized once; git -z usually terminates the last record, but a missing
 	// terminator still fits in +1.
-	paths := make([]string, 0, bytes.Count(out, []byte{0})+1)
+	paths := make([]string, 0, bytes.Count(out, nulByte)+1)
 	for field := range strings.SplitSeq(string(out), "\x00") {
 		if field != "" {
 			paths = append(paths, field)

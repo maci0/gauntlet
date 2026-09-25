@@ -85,13 +85,7 @@ func stripBOM(s string) string {
 	return strings.TrimPrefix(s, "\xef\xbb\xbf")
 }
 
-// Desc is the prompt's first "Your goal" line, stripped to its predicate. It
-// is display text from a possibly untrusted file, so it is sanitized.
-func (r Review) Desc() string {
-	body, err := r.Body()
-	if err != nil {
-		return ""
-	}
+func descFromBody(body string) string {
 	for line := range strings.SplitSeq(body, "\n") {
 		if strings.HasPrefix(line, "Your goal") {
 			line = sanitize(line)
@@ -101,6 +95,16 @@ func (r Review) Desc() string {
 		}
 	}
 	return ""
+}
+
+// Desc is the prompt's first "Your goal" line, stripped to its predicate. It
+// is display text from a possibly untrusted file, so it is sanitized.
+func (r Review) Desc() string {
+	body, err := r.Body()
+	if err != nil {
+		return ""
+	}
+	return descFromBody(body)
 }
 
 // summaryPrefix introduces the short form of a review's subject, for places
@@ -136,7 +140,7 @@ func (r Review) Summary() string {
 		}
 		return normalize.Truncate(s, summaryRuneMax)
 	}
-	return r.Desc()
+	return descFromBody(body)
 }
 
 // Signal tokens a review may declare, so the file-signal suggester can

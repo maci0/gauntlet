@@ -601,7 +601,7 @@ const churnTimeout = 10 * time.Second
 // output or a directory walk). ASCII input passes through untouched at
 // no cost; only a path with combining marks pays.
 func nfcPath(p string) string {
-	return norm.NFC.String(filepath.ToSlash(p))
+	return fuzzy.NFC(filepath.ToSlash(p))
 }
 
 // record files one path into the signal sets.

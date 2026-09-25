@@ -1050,6 +1050,11 @@ var mergeJSON = []byte(`"merge"`)
 // ride on the pull_request event instead.
 var pullRequestJSON = []byte(`"pull_request"`)
 
+// historyGate filters out lines that cannot be one of the events History counts.
+func historyGate(line []byte) bool {
+	return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON) || bytes.Contains(line, pullRequestJSON)
+}
+
 // History reports, per review, how a directory's own past runs went: how often
 // each review ran there and how often it actually changed something. It is the
 // only signal that improves with use, and it costs one pass over the recent
@@ -1079,13 +1084,6 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		}
 		if matched++; matched > historyMatches {
 			break
-		}
-		// A run journal records one line per output event, so it holds an
-		// order of magnitude more output than history events. The gate skips
-		// their decode; a line without either marker cannot be one of the two
-		// events counted here.
-		gate := func(line []byte) bool {
-			return bytes.Contains(line, reviewEndJSON) || bytes.Contains(line, mergeJSON) || bytes.Contains(line, pullRequestJSON)
 		}
 		visit := func(line []byte) {
 			var e historyEvent
@@ -1130,11 +1128,11 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			}
 		}
 		if run.Path != "" {
-			if err := eventsFile(run.Path, gate, visit); err == nil {
+			if err := eventsFile(run.Path, historyGate, visit); err == nil {
 				continue
 			}
 		}
-		_ = events(run.RunID, gate, visit)
+		_ = events(run.RunID, historyGate, visit)
 	}
 	return out, nil
 }
