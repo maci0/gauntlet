@@ -325,3 +325,16 @@ func TestFetchRejectsOversizedResponse(t *testing.T) {
 		t.Fatalf("fetch should reject oversized response, got: %v", err)
 	}
 }
+
+func TestFetchIncludesErrorMessageOnFailure(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"message":"API rate limit exceeded"}`))
+	}))
+	defer ts.Close()
+
+	_, err := fetch(context.Background(), ts.URL, 1024)
+	if err == nil || !strings.Contains(err.Error(), "API rate limit exceeded") {
+		t.Fatalf("fetch should include remote error message, got: %v", err)
+	}
+}

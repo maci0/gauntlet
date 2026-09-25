@@ -56,8 +56,10 @@ func (w *Writer) String() string { return w.buf.String() }
 func Guard(cmd *exec.Cmd, wait time.Duration) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
-		if cmd.Process != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			if err := syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL); err != nil {
+				_ = cmd.Process.Signal(syscall.SIGKILL)
+			}
 		}
 		return nil
 	}

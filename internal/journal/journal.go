@@ -211,11 +211,12 @@ func (j *Journal) Close(s Summary) error {
 	s.RunID, s.Path = j.runID, j.path
 	if err := appendIndex(s); err != nil {
 		// An index failure is not sticky: a later Close retries the append.
-		// A journal write error that already landed in j.err still wins.
+		// A journal write error that already landed in j.err still wins,
+		// but both are preserved so neither is swallowed.
 		if j.err != nil {
-			return j.err
+			return errors.Join(j.err, fmt.Errorf("append index: %w", err))
 		}
-		return err
+		return fmt.Errorf("append index: %w", err)
 	}
 	j.indexed = true
 	return j.err
@@ -375,10 +376,11 @@ func readIndex(n int) ([]Summary, error) {
 	for chunk := int64(recentChunk); ; {
 		start := max(size-chunk, 0)
 		data := make([]byte, size-start)
-		if _, err := f.ReadAt(data, start); err != nil && !errors.Is(err, io.EOF) {
+		nRead, err := f.ReadAt(data, start)
+		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, err
 		}
-		out, enough := parseTail(data, start > 0, n)
+		out, enough := parseTail(data[:nRead], start > 0, n)
 		if enough || start == 0 {
 			return out, nil
 		}
@@ -466,7 +468,7 @@ func indexLookup(want []namedJournal, listed []Summary) (map[string]Summary, err
 	// A hole sits behind a later Close, so it is older than the tail of
 	// n rows. Widen until every wanted id is present or the file ends;
 	// first occurrence still wins, because each wider read is newest-first.
-	for limit := max(len(listed)*2, 32); need > 0; limit *= 2 {
+	for limit := max(len(listed)*2, 32); need > 0; {
 		rows, err := readIndex(limit)
 		if err != nil {
 			return nil, err
@@ -489,6 +491,11 @@ func indexLookup(want []namedJournal, listed []Summary) (map[string]Summary, err
 			break
 		}
 		need = still
+		if limit > math.MaxInt/2 {
+			limit = math.MaxInt
+		} else {
+			limit *= 2
+		}
 	}
 	return lookup, nil
 }

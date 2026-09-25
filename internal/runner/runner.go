@@ -1109,6 +1109,14 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	}
 
 	switch {
+	case pr.Canceled:
+		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
+		res.Status = StatusInterrupted
+		r.forgetSession(spec)
+	case pr.TimedOut:
+		r.log("TIMEOUT: %s (%s) after %s", review, spec.Label(), humanize.Duration(r.cfg.Timeout))
+		res.Status = StatusTimeout
+		r.forgetSession(spec)
 	case pr.Err != nil:
 		r.log("FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
 		res.Status = StatusFail
@@ -1117,14 +1125,6 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
 			return retry
 		}
-	case pr.TimedOut:
-		r.log("TIMEOUT: %s (%s) after %s", review, spec.Label(), humanize.Duration(r.cfg.Timeout))
-		res.Status = StatusTimeout
-		r.forgetSession(spec)
-	case pr.Canceled:
-		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
-		res.Status = StatusInterrupted
-		r.forgetSession(spec)
 	case pr.ExitCode != 0:
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)

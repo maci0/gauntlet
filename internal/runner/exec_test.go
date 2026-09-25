@@ -425,3 +425,28 @@ func TestSinkSerializedAcrossStdoutAndStderr(t *testing.T) {
 		t.Fatalf("got %d lines, want at least 400", len(got))
 	}
 }
+
+func TestRunProcPreCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	opts := procOpts{
+		Argv: []string{"sleep", "5"},
+	}
+	res := runProc(ctx, opts)
+	if !res.Canceled {
+		t.Fatalf("expected res.Canceled to be true, got %+v", res)
+	}
+}
+
+func TestRunProcCanceledDuringExecution(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	bin := fakeAgent(t, t.TempDir(), "agent", "sleep 10")
+	opts := procOpts{
+		Argv: []string{bin},
+	}
+	time.AfterFunc(100*time.Millisecond, cancel)
+	res := runProc(ctx, opts)
+	if !res.Canceled {
+		t.Fatalf("expected res.Canceled to be true, got %+v", res)
+	}
+}

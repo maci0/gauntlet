@@ -15,6 +15,11 @@ minor instead and were listed under Changed.
 ### Fixed
 
 - Correct the review count across the landing page and design docs, and document the dashboard Enter-to-close and paging keys.
+- Prevent subprocess cancellation in `runx.Guard` from signaling process group 0 when process PID is non-positive.
+- Avoid misclassifying canceled reviews as failures and retrying them when cancellation races with process exit in the runner.
+- Preserve index append errors alongside prior write errors during journal close instead of discarding them.
+- Avoid parsing trailing uninitialized bytes on short index reads in the journal.
+- Surface remote error messages from GitHub API responses when release or asset checks fail in self-update.
 
 ## 1.23.2
 

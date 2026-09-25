@@ -98,6 +98,9 @@ type procOpts struct {
 // CLIs routinely do, sails straight through it. stdin stays /dev/null:
 // agents run headless and must never read input.
 func runProc(ctx context.Context, o procOpts) procResult {
+	if ctx.Err() != nil {
+		return procResult{ExitCode: -1, Canceled: true}
+	}
 	if len(o.Argv) == 0 {
 		return procResult{ExitCode: -1, Err: errors.New("empty command")}
 	}
@@ -308,6 +311,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	case <-ctx.Done():
 		res.Canceled = true
 		res.ExitCode = terminate(cmd, waitErr)
+	}
+	if ctx.Err() != nil && res.ExitCode != 0 {
+		res.Canceled = true
 	}
 
 	// EOF follows the child and, via the group kill, its children. A

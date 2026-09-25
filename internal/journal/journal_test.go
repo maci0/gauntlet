@@ -48,6 +48,36 @@ func TestWriteErrorSurvivesToClose(t *testing.T) {
 	}
 }
 
+func TestCloseJoinsJournalAndIndexErrors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	now := time.Now()
+	j, err := Open("double-error-run", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 4096 {
+		j.Write(map[string]string{"ev": "log", "text": "filling buffer"})
+	}
+	j.Flush()
+
+	// Make index.jsonl unwriteable by creating it as a directory
+	if err := os.MkdirAll(filepath.Join(home, "index.jsonl"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	closeErr := j.Close(Summary{Version: "test", Start: now, End: now})
+	if closeErr == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(closeErr.Error(), "append index:") {
+		t.Fatalf("expected close error to mention append index, got: %v", closeErr)
+	}
+}
+
 func TestHomeHonorsOverride(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", "/somewhere/else")
 	if got := Home(); got != "/somewhere/else" {

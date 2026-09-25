@@ -176,6 +176,12 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		var ghErr struct {
+			Message string `json:"message"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
+			return nil, fmt.Errorf("github returned %s for %s: %s", resp.Status, url, ghErr.Message)
+		}
 		return nil, fmt.Errorf("github returned %s for %s", resp.Status, url)
 	}
 	var rel Release
@@ -354,6 +360,13 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 		return nil, fmt.Errorf("%s: %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		var ghErr struct {
+			Message string `json:"message"`
+		}
+		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
+			resp.Body.Close()
+			return nil, fmt.Errorf("%s returned %s: %s", url, resp.Status, ghErr.Message)
+		}
 		resp.Body.Close()
 		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
 	}

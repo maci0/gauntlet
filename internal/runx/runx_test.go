@@ -150,6 +150,18 @@ func TestGuard(t *testing.T) {
 		t.Fatalf("Cancel running process = %v", err)
 	}
 	_ = cmd.Wait()
+
+	// Cancel with zero or negative PID must not signal process group 0
+	dummy := exec.Command("sleep", "5")
+	Guard(dummy, wait)
+	dummy.Process = &os.Process{Pid: 0}
+	if err := dummy.Cancel(); err != nil {
+		t.Fatalf("Cancel with pid 0 = %v", err)
+	}
+	dummy.Process = &os.Process{Pid: -1}
+	if err := dummy.Cancel(); err != nil {
+		t.Fatalf("Cancel with pid -1 = %v", err)
+	}
 }
 
 func TestBound(t *testing.T) {
