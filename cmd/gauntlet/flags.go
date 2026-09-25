@@ -919,7 +919,7 @@ func peelSubcommand(argv []string) (cmd string, rest []string) {
 	if len(argv) == 0 {
 		return "", nil
 	}
-	if !strings.HasPrefix(argv[0], "-") {
+	if argv[0] != "" && !strings.HasPrefix(argv[0], "-") {
 		return argv[0], argv[1:]
 	}
 	dummy, _ := buildFlagSet(&options{})
@@ -942,7 +942,7 @@ func peelSubcommand(argv []string) (cmd string, rest []string) {
 			}
 		}
 	}
-	if i < len(argv) && (len(argv[i]) < 2 || argv[i][0] != '-') && argv[i] != "--" {
+	if i < len(argv) && argv[i] != "" && !strings.HasPrefix(argv[i], "-") {
 		cmd = argv[i]
 		rest = make([]string, 0, len(argv)-1)
 		rest = append(rest, argv[:i]...)
