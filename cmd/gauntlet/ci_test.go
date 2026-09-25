@@ -303,3 +303,10 @@ func TestVulnscanUsesLocalTargetAndRunsOnMainGoModPush(t *testing.T) {
 		t.Fatal("vulnscan must run on push to main of go.mod/go.sum, not only on pull requests and the weekly schedule")
 	}
 }
+
+func TestReleaseSmokeTestsSbom(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	if !strings.Contains(text, "test -s dist/sbom.txt") {
+		t.Fatal("release job smoke test must verify dist/sbom.txt is non-empty before publication")
+	}
+}

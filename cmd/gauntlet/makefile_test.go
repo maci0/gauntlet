@@ -267,3 +267,11 @@ func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 		}
 	}
 }
+
+// make repro must preflight REPRO_DIR so an unset HOME does not wipe root directories.
+func TestMakefileReproPreflight(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, `test "$(REPRO_DIR)" != "/.cache/gauntlet/repro"`) {
+		t.Fatal(`make repro must verify REPRO_DIR is not unset`)
+	}
+}

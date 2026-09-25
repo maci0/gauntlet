@@ -118,6 +118,12 @@ def main() -> None:
     go = shutil.which("go")
     if go is None:
         raise SystemExit("go is not on PATH")
+    env = dict(
+        os.environ,
+        CGO_ENABLED="0",
+        GOWORK="off",
+        GOTOOLCHAIN="local",
+    )
     subprocess.run(
         [
             go,
@@ -130,6 +136,7 @@ def main() -> None:
             "./cmd/gauntlet",
         ],
         cwd=root,
+        env=env,
         check=True,
     )
 

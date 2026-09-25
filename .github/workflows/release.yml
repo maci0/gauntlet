@@ -72,6 +72,7 @@ jobs:
             exit 1
           fi
           (cd dist && sha256sum -c checksums.txt)
+          test -s dist/sbom.txt
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.txt is the module

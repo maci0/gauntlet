@@ -11,6 +11,8 @@
 set -euo pipefail
 export GOFLAGS="-mod=readonly"
 export GOWORK=off
+export GOTOOLCHAIN=local
+export CGO_ENABLED=0
 
 # Walk up to the module root rather than assuming where this script sits.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

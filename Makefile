@@ -255,6 +255,7 @@ REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
 repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
+	@test "$(REPRO_DIR)" != "/.cache/gauntlet/repro" || { echo "HOME is unset; set HOME or REPRO_DIR to a disk-backed directory" >&2; exit 1; }
 	@rm -rf "$(REPRO_DIR)" && mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b" && \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
