@@ -915,6 +915,77 @@ func TestSplitNULAtMostDropsEmptyAndCaps(t *testing.T) {
 	}
 }
 
+// FuzzSplitNUL ensures that git -z NUL-delimited record parsing (splitNUL and
+// splitNULAtMost) is memory-safe, never panics on arbitrary byte slices or
+// limit bounds, never returns empty strings or paths containing NULs, and
+// guarantees that splitNULAtMost returns the exact prefix of splitNUL.
+func FuzzSplitNUL(f *testing.F) {
+	seeds := []struct {
+		data []byte
+		n    int
+	}{
+		{[]byte(""), 0},
+		{[]byte(""), 5},
+		{[]byte("\x00"), 1},
+		{[]byte("\x00\x00"), 2},
+		{[]byte("file1.go\x00file2.go\x00"), 2},
+		{[]byte("file1.go\x00file2.go\x00"), 1},
+		{[]byte("a\x00\x00b\x00c"), 2},
+		{[]byte("only"), 5},
+		{[]byte(" leading and trailing \x00 middle \x00"), 10},
+		{[]byte("\x00leading\x00trailing"), 2},
+		{[]byte("a\x00b\x00c\x00d\x00e"), -1},
+		{[]byte("a\x00b\x00c\x00d\x00e"), 0},
+		{[]byte("a\x00b\x00c\x00d\x00e"), 3},
+		{[]byte("a\x00b\x00c\x00d\x00e"), 100},
+	}
+	for _, s := range seeds {
+		f.Add(s.data, s.n)
+	}
+
+	f.Fuzz(func(t *testing.T, data []byte, n int) {
+		all := splitNUL(data)
+		for _, p := range all {
+			if p == "" {
+				t.Fatalf("splitNUL returned an empty path: %q", all)
+			}
+			if strings.ContainsRune(p, 0) {
+				t.Fatalf("splitNUL path %q contains NUL", p)
+			}
+		}
+
+		capped := splitNULAtMost(data, n)
+		if n <= 0 {
+			if capped != nil {
+				t.Fatalf("splitNULAtMost with n=%d returned non-nil %q", n, capped)
+			}
+			return
+		}
+
+		if len(capped) > n {
+			t.Fatalf("splitNULAtMost returned %d items, exceeding cap %d", len(capped), n)
+		}
+		for _, p := range capped {
+			if p == "" {
+				t.Fatalf("splitNULAtMost returned an empty path: %q", capped)
+			}
+			if strings.ContainsRune(p, 0) {
+				t.Fatalf("splitNULAtMost path %q contains NUL", p)
+			}
+		}
+
+		expectedCount := min(n, len(all))
+		if len(capped) != expectedCount {
+			t.Fatalf("splitNULAtMost count mismatch: got %d, want %d (all=%d, n=%d)",
+				len(capped), expectedCount, len(all), n)
+		}
+		if !slices.Equal(capped, all[:expectedCount]) {
+			t.Fatalf("splitNULAtMost differs from splitNUL prefix: got %q, want %q",
+				capped, all[:expectedCount])
+		}
+	})
+}
+
 // git's -z output is raw bytes on purpose, and a file name may legitimately
 // begin or end with a space. Trimming the records would hand every caller a
 // name that no longer matches the file: a stacked PR body naming a path the

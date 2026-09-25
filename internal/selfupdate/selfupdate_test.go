@@ -7,6 +7,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -308,6 +309,67 @@ func TestValidateAssetURL(t *testing.T) {
 			t.Errorf("validateAssetURL(%q) err=%v, want ok=%v", tc.url, err, tc.ok)
 		}
 	}
+}
+
+// FuzzValidateAssetURL verifies that only authorized GitHub release hosts over HTTPS
+// (or loopback in tests) are accepted, and that no URL manipulation, userinfo, or
+// scheme bypass can cause validateAssetURL to accept an untrusted endpoint.
+func FuzzValidateAssetURL(f *testing.F) {
+	seeds := []string{
+		"https://github.com/maci0/gauntlet/releases/download/v1/asset",
+		"https://api.github.com/repos/maci0/gauntlet/releases/assets/1",
+		"https://objects.githubusercontent.com/github-production-release-asset-2e65be/1",
+		"https://release-assets.githubusercontent.com/github-production-release-asset/1",
+		"http://127.0.0.1:8080/asset",
+		"http://localhost:8080/asset",
+		"http://[::1]:8080/asset",
+		"https://evil.example.com/asset",
+		"http://github.com/asset",
+		"ftp://github.com/asset",
+		"javascript:alert(1)",
+		"",
+		"   ",
+		"https://github.com@evil.example.com/asset",
+		"https://github.com.evil.example.com/asset",
+		"https://evil.example.com:443#github.com",
+		"https://github.com:443/asset",
+		"http://localhost/asset",
+		"http://127.0.0.1/asset",
+		"https://user:pass@github.com/asset",
+		"https://127.0.0.1:8080/asset",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+
+	f.Fuzz(func(t *testing.T, raw string) {
+		err := validateAssetURL(raw)
+		if again := validateAssetURL(raw); (err == nil) != (again == nil) {
+			t.Fatalf("validateAssetURL(%q) is not deterministic: %v vs %v", raw, err, again)
+		}
+		if err != nil {
+			return
+		}
+
+		u, parseErr := url.ParseRequestURI(raw)
+		if parseErr != nil {
+			t.Fatalf("validateAssetURL(%q) accepted unparseable URL: %v", raw, parseErr)
+		}
+
+		host := u.Hostname()
+		switch u.Scheme {
+		case "https":
+			if !isAllowedHost(host) {
+				t.Fatalf("validateAssetURL(%q) accepted disallowed HTTPS host %q", raw, host)
+			}
+		case "http":
+			if !isLoopback(host) {
+				t.Fatalf("validateAssetURL(%q) accepted disallowed HTTP host %q", raw, host)
+			}
+		default:
+			t.Fatalf("validateAssetURL(%q) accepted disallowed scheme %q", raw, u.Scheme)
+		}
+	})
 }
 
 func TestClientRedirectValidation(t *testing.T) {
