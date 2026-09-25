@@ -131,7 +131,7 @@ func NewTail(size int) *Tail {
 // O(len(s)): the oldest bytes are abandoned behind a moving offset, never
 // shifted, so a chatty stream pays per byte written rather than per byte kept.
 func (t *Tail) WriteString(s string) (int, error) {
-	if t == nil {
+	if t == nil || t.size <= 0 {
 		return 0, nil
 	}
 	n := len(s)

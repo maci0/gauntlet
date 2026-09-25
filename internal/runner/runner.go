@@ -1256,7 +1256,9 @@ func (r *Runner) forgetSession(spec agent.Spec) {
 func (r *Runner) backoff(review string, attempt int) time.Duration {
 	base := retryBaseDelay
 	d := retryMaxDelay
-	if attempt < 32 {
+	if attempt <= 0 {
+		d = base
+	} else if attempt < 32 {
 		if grown := base << attempt; grown > 0 && grown < retryMaxDelay {
 			d = grown
 		}

@@ -141,6 +141,21 @@ func FuzzPorcelainPath(f *testing.F) {
 	})
 }
 
+func TestUnquoteCOctalRange(t *testing.T) {
+	// Octal escapes in C/git byte streams are 000..377. Escapes with first
+	// digit >= 4 would exceed 255 and silently truncate if decoded as bytes;
+	// they must be preserved verbatim.
+	for _, in := range []string{`"\400"`, `"\777"`, `"\500a"`} {
+		got := unquoteC(in)
+		if strings.Contains(got, "\x00") {
+			t.Fatalf("unquoteC(%q) produced NUL byte from out-of-range octal", in)
+		}
+		if got != in[1:len(in)-1] {
+			t.Fatalf("unquoteC(%q) = %q, want escape preserved verbatim %q", in, got, in[1:len(in)-1])
+		}
+	}
+}
+
 func TestBranchSlug(t *testing.T) {
 	cases := map[string]string{
 		"sec-review": "sec-review",

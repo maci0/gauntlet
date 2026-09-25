@@ -855,7 +855,7 @@ func unquoteC(s string) string {
 		case '\\', '"':
 			b.WriteByte(e)
 			i++
-		case '0', '1', '2', '3', '4', '5', '6', '7':
+		case '0', '1', '2', '3':
 			if i+2 < len(body) &&
 				body[i+1] >= '0' && body[i+1] <= '7' &&
 				body[i+2] >= '0' && body[i+2] <= '7' {

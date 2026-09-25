@@ -79,6 +79,10 @@ func TestBackoffReplaysFromTheSeed(t *testing.T) {
 		r1.backoff("zz-review", 0) == r1.backoff("qq-review", 0) {
 		t.Fatal("distinct reviews all drew identical jitter; keys are not mixing")
 	}
+	if d := r1.backoff("aa-review", -1); d < retryBaseDelay/2 || d > retryBaseDelay {
+		t.Fatalf("backoff with negative attempt = %s, want within [%s, %s]",
+			d, retryBaseDelay/2, retryBaseDelay)
+	}
 }
 
 // TestBackoffIgnoresOtherDraws guards the keyed-draw property end to end:

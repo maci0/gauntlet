@@ -769,6 +769,12 @@ func TestTailKeepsLastBytes(t *testing.T) {
 	if got := string(zeroTail.Bytes()); got != "c" {
 		t.Fatalf("zero-sized Tail clamped to 1: got %q, want %q", got, "c")
 	}
+
+	for _, uninit := range []*Tail{{}, {size: -1}} {
+		if n, err := uninit.WriteString("abc"); n != 0 || err != nil {
+			t.Fatalf("uninitialized Tail WriteString = (%d, %v), want (0, nil)", n, err)
+		}
+	}
 }
 
 // TestTailRingManyWrites drives the tail through hundreds of small writes
