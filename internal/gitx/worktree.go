@@ -220,14 +220,8 @@ func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
 	// A cancel during "git worktree add" can leave the entry locked;
 	// unlock it and try removing before falling back to manual cleanup.
 	_, _ = r.run(ctx, gitQuick, "worktree", "unlock", dir)
-	if _, err := r.run(ctx, gitNormal, "worktree", "remove", "--force", dir); err != nil {
-		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove worktree dir: %w", err)
-		}
-		_, _ = r.run(ctx, gitNormal, "worktree", "prune")
-		return nil
-	}
-	if _, err := os.Stat(dir); err == nil {
+	_, removeErr := r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
+	if _, err := os.Stat(dir); removeErr != nil || err == nil {
 		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove worktree dir: %w", err)
 		}
