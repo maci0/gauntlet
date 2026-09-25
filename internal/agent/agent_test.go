@@ -1530,6 +1530,66 @@ func TestCustomAgentMismatchedPlaceholdersRejected(t *testing.T) {
 			def:  Custom{Argv: base.Argv, Continue: []string{"--effort", "{effort}"}},
 			want: "continue cannot contain {effort}",
 		},
+		{
+			name: "executable with prompt",
+			def:  Custom{Argv: []string{"{prompt}", "-p", "{prompt}"}},
+			want: "argv executable cannot contain {prompt}",
+		},
+		{
+			name: "executable with model",
+			def:  Custom{Argv: []string{"agent-{model}", "-p", "{prompt}"}},
+			want: "argv executable cannot contain {model}",
+		},
+		{
+			name: "executable with effort",
+			def:  Custom{Argv: []string{"agent-{effort}", "-p", "{prompt}"}},
+			want: "argv executable cannot contain {effort}",
+		},
+		{
+			name: "model list when argv contains model",
+			def:  Custom{Argv: []string{"testagent", "-m", "{model}", "-p", "{prompt}"}, Model: []string{"--model", "{model}"}},
+			want: "model cannot be specified when argv contains {model}",
+		},
+		{
+			name: "effort list when argv contains effort",
+			def:  Custom{Argv: []string{"testagent", "-e", "{effort}", "-p", "{prompt}"}, Effort: []string{"--effort", "{effort}"}},
+			want: "effort cannot be specified when argv contains {effort}",
+		},
+		{
+			name: "usage roots with prompt",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions/{prompt}"}}},
+			want: "usage.roots cannot contain {prompt}",
+		},
+		{
+			name: "usage roots with model",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions/{model}"}}},
+			want: "usage.roots cannot contain {model}",
+		},
+		{
+			name: "usage roots with effort",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions/{effort}"}}},
+			want: "usage.roots cannot contain {effort}",
+		},
+		{
+			name: "usage suffix with prompt",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions"}, Suffix: ".{prompt}"}},
+			want: "usage.suffix cannot contain {prompt}",
+		},
+		{
+			name: "usage suffix with model",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions"}, Suffix: ".{model}"}},
+			want: "usage.suffix cannot contain {model}",
+		},
+		{
+			name: "usage suffix with effort",
+			def:  Custom{Argv: base.Argv, Usage: &UsageSpec{Roots: []string{"~/.sessions"}, Suffix: ".{effort}"}},
+			want: "usage.suffix cannot contain {effort}",
+		},
+		{
+			name: "note whitespace only",
+			def:  Custom{Argv: base.Argv, Note: "   "},
+			want: "note cannot be whitespace only",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.def.validate("testagent")

@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 - Preserve index append errors alongside prior write errors during journal close instead of discarding them.
 - Avoid parsing trailing uninitialized bytes on short index reads in the journal.
 - Surface remote error messages from GitHub API responses when release or asset checks fail in self-update.
+- Validate placeholder usage and argument conflicts across custom agent definitions, and degrade `GAUNTLET_HOME` directory resolution safely when pointing to a non-directory file.
 
 ## 1.23.2
 

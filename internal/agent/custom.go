@@ -97,6 +97,15 @@ func (c Custom) validate(name string) error {
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
+	if strings.Contains(c.Argv[0], promptPlaceholder) {
+		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, promptPlaceholder)
+	}
+	if strings.Contains(c.Argv[0], modelPlaceholder) {
+		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, modelPlaceholder)
+	}
+	if strings.Contains(c.Argv[0], effortPlaceholder) {
+		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, effortPlaceholder)
+	}
 	prompts := 0
 	for _, a := range c.Argv {
 		if strings.TrimSpace(a) == "" {
@@ -127,6 +136,9 @@ func (c Custom) validate(name string) error {
 		if containsPlaceholder(c.Model, effortPlaceholder) {
 			return fmt.Errorf("custom agent %q: model cannot contain %s", name, effortPlaceholder)
 		}
+		if containsPlaceholder(c.Argv, modelPlaceholder) {
+			return fmt.Errorf("custom agent %q: model cannot be specified when argv contains %s", name, modelPlaceholder)
+		}
 	}
 	if len(c.Effort) > 0 {
 		for _, a := range c.Effort {
@@ -142,6 +154,9 @@ func (c Custom) validate(name string) error {
 		}
 		if containsPlaceholder(c.Effort, modelPlaceholder) {
 			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, modelPlaceholder)
+		}
+		if containsPlaceholder(c.Argv, effortPlaceholder) {
+			return fmt.Errorf("custom agent %q: effort cannot be specified when argv contains %s", name, effortPlaceholder)
 		}
 	}
 	for _, a := range c.Stream {
@@ -180,10 +195,31 @@ func (c Custom) validate(name string) error {
 			if strings.TrimSpace(r) == "" {
 				return fmt.Errorf("custom agent %q: usage.roots contains an empty directory path", name)
 			}
+			if containsPlaceholder([]string{r}, promptPlaceholder) {
+				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, promptPlaceholder)
+			}
+			if containsPlaceholder([]string{r}, modelPlaceholder) {
+				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, modelPlaceholder)
+			}
+			if containsPlaceholder([]string{r}, effortPlaceholder) {
+				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, effortPlaceholder)
+			}
 		}
 		if c.Usage.Suffix != "" && strings.TrimSpace(c.Usage.Suffix) == "" {
 			return fmt.Errorf("custom agent %q: usage.suffix cannot be whitespace only", name)
 		}
+		if containsPlaceholder([]string{c.Usage.Suffix}, promptPlaceholder) {
+			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, promptPlaceholder)
+		}
+		if containsPlaceholder([]string{c.Usage.Suffix}, modelPlaceholder) {
+			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, modelPlaceholder)
+		}
+		if containsPlaceholder([]string{c.Usage.Suffix}, effortPlaceholder) {
+			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, effortPlaceholder)
+		}
+	}
+	if c.Note != "" && strings.TrimSpace(c.Note) == "" {
+		return fmt.Errorf("custom agent %q: note cannot be whitespace only", name)
 	}
 	return nil
 }

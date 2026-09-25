@@ -30,6 +30,9 @@ import (
 func Dir() (string, bool) {
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
 		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {
+			if fi, err := os.Stat(exp); err == nil && !fi.IsDir() {
+				return ".gauntlet", false
+			}
 			return absolute(exp), true
 		}
 		return ".gauntlet", false

@@ -157,15 +157,17 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | Variable | Effect |
 |---|---|
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. |
-| `GAUNTLET_NO_ANIMATION` | Anything but empty or `0`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. |
+| `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`. Wins if both are set, matching GitHub CLI. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
-| `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty or `0`: force color on, so piping through `less -R` keeps its palette. |
+| `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty, `0`, `false`, `no`, or `off`: force color on, so piping through `less -R` keeps its palette. |
 | `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. |
 
 (`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
-handoff file passed across the exec.)
+handoff file passed across the exec. `GIT_SSH_COMMAND` defaults to `ssh` to
+isolate child commands from repository-local configuration, unless already set
+in the environment.)
 
 ## Signals
 
@@ -206,7 +208,10 @@ which is what gives a defined agent live token counts. `model` (e.g.
 effort; without an `effort` list (or an `{effort}` placeholder in `argv`),
 `name:model@effort` is refused at startup. When specified, `model` must contain
 the `{model}` placeholder, and `effort` must contain `{effort}`; neither `model`,
-`effort`, `stream`, nor `continue` may contain `{prompt}`. `opt_in` (boolean)
+`effort`, `stream`, nor `continue` may contain `{prompt}`; `model` cannot be
+specified when `argv` contains `{model}`, and `effort` cannot be specified when
+`argv` contains `{effort}`; `argv[0]`, `usage.roots`, and `usage.suffix` cannot
+contain placeholders. `opt_in` (boolean)
 keeps the agent out of auto-detection and `mixed`: it runs only when named
 explicitly with `--agents`. `note` is an optional explanatory string shown in
 `gauntlet doctor`. Every placeholder in an `argv` entry is expanded, so one

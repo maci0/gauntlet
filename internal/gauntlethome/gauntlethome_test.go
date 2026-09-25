@@ -103,6 +103,21 @@ func TestDirUnresolvableGauntletHomeDegrades(t *testing.T) {
 	}
 }
 
+func TestDirFileGauntletHomeDegrades(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_HOME", file)
+	got, ok := Dir()
+	if ok {
+		t.Fatal("file GAUNTLET_HOME should not report a usable root")
+	}
+	if got != ".gauntlet" {
+		t.Fatalf("degraded root = %q, want %q", got, ".gauntlet")
+	}
+}
+
 func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
