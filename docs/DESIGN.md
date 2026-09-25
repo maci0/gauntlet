@@ -1,6 +1,6 @@
 # gauntlet design
 
-The Go implementation of gauntlet: run ~50 specialized review prompts through installed
+The Go implementation of gauntlet: run 53 specialized review prompts through installed
 AI coding agents, which apply fixes directly to the working tree.
 
 The Python original is a single 2700-line sequential script. This port keeps

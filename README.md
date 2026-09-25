@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <em>Run your codebase through the gauntlet: ~50 specialized review prompts,
+  <em>Run your codebase through the gauntlet: 53 specialized review prompts,
   dispatched to whichever AI coding agents you have installed, applying fixes
   directly to the working tree.</em>
 </p>
@@ -23,7 +23,7 @@
   <img src="assets/dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="900">
 </p>
 
-One static binary loops ~50 review prompts over your repository, hands each one
+One static binary loops 53 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
 - **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
@@ -231,8 +231,10 @@ you do:
 |---|---|
 | `q`, `esc` | press twice to stop the run, killing what is running; the first press arms it |
 | `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
+| `enter` | close the dashboard once the run finished |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
+| `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |
 | `f` | narrow the feed to results, errors, and diffs, and back |
 | `g` / `G`, `home` / `end` | jump to oldest / newest |
 | `?` | help, and the list of unmerged branches |

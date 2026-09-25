@@ -12,6 +12,10 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- Correct the review count across the landing page and design docs, and document the dashboard Enter-to-close and paging keys.
+
 ## 1.23.2
 
 ### Fixed
