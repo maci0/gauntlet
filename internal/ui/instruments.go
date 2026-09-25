@@ -106,6 +106,9 @@ func colorKey(c lipgloss.TerminalColor) uint32 {
 // tailCols returns exactly w columns carrying the last w values, zero padded on
 // the left, plus their peak (floored at 1 so an all-zero series still renders).
 func tailCols(vals []float64, w int) ([]float64, float64) {
+	if w <= 0 {
+		return nil, 1
+	}
 	vs := vals
 	if len(vs) > w {
 		vs = vs[len(vs)-w:]

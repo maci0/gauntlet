@@ -409,3 +409,13 @@ func TestFetchIncludesErrorMessageOnFailure(t *testing.T) {
 		t.Fatalf("fetch should include remote error message, got: %v", err)
 	}
 }
+
+func TestReleaseNilReceiver(t *testing.T) {
+	var rel *Release
+	if got := rel.Version(); got != "" {
+		t.Fatalf("expected empty version for nil release, got %q", got)
+	}
+	if rel.NewerThan("v1.0.0") {
+		t.Fatal("nil release should not report newer than current")
+	}
+}

@@ -120,12 +120,20 @@ type Tail struct {
 }
 
 // NewTail returns a tail buffer holding at most size bytes.
-func NewTail(size int) *Tail { return &Tail{size: size} }
+func NewTail(size int) *Tail {
+	if size <= 0 {
+		size = 1
+	}
+	return &Tail{size: size}
+}
 
 // WriteString appends s and keeps only the last size bytes. Cost is
 // O(len(s)): the oldest bytes are abandoned behind a moving offset, never
 // shifted, so a chatty stream pays per byte written rather than per byte kept.
 func (t *Tail) WriteString(s string) (int, error) {
+	if t == nil {
+		return 0, nil
+	}
 	n := len(s)
 	if n == 0 {
 		return 0, nil
@@ -156,7 +164,7 @@ func (t *Tail) WriteString(s string) (int, error) {
 // bytes wrap; when they do it is a fresh copy assembled from both ends.
 // Either way: copy before holding past the next Write.
 func (t *Tail) Bytes() []byte {
-	if t.valid == 0 {
+	if t == nil || t.valid == 0 {
 		return nil
 	}
 	end := t.off + t.valid

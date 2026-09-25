@@ -121,12 +121,18 @@ func cleanReportedLine(s string, maxRunes int) string {
 // hundred bytes in runes and one hundred and fifty in bytes, so a byte cut
 // writes mojibake into permanent history. Like every other display limit
 // here (compose's catalog budget, --list's columns), it counts runes.
-func truncateRunes(s string, max int) string {
+func truncateRunes(s string, maxRunes int) string {
+	if maxRunes <= 0 {
+		return ""
+	}
+	if len(s) <= maxRunes {
+		return s
+	}
 	n := 0
 	clusters := uniseg.NewGraphemes(s)
 	for clusters.Next() {
 		n += utf8.RuneCountInString(clusters.Str())
-		if n > max {
+		if n > maxRunes {
 			start, _ := clusters.Positions()
 			return s[:start]
 		}

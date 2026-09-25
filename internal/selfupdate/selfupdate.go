@@ -131,7 +131,12 @@ type Release struct {
 }
 
 // Version is the release version without a leading "v".
-func (r *Release) Version() string { return strings.TrimPrefix(r.TagName, "v") }
+func (r *Release) Version() string {
+	if r == nil {
+		return ""
+	}
+	return strings.TrimPrefix(r.TagName, "v")
+}
 
 // assetName is the binary this platform needs from a release. It must match
 // what the Makefile's dist target produces, or self-update finds nothing.
@@ -176,15 +181,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		var ghErr struct {
-			Message string `json:"message"`
-		}
-		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
-			drainBody(resp, 64<<10)
-			return nil, fmt.Errorf("github returned %s for %s: %s", resp.Status, url, ghErr.Message)
-		}
-		drainBody(resp, 64<<10)
-		return nil, fmt.Errorf("github returned %s for %s", resp.Status, url)
+		return nil, responseError(resp, url)
 	}
 	var rel Release
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&rel); err != nil {
@@ -202,7 +199,7 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 // Comparison is deliberately exact rather than semver-aware: releases are the
 // source of truth, and a "downgrade" published on purpose should be applied.
 func (r *Release) NewerThan(current string) bool {
-	return r.Version() != "" && r.Version() != strings.TrimPrefix(current, "v")
+	return r != nil && r.Version() != "" && r.Version() != strings.TrimPrefix(current, "v")
 }
 
 // Apply downloads, verifies, and installs the release over the running
@@ -363,19 +360,22 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 		return nil, fmt.Errorf("%s: %w", url, err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		var ghErr struct {
-			Message string `json:"message"`
-		}
-		if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
-			drainBody(resp, 64<<10)
-			resp.Body.Close()
-			return nil, fmt.Errorf("%s returned %s: %s", url, resp.Status, ghErr.Message)
-		}
-		drainBody(resp, 64<<10)
+		err := responseError(resp, url)
 		resp.Body.Close()
-		return nil, fmt.Errorf("%s returned %s", url, resp.Status)
+		return nil, err
 	}
 	return resp, nil
+}
+
+func responseError(resp *http.Response, url string) error {
+	defer drainBody(resp, 64<<10)
+	var ghErr struct {
+		Message string `json:"message"`
+	}
+	if json.NewDecoder(io.LimitReader(resp.Body, 4<<10)).Decode(&ghErr) == nil && ghErr.Message != "" {
+		return fmt.Errorf("github returned %s for %s: %s", resp.Status, url, ghErr.Message)
+	}
+	return fmt.Errorf("github returned %s for %s", resp.Status, url)
 }
 
 func drainBody(resp *http.Response, limit int64) {

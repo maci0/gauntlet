@@ -51,17 +51,17 @@ func Count(n int) string {
 
 // List names a few items and counts the rest, for a message that has to fit
 // on one line: "a.go, b.go, c.go and 4 more".
-func List(items []string, max int) string {
+func List(items []string, limit int) string {
 	switch {
 	case len(items) == 0:
 		return ""
-	case max < 1:
-		max = 1
+	case limit < 1:
+		limit = 1
 	}
 	shown := items
 	rest := 0
-	if len(items) > max {
-		shown, rest = items[:max], len(items)-max
+	if len(items) > limit {
+		shown, rest = items[:limit], len(items)-limit
 	}
 	out := strings.Join(shown, ", ")
 	if rest > 0 {

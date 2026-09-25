@@ -755,6 +755,20 @@ func TestTailKeepsLastBytes(t *testing.T) {
 	if got := string(tl.Bytes()); got != "6789" {
 		t.Fatalf("oversized write: got %q", got)
 	}
+
+	var nilTail *Tail
+	if n, err := nilTail.WriteString("foo"); n != 0 || err != nil {
+		t.Fatalf("nil Tail WriteString: %d, %v", n, err)
+	}
+	if got := nilTail.Bytes(); got != nil {
+		t.Fatalf("nil Tail Bytes: got %v, want nil", got)
+	}
+
+	zeroTail := NewTail(0)
+	zeroTail.WriteString("abc")
+	if got := string(zeroTail.Bytes()); got != "c" {
+		t.Fatalf("zero-sized Tail clamped to 1: got %q, want %q", got, "c")
+	}
 }
 
 // TestTailRingManyWrites drives the tail through hundreds of small writes

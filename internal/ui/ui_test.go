@@ -578,6 +578,15 @@ func TestChartDrawsGridWhenEmpty(t *testing.T) {
 	if strings.TrimSpace(stripANSI(got)) == "" {
 		t.Fatal("empty series rendered nothing")
 	}
+	if got := chart(nil, 0, 0); got != "" {
+		t.Fatalf("chart(0, 0) = %q, want empty", got)
+	}
+	if cols, peak := tailCols([]float64{1, 2, 3}, 0); cols != nil || peak != 1 {
+		t.Fatalf("tailCols(..., 0) = %v, %v, want nil, 1", cols, peak)
+	}
+	if cols, peak := tailCols([]float64{1, 2, 3}, -5); cols != nil || peak != 1 {
+		t.Fatalf("tailCols(..., -5) = %v, %v, want nil, 1", cols, peak)
+	}
 }
 
 func TestMeterShowsUnlitRemainder(t *testing.T) {

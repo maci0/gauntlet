@@ -143,7 +143,7 @@ func (b prBody) stackNote() string {
 // only reads as markup at the start of a line, so flattening is what makes an
 // injected "## " inert, and doing it with a space rather than nothing keeps
 // the words on either side from being welded into one.
-func mdText(s string, max int) string {
+func mdText(s string, limit int) string {
 	s = strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\r' {
 			return ' '
@@ -151,15 +151,15 @@ func mdText(s string, max int) string {
 		return r
 	}, s)
 	s = strings.Join(strings.Fields(normalize.Sanitize(s)), " ")
-	return normalize.Truncate(norm.NFC.String(s), max)
+	return normalize.Truncate(norm.NFC.String(s), limit)
 }
 
 // mdCode renders untrusted text as a Markdown code span. A backtick in a
 // repository path would close the span early and let whatever follows be read
 // as markup; it is replaced rather than dropped, so the reader can see a
 // character was there instead of silently getting a path that does not exist.
-func mdCode(s string, max int) string {
-	return "`" + strings.ReplaceAll(mdText(s, max), "`", "'") + "`"
+func mdCode(s string, limit int) string {
+	return "`" + strings.ReplaceAll(mdText(s, limit), "`", "'") + "`"
 }
 
 // plural counts in words for a body that is read as a document rather than
