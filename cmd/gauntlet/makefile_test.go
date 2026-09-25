@@ -241,6 +241,30 @@ func TestMakefileCheckScriptsPreflight(t *testing.T) {
 	}
 }
 
+func TestMakefileTestPreflight(t *testing.T) {
+	text := makefileText(t)
+	for _, want := range []string{
+		"C compiler",
+		"not found on PATH",
+		"CGO_ENABLED=1",
+		"-run '$(RUN)'",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Makefile missing %q", want)
+		}
+	}
+}
+
+func TestMakefileFmtScriptsTarget(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "fmt-scripts: ## rewrite scripts with ruff format") {
+		t.Fatal("Makefile missing fmt-scripts target")
+	}
+	if !strings.Contains(text, "uvx ruff@$(RUFF_VERSION) format scripts") {
+		t.Fatal("Makefile fmt-scripts must invoke ruff format with pinned version")
+	}
+}
+
 // Release artifacts must generate inventory names relative to the dist
 // directory without leaking build directory paths into sbom.txt.
 func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {

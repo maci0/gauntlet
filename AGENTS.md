@@ -15,7 +15,8 @@ but drops the sqlite driver.
   builds on Linux and macOS and checks coverage, dist, and reproducibility.
 - `make check-scripts`: ruff and mypy `--strict` via version-pinned `uvx`,
   plus shellcheck from PATH, on `scripts/`. Rule selection is `pyproject.toml`.
-- `make test`: the suite with the race detector and shuffled order.
+  Run `make fmt-scripts` to rewrite scripts with ruff format.
+- `make test [RUN=TestName]`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
   with the same race, shuffle, and tag flags.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`

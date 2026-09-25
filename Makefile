@@ -81,27 +81,27 @@ build: ## build the gauntlet binary for this host
 run: build ## build, then run one loop here with the dashboard
 	./$(BINARY) --once --tui
 
+# RUN is a go test -run pattern (default: every test in the package).
+RUN ?=
+PKG ?= ./...
+
 .PHONY: test
-test: | test-tmpdir
+test: | test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
-	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on ./...
+	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' ./...
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
-# test` so a green package here stays green in the full run. RUN is a go test
-# -run pattern (default: every test in the package).
-PKG ?= ./...
-RUN ?=
-
+# test` so a green package here stays green in the full run.
 .PHONY: test-pkg
-test-pkg: | test-tmpdir
+test-pkg: | test-tmpdir test-cgo
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
-	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
+	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
 
 .PHONY: cover
-cover: | test-tmpdir
+cover: | test-tmpdir test-cgo
 cover: ## test coverage summary, gated by COVER_MIN
 	@mkdir -p $(DIST)
-	TMPDIR="$(TMPDIR)" $(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
+	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
 	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
 		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
 		awk -v got="$${total%\%}" -v min="$(COVER_MIN)" 'BEGIN { \
@@ -120,6 +120,14 @@ COVER_MIN ?= 74.0
 test-tmpdir:
 	@test "$(TMPDIR)" != "/.cache/gauntlet/test" || { echo "HOME is unset; set HOME or TMPDIR to a disk-backed directory. Tests must not use tmpfs or a gitignored path inside this repo" >&2; exit 1; }
 	@mkdir -p "$(TMPDIR)"
+
+.PHONY: test-cgo
+test-cgo:
+	@cc="$$($(GO) env CC)"; \
+	command -v "$$cc" >/dev/null 2>&1 || { \
+		echo "test: C compiler '$$cc' not found on PATH; install GCC or Clang (the race detector requires cgo)" >&2; \
+		exit 1; \
+	}
 
 .PHONY: vet
 vet: ## run go vet
@@ -187,6 +195,14 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 	uvx ruff@$(RUFF_VERSION) format --check scripts
 	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts
 	shellcheck scripts/shots.sh
+
+.PHONY: fmt-scripts
+fmt-scripts: ## rewrite scripts with ruff format
+	@command -v uvx >/dev/null 2>&1 || { \
+		echo "fmt-scripts: uvx not found on PATH (install uv $(UV_VERSION): https://docs.astral.sh/uv/getting-started/installation/)" >&2; \
+		exit 1; \
+	}
+	uvx ruff@$(RUFF_VERSION) format scripts
 
 # Advisory scan of the dependency graph, the same invocation vulnscan.yml
 # runs on pull requests that touch go.mod or go.sum. The executable is pinned

@@ -6,15 +6,15 @@ configurations and a cross-compilation pass.
 
 ## Prerequisites
 
-- Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
-  toolchain works. CI installs whatever go.mod asks for, so there is nothing
-  else to pin.
+- Go. The minimum version is the `go` line in [go.mod](go.mod) and
+  [.go-version](.go-version); any newer toolchain works. CI installs whatever
+  go.mod asks for, so there is nothing else to pin.
 - GNU make and git, on Linux or macOS. The runner depends on POSIX semantics
   (process groups, flock, O_NOFOLLOW), so there is no Windows build.
 - A working C compiler for the race detector used by `make test`, `make
   test-pkg`, `make cover`, and `make ci`: GCC or Clang on Linux, or the Xcode
-  Command Line Tools on macOS. `go env CGO_ENABLED` must report `1`; if cgo
-  was disabled in your environment, run tests with `CGO_ENABLED=1 make test`.
+  Command Line Tools on macOS. The test targets enable cgo (`CGO_ENABLED=1`)
+  automatically and preflight that a C compiler is present on `PATH`.
   `make build` disables cgo and does not require a C compiler.
 
 ## Build and test
@@ -33,8 +33,9 @@ not whatever happens to be first on `PATH`.
 For the edit-test loop, run one package or one test instead of the suite:
 
 ```sh
+make test RUN=TestStripReportSections            # one test anywhere in the tree
 make test-pkg PKG=./internal/prompt              # one package
-make test-pkg PKG=./internal/prompt RUN=TestStripReportSections   # one test
+make test-pkg PKG=./internal/prompt RUN=TestStripReportSections   # one test in package
 ```
 
 `test-pkg` uses the same tags, race detector, and temp directory as
@@ -70,7 +71,7 @@ A separate `scripts` job lints `scripts/` with ruff (rules in
 `scripts/shots.sh`. `make check-scripts` runs those same steps with
 the versions CI pins. It needs `uvx` (shipped with
 [uv](https://docs.astral.sh/uv/getting-started/installation/)) and
-shellcheck on PATH.
+shellcheck on PATH. `make fmt-scripts` rewrites scripts with ruff format.
 
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph
