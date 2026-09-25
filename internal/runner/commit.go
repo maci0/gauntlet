@@ -215,7 +215,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 			}
 		}
 	}
-	if status == StatusFail || status == StatusTimeout {
+	if status.Failed() {
 		r.st.addCommitFail()
 	}
 	r.bus.Publish(Event{

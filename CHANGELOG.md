@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Avoid counting interrupted reviews as failures in dashboard lane statistics.
 - Validate ISO 8601 calendar dates and leap years with standard time parsing when resolving journal run shards, guard thinking glyph animation against uninitialized clocks and backward time steps, and avoid undefined Unix time calculations on zero timestamps in seed derivation.
 
 - Measure footer key width in terminal cells in the minimal view, terminate ANSI CSI escape tokens on standard final characters in token width calculation, and normalize lock notes, prompt summaries, and suggestion reasons to NFC before truncation.

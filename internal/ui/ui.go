@@ -506,7 +506,7 @@ func (m *model) apply(ev runner.Event) {
 			l.tokens += ev.Tokens
 			l.thinkTokens += ev.Thinking
 			l.liveTokens, l.liveThinking, l.tokenRate = 0, 0, 0
-			if ev.Status != runner.StatusOK {
+			if ev.Status.Failed() {
 				l.failed++
 			}
 		}

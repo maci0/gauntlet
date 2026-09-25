@@ -363,6 +363,9 @@ func TestInterruptedReviewsReachTheTally(t *testing.T) {
 	if got := stripANSI(m.gridTitle()); !strings.Contains(got, "interrupted 1") {
 		t.Fatalf("tally %q omits the interrupted count", got)
 	}
+	if m.lanes["claude"].failed != 0 {
+		t.Fatalf("interrupted review incremented lane failures: %d", m.lanes["claude"].failed)
+	}
 	if got := stripANSI(newModel(demoConfig()).gridTitle()); strings.Contains(got, "interrupted") {
 		t.Fatalf("an empty tally still advertises interruptions: %q", got)
 	}
