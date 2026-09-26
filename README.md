@@ -231,7 +231,7 @@ you do:
 |---|---|
 | `q`, `esc` | press twice to stop the run, killing what is running; the first press arms it |
 | `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
-| `enter` | close the dashboard once the run finished |
+| `enter`, `q`, `esc` | close the dashboard once the run has finished (`q` and `esc` arm a stop while running) |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |

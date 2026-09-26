@@ -84,7 +84,7 @@ type Tools struct {
 	Missing []string
 }
 
-// toolNote is the line Compose adds about them, empty when nothing is known
+// note is the line Compose adds about them, empty when nothing is known
 // either way (the catalog lists no helpers for this review).
 func (t Tools) note() string {
 	if len(t.Have) == 0 && len(t.Missing) == 0 {

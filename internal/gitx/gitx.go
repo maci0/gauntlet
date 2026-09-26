@@ -563,11 +563,6 @@ func openRegular(path string) (*os.File, os.FileInfo, error) {
 	return f, fi, nil
 }
 
-// countLinesCached counts the newlines in a regular file through the repo's
-// sample cache: an unchanged file (same size and mtime) returns its
-// remembered count instead of being read again. Sample calls this for every
-// untracked file every sample, so the cache is what keeps repeated sampling
-// at stat cost.
 // pruneLineCounts drops entries that are not in this sample's untracked
 // set. Reviews commit or delete files they created; without this those
 // paths occupy the cap forever and later untracked files are never cached.
@@ -586,6 +581,11 @@ func (r *Repo) pruneLineCounts(live []string) {
 	}
 }
 
+// countLinesCached counts the newlines in a regular file through the repo's
+// sample cache: an unchanged file (same size and mtime) returns its
+// remembered count instead of being read again. Sample calls this for every
+// untracked file every sample, so the cache is what keeps repeated sampling
+// at stat cost.
 func (r *Repo) countLinesCached(path string) int {
 	f, fi, err := openRegular(path)
 	if err != nil {

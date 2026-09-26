@@ -38,9 +38,9 @@ type CommitOpts struct {
 	Out func(string)
 }
 
-// CommitNow hands the working tree to one agent to commit, and reports
-// whether the tree ended up clean. It is the same prompt and the same
-// containment as the commit step inside a loop; what differs is that nothing
+// CommitNow hands the working tree to one agent to commit, returning an
+// error if the commit failed or left tracked files dirty. It is the same prompt
+// and the same containment as the commit step inside a loop; what differs is that nothing
 // else is running, so the caller waits for it. The agent only commits: the
 // runner strips AI trailers and pushes, so injected attribution never
 // reaches the remote.

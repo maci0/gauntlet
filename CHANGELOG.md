@@ -21,6 +21,10 @@ minor instead and were listed under Changed.
 - Resolve relative executable paths containing path separators to absolute paths in `runx.LookPath`, preventing unintended binary lookup or execution from working directory changes.
 - Use `os.Lstat` and regular-file checks when inspecting prompt files during discovery, refusing symlinks and special files.
 
+### Changed
+
+- Document dashboard completion keys in README, help subcommand and empty flag validation in CLI docs, and correct misplaced or drifted doc comments across runner, gitx, prompt, and runx.
+
 ### Fixed
 
 - Clarify cross-prompt fencing boundaries and replace conversational phrasing with actionable verification commands across bundled review instructions.

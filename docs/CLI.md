@@ -19,7 +19,7 @@ installed.
 Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs`, and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit`, and `show` and `version` take none of their own. `--log` and
+`--limit`, and `show`, `version`, and `help` take none of their own. `--log` and
 `--no-color` work everywhere, and may precede the subcommand, so
 `gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
 `show` takes its run id anywhere among the flags: `gauntlet show --no-color RUN`
@@ -64,7 +64,7 @@ Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
 that is unset or empty is a usage error rather than expanding to nothing. An
 explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
-`--pr-base`, `--suggest-agent`, or `--exclude` is refused the same way `--dir` is.
+`--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, or `--exclude` is refused the same way `--dir` is.
 
 A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 `-j 3`, and `-j=3` are the same flag.
@@ -107,7 +107,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it; a value that splits into nothing is a usage error. Used only with `--usage-limit`. |
 | `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
-| `-1, --once` | off | One loop, then stop. |
+| `-1, --once` | off | One loop, then stop. Conflicts with `--max-loops`. |
 | `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each a fresh worktree from the previous tip. |
 | `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any nonnegative integer literal (`0x…` included); `0` derives one from the clock. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |

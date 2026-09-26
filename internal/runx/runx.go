@@ -175,7 +175,7 @@ func LookPath(name string) string {
 
 // ShQuote returns a shell-escaped representation of s suitable for use as a single
 // argument in POSIX shells (sh, bash, zsh), enclosed in single quotes with interior
-// single quotes escaped as '\”.
+// single quotes escaped.
 func ShQuote(s string) string {
 	if s == "" {
 		return "''"
