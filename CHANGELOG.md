@@ -12,6 +12,8 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+## 1.23.3
+
 ### Security
 
 - Reject symlinks and non-regular files for `--log`, and open log files with `O_NOFOLLOW` to prevent symlink traversal and unintended file permission modification.
