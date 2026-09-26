@@ -14,6 +14,9 @@ minor instead and were listed under Changed.
 
 ### Security
 
+- Reject symlinks and non-regular files for `--log`, and open log files with `O_NOFOLLOW` to prevent symlink traversal and unintended file permission modification.
+- Harden journal and reload state operations by rejecting single-dot run IDs, guarding the journal index lock with `O_NOFOLLOW` and regular-file verification, and checking cross-platform path separators in state and overlay keys.
+- Reject embedded userinfo credentials in GitHub pull request URLs during stacked publication validation.
 - Guard git rev-parse, log, and diff commands with `--end-of-options` to prevent option injection and arbitrary file write via option-shaped ref arguments, and separate revisions with `--` during hard resets.
 - Resolve relative executable paths containing path separators to absolute paths in `runx.LookPath`, preventing unintended binary lookup or execution from working directory changes.
 - Use `os.Lstat` and regular-file checks when inspecting prompt files during discovery, refusing symlinks and special files.

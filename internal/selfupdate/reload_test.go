@@ -153,7 +153,7 @@ func TestLoadStateRejectsGarbage(t *testing.T) {
 
 func TestSaveStateRejectsInvalidRunID(t *testing.T) {
 	dir := t.TempDir()
-	for _, bad := range []string{"", "../escape", "sub/dir", "a/b", ".."} {
+	for _, bad := range []string{"", ".", "../escape", "sub/dir", "sub\\dir", "a/b", ".."} {
 		if _, err := SaveState(dir, bad, handoffBlob{Loops: 1}); err == nil {
 			t.Errorf("SaveState with runID %q succeeded, want error", bad)
 		}

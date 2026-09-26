@@ -234,11 +234,18 @@ func withIndexLock(fn func() error) error {
 		return err
 	}
 	fd, err := syscall.Open(indexLockPath(),
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_CLOEXEC, 0o600)
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
 	if err != nil {
 		return err
 	}
 	defer syscall.Close(fd)
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		return err
+	}
+	if st.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		return fmt.Errorf("index lock path is not a regular file: %s", indexLockPath())
+	}
 	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
 		return err
 	}
@@ -917,7 +924,7 @@ const maxRunIDLen = 128
 // from the command line, so anything outside the safe charset, and any "..",
 // is treated as a lookup miss.
 func validRunID(s string) bool {
-	if s == "" || len(s) > maxRunIDLen {
+	if s == "" || len(s) > maxRunIDLen || s == "." {
 		return false
 	}
 	if strings.Contains(s, "..") {

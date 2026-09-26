@@ -133,7 +133,7 @@ func dshModelPatch(provider, model string) (string, error) {
 // reader gets one whole file, and identical content makes old and new
 // interchangeable.
 func writeDshPatch(key, body string) (string, error) {
-	if key == "" || strings.ContainsRune(key, os.PathSeparator) || strings.Contains(key, "..") {
+	if key == "" || key == "." || strings.ContainsAny(key, "/\\") || strings.Contains(key, "..") {
 		return "", errors.New("invalid overlay key")
 	}
 	dshPatchMu.Lock()

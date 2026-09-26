@@ -1011,6 +1011,22 @@ func TestParseFlagsRejectsDirectoryLogFile(t *testing.T) {
 	}
 }
 
+func TestParseFlagsRejectsSymlinkLogFile(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.log")
+	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link.log")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	_, err := parseFlags([]string{"--log", link})
+	if err == nil || !strings.Contains(err.Error(), "is a symlink") {
+		t.Fatalf("want is a symlink error, got %v", err)
+	}
+}
+
 // FuzzExpandAttachedValues: argv is untrusted, and the expansion runs before
 // the flag package sees it. It must never panic, never lose or invent an
 // argument's bytes, and never touch anything after a positional.

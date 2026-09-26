@@ -154,7 +154,7 @@ func LookPath(name string) string {
 		}
 		return ""
 	}
-	if strings.ContainsRune(name, os.PathSeparator) {
+	if strings.ContainsAny(name, "/\\") {
 		abs, err := filepath.Abs(name)
 		if err != nil {
 			return ""

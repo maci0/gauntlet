@@ -131,7 +131,7 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // belongs to a reload that died between the save and the exec, which nothing
 // will ever pick up again.
 func SaveState(dir, runID string, v any) (string, error) {
-	if runID == "" || strings.ContainsRune(runID, os.PathSeparator) || strings.Contains(runID, "..") {
+	if runID == "" || runID == "." || strings.ContainsAny(runID, "/\\") || strings.Contains(runID, "..") {
 		return "", errors.New("invalid run id for state")
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {

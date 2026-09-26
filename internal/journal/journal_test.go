@@ -634,10 +634,27 @@ func TestOpenUsesDateFromRunID(t *testing.T) {
 func TestOpenRejectsInvalidRunID(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	now := time.Now()
-	for _, bad := range []string{"", "../escape", "foo/bar", strings.Repeat("a", 129)} {
+	for _, bad := range []string{"", ".", "../escape", "foo/bar", strings.Repeat("a", 129)} {
 		if _, err := Open(bad, now); err == nil {
 			t.Errorf("Open(%q) should have failed", bad)
 		}
+	}
+}
+
+func TestWithIndexLockRejectsSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	target := filepath.Join(home, "target.lock")
+	if err := os.WriteFile(target, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(home, ".index.lock")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	err := withIndexLock(func() error { return nil })
+	if err == nil {
+		t.Fatal("withIndexLock should have failed on symlink")
 	}
 }
 

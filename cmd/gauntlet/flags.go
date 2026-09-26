@@ -769,8 +769,16 @@ func validateLog(o *options, fs *flag.FlagSet) error {
 	if err != nil {
 		return fmt.Errorf("--log: %w", err)
 	}
-	if fi, err := os.Stat(expanded); err == nil && fi.IsDir() {
-		return fmt.Errorf("--log %s: is a directory", expanded)
+	if fi, err := os.Lstat(expanded); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("--log %s: is a symlink", expanded)
+		}
+		if fi.IsDir() {
+			return fmt.Errorf("--log %s: is a directory", expanded)
+		}
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("--log %s: not a regular file", expanded)
+		}
 	}
 	o.logFile = expanded
 	return nil

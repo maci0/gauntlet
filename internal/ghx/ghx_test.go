@@ -360,6 +360,23 @@ exit 2
 	}
 }
 
+func TestValidateURLRejectsUserinfo(t *testing.T) {
+	c := Client{Repo: "owner/repo", Host: "github.com"}
+	for _, bad := range []string{
+		"https://user:pass@github.com/owner/repo/pull/1",
+		"https://user@github.com/owner/repo/pull/1",
+		"http://github.com/owner/repo/pull/1",
+		"https://evil.com/owner/repo/pull/1",
+	} {
+		if _, err := c.validateURL(bad); err == nil {
+			t.Errorf("validateURL(%q) should have failed", bad)
+		}
+	}
+	if _, err := c.validateURL("https://github.com/owner/repo/pull/1"); err != nil {
+		t.Errorf("validateURL valid PR URL failed: %v", err)
+	}
+}
+
 func TestAvailable(t *testing.T) {
 	t.Setenv("PATH", "")
 	if Available() {

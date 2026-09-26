@@ -216,7 +216,17 @@ func run(argv []string) int {
 	// permissions tightened before this run writes anything.
 	var logWriter io.Writer
 	if opts.logFile != "" {
-		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+		if fi, err := os.Lstat(opts.logFile); err == nil {
+			if fi.Mode()&os.ModeSymlink != 0 {
+				fmt.Fprintf(os.Stderr, "cannot write log file %s: is a symlink\n", opts.logFile)
+				return exitUsage
+			}
+			if !fi.Mode().IsRegular() {
+				fmt.Fprintf(os.Stderr, "cannot write log file %s: not a regular file\n", opts.logFile)
+				return exitUsage
+			}
+		}
+		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND|syscall.O_NOFOLLOW, 0o600)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "cannot write log file %s: %v\n", opts.logFile, err)
 			return exitUsage
