@@ -114,7 +114,7 @@ Instructions:
 - Test mentally by imagining the UI in German (long words), Arabic (RTL), Japanese (CJK), and a language with complex plurals (Polish, Arabic).
 - Focus on issues that cause broken UI, incorrect data, or exclusion of users.
 - Do not flag missing i18n in internal tools, debug output, or developer-facing logs.
-- Consider the translation workflow: can translators do their job effectively with the current setup?
+- Verify translation extraction completeness: ensure user-facing strings are extracted into catalog files with stable keys.
 - Distinguish between:
   - broken i18n (incorrect output, data loss, or crashes in non-English locales)
   - incomplete i18n (some strings or features not localized)

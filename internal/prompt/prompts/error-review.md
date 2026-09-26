@@ -113,7 +113,7 @@ Instructions:
 - If available, use: `errcheck`/`staticcheck` (Go; unchecked errors and suspicious handling). Never install tools.
 - Do not flag every missing try/catch. Focus on errors that would cause real damage if unhandled.
 - Prefer error handling that is explicit and visible over clever or implicit patterns.
-- Consider the operational burden of errors: can an on-call engineer understand and fix the issue from the error output alone?
+- Error output must provide actionable operator context: identify the failed operation, the offending input or resource, and the underlying cause without requiring source code inspection.
 - Distinguish between:
   - silent failures (errors discarded, data lost, behavior incorrect without any signal)
   - noisy failures (errors logged or surfaced but with wrong context or severity)

@@ -118,7 +118,7 @@ Instructions:
 - Do not assume the application only operates in one jurisdiction. Consider GDPR, CCPA/CPRA, and other applicable regulations.
 - Focus on practical privacy risk: data that could cause harm if mishandled, leaked, or misused.
 - Do not recommend privacy theater that adds friction without real protection.
-- Consider the user's perspective: can they understand and control what happens with their data?
+- Verify data subject access and deletion paths: confirm that export, erasure, and consent-revocation paths exist in code for stored personal data.
 - Distinguish between:
   - compliance violations (legally required controls that are missing or broken)
   - data leakage (personal data appearing where it should not)

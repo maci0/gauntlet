@@ -36,7 +36,7 @@ Review the following:
 - Confusable/homoglyph or bidi-control characters in identity-bearing input (usernames, domains, paths) enabling spoofing or filter bypass (unicode-review owns the encoding/normalization mechanics; here own the impersonation or bypass)
 
 4. Data exposure
-(privacy-review owns PII redaction in logs and analytics; infra-review owns secrets in CI, container images, and IaC; config-review owns config structure and example placeholders; mobile-review owns backup exclusion, Keychain/Keystore accessibility, and lock-screen visibility. Here cover secrets, credentials, tokens, and security-sensitive debug output in application source: redact or relocate the secret itself.)
+(privacy-review owns PII redaction in logs and analytics; infra-review owns secrets in CI, container images, and IaC; gitops-review owns encrypted-secrets delivery strategy; config-review owns config structure and example placeholders; mobile-review owns backup exclusion, Keychain/Keystore accessibility, and lock-screen visibility. Here cover secrets, credentials, tokens, and security-sensitive debug output in application source: redact or relocate the secret itself.)
 - Sensitive data in logs, error messages, or stack traces
 - Secrets or credentials committed to version control
 - PII or sensitive data transmitted without encryption

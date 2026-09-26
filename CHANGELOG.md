@@ -20,6 +20,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- Clarify cross-prompt fencing boundaries and replace conversational phrasing with actionable verification commands across bundled review instructions.
 - Reject `--once` combined with `--max-loops 0` as conflicting loop limit options in the CLI.
 - Restrict git status C-style unquoting to valid byte-range octal escapes (000..377) to prevent truncating integer overflow, guard retry backoff calculation against negative shift amounts on negative attempts, and ignore writes to uninitialized or non-positive tail buffers.
 - Reset feed scroll to live output before quitting on Esc in the completed dashboard, quit immediately on Ctrl+C when a run has finished, show in-flight reviews in the minimal dashboard view, and step into the first review when expanding an already-open group in the launcher.

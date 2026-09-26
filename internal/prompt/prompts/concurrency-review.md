@@ -117,7 +117,7 @@ Instructions:
 - If available, use: `go test -race`, ThreadSanitizer (`-fsanitize=thread`), `valgrind --tool=helgrind`, `clang-tidy` (concurrency checks). A sanitizer trace is the strongest race evidence; run the existing test suite under one when the toolchain supports it. Never install tools.
 - Trace shared state from declaration to all access points. Check every access for proper synchronization.
 - Consider what happens under high concurrency, not just the single-threaded happy path.
-- Think about timing: if two operations happen "at the same time", what can go wrong?
+- Trace interleavings explicitly: identify the exact sequence where concurrent execution corrupts shared state or causes a deadlock.
 - Do not flag single-threaded code or code that is clearly only accessed from one thread.
 - Focus on bugs that corrupt data or cause deadlocks, not on theoretical contention that reduces throughput.
 - Consider the deployment context: single-process vs multi-process, single-node vs distributed.
