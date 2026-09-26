@@ -36,16 +36,6 @@ type parseError struct{ err error }
 
 func (e parseError) Error() string { return e.err.Error() }
 
-// reportUsage writes the message and the help screen to stderr, mirroring how
-// the flag package reports its own failures, and returns the error marked as
-// reported. Every rejection from parsing goes through this, so any bad
-// invocation reads the same way: cause first, then the screen.
-func reportUsage(o *options, err error) error {
-	fmt.Fprintln(os.Stderr, err)
-	printUsage(os.Stderr, palette{on: colorEnabled(os.Stderr) && !o.noColor}, o.width)
-	return parseError{err}
-}
-
 type options struct {
 	command string // "", help, pick, doctor, update, runs, show, version
 
@@ -119,6 +109,16 @@ type options struct {
 	// history
 	runsLimit int
 	showRun   string
+}
+
+// reportUsage writes the message and the help screen to stderr, mirroring how
+// the flag package reports its own failures, and returns the error marked as
+// reported. Every rejection from parsing goes through this, so any bad
+// invocation reads the same way: cause first, then the screen.
+func reportUsage(o *options, err error) error {
+	fmt.Fprintln(os.Stderr, err)
+	printUsage(os.Stderr, palette{on: colorEnabled(os.Stderr) && !o.noColor}, o.width)
+	return parseError{err}
 }
 
 // listFlag collects a repeatable, comma-separated flag.
