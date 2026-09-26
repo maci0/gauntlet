@@ -1436,16 +1436,20 @@ func TestRealPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Normal path resolves to its absolute path
-	if got := RealPath(target); got != target {
-		t.Fatalf("RealPath(%q) = %q, want %q", target, got, target)
+	// Temp dirs on macOS live under /var, a symlink to /private/var.
+	// RealPath resolves existing symlinks, so compare the canonical path.
+	canonical, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := RealPath(target); got != canonical {
+		t.Fatalf("RealPath(%q) = %q, want %q", target, got, canonical)
 	}
 
-	// Symlink resolves to real target
 	link := filepath.Join(dir, "link_to_file")
 	if err := os.Symlink(target, link); err == nil {
-		if got := RealPath(link); got != target {
-			t.Fatalf("RealPath(symlink %q) = %q, want %q", link, got, target)
+		if got := RealPath(link); got != canonical {
+			t.Fatalf("RealPath(symlink %q) = %q, want %q", link, got, canonical)
 		}
 	}
 
