@@ -142,8 +142,8 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// language server) must not survive the review as an orphaned process.
 	// terminate already kills the group on the timeout and cancel paths;
 	// this catches the happy path where the agent exited on its own but a
-	// grandchild is still running. Matches probeUsage's defer killGroup.
-	defer killGroup(cmd, syscall.SIGKILL)
+	// grandchild is still running. Matches probeUsage's defer runx.KillGroup.
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	defer func() {
 		outR.Close()
 		errR.Close()
@@ -327,7 +327,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	select {
 	case <-drained:
 	case <-drain.C:
-		killGroup(cmd, syscall.SIGKILL)
+		runx.KillGroup(cmd, syscall.SIGKILL)
 		outR.Close()
 		errR.Close()
 		<-drained
@@ -453,8 +453,8 @@ func emitStream(ev streamjson.Event, norm *normalize.Normalizer, emit func(norma
 // terminate kills the child's process group, escalating to SIGKILL, and
 // returns the resulting exit code.
 func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
-	defer killGroup(cmd, syscall.SIGKILL)
-	killGroup(cmd, syscall.SIGTERM)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
+	runx.KillGroup(cmd, syscall.SIGTERM)
 	term := time.NewTimer(killGrace)
 	defer term.Stop()
 	select {
@@ -462,7 +462,7 @@ func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
 		return exitCode(cmd, err)
 	case <-term.C:
 	}
-	killGroup(cmd, syscall.SIGKILL)
+	runx.KillGroup(cmd, syscall.SIGKILL)
 	kill := time.NewTimer(killGrace)
 	defer kill.Stop()
 	select {
@@ -473,12 +473,6 @@ func terminate(cmd *exec.Cmd, waitErr <-chan error) int {
 		// loop forever.
 		return -1
 	}
-}
-
-// killGroup signals the whole process group, falling back to the pid when the
-// group is already gone.
-func killGroup(cmd *exec.Cmd, sig syscall.Signal) {
-	runx.KillGroup(cmd, sig)
 }
 
 func exitCode(cmd *exec.Cmd, err error) int {

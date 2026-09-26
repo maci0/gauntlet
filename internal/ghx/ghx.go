@@ -92,11 +92,7 @@ func ParseRemote(raw string) (repo, host string, err error) {
 // Available reports whether gh resolves from an absolute PATH entry. An empty
 // PATH component never means cwd: a reviewed repository may contain a planted
 // executable named gh.
-func Available() bool { return binary() != "" }
-
-func binary() string {
-	return runx.LookPath("gh")
-}
+func Available() bool { return runx.LookPath("gh") != "" }
 
 // Preflight proves gh is authenticated and can see the selected repository.
 func (c Client) Preflight(ctx context.Context) error {
@@ -239,7 +235,7 @@ func (c Client) validateURL(raw string) (string, error) {
 }
 
 func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
-	bin := binary()
+	bin := runx.LookPath("gh")
 	if bin == "" {
 		return nil, exec.ErrNotFound
 	}

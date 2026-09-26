@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -50,7 +49,6 @@ func resolveDirs(opts *options) ([]string, error) {
 			if len(found) == 0 {
 				return nil, fmt.Errorf("%s: %q matched nothing", label, entry)
 			}
-			sort.Strings(found)
 			matches = found
 		}
 		added := 0
