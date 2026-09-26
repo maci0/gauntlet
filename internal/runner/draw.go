@@ -67,8 +67,7 @@ func drawIndex64(seed uint64, key string, n int64) int64 {
 func fnvAppendUint(h uint64, val uint64) uint64 {
 	if val == 0 {
 		h ^= '0'
-		h *= fnvPrime64
-		return h
+		return h * fnvPrime64
 	}
 	var buf [20]byte
 	pos := len(buf)

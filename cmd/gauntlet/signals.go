@@ -13,6 +13,15 @@ import (
 	"syscall"
 )
 
+// watchSignals maps process signals onto the two kinds of stop.
+//
+// Ctrl-C (SIGINT) is staged: the first one is the graceful quit -- the review
+// in flight finishes and lands its work, commit, push, PR and merge included,
+// exactly as SIGQUIT, `s` on the dashboard, and a tripped usage limit stop a
+// run -- the second terminates the running reviews, and the third force-kills
+// the process. An agent mid-review never sees the terminal's SIGINT at all
+// (every agent runs in its own process group, whichever CLI it is), so what
+// Ctrl-C means is decided entirely here, and a review that is seconds from
 // committing is worth one more Ctrl-C to kill. SIGTERM is not staged: it
 // comes from a supervisor or a kill, both of which mean "stop now", and a
 // service manager that escalates to SIGKILL on its own schedule must not be

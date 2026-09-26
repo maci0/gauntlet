@@ -552,6 +552,5 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 	}
 	argv = append(argv, head[promptAt:]...)
 
-	argv = expand(argv)
-	return argv
+	return expand(argv)
 }

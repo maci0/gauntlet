@@ -88,22 +88,8 @@ func gitPath() string {
 	if gitPathOnce && gitPathSeen == path {
 		return gitPathFor
 	}
-	gitPathSeen, gitPathFor, gitPathOnce = path, resolveGit(path), true
+	gitPathSeen, gitPathFor, gitPathOnce = path, runx.LookPath("git"), true
 	return gitPathFor
-}
-
-func resolveGit(rawPath string) string {
-	// Resolve on an absolute-only PATH so a planted ./git cannot run.
-	for _, dir := range filepath.SplitList(rawPath) {
-		if dir == "" || !filepath.IsAbs(dir) {
-			continue
-		}
-		p := filepath.Join(dir, "git")
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
-			return p
-		}
-	}
-	return ""
 }
 
 // Available reports whether git itself was found.
@@ -331,7 +317,7 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 	// variable outranks every config scope, so exporting plain ssh neutralizes
 	// a repo-local command while a value the user exported themselves is kept.
 	//
-	// PATH is the same absolute-only list resolveGit uses: GIT_SSH_COMMAND=ssh
+	// PATH is the same absolute-only list runx.LookPath uses: GIT_SSH_COMMAND=ssh
 	// looks up ssh on PATH, and a relative entry (notably ".") would pick up
 	// a planted executable in the reviewed tree.
 	cmd.Env = mergeGitEnv(extraEnv)
