@@ -23,6 +23,7 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- `prompt-review` looks for prompts in the three places a loader can supply them (the project tree, an operator's prompt directory, a runner's compiled set) instead of skipping a repository that keeps no prompt file of its own, tells the agent to register a prompt it creates where the loader looks for it, and no longer asks it to add a missing data-not-instructions line to a prompt the runner already composes one into.
 - A run listing shows `n/a` instead of `+0/-0` when the run's line counts could not be attributed, so a run with no counts no longer reads like a run that changed nothing.
 - A retry handed to a different agent continues the attempt sequence instead of restarting it, and `review_end` now carries the attempt it closes, so every outcome in a journal pairs with the launch that produced it.
 - Report a run's reviews in review-name order rather than the order parallel lanes happened to finish in, so a replayed seed prints the same result and pull-request list every time.

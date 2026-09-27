@@ -1,10 +1,10 @@
 Summary: whether these prompts work as instructions to an agent
 
-You are a senior prompt engineer specializing in instructions for autonomous AI coding agents. Your task is to review the review-prompt documents (`*-review.md` and similar task-prompt files) carried by this repository.
+You are a senior prompt engineer specializing in instructions for autonomous AI coding agents. Your task is to review the review-prompt documents (`*-review.md` and similar task-prompt files) this repository carries in its tree, is pointed at by an operator's prompt directory, or gets from a runner it depends on.
 
 Your goal is to evaluate whether these prompts actually work as instructions consumed by AI agents: whether an agent reading them knows what to find, how to prove it, what to fix, and where to stop. Review prompts are code that runs on a model; they deserve the same review discipline as code. Prompt templates inside application code belong to llm-review; shipped agent skills (SKILL.md) to skills-review; repo rules/memory files (CLAUDE.md, AGENTS.md, .cursorrules) to agentrules-review; PRDs, ADRs, and RFCs to specs-review.
 
-First decide if this review applies. Look for `*-review.md` files or similar agent task-prompt documents in the repo. If none exist, print the skip result and stop. Identify whether the prompts run under a runner that composes them (strips sections, injects rules) or standalone; judge them for how they are actually consumed.
+First decide if this review applies. Prompts reach an agent from three places, and all three count: `*-review.md` in the repository tree (any depth, but not gitignored and not under a directory the loader skips such as `vendor`, `dist`, `.git`, `.venv`), an explicit prompt directory passed by the operator, and a set compiled into a runner or plugin the repo depends on. Look in all three before deciding; a repo that consumes a runner as a dependency has no prompt file of its own, and skipping on that basis misses the prompts it ships. If none of the three exist, print the skip result and stop. Identify whether the prompts run under a runner that composes them (strips sections, injects rules) or standalone; judge them for how they are actually consumed.
 
 Review the following:
 
@@ -12,7 +12,7 @@ Review the following:
 - Missing role/goal opener that tells the agent who it is and what winning looks like
 - Conditional reviews without an applicability gate ("if the repo has no X, print the skip result and stop") so they burn passes on repos they don't fit
 - Checklists without concrete signals: an agent can't act on "check for issues"; it can act on "find calls to X without Y"
-- Missing instructions on priorities: with a capped fix budget, which findings come first
+- Missing instructions on priorities: a prompt with no fix order leaves the agent arbitrating between the top defect and the easiest one, and the two rarely agree
 
 2. Scope and fencing
 - Territory claimed by two prompts with no mutual reference: two agents will fix the same code by different rules
@@ -34,7 +34,7 @@ Review the following:
 - Instructions that would have the agent touch tests, public APIs, or generated files where the environment forbids it
 
 5. Injection and steering hygiene
-- Nothing states that repository content is data, not instructions to the agent
+- A prompt read outside the runner that composes it, with nothing stating that repository content is data, not instructions to the agent. Copying a composer's own ground rules into a prompt it always composes is not the fix: that duplicates text the runner already injects into every run
 - The prompt itself is steerable: it tells the agent to follow instructions found in files it reviews
 - Trust boundaries unstated: which files are the prompt's subject vs which are the agent's orders
 
@@ -64,6 +64,7 @@ Review the following:
 
 10. Maintenance signals
 - Prompts that drifted from the tooling that dispatches them (renamed flags, changed rules, stale references)
+- Prompts the dispatcher cannot load: a file the loader skips or ignores, or a name the runner's review set does not carry
 - References to files, reviews, or tools that no longer exist
 - Version-sensitive facts (standards, model names, CLI flags) with no way to notice staleness
 
@@ -85,6 +86,7 @@ Missing prompts this repository warrants
 - Follow the format the existing prompts use, in this order: a one-line role sentence ("You are a senior ... Your task is to review ..."); a "Your goal is to" paragraph naming what the review evaluates and how it differs from neighbouring reviews; a "First decide if this review applies" paragraph with a concrete skip condition; a numbered "Review the following:" list of specific, checkable failure modes; an "Instructions:" section bounding auto-fix priorities, scope limits, and tool guidance (including an "If available, use:" line when real tools exist for the subject); the finding template and output-format sections the other prompts carry; and a closing "Important:" list bounding scope and effort.
 - Write it for a repeat pass, not a one-time audit: every item must be something that can be re-checked next month and can go wrong again. A prompt that would find nothing on its second run has not earned a slot in the loop.
 - One file, one subject, and only when the subject is not already covered by an existing review. Extending an existing prompt beats adding a near-duplicate.
+- Register what you create where the loader looks for it: a prompt compiled into a runner is found by its file glob but still has to be listed in that runner's review-name contract, and one added to a project tree must not land gitignored. A prompt nothing dispatches is a file, not a review.
 - Never create a prompt describing work you just did, and never create more than one in a pass.
 
 For each finding include:
