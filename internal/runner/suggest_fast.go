@@ -666,12 +666,13 @@ func listTree(root string) ([]string, *gitx.Repo) {
 			return nil
 		}
 		if d.IsDir() {
-			switch {
-			case p == root:
-				return nil
-			case skipDirs[strings.ToLower(d.Name())],
-				strings.Count(filepath.ToSlash(rel), "/")+1 > scanMaxDepth:
-				return fs.SkipDir
+			if p != root {
+				if skipDirs[strings.ToLower(d.Name())] {
+					return fs.SkipDir
+				}
+				if strings.Count(filepath.ToSlash(rel), "/")+1 > scanMaxDepth {
+					return fs.SkipDir
+				}
 			}
 			return nil
 		}

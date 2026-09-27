@@ -408,6 +408,30 @@ func scheduleFor(d *dirRun, opts *options, excluded map[string]bool) ([]string, 
 	return kept, nil
 }
 
+// stdin is the one buffered view of os.Stdin for the whole process. A second
+// bufio.Reader over the same file reads ahead and drops what it buffered, so
+// two prompts in one run (the run plan, then the commit a parallel run needs)
+// would answer the second from EOF. Piped answers hit this first: bufio
+// takes every line the pipe holds in its first read.
+var stdin = bufio.NewReader(os.Stdin)
+
+// answeredYes reads one line from in and reports whether it accepts the
+// prompt. defaultYes is what an empty answer means, and is set by the
+// [Y/n] or [y/N] the prompt prints.
+func answeredYes(in *bufio.Reader, defaultYes bool) (bool, bool) {
+	line, err := in.ReadString('\n')
+	if err != nil && line == "" {
+		return false, false
+	}
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "":
+		return defaultYes, true
+	case "y", "yes":
+		return true, true
+	}
+	return false, true
+}
+
 func confirm(out io.Writer, opts *options, n int) bool {
 	if opts.yes || opts.yolo {
 		fmt.Fprintln(out, "Proceeding without confirmation.")
@@ -421,14 +445,9 @@ func confirm(out io.Writer, opts *options, n int) bool {
 		return true
 	}
 	fmt.Fprintf(out, "\nRun these %d reviews? [Y/n] ", n)
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
+	yes, ok := answeredYes(stdin, true)
+	if !ok {
 		fmt.Fprintln(out)
-		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "", "y", "yes":
-		return true
-	}
-	return false
+	return yes
 }

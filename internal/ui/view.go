@@ -321,10 +321,13 @@ func (m *model) renderLanes(w, h int) string {
 		statLine, dropped := laneStats(m, l, hue, statW)
 		// The counters keep a fixed column wherever there is room for it, so
 		// the eye learns where each number lives and the sparkline starts at
-		// the same place on every lane.
-		row := prefix + pad(statLine, min(statsW, max(statW, 0)))
+		// the same place on every lane. statsW is the column budget, statW
+		// the room the prefix left; the lane takes the smaller, never a
+		// negative one.
+		statCol := min(statsW, max(statW, 0))
+		row := prefix + pad(statLine, statCol)
 		if !dropped {
-			if sparkW := statW - min(statsW, max(statW, 0)); sparkW > 4 {
+			if sparkW := statW - statCol; sparkW > 4 {
 				row += "  " + chart(l.lines, sparkW, 1)
 			}
 		}

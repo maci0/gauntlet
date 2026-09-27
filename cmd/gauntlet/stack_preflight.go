@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -102,11 +101,7 @@ func confirmStackIsolationWith(out io.Writer, in *bufio.Reader, interactive bool
 	fmt.Fprintf(out, "  branch  %s\n", dirty.Base)
 	fmt.Fprintln(out, "  After confirmation, gauntlet fetches this remote branch and starts")
 	fmt.Fprintln(out, "  the isolated worktree from the fetched commit.")
-	if opts.yes || opts.yolo {
-		flag := "--yes"
-		if opts.yolo {
-			flag = "--yolo"
-		}
+	if flag := assumeFlag(opts); flag != "" {
 		fmt.Fprintf(out, "Proceeding (%s).\n", flag)
 		return true, nil
 	}
@@ -114,15 +109,9 @@ func confirmStackIsolationWith(out io.Writer, in *bufio.Reader, interactive bool
 		return false, errors.New("stacked PRs need confirmation to exclude uncommitted changes; rerun with --yes")
 	}
 	fmt.Fprint(out, "Continue? [y/N] ")
-	line, err := in.ReadString('\n')
-	if err != nil {
+	yes, ok := answeredYes(in, false)
+	if !ok {
 		fmt.Fprintln(out)
-		return false, nil
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true, nil
-	default:
-		return false, nil
-	}
+	return yes, nil
 }

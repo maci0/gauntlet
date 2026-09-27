@@ -917,17 +917,26 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	return true
 }
 
+// assumeFlag names the flag that already answered a prompt on the run's
+// behalf, for the message that says so. --yes outranks --yolo, which is the
+// order the two are checked in everywhere else.
+func assumeFlag(opts *options) string {
+	switch {
+	case opts.yes:
+		return "--yes"
+	case opts.yolo:
+		return "--yolo"
+	}
+	return ""
+}
+
 // confirmCommit asks whether to hand the tree to an agent. Unattended runs
 // keep the error: this writes a commit, which is not something to do to a
 // tree nobody is watching unless the flags already said to. term.IsTerminal,
 // like confirm's: /dev/null is a character device, and prompting there would
 // only read EOF.
 func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
-	if opts.yes || opts.yolo {
-		flag := "--yes"
-		if opts.yolo && !opts.yes {
-			flag = "--yolo"
-		}
+	if flag := assumeFlag(opts); flag != "" {
 		fmt.Fprintf(out, "Committing with %s first (%s).\n", spec.Label(), flag)
 		return true
 	}
@@ -935,16 +944,11 @@ func confirmCommit(out io.Writer, opts *options, spec agent.Spec) bool {
 		return false
 	}
 	fmt.Fprintf(out, "Commit them with %s first? [y/N] ", spec.Label())
-	line, err := bufio.NewReader(os.Stdin).ReadString('\n')
-	if err != nil {
+	yes, ok := answeredYes(stdin, false)
+	if !ok {
 		fmt.Fprintln(out)
-		return false
 	}
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes":
-		return true
-	}
-	return false
+	return yes
 }
 
 // carriedPending is the part of the current loop this directory had not

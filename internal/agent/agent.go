@@ -270,6 +270,10 @@ func Resolve(name string) string {
 	return found
 }
 
+// resolveProbeLimit caps the concurrent stat walk ResolveMany fans out over.
+// The pool bounds the open descriptors, not the goroutine count.
+const resolveProbeLimit = 32
+
 // ResolveMany probes names concurrently and returns the installed subset as a
 // name -> absolute path map. One pool of goroutines beats a serial stat walk
 // over the ~90 binaries doctor asks about.
@@ -277,7 +281,7 @@ func ResolveMany(names []string) map[string]string {
 	out := make(map[string]string, len(names))
 	var mu sync.Mutex
 	var wg sync.WaitGroup
-	sem := make(chan struct{}, 32)
+	sem := make(chan struct{}, resolveProbeLimit)
 	for _, n := range names {
 		wg.Go(func() {
 			sem <- struct{}{}

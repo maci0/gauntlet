@@ -650,6 +650,14 @@ func (m *model) apply(ev runner.Event) {
 // rate. Shorter than that is the same burst of tokens, not a new one.
 const rateWindow = 500 * time.Millisecond
 
+// The weights of the throughput average: how much of the reading shown so far
+// carries over, and how much of the reading just taken is new. They sum to 1,
+// so the number stays in the range of rates actually measured.
+const (
+	rateWeightPrev = 0.6
+	rateWeightNew  = 0.4
+)
+
 // sampleRate folds one usage report into the lane's measured throughput. The
 // first report, and any report whose clock runs backwards, only moves the
 // baseline: there is nothing to measure a rate against.
@@ -664,12 +672,13 @@ func (l *laneState) sampleRate(tokens int, at time.Time) {
 	}
 	if d := tokens - l.lastTokens; d > 0 {
 		// Smooth just enough that the number is readable without hiding a
-		// real change.
+		// real change. The weights say how much of the new reading the
+		// number carries.
 		rate := float64(d) / dt
 		if l.tokenRate == 0 {
 			l.tokenRate = rate
 		} else {
-			l.tokenRate = 0.6*l.tokenRate + 0.4*rate
+			l.tokenRate = rateWeightPrev*l.tokenRate + rateWeightNew*rate
 		}
 	}
 	l.lastTokens, l.lastAt = tokens, at
