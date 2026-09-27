@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.25.0
+
 ### Added
 
 - `make artifacts` writes `dist/checksums.txt` and `dist/sbom.json` from the binaries `make dist` built, and verifies the checksums against them. Split out of `make release` so the pull-request `dist` job runs it on every push: those two files are what a consumer verifies a download against, and until now nothing tested them before a tag shipped them.
