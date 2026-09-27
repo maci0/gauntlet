@@ -46,10 +46,12 @@ type Lock struct {
 // the path, so the check cannot be raced. O_CLOEXEC keeps the descriptor out
 // of agent and git children: Go's fork+exec only closes extra fds that have
 // it set, and without it a killed parent leaves the directory locked for as
-// long as those children live.
+// long as those children live. The mode is 0o600 because the note names the
+// run ID, the review, and the agent CLI, none of which belong to every local
+// account, and the reviewed tree decides where the file lands.
 func Acquire(path string) (*Lock, error) {
 	fd, err := syscall.Open(path,
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0o644)
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("cannot open lock file %s: %w "+
 			"(the lock path must be a creatable regular file)", path, err)
@@ -63,6 +65,11 @@ func Acquire(path string) (*Lock, error) {
 		syscall.Close(fd)
 		return nil, fmt.Errorf("lock path is not a regular file: %s", path)
 	}
+	// O_CREAT's mode applies only to a file this call creates, so a lock left
+	// behind by an older run keeps whatever mode it was made with. Tighten it
+	// on the descriptor, and best effort: a file this account does not own
+	// will not chmod, and the flock below still governs who gets the run.
+	_ = syscall.Fchmod(fd, 0o600)
 	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		defer syscall.Close(fd)
 		if errors.Is(err, syscall.EWOULDBLOCK) {

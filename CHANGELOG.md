@@ -20,6 +20,10 @@ minor instead and were listed under Changed.
 
 - The documented install script verifies the downloaded release binary against the release's `checksums.txt` before making it executable, and aborts on a mismatch.
 - The install script downloads the release asset under the name `checksums.txt` lists, so the checksum it verifies is the checksum of the bytes it installs, and a failed verification now aborts the install instead of continuing to `chmod`.
+- The run lock is created `0o600` and an existing one is tightened to match, so the run id, review, and agent CLI it records are not readable by every local account.
+- Appending to `.git/info/exclude` refuses a symlinked `info` directory, so a repository that plants one no longer redirects the write outside its own tree.
+- `--merge-into` is checked with `check-ref-format` before it reaches `git worktree add`, which takes no `--` and would otherwise read a leading dash as an option.
+- A remote URL with a leading-dash host (`https://--json/owner/repo`) is refused when parsed, instead of reaching `gh repo view` as a bare positional.
 
 ### Changed
 

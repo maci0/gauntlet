@@ -140,6 +140,12 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 	if r == nil || !Available() {
 		return MergeResult{Detail: "git is not available"}
 	}
+	// `worktree add <dir> <commit-ish>` takes no `--`, so target arrives as a
+	// bare positional and a leading dash would be read as an option. Refuse
+	// the shape before anything else, the same check --pr-base gets.
+	if err := r.ValidateBranchName(ctx, target); err != nil {
+		return MergeResult{Detail: fmt.Sprintf("cannot merge into %s: %v", target, err)}
+	}
 	if _, err := r.Tip(ctx, "refs/heads/"+target); err != nil {
 		return MergeResult{Detail: fmt.Sprintf("no local branch %s to merge into: %v", target, err)}
 	}

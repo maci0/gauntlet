@@ -46,6 +46,23 @@ func TestParseRemote(t *testing.T) {
 	}
 }
 
+// A remote URL can plant a host that looks like a gh option, and Preflight
+// hands the selector to `gh repo view` as a bare positional. url.Parse accepts
+// a leading-dash host, so the shape check has to refuse one.
+func TestParseRemoteRejectsOptionShapedHost(t *testing.T) {
+	for _, raw := range []string{
+		"https://--repo/owner/project",
+		"https://-R/owner/project",
+		"git@--json:owner/project",
+		"ssh://git@--web/owner/project.git",
+	} {
+		repo, host, err := ParseRemote(raw)
+		if err == nil {
+			t.Errorf("ParseRemote(%q) = %q, %q, nil; want a leading-dash host refused", raw, repo, host)
+		}
+	}
+}
+
 func TestParseRemoteErrorRedactsUserinfo(t *testing.T) {
 	cases := []string{
 		"https://alice:s3cret@github.com/owner/group/project",

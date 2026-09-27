@@ -537,3 +537,60 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 		t.Fatal("ParentTip with --branches flag should fail")
 	}
 }
+
+// `git worktree add <dir> <commit-ish>` has no `--`, so a merge target that
+// starts with a dash reaches an option position. MergeInto must refuse the
+// shape instead of letting `worktree add` read it as a flag.
+func TestMergeIntoRefusesOptionShapedTarget(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	for _, target := range []string{"--detach", "-f", "--orphan=evil", "-b"} {
+		mr := r.MergeInto(ctx, target, "main", "merge")
+		if mr.Merged {
+			t.Fatalf("MergeInto(%q) reported a merge; want the shape refused", target)
+		}
+		if !strings.Contains(mr.Detail, "invalid branch name") {
+			t.Fatalf("MergeInto(%q) Detail = %q; want the check-ref-format refusal", target, mr.Detail)
+		}
+	}
+	// The refusal happens before any worktree is created.
+	entries, err := os.ReadDir(filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot)))
+	if err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), "merge-") {
+				t.Fatalf("MergeInto created %q for an option-shaped target", e.Name())
+			}
+		}
+	}
+}
+
+// The reviewed tree picks gitDir, so a planted symlink at .git/info must not
+// redirect the exclude append outside the repository: the run would create a
+// file in a directory the operator never pointed gauntlet at.
+func TestExcludeOwnArtifactsRefusesASymlinkedInfoDir(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	outside := t.TempDir()
+	info := filepath.Join(r.Dir, ".git", "info")
+	// The link replaces the directory, so it has to go first: Symlink over an
+	// existing path fails and the test would skip instead of testing anything.
+	if err := os.RemoveAll(info); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, info); err != nil {
+		t.Skipf("cannot plant a symlink: %v", err)
+	}
+
+	r.ExcludeOwnArtifacts(ctx)
+
+	planted := filepath.Join(outside, "exclude")
+	body, err := os.ReadFile(planted)
+	if err == nil {
+		t.Fatalf("ExcludeOwnArtifacts wrote %q through a symlinked info dir: %q", planted, body)
+	}
+	if !os.IsNotExist(err) {
+		t.Fatalf("reading the planted exclude: %v", err)
+	}
+}

@@ -86,6 +86,14 @@ func ParseRemote(raw string) (repo, host string, err error) {
 	if host == "" || !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", shown)
 	}
+	// One call site, `gh repo view <selector>`, passes the selector as a bare
+	// positional, and a remote URL can plant an option-shaped host: url.Parse
+	// accepts `https://--flag/owner/repo`, and selector() hands `--flag/owner/repo`
+	// to that position. A GitHub host has no leading dash and neither does a
+	// repository name, so reject one here instead of chasing it downstream.
+	if strings.HasPrefix(host, "-") || strings.HasPrefix(repo, "-") {
+		return "", "", fmt.Errorf("remote %q is not a GitHub OWNER/REPO URL", shown)
+	}
 	return repo, host, nil
 }
 

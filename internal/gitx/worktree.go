@@ -94,6 +94,14 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
+	// MkdirAll and OpenFile both follow a symlink at any component, and the
+	// reviewed tree picks gitDir: `.git` can be a symlink or a gitfile whose
+	// path lands elsewhere, and `.git/info` can be planted outright. Appending
+	// through either writes a line the operator did not ask for, into a file
+	// outside the repository. Re-check on the descriptor's own directory.
+	if !realDir(filepath.Dir(path)) {
+		return
+	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
 		return
@@ -105,6 +113,15 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	}
 	fmt.Fprintf(f, "%s# gauntlet's own scratch: per-review worktrees and the run lock\n%s\n",
 		prefix, strings.Join(missing, "\n"))
+}
+
+// realDir reports whether path is an existing real directory. Lstat never
+// reports a symlink as a directory, so a planted link fails the check. Callers
+// use it before writing through a path whose components came out of the
+// reviewed tree.
+func realDir(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir()
 }
 
 // ensureWorktreeRoot proves the scratch directory is the repository's own
