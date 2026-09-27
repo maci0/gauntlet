@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runx"
 )
 
@@ -69,8 +70,14 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 // gives up on an unreapable child, the same insurance runProc carries.
 const indexerWaitGrace = 10 * time.Second
 
-// runIndexer runs a helper binary to completion, streaming nothing: its output
-// goes straight to the terminal.
+// runIndexer runs a helper binary to completion. Its output is not parsed or
+// stored, only filtered on its way to the terminal.
+//
+// Both streams pass through the same display filter as every other child
+// output, because the indexer reports what it walked and the reviewed tree
+// names the files: a repository that ships a file name carrying an escape
+// sequence or a bidi override would otherwise drive the operator's terminal
+// through the one child whose output nobody filters.
 //
 // The child gets its own process group and the deadline kill takes down the
 // whole group: semcode-index is an external binary that may have children of
@@ -80,10 +87,18 @@ func runIndexer(ctx context.Context, bin string, args []string, dir string) int 
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = runx.AbsPATHEnv()
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	// One writer per stream: DisplayWriter is per-stream state, and the copy
+	// goroutines for stdout and stderr run concurrently.
+	stdout, stderr := normalize.NewDisplayWriter(os.Stdout), normalize.NewDisplayWriter(os.Stderr)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
 	runx.Guard(cmd, indexerWaitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	// Run has joined both copy goroutines, so whatever each held is final.
+	if ferr := errors.Join(stdout.Flush(), stderr.Flush()); err == nil {
+		err = ferr
+	}
+	if err != nil {
 		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
 			return ee.ExitCode()
 		}

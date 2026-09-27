@@ -11,6 +11,8 @@
 package normalize
 
 import (
+	"bytes"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -396,6 +398,85 @@ func Truncate(s string, w int) string {
 		}
 	}
 	return s
+}
+
+// maxPendingBytes caps the partial line a DisplayWriter holds while waiting
+// for its newline. A child that streams one endless line would otherwise grow
+// the buffer without bound; past the cap the writer emits what it has and
+// keeps going, so nothing is dropped.
+const maxPendingBytes = 1 << 20
+
+// DisplayWriter filters untrusted bytes on their way to a terminal, for a
+// child process whose output is streamed rather than parsed line by line. Give
+// each of the child's streams its own: it is not safe for concurrent use.
+//
+// Every visible character survives, so this changes no output a normal program
+// produces. What it removes is the part of the child's output the producer does
+// not control: a file name read out of a hostile tree carries escape sequences
+// and bidi overrides into the operator's terminal.
+type DisplayWriter struct {
+	dst  io.Writer
+	held []byte
+}
+
+// NewDisplayWriter returns a writer that passes each complete line of its
+// input through Display before writing it to dst. A trailing partial line is
+// held until Flush.
+func NewDisplayWriter(dst io.Writer) *DisplayWriter {
+	return &DisplayWriter{dst: dst}
+}
+
+// Write implements io.Writer, forwarding the line-structured form of whatever
+// p carries. It always reports len(p): a line the destination rejects comes
+// back as the error, which is where an io.Writer reports it.
+func (w *DisplayWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	for {
+		i := bytes.IndexByte(p, '\n')
+		if i < 0 {
+			w.held = append(w.held, p...)
+			return n, w.drain("", false)
+		}
+		w.held = append(w.held, p[:i]...)
+		if err := w.drain("\n", false); err != nil {
+			return n, err
+		}
+		p = p[i+1:]
+	}
+}
+
+// Flush writes back a partial line the child left unterminated, which is the
+// last thing a killed or newline-less process owes the reader.
+func (w *DisplayWriter) Flush() error {
+	return w.drain("", true)
+}
+
+// drain emits what is held, followed by end. An empty end means the line is
+// still open, so it stays held until it is terminated or, past
+// maxPendingBytes, until its oldest rune-aligned prefix goes out, so a child
+// streaming one endless line cannot grow the buffer without bound and nothing
+// is dropped. A final drain has no later chance to emit, so it emits
+// unconditionally.
+func (w *DisplayWriter) drain(end string, final bool) error {
+	if len(w.held) == 0 {
+		return nil
+	}
+	cut := len(w.held)
+	if end == "" && !final {
+		if cut <= maxPendingBytes {
+			return nil // the line may still grow; wait for its newline
+		}
+		cut = maxPendingBytes
+		// A producer can emit bytes that are not valid UTF-8, so the cut
+		// walks back to a boundary but never past the start of the buffer.
+		for cut > 0 && !utf8.RuneStart(w.held[cut-1]) {
+			cut--
+		}
+	}
+	line := Display(string(w.held[:cut]))
+	w.held = append(w.held[:0], w.held[cut:]...)
+	_, err := io.WriteString(w.dst, line+end)
+	return err
 }
 
 // Clip cuts s to at most max code points, without splitting a grapheme

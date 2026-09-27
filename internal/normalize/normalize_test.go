@@ -4,6 +4,7 @@
 package normalize
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 	"testing"
@@ -565,4 +566,97 @@ func FuzzDisplay(f *testing.F) {
 			}
 		}
 	})
+}
+
+// DisplayWriter is a pass-through for a program that writes plain text: the
+// same bytes in, the same bytes out, whatever the write boundaries. Only the
+// sequences and control characters Display strips are removed.
+func TestDisplayWriterPassesPlainTextThrough(t *testing.T) {
+	const text = "indexed a/b.go\nwarning: 2 files skipped\n"
+	var got bytes.Buffer
+	w := NewDisplayWriter(&got)
+	// One byte at a time is the worst case for a line-buffering writer: no
+	// write boundary may be assumed to line up with a newline.
+	for i := range len(text) {
+		n, err := w.Write([]byte(text[i : i+1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 1 {
+			t.Fatalf("Write reported %d bytes for a 1-byte write", n)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != text {
+		t.Fatalf("plain text was altered:\n got %q\nwant %q", got.String(), text)
+	}
+}
+
+// Whatever a hostile producer puts in a line, only the escape, control, and
+// formatting characters come out the far side.
+func TestDisplayWriterStripsHostileSequences(t *testing.T) {
+	var got bytes.Buffer
+	w := NewDisplayWriter(&got)
+	hostile := "\x1b[2J\x1b[31mindexed \x1b]0;title\x07a\u202eb.go\u0007\n"
+	if _, err := w.Write([]byte(hostile)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	want := "indexed ab.go\n"
+	if got.String() != want {
+		t.Fatalf("hostile line was not sanitized:\n got %q\nwant %q", got.String(), want)
+	}
+}
+
+// A child killed mid-line leaves bytes with no newline. They are the last
+// thing it owes the reader, so Flush has to put them out; sanitized, because
+// the same attacker controls them.
+func TestDisplayWriterFlushesUnterminatedTail(t *testing.T) {
+	var got bytes.Buffer
+	w := NewDisplayWriter(&got)
+	if _, err := w.Write([]byte("done\npartial \x1b[31mline")); err != nil {
+		t.Fatal(err)
+	}
+	if got.String() != "done\n" {
+		t.Fatalf("a partial line was written before it was terminated: %q", got.String())
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if want := "done\npartial line"; got.String() != want {
+		t.Fatalf("Flush dropped or altered the tail:\n got %q\nwant %q", got.String(), want)
+	}
+}
+
+// A child that never emits a newline must not be able to grow the pending
+// buffer without bound: past the cap the oldest rune-aligned prefix goes out
+// and the rest stays held, so nothing is dropped and no rune is cut in half.
+func TestDisplayWriterBoundsThePendingLine(t *testing.T) {
+	var got bytes.Buffer
+	w := NewDisplayWriter(&got)
+	// The 3-byte euro sign starts one byte before the cap, so a cut at the cap
+	// would land inside it.
+	chunk := strings.Repeat("x", maxPendingBytes-1) + "\u20ac" + "y"
+	const chunks = 4
+	for range chunks {
+		if _, err := w.Write([]byte(chunk)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got.Len() >= len(chunk)*chunks {
+		t.Fatalf("the pending line was never bounded: %d bytes held", got.Len())
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if want := strings.Repeat(chunk, chunks); got.String() != want {
+		t.Fatalf("bounding lost or reordered bytes: got %d bytes, want %d", got.Len(), len(want))
+	}
+	if strings.ContainsRune(got.String(), 0xFFFD) {
+		t.Fatal("the bound split a UTF-8 sequence")
+	}
 }
