@@ -12,6 +12,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/journal"
 )
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
@@ -257,6 +258,27 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		w.println(pal.red("State root unusable: " + problem))
 		stateBad = true
 	}
+	// What the state tree holds, so a restore is checked rather than assumed:
+	// a journal without its index row is a run a listing will reconstruct,
+	// and an index row without its journal is a run nothing can read back.
+	// Neither changes the verdict, both change what the operator believes they
+	// have.
+	if st, err := journal.Inspect(); err != nil {
+		w.println(pal.yellow("Run history unreadable: " + err.Error()))
+	} else if st.Journals > 0 || st.Pruned > 0 {
+		line := fmt.Sprintf("Run history: %s", plural(st.Journals, "journal", "journals"))
+		if st.Disagreed > 0 {
+			w.println(pal.yellow(line + fmt.Sprintf(
+				", %d not matched by the index (gauntlet runs repairs what it can reconstruct)", st.Disagreed)))
+		} else {
+			w.println(pal.dim(line + ", index agrees"))
+		}
+		if st.Pruned > 0 {
+			w.println(pal.dim(fmt.Sprintf(
+				"  %s still recoverable: gauntlet runs --restore <run-id>",
+				plural(st.Pruned, "pruned run", "pruned runs"))))
+		}
+	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
@@ -274,6 +296,15 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		return exitFail
 	}
 	return exitOK
+}
+
+// plural counts a thing in a sentence, where "1 journals" reads as a bug in
+// the report rather than in the tree.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return fmt.Sprintf("%d %s", n, one)
+	}
+	return fmt.Sprintf("%d %s", n, many)
 }
 
 // envSettingLines reports which documented variables this process actually

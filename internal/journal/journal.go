@@ -68,6 +68,10 @@ func StateDir() string { return filepath.Join(Home(), "state") }
 // processes never share a pid.
 func NewRunID(now time.Time) string { return runIDFor(now, os.Getpid()) }
 
+// ErrInvalidRunID marks a run id this package will not open: a caller passing
+// one has the argument wrong, not the tree.
+var ErrInvalidRunID = errors.New("invalid run id")
+
 // runIDFor is NewRunID for a stated pid, so the one thing the id has to
 // guarantee can be tested against pids no live pair could be.
 func runIDFor(now time.Time, pid int) string {

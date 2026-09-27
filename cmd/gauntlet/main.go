@@ -180,7 +180,7 @@ func run(argv []string) int {
 	case "update":
 		return cmdUpdate(ctx, stdout, pal, opts)
 	case "runs":
-		return cmdRuns(stdout, pal, opts.runsLimit)
+		return cmdRuns(stdout, pal, opts.runsLimit, opts.restoreRun)
 	case "show":
 		return cmdShow(stdout, opts.showRun)
 	case "version":

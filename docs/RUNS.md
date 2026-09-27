@@ -418,6 +418,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 |---|---|---|
 | `runs/YYYY-MM-DD/<id>.jsonl` | one run's event stream | copy the files; `gauntlet runs` rebuilds the index from them |
 | `index.jsonl` | listing cache | rebuilt from `runs/` |
+| `pruned/YYYY-MM-DD/<id>.jsonl` | runs the retention bound moved out of the listing | kept until `--keep-runs` newer runs replace them; `gauntlet runs --restore <id>` moves one back |
 | `.index.lock` | serializes index rebuilds and Close | ephemeral |
 | `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
 | `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
@@ -434,12 +435,26 @@ replicated off the machine: `GAUNTLET_HOME` is a directory, and backups of it
 are yours.
 
 The history is bounded. `--keep-runs` (200 by default, `0` keeps every run)
-prunes at the end of a run: journals and index rows past the newest N are
-deleted, and a day directory left empty goes with them. The first run after
-an upgrade therefore deletes the runs past the newest 200, and `gauntlet show`
-cannot reach a run whose journal is gone. Raise the bound or set it to `0`
-before the first run on an install you want to keep in full, and read the
-retention as a deletion: nothing copies an evicted run anywhere.
+prunes at the end of a run: the index rows past the newest N go, the journals
+move to `pruned/`, and a day directory left empty under `runs/` goes with them.
+The first run after an upgrade therefore moves the runs past the newest 200 out
+of the listing, and `gauntlet show` cannot reach a run that is not in the
+listing. Raise the bound or set it to `0` before the first run on an install you
+want to keep in full.
+
+A prune is the one deletion path in the tree, it fires unattended at the end of
+every run, and its input is a flag, so what it drops is recoverable rather than
+gone: a pruned journal is renamed into `pruned/<shard>/<id>.jsonl` and the
+quarantine is bounded by the same N, which leaves a run recoverable until N
+newer runs have replaced it. `gauntlet runs` names what is waiting there, and
+
+```sh
+gauntlet runs --restore 20260825T131500Z-a91f
+```
+
+moves it back and rewrites its index row, after which `gauntlet show` replays
+it. N runs later the quarantine drops it, so a long absence is a real loss:
+nothing copies an evicted run anywhere.
 
 ### Backup and restore
 
@@ -450,13 +465,14 @@ with an archive the size of production and record the result in your own
 incident runbook.
 
 Stop running CLI processes before taking the copy so the archive cannot catch
-a journal line halfway through a write. Back up `runs/` and `agents.json` to a
-different failure domain; `index.jsonl`, locks, worktrees, and hot-reload state
+a journal line halfway through a write. Back up `runs/`, `pruned/`, and
+`agents.json` to a different failure domain; `index.jsonl`, locks, worktrees, and hot-reload state
 are intentionally excluded because they are derived or ephemeral:
 
 ```sh
 state=${GAUNTLET_HOME:-"$HOME/.gauntlet"}
 set -- runs
+[ ! -d "$state/pruned" ] || set -- "$@" pruned
 [ ! -f "$state/agents.json" ] || set -- "$@" agents.json
 tar -C "$state" -czf /path/on/other-storage/gauntlet-state.tgz \
   "$@"
@@ -474,11 +490,15 @@ mkdir /path/to/empty-restore
 tar -C /path/to/empty-restore -xzf /path/on/other-storage/gauntlet-state.tgz
 GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --limit 10
 GAUNTLET_HOME=/path/to/empty-restore gauntlet show <run-id>
+GAUNTLET_HOME=/path/to/empty-restore gauntlet doctor
 ```
 
 The first command proves the derived index can be rebuilt; the second proves a
-journal can be read end to end. Only after both succeed should the restored
-directory replace the lost `GAUNTLET_HOME`. Run this drill after changing the
+journal can be read end to end. The third is the one that answers "is what
+survived complete": `Run history` counts the journals the restore produced, so
+it can be compared against the journal count on the machine the copy came from.
+Only after all three succeed should the restored directory replace the lost
+`GAUNTLET_HOME`. Run this drill after changing the
 archive job or upgrading across versions, and periodically with the largest
 archive, because a backup that has only been written has not been proven
 restorable.

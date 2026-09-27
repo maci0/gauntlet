@@ -19,8 +19,12 @@ import (
 	"github.com/maci0/gauntlet/internal/normalize"
 )
 
-// cmdRuns lists recent runs from ~/.gauntlet/index.jsonl.
-func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
+// cmdRuns lists recent runs from ~/.gauntlet/index.jsonl. A run id restores a
+// pruned run, which is a different job from listing and happens instead of it.
+func cmdRuns(out io.Writer, pal palette, limit int, restore string) (code int) {
+	if restore != "" {
+		return restoreRun(out, pal, restore)
+	}
 	entries, err := journal.Recent(limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read run index: %v\n", err)
@@ -78,6 +82,46 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
 	w.printf("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
+	// A prune is unattended, so the runs it moved out of the listing are
+	// named where the user reads the listing: a dropped run is recoverable
+	// only by someone who knows it is still on disk. The bound keeps a
+	// large quarantine from printing two hundred ids.
+	if held, err := journal.Quarantined(); err == nil && len(held) > 0 {
+		shown := held
+		more := ""
+		if len(shown) > listedQuarantined {
+			more = fmt.Sprintf(" and %d more under %s",
+				len(shown)-listedQuarantined, filepath.Join(journal.Home(), "pruned"))
+			shown = shown[:listedQuarantined]
+		}
+		w.printf("%s\n", pal.dim(fmt.Sprintf(
+			"Pruned, still recoverable (gauntlet runs --restore ID): %s%s",
+			strings.Join(shown, " "), more)))
+	}
+	return exitOK
+}
+
+// listedQuarantined is how many pruned run ids a listing names before it
+// counts the rest.
+const listedQuarantined = 5
+
+// restoreRun puts a pruned journal back in the listing and says so plainly:
+// a restore that failed has to read as a failure, not as a listing.
+func restoreRun(out io.Writer, pal palette, runID string) int {
+	if err := journal.Restore(runID); err != nil {
+		switch {
+		case errors.Is(err, journal.ErrNotPruned),
+			errors.Is(err, journal.ErrAlreadyListed),
+			errors.Is(err, journal.ErrInvalidRunID):
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			return exitUsage
+		default:
+			fmt.Fprintf(os.Stderr, "cannot restore run %s: %v\n", runID, err)
+			return exitFail
+		}
+	}
+	fmt.Fprintf(out, "Restored %s; %s\n", runID,
+		pal.dim("gauntlet show "+runID))
 	return exitOK
 }
 

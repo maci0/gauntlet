@@ -12,7 +12,10 @@ import (
 	"strings"
 	"testing"
 
+	"time"
+
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
@@ -287,5 +290,79 @@ func TestDoctorReportsTheEnvironmentItSaw(t *testing.T) {
 	}
 	if strings.Contains(out, "GIT_SSH_COMMAND") {
 		t.Fatalf("doctor should not name a variable that is unset:\n%s", out)
+	}
+}
+
+// What the state tree holds is what a restore has to be checked against: a
+// restored tree that lists fewer journals than it should, or an index row with
+// no journal behind it, reads exactly like a healthy one from the outside.
+func TestDoctorReportsTheRunHistory(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+
+	record := func(at time.Time) string {
+		t.Helper()
+		id := journal.NewRunID(at)
+		j, err := journal.Open(id, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	second := record(base.Add(time.Hour))
+	record(base)
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	if out := buf.String(); !strings.Contains(out, "Run history: 2 journals, index agrees") {
+		t.Fatalf("doctor should report two agreeing journals:\n%s", out)
+	}
+
+	// A run that flushed its journal and died before Close: the journal is on
+	// disk and the index never learned of it, which is what a restore of an
+	// interrupted run looks like.
+	open, err := journal.Open(journal.NewRunID(base.Add(2*time.Hour)), base.Add(2*time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	open.Write(map[string]string{"ev": "run_start"})
+	open.Flush()
+
+	if _, err := journal.Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	doctor(&buf, palette{}, nil, 80)
+	if out := buf.String(); !strings.Contains(out, "Run history: 1 journal, 1 not matched by the index") {
+		t.Fatalf("doctor should report the journal the index does not name:\n%s", out)
+	}
+	if out := buf.String(); !strings.Contains(out, "1 pruned run still recoverable") {
+		t.Fatalf("doctor should name the recoverable run:\n%s", out)
+	}
+
+	// The pruned journal is put back, and a listing repairs the crashed run,
+	// so the tree agrees again.
+	if err := journal.Restore(second); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.Recent(10); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "Run history: 2 journals, index agrees") {
+		t.Fatalf("doctor should report a healthy tree after the restore:\n%s", out)
+	}
+	if strings.Contains(out, "still recoverable") {
+		t.Fatalf("doctor still reports a recoverable run after restoring %s:\n%s", second, out)
+	}
+	if strings.Contains(out, second) {
+		t.Fatalf("doctor leaked a run id into its report:\n%s", out)
 	}
 }

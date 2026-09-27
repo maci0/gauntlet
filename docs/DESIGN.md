@@ -41,7 +41,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
-| `internal/journal` | the JSONL run log under `~/.gauntlet` |
+| `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`) every temp-file writer needs |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
@@ -578,6 +578,7 @@ Every run writes JSONL under `~/.gauntlet` (`GAUNTLET_HOME` overrides):
 ```
 runs/YYYY-MM-DD/<run-id>.jsonl   the event stream, one JSON object per line
 index.jsonl                      one summary line per finished run
+pruned/YYYY-MM-DD/<run-id>.jsonl journals the --keep-runs bound moved out
 .index.lock                      serializes index rebuilds and Close
 state/<run-id>.json              hot-reload handoff, removed after pickup
 ```
@@ -586,6 +587,15 @@ Design points:
 
 - The journal is **another subscriber to the same event bus** the dashboard
   reads. No separate instrumentation path exists to drift out of sync.
+- The retention bound **moves** what it drops into `pruned/` rather than
+  unlinking it, and the quarantine is bounded by the same `--keep-runs`. The
+  prune fires unattended at the end of every run from a flag, so a run stays
+  recoverable until the same number of newer runs has replaced it;
+  `gauntlet runs --restore` moves one back. A quarantine bound by nothing would
+  be a second unbounded history beside the one the bound exists to cap.
+- `Inspect` reads the tree for `gauntlet doctor`: journals on disk, index
+  rows, runs the two copies tell apart, and pruned runs. A restore is checked
+  against that rather than against the exit code of the run that wrote it.
 - Date sharding keeps one directory listing small; the flat index makes "what
   did I run last week" a tail rather than a tree walk. A generated run id
   encodes that date, so looking one up is a stat of one file, not a probe of

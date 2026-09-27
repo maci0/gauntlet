@@ -201,7 +201,7 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	want := start.Local().Format("2006-01-02 15:04:05")
@@ -225,13 +225,13 @@ func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
 				}
 			}
 			var rendered bytes.Buffer
-			if code := cmdRuns(&rendered, palette{}, 10); code != exitOK {
+			if code := cmdRuns(&rendered, palette{}, 10, ""); code != exitOK {
 				t.Fatalf("listing exited %d", code)
 			}
 			for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
 				sink := &listingFailWriter{remaining: limit}
 				code, diagnostic := captureStderrFor(t, func() int {
-					return cmdRuns(sink, palette{}, 10)
+					return cmdRuns(sink, palette{}, 10, "")
 				})
 				if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the run listing: "+io.ErrClosedPipe.Error()) {
 					t.Fatalf("limit %d: exit %d, stderr %q", limit, code, diagnostic.String())
@@ -278,7 +278,7 @@ func TestRunsListsMeasuredElapsedWhenTheWallClockJumped(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	out := buf.String()
@@ -307,7 +307,7 @@ func TestRunsListsNAWhenEndPrecedesStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	if !strings.Contains(buf.String(), "n/a") {
@@ -336,7 +336,7 @@ func TestRunsListsAfterDeletedIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
 		t.Fatalf("listing after a deleted index should exit %d, got %d", exitOK, code)
 	}
 	if !strings.Contains(buf.String(), id) {
@@ -478,7 +478,7 @@ func TestRunsRendersMissingStartTimeAsNA(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	if strings.Contains(buf.String(), "0001-01-01") {
@@ -503,5 +503,71 @@ func TestShowTimeZero(t *testing.T) {
 	want := stamp.Local().Format("15:04:05")
 	if got := showTime(stamp.Format(time.RFC3339)); got != want {
 		t.Fatalf("showTime(RFC3339) = %q, want %q", got, want)
+	}
+}
+
+// A prune moves a run out of the listing; --restore is the only way back, so
+// the command has to restore it, name it in the listing, and say which
+// argument was wrong when it cannot.
+func TestRunsRestoresAPrunedRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	ids := []string{
+		journal.NewRunID(base),
+		journal.NewRunID(base.Add(time.Hour)),
+		journal.NewRunID(base.Add(2 * time.Hour)),
+	}
+	for i, id := range ids {
+		j, err := journal.Open(id, base.Add(time.Duration(i)*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Close(journal.Summary{Start: base, End: base.Add(time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := journal.Prune(2); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	if !strings.Contains(buf.String(), ids[0]) {
+		t.Fatalf("the listing does not name the recoverable run %s:\n%s", ids[0], buf.String())
+	}
+	if !strings.Contains(buf.String(), "gauntlet runs --restore") {
+		t.Fatalf("the listing does not say how to restore %s:\n%s", ids[0], buf.String())
+	}
+
+	var restored bytes.Buffer
+	if code := cmdRuns(&restored, palette{}, 10, ids[0]); code != exitOK {
+		t.Fatalf("restoring %s should exit %d, got %d", ids[0], exitOK, code)
+	}
+	if !strings.Contains(restored.String(), ids[0]) {
+		t.Fatalf("the restore did not name the run: %q", restored.String())
+	}
+	var after bytes.Buffer
+	if code := cmdRuns(&after, palette{}, 10, ""); code != exitOK {
+		t.Fatal("listing after the restore failed")
+	}
+	if !strings.Contains(after.String(), ids[0]) {
+		t.Fatalf("the restored run is not in the listing:\n%s", after.String())
+	}
+	// A second restore has nothing to do, and says so as a usage error
+	// rather than exiting 0 over a run that was never moved.
+	code, diagnostic := captureStderrFor(t, func() int {
+		return cmdRuns(io.Discard, palette{}, 10, ids[0])
+	})
+	if code != exitUsage || !strings.Contains(diagnostic.String(), "already in the listing") {
+		t.Fatalf("restoring twice: exit %d, stderr %q", code, diagnostic.String())
+	}
+	code, diagnostic = captureStderrFor(t, func() int {
+		return cmdRuns(io.Discard, palette{}, 10, journal.NewRunID(base.Add(9*time.Hour)))
+	})
+	if code != exitUsage || !strings.Contains(diagnostic.String(), "not in the quarantine") {
+		t.Fatalf("restoring an unpruned run: exit %d, stderr %q", code, diagnostic.String())
 	}
 }

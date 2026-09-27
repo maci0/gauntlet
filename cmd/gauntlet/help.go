@@ -93,7 +93,7 @@ var helpGroups = []flagGroup{
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
 		{"y", "yes", "", "answer yes to confirmation prompts"},
 		{"", "semcode", "", "build a semcode index before the loop"},
-		{"", "keep-runs", "N", fmt.Sprintf("run journals kept under ~/.gauntlet; older ones are deleted at the end of a run, 0 keeps all (default %d)", defaultKeepRuns)},
+		{"", "keep-runs", "N", fmt.Sprintf("run journals kept under ~/.gauntlet; older ones move to pruned/ at the end of a run, 0 keeps all (default %d)", defaultKeepRuns)},
 	}},
 	{"Modes", []flagDoc{
 		{"l", "list", "", "list available reviews and sets, then exit"},
@@ -119,6 +119,7 @@ var helpGroups = []flagGroup{
 	}},
 	{"History", []flagDoc{
 		{"", "limit", "N", fmt.Sprintf("runs: how many entries to list (default %d)", defaultRunsLimit)},
+		{"", "restore", "RUN-ID", "runs: put a pruned run back in the listing"},
 	}},
 }
 
@@ -146,6 +147,7 @@ var helpExamples = []struct{ Cmd, Help string }{
 	{"gauntlet --dirs ~/src/*", "every repo under ~/src, in parallel"},
 	{"gauntlet --suggest --yes --tui", "agent-picked reviews, live dashboard"},
 	{"gauntlet --agent-cmd pi='pi -p {prompt}' -a pi", "run an agent gauntlet does not ship"},
+	{"gauntlet runs --restore <run-id>", "put a pruned run back in the listing"},
 }
 
 var helpExitCodes = []struct{ Code, Meaning string }{

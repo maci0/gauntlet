@@ -22,8 +22,12 @@ import (
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
-// Prune deletes the run journals and index rows older than the newest keep, and
+// Prune drops the run journals and index rows older than the newest keep, and
 // removes any shard directory left empty. It returns how many runs it dropped.
+//
+// A dropped journal is renamed into pruned/, not unlinked, and the quarantine
+// is bounded by the same keep, so a run stays recoverable until keep newer
+// runs have replaced it. Restore puts one back.
 //
 // A keep of zero or less keeps everything and does nothing, so a caller that
 // has no configured bound never deletes history by accident.
@@ -98,15 +102,20 @@ func pruneLocked(keep int) (int, error) {
 	}
 	touched := make(map[string]struct{}, 4)
 	for _, j := range slices.Backward(stale) {
-		if err := os.Remove(j.path); err != nil {
+		// The journal is renamed into pruned/ rather than unlinked, so a
+		// keep the user got wrong is a move and not a loss. A journal that
+		// is already gone is the outcome the rename wanted, so it is not
+		// an error; anything else leaves the run where it was and is
+		// reported with the rest.
+		if err := quarantine(j.id, j.path); err != nil {
 			if !errors.Is(err, fs.ErrNotExist) {
 				note(err)
-				continue
 			}
+			continue
 		}
 		touched[filepath.Dir(j.path)] = struct{}{}
 	}
-	// Removing the journals is what empties a shard, and os.Remove on a
+	// Moving the journals is what empties a shard, and os.Remove on a
 	// directory succeeds only when nothing is left in it, so a shard a
 	// retained run or a running one still writes into is left where it is
 	// rather than named for deletion.
@@ -125,6 +134,12 @@ func pruneLocked(keep int) (int, error) {
 	// removal, the same requirement as the one Open has for a new file.
 	if emptied {
 		note(gauntlethome.SyncDir(filepath.Dir(runsDir())))
+	}
+	// The quarantine is bounded by the same keep, so a run stays recoverable
+	// until keep newer runs have pushed it out, and the state tree does not
+	// grow a second unbounded history beside the one Prune exists to bound.
+	if err := trimQuarantine(keep); err != nil {
+		note(err)
 	}
 	if firstErr != nil {
 		return 0, firstErr

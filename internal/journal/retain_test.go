@@ -144,10 +144,6 @@ func TestPruneLeavesTheRunInProgress(t *testing.T) {
 	}
 }
 
-func journalPath(runID string) string {
-	return filepath.Join(Home(), "runs", shardFromRunID(runID), runID+".jsonl")
-}
-
 func readIndexFile(t *testing.T) map[string]bool {
 	t.Helper()
 	rows, err := readAllIndex()

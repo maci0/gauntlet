@@ -10,16 +10,16 @@ installed.
 |---|---|
 | `gauntlet [flags]` | review the current directory, looping until stopped |
 | `gauntlet pick` | compose a run on screen, then run it |
-| `gauntlet doctor` | report which agent CLIs and helper tools are installed |
+| `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, and what the run history holds: journals on disk, whether the index matches them, and pruned runs still recoverable |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
-| `gauntlet runs [--limit N]` | list recent runs recorded under `~/.gauntlet`. Rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. |
+| `gauntlet runs [--limit N] [--restore RUN-ID]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit`, and `show`, `version`, and `help` take none of their own. `--log` and
+`--limit` and `--restore`, and `show`, `version`, and `help` take none of their own. `--log` and
 `--no-color` work everywhere, and may precede the subcommand, so
 `gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
 `show` takes its run id anywhere among the flags: `gauntlet show --no-color RUN`
@@ -120,7 +120,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
 | `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop. |
-| `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` are deleted, along with the day directories they emptied. Both copies are removed together, so the listing never names a run whose journal is gone. `0` keeps every run. |
+| `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` leave the listing, along with the day directories they emptied. The index row is dropped with the journal, so the listing never names a run whose journal is gone. The journal itself is moved to `pruned/`, not deleted, and the quarantine is bounded by the same `N`, so a run stays recoverable until `N` newer runs have replaced it: see [Backing up and restoring the state tree](RUNS.md#backup-and-restore). `0` keeps every run. |
 
 **Output and modes**
 
@@ -158,6 +158,7 @@ downloadable: the journal a run left is read with the version that wrote it.
 | Flag | Default | Purpose |
 |---|---|---|
 | `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
+| `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. |
 
 ## Environment variables
 

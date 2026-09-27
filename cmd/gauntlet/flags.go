@@ -110,9 +110,10 @@ type options struct {
 	checkOnly  bool
 
 	// history
-	runsLimit int
-	keepRuns  int
-	showRun   string
+	runsLimit  int
+	keepRuns   int
+	showRun    string
+	restoreRun string
 }
 
 // reportUsage writes the message and the help screen to stderr, mirroring how
@@ -381,7 +382,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
 	fs.BoolVar(&o.continueSessions, "continue-sessions", false, "resume each agent's session between reviews")
 	fs.IntVar(&o.keepRuns, "keep-runs", defaultKeepRuns,
-		"how many run journals to keep under ~/.gauntlet; older ones are deleted at the end of a run (0 = keep all)")
+		"how many run journals to keep under ~/.gauntlet; older ones move to pruned/ at the end of a run (0 = keep all)")
 
 	alias("l", "list", func(n string) { fs.BoolVar(&o.list, n, false, "list available reviews and sets, then exit") })
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the planned schedule, then exit")
@@ -401,6 +402,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("V", "version", func(n string) { fs.BoolVar(showVersion, n, false, "print the version and exit") })
 	alias("h", "help", func(n string) { fs.BoolVar(help, n, false, "show this help and exit") })
 	fs.IntVar(&o.runsLimit, "limit", defaultRunsLimit, "runs: how many entries to list")
+	fs.StringVar(&o.restoreRun, "restore", "",
+		"runs: put a pruned run back in the listing by run id")
 
 	return fs, raw
 }
@@ -531,6 +534,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		if isFlagSet(fs, "limit") && o.command != "runs" {
 			return nil, errors.New("--limit requires 'gauntlet runs'")
+		}
+		if isFlagSet(fs, "restore") && o.command != "runs" {
+			return nil, errors.New("--restore requires 'gauntlet runs'")
 		}
 	}
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
@@ -865,7 +871,7 @@ var subcommandFlags = map[string][]string{
 	"pick":   {"C", "dir", "dirs", "target-dirs", "prompt-dir"},
 	"doctor": {"agent-cmd", "bin"},
 	"update": {"check", "update-repo"},
-	"runs":   {"limit"},
+	"runs":   {"limit", "restore"},
 	"show":   {},
 	// help is handled in finishFlags before stray-flag checks, so extra
 	// flags are ignored the way they are after --help. The entry exists so
