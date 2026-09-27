@@ -133,7 +133,7 @@ func pruneLocked(keep int) (int, error) {
 	// A removed shard is only gone for good once its parent records the
 	// removal, the same requirement as the one Open has for a new file.
 	if emptied {
-		note(gauntlethome.SyncDir(filepath.Dir(runsDir())))
+		note(gauntlethome.SyncDir(runsDir()))
 	}
 	// The quarantine is bounded by the same keep, so a run stays recoverable
 	// until keep newer runs have pushed it out, and the state tree does not

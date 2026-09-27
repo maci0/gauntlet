@@ -475,7 +475,7 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	}
 	if n := len(changes.Untracked); n > 0 {
 		r.log("%d untracked file(s) stay put and are not reviewed: %s",
-			n, humanize.List(changes.Untracked, 3))
+			n, humanize.List(safePaths(changes.Untracked), 3))
 	}
 	r.repo.PruneWorktrees(ctx)
 	return nil
@@ -853,6 +853,12 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 		// anyway, so --jobs N paid for N concurrent probes on every loop's
 		// final turn and again on a cancel, to learn there was nothing to stop.
 		r.checkUsageLimit(ctx)
+		if r.finish.Load() {
+			// The probe just spent the window: this review, already taken
+			// off the queue, and the rest of it must not start.
+			r.dropPending()
+			return
+		}
 		r.st.Add(r.runLaneReview(ctx, wt, review, loopNo, laneIdx, reviewIdx))
 	}
 }

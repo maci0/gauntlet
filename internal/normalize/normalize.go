@@ -547,7 +547,7 @@ func runeBoundary(b []byte, cut int) int {
 	if cut >= len(b) {
 		return len(b) // nothing is being held back past the cut
 	}
-	for i := cut; i > 0 && cut-i < utf8.UTFMax-1; i-- {
+	for i := cut; i > 0 && cut-i < utf8.UTFMax; i-- {
 		if utf8.RuneStart(b[i]) {
 			return i
 		}

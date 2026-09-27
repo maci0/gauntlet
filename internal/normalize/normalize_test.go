@@ -809,6 +809,9 @@ func TestRuneBoundary(t *testing.T) {
 		{"中中中", 1, 0},
 		{"", 0, 0},
 		{"中", 1, 0},
+		// A four-byte rune at the cut: the boundary is four bytes back, not
+		// three, and a walk that stops short of it flushes the whole buffer.
+		{"ab\U0001F600", 5, 2},
 		// A cut past the end of the buffer clamps rather than reading it.
 		{"abc", 99, 3},
 	} {

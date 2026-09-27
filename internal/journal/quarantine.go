@@ -226,5 +226,5 @@ func removeEmptyDirs(touched map[string]struct{}) error {
 	if !emptied {
 		return nil
 	}
-	return gauntlethome.SyncDir(filepath.Dir(prunedDir()))
+	return gauntlethome.SyncDir(prunedDir())
 }
