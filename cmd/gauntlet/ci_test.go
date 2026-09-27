@@ -279,7 +279,7 @@ func TestReleaseRejectsEmptyNotes(t *testing.T) {
 			if err != nil {
 				t.Fatalf("extract notes: %v: %s", err, out)
 			}
-			got := readRepoFile(t, filepath.Join(dir, "notes.md"))
+			got := readRepoFile(t, filepath.Join(dir, "dist", "notes.md"))
 			if got != tc.want {
 				t.Fatalf("notes = %q, want %q", got, tc.want)
 			}

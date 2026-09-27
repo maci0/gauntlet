@@ -56,14 +56,14 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
-formatters, the `fuzzy` fold behind the picker's filter, and `envx`, the one
-reader of the boolean environment variables, which the motion-off variables
-go through for the same reason `cmd/gauntlet` does. Nothing
-else. The picker takes the file-signal suggester name from `PickConfig`
-rather than importing `runner` for it. `cmd/gauntlet` imports `envx`, the one
-reader of the boolean environment variables, so the one list of values that
-mean off, which `docs/CLI.md` states once for all five variables, is written
-once. `prompt` imports `gitx`, so project
+formatters, the `envx` boolean reader, which the motion-off variables go
+through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold behind
+the picker's filter, and nothing else. The picker takes the file-signal suggester name from `PickConfig`
+rather than importing `runner` for it. `cmd/gauntlet` and `ui` import `envx`,
+the one reader of the boolean environment variables, so the one list of
+values that mean off, which `docs/CLI.md` states once for all five variables,
+is written once: the plain reporter and the dashboard ask the same package
+rather than each keeping a copy of the rule. `prompt` imports `gitx`, so project
 discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
 same hardened resolver and safe config as every other git invocation,
 `normalize` so catalog and summary clips use the same rune-bounded ellipsis,
@@ -510,6 +510,13 @@ release byte-for-byte means the tag, a clean tree, and that Go release.
 `make repro` proves the rest on every CI run by building twice and
 comparing, for each platform in `PLATFORMS`; the second build strips the
 locale the Makefile pins, so it runs under the host's ambient one.
+The clean tree in that sentence is checked, not assumed: `make release`
+refuses a working tree with an uncommitted or untracked change before it
+builds anything, because `-buildvcs=false` leaves no revision and no dirty
+flag in the bytes, so a release built from a modified tree would be
+indistinguishable from the tag and would ship source no reviewer read. The
+tagged release workflow writes its extracted notes under `dist/`, which is
+gitignored, so the check does not trip on the job's own scratch file.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 five seconds and requires two immediately consecutive identical readings

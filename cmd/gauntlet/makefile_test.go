@@ -796,8 +796,36 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 // that `make ci` rejects.
 func TestReleaseRunsCheck(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "\nrelease: check test dist artifacts ##") {
-		t.Fatal("make release must run check as well as the tests, dist, and the artifacts beside the binaries")
+	if !strings.Contains(text, "\nrelease: | clean-tree check test dist artifacts ##") {
+		t.Fatal("make release must run check as well as the tests, dist, the artifacts beside the binaries, and the clean-tree check")
+	}
+}
+
+// -buildvcs=false is what makes the shipped bytes reproducible, and it is also
+// what removes the evidence of what was built: a release from a modified tree
+// produces binaries indistinguishable from a clean one, and the tag would name
+// source nobody reviewed. The check is order-only so it refuses before the
+// suite and the four cross-compiles, and it passes outside a git work tree,
+// where a source tarball has no notion of clean.
+func TestReleaseRefusesADirtyTree(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "\nrelease: | clean-tree check test dist artifacts ##") {
+		t.Fatal("make release must depend on clean-tree first, so a modified tree cannot reach a release asset")
+	}
+	recipe := makefileRecipe(text, "clean-tree")
+	if recipe == "" {
+		t.Fatal("Makefile has no clean-tree target")
+	}
+	for _, want := range []string{
+		"git status --porcelain",
+		"git rev-parse --is-inside-work-tree",
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make clean-tree missing %q", want)
+		}
+	}
+	if !strings.Contains(recipe, "exit 1") {
+		t.Error("make clean-tree must fail the build, not report a dirty tree and carry on")
 	}
 }
 

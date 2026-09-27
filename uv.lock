@@ -1,3 +1,8 @@
 version = 1
 revision = 3
-requires-python = ">=3.14"
+requires-python = ">=3.11"
+
+[[package]]
+name = "gauntlet-scripts"
+version = "0.0.0"
+source = { virtual = "." }

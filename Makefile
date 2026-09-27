@@ -443,6 +443,27 @@ smoke: ## run the host binary dist built and check the version it reports
 		exit 1; \
 	}
 
+# A release is a claim about a tag, and -buildvcs=false is what makes the
+# binaries reproducible: the bytes carry no revision and no dirty flag, so a
+# build from a modified tree is indistinguishable from a clean one, and the
+# published assets would name source no reviewer read. Order-only, so the
+# refusal comes before the suite and the four cross-compiles rather than
+# after them.
+#
+# A source tarball is not a git work tree, and "clean" is a question only git
+# can answer there; the tag and the pinned toolchain are the whole claim there,
+# and `make dist` and `make repro` are the checks behind it.
+.PHONY: clean-tree
+clean-tree: ## fail unless the working tree has no uncommitted or untracked change
+	@git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0; \
+	dirty=$$(git status --porcelain) || exit 1; \
+	if [ -n "$$dirty" ]; then \
+		echo "clean-tree: the working tree is not the tag, so assets built here would ship unreviewed source:" >&2; \
+		printf '%s\n' "$$dirty" >&2; \
+		echo "clean-tree: commit or discard the above, then run this again" >&2; \
+		exit 1; \
+	fi
+
 # `check` is a prerequisite, not a separate CI step: the test suite compiles
 # the tree but never vets it or checks its formatting, so without it a tag
 # could ship a binary built from a tree that `make ci` rejects.
@@ -457,7 +478,7 @@ smoke: ## run the host binary dist built and check the version it reports
 # library alone: the artifact that describes the dependency surface must not
 # add to it.
 .PHONY: release
-release: check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
+release: | clean-tree check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
 	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
 
 # The two files that sit beside the binaries rather than being them, split out

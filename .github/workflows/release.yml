@@ -47,19 +47,24 @@ jobs:
       # Release notes are this version's CHANGELOG section: consumers read the
       # changelog, not the commit log. A tag without that section is a mistake
       # and fails here before spending time cross-compiling or running tests.
+      #
+      # Written under dist/, which is gitignored: `make release` refuses a
+      # working tree carrying an untracked file, so notes.md in the checkout
+      # root would stop the release it was extracted for.
       - name: Extract this version's CHANGELOG section
         run: |
           version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist
           awk -v ver="$version" '
             $0 == "## " ver { found = 1; next }
             /^## / && found { exit }
             found { print }
-          ' CHANGELOG.md > notes.md
+          ' CHANGELOG.md > dist/notes.md
           if ! awk '
             /^[[:space:]]*#+([[:space:]]|$)/ { next }
             /[^[:space:]]/ { content = 1 }
             END { exit !content }
-          ' notes.md; then
+          ' dist/notes.md; then
             echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
             exit 1
           fi
@@ -102,10 +107,10 @@ jobs:
           elif [ "$draft" = true ]; then
             gh release upload "$GITHUB_REF_NAME" --clobber \
               dist/gauntlet_* dist/checksums.txt dist/sbom.json
-            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md \
+            gh release edit "$GITHUB_REF_NAME" --notes-file dist/notes.md \
               --prerelease="$prerelease" --draft=false
           else
-            gh release create "$GITHUB_REF_NAME" --draft --notes-file notes.md \
+            gh release create "$GITHUB_REF_NAME" --draft --notes-file dist/notes.md \
               --prerelease="$prerelease" \
               dist/gauntlet_* dist/checksums.txt dist/sbom.json
             gh release edit "$GITHUB_REF_NAME" --prerelease="$prerelease" --draft=false

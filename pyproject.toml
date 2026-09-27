@@ -1,6 +1,21 @@
 # Maintainer scripts under scripts/. CI's scripts job and `make check-scripts`
 # both read this file (uvx ruff / mypy), so local and CI apply the same rules.
 
+[project]
+# The workspace uv resolves for `uv run scripts/...`. Nothing is installed from
+# it: each script carries its own PEP 723 header with the dependencies `uv run`
+# gives it, and this table exists so the interpreter is declared rather than
+# defaulted. Without a [project] table uv has no requires-python to read and
+# picks its own default, which the lockfile then recorded, so the floor the
+# maintainer scripts ran under was whatever uv shipped that week while mypy
+# checked them against 3.11 and both headers asked for >=3.11.
+#
+# The version is a placeholder: nothing builds or installs this project, and
+# the released version is stamped from the tag by the Makefile (VERSION).
+name = "gauntlet-scripts"
+version = "0.0.0"
+requires-python = ">=3.11"
+
 [tool.ruff]
 target-version = "py311"
 line-length = 100
