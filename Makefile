@@ -96,6 +96,7 @@ help: ## show available targets
 # instead of building. Nothing at runtime reads those fields; the version
 # string comes from main.version, and sbom.txt is the inventory.
 .PHONY: build
+build: | toolchain-min
 build: ## build the gauntlet binary for this host
 	CGO_ENABLED=0 $(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
@@ -129,14 +130,14 @@ define RUN_TESTS
 endef
 
 .PHONY: test
-test: | test-tmpdir test-cgo
+test: | toolchain-min test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
 	$(call RUN_TESTS,./...)
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
 # test` so a green package here stays green in the full run.
 .PHONY: test-pkg
-test-pkg: | test-tmpdir test-cgo
+test-pkg: | toolchain-min test-tmpdir test-cgo
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
 	@case "$(PKG)" in ""|./...) \
 		echo "test-pkg needs a package: make test-pkg PKG=./internal/prompt [RUN=TestName]" >&2; \
@@ -146,7 +147,7 @@ test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=T
 	$(call RUN_TESTS,$(PKG))
 
 .PHONY: cover
-cover: | test-tmpdir test-cgo
+cover: | toolchain-min test-tmpdir test-cgo
 cover: ## test coverage summary, gated by COVER_MIN
 	@mkdir -p $(DIST)
 	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
@@ -163,6 +164,42 @@ cover: ## test coverage summary, gated by COVER_MIN
 # figure, kept a little under it to absorb the shuffle. It ratchets: raise it
 # when CI reports higher, never lower it to make a change fit.
 COVER_MIN ?= 74.0
+
+# The `go` line in go.mod is the language minimum, and GOTOOLCHAIN above is
+# pinned to local so a build never fetches a toolchain behind the caller's
+# back. An older `go` therefore fails deep inside `go build` or `go test`, with
+# a message about GOTOOLCHAIN, a knob the caller never set, and no pointer at
+# the file that states the minimum. This preflight names the requirement
+# instead. It gates the minimum only: the exact release stays `toolchain`,
+# which gates the artifacts a release ships and not the dev loop.
+.PHONY: toolchain-min
+toolchain-min:
+	@min=$$(awk '$$1 == "go" { print $$2; exit }' go.mod 2>/dev/null); \
+	if [ -z "$$min" ]; then \
+		echo "toolchain-min: no go.mod in $$(pwd), so there is no minimum to check against" >&2; \
+		exit 1; \
+	fi; \
+	command -v "$(GO)" >/dev/null 2>&1 || { \
+		echo "toolchain-min: $(GO) not found on PATH; install Go $$min or newer from https://go.dev/dl/" >&2; \
+		exit 1; \
+	}; \
+	have="$$($(GO) env GOVERSION)"; have=$${have#go}; have=$${have%%-*}; \
+	if [ -z "$$have" ]; then \
+		echo "toolchain-min: '$(GO) env GOVERSION' printed nothing, so the Go on PATH cannot be identified" >&2; \
+		exit 1; \
+	fi; \
+	awk -v have="$$have" -v want="$$min" 'BEGIN { \
+		split(have, h, "."); split(want, w, "."); \
+		for (i = 1; i <= 3; i++) { \
+			if (h[i] + 0 > w[i] + 0) { exit 0 } \
+			if (h[i] + 0 < w[i] + 0) { exit 1 } \
+		} \
+		exit 0 \
+	}' || { \
+		echo "toolchain-min: this tree needs Go $$min or newer (the go line in go.mod); $(GO) here is go$$have" >&2; \
+		echo "toolchain-min: install $$min or newer from https://go.dev/dl/ , or pass GOTOOLCHAIN=auto to let $(GO) fetch the toolchain go.mod asks for" >&2; \
+		exit 1; \
+	}
 
 .PHONY: test-tmpdir
 test-tmpdir:
@@ -212,6 +249,7 @@ fmt: ## rewrite all Go files with gofmt
 # compiles each of them so a break under one of them fails here and not
 # after push. The bare pass is the third configuration: neither tag defined.
 .PHONY: check
+check: | toolchain-min
 check: ## verify formatting, toolchain fixes, and vet (CI parity)
 	@test -x "$(GOFMT)" || { echo "gofmt not found at $(GOFMT); install Go or set GOFMT to this toolchain's gofmt" >&2; exit 1; }
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }; \

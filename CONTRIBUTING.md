@@ -7,7 +7,10 @@ configurations and a cross-compilation pass.
 ## Prerequisites
 
 - Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
-  toolchain builds, tests, and formats the tree. `make dist` and `make repro`
+  toolchain builds, tests, and formats the tree. `make build`, `make check`,
+  and the test targets preflight that minimum and say what to install when
+  the local Go is older, rather than letting the go command fail on
+  `GOTOOLCHAIN=local`, which the Makefile sets. `make dist` and `make repro`
   are the exception: release artifacts are built with the exact release named
   by `GO_VERSION` in the [Makefile](Makefile), which is what every CI job
   installs, and they refuse anything else. A deliberate toolchain bump edits

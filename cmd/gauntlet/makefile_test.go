@@ -405,6 +405,73 @@ func cleanMakeEnv() []string {
 	return env
 }
 
+// GOTOOLCHAIN is pinned to local, so a Go older than the `go` line in go.mod
+// fails inside the go command with a message about a knob the caller never
+// set. The preflight has to name the minimum instead, and the dev targets have
+// to run it: the minimum is not the release pin `toolchain` gates.
+func TestMakefileToolchainMinNamesTheGoRequirement(t *testing.T) {
+	text := makefileText(t)
+	for _, target := range []string{"build", "check"} {
+		if !strings.Contains(text, "\n"+target+": | toolchain-min\n") {
+			t.Errorf("make %s must run the toolchain-min preflight", target)
+		}
+	}
+	for _, want := range []string{
+		"the go line in go.mod",
+		"GOTOOLCHAIN=auto",
+		"go.dev/dl/",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Makefile toolchain-min missing %q", want)
+		}
+	}
+	// A stub go stands in for the toolchain the contributor has, so the
+	// comparison is exercised without installing one.
+	stub := func(t *testing.T, version string) string {
+		t.Helper()
+		dir := t.TempDir()
+		path := filepath.Join(dir, "go")
+		script := "#!/bin/sh\n[ \"$1 $2\" = \"env GOVERSION\" ] && echo " + version + " && exit 0\nexit 1\n"
+		if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	root := moduleRoot(t)
+	for _, tc := range []struct {
+		version string
+		wantErr bool
+	}{
+		{version: "go1.27.0"},
+		{version: "go1.28.1"},
+		{version: "go1.27.1-X:nodwarf5"},
+		{version: "go1.26.3", wantErr: true},
+		{version: "go1.26.3-X:nodwarf5", wantErr: true},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "toolchain-min",
+				"GO="+stub(t, tc.version), "GOFMT=gofmt")
+			cmd.Dir = root
+			cmd.Env = cleanMakeEnv()
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("toolchain-min accepted %s:\n%s", tc.version, out)
+				}
+				if !strings.Contains(string(out), "1.27.0") {
+					t.Fatalf("the failure must name the minimum:\n%s", out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("toolchain-min rejected %s: %v\n%s", tc.version, err, out)
+			}
+		})
+	}
+}
+
 func TestMakefileTestPreflight(t *testing.T) {
 	text := makefileText(t)
 	for _, want := range []string{
