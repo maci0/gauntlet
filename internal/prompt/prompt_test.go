@@ -394,6 +394,28 @@ func TestBodyStripsLeadingBOM(t *testing.T) {
 	}
 }
 
+// An indented goal line and a CRLF file say the same thing as a flush LF one.
+// The prefix match runs on the trimmed line, as Summary's does.
+func TestDescIgnoresLineLeadingWhitespaceAndCRLF(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "indent-review.md"),
+		"# Title\r\n\r\n\tYour goal is to keep the transport honest\r\n")
+	set, _, err := Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, ok := set.Get("indent-review")
+	if !ok {
+		t.Fatal("indented prompt not discovered")
+	}
+	if want := "keep the transport honest"; r.Desc() != want {
+		t.Fatalf("Desc() = %q, want %q", r.Desc(), want)
+	}
+	if want := "keep the transport honest"; r.Summary() != want {
+		t.Fatalf("Summary() = %q, want %q", r.Summary(), want)
+	}
+}
+
 func TestFingerprintPinsThePromptText(t *testing.T) {
 	a := Fingerprint("Your goal is to test one thing.\n")
 	b := Fingerprint("Your goal is to test one thing.\n")

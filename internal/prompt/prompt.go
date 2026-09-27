@@ -87,10 +87,14 @@ func stripBOM(s string) string {
 
 func descFromBody(body string) string {
 	for line := range strings.SplitSeq(body, "\n") {
-		if strings.HasPrefix(line, "Your goal") {
-			line = sanitize(line)
-			line = strings.TrimPrefix(line, "Your goal is to ")
-			line = strings.TrimPrefix(line, "Your goal is ")
+		// Trim before the prefix test, as Summary does for its own line: a
+		// project prompt may indent its goal (a list item, a blockquote) or
+		// carry CRLF line endings, and an untrimmed line misses both, leaving
+		// the review with no description at all.
+		line = strings.TrimSpace(sanitize(line))
+		if strings.HasPrefix(line, goalPrefix) {
+			line = strings.TrimPrefix(line, goalPrefix+" is to ")
+			line = strings.TrimPrefix(line, goalPrefix+" is ")
 			return strings.TrimSpace(nfc(line))
 		}
 	}
@@ -118,6 +122,11 @@ func (r Review) Desc() string {
 const (
 	summaryPrefix  = "Summary:"
 	summaryRuneMax = 60
+
+	// goalPrefix introduces the line Desc reads. A prompt states its goal in
+	// prose rather than a field, so the prefix is matched after the line is
+	// trimmed: an indented or CRLF line is the same sentence as a flush one.
+	goalPrefix = "Your goal"
 )
 
 // Summary is the review's declared short subject, falling back to Desc when a

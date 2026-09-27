@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -132,9 +133,29 @@ func readNote(fd int) string {
 		if n <= 0 {
 			return ""
 		}
-		line, _, _ := strings.Cut(string(buf[:n]), "\n")
+		line, _, _ := strings.Cut(string(dropPartialRune(buf[:n])), "\n")
 		return normalize.Display(strings.TrimSpace(line))
 	}
+}
+
+// dropPartialRune trims an incomplete UTF-8 sequence off the end of a read.
+// A note this process wrote is whole by construction, but the lock file sits
+// in the reviewed tree: an agent can rewrite it, and a read cut at the buffer
+// edge or mid-sequence would otherwise decode the fragment as U+FFFD and put
+// that replacement character in the "another gauntlet is running here"
+// message the next invocation prints.
+func dropPartialRune(b []byte) []byte {
+	for n := 1; n <= utf8.UTFMax && n <= len(b); n++ {
+		i := len(b) - n
+		if !utf8.RuneStart(b[i]) {
+			continue // a continuation byte: the rune it belongs to starts earlier
+		}
+		if !utf8.FullRune(b[i:]) {
+			return b[:i]
+		}
+		return b
+	}
+	return b
 }
 
 func (l *Lock) Release() {

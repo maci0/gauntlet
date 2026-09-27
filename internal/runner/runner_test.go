@@ -1005,6 +1005,32 @@ func TestLockNoteReachesTheRunTurnedAway(t *testing.T) {
 	}
 }
 
+// The lock file sits in the reviewed tree, so a note can end mid-character
+// (a truncated write, an agent rewriting it). The fragment must not reach the
+// message as a replacement character.
+func TestLockNoteWithATrailingFragment(t *testing.T) {
+	dir := t.TempDir()
+	path := LockPath(dir)
+	held, err := Acquire(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer held.Release()
+
+	if err := os.WriteFile(path, []byte("running café revi\xe2\x82"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// The flock is what the descriptor holds, not the file contents, so the
+	// rewritten file is still read as the holder's note.
+	msg := readNote(held.fd)
+	if !strings.Contains(msg, "running café revi") {
+		t.Fatalf("note lost: %q", msg)
+	}
+	if strings.ContainsRune(msg, '�') {
+		t.Fatalf("a partial rune decoded to U+FFFD: %q", msg)
+	}
+}
+
 // Note is written from the event consumer while Release runs on the process
 // that owns the lock. Overlapping them used to Pwrite a descriptor that
 // Release had already closed, which is a recycled-fd bug under the detector.
