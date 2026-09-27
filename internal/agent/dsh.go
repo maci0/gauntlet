@@ -102,12 +102,30 @@ func dshDefaultProvider(base []string) (string, error) {
 	return dshProvider, dshProbeErr
 }
 
-// dshPatchKey names one overlay file. "@" is outside the provider/model
-// charset ([A-Za-z0-9._/:-]), and "/" and ":" are percent-encoded rather
-// than flattened to "_", so foo/bar and foo_bar cannot share a file.
+// dshPatchKey names one overlay file. Every spelling two distinct
+// provider/model pairs could share is percent-encoded: "@" separates the two
+// halves, "/" and ":" are encoded so foo/bar cannot collide with foo_bar, and
+// uppercase letters are encoded because a case-insensitive volume (the macOS
+// default) gives "gpt-5" and "GPT-5" one file, where the second pin would launch
+// with the first pair's model. "%" is outside dshModelRe's charset, so an
+// encoded character is never confused with a literal one.
 func dshPatchKey(provider, model string) string {
-	enc := strings.NewReplacer("/", "%2F", ":", "%3A")
-	return enc.Replace(provider) + "@" + enc.Replace(model)
+	return dshKeyPart(provider) + "@" + dshKeyPart(model)
+}
+
+func dshKeyPart(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c == '/', c == ':':
+			fmt.Fprintf(&b, "%%%02X", c)
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }
 
 // dshModelPatch writes (once per provider/model pair) the YAML overlay that

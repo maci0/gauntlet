@@ -328,6 +328,26 @@ func TestReadmeInstallVerifiesReleaseChecksum(t *testing.T) {
 	if verify > chmod {
 		t.Error("install script makes the binary executable before verifying it")
 	}
+	// checksums.txt names the release asset, so the download has to land under
+	// that name for `sha256sum -c` to read the bytes it is checking. Saving it
+	// straight to gauntlet makes every listed file "could not be read" on both
+	// platforms, and the check passes over a file nobody verified.
+	if !strings.Contains(block, `-o "$asset"`) {
+		t.Error("install script must download to the asset name checksums.txt lists")
+	}
+	mv := strings.Index(block, `mv "$asset" gauntlet`)
+	if mv < 0 {
+		t.Fatal("install script must move the verified asset into place under its final name")
+	}
+	if mv < verify {
+		t.Error("install script renames the download before verifying it")
+	}
+	// A subshell with set -e is what makes the failure visible: a bare `(cd ...
+	// && sha256sum -c ...)` discards the verifier's exit status and the chmod
+	// after it runs regardless.
+	if !strings.Contains(block, "set -e") {
+		t.Error("install script must abort on a failed verification, not carry on to chmod")
+	}
 }
 
 func TestReleaseSmokeTestsSbom(t *testing.T) {

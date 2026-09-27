@@ -1381,3 +1381,49 @@ func FuzzCompose(f *testing.F) {
 		}
 	})
 }
+
+// A case-insensitive volume (the macOS default) spells one directory as many
+// ways as it has cases, so the containment test cannot compare path text. The
+// probe below asserts the right answer for whichever volume the test ran on,
+// rather than the answer only Linux can give.
+func TestSameDirOnThisVolume(t *testing.T) {
+	dir := t.TempDir()
+	prompts := filepath.Join(dir, "Prompts")
+	if err := os.Mkdir(prompts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !sameDir(prompts, prompts) {
+		t.Errorf("sameDir(%q, itself) = false", prompts)
+	}
+	if sameDir(prompts, dir) {
+		t.Errorf("sameDir(%q, %q) = true for a directory and its parent", prompts, dir)
+	}
+	missing := filepath.Join(dir, "nope", "deep")
+	if sameDir(prompts, missing) {
+		t.Errorf("sameDir = true for a path that does not exist")
+	}
+
+	// The case probe: does this volume resolve Prompts and PROMPTS to one
+	// directory? On a case-insensitive volume the spelling is the same file and
+	// sameDir must say so; on a case-sensitive one it is a second directory and
+	// sameDir must not. Both answers are asserted, so this runs everywhere.
+	upper := filepath.Join(dir, "PROMPTS")
+	ref, err := os.Stat(prompts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := os.Stat(upper)
+	switch {
+	case err != nil:
+		if mkErr := os.Mkdir(upper, 0o755); mkErr != nil {
+			t.Fatal(mkErr)
+		}
+		if sameDir(prompts, upper) {
+			t.Errorf("sameDir(%q, %q) = true, but they are two directories on a case-sensitive volume", prompts, upper)
+		}
+	default:
+		if want := os.SameFile(entry, ref); sameDir(prompts, upper) != want {
+			t.Errorf("sameDir(%q, %q) = %v, want %v on this volume", prompts, upper, !want, want)
+		}
+	}
+}

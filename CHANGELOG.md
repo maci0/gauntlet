@@ -19,6 +19,7 @@ minor instead and were listed under Changed.
 ### Security
 
 - The documented install script verifies the downloaded release binary against the release's `checksums.txt` before making it executable, and aborts on a mismatch.
+- The install script downloads the release asset under the name `checksums.txt` lists, so the checksum it verifies is the checksum of the bytes it installs, and a failed verification now aborts the install instead of continuing to `chmod`.
 
 ### Changed
 
@@ -39,6 +40,9 @@ minor instead and were listed under Changed.
 - Dashboard footer no longer keeps a live token rate from a lane whose review already started or finished.
 - The run index holds one row per run even when the run is listed before it closes: a listing that reconstructs the row from a journal still in flight no longer leaves a second row behind when the run's own close lands, and that row is the close's, with its args and exit code.
 - The documented install snippet builds the release base URL with a trailing slash, so the tag it resolves is the tag both fetches come from.
+- A `git status` rename whose source name contains ` -> ` reports its real destination path instead of a path that names no file on disk.
+- Two dsh overlay pins whose provider or model differ only in case get separate overlay files, so on a case-insensitive volume (macOS by default) a run pinning `gpt-5` no longer picks up the overlay another spec wrote for `GPT-5`.
+- A `--prompt-dir` that is also a project directory is excluded from project discovery on a case-insensitive volume, so it is no longer re-registered as a project prompt overriding the bundled one.
 
 ## 1.23.3
 

@@ -2087,7 +2087,9 @@ func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 
 func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 	// Flattening "/" and ":" to "_" made these pairs share one overlay, so
-	// the second pin launched with the first pair's provider and model.
+	// the second pin launched with the first pair's provider and model. Case
+	// is the same bug on a case-insensitive volume (macOS by default): one
+	// file, two pins, and whichever ran last wins.
 	pairs := [][2]string{
 		{"foo_bar", "baz"},
 		{"foo", "bar_baz"},
@@ -2095,6 +2097,11 @@ func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 		{"foo", "bar/baz"},
 		{"a:b", "c"},
 		{"a", "b:c"},
+		{"gpt-5", "x"},
+		{"GPT-5", "x"},
+		{"gpt-5", "X"},
+		{"openai", "gpt-5"},
+		{"openai", "GPT-5"},
 	}
 	seen := map[string][2]string{}
 	for _, p := range pairs {
@@ -2139,6 +2146,34 @@ func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 	}
 	if len(entries) != 2 {
 		t.Fatalf("overlay dir has %d files, want 2", len(entries))
+	}
+}
+
+// macOS volumes are case-insensitive by default, so two overlays whose keys
+// differ only in case are one file there. A run pinning gpt-5 must not pick up
+// the overlay another spec wrote for GPT-5.
+func TestDshPatchKeySeparatesCaseVariants(t *testing.T) {
+	isolateDshPatches(t)
+
+	lower, err := dshModelPatch("openai", "gpt-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upper, err := dshModelPatch("openai", "GPT-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lower == upper {
+		t.Fatalf("case variants shared overlay %q", lower)
+	}
+	for path, want := range map[string]string{lower: "model: 'gpt-5'", upper: "model: 'GPT-5'"} {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), want) {
+			t.Errorf("overlay %s pins the wrong model: %s", path, body)
+		}
 	}
 }
 

@@ -26,6 +26,12 @@ func TestPorcelainPath(t *testing.T) {
 		{"?? untracked.go", "untracked.go"},
 		{"R  old.txt -> new.txt", "new.txt"},
 		{"C  orig.txt -> copy.txt", "copy.txt"},
+		// A rename's source may hold the arrow itself; git quotes it, and
+		// taking the first arrow then reports a path that names nothing.
+		{`R  "a -> b.txt" -> c.txt`, "c.txt"},
+		{`R  "plain space.txt" -> "renamed space.txt"`, "renamed space.txt"},
+		{`R  "a -> b" -> "c -> d"`, "c -> d"},
+		{`R  "quo\"te -> x" -> y.txt`, "y.txt"},
 		// An untracked file may legitimately contain the arrow in its name.
 		{"?? a -> b", "a -> b"},
 		// Porcelain quotes paths containing special characters.

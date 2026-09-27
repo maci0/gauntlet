@@ -192,7 +192,7 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 			if skipDirs[name] || strings.HasPrefix(name, ".") {
 				return fs.SkipDir
 			}
-			if absPromptDir != "" && abspath(path) == absPromptDir {
+			if absPromptDir != "" && sameDir(abspath(path), absPromptDir) {
 				return fs.SkipDir
 			}
 			return nil
@@ -236,6 +236,14 @@ func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath f
 			if abs == absPromptDir || strings.HasPrefix(abs, absPromptDir+sep) {
 				continue
 			}
+			// A --prompt-dir that is also a project directory is skipped by the
+			// prefix test only when the two spell it the same way. A
+			// case-insensitive volume (macOS by default) can spell one
+			// directory two ways, so ask the filesystem about the directory
+			// holding the file rather than about its text.
+			if sameDir(filepath.Dir(abs), absPromptDir) {
+				continue
+			}
 		}
 		if !isRegularFile(path) {
 			continue
@@ -244,6 +252,30 @@ func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath f
 	}
 	sort.Strings(found)
 	return found, true
+}
+
+// sameDir reports whether two resolved paths name one directory. The string
+// compare is the common case and costs nothing. The rest exists for
+// case-insensitive volumes (the macOS default), where one directory has as many
+// spellings as it has cases and no string form of its path can tell. An
+// EqualFold mismatch needs no stat: two spellings of one path always fold
+// equal, so a name that does not is a different directory.
+func sameDir(path, resolved string) bool {
+	if path == resolved {
+		return true
+	}
+	if !strings.EqualFold(path, resolved) {
+		return false
+	}
+	a, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	b, err := os.Stat(resolved)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(a, b)
 }
 
 // skipProjectRel reports whether a repo-relative path sits in a directory

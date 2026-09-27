@@ -168,16 +168,22 @@ func TestReadmeInstallPinsTheResolvedTag(t *testing.T) {
 	if strings.Contains(text, "releases/latest/download/") {
 		t.Fatal("README install fetches from releases/latest/download/; use releases/download/v${ver} so the binary matches the tag just resolved")
 	}
-	// The base is matched without a trailing slash: the README builds one base
-	// URL and appends the asset name, so the slash is applied where the path is
-	// joined. Either way ${ver} has to be interpolated into the path.
+	// The block may spell the URL through a base variable, so require the tag
+	// to appear in it and the asset to be fetched from that base. Demanding one
+	// exact line would fail a correct snippet that composes the URL in two
+	// steps, which is how the install block is written. The base is matched
+	// without a trailing slash: the snippet builds one base URL and joins the
+	// asset name onto it, so ${ver} has to be interpolated into the path.
 	if !strings.Contains(text, "releases/download/v${ver}") {
-		t.Fatal("README install must fetch from releases/download/v${ver}/ so the binary matches the tag just resolved")
+		t.Fatal("README install must fetch from releases/download/v${ver} so the binary matches the tag just resolved")
 	}
 	// Pinning the base only helps if every download goes through it.
 	for line := range strings.SplitSeq(text, "\n") {
 		if strings.Contains(line, "curl") && strings.Contains(line, "github.com/maci0/gauntlet/releases") {
 			t.Errorf("README install fetches a hardcoded release URL, bypassing the resolved tag: %s", strings.TrimSpace(line))
 		}
+	}
+	if !strings.Contains(text, `"$base/$asset"`) {
+		t.Fatal("README install must download the asset from the resolved tag's base URL")
 	}
 }

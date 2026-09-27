@@ -797,6 +797,9 @@ func (r *Repo) CheckIgnore(ctx context.Context, paths []string) map[string]bool 
 	return out
 }
 
+// arrow separates a rename's source from its destination in porcelain v1.
+const arrow = " -> "
+
 // porcelainPath extracts the worktree path from a `git status --porcelain`
 // line (XY <path>, or the destination of a `orig -> dest` rename).
 func porcelainPath(line string) string {
@@ -805,12 +808,37 @@ func porcelainPath(line string) string {
 		return ""
 	}
 	entry := line[3:]
-	// The " -> " arrow is a rename/copy marker carried by the index-side
-	// status (R or C); an untracked file may legitimately have it in its name.
-	if (line[0] == 'R' || line[0] == 'C') && strings.Contains(entry, " -> ") {
-		_, entry, _ = strings.Cut(entry, " -> ")
+	// The arrow is a rename/copy marker carried by the index-side status (R or
+	// C); an untracked file may legitimately have it in its name.
+	if line[0] == 'R' || line[0] == 'C' {
+		if i := renameSep(entry); i >= 0 {
+			entry = entry[i+len(arrow):]
+		}
 	}
 	return unquoteC(entry)
+}
+
+// renameSep returns where the arrow separating a rename's source from its
+// destination begins, or -1. A file name may contain the arrow and the space
+// around it, so the first one is not always the separator: git renames
+// `a -> b.txt` to `c.txt` as "a -> b.txt" -> c.txt. A path holding a space is
+// always quoted, so a leading quote is what says the source ends there.
+func renameSep(entry string) int {
+	if !strings.HasPrefix(entry, `"`) {
+		return strings.Index(entry, arrow)
+	}
+	for i := 1; i < len(entry); i++ {
+		switch entry[i] {
+		case '\\':
+			i++ // an escaped byte cannot be the closing quote
+		case '"':
+			if !strings.HasPrefix(entry[i+1:], arrow) {
+				return -1
+			}
+			return i + 1
+		}
+	}
+	return -1
 }
 
 // unquoteC reverses git's C-style path quoting. The status call runs with
