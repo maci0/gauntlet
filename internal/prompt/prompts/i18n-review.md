@@ -137,6 +137,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which user-facing strings and i18n infrastructure exist; if neither, stop here.
+
 ## Executive Summary
 - Overall i18n readiness assessment
 - Supported vs potentially broken locales

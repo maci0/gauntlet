@@ -144,6 +144,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which concurrency primitives exist (threads, goroutines, async tasks, workers) and where they share state; if none, stop here.
+
 ## Executive Summary
 - Overall concurrency safety assessment
 - Critical data corruption or deadlock risks

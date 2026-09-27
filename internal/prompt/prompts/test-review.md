@@ -125,6 +125,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which test suites, runners, and test configuration exist; if none, stop here.
+
 ## Executive Summary
 - Overall test quality assessment
 - Estimated coverage of critical paths

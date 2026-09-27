@@ -123,6 +123,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which command-line entry points exist and how they parse arguments; if none, stop here.
+
 ## Executive Summary
 - Overall CLI quality assessment
 - Key consistency and usability patterns

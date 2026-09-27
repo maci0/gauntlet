@@ -135,6 +135,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which configuration surfaces exist (env vars, config files, flags, secrets) and where each is read; if none, stop here.
+
 ## Executive Summary
 - Overall configuration health assessment
 - Key safety and consistency concerns

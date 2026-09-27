@@ -145,6 +145,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which CI, container, IaC, and deployment artifacts exist; if none, stop here.
+
 ## Executive Summary
 - Overall infrastructure health assessment
 - Key reliability and security concerns

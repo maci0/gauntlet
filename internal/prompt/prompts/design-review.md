@@ -109,6 +109,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which implemented design decisions are visible in the code (data models, storage, transport, state strategy); if none, stop here.
+
 ## Executive Summary
 - 5 to 15 most important design observations
 - Overall design themes and the philosophy the code appears to follow

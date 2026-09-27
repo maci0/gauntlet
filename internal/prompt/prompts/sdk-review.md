@@ -166,6 +166,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Whether a public API surface and a distribution mechanism exist for external consumers; if not, stop here.
+
 ## Executive Summary
 - Overall SDK quality assessment
 - Key developer experience strengths and weaknesses

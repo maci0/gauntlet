@@ -96,6 +96,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which charts exist in the tree, and whether each is vendored or locally modified; if none, stop here.
+
 ## Executive Summary
 - Overall chart health assessment, per chart when several exist
 - Key upgrade-breaking and wrong-output risks

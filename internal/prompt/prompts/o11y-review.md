@@ -143,6 +143,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which production runtime surface emits logs, metrics, traces, or alerts; if none, stop here.
+
 ## Executive Summary
 - Overall observability maturity assessment
 - Critical blind spots

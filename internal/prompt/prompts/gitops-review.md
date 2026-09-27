@@ -106,6 +106,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which delivery tooling and manifests are present, and which tool owns them (or that none is detectable); if none, stop here.
+
 ## Executive Summary
 - Detected delivery tool(s) and the evidence, or a statement that none is detectable
 - Overall delivery-layer health assessment

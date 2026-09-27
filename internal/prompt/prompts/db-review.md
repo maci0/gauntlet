@@ -152,6 +152,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which data stores, schemas, or migrations exist; if none, stop here.
+
 ## Executive Summary
 - Overall data layer health assessment
 - Key integrity and performance concerns

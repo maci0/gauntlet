@@ -141,6 +141,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which personal data this codebase handles and where; if none, stop here.
+
 ## Executive Summary
 - Overall privacy posture assessment
 - Key compliance risks

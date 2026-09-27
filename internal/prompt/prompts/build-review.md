@@ -113,6 +113,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which toolchain drives the build and what artifact it produces; if none, stop here.
+
 ## Executive Summary
 - 5 to 15 most important build issues
 - Overall themes (reproducibility, hermeticity, toolchain, output correctness, speed)

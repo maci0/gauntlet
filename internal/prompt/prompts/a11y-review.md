@@ -108,6 +108,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which user-facing surface exists (web markup, native views, TUI) and whether accessibility review applies; if not, stop here.
+
 ## Executive Summary
 - 5 to 15 most important accessibility issues
 - Overall themes (semantics, keyboard, screen reader, contrast, motion)

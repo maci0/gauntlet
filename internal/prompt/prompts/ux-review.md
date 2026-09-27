@@ -140,6 +140,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which interactive surface exists (web, mobile, desktop, TUI) and who uses it; if none, stop here.
+
 ## Executive Summary
 - Overall UX quality assessment
 - Key usability and consistency patterns

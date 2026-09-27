@@ -138,6 +138,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which untrusted-input surfaces exist (parsers, decoders, protocol handlers, external library entry points); if none, stop here.
+
 ## Executive Summary
 - Total API surfaces identified
 - Surfaces with fuzz coverage vs without

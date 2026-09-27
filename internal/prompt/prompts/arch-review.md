@@ -131,6 +131,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- The module and package count, and whether the tree has a structure worth reviewing; if not, stop here.
+
 ## Executive Summary
 - Overall architectural health assessment
 - Top structural themes in the codebase

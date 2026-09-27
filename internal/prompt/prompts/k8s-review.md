@@ -106,6 +106,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which manifests and kustomizations exist, and which delivery tool owns them; if none, stop here.
+
 ## Executive Summary
 - Overall manifest and structure health assessment
 - Key apply-breaking and upgrade risks

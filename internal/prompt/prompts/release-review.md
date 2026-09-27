@@ -103,6 +103,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which version, tag, changelog, or publication contract exists; if none, stop here.
+
 ## Executive Summary
 - 5 to 15 most important release/versioning issues
 - Overall themes (semver accuracy, breaking-change gating, changelog, migration)

@@ -121,6 +121,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which manifests or lockfiles carry third-party dependencies, and how they are pinned; if none, stop here.
+
 ## Executive Summary
 - Total direct and transitive dependency count
 - Key risk areas

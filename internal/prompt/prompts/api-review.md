@@ -131,6 +131,9 @@ For each finding include:
 
 Output format:
 
+## Applicability
+- Which API surface exists (HTTP, GraphQL, gRPC, WebSocket, specs) and whether API review applies; if not, stop here.
+
 ## Executive Summary
 - Overall API quality assessment
 - Consistency score across endpoints
