@@ -9,6 +9,14 @@ src = ["scripts"]
 [tool.ruff.lint]
 # Every category these two files already pass, plus pycodestyle errors at
 # 100 columns and bandit. Defaults were E4/E7/E9/F only.
+#
+# Four of ruff's categories are deliberately absent, so the omission reads as
+# a decision rather than an oversight. `COM` is trailing-comma and whitespace
+# around it, which `ruff format` already settles; enabling both gives two
+# tools an opinion about the same line. `T20` bans `print`, and printing is
+# what these two scripts are for. `NPY` and `AIR` cover the NumPy and Airflow
+# idioms, and nothing here imports either library, so the rules have no site
+# to fire on and would only add to the list.
 select = [
     "A",
     "ANN",
@@ -18,6 +26,7 @@ select = [
     "BLE",
     "C4",
     "C90",
+    "CPY",
     "D",
     "DTZ",
     "E",
@@ -26,6 +35,7 @@ select = [
     "EXE",
     "F",
     "FA",
+    "FAST",
     "FBT",
     "FIX",
     "FLY",
@@ -71,6 +81,12 @@ ignore = [
     "D203",
     "D213",
 ]
+
+[tool.ruff.lint.flake8-copyright]
+# The same two-line header every .go file opens with (AGENTS.md, "Tree
+# conventions"), so the notice a script carries is the one the rest of the
+# repository carries rather than a second spelling of it.
+notice-rgx = 'Copyright \(C\) \d{4} Marcel W\. Wysocki'
 
 [tool.ruff.lint.per-file-ignores]
 # argv-form subprocess of `go` and the binary this script just built.

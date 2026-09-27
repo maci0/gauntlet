@@ -608,7 +608,7 @@ func releasePlatforms(makefile string) []string {
 			}
 			value += " " + next
 		}
-		for _, field := range strings.Fields(value) {
+		for field := range strings.FieldsSeq(value) {
 			if strings.Count(field, "/") == 1 && !strings.HasPrefix(field, "$(") {
 				out = append(out, field)
 			}

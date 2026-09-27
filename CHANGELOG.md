@@ -30,6 +30,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - The repository's YAML is linted: `make check-scripts` and the `scripts` CI job run `yamllint --strict` on `.github`, with the rule set in `.yamllint` and the version pinned beside the ruff and mypy pins. A malformed workflow is a syntax error nothing else in the tree can see, and a warning now fails instead of scrolling past.
 - ruff's `TRY` rules on `scripts/`: an exception that re-raises a bare name, a `try` whose body is `pass`, or an `except` that swallows an error without a name is a defect class the tree was never checked for, and it already passes.
+- ruff's `CPY` and `FAST` rules on `scripts/`. The notice regex names the same two-line header every `.go` file opens with, so a script now carries the repository's copyright and SPDX lines instead of none, and `pyproject.toml` states why `COM`, `T20`, `NPY`, and `AIR` stay out of the selection.
+- The four throwaway captures `.scratch_a.txt`, `.scratch_b.txt`, `.scratch_doc.txt`, and `.scratch_flags.txt` are out of the repository. They are the same class as `.scratch_refs.txt`, removed in 1.7.2: sorted name and flag listings written to the project root, which holds config, manifests, and top-level docs.
 
 - `--token-budget N` stops a run once its agents have reported N tokens in total, so a stalled agent that spends a whole timeout's tokens in seconds is bounded by what it costs as well as by how long it takes. Zero is unlimited, the default.
 - `gauntlet doctor` names the state root in use and whether it came from `GAUNTLET_HOME` or `$HOME`, printed before the verdict so a box with no agent CLI still shows it.
