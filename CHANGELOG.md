@@ -45,6 +45,8 @@ minor instead and were listed under Changed.
 - A `git status` rename whose source name contains ` -> ` reports its real destination path instead of a path that names no file on disk.
 - Two dsh overlay pins whose provider or model differ only in case get separate overlay files, so on a case-insensitive volume (macOS by default) a run pinning `gpt-5` no longer picks up the overlay another spec wrote for `GPT-5`.
 - A `--prompt-dir` that is also a project directory is excluded from project discovery on a case-insensitive volume, so it is no longer re-registered as a project prompt overriding the bundled one.
+- The dashboard's end-of-run marker follows the events the bus had already queued, so the summary screen no longer freezes one sample short of the run it is reporting.
+- A signal line is never spliced into the middle of an agent's output line in a `--log` file: the plain reporter and both signal handlers now write through one lock, so a multi-file write stays a single unit of work.
 
 ## 1.23.3
 

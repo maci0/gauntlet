@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/humanize"
@@ -70,6 +71,23 @@ func colorEnabled(f *os.File) bool {
 	}
 	fi, err := f.Stat()
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+// serialized makes one writer safe for several goroutines. The plain run
+// writes to the same destination from the reporter goroutine and from both
+// signal handlers, and with --log that destination is an io.MultiWriter: its
+// Write is a loop of independent writes, so an interleaved one leaves a signal
+// line wedged into the middle of an agent's output line and a truncated line
+// in the log file. The lock makes each caller's line one unit of work.
+type serialized struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *serialized) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
 }
 
 // reporter turns the event stream into terminal output. It is the non-TUI

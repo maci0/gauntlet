@@ -32,7 +32,7 @@ var allowedInternalImports = map[string][]string{
 		"internal/journal", "internal/normalize", "internal/prompt", "internal/runx", "internal/streamjson",
 	},
 	"internal/runx":       {},
-	"internal/selfupdate": {},
+	"internal/selfupdate": {"internal/gauntlethome"},
 	"internal/streamjson": {},
 	"internal/ui":         {"internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
 }

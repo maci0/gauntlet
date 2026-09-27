@@ -199,10 +199,28 @@ type model struct {
 	now         time.Time
 }
 
+// program is the part of a tea.Program the dashboard drives.
+type program interface {
+	Send(tea.Msg)
+	Run() (tea.Model, error)
+	Quit()
+}
+
 // Dashboard owns the terminal for the duration of a run.
 type Dashboard struct {
-	prog   *tea.Program
+	prog   program
 	events <-chan runner.Event
+
+	// done carries a request to deliver the end-of-run marker. It is a channel
+	// rather than a method body because the program takes messages on an
+	// unbuffered channel, and two senders into one are unordered: a Finish sent
+	// from a second goroutine could overtake the run's last events.
+	//
+	// forwarded closes when the delivery goroutine returns, which is how a
+	// caller that arrives late (or after the bus is closed) learns not to wait
+	// for an acknowledgement that will never come.
+	done      chan chan struct{}
+	forwarded chan struct{}
 }
 
 // newModel builds the dashboard state for one run.
@@ -245,26 +263,88 @@ func newModel(cfg Config) *model {
 
 // New builds a dashboard fed by one subscription to the run's event bus.
 func New(cfg Config, events <-chan runner.Event) *Dashboard {
-	return &Dashboard{
-		prog:   tea.NewProgram(newModel(cfg), tea.WithAltScreen()),
-		events: events,
+	return newDashboard(cfg, events,
+		tea.NewProgram(newModel(cfg), tea.WithAltScreen()))
+}
+
+// newDashboard is New with the program supplied, so the message ordering
+// between the bus and the end-of-run marker is testable without a terminal.
+func newDashboard(cfg Config, events <-chan runner.Event, prog program) *Dashboard {
+	d := &Dashboard{
+		prog:      prog,
+		events:    events,
+		done:      make(chan chan struct{}),
+		forwarded: make(chan struct{}),
+	}
+	// Started here, not in Run: Finish can be called from another goroutine
+	// before Run is entered, and a forwarder that did not exist yet would let
+	// the end-of-run marker land ahead of everything the bus had already
+	// queued. Send parks on the program's unbuffered channel and returns
+	// immediately once the program has shut down, so an early or late send is
+	// safe either way.
+	go d.forward()
+	return d
+}
+
+// forward hands the program's every message. Run events and the end-of-run
+// marker share this one goroutine, so the marker follows the events the bus
+// produced before it.
+func (d *Dashboard) forward() {
+	defer close(d.forwarded)
+	for {
+		select {
+		case ev, ok := <-d.events:
+			if !ok {
+				return
+			}
+			d.prog.Send(eventMsg(ev))
+		case ack := <-d.done:
+			d.drain()
+			d.prog.Send(doneMsg{})
+			close(ack)
+		}
+	}
+}
+
+// drain moves everything already queued on the event channel into the program
+// before a non-event message is delivered. Applied out of order, done stops the
+// tick that samples the lanes, so the summary screen freezes one sample short
+// and the last interval of agent output never reaches the meters.
+func (d *Dashboard) drain() {
+	for {
+		select {
+		case ev, ok := <-d.events:
+			if !ok {
+				return
+			}
+			d.prog.Send(eventMsg(ev))
+		default:
+			return
+		}
 	}
 }
 
 // Run displays the dashboard until the user quits or the run finishes.
 func (d *Dashboard) Run() error {
-	go func() {
-		for ev := range d.events {
-			d.prog.Send(eventMsg(ev))
-		}
-	}()
 	_, err := d.prog.Run()
 	return err
 }
 
 // Finish tells the dashboard the run is over. The screen stays up so the final
-// state can be read; q closes it.
-func (d *Dashboard) Finish() { d.prog.Send(doneMsg{}) }
+// state can be read; q closes it. It returns once the marker is in front of the
+// program, so the caller may print its summary knowing every event is applied.
+func (d *Dashboard) Finish() {
+	ack := make(chan struct{})
+	select {
+	case d.done <- ack:
+	case <-d.forwarded:
+		return
+	}
+	select {
+	case <-ack:
+	case <-d.forwarded:
+	}
+}
 
 // Quit closes the dashboard without waiting for a keypress. A hot reload uses
 // it: the successor needs the terminal, and nobody is there to press q.

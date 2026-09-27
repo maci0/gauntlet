@@ -112,7 +112,14 @@ func run(argv []string) int {
 		return exitUsage
 	}
 
-	stdout := io.Writer(os.Stdout)
+	// Every stream this process prints goes here, and three goroutines write
+	// it in a plain run: the reporter, and the two signal handlers. The
+	// wrapper is applied last, after --log has decided the destination, so a
+	// caller's write is one unit of work across every file it reaches. A lock
+	// per file would not do that: a multi-writer's Write is a loop, and the
+	// second file would then be free to interleave inside the first one's
+	// line.
+	out := io.Writer(os.Stdout)
 	pal := palette{on: colorEnabled(os.Stdout) && !opts.noColor}
 
 	// The launcher and the dashboard draw through lipgloss, which sees
@@ -136,9 +143,10 @@ func run(argv []string) int {
 			}
 		}()
 		logWriter = f
-		stdout = io.MultiWriter(os.Stdout, f)
+		out = io.MultiWriter(os.Stdout, f)
 		pal.on = false // escape codes would land in the file too
 	}
+	stdout := io.Writer(&serialized{w: out})
 
 	// Run-control messages ("Finishing: …", signal receipts) must not fight
 	// the dashboard for a screen it owns: a raw write into the alt screen
