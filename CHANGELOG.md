@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- `make check` and `make repro` no longer fail on a host whose scratch directory does not exist yet. Overriding `TMPDIR` keeps it exported, so every recipe that runs the go command hands it that path, and go refuses to start when the directory is missing; a fresh macOS runner has no `$HOME/.cache`, which failed the `check` and `repro-macos` jobs.
+
 ## 1.24.0
 
 ### Added

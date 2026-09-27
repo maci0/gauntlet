@@ -63,6 +63,12 @@ export LC_ALL := C
 # shells and by launchd on macOS, usually pointing at the tmpfs the rule above
 # exists to avoid, and setting it in the environment was then silently
 # ignored. A command line (`make test TMPDIR=...`) still wins.
+#
+# Overriding an exported variable keeps it exported, so every recipe that runs
+# the go command hands it this path, and go refuses to start when its work
+# directory is missing. `test-tmpdir` creates it, and every target that runs
+# go depends on it: on a fresh macOS runner $HOME/.cache does not exist, and
+# `make check` and `make repro` failed there before they depended on it.
 TMPDIR := $(HOME)/.cache/gauntlet/test
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
@@ -173,6 +179,7 @@ COVER_MIN ?= 74.0
 # instead. It gates the minimum only: the exact release stays `toolchain`,
 # which gates the artifacts a release ships and not the dev loop.
 .PHONY: toolchain-min
+toolchain-min: | test-tmpdir
 toolchain-min:
 	@min=$$(awk '$$1 == "go" { print $$2; exit }' go.mod 2>/dev/null); \
 	if [ -z "$$min" ]; then \
@@ -215,6 +222,7 @@ test-cgo:
 	}
 
 .PHONY: vet
+vet: | test-tmpdir
 vet: ## run go vet
 	$(GO) vet $(GOTAGS) ./...
 
@@ -227,6 +235,7 @@ vet: ## run go vet
 # `make dist GO_VERSION=x.y.z` still overrides, which is how a maintainer ships
 # a deliberate toolchain bump without editing this file first.
 .PHONY: toolchain
+toolchain: | test-tmpdir
 toolchain: ## fail unless the local Go release is the one release artifacts are built with
 	@got="$$($(GO) env GOVERSION)"; want="go$(GO_VERSION)"; \
 		[ "$${got%%-*}" = "$$want" ] || { \
@@ -334,6 +343,7 @@ fmt-scripts: ## rewrite scripts with ruff format
 # for reproducibility; it still reads the current vulnerability database.
 # Needs network on first use; everything else in this Makefile does not.
 .PHONY: vuln
+vuln: | test-tmpdir
 vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
 	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(GOTAGS) ./...
 

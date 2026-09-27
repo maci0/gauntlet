@@ -220,7 +220,11 @@ func TestMakefileVulnScansSelectedTags(t *testing.T) {
 			if err != nil {
 				t.Fatalf("make vuln dry run: %v\n%s", err, out)
 			}
-			got := strings.Join(strings.Fields(string(out)), " ")
+			// The scan command is the last recipe line; the order-only
+			// prerequisites above it (the scratch directory the go command
+			// refuses to start without) are not part of this contract.
+			printed := strings.Split(strings.TrimSpace(string(out)), "\n")
+			got := strings.Join(strings.Fields(printed[len(printed)-1]), " ")
 			want := "GOFLAGS= go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 " + tc.want
 			if got != want {
 				t.Fatalf("scan command:\n%s\nwant:\n%s", got, want)
