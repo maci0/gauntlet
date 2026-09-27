@@ -32,13 +32,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/humanize"
 )
 
 // Home is the root of the state tree, resolved by gauntlethome.Dir:
@@ -120,9 +120,8 @@ type Summary struct {
 // timestamps: End.Sub(Start) is then the fallback, and a pair that moved
 // backwards is missing rather than a negative duration.
 func (s Summary) Duration() (time.Duration, bool) {
-	if s.Elapsed > 0 && !math.IsNaN(s.Elapsed) && !math.IsInf(s.Elapsed, 0) &&
-		s.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
-		return time.Duration(s.Elapsed * float64(time.Second)), true
+	if d, ok := humanize.Seconds(s.Elapsed); ok {
+		return d, true
 	}
 	if s.Start.IsZero() || s.End.IsZero() || s.End.Before(s.Start) {
 		return 0, false

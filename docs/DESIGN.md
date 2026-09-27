@@ -45,7 +45,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
-| `internal/humanize` | one formatter for durations and counts, shared by all of them |
+| `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
 | `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 
@@ -67,7 +67,10 @@ and `humanize` so composed prompts spell timeouts the same way the rest of
 the binary does. `agent`
 and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere; the CLI
-uses it for unknown commands and flags too.
+uses it for unknown commands and flags too. `journal` imports `humanize`, so
+the one reader of the persisted `elapsed_s` field is the one that renders it,
+and the run listing, the headless reporter, and the dashboard cannot disagree
+about what a run's duration is.
 `agent`, `journal`, and `selfupdate` import `gauntlethome`: the first two for
 the one resolver of the state root, the last for the durable-write helpers
 that keep an atomic replace, a stale-temp sweep, or the reload handoff from

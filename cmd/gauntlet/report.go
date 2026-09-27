@@ -7,7 +7,6 @@ import (
 	"cmp"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -189,9 +188,8 @@ func (r *reporter) handle(ev runner.Event) {
 			lines = fmt.Sprintf(", +%d/-%d lines", *ev.Ins, *ev.Del)
 		}
 		var loopElapsed time.Duration
-		if ev.Elapsed > 0 && !math.IsNaN(ev.Elapsed) && !math.IsInf(ev.Elapsed, 0) &&
-			ev.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
-			loopElapsed = time.Duration(ev.Elapsed * float64(time.Second))
+		if d, ok := humanize.Seconds(ev.Elapsed); ok {
+			loopElapsed = d
 		}
 		fmt.Fprintln(r.out)
 		r.logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,

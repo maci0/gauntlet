@@ -4,9 +4,38 @@
 package humanize
 
 import (
+	"math"
 	"testing"
 	"time"
 )
+
+// The persisted elapsed_s field is JSON seconds, and three readers decode it
+// for three surfaces. What they must not do is turn a value the field cannot
+// hold into a duration: a negative renders as a run that never ended, and one
+// past the nanosecond range wraps to a negative int64 and does the same.
+func TestSeconds(t *testing.T) {
+	cases := []struct {
+		secs float64
+		want time.Duration
+		ok   bool
+	}{
+		{0, 0, false},
+		{-1, 0, false},
+		{0.5, 500 * time.Millisecond, true},
+		{1, time.Second, true},
+		{1800.25, 30*time.Minute + 250*time.Millisecond, true},
+		{math.NaN(), 0, false},
+		{math.Inf(1), 0, false},
+		{math.Inf(-1), 0, false},
+		{float64(math.MaxInt64), 0, false},
+	}
+	for _, c := range cases {
+		got, ok := Seconds(c.secs)
+		if ok != c.ok || got != c.want {
+			t.Errorf("Seconds(%v) = (%v, %v), want (%v, %v)", c.secs, got, ok, c.want, c.ok)
+		}
+	}
+}
 
 func TestDuration(t *testing.T) {
 	cases := map[time.Duration]string{

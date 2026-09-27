@@ -4,7 +4,6 @@
 package ui
 
 import (
-	"math"
 	"path/filepath"
 	"slices"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
+	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
 )
@@ -222,15 +222,20 @@ type Dashboard struct {
 
 // newModel builds the dashboard state for one run.
 func newModel(cfg Config) *model {
+	// One reading for the model's clock, the activity sampler's baseline, and
+	// a defaulted run start: three reads would put the run's first elapsed
+	// figure and its first activity sample each a few microseconds off the
+	// start they are measured from, for no gain.
+	now := time.Now()
 	m := &model{
 		cfg: cfg, hues: newHueMap(),
 		reviews: map[string]*reviewState{},
 		lanes:   map[string]*laneState{},
 		counts:  map[string]int{},
-		now:     time.Now(), lastSample: time.Now(),
+		now:     now, lastSample: now,
 	}
 	if cfg.Started.IsZero() {
-		m.cfg.Started = time.Now()
+		m.cfg.Started = now
 	}
 	for _, r := range cfg.Reviews {
 		if _, dup := m.reviews[r]; dup {
@@ -558,9 +563,8 @@ func (m *model) apply(ev runner.Event) {
 		r := m.review(ev.Review)
 		r.status = ev.Status
 		r.agentLbl = ev.Agent
-		if ev.Elapsed > 0 && !math.IsNaN(ev.Elapsed) && !math.IsInf(ev.Elapsed, 0) &&
-			ev.Elapsed <= float64(math.MaxInt64/int64(time.Second)) {
-			r.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
+		if d, ok := humanize.Seconds(ev.Elapsed); ok {
+			r.elapsed = d
 		}
 		r.tokens = ev.Tokens
 		if ev.Ins != nil && ev.Del != nil {

@@ -1,17 +1,39 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package humanize formats durations and counts for display. One
+// Package humanize converts and formats durations and counts for display. One
 // implementation so the prompt text, the logs, and the dashboard never
 // disagree about what "1h05m" means.
 package humanize
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// Seconds decodes the elapsed seconds a journal and an event stream persist as
+// a JSON number, and reports whether there is one. It is the only reader of
+// that field: the seconds are elapsed, not wall time, and the field is JSON
+// seconds rather than a time.Duration's nanoseconds, so the multiply is the
+// conversion and every reader has to make it.
+//
+// A value at or below zero, a NaN or an infinity, and a magnitude past the
+// nanosecond range are all refused rather than clamped. json.Unmarshal hands
+// back whatever the bytes held, and a corrupt or hostile journal is a file the
+// tool reads: a negative duration renders as a run that never ended, and a
+// past-the-range one wraps to a negative int64 and does the same.
+func Seconds(secs float64) (time.Duration, bool) {
+	if secs <= 0 || math.IsNaN(secs) || math.IsInf(secs, 0) {
+		return 0, false
+	}
+	if secs > float64(math.MaxInt64)/float64(time.Second) {
+		return 0, false
+	}
+	return time.Duration(secs * float64(time.Second)), true
+}
 
 // Duration renders a wall-clock span compactly: 45s, 3m07s, 2h05m.
 func Duration(d time.Duration) string {
