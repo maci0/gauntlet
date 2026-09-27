@@ -282,12 +282,22 @@ func History(dir string) (map[string]ReviewHistory, error) {
 				}
 			}
 		}
+		// A journal that fails part way through has already been tallied for
+		// every line before the failure, so replaying it by id would count
+		// the same review twice and read as a directory where every review
+		// always lands. The by-id read is the fallback for a recorded path
+		// that no longer opens, where nothing was tallied yet.
+		visits := 0
+		tally := func(line []byte) {
+			visits++
+			visit(line)
+		}
 		if run.Path != "" {
-			if err := eventsFile(run.Path, historyGate, visit); err == nil {
+			if err := eventsFile(run.Path, historyGate, tally); err == nil || visits > 0 {
 				continue
 			}
 		}
-		_ = events(run.RunID, historyGate, visit)
+		_ = events(run.RunID, historyGate, tally)
 	}
 	return out, nil
 }

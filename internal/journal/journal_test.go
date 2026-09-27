@@ -4,6 +4,7 @@
 package journal
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -940,6 +941,48 @@ func TestHistoryIdempotentOnDuplicateEvents(t *testing.T) {
 	}
 	if h := got["perf-review"]; h.Runs != 1 || h.Changed != 1 {
 		t.Fatalf("perf-review in /w/dup = %+v, want Runs:1 Changed:1", h)
+	}
+}
+
+// A journal that cannot be read to its end has already been tallied for every
+// line before the failure. Replaying it by id on top of that counted the same
+// review twice, and the suggester read a directory where every review always
+// lands.
+func TestHistoryDoesNotReplayAPartlyReadJournal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "review_end", "dir": "/w/tail", "review": "sec-review", "status": "ok"})
+	if err := j.Close(Summary{Dirs: []string{"/w/tail"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	// One line past what the reader buffers: the scan stops there, after the
+	// events above have been handed over.
+	f, err := os.OpenFile(journalPath(id), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(bytes.Repeat([]byte("x"), 8<<20)); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History("/w/tail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 0 {
+		t.Fatalf("sec-review in /w/tail = %+v, want 1 run counted once", h)
 	}
 }
 
