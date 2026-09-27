@@ -76,6 +76,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - A pruned run's emptied day directory is now synced in `runs/` and not one level above it. The removals were flushed to the state root, which holds no entry for them, so a power cut could leave the directory back.
 - The state root is synced after an index append creates `index.jsonl`, not only after a rebuild renames it. The row of an install's first run was fsync'd into a file whose name the root had not recorded, so a power cut could lose a summary the run had reported writing. The create is proved with `O_EXCL` and reported, so only the call that made the file syncs the directory.
 - A consumed hot-reload handoff is unlinked durably, and a failure to drop it is reported. The removal's error was discarded and the directory never synced, so a power cut could bring the handoff back and resume a run that had already finished, counting the reviews it had already done. A handoff another process dropped first is not a failure.
+- A directory lock under `--jobs N` names every review still running, not one per name. A repeated review means weight, so two instances of it run at once in two lanes, each on its own branch, and the first one to end removed the other's entry: the note read `idle` while a review was still going, which is what the instance turned away from that directory (exit 75) is told. The key is the loop, the review, and the branch, and two lanes on one review with one agent print it once.
 
 ## 1.24.0
 
