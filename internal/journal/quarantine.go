@@ -132,8 +132,17 @@ func listQuarantined() ([]quarantined, error) {
 			if !strings.HasSuffix(name, ".jsonl") {
 				continue
 			}
+			id := strings.TrimSuffix(name, ".jsonl")
+			// The same validRunID the runs/ walk applies, and for the same
+			// reason: trimQuarantine unlinks whatever falls outside the
+			// keep window, so a name this package would not open must not
+			// count toward that window either. An unvalidated stem here
+			// would take a keep slot and push a real quarantined run out.
+			if !validRunID(id) {
+				continue
+			}
 			out = append(out, quarantined{
-				id:   strings.TrimSuffix(name, ".jsonl"),
+				id:   id,
 				path: filepath.Join(root, sh.Name(), name),
 			})
 		}

@@ -1181,6 +1181,58 @@ func TestRecentRebuildsMissingIndex(t *testing.T) {
 	}
 }
 
+// A rebuild that cannot read a journal must not spend the row it already
+// has: Args, ExitCode, and Elapsed are on the index alone, and no later
+// rebuild puts them back.
+func TestRebuildKeepsRowsForJournalsItCannotRead(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	readable := runIDFor(now, 1)
+	unreadable := runIDFor(now.Add(time.Minute), 2)
+	for _, id := range []string{readable, unreadable} {
+		j, err := Open(id, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j.Write(map[string]any{"ev": "run_start", "ts": now, "version": "test"})
+		if err := j.Close(Summary{
+			Version: "test", Start: now, End: now.Add(time.Minute),
+			Args: []string{"--once", id}, ExitCode: new(int), Reviews: 1, OK: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The journal the rebuild cannot open, with the row that outlives it.
+	broken := journalPath(unreadable)
+	if err := os.Remove(broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(Home(), "gone"), broken); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := rebuildIndex(); err != nil {
+		t.Fatalf("rebuildIndex: %v", err)
+	}
+	rows, err := readAllIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rebuild left %d rows, want 2: %+v", len(rows), rows)
+	}
+	for _, s := range rows {
+		if s.RunID == unreadable {
+			if !slices.Equal(s.Args, []string{"--once", unreadable}) {
+				t.Errorf("the unread run lost its args: %+v", s)
+			}
+			if s.ExitCode == nil {
+				t.Errorf("the unread run lost its exit code: %+v", s)
+			}
+		}
+	}
+}
+
 // Close writes Args onto the index only. Rebuilding a healthy index would
 // drop them, so Recent must leave a matching index alone.
 func TestRecentPreservesSummariesWhenRunsCloseOutOfOrder(t *testing.T) {

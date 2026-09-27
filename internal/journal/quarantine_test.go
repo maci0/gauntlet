@@ -113,6 +113,42 @@ func TestRestoreRejectsWhatItCannotRestore(t *testing.T) {
 	}
 }
 
+// A name this package would not open must not sit in the quarantine either.
+// trimQuarantine unlinks whatever falls outside the keep window, so a planted
+// stem that counted toward that window would push a real quarantined run out.
+func TestQuarantineIgnoresUnvalidatedRunIDs(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	record(t, "20260825T090000Z-0001", base)
+	if err := quarantine("20260825T090000Z-0001", journalPath("20260825T090000Z-0001")); err != nil {
+		t.Fatal(err)
+	}
+	// A stem the run-id rules refuse, sitting beside the real quarantine.
+	planted := filepath.Join(prunedDir(), "2026-08-25", "not a run id!.jsonl")
+	if err := os.MkdirAll(filepath.Dir(planted), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planted, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	held, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 || held[0] != "20260825T090000Z-0001" {
+		t.Fatalf("quarantine is %v, want only the real run", held)
+	}
+	// A keep of one covers the real run. The planted stem sorts above it, so
+	// counting it would spend the window and unlink the real one.
+	if err := trimQuarantine(1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(quarantinePath("20260825T090000Z-0001")); err != nil {
+		t.Errorf("the real quarantined run was evicted: %v", err)
+	}
+}
+
 // Inspect is what a restore is checked against, so it counts a row whose
 // journal is gone, not just a journal the index never learned of.
 func TestInspectCountsBothDisagreements(t *testing.T) {

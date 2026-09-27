@@ -679,17 +679,33 @@ func listJournalsN(n int) ([]namedJournal, error) {
 }
 
 // rebuildIndex rewrites index.jsonl from every run journal, oldest first, so
-// a later Close still appends. Journals that cannot be read are skipped.
-// The caller holds the index lock.
+// a later Close still appends. A journal that cannot be read keeps the row the
+// index already has, because Args, ExitCode, and Elapsed are on the row alone:
+// dropping it would spend the only copy of what the journal does not carry, and
+// nothing reconstructs them afterwards. The caller holds the index lock.
 func rebuildIndex() (int, error) {
 	journals, err := listJournals()
 	if err != nil {
 		return 0, err
 	}
+	held, err := readAllIndex()
+	if err != nil {
+		return 0, err
+	}
+	byID := make(map[string]Summary, len(held))
+	for _, s := range held {
+		if s.RunID != "" {
+			byID[s.RunID] = s
+		}
+	}
 	rows := make([]Summary, 0, len(journals))
 	for _, journal := range slices.Backward(journals) {
 		s, err := summarizeFile(journal.id, journal.path)
 		if err != nil {
+			if prev, ok := byID[journal.id]; ok {
+				prev.Path = journal.path
+				rows = append(rows, prev)
+			}
 			continue
 		}
 		rows = append(rows, s)
