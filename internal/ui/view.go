@@ -643,8 +643,8 @@ func (m *model) footerLegend(avail int) string {
 }
 
 // fitRight lays the reading segments into room, dropping whole ones from the
-// right end. A line too narrow even for the first is marked, so what did not
-// fit is visibly absent rather than silently zero.
+// right end. Whatever did not fit is marked, so a figure that fell off the
+// line is visibly absent rather than reading as a run that measured nothing.
 func fitRight(segs []string, room int) string {
 	if len(segs) == 0 || room <= 0 {
 		return ""
@@ -654,13 +654,21 @@ func fitRight(segs []string, room int) string {
 	if w > room {
 		return styleFaint.Render("…")
 	}
+	dropped := false
 	for _, s := range segs[1:] {
 		sw := lipgloss.Width(s)
 		if w+2+sw > room {
+			dropped = true
 			break
 		}
 		out += "  " + s
 		w += 2 + sw
+	}
+	// The marker needs a column of its own: a run with a budget meter that did
+	// not fit says so rather than letting the line end as if the budget were
+	// the last thing it had to report.
+	if dropped && w+3 <= room {
+		out += "  " + styleFaint.Render("…")
 	}
 	return out
 }
@@ -759,7 +767,7 @@ func (m *model) renderMinimal() string {
 		rows = append(rows[:max(m.h-1, 0):len(rows)-1], rows[len(rows)-1])
 	}
 	for i, r := range rows {
-		rows[i] = clip(r, m.w)
+		rows[i] = clipEllipsis(r, m.w)
 	}
 	return strings.Join(rows, "\n")
 }
@@ -869,7 +877,7 @@ func clipBlock(lines []string, w, h int) string {
 	}
 	if w > 0 {
 		for i, ln := range lines {
-			lines[i] = clip(ln, w)
+			lines[i] = clipEllipsis(ln, w)
 		}
 	}
 	return strings.Join(lines, "\n")

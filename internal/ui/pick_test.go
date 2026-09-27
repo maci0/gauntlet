@@ -1622,3 +1622,64 @@ func TestNarrowLauncherKeepsTheCommandAndTheKeys(t *testing.T) {
 		}
 	}
 }
+
+// A pane too narrow for its own rows says where the text stops. A hard cut
+// left "auto-d" and "suggest ag" on the screen, which read as the words they
+// happened to end on rather than as text the terminal ran out of room for.
+func TestNarrowPanesMarkCutText(t *testing.T) {
+	// A title wider than its pane ends in the marker rather than in whatever
+	// word the cut happened to land on: "AGENTS  none picked: auto-d" read as
+	// a complete label.
+	got := stripANSI(firstLine(panel("AGENTS  none picked: auto-detect", "", 20, 1)))
+	if !strings.HasSuffix(got, "…") {
+		t.Errorf("a cut panel title does not say it is cut: %q", got)
+	}
+	if whole := stripANSI(firstLine(panel("AGENTS", "", 20, 1))); whole != "AGENTS" {
+		t.Errorf("a title that fits was cut: %q", whole)
+	}
+
+	// The same for a run-pane row: a pane wide enough for the longest label and
+	// a short value holds it whole, and a narrower one keeps the label and
+	// marks the value.
+	p := demoPicker()
+	for _, c := range []struct {
+		w    int
+		want string
+	}{
+		{36, "suggest agent  from the pool"},
+		{28, "…"},
+	} {
+		rows := strings.Split(stripANSI(p.runPanel(c.w, p.paneHeight(paneOptions))), "\n")
+		var row string
+		for _, r := range rows {
+			if strings.Contains(r, "suggest") {
+				row = r
+			}
+		}
+		if !strings.Contains(row, c.want) {
+			t.Errorf("a %d column run pane did not carry %q:\n%s", c.w, c.want, row)
+		}
+	}
+}
+
+// The two panels in the right column, their borders, and the four rows above
+// and below them are the whole frame. Reserving one panel's worth for the
+// pair left rows empty under a full run pane, and cost the pane a reader
+// composes the run in a row it had space for.
+func TestRightColumnFillsTheFrame(t *testing.T) {
+	for _, h := range []int{12, 14, 18, 24, 30} {
+		p := demoPicker()
+		p.w, p.h, p.ready = 100, h, true
+		agents, run := p.paneHeight(paneAgents), p.paneHeight(paneOptions)
+		if used := agents + run + 2*panelChrome; used > h-viewChrome {
+			t.Errorf("h=%d: the right column asks for %d rows of %d", h, used, h-viewChrome)
+		}
+		if run < 1 {
+			t.Errorf("h=%d: the run pane has %d rows", h, run)
+		}
+		if h >= 30 && run < len(p.opts) {
+			t.Errorf("h=%d: a full frame gives the run pane %d rows for %d options",
+				h, run, len(p.opts))
+		}
+	}
+}

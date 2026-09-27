@@ -186,7 +186,7 @@ func styled(c lipgloss.TerminalColor, s string) string {
 // lipgloss Width() is deliberately avoided for the body: its wrapping
 // mishandles densely styled cells like braille charts.
 func panel(title, content string, innerW, innerH int) string {
-	return clip(styleTitle.Render(title), innerW+4) + "\n" + panelStyle.Render(padBlock(content, innerW, innerH))
+	return clipEllipsis(styleTitle.Render(title), innerW+4) + "\n" + panelStyle.Render(padBlock(content, innerW, innerH))
 }
 
 // padBlock forces content to exactly innerW columns and innerH rows.
@@ -234,6 +234,23 @@ func clip(s string, w int) string {
 		return s
 	}
 	return clipNarrow(s, w)
+}
+
+// clipEllipsis is clip with the cut announced: the last cell becomes the
+// marker, so styled text too wide for its pane reads as cut rather than as a
+// word that happens to end there. trim does the same for unstyled names; a
+// panel title and a status line carry color, so this is the form they use.
+func clipEllipsis(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= w {
+		return s
+	}
+	if w == 1 {
+		return "…"
+	}
+	return clip(s, w-1) + "…"
 }
 
 // clipNarrow is clip for a string already known to be wider than w, so it skips

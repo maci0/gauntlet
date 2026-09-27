@@ -1042,7 +1042,8 @@ func TestFooterKeepsReadingsAtCommonWidths(t *testing.T) {
 }
 
 // A line too narrow even for the first reading says so. Silence there is
-// indistinguishable from a run that has changed nothing yet.
+// indistinguishable from a run that has changed nothing yet, and so is a line
+// that ends where the budget meter would have been.
 func TestFooterMarksReadingsThatCannotFit(t *testing.T) {
 	segs := []string{styleValue.Render("1,234 tok"), styleDim.Render(" budget")}
 	if got := fitRight(segs, 3); !strings.Contains(stripANSI(got), "…") {
@@ -1053,6 +1054,12 @@ func TestFooterMarksReadingsThatCannotFit(t *testing.T) {
 	}
 	if got := fitRight(nil, 40); got != "" {
 		t.Fatalf("a run with nothing measured drew %q", got)
+	}
+	if got := fitRight(segs, 13); !strings.Contains(stripANSI(got), "…") {
+		t.Fatalf("a dropped reading drew %q, want a marked absence", stripANSI(got))
+	}
+	if got := stripANSI(fitRight(segs, 40)); strings.Contains(got, "…") || !strings.Contains(got, "budget") {
+		t.Fatalf("readings that fit were marked as cut: %q", got)
 	}
 }
 
@@ -1703,6 +1710,23 @@ func TestMinimalViewKeepsTheKeysOnAShortTerminal(t *testing.T) {
 		}
 		if got := len(strings.Split(m.renderMinimal(), "\n")); got > h {
 			t.Errorf("h=%d: the fallback is %d rows", h, got)
+		}
+	}
+}
+
+// The fallback exists for terminals too narrow to hold the frame, and the
+// lines it keeps are the ones a reader has to act on. A cut ends in the
+// marker, so "unmerged: sec-review (gauntlet/x/sec-rev" reads as text the
+// terminal ran out of room for rather than as a branch name.
+func TestMinimalViewMarksCutLines(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 32, 8, true
+	for line := range strings.SplitSeq(stripANSI(m.renderMinimal()), "\n") {
+		if lipgloss.Width(line) > 32 {
+			t.Errorf("a %d-column fallback drew a %d-column line: %q", 32, lipgloss.Width(line), line)
+		}
+		if lipgloss.Width(line) == 32 && !strings.Contains(line, "…") {
+			t.Errorf("a full-width fallback line is not marked as cut: %q", line)
 		}
 	}
 }

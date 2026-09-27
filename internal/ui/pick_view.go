@@ -30,11 +30,20 @@ func (p *picker) View() string {
 	if p.w < 50 || p.h < 12 {
 		return p.renderNarrow()
 	}
-	leftW := clampi(p.w*3/5, min(34, p.w-28), p.w-28)
+	// The run pane is a label and a value per row, and a pane too narrow for
+	// both cuts the option's name: "suggest ag" beside "from the pool" reads
+	// as two different options. So the right column keeps a floor wide enough
+	// for the longest label and a short value, and the tree takes the rest.
+	// Below the width where both columns can hold that, the tree keeps the
+	// room and the run pane scrolls, as it always has.
+	capW := p.w - 28
+	if p.w-36 >= 34 {
+		capW = p.w - 36
+	}
+	leftW := clampi(p.w*3/5, min(34, capW), capW)
 	rightW := p.w - leftW - 1
-	// Each panel costs three rows of chrome. The run pane is where the cost
-	// of a run is chosen, so it keeps its rows and the agent list gives first;
-	// both scroll rather than spilling off the screen.
+	// The two panels on the right divide the rows they have between them, and
+	// the tree beside them takes what it needs.
 	runH := p.paneHeight(paneOptions)
 	agentH := p.paneHeight(paneAgents)
 	// The tree takes what it needs and no more; the panels beside it are
@@ -380,7 +389,7 @@ func (p *picker) renderNarrow() string {
 		}
 	}
 	for i, r := range rows {
-		rows[i] = clip(r, p.w)
+		rows[i] = clipEllipsis(r, p.w)
 	}
 	return strings.Join(rows, "\n")
 }
@@ -742,9 +751,20 @@ func (p *picker) runPanel(w, h int) string {
 			}
 		}
 		if right != "" {
+			// A row too narrow for label and value together keeps the one
+			// that fits in half the row and cuts the other with the marker.
+			// Cutting both in half left "suggest ag" beside "from the poo",
+			// which reads as two options rather than as one row.
 			bodyW := inner - 2
-			right = clip(right, max(bodyW/2, bodyW-lipgloss.Width(left)-1))
-			left = clip(left, bodyW-lipgloss.Width(right)-1)
+			lw, rw := lipgloss.Width(left), lipgloss.Width(right)
+			if lw+rw+1 > bodyW {
+				if lw <= bodyW/2 {
+					right = clipEllipsis(right, max(bodyW-lw-1, 1))
+				} else {
+					right = clipEllipsis(right, max(bodyW/2, 1))
+					left = clipEllipsis(left, max(bodyW-lipgloss.Width(right)-1, 1))
+				}
+			}
 		}
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}

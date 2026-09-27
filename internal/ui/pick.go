@@ -519,12 +519,21 @@ func (p *picker) move(d int) {
 }
 
 // viewChrome is the rows the launcher spends outside the panels: the header,
-// the command, the status line, the key line, and one panel's border and
-// padding. What is left is what the panes divide between them.
-const viewChrome = 7
+// the command, the status line, and the key line. What is left is what the
+// panes divide between them.
+const viewChrome = 4
+
+// panelChrome is the border and padding one titled panel costs, and the right
+// column stacks two of them.
+const panelChrome = 3
 
 // paneHeight returns the visible content height of the given pane.
 func (p *picker) paneHeight(which pane) int {
+	// The tree stands beside the two stacked panes, so it has the whole frame
+	// to itself; the agent list and the run pane split what the right column
+	// has left after their two frames. Reserving one frame's worth for the
+	// pair is what left rows empty under a full-height run pane, and a
+	// one-row agent list while three rows of screen went unused.
 	free := max(4, p.h-viewChrome)
 	switch which {
 	case paneReviews:
@@ -534,10 +543,12 @@ func (p *picker) paneHeight(which pane) int {
 		}
 		return clampi(reviewRows, 1, free)
 	case paneAgents:
-		runH := clampi(len(p.opts), 1, max(free-7, 1))
-		return clampi(len(p.cfg.Agents), 1, max(free-runH-6, 1))
+		// The agent list takes what it needs, up to half of the column; the
+		// run pane keeps the rest, so a long option list costs the list
+		// rows rather than the pane a reader composes the run in.
+		return clampi(len(p.cfg.Agents), 1, max((free-2*panelChrome)/2, 1))
 	case paneOptions:
-		return clampi(len(p.opts), 1, max(free-7, 1))
+		return clampi(len(p.opts), 1, max(free-2*panelChrome-p.paneHeight(paneAgents), 1))
 	default:
 		return 1
 	}
