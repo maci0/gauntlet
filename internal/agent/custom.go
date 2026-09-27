@@ -83,6 +83,10 @@ const (
 	effortPlaceholder = "{effort}"
 )
 
+// allPlaceholders is every placeholder a definition may mention, in the order
+// errors name them.
+var allPlaceholders = []string{promptPlaceholder, modelPlaceholder, effortPlaceholder}
+
 // validate reports whether a definition can actually launch something.
 func (c Custom) validate(name string) error {
 	if name == "" {
@@ -91,20 +95,49 @@ func (c Custom) validate(name string) error {
 	if strings.ContainsAny(name, " \t,:=@") {
 		return fmt.Errorf("invalid agent name %q: no spaces, commas, colons, equals signs, or at signs", name)
 	}
+	if err := c.validateArgv(name); err != nil {
+		return err
+	}
+	if len(c.Model) > 0 {
+		if err := c.validatePinned(name, "model", modelPlaceholder, c.Model); err != nil {
+			return err
+		}
+	}
+	if len(c.Effort) > 0 {
+		if err := c.validatePinned(name, "effort", effortPlaceholder, c.Effort); err != nil {
+			return err
+		}
+	}
+	if err := validateFixedArgs(name, "stream", c.Stream); err != nil {
+		return err
+	}
+	if err := validateFixedArgs(name, "continue", c.Continue); err != nil {
+		return err
+	}
+	if c.Usage != nil {
+		if err := c.Usage.validate(name); err != nil {
+			return err
+		}
+	}
+	if c.Note != "" && strings.TrimSpace(c.Note) == "" {
+		return fmt.Errorf("custom agent %q: note cannot be whitespace only", name)
+	}
+	return nil
+}
+
+// validateArgv checks the launch line itself: a real executable, no
+// placeholder in it, and exactly one argument carrying the prompt.
+func (c Custom) validateArgv(name string) error {
 	if len(c.Argv) == 0 {
 		return fmt.Errorf("custom agent %q has no argv", name)
 	}
 	if strings.TrimSpace(c.Argv[0]) == "" {
 		return fmt.Errorf("custom agent %q has no executable", name)
 	}
-	if strings.Contains(c.Argv[0], promptPlaceholder) {
-		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, promptPlaceholder)
-	}
-	if strings.Contains(c.Argv[0], modelPlaceholder) {
-		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, modelPlaceholder)
-	}
-	if strings.Contains(c.Argv[0], effortPlaceholder) {
-		return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, effortPlaceholder)
+	for _, p := range allPlaceholders {
+		if strings.Contains(c.Argv[0], p) {
+			return fmt.Errorf("custom agent %q: argv executable cannot contain %s", name, p)
+		}
 	}
 	prompts := 0
 	for _, a := range c.Argv {
@@ -121,105 +154,82 @@ func (c Custom) validate(name string) error {
 	if prompts > 1 {
 		return fmt.Errorf("custom agent %q: argv must contain %s exactly once", name, promptPlaceholder)
 	}
-	if len(c.Model) > 0 {
-		for _, a := range c.Model {
-			if strings.TrimSpace(a) == "" {
-				return fmt.Errorf("custom agent %q: model contains an empty argument", name)
-			}
+	return nil
+}
+
+// validatePinned checks a field that carries exactly one placeholder of its
+// own, model or effort. The prompt belongs in argv and the other placeholder
+// to the other field, and argv may not repeat what the field already supplies:
+// the two would both pin the same thing.
+func (c Custom) validatePinned(name, field, own string, args []string) error {
+	if err := noEmptyArgs(name, field, args); err != nil {
+		return err
+	}
+	if !containsPlaceholder(args, own) {
+		return fmt.Errorf("custom agent %q: %s must contain %s", name, field, own)
+	}
+	for _, p := range allPlaceholders {
+		if p == own {
+			continue
 		}
-		if !containsPlaceholder(c.Model, modelPlaceholder) {
-			return fmt.Errorf("custom agent %q: model must contain %s", name, modelPlaceholder)
-		}
-		if containsPlaceholder(c.Model, promptPlaceholder) {
-			return fmt.Errorf("custom agent %q: model cannot contain %s", name, promptPlaceholder)
-		}
-		if containsPlaceholder(c.Model, effortPlaceholder) {
-			return fmt.Errorf("custom agent %q: model cannot contain %s", name, effortPlaceholder)
-		}
-		if containsPlaceholder(c.Argv, modelPlaceholder) {
-			return fmt.Errorf("custom agent %q: model cannot be specified when argv contains %s", name, modelPlaceholder)
+		if containsPlaceholder(args, p) {
+			return fmt.Errorf("custom agent %q: %s cannot contain %s", name, field, p)
 		}
 	}
-	if len(c.Effort) > 0 {
-		for _, a := range c.Effort {
-			if strings.TrimSpace(a) == "" {
-				return fmt.Errorf("custom agent %q: effort contains an empty argument", name)
-			}
-		}
-		if !containsPlaceholder(c.Effort, effortPlaceholder) {
-			return fmt.Errorf("custom agent %q: effort must contain %s", name, effortPlaceholder)
-		}
-		if containsPlaceholder(c.Effort, promptPlaceholder) {
-			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, promptPlaceholder)
-		}
-		if containsPlaceholder(c.Effort, modelPlaceholder) {
-			return fmt.Errorf("custom agent %q: effort cannot contain %s", name, modelPlaceholder)
-		}
-		if containsPlaceholder(c.Argv, effortPlaceholder) {
-			return fmt.Errorf("custom agent %q: effort cannot be specified when argv contains %s", name, effortPlaceholder)
-		}
+	if containsPlaceholder(c.Argv, own) {
+		return fmt.Errorf("custom agent %q: %s cannot be specified when argv contains %s", name, field, own)
 	}
-	for _, a := range c.Stream {
+	return nil
+}
+
+// noEmptyArgs rejects a field carrying a blank argument. An empty argument
+// would exec as an empty string, which a CLI reads as a missing value.
+func noEmptyArgs(name, field string, args []string) error {
+	for _, a := range args {
 		if strings.TrimSpace(a) == "" {
-			return fmt.Errorf("custom agent %q: stream contains an empty argument", name)
+			return fmt.Errorf("custom agent %q: %s contains an empty argument", name, field)
 		}
 	}
-	if containsPlaceholder(c.Stream, promptPlaceholder) {
-		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, promptPlaceholder)
+	return nil
+}
+
+// validateFixedArgs checks a flag field the expansion never fills, so a
+// placeholder in it would reach the CLI verbatim.
+func validateFixedArgs(name, field string, args []string) error {
+	if err := noEmptyArgs(name, field, args); err != nil {
+		return err
 	}
-	if containsPlaceholder(c.Stream, modelPlaceholder) {
-		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, modelPlaceholder)
-	}
-	if containsPlaceholder(c.Stream, effortPlaceholder) {
-		return fmt.Errorf("custom agent %q: stream cannot contain %s", name, effortPlaceholder)
-	}
-	for _, a := range c.Continue {
-		if strings.TrimSpace(a) == "" {
-			return fmt.Errorf("custom agent %q: continue contains an empty argument", name)
+	for _, p := range allPlaceholders {
+		if containsPlaceholder(args, p) {
+			return fmt.Errorf("custom agent %q: %s cannot contain %s", name, field, p)
 		}
 	}
-	if containsPlaceholder(c.Continue, promptPlaceholder) {
-		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, promptPlaceholder)
+	return nil
+}
+
+// validate checks the transcript locator: real directories, and no
+// placeholder in any of them, since the reader resolves them as given.
+func (u UsageSpec) validate(name string) error {
+	if len(u.Roots) == 0 {
+		return fmt.Errorf("custom agent %q: usage.roots must name at least one directory", name)
 	}
-	if containsPlaceholder(c.Continue, modelPlaceholder) {
-		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, modelPlaceholder)
-	}
-	if containsPlaceholder(c.Continue, effortPlaceholder) {
-		return fmt.Errorf("custom agent %q: continue cannot contain %s", name, effortPlaceholder)
-	}
-	if c.Usage != nil {
-		if len(c.Usage.Roots) == 0 {
-			return fmt.Errorf("custom agent %q: usage.roots must name at least one directory", name)
+	for _, r := range u.Roots {
+		if strings.TrimSpace(r) == "" {
+			return fmt.Errorf("custom agent %q: usage.roots contains an empty directory path", name)
 		}
-		for _, r := range c.Usage.Roots {
-			if strings.TrimSpace(r) == "" {
-				return fmt.Errorf("custom agent %q: usage.roots contains an empty directory path", name)
-			}
-			if containsPlaceholder([]string{r}, promptPlaceholder) {
-				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, promptPlaceholder)
-			}
-			if containsPlaceholder([]string{r}, modelPlaceholder) {
-				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, modelPlaceholder)
-			}
-			if containsPlaceholder([]string{r}, effortPlaceholder) {
-				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, effortPlaceholder)
+		for _, p := range allPlaceholders {
+			if strings.Contains(r, p) {
+				return fmt.Errorf("custom agent %q: usage.roots cannot contain %s", name, p)
 			}
 		}
-		if c.Usage.Suffix != "" && strings.TrimSpace(c.Usage.Suffix) == "" {
-			return fmt.Errorf("custom agent %q: usage.suffix cannot be whitespace only", name)
-		}
-		if containsPlaceholder([]string{c.Usage.Suffix}, promptPlaceholder) {
-			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, promptPlaceholder)
-		}
-		if containsPlaceholder([]string{c.Usage.Suffix}, modelPlaceholder) {
-			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, modelPlaceholder)
-		}
-		if containsPlaceholder([]string{c.Usage.Suffix}, effortPlaceholder) {
-			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, effortPlaceholder)
-		}
 	}
-	if c.Note != "" && strings.TrimSpace(c.Note) == "" {
-		return fmt.Errorf("custom agent %q: note cannot be whitespace only", name)
+	if u.Suffix != "" && strings.TrimSpace(u.Suffix) == "" {
+		return fmt.Errorf("custom agent %q: usage.suffix cannot be whitespace only", name)
+	}
+	for _, p := range allPlaceholders {
+		if strings.Contains(u.Suffix, p) {
+			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, p)
+		}
 	}
 	return nil
 }

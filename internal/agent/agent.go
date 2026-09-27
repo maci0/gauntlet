@@ -112,6 +112,16 @@ func isValid(name string) bool {
 	return ok
 }
 
+// didYouMean names the agent closest to an unrecognized one, as a suffix for
+// the error that rejects it, or "" when nothing is near enough to guess.
+func didYouMean(tool string) string {
+	c := fuzzy.Closest(tool, AllNames())
+	if c == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (did you mean %q?)", c)
+}
+
 // AllNames lists every usable agent name, built in and defined, in order.
 func AllNames() []string {
 	out := append([]string(nil), Valid...)
@@ -278,13 +288,19 @@ func executable(p string) error {
 	return nil
 }
 
+// needsExpand reports whether an executable names something ExpandPath has to
+// resolve: a home-relative path, or one carrying an environment reference.
+func needsExpand(p string) bool {
+	return strings.HasPrefix(p, "~") || strings.Contains(p, "$")
+}
+
 // Binary returns the executable name or path for an agent tool.
 // For built-in agents, this is the tool name itself.
 // For custom agents, it is the first argument of the agent's Argv definition.
 func Binary(tool string) string {
 	if def, ok := CustomDef(tool); ok && len(def.Argv) > 0 {
 		bin := def.Argv[0]
-		if strings.HasPrefix(bin, "~") || strings.Contains(bin, "$") {
+		if needsExpand(bin) {
 			if expanded, err := gauntlethome.ExpandPath(bin); err == nil && expanded != "" {
 				return expanded
 			}
@@ -347,68 +363,73 @@ func ParseSpecs(s string) ([]Spec, error) {
 		if entry == "" {
 			continue
 		}
-		tool, model, hasModel := strings.Cut(entry, ":")
-		var effort string
-		if hasModel {
-			model, effort = cutEffort(model)
-		} else {
-			tool, effort = cutEffort(tool)
+		if err := parseEntry(entry, add); err != nil {
+			return nil, err
 		}
-		tool = strings.ToLower(strings.TrimSpace(tool))
-		model = strings.TrimSpace(model)
-		effort = strings.TrimSpace(effort)
-		if mixedKeywords[tool] {
-			// The keyword names a set, not one CLI: there is nothing to pin a
-			// model or effort on, and falling through to the unknown-tool error
-			// would call "mixed" unknown and valid in the same sentence.
-			if hasModel || strings.Contains(entry, "@") {
-				return nil, fmt.Errorf("%q selects every installed agent and cannot pin a model or effort: %q", tool, entry)
-			}
-			inst := Installed()
-			if len(inst) == 0 {
-				return nil, fmt.Errorf("%q matched no installed tools (supported: %s)",
-					entry, strings.Join(sortedValid(), ", "))
-			}
-			for _, sp := range inst {
-				add(sp)
-			}
-			continue
-		}
-		if !isValid(tool) {
-			hint := ""
-			if c := fuzzy.Closest(tool, AllNames()); c != "" {
-				hint = fmt.Sprintf(" (did you mean %q?)", c)
-			}
-			return nil, fmt.Errorf("unknown tool: %q%s (valid: %s, or mixed for all)",
-				tool, hint, strings.Join(AllNames(), ", "))
-		}
-		if !takesModel(tool) && (model != "" || hasModel) {
-			return nil, fmt.Errorf("%s does not support specifying a model: %q", tool, entry)
-		}
-		if hasModel && model == "" {
-			return nil, fmt.Errorf("empty model after %q in %q", ":", entry)
-		}
-		if effort != "" {
-			if !takesEffort(tool) {
-				return nil, fmt.Errorf("%s does not support specifying a reasoning effort: %q", tool, entry)
-			}
-			if !effortRe.MatchString(effort) {
-				return nil, fmt.Errorf("invalid effort in %q: %q (letters, digits, . _ -)", entry, effort)
-			}
-		} else if strings.Contains(entry, "@") {
-			return nil, fmt.Errorf("empty effort after %q in %q", "@", entry)
-		}
-		// The dsh model is spliced into a generated YAML overlay; keep the
-		// charset too narrow to escape the quoted scalar.
-		if tool == "dsh" && model != "" && !dshModelRe.MatchString(model) {
-			return nil, fmt.Errorf("invalid dsh model name: %q (letters, digits, . _ / : -)", model)
-		}
-		add(Spec{Tool: tool, Model: model, Effort: effort})
 	}
 	if len(specs) == 0 {
 		return nil, errors.New("no agents specified")
 	}
 	return specs, nil
+}
+
+// parseEntry resolves one comma-separated entry and hands every spec it names
+// to add: one for a named tool, every installed agent for a set keyword.
+func parseEntry(entry string, add func(Spec)) error {
+	tool, model, hasModel := strings.Cut(entry, ":")
+	var effort string
+	if hasModel {
+		model, effort = cutEffort(model)
+	} else {
+		tool, effort = cutEffort(tool)
+	}
+	tool = strings.ToLower(strings.TrimSpace(tool))
+	model = strings.TrimSpace(model)
+	effort = strings.TrimSpace(effort)
+	if mixedKeywords[tool] {
+		// The keyword names a set, not one CLI: there is nothing to pin a
+		// model or effort on, and falling through to the unknown-tool error
+		// would call "mixed" unknown and valid in the same sentence.
+		if hasModel || strings.Contains(entry, "@") {
+			return fmt.Errorf("%q selects every installed agent and cannot pin a model or effort: %q", tool, entry)
+		}
+		inst := Installed()
+		if len(inst) == 0 {
+			return fmt.Errorf("%q matched no installed tools (supported: %s)",
+				entry, strings.Join(sortedValid(), ", "))
+		}
+		for _, sp := range inst {
+			add(sp)
+		}
+		return nil
+	}
+	if !isValid(tool) {
+		return fmt.Errorf("unknown tool: %q%s (valid: %s, or mixed for all)",
+			tool, didYouMean(tool), strings.Join(AllNames(), ", "))
+	}
+	if !takesModel(tool) && (model != "" || hasModel) {
+		return fmt.Errorf("%s does not support specifying a model: %q", tool, entry)
+	}
+	if hasModel && model == "" {
+		return fmt.Errorf("empty model after %q in %q", ":", entry)
+	}
+	if effort != "" {
+		if !takesEffort(tool) {
+			return fmt.Errorf("%s does not support specifying a reasoning effort: %q", tool, entry)
+		}
+		if !effortRe.MatchString(effort) {
+			return fmt.Errorf("invalid effort in %q: %q (letters, digits, . _ -)", entry, effort)
+		}
+	} else if strings.Contains(entry, "@") {
+		return fmt.Errorf("empty effort after %q in %q", "@", entry)
+	}
+	// The dsh model is spliced into a generated YAML overlay; keep the
+	// charset too narrow to escape the quoted scalar.
+	if tool == "dsh" && model != "" && !dshModelRe.MatchString(model) {
+		return fmt.Errorf("invalid dsh model name: %q (letters, digits, . _ / : -)", model)
+	}
+	add(Spec{Tool: tool, Model: model, Effort: effort})
+	return nil
 }
 
 // cutEffort splits "model@effort" (or "tool@effort") on the last "@". Model
@@ -487,7 +508,7 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	}
 	if opts.Binary != "" && len(cmd) > 0 {
 		cmd[0] = opts.Binary
-	} else if len(cmd) > 0 && (strings.HasPrefix(cmd[0], "~") || strings.Contains(cmd[0], "$")) {
+	} else if len(cmd) > 0 && needsExpand(cmd[0]) {
 		expanded, err := gauntlethome.ExpandPath(cmd[0])
 		if err != nil {
 			return nil, fmt.Errorf("custom agent %q executable %s: %w", spec.Tool, cmd[0], err)
@@ -653,11 +674,7 @@ func ParseBin(s string) (string, string, error) {
 	}
 	tool = strings.ToLower(tool)
 	if !isValid(tool) {
-		hint := ""
-		if c := fuzzy.Closest(tool, AllNames()); c != "" {
-			hint = fmt.Sprintf(" (did you mean %q?)", c)
-		}
-		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, hint,
+		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, didYouMean(tool),
 			strings.Join(AllNames(), ", "))
 	}
 	expanded, err := gauntlethome.ExpandPath(path)

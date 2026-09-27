@@ -270,7 +270,11 @@ func absent(fn func(signals) bool) func(signals) float64 {
 func lang(exts ...string) func(signals) float64 {
 	return func(s signals) float64 {
 		n := s.count(exts...)
-		if n == 0 || (n < langMinFiles && float64(n)/float64(max(s.files, 1)) < langMinShare) {
+		if n == 0 {
+			return 0
+		}
+		share := float64(n) / float64(max(s.files, 1))
+		if n < langMinFiles && share < langMinShare {
 			return 0
 		}
 		return s.liveness(exts...)
@@ -295,8 +299,11 @@ var (
 			".golangci.yml", ".golangci.yaml", "ruff.toml", ".ruff.toml", "clippy.toml",
 			".clang-tidy", ".clang-format", ".editorconfig", "setup.cfg", ".flake8")
 	}
-	hasWeb = lang(".html", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte")
 )
+
+// hasWeb is a language rule, not a predicate: a tree with no frontend in it is
+// not evidence for anything, so it has no absence counterpart to share.
+var hasWeb = lang(".html", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte")
 
 var fastRules = []rule{
 	// Every tree with code in it gets these: any code can be wrong, wasteful,
@@ -675,9 +682,8 @@ func listTree(root string) ([]string, *gitx.Repo) {
 // keeps this a scan rather than an indexing pass. Opens are rooted at the
 // reviewed tree, so a symlink, FIFO, or path that escapes it is skipped.
 //
-// Marks are checked for presence, not counted: every consumer treats a kind
-// as seen or unseen, so a kind already observed stops being searched for and
-// the scan ends early once all kinds are.
+// Marks are searched for until every kind has been seen, at which point no
+// later file can change the answer and the scan stops.
 func peek(root string, paths []string, s *signals, declared []string) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
@@ -704,31 +710,36 @@ func peek(root string, paths []string, s *signals, declared []string) {
 		n, _ := f.Read(buf)
 		f.Close()
 		read++
-		head := asciiFold(scratch[:0], buf[:n])
-		var folded string
-		hasFolded := false
-		for _, m := range wanted {
-			if s.mark[m.says] > 0 {
-				continue
+		markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
+		seenAll = len(s.mark) == kinds
+	}
+}
+
+// markFound records which of the given searches a file head satisfies. A kind
+// already recorded is left alone, since every consumer treats a kind as seen or
+// unseen rather than counting it.
+func markFound(s *signals, wanted []markEntry, head []byte) {
+	var folded string
+	hasFolded := false
+	for _, m := range wanted {
+		if s.mark[m.says] > 0 {
+			continue
+		}
+		hit := false
+		if m.needle != nil {
+			hit = bytes.Contains(head, m.needle)
+		} else {
+			// Non-ASCII needles are stored NFC+ToLower by Signals; a macOS
+			// file may hold the NFD spelling, and a capital É survives
+			// asciiFold. Fold the haystack the same way so the two forms meet.
+			if !hasFolded {
+				folded = strings.ToLower(norm.NFC.String(string(head)))
+				hasFolded = true
 			}
-			hit := false
-			if m.needle != nil {
-				hit = bytes.Contains(head, m.needle)
-			} else {
-				// Non-ASCII needles are stored NFC+ToLower by Signals; a
-				// macOS file may hold the NFD spelling, and a capital É
-				// survives asciiFold. Fold the haystack the same way so
-				// the two forms meet.
-				if !hasFolded {
-					folded = strings.ToLower(norm.NFC.String(string(head)))
-					hasFolded = true
-				}
-				hit = strings.Contains(folded, m.text)
-			}
-			if hit {
-				s.mark[m.says]++
-				seenAll = len(s.mark) == kinds
-			}
+			hit = strings.Contains(folded, m.text)
+		}
+		if hit {
+			s.mark[m.says]++
 		}
 	}
 }
@@ -778,8 +789,11 @@ func markSearch(declared []string) []markEntry {
 	out = append(out, marks...)
 	seen := make(map[string]bool, len(declared))
 	for _, d := range declared {
-		if d == "" || seen[d] || len(out)-len(marks) >= declaredMarkMax {
+		if d == "" || seen[d] {
 			continue
+		}
+		if len(out)-len(marks) >= declaredMarkMax {
+			break
 		}
 		seen[d] = true
 		out = append(out, mark(d, d))

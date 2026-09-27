@@ -228,10 +228,11 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	// last published tip rather than this pass's base and find nothing.
 	if r.cfg.ResumeStackHeadTip == "" {
 		for i := range start {
-			var recovered bool
 			var err error
 			previous := parent
-			parent, parentTip, recovered, err = r.recoverStackLayer(
+			// handled carries nothing here: a completed-prefix layer is
+			// recovered or collapsed, never left for an agent to run.
+			parent, parentTip, _, err = r.recoverStackLayer(
 				ctx, loopNo, i, r.cfg.Reviews[i], parent, parentTip, stackRecoverPrefix, published+1)
 			if parent != previous {
 				published++
@@ -243,7 +244,6 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 					"recover completed stack", err)
 				return false
 			}
-			_ = recovered // every completed-prefix layer is recovered or collapsed
 		}
 	}
 
@@ -333,79 +333,95 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			continue
 		}
 
-		title := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
-		changed, commitErr := wt.CommitAll(context.WithoutCancel(ctx), title)
-		if commitErr != nil {
-			res.Status = StatusFail
-			res.Detail = commitErr.Error()
-			r.st.Add(res)
-			r.publishStackFailure(loopNo, review, branch, parent, commitErr)
-			if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
-				r.log("Cannot discard failed stack layer %s: %v", review, err)
-			}
+		next, nextTip, done := r.publishStackLayer(ctx, loopNo, i, review, branch, wt, &res,
+			parent, parentTip, published+1)
+		if !done {
 			return false
 		}
-		if !changed {
-			res.Ins, res.Del, res.HaveLines = 0, 0, true
-			if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
-				res.Status = StatusFail
-				res.Detail = err.Error()
-				r.publishStackFailure(loopNo, review, branch, parent, err)
-				r.st.Add(res)
-				return false
-			}
-			r.st.Add(res)
-			continue
+		if next == "" {
+			continue // a layer that changed nothing leaves the parent where it is
 		}
-		// The commit exists, so its subject can name the branch. A rename that
-		// cannot happen (no usable topic, or the name is taken locally or on
-		// the remote) keeps the provisional name, which is unique by
-		// construction; the stack stays publishable either way.
-		if final := r.stackFinalBranch(ctx, loopNo, i, review, title, branch); final != "" {
-			if err := wt.RenameBranch(ctx, final); err != nil {
-				r.log("Keeping provisional stack branch %s: %v", branch, err)
-			} else {
-				branch = final
-				res.Branch = final
-			}
-		}
-		body := r.stackBody(ctx, review, title, wt.Dir, parentTip, "HEAD", parent, published+1, res.FileNotes)
-		// The layer's own commit range is the exact measurement, so it replaces
-		// whatever the shared-tree sample estimated -- but only when git
-		// answered. An unreadable range leaves the estimate standing rather
-		// than reporting the change as zero lines.
-		if body.HaveLines {
-			res.Ins, res.Del, res.HaveLines = body.Ins, body.Del, true
-		}
-		if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
-			res.Status = StatusFail
-			res.Detail = "push: " + err.Error()
-			r.st.Add(res)
-			r.publishStackFailure(loopNo, review, branch, parent, fmt.Errorf("push: %w", err))
-			return false
-		}
-		prURL, err := r.ensurePullRequest(ctx, branch, parent, body)
-		if err != nil {
-			res.Status = StatusFail
-			res.Detail = err.Error()
-			r.st.Add(res)
-			r.publishStackFailure(loopNo, review, branch, parent, err)
-			return false
-		}
-		res.URL = prURL
-		r.st.Add(res)
-		r.publishPullRequest(loopNo, review, branch, parent, prURL, false, res)
-		parent, published = branch, published+1
-		parentTip, err = r.repo.Tip(ctx, "refs/heads/"+branch)
-		if err != nil {
-			r.st.addCommitFail()
-			r.publishStackFailure(loopNo, review, branch, res.Base, err)
-			return false
-		}
+		parent, parentTip, published = next, nextTip, published+1
 		r.rememberStackHead(parent, parentTip, published)
 	}
 	r.rememberStackHead(parent, parentTip, published)
 	return ctx.Err() == nil
+}
+
+// publishStackLayer commits a reviewed layer, names it after its commit
+// subject, pushes it, and opens its PR. It returns the published branch and
+// its tip, or an empty branch when the layer changed nothing, or done=false
+// when the stack must stop, with the failure already recorded.
+func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, branch string,
+	wt *gitx.Worktree, res *Result, parent, parentTip string, layer int) (string, string, bool) {
+
+	title := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
+	changed, err := wt.CommitAll(context.WithoutCancel(ctx), title)
+	if err != nil {
+		r.failStackLayer(res, loopNo, review, branch, parent, err)
+		if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
+			r.log("Cannot discard failed stack layer %s: %v", review, err)
+		}
+		return "", "", false
+	}
+	if !changed {
+		res.Ins, res.Del, res.HaveLines = 0, 0, true
+		if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
+			r.failStackLayer(res, loopNo, review, branch, parent, err)
+			return "", "", false
+		}
+		r.st.Add(*res)
+		return "", "", true
+	}
+	// The commit exists, so its subject can name the branch. A rename that
+	// cannot happen (no usable topic, or the name is taken locally or on
+	// the remote) keeps the provisional name, which is unique by
+	// construction; the stack stays publishable either way.
+	if final := r.stackFinalBranch(ctx, loopNo, scheduleIndex, review, title, branch); final != "" {
+		if err := wt.RenameBranch(ctx, final); err != nil {
+			r.log("Keeping provisional stack branch %s: %v", branch, err)
+		} else {
+			branch = final
+			res.Branch = final
+		}
+	}
+	body := r.stackBody(ctx, review, title, wt.Dir, parentTip, "HEAD", parent, layer, res.FileNotes)
+	// The layer's own commit range is the exact measurement, so it replaces
+	// whatever the shared-tree sample estimated -- but only when git
+	// answered. An unreadable range leaves the estimate standing rather
+	// than reporting the change as zero lines.
+	if body.HaveLines {
+		res.Ins, res.Del, res.HaveLines = body.Ins, body.Del, true
+	}
+	if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
+		r.failStackLayer(res, loopNo, review, branch, parent, fmt.Errorf("push: %w", err))
+		return "", "", false
+	}
+	prURL, err := r.ensurePullRequest(ctx, branch, parent, body)
+	if err != nil {
+		r.failStackLayer(res, loopNo, review, branch, parent, err)
+		return "", "", false
+	}
+	res.URL = prURL
+	r.st.Add(*res)
+	r.publishPullRequest(loopNo, review, branch, parent, prURL, false, *res)
+	branchTip, err := r.repo.Tip(ctx, "refs/heads/"+branch)
+	if err != nil {
+		r.st.addCommitFail()
+		r.publishStackFailure(loopNo, review, branch, parent, err)
+		return "", "", false
+	}
+	return branch, branchTip, true
+}
+
+// failStackLayer records a layer that could not be published. The result goes
+// in before the failure is published, so nothing below the record can erase
+// the failure and leave the run reporting no failed review.
+func (r *Runner) failStackLayer(res *Result, loop int, review, branch, base string, err error) {
+	res.Status = StatusFail
+	res.Detail = err.Error()
+	r.st.Add(*res)
+	r.publishStackFailure(loop, review, branch, base, err)
 }
 
 // stackResumeIndex maps the hot-reload queue back onto the stable configured

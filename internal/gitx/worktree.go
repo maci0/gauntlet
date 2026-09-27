@@ -81,9 +81,10 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
 	body, _ := os.ReadFile(path)
+	text := string(body)
 	var missing []string
 	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
-		if !strings.Contains(string(body), entry) {
+		if !strings.Contains(text, entry) {
 			missing = append(missing, entry)
 		}
 	}
@@ -99,7 +100,7 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	}
 	defer f.Close()
 	prefix := ""
-	if len(body) > 0 && !strings.HasSuffix(string(body), "\n") {
+	if len(text) > 0 && !strings.HasSuffix(text, "\n") {
 		prefix = "\n"
 	}
 	fmt.Fprintf(f, "%s# gauntlet's own scratch: per-review worktrees and the run lock\n%s\n",
@@ -136,44 +137,67 @@ func (r *Repo) ensureWorktreeRoot() error {
 	return nil
 }
 
+// beginWorktreeAdd proves git is present, serializes worktree bookkeeping, and
+// proves the scratch root, in that order, so no two runs shape the metadata at
+// once. wtMu stays held afterwards: the caller unlocks it.
+func (r *Repo) beginWorktreeAdd(withoutGit string) error {
+	if !Available() {
+		return errors.New(withoutGit)
+	}
+	r.wtMu.Lock()
+	if err := r.ensureWorktreeRoot(); err != nil {
+		r.wtMu.Unlock()
+		return err
+	}
+	return nil
+}
+
+// worktreeRootDir is where per-review checkouts live in this repo.
+func (r *Repo) worktreeRootDir() string {
+	return filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+}
+
+// worktreeDir is the checkout named by its leaf under worktreeRootDir.
+func (r *Repo) worktreeDir(name string) string {
+	return filepath.Join(r.worktreeRootDir(), name)
+}
+
+// checkBranchName rejects a name git would not accept as a ref before it
+// reaches a command line, the shared check behind every branch a stack names.
+func (r *Repo) checkBranchName(ctx context.Context, branch string) error {
+	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
+		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
+	}
+	return nil
+}
+
 // AddWorktree creates a checkout of base on a fresh branch. The name identifies
 // the checkout (a persistent lane, or a one-shot conflict resolver); the tag
 // (run id plus loop and lane) keeps concurrent and repeated runs from colliding
 // on branch names.
 func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktree, error) {
-	if !Available() {
-		return nil, errors.New("git is required for parallel reviews")
-	}
-	r.wtMu.Lock()
-	defer r.wtMu.Unlock()
-	if err := r.ensureWorktreeRoot(); err != nil {
+	if err := r.beginWorktreeAdd("git is required for parallel reviews"); err != nil {
 		return nil, err
 	}
+	defer r.wtMu.Unlock()
 
 	slug := BranchSlug(name)
 	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), tag+"-"+slug)
-	return r.addBranchWorktree(ctx, dir, branch, base)
+	return r.addBranchWorktree(ctx, r.worktreeDir(tag+"-"+slug), branch, base)
 }
 
 // AddStackWorktree creates the one checkout a stacked-PR run advances through
 // its review branches. Unlike AddWorktree, the caller supplies the complete,
 // deterministic branch name so a later invocation can recover the same stack.
 func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (*Worktree, error) {
-	if !Available() {
-		return nil, errors.New("git is required for stacked PRs")
-	}
-	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return nil, fmt.Errorf("invalid stack branch %q: %w", branch, err)
-	}
-	r.wtMu.Lock()
-	defer r.wtMu.Unlock()
-	if err := r.ensureWorktreeRoot(); err != nil {
+	if err := r.beginWorktreeAdd("git is required for stacked PRs"); err != nil {
 		return nil, err
 	}
-
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "stack-"+BranchSlug(tag))
-	return r.addBranchWorktree(ctx, dir, branch, base)
+	defer r.wtMu.Unlock()
+	if err := r.checkBranchName(ctx, branch); err != nil {
+		return nil, err
+	}
+	return r.addBranchWorktree(ctx, r.worktreeDir("stack-"+BranchSlug(tag)), branch, base)
 }
 
 // AddSnapshotWorktree cuts a read-only view of one commit, detached so no
@@ -182,15 +206,12 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 // from the user's checkout: an uncommitted or local-only *-review.md must not
 // steer a run that publishes only remote-based work.
 func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Worktree, error) {
-	if !Available() {
-		return nil, errors.New("git is required for stacked PRs")
-	}
-	r.wtMu.Lock()
-	defer r.wtMu.Unlock()
-	if err := r.ensureWorktreeRoot(); err != nil {
+	if err := r.beginWorktreeAdd("git is required for a snapshot checkout"); err != nil {
 		return nil, err
 	}
-	dir := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot), "base-"+BranchSlug(tag))
+	defer r.wtMu.Unlock()
+
+	dir := r.worktreeDir("base-" + BranchSlug(tag))
 	// A leftover snapshot from a killed run sits at this same deterministic
 	// path; it is gauntlet's own and carries nothing, so it is replaced.
 	if err := r.prepareWorktreeDir(ctx, dir); err != nil {
@@ -212,8 +233,7 @@ func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
 	if dir == "" {
 		return nil
 	}
-	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
-	rel, err := filepath.Rel(root, dir)
+	rel, err := filepath.Rel(r.worktreeRootDir(), dir)
 	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		return fmt.Errorf("refusing to remove worktree path outside %s: %s", worktreeRoot, dir)
 	}
@@ -221,7 +241,7 @@ func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
 	// unlock it and try removing before falling back to manual cleanup.
 	_, _ = r.run(ctx, gitQuick, "worktree", "unlock", dir)
 	_, removeErr := r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if _, err := os.Stat(dir); removeErr != nil || err == nil {
+	if _, statErr := os.Stat(dir); removeErr != nil || statErr == nil {
 		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove worktree dir: %w", err)
 		}
@@ -272,8 +292,12 @@ func (r *Repo) reclaimEmptyBranch(ctx context.Context, branch, base string) erro
 	return nil
 }
 
+// shortSHALen is how much of a commit id an error message shows. Enough to
+// name a commit in `git log` without letting a full hash crowd out the message.
+const shortSHALen = 12
+
 func shortSHA(s string) string {
-	return s[:min(12, len(s))]
+	return s[:min(shortSHALen, len(s))]
 }
 
 // addBranchWorktree creates a checkout of base on a fresh branch at dir.
@@ -305,8 +329,8 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
-	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
+	if err := w.repo.checkBranchName(ctx, branch); err != nil {
+		return err
 	}
 	sub := w.subRepo()
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "-c", branch, base); err != nil {
@@ -320,7 +344,7 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 				branch, shortSHA(tip), shortSHA(baseTip))
 		}
 		if _, swErr := sub.run(ctx, gitNormal, "switch", "--quiet", branch); swErr != nil {
-			return fmt.Errorf("git switch -c %s: %w", branch, err)
+			return fmt.Errorf("git switch %s: %w", branch, swErr)
 		}
 	}
 	w.Branch, w.base = branch, base
@@ -595,7 +619,7 @@ func (r *Repo) CleanWorktreeRoot() {
 	if r == nil {
 		return
 	}
-	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	root := r.worktreeRootDir()
 	_ = os.Remove(root)
 	_ = os.Remove(filepath.Dir(root))
 }
@@ -640,9 +664,12 @@ func StackLoopPrefix(loop, index int, review string) string {
 // from colliding on one name; the -wip- marker is what publication or a
 // recovery pass renames away once the commit's subject is known.
 func StackLoopProvisionalBranch(baseTip string, loop, index int, review string) string {
+	// baseTip is a full hash; only this much of it goes into a ref name, where
+	// the rest would be noise nobody reads.
+	const tipFragment = 6
 	tip := BranchSlug(baseTip)
-	if len(tip) > 6 {
-		tip = tip[:6]
+	if len(tip) > tipFragment {
+		tip = tip[:tipFragment]
 	}
 	return StackLoopPrefix(loop, index, review) + "-wip-" + tip
 }
@@ -703,8 +730,12 @@ func TopicSlug(subject string) string {
 // conventional-commit subject, so TopicSlug drops it rather than spending the
 // topic's budget repeating what the branch prefix already says.
 func isConventionalType(head string) bool {
+	// conventionalTypeMax bounds what may be read as a type. A longer prefix is
+	// prose that happens to precede a colon, and dropping its first word would
+	// cut the subject, not a type.
+	const conventionalTypeMax = 30
 	head = strings.TrimSpace(head)
-	if head == "" || len(head) > 30 {
+	if head == "" || len(head) > conventionalTypeMax {
 		return false
 	}
 	for _, r := range head {
@@ -728,8 +759,8 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	if name == w.Branch {
 		return nil
 	}
-	if _, err := w.repo.run(ctx, gitQuick, "check-ref-format", "--branch", name); err != nil {
-		return fmt.Errorf("invalid stack branch %q: %w", name, err)
+	if err := w.repo.checkBranchName(ctx, name); err != nil {
+		return err
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()

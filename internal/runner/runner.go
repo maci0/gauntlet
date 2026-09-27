@@ -291,6 +291,12 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	return r, nil
 }
 
+// isolated reports whether reviews run in their own worktrees rather than in
+// the main tree: lane worktrees under --jobs, one stack worktree per stacked
+// pass. Every mode it names also means the run owns worktree scratch of its
+// own and the main tree's line counts are not attributable to a review.
+func (r *Runner) isolated() bool { return r.cfg.StackedPRs || r.cfg.Jobs > 1 }
+
 // Run executes loops until the context is canceled or a limit is reached.
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
@@ -301,7 +307,7 @@ func (r *Runner) Run(ctx context.Context) {
 	defer func() {
 		r.bus.Publish(Event{Kind: EvRunEnd, Dir: r.cfg.Dir, Loop: r.Loops()})
 	}()
-	if r.cfg.Jobs > 1 || r.cfg.StackedPRs {
+	if r.isolated() {
 		defer r.repo.CleanWorktreeRoot()
 	}
 
@@ -317,10 +323,16 @@ func (r *Runner) Run(ctx context.Context) {
 		r.bus.Publish(Event{Kind: EvLoopStart, Dir: r.cfg.Dir, Loop: loopNo, Total: r.perLoop()})
 
 		start := r.now()
-		before, haveBefore := r.sample(ctx)
-		beforeIns, beforeDel := 0, 0
-		if r.cfg.StackedPRs || r.cfg.Jobs > 1 {
+		// An isolated loop's line counts come from the run's own totals, not
+		// from sampling the main tree: nothing in it is written in place, so a
+		// sample there would only be discarded.
+		var before gitx.Stats
+		var haveBefore bool
+		var beforeIns, beforeDel int
+		if r.isolated() {
 			beforeIns, beforeDel, _, _, _, _ = r.st.Totals()
+		} else {
+			before, haveBefore = r.sample(ctx)
 		}
 
 		var completed bool
@@ -344,7 +356,7 @@ func (r *Runner) Run(ctx context.Context) {
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
 			Elapsed: max(r.now().Sub(start), 0).Seconds(),
 		}
-		if r.cfg.StackedPRs || r.cfg.Jobs > 1 {
+		if r.isolated() {
 			afterIns, afterDel, _, _, _, haveLines := r.st.Totals()
 			if haveLines {
 				ins, del := afterIns-beforeIns, afterDel-beforeDel
@@ -647,36 +659,15 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		wt, err := r.repo.AddWorktree(ctx, fmt.Sprintf("lane-%d", i), tag, base)
 		if err != nil {
 			r.log("Cannot create lane %d: %v", i, err)
-			for j := range i {
-				if lanes[j] != nil {
-					if err := lanes[j].Remove(context.WithoutCancel(ctx)); err != nil {
-						r.log("Cannot remove lane %d: %v", j, err)
-					}
-					if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), lanes[j].Branch); err != nil {
-						r.log("Cannot delete lane branch %s: %v", lanes[j].Branch, err)
-					}
-				}
-			}
+			r.removeLanes(ctx, lanes[:i])
 			return r.runLoopSequential(ctx, loopNo)
 		}
 		lanes[i] = wt
 	}
 	defer func() {
-		cleanCtx := context.WithoutCancel(ctx)
-		for _, wt := range lanes {
-			if wt == nil {
-				continue
-			}
-			if err := wt.Remove(cleanCtx); err != nil {
-				r.log("Cannot remove lane worktree %s: %v", wt.Dir, err)
-			}
-			if wt.Branch != "" {
-				if err := r.repo.DeleteBranch(cleanCtx, wt.Branch); err != nil {
-					r.log("Cannot delete lane branch %s: %v", wt.Branch, err)
-				}
-			}
-		}
+		r.removeLanes(ctx, lanes)
 		if ctx.Err() != nil {
+			cleanCtx := context.WithoutCancel(ctx)
 			// A cancel can race advance(), leaving review branches that
 			// no lane cleaned up. Conflict branches are not worth
 			// preserving from a cancelled run.
@@ -718,6 +709,25 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	return ctx.Err() == nil
 }
 
+// removeLanes takes down the lane worktrees it is given and the branches they
+// checked out. A nil entry is a lane whose worktree was never created.
+func (r *Runner) removeLanes(ctx context.Context, lanes []*gitx.Worktree) {
+	cleanCtx := context.WithoutCancel(ctx)
+	for _, wt := range lanes {
+		if wt == nil {
+			continue
+		}
+		if err := wt.Remove(cleanCtx); err != nil {
+			r.log("Cannot remove lane worktree %s: %v", wt.Dir, err)
+		}
+		if wt.Branch != "" {
+			if err := r.repo.DeleteBranch(cleanCtx, wt.Branch); err != nil {
+				r.log("Cannot delete lane branch %s: %v", wt.Branch, err)
+			}
+		}
+	}
+}
+
 // abandonQueue records every queued review a hard cancel will never start,
 // in either loop. There is no successor to hand them to, so letting them
 // vanish would drop them from the stats, the summary, and the journal alike.
@@ -728,11 +738,18 @@ func (r *Runner) abandonQueue(loopNo int) {
 		if !ok {
 			return
 		}
-		res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
-			Status: StatusInterrupted}
+		res := r.interrupted(review)
 		r.st.Add(res)
 		r.publishReviewEnd(res, loopNo, "", "", 1)
 	}
+}
+
+// interrupted is the result of a review that was taken from the queue but
+// never launched, because the run was canceled first. The agent is drawn the
+// same way a real launch would draw it, so a replay names the same one.
+func (r *Runner) interrupted(review string) Result {
+	return Result{Review: review, Agent: r.pickAgent(review, nil),
+		ExitCode: -1, Status: StatusInterrupted}
 }
 
 // pushLanded publishes what just landed on this branch. A failure is logged
@@ -779,8 +796,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	loopNo, laneIdx, reviewIdx int) Result {
 
 	if ctx.Err() != nil {
-		res := Result{Review: review, Agent: r.pickAgent(review, nil),
-			ExitCode: -1, Status: StatusInterrupted}
+		res := r.interrupted(review)
 		r.publishReviewEnd(res, loopNo, "", "", 1)
 		return res
 	}
@@ -980,18 +996,12 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	rev, ok := r.cfg.Set.Get(review)
 	if !ok {
 		r.log("No such review: %s", review)
-		res.Status = StatusSkipped
-		res.Detail = "unknown name"
-		r.publishReviewEnd(res, loopNo, "", lane, number)
-		return res
+		return r.skipped(res, loopNo, lane, "unknown name")
 	}
 	body, err := rev.Body()
 	if err != nil {
 		r.log("Cannot read prompt for %s (%v), skipping", review, err)
-		res.Status = StatusSkipped
-		res.Detail = err.Error()
-		r.publishReviewEnd(res, loopNo, "", lane, number)
-		return res
+		return r.skipped(res, loopNo, lane, err.Error())
 	}
 	// Recorded on both of this attempt's events: a prompt edited mid-run makes
 	// its later attempts carry a different fingerprint, and the journal says so.
@@ -1043,39 +1053,8 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 
 	start := r.now()
 
-	// Two independent sources of live usage: what the agent prints, and what
-	// it writes to its own session transcript. Whichever reports more is the
-	// truth; agents that do neither report nothing at all.
-	usageMu := sync.Mutex{}
-	best, bestThink := 0, 0
-	publishUsage := func(tokens, thinking int) {
-		usageMu.Lock()
-		defer usageMu.Unlock()
-		if tokens <= best && thinking <= bestThink {
-			return
-		}
-		best = max(best, tokens)
-		bestThink = max(bestThink, thinking)
-		tokens, thinking = best, bestThink
-		r.bus.Publish(Event{
-			Kind: EvUsage, Dir: r.cfg.Dir, Review: review,
-			Agent: spec.Label(), Loop: loopNo, Tokens: tokens, Thinking: thinking,
-		})
-	}
-
-	// The transcript watcher lives exactly as long as the agent does. Its
-	// context is derived from the review's, so an interrupt stops it too.
-	// Run is joined before review_end: the lane key is the agent, not the
-	// review, so a tick published after this review has ended is attributed
-	// to whatever that agent starts next.
-	watchCtx, stopWatch := context.WithCancel(ctx)
-	watcher := openTranscript(spec.Tool, dir, start)
-	var watchDone sync.WaitGroup
-	defer func() {
-		stopWatch()
-		watchDone.Wait()
-	}()
-	watchDone.Go(func() { watcher.Run(watchCtx, publishUsage) })
+	usage := r.watchUsage(ctx, spec, dir, review, loopNo, start)
+	defer usage.halt()
 
 	pr := runProc(ctx, procOpts{
 		Argv:           argv,
@@ -1087,24 +1066,16 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Sink:           r.outputSink(review, spec.Label()),
 		// Cumulative for this review: the dashboard turns successive values
 		// into a rate, and a review that never reports usage sends nothing.
-		Usage:  func(u agent.Usage) { publishUsage(u.Reported(), max(u.Thinking, 0)) },
+		Usage:  func(u agent.Usage) { usage.report(u.Reported(), max(u.Thinking, 0)) },
 		Stream: r.cfg.Stream,
 	})
-	stopWatch()
-	watchDone.Wait()
-	// The agent's last records are written as it exits, so the final read
-	// happens here rather than on a tick that already passed.
-	if out, think := watcher.Final(); out > 0 || think > 0 {
-		publishUsage(out, think)
-	}
+	tokens, thinking := usage.settle()
 	res.Elapsed = max(r.now().Sub(start), 0)
 	res.ExitCode = pr.ExitCode
 	res.Subject = pr.Subject
 	res.FileNotes = pr.FileNotes
-	usageMu.Lock()
-	res.Tokens = max(pr.Usage.Reported(), best)
-	res.Thinking = max(max(pr.Usage.Thinking, 0), bestThink)
-	usageMu.Unlock()
+	res.Tokens = max(pr.Usage.Reported(), tokens)
+	res.Thinking = max(max(pr.Usage.Thinking, 0), thinking)
 
 	if wt == nil {
 		r.repo.Invalidate()
@@ -1152,6 +1123,91 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	return res
 }
 
+// skipped reports a review that never launched: a name the set does not
+// carry, or a prompt that would not read. The fingerprint is empty, since no
+// body was ever fingerprinted.
+func (r *Runner) skipped(res Result, loopNo int, lane, detail string) Result {
+	res.Status = StatusSkipped
+	res.Detail = detail
+	r.publishReviewEnd(res, loopNo, "", lane, 1)
+	return res
+}
+
+// usageWatch tracks one review's live token usage from the two independent
+// sources the runner has: what the agent prints, and what it writes to its own
+// session transcript. Whichever reports more is the truth, and an agent that
+// does neither reports nothing at all.
+//
+// The transcript watcher lives exactly as long as the agent does. Its context
+// is derived from the review's, so an interrupt stops it too, and settle joins
+// it before review_end: the lane key is the agent, not the review, so a tick
+// published after this review has ended would be attributed to whatever that
+// agent starts next.
+type usageWatch struct {
+	publish func(tokens, thinking int)
+
+	reader transcriptReader
+	stop   context.CancelFunc
+	done   sync.WaitGroup
+
+	mu        sync.Mutex
+	best      int
+	bestThink int
+}
+
+// watchUsage starts following spec's transcript, which only counts what it
+// writes from since onward.
+func (r *Runner) watchUsage(ctx context.Context, spec agent.Spec, dir, review string,
+	loopNo int, since time.Time) *usageWatch {
+
+	w := &usageWatch{
+		publish: func(tokens, thinking int) {
+			r.bus.Publish(Event{
+				Kind: EvUsage, Dir: r.cfg.Dir, Review: review,
+				Agent: spec.Label(), Loop: loopNo, Tokens: tokens, Thinking: thinking,
+			})
+		},
+		reader: openTranscript(spec.Tool, dir, since),
+	}
+	watchCtx, cancel := context.WithCancel(ctx)
+	w.stop = cancel
+	w.done.Go(func() { w.reader.Run(watchCtx, w.report) })
+	return w
+}
+
+// report records a reading and publishes it only when it grew, so a repeated
+// tick does not republish the same counts.
+func (w *usageWatch) report(tokens, thinking int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if tokens <= w.best && thinking <= w.bestThink {
+		return
+	}
+	w.best = max(w.best, tokens)
+	w.bestThink = max(w.bestThink, thinking)
+	w.publish(w.best, w.bestThink)
+}
+
+// settle ends the watcher and returns the highest counts either source saw.
+// The agent's last records are written as it exits, so the final read happens
+// here rather than on a tick that already passed.
+func (w *usageWatch) settle() (tokens, thinking int) {
+	w.halt()
+	if out, think := w.reader.Final(); out > 0 || think > 0 {
+		w.report(out, think)
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.best, w.bestThink
+}
+
+// halt stops the watcher and waits for it. It is safe to call twice, so a
+// review that returns early still joins the goroutine it started.
+func (w *usageWatch) halt() {
+	w.stop()
+	w.done.Wait()
+}
+
 // publishReviewEnd puts one review's outcome on the bus. Every path that
 // decides a status uses it, including a skip that never launched, so the
 // journal and the dashboard cannot disagree with the stats.
@@ -1176,6 +1232,11 @@ var (
 	retryBaseDelay = 5 * time.Second
 	retryMaxDelay  = 2 * time.Minute
 )
+
+// maxBackoffDoublings is the largest attempt that can be shifted rather than
+// taken as the cap: past it, base<<attempt leaves a time.Duration's range and
+// the cap is the honest answer.
+const maxBackoffDoublings = 32
 
 // retry reruns a review after a launch failure or a nonzero exit: first on the
 // same agent, backing off between tries, then on a different one. Timeouts are
@@ -1270,7 +1331,7 @@ func (r *Runner) backoff(review string, attempt int) time.Duration {
 	d := retryMaxDelay
 	if attempt <= 0 {
 		d = base
-	} else if attempt < 32 {
+	} else if attempt < maxBackoffDoublings {
 		if grown := base << attempt; grown > 0 && grown < retryMaxDelay {
 			d = grown
 		}

@@ -160,9 +160,11 @@ type picker struct {
 	folds        map[string][2]string
 }
 
-// optSuggestAgent is the index of the run-pane row that names the agent for
-// the suggest step, so the reviews pane can point the cursor at it.
-const optSuggestAgent = 1
+// The indexes of the run-pane rows that the other panes reach into.
+const (
+	optConcurrency  = 0
+	optSuggestAgent = 1
+)
 
 func newPicker(cfg PickConfig) *picker {
 	if cfg.CPUs < 1 {
@@ -391,8 +393,10 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 		if p.filter != "" {
 			p.filter = trimLastCluster(p.filter)
 		}
-	case "up", "down":
-		p.move(map[string]int{"up": -1, "down": +1}[key])
+	case "up":
+		p.move(-1)
+	case "down":
+		p.move(+1)
 	case "pgup", "pageup":
 		p.pageMove(-1)
 	case "pgdown", "pagedown":
@@ -444,27 +448,23 @@ func trimLastWord(s string) string {
 // flag arrives as several code points and must leave as one, or deleting a
 // decomposed é would first peel the accent off and leave the letter behind.
 func trimLastCluster(s string) string {
-	cut := 0
 	rest := s
 	for len(rest) > 0 {
 		var cluster string
 		cluster, rest, _, _ = uniseg.FirstGraphemeClusterInString(rest, -1)
 		if len(rest) == 0 {
-			cut = len(s) - len(cluster)
+			return s[:len(s)-len(cluster)]
 		}
 	}
-	return s[:cut]
+	return s
 }
 
 // concurrency is the run pane's job-count row, which +/- reach from any pane:
 // it is the choice with a cost attached, so it should never need hunting for.
+// It is the first row, and the only one of its kind, so the row is named by
+// its position rather than found by scanning.
 func (p *picker) concurrency() *option {
-	for i := range p.opts {
-		if p.opts[i].kind == optCount {
-			return &p.opts[i]
-		}
-	}
-	return &option{}
+	return &p.opts[optConcurrency]
 }
 
 // paneLen is how many rows the given pane has, for cursor bounds.
@@ -576,19 +576,8 @@ func (p *picker) toggle() {
 		case rowReview:
 			p.selected[r.review.Name] = !p.selected[r.review.Name]
 		case rowGroup:
-			// A header fills its visible members, and empties them when they
-			// are already full. A filter hides the rest, so those stay put.
-			matches := p.matching(p.cfg.Groups[r.group])
-			want := false
-			for _, rev := range matches {
-				if !p.selected[rev.Name] {
-					want = true
-					break
-				}
-			}
-			for _, rev := range matches {
-				p.selected[rev.Name] = want
-			}
+			// A filter hides the rest, so those stay put.
+			p.fill(p.matching(p.cfg.Groups[r.group]))
 			p.open[r.group] = true
 		}
 	case paneAgents:
@@ -616,22 +605,27 @@ func (p *picker) toggle() {
 	}
 }
 
+// fill takes a set of reviews when they are not all chosen, and empties them
+// when they already are.
+func (p *picker) fill(revs []PickReview) {
+	take := true
+	for _, rev := range revs {
+		if p.selected[rev.Name] {
+			take = false
+			break
+		}
+	}
+	for _, rev := range revs {
+		p.selected[rev.Name] = take
+	}
+}
+
 // toggleAll clears the focused pane, or fills it when it is already empty.
 // A filter bounds the reviews pane: hidden rows are not selected by accident.
 func (p *picker) toggleAll() {
 	switch p.focus {
 	case paneReviews:
-		revs := p.visibleReviews()
-		want := true
-		for _, rev := range revs {
-			if p.selected[rev.Name] {
-				want = false
-				break
-			}
-		}
-		for _, rev := range revs {
-			p.selected[rev.Name] = want
-		}
+		p.fill(p.visibleReviews())
 	case paneAgents:
 		want := !slices.Contains(p.agents, true)
 		for i := range p.agents {
@@ -1081,6 +1075,9 @@ func (p *picker) renderStatus() string {
 	return clip(styleDim.Render(p.hint()), p.w)
 }
 
+// keyHint is one key and what it does, as the key line shows it.
+type keyHint struct{ k, v string }
+
 // renderKeys names the keys, most important first, and drops from the right
 // end when the terminal is narrow: a keyboard user who cannot find how to
 // move between rows or leave is stranded, so those come before niceties like
@@ -1093,24 +1090,20 @@ func (p *picker) renderKeys() string {
 	case paneAgents:
 		arrowAction = "pane"
 	}
-	keys := []struct{ k, v string }{
+	keys := []keyHint{
 		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
 		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
 		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
 	}
-	if p.typing {
+	switch {
+	case p.typing:
 		// q types into the filter rather than leaving, and enter keeps the
 		// filter rather than launching. Advertising the pane keys here is
 		// how a reader thinks they cancelled a run they only searched.
-		keys = []struct{ k, v string }{
-			{"⏎", "keep"}, {"esc", "clear"}, {"↑↓", "move"},
-		}
-	} else if p.filter != "" {
-		keys = []struct{ k, v string }{
-			{"⏎", "run"}, {"q", "cancel"}, {"esc", "clear"}, {"j/k", "move"},
-			{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
-			{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
-		}
+		keys = []keyHint{{"⏎", "keep"}, {"esc", "clear"}, {"↑↓", "move"}}
+	case p.filter != "":
+		// A live filter keeps the run keys and adds the one that clears it.
+		keys = slices.Insert(slices.Clone(keys), 2, keyHint{"esc", "clear"})
 	}
 	var b strings.Builder
 	for _, k := range keys {

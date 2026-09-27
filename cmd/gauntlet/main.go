@@ -123,28 +123,11 @@ func run(argv []string) int {
 
 	// --log tees every stream this process writes. Native multi-writer, not a
 	// tee subprocess: one less dependency and no broken-pipe failure mode.
-	//
-	// 0600, like the journal: the file captures agent output, and reviews
-	// quote what they find in the target tree, credentials included. On a
-	// multi-user host that must not land world-readable. The 0600 in the
-	// open call applies only at creation, so a pre-existing file that a
-	// looser umask or an older run left group- or world-readable gets its
-	// permissions tightened before this run writes anything.
 	var logWriter io.Writer
 	if opts.logFile != "" {
-		if fi, err := os.Lstat(opts.logFile); err == nil {
-			if fi.Mode()&os.ModeSymlink != 0 {
-				fmt.Fprintf(os.Stderr, "cannot write log file %s: is a symlink\n", opts.logFile)
-				return exitUsage
-			}
-			if !fi.Mode().IsRegular() {
-				fmt.Fprintf(os.Stderr, "cannot write log file %s: not a regular file\n", opts.logFile)
-				return exitUsage
-			}
-		}
-		f, err := os.OpenFile(opts.logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND|syscall.O_NOFOLLOW, 0o600)
+		f, err := openLogFile(opts.logFile)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write log file %s: %v\n", opts.logFile, err)
+			fmt.Fprintln(os.Stderr, err)
 			return exitUsage
 		}
 		defer func() {
@@ -152,12 +135,6 @@ func run(argv []string) int {
 				fmt.Fprintf(os.Stderr, "Warning: closing log file %s: %v\n", opts.logFile, err)
 			}
 		}()
-		if info, err := f.Stat(); err == nil && info.Mode().IsRegular() {
-			if err := f.Chmod(0o600); err != nil {
-				fmt.Fprintf(os.Stderr, "cannot secure log file %s: %v\n", opts.logFile, err)
-				return exitUsage
-			}
-		}
 		logWriter = f
 		stdout = io.MultiWriter(os.Stdout, f)
 		pal.on = false // escape codes would land in the file too
@@ -236,18 +213,9 @@ func run(argv []string) int {
 				"or name an agent explicitly with --agents.\n", strings.Join(agent.Valid, ", "))
 			return exitUsage
 		}
-		for _, spec := range agents {
-			if opts.bin[spec.Tool] != "" {
-				continue
-			}
-			if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
-				continue // BuildCmd falls back to bunx @deepseek-ai/dsh
-			}
-			bin := agent.Binary(spec.Tool)
-			if agent.Resolve(bin) == "" {
-				fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", bin)
-				return exitUsage
-			}
+		if missing := missingAgentTool(agents, opts.bin); missing != "" {
+			fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", missing)
+			return exitUsage
 		}
 	}
 
@@ -363,13 +331,13 @@ func run(argv []string) int {
 		d.set = set
 	}
 
-	// Informational modes print prompts or schedules, then exit.
+	// Informational modes print prompts or schedules, then exit. A review
+	// found in a later directory is the one asked for: the first directory to
+	// carry the name decides, and a name no set has reports the miss against
+	// the first one.
 	if opts.showPrompt != "" {
 		for _, d := range runs {
-			if _, ok := d.set.Get(opts.showPrompt); ok {
-				return cmdShowPrompt(stdout, d.set, opts)
-			}
-			if _, ok := d.set.Get(opts.showPrompt + "-review"); ok {
+			if setHasReview(d.set, opts.showPrompt) {
 				return cmdShowPrompt(stdout, d.set, opts)
 			}
 		}
@@ -559,19 +527,18 @@ func run(argv []string) int {
 			r, err = runner.New(ctx, cfg, bus)
 		}
 		if err != nil {
+			code := exitUsage
 			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				bus.Close()
-				consumers.Wait()
-				jrnl.CloseQuiet()
-				return 128 + int(syscall.SIGINT)
+				code = 128 + int(syscall.SIGINT)
+			} else {
+				fmt.Fprintln(os.Stderr, err)
 			}
-			fmt.Fprintln(os.Stderr, err)
 			bus.Close()
 			consumers.Wait()
 			// The run never started, so it gets no index row; the quiet close
 			// still flushes whatever New logged before it failed.
 			jrnl.CloseQuiet()
-			return exitUsage
+			return code
 		}
 		d.r = r
 		d.stats = r.Stats()
@@ -664,6 +631,68 @@ func run(argv []string) int {
 	}
 	writeSummary(jrnl, origin, wall, dirs, agents, runs, code)
 	return code
+}
+
+// openLogFile opens the run's log for append, refusing anything but a regular
+// file the process then owns. The Lstat repeats what flag parsing already
+// checked, because the path was validated before the run did any work and the
+// file can have changed since; O_NOFOLLOW would refuse the last symlink
+// anyway, but with an errno rather than a sentence that names the file.
+//
+// 0600, like the journal: the file captures agent output, and reviews quote
+// what they find in the target tree, credentials included. The 0600 in the
+// open call applies only at creation, so a pre-existing file that a looser
+// umask or an older run left group- or world-readable gets its permissions
+// tightened here, before this run writes anything.
+func openLogFile(path string) (*os.File, error) {
+	if fi, err := os.Lstat(path); err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("cannot write log file %s: is a symlink", path)
+		}
+		if !fi.Mode().IsRegular() {
+			return nil, fmt.Errorf("cannot write log file %s: not a regular file", path)
+		}
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("cannot write log file %s: %w", path, err)
+	}
+	if info, err := f.Stat(); err == nil && info.Mode().IsRegular() {
+		if err := f.Chmod(0o600); err != nil {
+			f.Close()
+			return nil, fmt.Errorf("cannot secure log file %s: %w", path, err)
+		}
+	}
+	return f, nil
+}
+
+// missingAgentTool returns the binary a run needs and this machine does not
+// have, or "" when every one of them is launchable. dsh is exempt when bunx
+// can build it, because BuildCmd falls back to bunx @deepseek-ai/dsh.
+func missingAgentTool(agents []agent.Spec, bin map[string]string) string {
+	for _, spec := range agents {
+		if bin[spec.Tool] != "" {
+			continue
+		}
+		if spec.Tool == "dsh" && agent.Resolve("dsh") == "" && agent.Resolve("bunx") != "" {
+			continue
+		}
+		if b := agent.Binary(spec.Tool); agent.Resolve(b) == "" {
+			return b
+		}
+	}
+	return ""
+}
+
+// setHasReview reports whether a directory's set has the review --show-prompt
+// names, under the given name or its -review suffix: the same two lookups
+// cmdShowPrompt makes before it prints.
+func setHasReview(set prompt.Set, name string) bool {
+	if _, ok := set.Get(name); ok {
+		return true
+	}
+	_, ok := set.Get(name + "-review")
+	return ok
 }
 
 // stdinIsTerminal reports whether stdin is a real terminal. A character

@@ -59,8 +59,16 @@ const tickEvery = 100 * time.Millisecond
 // can be drawn and scrolled, not to what an agent printed.
 const feedMax = 2000
 
-// activitySamples is the width of the activity history ring.
-const activitySamples = 600
+// activitySamples is the width of the activity history ring, and
+// laneSamples the width of the per-lane one drawn in a lane's own row.
+const (
+	activitySamples = 600
+	laneSamples     = 120
+)
+
+// activityRateFull is the lines/s that reads as the top of the heat ramp on
+// the activity marker, so the color means the same thing every frame.
+const activityRateFull = 50
 
 // statusPending and statusRunning are the dashboard's own states: a review
 // the runner has not started, and one currently in flight. Everything past
@@ -78,7 +86,6 @@ type reviewState struct {
 	elapsed  time.Duration
 	tokens   int
 	ins, del int
-	flash    time.Time // set on change so the row can pulse
 }
 
 type laneState struct {
@@ -110,6 +117,8 @@ type laneState struct {
 // narrowed without pausing it or losing what it already collected.
 type feedFilter int
 
+// feedFilters is the number of states the f key cycles over, not a state of
+// its own: the feed toggles between everything and the signal in it.
 const (
 	feedAll     feedFilter = iota // everything the agents said
 	feedSignal                    // errors, results, and diffs
@@ -418,7 +427,7 @@ func (m *model) sampleActivity() {
 	m.activity = appendRing(m.activity, m.pendingRate/elapsed, activitySamples)
 	m.pendingRate = 0
 	for _, l := range m.lanes {
-		l.lines = appendRing(l.lines, l.pending/elapsed, 120)
+		l.lines = appendRing(l.lines, l.pending/elapsed, laneSamples)
 		l.pending = 0
 	}
 }
@@ -450,11 +459,12 @@ func (m *model) apply(ev runner.Event) {
 		}
 	case runner.EvReviewStart:
 		r := m.review(ev.Review)
-		r.status, r.agentLbl, r.start, r.flash = statusRunning, ev.Agent, ev.Time, ev.Time
+		r.status, r.agentLbl, r.start = statusRunning, ev.Agent, ev.Time
 		if l := m.lane(m.laneKey(ev)); l != nil {
 			l.review, l.start, l.attempt = ev.Review, ev.Time, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
 			l.lastAt, l.lastThinkAt = ev.Time, time.Time{}
+			m.liveRate = m.aggregateRate()
 		}
 
 	case runner.EvUsage:
@@ -464,26 +474,7 @@ func (m *model) apply(ev runner.Event) {
 				l.lastThinkAt = ev.Time
 			}
 			l.liveTokens = ev.Tokens
-			if !l.lastAt.IsZero() {
-				dt := ev.Time.Sub(l.lastAt).Seconds()
-				if dt >= 0.5 {
-					if d := ev.Tokens - l.lastTokens; d > 0 {
-						// Smooth just enough that the number is readable
-						// without hiding a real change.
-						rate := float64(d) / dt
-						if l.tokenRate == 0 {
-							l.tokenRate = rate
-						} else {
-							l.tokenRate = 0.6*l.tokenRate + 0.4*rate
-						}
-					}
-					l.lastTokens, l.lastAt = ev.Tokens, ev.Time
-				} else if dt < 0 {
-					l.lastTokens, l.lastAt = ev.Tokens, ev.Time
-				}
-			} else {
-				l.lastTokens, l.lastAt = ev.Tokens, ev.Time
-			}
+			l.sampleRate(ev.Tokens, ev.Time)
 			m.liveRate = m.aggregateRate()
 		}
 	case runner.EvReviewEnd:
@@ -495,7 +486,6 @@ func (m *model) apply(ev runner.Event) {
 			r.elapsed = time.Duration(ev.Elapsed * float64(time.Second))
 		}
 		r.tokens = ev.Tokens
-		r.flash = ev.Time
 		if ev.Ins != nil && ev.Del != nil {
 			r.ins, r.del = *ev.Ins, *ev.Del
 		}
@@ -512,6 +502,7 @@ func (m *model) apply(ev runner.Event) {
 			if ev.Status.Failed() {
 				l.failed++
 			}
+			m.liveRate = m.aggregateRate()
 		}
 	case runner.EvMerge, runner.EvPullRequest:
 		if ev.Kind == runner.EvMerge && ev.Status == runner.StatusConflict {
@@ -539,6 +530,35 @@ func (m *model) apply(ev runner.Event) {
 			review: ev.Review, repeat: ev.Repeat,
 		})
 	}
+}
+
+// rateWindow is the shortest gap between two usage reports that can produce a
+// rate. Shorter than that is the same burst of tokens, not a new one.
+const rateWindow = 500 * time.Millisecond
+
+// sampleRate folds one usage report into the lane's measured throughput. The
+// first report, and any report whose clock runs backwards, only moves the
+// baseline: there is nothing to measure a rate against.
+func (l *laneState) sampleRate(tokens int, at time.Time) {
+	if l.lastAt.IsZero() || at.Before(l.lastAt) {
+		l.lastTokens, l.lastAt = tokens, at
+		return
+	}
+	dt := at.Sub(l.lastAt).Seconds()
+	if dt < rateWindow.Seconds() {
+		return
+	}
+	if d := tokens - l.lastTokens; d > 0 {
+		// Smooth just enough that the number is readable without hiding a
+		// real change.
+		rate := float64(d) / dt
+		if l.tokenRate == 0 {
+			l.tokenRate = rate
+		} else {
+			l.tokenRate = 0.6*l.tokenRate + 0.4*rate
+		}
+	}
+	l.lastTokens, l.lastAt = tokens, at
 }
 
 // aggregateRate sums the measured throughput of every lane that reports it.
@@ -827,7 +847,7 @@ func (m *model) activityTitle() string {
 	// the unlit track tone.
 	var fg lipgloss.TerminalColor = cDim
 	if cur > 0 {
-		fg = heatColor(clamp01(cur / 50))
+		fg = heatColor(clamp01(cur / activityRateFull))
 		if fg == cTrack {
 			fg = cTeal
 		}

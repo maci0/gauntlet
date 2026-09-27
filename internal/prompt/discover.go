@@ -17,6 +17,11 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 )
 
+// reviewFileSuffix is what makes a markdown file a prompt. Discovery matches
+// it three ways (the --prompt-dir listing, the tree walk, the git pathspec),
+// and they have to agree or a prompt is found by one and missed by another.
+const reviewFileSuffix = "-review.md"
+
 // skipDirs are never walked when looking for project prompts: build output,
 // dependency trees, and tool caches only ever hold copies.
 var skipDirs = map[string]bool{
@@ -45,41 +50,67 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 	byName := map[string]Review{}
 	var warnings []string
 
-	if promptDir == "" {
+	if promptDir != "" {
+		dir, dirWarnings, err := promptsFromDir(promptDir)
+		if err != nil {
+			return Set{}, dirWarnings, err
+		}
+		byName, warnings = dir, dirWarnings
+	} else {
 		for _, name := range BundledNames() {
 			byName[name] = Review{Name: name, Origin: Bundled}
-		}
-	} else {
-		entries, err := os.ReadDir(promptDir)
-		if err != nil {
-			return Set{}, nil, err
-		}
-		for _, e := range entries {
-			name := e.Name()
-			if !strings.HasSuffix(name, "-review.md") {
-				continue
-			}
-			full := filepath.Join(promptDir, name)
-			fi, err := os.Lstat(full)
-			// A symlink would fail every run at read time; skip it here.
-			if err != nil || !fi.Mode().IsRegular() {
-				continue
-			}
-			stem := nfc(strings.TrimSuffix(name, ".md"))
-			if sanitize(stem) != stem {
-				warnings = append(warnings, "ignoring prompt with control characters in its name: "+sanitize(full))
-				continue
-			}
-			byName[stem] = Review{Name: stem, Path: full, Origin: Dir}
-		}
-		if len(byName) == 0 {
-			return Set{}, warnings, fmt.Errorf("no *-review.md files found in: %s", promptDir)
 		}
 	}
 
 	candidates := walkProject(ctx, projectRoot, promptDir)
 	ignored := gitx.Open(projectRoot).CheckIgnore(ctx, candidates)
+	warnings = append(warnings, addProjectPrompts(byName, candidates, ignored)...)
 
+	names := make([]string, 0, len(byName))
+	for n := range byName {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return Set{Names: names, byName: byName}, warnings, nil
+}
+
+// promptsFromDir reads an explicit --prompt-dir into a fresh set. It fails
+// when the directory holds no prompt at all: a typo there must not silently
+// fall back to the bundled set.
+func promptsFromDir(promptDir string) (map[string]Review, []string, error) {
+	entries, err := os.ReadDir(promptDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	byName := map[string]Review{}
+	var warnings []string
+	for _, e := range entries {
+		name := e.Name()
+		if !strings.HasSuffix(name, reviewFileSuffix) {
+			continue
+		}
+		full := filepath.Join(promptDir, name)
+		if !isRegularFile(full) {
+			continue
+		}
+		stem := nfc(strings.TrimSuffix(name, ".md"))
+		if sanitize(stem) != stem {
+			warnings = append(warnings, "ignoring prompt with control characters in its name: "+sanitize(full))
+			continue
+		}
+		byName[stem] = Review{Name: stem, Path: full, Origin: Dir}
+	}
+	if len(byName) == 0 {
+		return nil, warnings, fmt.Errorf("no *%s files found in: %s", reviewFileSuffix, promptDir)
+	}
+	return byName, warnings, nil
+}
+
+// addProjectPrompts folds the tree's own prompts into byName, in the order
+// candidates came back, and reports what it did. A stem already claimed by an
+// earlier candidate is left alone, so the first copy in the walk wins.
+func addProjectPrompts(byName map[string]Review, candidates []string, ignored map[string]bool) []string {
+	var warnings []string
 	seen := map[string]string{} // name -> winning path
 	for _, path := range candidates {
 		if ignored[path] {
@@ -110,13 +141,15 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 		seen[stem] = path
 		byName[stem] = Review{Name: stem, Path: path, Origin: Project}
 	}
+	return warnings
+}
 
-	names := make([]string, 0, len(byName))
-	for n := range byName {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	return Set{Names: names, byName: byName}, warnings, nil
+// isRegularFile reports whether path is a regular file. Lstat, not Stat: a
+// symlink is never a prompt, and following one here is how out-of-tree content
+// would reach a permission-bypassed run.
+func isRegularFile(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.Mode().IsRegular()
 }
 
 // walkProject lists *-review.md files in the tree, skipping hidden and
@@ -164,14 +197,13 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 			}
 			return nil
 		}
-		if !strings.HasSuffix(d.Name(), "-review.md") {
+		if !strings.HasSuffix(d.Name(), reviewFileSuffix) {
 			return nil
 		}
-		// Lstat, not the DirEntry type alone: FIFOs and devices are not
-		// prompts, and readNoFollow enforces this again at open time, where
-		// it is not racy.
-		fi, e := os.Lstat(path)
-		if e != nil || !fi.Mode().IsRegular() {
+		// The DirEntry type alone does not settle it: FIFOs and devices are
+		// not prompts, and readNoFollow enforces this again at open time,
+		// where it is not racy.
+		if !isRegularFile(path) {
 			return nil
 		}
 		found = append(found, path)
@@ -186,7 +218,7 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 // miss: walking would only find ignored or generated-directory files, both
 // of which discovery already drops.
 func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath func(string) string) ([]string, bool) {
-	rels, err := gitx.Open(root).ListFilesMatching(ctx, "*-review.md")
+	rels, err := gitx.Open(root).ListFilesMatching(ctx, "*"+reviewFileSuffix)
 	if err != nil {
 		return nil, false
 	}
@@ -198,13 +230,14 @@ func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath f
 		}
 		path := filepath.Join(root, filepath.FromSlash(rel))
 		if absPromptDir != "" {
+			// The listing is per file, so a prompt inside promptDir has to
+			// be cut on the prefix; the walk cuts the directory instead.
 			abs := abspath(path)
 			if abs == absPromptDir || strings.HasPrefix(abs, absPromptDir+sep) {
 				continue
 			}
 		}
-		fi, e := os.Lstat(path)
-		if e != nil || !fi.Mode().IsRegular() {
+		if !isRegularFile(path) {
 			continue
 		}
 		found = append(found, path)

@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -247,7 +248,7 @@ func (r *Repo) extraSafeConfig() []string {
 func (r *Repo) buildExtraSafe() []string {
 	var extra []string
 	out, err := r.execGit(context.Background(), bytes.NewReader(nil), gitQuick,
-		append(append([]string{}, safeConfig...), "hash-object", "-t", "tree", "--stdin")...)
+		staticArgv("hash-object", "-t", "tree", "--stdin")...)
 	if err == nil {
 		if oid := strings.TrimSpace(string(out)); isHex(oid) {
 			// attr.tree=empty disables in-tree .gitattributes: smudge filters
@@ -258,14 +259,17 @@ func (r *Repo) buildExtraSafe() []string {
 		}
 	}
 	list, err := r.execGit(context.Background(), nil, gitQuick,
-		append(append([]string{}, safeConfig...), "config", "--local", "--list")...)
+		staticArgv("config", "--local", "--list")...)
 	if err == nil {
 		extra = append(extra, disableLocalDrivers(string(list))...)
 	}
-	if extra == nil {
-		return []string{}
-	}
 	return extra
+}
+
+// staticArgv is the static safeConfig followed by args, on a fresh slice so a
+// caller cannot append into safeConfig's own array.
+func staticArgv(args ...string) []string {
+	return append(slices.Clone(safeConfig), args...)
 }
 
 // disableLocalDrivers blanks every local config key that names a program git
@@ -373,24 +377,10 @@ var gitOutputMax = 32 << 20
 // helpers (ssh, a credential helper, diffie) inherit this, so a planted ./ssh
 // cannot run.
 func gitEnv() []string {
-	out := runx.AbsPATHEnv()
-	v, set := os.LookupEnv("GIT_SSH_COMMAND")
-	if !set {
-		out = append(out, "GIT_SSH_COMMAND=ssh")
-	} else if strings.TrimSpace(v) == "" {
-		replaced := false
-		for i, kv := range out {
-			if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
-				out[i] = "GIT_SSH_COMMAND=ssh"
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			out = append(out, "GIT_SSH_COMMAND=ssh")
-		}
+	if strings.TrimSpace(os.Getenv("GIT_SSH_COMMAND")) != "" {
+		return runx.AbsPATHEnv()
 	}
-	return out
+	return overlayEnv(runx.AbsPATHEnv(), []string{"GIT_SSH_COMMAND=ssh"})
 }
 
 // mergeGitEnv overlays extra KEY=value pairs on gitEnv, replacing any
@@ -398,7 +388,15 @@ func gitEnv() []string {
 // git at a private index without touching the real one; getenv returns the
 // first match, so appending would not win over a caller-exported value.
 func mergeGitEnv(extra []string) []string {
-	env := gitEnv()
+	if len(extra) == 0 {
+		return gitEnv()
+	}
+	return overlayEnv(gitEnv(), extra)
+}
+
+// overlayEnv returns env with every entry for a key in extra replaced by
+// extra's own value, appended where env carries none.
+func overlayEnv(env, extra []string) []string {
 	if len(extra) == 0 {
 		return env
 	}
@@ -477,6 +475,9 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// The >= 0 half matters: a clock stepped backwards leaves lastAt in the
+	// future, and a sample from a future cache entry would report a tree the
+	// reviews have not produced yet.
 	if r.haveLast {
 		if since := r.now().Sub(r.lastAt); since >= 0 && since < minSampleInterval {
 			return r.lastVal, true
@@ -502,20 +503,14 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 
 	st := parseShortstat(diff)
-	skipArtifacts := len(ownArtifacts) > 0
 	var live []string
 	for name := range bytes.SplitSeq(untracked, nulByte) {
 		if len(name) == 0 {
 			continue
 		}
 		p := filepath.Join(r.Dir, string(name))
-		if skipArtifacts {
-			if ownArtifacts[p] {
-				continue
-			}
-			if real, err := filepath.EvalSymlinks(p); err == nil && ownArtifacts[real] {
-				continue
-			}
+		if isOwnArtifact(ownArtifacts, p) {
+			continue
 		}
 		live = append(live, p)
 	}
@@ -721,18 +716,26 @@ func (r *Repo) statusPorcelain(ctx context.Context, ownArtifacts map[string]bool
 		if p == "" {
 			continue
 		}
-		if len(ownArtifacts) > 0 {
-			full := filepath.Join(r.Dir, p)
-			if ownArtifacts[full] {
-				continue
-			}
-			if real, err := filepath.EvalSymlinks(full); err == nil && ownArtifacts[real] {
-				continue
-			}
+		if isOwnArtifact(ownArtifacts, filepath.Join(r.Dir, p)) {
+			continue
 		}
 		visit(line, p)
 	}
 	return nil
+}
+
+// isOwnArtifact reports whether p is one of the run's own artifacts. The real
+// path is consulted too, so a symlink pointing into the run's own tree is
+// recognized as well as a plain match. An empty set owns nothing.
+func isOwnArtifact(ownArtifacts map[string]bool, p string) bool {
+	if len(ownArtifacts) == 0 {
+		return false
+	}
+	if ownArtifacts[p] {
+		return true
+	}
+	real, err := filepath.EvalSymlinks(p)
+	return err == nil && ownArtifacts[real]
 }
 
 // Status reports the working tree's changes, excluding the runner's own

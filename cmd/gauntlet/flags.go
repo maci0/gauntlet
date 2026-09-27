@@ -126,11 +126,7 @@ type listFlag []string
 
 func (l *listFlag) String() string { return strings.Join(*l, ",") }
 func (l *listFlag) Set(v string) error {
-	for part := range strings.SplitSeq(v, ",") {
-		if p := strings.TrimSpace(part); p != "" {
-			*l = append(*l, p)
-		}
-	}
+	*l = append(*l, splitNames(v)...)
 	return nil
 }
 
@@ -199,7 +195,21 @@ const (
 	defaultRetries = 2
 	// defaultRunsLimit is how many past runs `gauntlet runs` prints.
 	defaultRunsLimit = 20
+	// maxUsageLimit is the top of the percentage range --usage-limit accepts;
+	// above 100 the provider's window is already past.
+	maxUsageLimit = 100
+	// minTerminalWidth is the narrowest terminal the help screen is laid out
+	// for; narrower than that, and the default below, is the assumed width.
+	minTerminalWidth = 60
+	// defaultTerminalWidth stands in when the real width is unknown.
+	defaultTerminalWidth = 100
 )
+
+// errUsageCmdBlank is returned for both ways --usage-cmd can come out empty:
+// a blank value, and a value that is all whitespace and so splits into no
+// argv at all.
+var errUsageCmdBlank = errors.New("--usage-cmd is blank: it is split on whitespace " +
+	"and executed directly, so it needs a command to run")
 
 func parseFlags(argv []string) (*options, error) {
 	o := &options{
@@ -320,7 +330,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		fs.Var(durationFlag{d: &o.timeout}, n,
 			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
 	})
-	fs.Var(durationFlag{&o.runtime, true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
+	fs.Var(durationFlag{d: &o.runtime, allowZero: true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
 	fs.StringVar(&o.usageCmd, "usage-cmd", "",
 		"command printing the percentage of the provider's usage window already spent, for --usage-limit")
 	fs.Float64Var(&o.usageLimit, "usage-limit", 0,
@@ -381,6 +391,100 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	return fs, raw
 }
 
+// configureAgents loads the agent definitions for a run: the user's file
+// first, then the --agent-cmd definitions on the command line, which win.
+func configureAgents(o *options, fs *flag.FlagSet, agentCmds listFlag) error {
+	// A file of definitions first, then the command line, which wins.
+	if path := agent.CustomFilePath(); path != "" {
+		if err := agent.LoadCustomFile(path); err != nil {
+			return err
+		}
+	}
+	// A repeated --agent-cmd with a different definition is a typo, not a
+	// choice: the last one would silently win, which is how --bin came to
+	// refuse its own duplicates. The file loaded above is still overridden on
+	// purpose (the command line wins for its run), so this counts only what
+	// the command line itself said. Checking every entry before registering
+	// any also keeps a bad list from half-defining agents.
+	type namedDef struct {
+		raw  string
+		def  agent.Custom
+		name string
+	}
+	if isFlagSet(fs, "agent-cmd") && len(agentCmds) == 0 {
+		return errors.New("--agent-cmd is empty: want NAME=ARGV")
+	}
+	defs := make([]namedDef, 0, len(agentCmds))
+	cmdDefs := map[string]string{}
+	for _, c := range agentCmds {
+		name, def, err := agent.ParseAgentCmd(c)
+		if err != nil {
+			return fmt.Errorf("--agent-cmd %s: %w", c, err)
+		}
+		if prev, dup := cmdDefs[name]; dup && prev != c {
+			return fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
+		}
+		cmdDefs[name] = c
+		defs = append(defs, namedDef{raw: c, def: def, name: name})
+	}
+	for _, d := range defs {
+		if err := agent.Register(d.name, d.def); err != nil {
+			return fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
+		}
+	}
+	if o.openCodeDB && !enableOpenCodeDB() {
+		return errors.New("--opencode-db needs a build with -tags sqlite")
+	}
+	// A definition may say where its agent keeps transcripts, which is what
+	// gives a non-built-in agent live token counts.
+	for _, name := range agent.CustomNames() {
+		def, ok := agent.CustomDef(name)
+		if !ok || def.Usage == nil {
+			continue
+		}
+		if err := registerTranscript(name, def.Usage); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveUsage checks the --usage-cmd/--usage-limit pair and splits the
+// command into the argv the probe runs.
+func resolveUsage(o *options, fs *flag.FlagSet) error {
+	if isFlagSet(fs, "usage-cmd") && strings.TrimSpace(o.usageCmd) == "" {
+		return errUsageCmdBlank
+	}
+	// Either flag alone is a misconfiguration worth refusing rather than
+	// silently ignoring: a limit with no probe never trips, and a probe with
+	// no limit spawns a process per review to no effect.
+	if (o.usageCmd == "") != (o.usageLimit == 0) {
+		return errors.New("--usage-cmd and --usage-limit are used together, or not at all")
+	}
+	// ParseFloat accepts "NaN" and the infinities as valid floats. Every
+	// comparison against NaN is false, so the range check below cannot see
+	// it, and neither can the runner's `pct < limit`: a NaN limit reads as
+	// "at or past" on the first check and ends the run. The probe already
+	// rejects these; the flag has to as well.
+	if math.IsNaN(o.usageLimit) || math.IsInf(o.usageLimit, 0) ||
+		o.usageLimit < 0 || o.usageLimit > maxUsageLimit {
+		return fmt.Errorf("--usage-limit %g: want a percentage between 0 and %d", o.usageLimit, maxUsageLimit)
+	}
+	if o.usageCmd != "" {
+		// The command is split on whitespace and executed directly, so a
+		// value made only of whitespace splits into no argv at all. The
+		// pairing check above compares the raw string and cannot see that:
+		// `--usage-cmd " " --usage-limit 80` passed it and left the run with
+		// a limit that could never trip, because there was no probe to run,
+		// the exact half-configured state that check exists to refuse.
+		o.usageArgv = strings.Fields(o.usageCmd)
+		if len(o.usageArgv) == 0 {
+			return errUsageCmdBlank
+		}
+	}
+	return nil
+}
+
 // finishFlags turns parsed values into validated options.
 func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) {
 	reviews, exclude, agents := raw.reviews, raw.exclude, raw.agents
@@ -436,90 +540,13 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 
 	if o.usesAgents() {
-		// A file of definitions first, then the command line, which wins.
-		if path := agent.CustomFilePath(); path != "" {
-			if err := agent.LoadCustomFile(path); err != nil {
-				return nil, err
-			}
-		}
-		// A repeated --agent-cmd with a different definition is a typo, not a
-		// choice: the last one would silently win, which is how --bin came to
-		// refuse its own duplicates. The file loaded above is still overridden on
-		// purpose — the command line wins for its run — so this counts only what
-		// the command line itself said. Checking every entry before registering
-		// any also keeps a bad list from half-defining agents.
-		type namedDef struct {
-			raw  string
-			def  agent.Custom
-			name string
-		}
-		if isFlagSet(fs, "agent-cmd") && len(agentCmds) == 0 {
-			return nil, errors.New("--agent-cmd is empty: want NAME=ARGV")
-		}
-		defs := make([]namedDef, 0, len(agentCmds))
-		cmdDefs := map[string]string{}
-		for _, c := range agentCmds {
-			name, def, err := agent.ParseAgentCmd(c)
-			if err != nil {
-				return nil, fmt.Errorf("--agent-cmd %s: %w", c, err)
-			}
-			if prev, dup := cmdDefs[name]; dup && prev != c {
-				return nil, fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
-			}
-			cmdDefs[name] = c
-			defs = append(defs, namedDef{raw: c, def: def, name: name})
-		}
-		for _, d := range defs {
-			if err := agent.Register(d.name, d.def); err != nil {
-				return nil, fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
-			}
-		}
-		if o.openCodeDB && !enableOpenCodeDB() {
-			return nil, errors.New("--opencode-db needs a build with -tags sqlite")
-		}
-		// A definition may say where its agent keeps transcripts, which is what
-		// gives a non-built-in agent live token counts.
-		for _, name := range agent.CustomNames() {
-			def, ok := agent.CustomDef(name)
-			if !ok || def.Usage == nil {
-				continue
-			}
-			if err := registerTranscript(name, def.Usage); err != nil {
-				return nil, err
-			}
+		if err := configureAgents(o, fs, agentCmds); err != nil {
+			return nil, err
 		}
 	}
 
-	if isFlagSet(fs, "usage-cmd") && strings.TrimSpace(o.usageCmd) == "" {
-		return nil, errors.New("--usage-cmd is blank: it is split on whitespace " +
-			"and executed directly, so it needs a command to run")
-	}
-	// Either flag alone is a misconfiguration worth refusing rather than
-	// silently ignoring: a limit with no probe never trips, and a probe with
-	// no limit spawns a process per review to no effect.
-	if (o.usageCmd == "") != (o.usageLimit == 0) {
-		return nil, errors.New("--usage-cmd and --usage-limit are used together, or not at all")
-	}
-	// ParseFloat accepts "NaN" and the infinities as valid floats. Every
-	// comparison against NaN is false, so the range check below cannot see
-	// it, and neither can the runner's `pct < limit`: a NaN limit reads as
-	// "at or past" on the first check and ends the run. The probe already
-	// rejects these; the flag has to as well.
-	if math.IsNaN(o.usageLimit) || math.IsInf(o.usageLimit, 0) || o.usageLimit < 0 || o.usageLimit > 100 {
-		return nil, fmt.Errorf("--usage-limit %g: want a percentage between 0 and 100", o.usageLimit)
-	}
-	if o.usageCmd != "" {
-		// The command is split on whitespace and executed directly, so a
-		// value made only of whitespace splits into no argv at all. The
-		// pairing check above compares the raw string and cannot see that:
-		// `--usage-cmd " " --usage-limit 80` passed it and left the run with
-		// a limit that could never trip, because there was no probe to run --
-		// the exact half-configured state that check exists to refuse.
-		o.usageArgv = strings.Fields(o.usageCmd)
-		if len(o.usageArgv) == 0 {
-			return nil, errors.New("--usage-cmd is blank: it is split on whitespace " +
-				"and executed directly, so it needs a command to run")
-		}
+	if err := resolveUsage(o, fs); err != nil {
+		return nil, err
 	}
 
 	if isFlagSet(fs, "bin") && len(bins) == 0 {
@@ -623,13 +650,11 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.continueSessions && (o.jobs > 1 || o.stackedPRs) {
 		return nil, errors.New("--continue-sessions cannot be used with --jobs > 1 or --stacked-prs: each review is a fresh worktree")
 	}
-	o.dir = strings.TrimSpace(o.dir)
-	if o.dir == "" {
-		return nil, errors.New("--dir is empty")
+	if err := trimFlag(fs, &o.dir, "dir", "C"); err != nil {
+		return nil, err
 	}
-	o.pushRemote = strings.TrimSpace(o.pushRemote)
-	if isFlagSet(fs, "push-remote") && o.pushRemote == "" {
-		return nil, errors.New("--push-remote is empty")
+	if err := trimFlag(fs, &o.pushRemote, "push-remote"); err != nil {
+		return nil, err
 	}
 	if isFlagSet(fs, "update-repo") && strings.TrimSpace(o.updateRepo) == "" {
 		return nil, errors.New("--update-repo is empty: want owner/repo")
@@ -642,23 +667,14 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if isFlagSet(fs, "dirs", "target-dirs") && len(dirs) == 0 {
 		return nil, errors.New("--dirs is empty")
 	}
-	if isFlagSet(fs, "merge-into") {
-		o.mergeInto = strings.TrimSpace(o.mergeInto)
-		if o.mergeInto == "" {
-			return nil, errors.New("--merge-into is empty")
-		}
+	if err := trimFlag(fs, &o.mergeInto, "merge-into"); err != nil {
+		return nil, err
 	}
-	if isFlagSet(fs, "pr-base") {
-		o.prBase = strings.TrimSpace(o.prBase)
-		if o.prBase == "" {
-			return nil, errors.New("--pr-base is empty")
-		}
+	if err := trimFlag(fs, &o.prBase, "pr-base"); err != nil {
+		return nil, err
 	}
-	if isFlagSet(fs, "show-prompt") {
-		o.showPrompt = strings.TrimSpace(o.showPrompt)
-		if o.showPrompt == "" {
-			return nil, errors.New("--show-prompt is empty")
-		}
+	if err := trimFlag(fs, &o.showPrompt, "show-prompt"); err != nil {
+		return nil, err
 	}
 	if o.stackedPRs {
 		if o.commit || o.push {
@@ -738,9 +754,8 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		o.commit, o.push = false, false
 	}
 	if isFlagSet(fs, "prompt-dir") {
-		o.promptDir = strings.TrimSpace(o.promptDir)
-		if o.promptDir == "" {
-			return nil, errors.New("--prompt-dir is empty")
+		if err := trimFlag(fs, &o.promptDir, "prompt-dir"); err != nil {
+			return nil, err
 		}
 		expanded, err := gauntlethome.ExpandPath(o.promptDir)
 		if err != nil {
@@ -855,21 +870,50 @@ func rejectStrayFlags(o *options, fs *flag.FlagSet, showVersion bool) error {
 	if stray == "" {
 		return nil
 	}
-	spell := func(name string) string {
-		if len(name) == 1 {
-			return "-" + name
-		}
-		return "--" + name
-	}
 	takes := make([]string, 0, len(allowed))
 	for _, n := range allowed {
-		takes = append(takes, spell(n))
+		takes = append(takes, spellFlag(n))
 	}
 	if len(takes) == 0 {
 		takes = append(takes, "no flags of its own")
 	}
 	return fmt.Errorf("%s does not apply to 'gauntlet %s', which takes %s",
-		spell(stray), o.command, strings.Join(takes, ", "))
+		spellFlag(stray), o.command, strings.Join(takes, ", "))
+}
+
+// spellFlag names a flag the way it is written on the command line.
+func spellFlag(name string) string {
+	if len(name) == 1 {
+		return "-" + name
+	}
+	return "--" + name
+}
+
+// trimFlag trims a string flag's value in place and refuses an explicitly
+// empty one, so `--dir " "` cannot pass as a directory. Every registered name
+// for the flag goes in names, shorthand included, since an explicit value is
+// what makes it a request rather than the default.
+func trimFlag(fs *flag.FlagSet, dst *string, names ...string) error {
+	v := strings.TrimSpace(*dst)
+	if v == "" {
+		if isFlagSet(fs, names...) {
+			return fmt.Errorf("%s is empty", spellFlag(names[0]))
+		}
+		return nil
+	}
+	*dst = v
+	return nil
+}
+
+// takesNextArg reports whether the flag called name consumes the following
+// argument as its value. An attached value (-j3, --log=FILE) owns nothing
+// after it, and so does a boolean.
+func takesNextArg(fs *flag.FlagSet, name string, attached bool) bool {
+	if attached {
+		return false
+	}
+	f := fs.Lookup(name)
+	return f != nil && !isBoolFlag(f)
 }
 
 func isFlagSet(fs *flag.FlagSet, names ...string) bool {
@@ -895,10 +939,10 @@ func splitNames(s string) []string {
 }
 
 func terminalWidth() int {
-	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w >= 60 {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w >= minTerminalWidth {
 		return w
 	}
-	return 100
+	return defaultTerminalWidth
 }
 
 // expandAttachedValues rewrites `-j3` into `-j 3`. The flag package takes only
@@ -927,7 +971,7 @@ func expandAttachedValues(fs *flag.FlagSet, argv []string) []string {
 		out = append(out, arg)
 		// A flag that takes a value owns the next argument, whatever it
 		// looks like: it is not the positional that ends the flags.
-		if f := fs.Lookup(name); f != nil && !isBoolFlag(f) && i+1 < len(argv) {
+		if takesNextArg(fs, name, false) && i+1 < len(argv) {
 			i++
 			out = append(out, argv[i])
 		}
@@ -965,10 +1009,8 @@ func peelSubcommand(argv []string) (cmd string, rest []string) {
 			break
 		}
 		i++
-		if !attached {
-			if f := dummy.Lookup(name); f != nil && !isBoolFlag(f) && i < len(argv) {
-				i++
-			}
+		if takesNextArg(dummy, name, attached) && i < len(argv) {
+			i++
 		}
 	}
 	if i < len(argv) && argv[i] != "" && !strings.HasPrefix(argv[i], "-") {
@@ -997,11 +1039,9 @@ func peelShowRun(fs *flag.FlagSet, argv []string) (id string, rest []string) {
 			rest = append(rest, a)
 			name := strings.TrimLeft(a, "-")
 			name, _, attached := strings.Cut(name, "=")
-			if !attached {
-				if f := fs.Lookup(name); f != nil && !isBoolFlag(f) && i+1 < len(argv) {
-					i++
-					rest = append(rest, argv[i])
-				}
+			if takesNextArg(fs, name, attached) && i+1 < len(argv) {
+				i++
+				rest = append(rest, argv[i])
 			}
 			continue
 		}
@@ -1059,9 +1099,5 @@ func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	if c == "" {
 		return err
 	}
-	spell := "--" + c
-	if len(c) == 1 {
-		spell = "-" + c
-	}
-	return fmt.Errorf("%s (did you mean %s?)", err, spell)
+	return fmt.Errorf("%s (did you mean %s?)", err, spellFlag(c))
 }
