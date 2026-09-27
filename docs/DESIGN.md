@@ -173,9 +173,9 @@ the unit of safe parallelism is **the directory**, not the agent.
 
 Concurrent agents in one working tree corrupt each other, so the runner does
 not allow it. Parallelism inside a directory is granted only with isolation:
-N persistent lane worktrees pull reviews from a shared queue. Each review
-still gets its own branch; the lane directory stays put so later reviews in
-that lane reuse the agent's prompt cache (see below).
+N persistent lane worktrees share one queue, split across the lanes up front.
+Each review still gets its own branch; the lane directory stays put so later
+reviews in that lane reuse the agent's prompt cache (see below).
 
 ```
 baseline commit
@@ -183,7 +183,7 @@ baseline commit
    ├── git worktree add  lane-1   .gauntlet/worktrees/…
    └── git worktree add  lane-2   .gauntlet/worktrees/…
          N agents run concurrently, each in a stable checkout
-         a lane that finishes a review pulls the next from the queue
+         scheduled review i runs in lane i%N, whichever lane is free
    ↓
    one commit per review (runner-authored, no AI attribution)
    ↓
@@ -201,9 +201,14 @@ Rules the runner enforces:
    commit first rather than only naming the error.
 2. **N persistent lane worktrees**, under `.gauntlet/worktrees/`, added to
    `.git/info/exclude` so the checkouts never appear as untracked files.
-   Reviews pull from a shared queue (first free lane takes the next). Each
-   review still gets its own branch; a lane that finishes one starts another
-   from the current tip.
+   The loop's schedule is split across the lanes when it is built: review `i`
+   of the schedule runs in lane `i%N`, so which lane a review lands in (and
+   therefore its branch name and worktree path) is a function of the seed
+   rather than of which lane's goroutine the OS scheduler woke first. Each
+   review still gets its own branch; a lane that finishes one starts the
+   next one assigned to it, from the current tip. A lane with one slow
+   review cannot take the tail of another lane's list, so the loop ends when
+   the slowest lane's last review does.
 3. **The runner commits, not the agent.** Agents remain forbidden to run git
    (unchanged containment). After a review, the runner stages and commits its
    worktree in one commit. Nothing to commit means nothing merged.
@@ -298,8 +303,8 @@ which sits after the cached system prefix and does not invalidate it.
 
 **Parallel mode (`--jobs N`) mitigates it with persistent lanes.** Instead of
 creating a throwaway worktree per review, parallel mode creates N stable lane
-worktrees at loop start (`lane-0/`, `lane-1/`, ...) and distributes reviews
-across them. Within a lane, reviews run sequentially in the same directory, so
+worktrees at loop start (`lane-0/`, `lane-1/`, ...) and splits the loop's
+schedule across them. Within a lane, reviews run sequentially in the same directory, so
 reviews 2..M in lane K all hit the cache that review 1 warmed. Across lanes,
 the N worktrees still have N distinct paths, so each lane pays one cold start.
 Cache cold starts scale with the lane count (N), not the review count.

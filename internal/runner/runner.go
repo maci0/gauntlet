@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -202,11 +203,11 @@ type Runner struct {
 	loopMu    sync.Mutex
 	loopCount int
 
-	// pending is what the current loop has not started yet. A soft stop hands
-	// it to the successor, so a reload never re-runs reviews that already ran
-	// in the interrupted loop.
+	// pending is what the current loop has not started yet, in scheduled
+	// order. A soft stop hands it to the successor, so a reload never re-runs
+	// reviews that already ran in the interrupted loop.
 	pendingMu sync.Mutex
-	pending   []string
+	pending   []queued
 	// resume is the queue handed over by a previous process; it replaces the
 	// first loop's schedule.
 	resume []string
@@ -407,7 +408,11 @@ func (r *Runner) RequestFinish() { r.finish.Store(true) }
 func (r *Runner) Pending() []string {
 	r.pendingMu.Lock()
 	defer r.pendingMu.Unlock()
-	return append([]string(nil), r.pending...)
+	out := make([]string, 0, len(r.pending))
+	for _, q := range r.pending {
+		out = append(out, q.review)
+	}
+	return out
 }
 
 // StackHead is the last published stacked layer (branch name and tip), or the
@@ -510,7 +515,15 @@ func (r *Runner) perLoop() int {
 	return len(r.cfg.Reviews)
 }
 
-// takeNext pops the next review from the pending queue.
+// queued is one unstarted review with the lane that will run it.
+type queued struct {
+	review string
+	lane   int
+}
+
+// takeNext pops the head of the pending queue, whichever lane it belongs to.
+// The single-actor loops (sequential, stacked) and the cancel drain run one
+// review at a time and own the whole queue.
 func (r *Runner) takeNext() (string, bool) {
 	r.pendingMu.Lock()
 	defer r.pendingMu.Unlock()
@@ -519,13 +532,43 @@ func (r *Runner) takeNext() (string, bool) {
 	}
 	next := r.pending[0]
 	r.pending = r.pending[1:]
-	return next, true
+	return next.review, true
 }
 
-// setPending records the not-yet-started reviews of the current loop.
-func (r *Runner) setPending(names []string) {
+// takeNextFor pops the first queued review assigned to lane. Lane assignment
+// is a pure function of the seeded schedule (see setPending), so a run's lane
+// order replays from its seed the way the schedule itself does, rather than
+// following which lane's goroutine the scheduler happened to wake.
+func (r *Runner) takeNextFor(lane int) (string, bool) {
 	r.pendingMu.Lock()
-	r.pending = append(r.pending[:0], names...)
+	defer r.pendingMu.Unlock()
+	for i, q := range r.pending {
+		if q.lane == lane {
+			r.pending = append(r.pending[:i], r.pending[i+1:]...)
+			return q.review, true
+		}
+	}
+	return "", false
+}
+
+// setPending records the not-yet-started reviews of the current loop, in
+// scheduled order, each tagged with the lane that will run it: position i
+// goes to lane i%Jobs. Splitting the queue up front rather than letting
+// whichever lane finishes first grab the next review is what makes a --jobs
+// run replayable from its seed, since the review's lane names its branch and
+// worktree. The cost is a lane with one slow review cannot steal the tail of
+// another lane's list, so the loop ends when the slowest lane's last review
+// does rather than when the last review anywhere does.
+func (r *Runner) setPending(names []string) {
+	jobs := r.cfg.Jobs
+	if jobs < 1 {
+		jobs = 1
+	}
+	r.pendingMu.Lock()
+	r.pending = slices.Grow(r.pending[:0], len(names))[:0]
+	for i, name := range names {
+		r.pending = append(r.pending, queued{review: name, lane: i % jobs})
+	}
 	r.pendingMu.Unlock()
 }
 
@@ -787,10 +830,11 @@ func (r *Runner) pushLanded(ctx context.Context, review string) {
 	r.log("Pushed %s", review)
 }
 
-// runLane pulls reviews from the shared queue and runs them sequentially in
-// one persistent worktree. The directory path stays constant across reviews,
-// so the agent's system prompt prefix is byte-identical and the provider's
-// prompt cache hits after the first review in this lane.
+// runLane takes the reviews the schedule assigned to this lane and runs them
+// sequentially in one persistent worktree. The directory path stays constant
+// across reviews, so the agent's system prompt prefix is byte-identical and
+// the provider's prompt cache hits after the first review in this lane. Which
+// reviews those are is fixed by the seed, not by the order the lanes finish.
 func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx int) {
 	for reviewIdx := 0; ; reviewIdx++ {
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
@@ -799,7 +843,7 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 		if r.budgetExhausted() != "" {
 			return
 		}
-		review, ok := r.takeNext()
+		review, ok := r.takeNextFor(laneIdx)
 		if !ok {
 			return
 		}

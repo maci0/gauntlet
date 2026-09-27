@@ -89,7 +89,7 @@ func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	sweepStaleSnapshots(gitDir)
+	sweepStaleSnapshots(gitDir, r.now())
 	tmp, err := os.CreateTemp(gitDir, "gauntlet-snap-")
 	if err != nil {
 		return "", fmt.Errorf("cannot create a snapshot index: %w", err)
@@ -143,13 +143,15 @@ func (r *Repo) runIndex(ctx context.Context, index string, timeout time.Duration
 }
 
 // sweepStaleSnapshots removes leftover gauntlet-snap-* index files from gitDir
-// that were left behind by a killed or crashed process.
-func sweepStaleSnapshots(gitDir string) {
+// that were left behind by a killed or crashed process. now is the repo clock:
+// the sweep runs on the path every isolated review takes, so a run under a
+// pinned clock must leave the same git directory a live run leaves.
+func sweepStaleSnapshots(gitDir string, now time.Time) {
 	entries, err := os.ReadDir(gitDir)
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-time.Hour)
+	cutoff := now.Add(-time.Hour)
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasPrefix(name, "gauntlet-snap-") || !e.Type().IsRegular() {

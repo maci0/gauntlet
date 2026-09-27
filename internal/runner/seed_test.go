@@ -109,6 +109,67 @@ func TestPicksDoNotDependOnDrawOrder(t *testing.T) {
 	}
 }
 
+// TestLaneSplitReplaysFromTheSeed pins the other half of a --jobs > 1 replay:
+// the lane a review runs in is fixed by the seed, not by which lane's
+// goroutine pulled from the queue first. Draining the lanes in two different
+// orders stands in for the OS scheduler's freedom, and both drains must give
+// every lane the same reviews in the same order.
+func TestLaneSplitReplaysFromTheSeed(t *testing.T) {
+	reviews := []string{
+		"aa-review", "ab-review", "ac-review", "ad-review",
+		"ae-review", "af-review", "ag-review", "ah-review", "ai-review",
+	}
+	const jobs = 3
+	dir := testRepo(t)
+
+	drain := func(t *testing.T, order []int) [][]string {
+		t.Helper()
+		cfg := seedConfig(t, reviews, []agent.Spec{{Tool: "claude"}}, 42)
+		cfg.Dir, cfg.Jobs = dir, jobs
+		r, err := New(context.Background(), cfg, NewBus())
+		if err != nil {
+			t.Fatal(err)
+		}
+		sched := r.schedule(1)
+		lanes := make([][]string, jobs)
+		for _, lane := range order {
+			for {
+				review, ok := r.takeNextFor(lane)
+				if !ok {
+					break
+				}
+				lanes[lane] = append(lanes[lane], review)
+			}
+		}
+		// Lane i ran exactly the schedule's positions i, i+jobs, i+2*jobs, so
+		// every review ran once and the handoff queue drained.
+		for i := range sched {
+			if got := lanes[i%jobs][i/jobs]; got != sched[i] {
+				t.Fatalf("lane %d ran %s at slot %d, want %s (schedule %v)",
+					i%jobs, got, i/jobs, sched[i], sched)
+			}
+		}
+		if p := r.Pending(); len(p) != 0 {
+			t.Fatalf("pending after drain: %v", p)
+		}
+		return lanes
+	}
+
+	straight := drain(t, []int{0, 1, 2})
+	scrambled := drain(t, []int{2, 0, 1})
+	for lane := range straight {
+		if !slices.Equal(straight[lane], scrambled[lane]) {
+			t.Fatalf("lane %d differs by drain order:\n%v\n%v",
+				lane, straight[lane], scrambled[lane])
+		}
+	}
+	for lane, got := range straight {
+		if len(got) == 0 {
+			t.Fatalf("lane %d got none of the %d reviews", lane, len(reviews))
+		}
+	}
+}
+
 // TestZeroSeedDerivesFromClock checks the production default: no configured
 // seed still resolves to a nonzero effective seed, which the run-start event
 // then records.
