@@ -18,9 +18,11 @@ but drops the sqlite driver.
   three tag sets, the whole pull-request gate in one command. `make ci` is the
   edit-test loop, this is the before-push gate.
 - `make check-scripts`: ruff and mypy `--strict` via version-pinned `uvx`,
-  plus shellcheck from PATH, on `scripts/`, and yamllint `--strict` on
+  plus shellcheck from PATH on `scripts/`, and yamllint `--strict` on
   `.github/`. Rule selection is `pyproject.toml` for the Python
-  tools and `.yamllint` for the YAML.
+  tools and `.yamllint` for the YAML. shellcheck is the one tool CI
+  cannot install a pinned copy of, so its pin is a warning on drift
+  rather than a lock.
   Run `make fmt-scripts` to rewrite scripts with ruff format.
 - `make test RUN=TestName`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test

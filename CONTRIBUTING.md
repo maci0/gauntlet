@@ -96,7 +96,10 @@ A separate `scripts` job lints `scripts/` with ruff (rules in
 [.yamllint](.yamllint)). `make check-scripts` runs those same steps with
 the versions CI pins. It needs `uvx` (shipped with
 [uv](https://docs.astral.sh/uv/getting-started/installation/)) and
-shellcheck on PATH. `make fmt-scripts` rewrites scripts with ruff format.
+shellcheck on PATH; shellcheck is the one tool the runner image supplies
+rather than `uvx` installing, so a local copy whose version differs from
+`SHELLCHECK_VERSION` gets a note instead of a failure. `make fmt-scripts`
+rewrites scripts with ruff format.
 
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph

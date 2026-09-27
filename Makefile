@@ -42,6 +42,12 @@ MYPY_VERSION ?= 2.3.1
 RICH_VERSION ?= 15.0.0
 YAMLLINT_VERSION ?= 1.38.0
 UV_VERSION ?= 0.12.6
+# The one lint tool that is not installed by uvx: shellcheck is a PATH binary,
+# because that is the copy the Ubuntu runner already carries and pinning it
+# here is a record of what CI runs, not something the job can install. The
+# recipes below compare against it and warn on drift, and
+# TestScriptsToolPinsMatchCI keeps this line and the workflow's in step.
+SHELLCHECK_VERSION ?= 0.11.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
 # Release artifacts must not depend on the build host's locale: the shell
@@ -244,9 +250,10 @@ verify: check check-scripts ## everything a pull request runs, locally: check, a
 
 # Local mirror of ci.yml's scripts job, including the pins. uvx fetches
 # those tools on first use; shellcheck stays a PATH binary because that is
-# what the Ubuntu runner already has. The workflow definitions are linted with
-# the same uvx pins as the Python tools, since a malformed one is a syntax
-# error the Go build never sees.
+# what the Ubuntu runner already has, so its pin is checked rather than
+# installed and a mismatch is a note, not a failure. The workflow
+# definitions are linted with the same uvx pins as the Python tools, since a
+# malformed one is a syntax error the Go build never sees.
 .PHONY: check-scripts
 check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (CI parity)
 	@command -v uvx >/dev/null 2>&1 || { \
@@ -265,6 +272,10 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 	@got_uv=$$(uv version 2>/dev/null | awk '{print $$2}'); \
 		if [ -n "$$got_uv" ] && [ "$$got_uv" != "$(UV_VERSION)" ]; then \
 			echo "note: uv $$got_uv; CI pins $(UV_VERSION). Tools are version-locked, but resolver behavior can differ." >&2; \
+		fi
+	@got_sc=$$(shellcheck --version 2>/dev/null | awk '/^version:/ {print $$2}'); \
+		if [ -n "$$got_sc" ] && [ "$$got_sc" != "$(SHELLCHECK_VERSION)" ]; then \
+			echo "note: shellcheck $$got_sc; the pin is $(SHELLCHECK_VERSION). A new upstream release adds checks, so a mismatch here is a false red, not a clean tree." >&2; \
 		fi
 	uvx ruff@$(RUFF_VERSION) check scripts
 	uvx ruff@$(RUFF_VERSION) format --check scripts

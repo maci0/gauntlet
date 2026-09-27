@@ -147,7 +147,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   govulncheck weekly and on `go.mod`/`go.sum` pull-request changes and main
   pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
   the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
-  The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:35`,
+  The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:42`,
   invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-44`). Release and
   checksum downloads enforce `validateAssetURL` across HTTP redirects and cap
   redirects at 10 (`client.CheckRedirect`, `internal/selfupdate/selfupdate.go:145-157`).
@@ -564,7 +564,7 @@ technical backstop behind them.
 
 1. **R2, unsigned update channel.** `checksums.txt` is self-referential;
    consider signing releases or documenting the GitHub-account trust anchor
-   explicitly next to `make release` (`Makefile:332`,
+   explicitly next to `make release` (`Makefile:348`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
    (`internal/agent/agent.go:548-560`). Auto-detection already ignores it (`Installed`

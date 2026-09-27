@@ -304,6 +304,7 @@ func TestScriptsToolPinsMatchCI(t *testing.T) {
 		{"rich", makefilePin(makefile, "RICH_VERSION"), richPin(ci)},
 		{"yamllint", makefilePin(makefile, "YAMLLINT_VERSION"), toolAtPin(ci, "yamllint")},
 		{"uv", makefilePin(makefile, "UV_VERSION"), uvSetupPin(ci)},
+		{"shellcheck", makefilePin(makefile, "SHELLCHECK_VERSION"), shellcheckPin(ci)},
 	}
 	for _, c := range checks {
 		if c.makefile == "" {
@@ -666,6 +667,20 @@ var uvVersionField = regexp.MustCompile(`(?m)^\s+version:\s+"([0-9][0-9A-Za-z._-
 
 func uvSetupPin(text string) string {
 	m := uvVersionField.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// shellcheck is the one lint tool the scripts job cannot install a pinned
+// copy of, so its version is recorded in the step's env instead of an
+// argument. That makes it the pin the two files must agree on, and the one
+// `make check-scripts` warns about when the local copy drifts.
+var shellcheckVersionField = regexp.MustCompile(`(?m)^\s+SHELLCHECK_VERSION:\s+"([0-9][0-9A-Za-z._-]*)"`)
+
+func shellcheckPin(text string) string {
+	m := shellcheckVersionField.FindStringSubmatch(text)
 	if m == nil {
 		return ""
 	}
