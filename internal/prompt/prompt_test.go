@@ -441,7 +441,7 @@ func TestParseSuggestions(t *testing.T) {
 		"RELEVANT: nope-review: not available",
 		"RELEVANT: doc-review",
 	}, "\n")
-	picked, unknown := ParseSuggestions(out, []string{"sec-review", "doc-review"})
+	picked, unknown, dropped := ParseSuggestions(out, []string{"sec-review", "doc-review"})
 	if len(picked) != 2 {
 		t.Fatalf("got %+v", picked)
 	}
@@ -454,13 +454,48 @@ func TestParseSuggestions(t *testing.T) {
 	if len(unknown) != 1 || unknown[0] != "nope-review" {
 		t.Fatalf("unknown names: %v", unknown)
 	}
+	if dropped != 0 {
+		t.Fatalf("dropped %d unknown names with room for them", dropped)
+	}
+}
+
+// An agent that prints RELEVANT lines naming nothing is model output, not a
+// catalog: the report of what it proposed has to stay bounded, and say how
+// much it left out.
+func TestParseSuggestionsCapsUnknownNames(t *testing.T) {
+	var b strings.Builder
+	for range suggestionUnknownMax + 5 {
+		b.WriteString("RELEVANT: nope-review\n")
+	}
+	// A single name longer than any real review, to pin the length bound.
+	b.WriteString("RELEVANT: " + strings.Repeat("z", suggestionNameMax+50) + "\n")
+	picked, unknown, dropped := ParseSuggestions(b.String(), []string{"sec-review"})
+	if len(picked) != 0 {
+		t.Fatalf("picked %+v", picked)
+	}
+	if len(unknown) != suggestionUnknownMax || dropped != 6 {
+		t.Fatalf("kept %d, dropped %d, want %d and 6", len(unknown), dropped, suggestionUnknownMax)
+	}
+	if n := utf8.RuneCountInString(unknown[0]); n > suggestionNameMax {
+		t.Fatalf("reported name is %d runes, want at most %d", n, suggestionNameMax)
+	}
+}
+
+// The bound is applied to the report, not to the lookup: a project review
+// whose name outruns it is still picked, not reported as a near-miss.
+func TestParseSuggestionsLongNameStillPicked(t *testing.T) {
+	name := strings.Repeat("é", suggestionNameMax+50) + "-review"
+	picked, unknown, _ := ParseSuggestions("RELEVANT: "+name+"\n", []string{name})
+	if len(picked) != 1 || picked[0].Name != name {
+		t.Fatalf("long available name not picked: %+v unknown %v", picked, unknown)
+	}
 }
 
 func TestParseSuggestionsRequiresCompleteName(t *testing.T) {
 	for _, suffix := range []string{".json", "/other", ",doc-review", "`", "\"", "\x00", "\u200b"} {
 		t.Run(fmt.Sprintf("%q", suffix), func(t *testing.T) {
 			out := "RELEVANT: sec-review" + suffix + ": malformed name\nRELEVANT: doc-review: valid"
-			picked, _ := ParseSuggestions(out, []string{"sec-review", "doc-review"})
+			picked, _, _ := ParseSuggestions(out, []string{"sec-review", "doc-review"})
 			if len(picked) != 1 || picked[0].Name != "doc-review" || picked[0].Reason != "valid" {
 				t.Fatalf("malformed name accepted: %+v", picked)
 			}
@@ -468,7 +503,7 @@ func TestParseSuggestionsRequiresCompleteName(t *testing.T) {
 	}
 	for _, suffix := range []string{"", "   ", ": reason", " : reason", " reason", "\t: reason"} {
 		t.Run(fmt.Sprintf("valid %q", suffix), func(t *testing.T) {
-			picked, unknown := ParseSuggestions("RELEVANT: sec"+suffix, []string{"sec-review"})
+			picked, unknown, _ := ParseSuggestions("RELEVANT: sec"+suffix, []string{"sec-review"})
 			if len(picked) != 1 || picked[0].Name != "sec-review" || len(unknown) != 0 {
 				t.Fatalf("valid name rejected: %+v, unknown %v", picked, unknown)
 			}
@@ -478,7 +513,7 @@ func TestParseSuggestionsRequiresCompleteName(t *testing.T) {
 
 func TestParseSuggestionsCapsReason(t *testing.T) {
 	long := strings.Repeat("word ", catalogDescMax)
-	picked, unknown := ParseSuggestions("RELEVANT: sec-review: "+long+"\n", []string{"sec-review"})
+	picked, unknown, _ := ParseSuggestions("RELEVANT: sec-review: "+long+"\n", []string{"sec-review"})
 	if len(unknown) != 0 || len(picked) != 1 {
 		t.Fatalf("picked %+v unknown %v", picked, unknown)
 	}
@@ -499,7 +534,7 @@ func TestParseSuggestionsNonASCIIName(t *testing.T) {
 		"RELEVANT: 認証-review",
 		"RELEVANT: inje:ction: colon cannot join the name",
 	}, "\n")
-	picked, unknown := ParseSuggestions(out, []string{"sécurity-review", "認証-review"})
+	picked, unknown, _ := ParseSuggestions(out, []string{"sécurity-review", "認証-review"})
 	if len(picked) != 2 || picked[0].Name != "sécurity-review" ||
 		picked[0].Reason != "audits encoding" || picked[1].Name != "認証-review" {
 		t.Fatalf("picked: %+v", picked)
@@ -512,8 +547,8 @@ func TestParseSuggestionsNonASCIIName(t *testing.T) {
 // FuzzParseSuggestions feeds arbitrary agent output through the triage parser
 // and pins the contract Suggest depends on before it launches reviews: only
 // available names are ever picked, first mention wins, reasons carry no
-// terminal-driving characters, unknown names are reported rather than run,
-// and parsing is deterministic.
+// terminal-driving characters, unknown names are reported rather than run and
+// stay within their bound, and parsing is deterministic.
 func FuzzParseSuggestions(f *testing.F) {
 	available := []string{"sec-review", "doc-review", "test-review"}
 	seeds := []string{
@@ -532,7 +567,7 @@ func FuzzParseSuggestions(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, out string) {
-		picked, unknown := ParseSuggestions(out, available)
+		picked, unknown, dropped := ParseSuggestions(out, available)
 		known := map[string]bool{}
 		for _, a := range available {
 			known[a] = true
@@ -561,10 +596,20 @@ func FuzzParseSuggestions(f *testing.F) {
 			if known[name] {
 				t.Fatalf("reported available name %q as unknown", name)
 			}
+			if n := utf8.RuneCountInString(name); n > suggestionNameMax {
+				t.Fatalf("reported name is %d runes, want at most %d: %q",
+					n, suggestionNameMax, name)
+			}
 		}
-		picked2, unknown2 := ParseSuggestions(out, available)
+		if len(unknown) > suggestionUnknownMax {
+			t.Fatalf("kept %d unknown names, over the cap of %d", len(unknown), suggestionUnknownMax)
+		}
+		if dropped < 0 {
+			t.Fatalf("dropped %d unknown names", dropped)
+		}
+		picked2, unknown2, dropped2 := ParseSuggestions(out, available)
 		if fmt.Sprint(picked) != fmt.Sprint(picked2) ||
-			fmt.Sprint(unknown) != fmt.Sprint(unknown2) {
+			fmt.Sprint(unknown) != fmt.Sprint(unknown2) || dropped != dropped2 {
 			t.Fatalf("ParseSuggestions is not deterministic for %q", out)
 		}
 	})
@@ -1105,12 +1150,12 @@ func TestNonASCIINameNormalizationRoundTrip(t *testing.T) {
 		}
 	}
 
-	picked, unknown := ParseSuggestions("RELEVANT: "+nfdStem+"\n", []string{nfcStem})
+	picked, unknown, _ := ParseSuggestions("RELEVANT: "+nfdStem+"\n", []string{nfcStem})
 	if len(picked) != 1 || picked[0].Name != nfcStem || len(unknown) != 0 {
 		t.Fatalf("an agent echoing a decomposed name was not matched: %+v %v", picked, unknown)
 	}
 
-	picked, unknown = ParseSuggestions("RELEVANT: "+nfcStem+"\n", []string{nfdStem})
+	picked, unknown, _ = ParseSuggestions("RELEVANT: "+nfcStem+"\n", []string{nfdStem})
 	if len(picked) != 1 || picked[0].Name != nfcStem || len(unknown) != 0 {
 		t.Fatalf("available with decomposed name was not matched: %+v %v", picked, unknown)
 	}
@@ -1141,7 +1186,7 @@ func TestPromptSummaryAndDescNormalization(t *testing.T) {
 		t.Fatalf("Summary() fallback = %q, want NFC %q", got, "audit "+nfcText+".")
 	}
 
-	picked, _ := ParseSuggestions("RELEVANT: code-review: "+nfdText+"\n", []string{"code-review"})
+	picked, _, _ := ParseSuggestions("RELEVANT: code-review: "+nfdText+"\n", []string{"code-review"})
 	if len(picked) != 1 || picked[0].Reason != nfcText {
 		t.Fatalf("ParseSuggestions reason = %q, want NFC %q", picked[0].Reason, nfcText)
 	}

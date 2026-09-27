@@ -245,7 +245,7 @@ func TestCaptureProcKeepsTheTailOfHugeOutput(t *testing.T) {
 	if res.Err != nil || res.ExitCode != 0 || res.TimedOut {
 		t.Fatalf("run failed: %+v", res)
 	}
-	picked, _ := prompt.ParseSuggestions(out, []string{"sec-review"})
+	picked, _, _ := prompt.ParseSuggestions(out, []string{"sec-review"})
 	if len(picked) != 1 || picked[0].Name != "sec-review" {
 		t.Fatalf("tail lost the suggestion: %+v", picked)
 	}

@@ -104,9 +104,9 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		case res.ExitCode != 0:
 			lastErr = fmt.Errorf("%s failed while suggesting reviews (exit %d)", spec.Label(), res.ExitCode)
 		default:
-			picked, unknown := prompt.ParseSuggestions(out, cfg.Pool)
+			picked, unknown, dropped := prompt.ParseSuggestions(out, cfg.Pool)
 			if len(unknown) > 0 {
-				logf("Ignoring unknown suggestions: %v", unknown)
+				logf("Ignoring unknown suggestions: %v%s", unknown, droppedNote(dropped))
 			}
 			if len(picked) == 0 {
 				lastErr = fmt.Errorf("%s printed no usable 'RELEVANT:' lines; "+
@@ -121,4 +121,13 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		lastErr = errors.New("no agent could suggest reviews")
 	}
 	return nil, agent.Spec{}, lastErr
+}
+
+// droppedNote says how many unknown names the report left out, so a list that
+// stops at its cap reads as a truncated list rather than as the whole answer.
+func droppedNote(dropped int) string {
+	if dropped == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (and %d more)", dropped)
 }

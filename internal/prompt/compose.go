@@ -293,10 +293,28 @@ type Suggestion struct {
 	Reason string
 }
 
+// Bounds on the half of a triage answer that names reviews nobody has. The
+// picks are bounded already: they come out of available, and one name is
+// picked once. The unknown names are not. They exist only to be reported, and
+// a triage answer is agent output, so a confused or hostile agent can print a
+// megabyte of RELEVANT lines naming nothing: without a count cap that is a
+// megabyte of retained strings, and without a length cap one of them is a
+// line of log with no end.
+const (
+	// suggestionNameMax bounds one reported name. No review name comes near
+	// it, and the caller prints the name as it gets it.
+	suggestionNameMax = 200
+	// suggestionUnknownMax bounds how many unknown names are reported. The
+	// rest are counted, not kept: a list that stops early and says it did
+	// tells the reader what a list that stops early silently does not.
+	suggestionUnknownMax = 20
+)
+
 // ParseSuggestions extracts RELEVANT: lines from an agent's output. Names not
 // in available are returned separately so the caller can report them instead
-// of silently running something else.
-func ParseSuggestions(out string, available []string) (picked []Suggestion, unknown []string) {
+// of silently running something else, capped at suggestionUnknownMax with the
+// remainder counted in dropped.
+func ParseSuggestions(out string, available []string) (picked []Suggestion, unknown []string, dropped int) {
 	known := make(map[string]bool, len(available))
 	for _, a := range available {
 		known[nfc(a)] = true
@@ -315,7 +333,15 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 			name += "-review"
 		}
 		if !known[name] {
-			unknown = append(unknown, name)
+			// The lookup above runs on the whole name; the bound is applied
+			// to the report only, so a project review whose name is longer
+			// than the bound can still be picked instead of being reported as
+			// a truncated near-miss of itself.
+			if len(unknown) < suggestionUnknownMax {
+				unknown = append(unknown, normalize.Truncate(name, suggestionNameMax))
+			} else {
+				dropped++
+			}
 			continue
 		}
 		if seen[name] {
@@ -324,5 +350,5 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 		seen[name] = true
 		picked = append(picked, Suggestion{Name: name, Reason: reason})
 	}
-	return picked, unknown
+	return picked, unknown, dropped
 }
