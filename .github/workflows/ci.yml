@@ -131,15 +131,10 @@ jobs:
       - run: make dist VERSION=ci
       # Linking is not running: a host binary that builds and then refuses to
       # start would pass dist and fail only when a tag runs the release smoke
-      # test. Stamp is VERSION=ci, the same value dist just used.
-      - run: |
-          binary="$(make --no-print-directory host-artifact VERSION=ci)"
-          got="$("$binary" version)"
-          echo "$binary: $got"
-          if [ "$got" != "gauntlet ci" ]; then
-            echo "smoke test failed: $binary reports \"$got\", want \"gauntlet ci\"" >&2
-            exit 1
-          fi
+      # test. The check is the Makefile's, so the job cannot drift from the one
+      # a contributor runs before tagging, and the asset name stays owned by
+      # host-artifact. Stamp is VERSION=ci, the same value dist just used.
+      - run: make smoke VERSION=ci
       # A reproducibility claim nobody tests is decoration: same source, two
       # paths, different locale and TZ, must give byte-identical binaries, for
       # every platform dist ships.

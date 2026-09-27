@@ -403,6 +403,24 @@ dist: ## build every release platform into dist/
 host-artifact: ## print the path dist/ uses for the binary built for this host
 	@echo "$(DIST)/$(BINARY)_$(VERSION)_$$($(GO) env GOOS)_$$($(GO) env GOARCH)"
 
+# Linking is not running: a host binary that builds and then refuses to start
+# passes dist and fails only where it is used. Both workflows that build one
+# run this target instead of the same block of shell twice, so the check a
+# release is gated on is the one a contributor can run by hand before tagging.
+.PHONY: smoke
+smoke: ## run the host binary dist built and check the version it reports
+	@binary="$$($(MAKE) --no-print-directory host-artifact VERSION=$(VERSION))"; \
+	[ -x "$$binary" ] || { \
+		echo "smoke: $$binary is missing or not executable; build it with 'make dist VERSION=$(VERSION)'" >&2; \
+		exit 1; \
+	}; \
+	got="$$("$$binary" version)"; \
+	echo "$$binary: $$got"; \
+	[ "$$got" = "$(BINARY) $(VERSION)" ] || { \
+		echo "smoke: $$binary reports \"$$got\", want \"$(BINARY) $(VERSION)\"" >&2; \
+		exit 1; \
+	}
+
 # `check` is a prerequisite, not a separate CI step: the test suite compiles
 # the tree but never vets it or checks its formatting, so without it a tag
 # could ship a binary built from a tree that `make ci` rejects.

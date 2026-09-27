@@ -287,16 +287,17 @@ func TestReleaseRejectsEmptyNotes(t *testing.T) {
 	}
 }
 
-// The dist job must run the host binary it just built, not only link it. The
-// path comes from `make host-artifact` rather than a literal, so the job asks
-// the Makefile which asset it produced instead of restating the name.
+// The dist job must run the host binary it just built, not only link it.
+// Asking the Makefile for that check is what keeps the job from carrying a
+// second copy of it: `make smoke` resolves the asset through host-artifact and
+// runs it. A job that inlines the comparison again is the drift this pins.
 func TestDistJobSmokeTestsHostBinary(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
-	if !strings.Contains(text, "make --no-print-directory host-artifact VERSION=ci") {
-		t.Fatal("dist job must resolve the binary it just built with `make host-artifact`")
+	if !strings.Contains(text, "make smoke VERSION=ci") {
+		t.Fatal("dist job must run `make smoke VERSION=ci`, the check that runs the binary dist built")
 	}
-	if !strings.Contains(text, `got="$("$binary" version)"`) {
-		t.Fatal("dist job must run the binary it resolved, not only link it")
+	if strings.Contains(text, `"$binary" version`) {
+		t.Fatal("dist job must not inline the version check; make smoke owns it")
 	}
 }
 

@@ -68,20 +68,14 @@ jobs:
         run: make release VERSION="${GITHUB_REF_NAME#v}"
 
       # Smoke test before anything is uploaded: the host binary must run and
-      # report the tagged version (it is stamped from the tag), and every asset
-      # must match its line in checksums.txt. Verifying all of them catches a
-      # corrupted cross-compile here rather than as a failed `gauntlet update`
-      # checksum on that platform alone.
+      # report the tagged version (it is stamped from the tag), which is the
+      # Makefile's check, and every asset must match its line in
+      # checksums.txt. Verifying all of them catches a corrupted cross-compile
+      # here rather than as a failed `gauntlet update` checksum on that
+      # platform alone.
       - name: Smoke-test what would be published
         run: |
-          version="${GITHUB_REF_NAME#v}"
-          binary="$(make --no-print-directory host-artifact VERSION="$version")"
-          got="$("$binary" version)"
-          echo "$binary: $got"
-          if [ "$got" != "gauntlet $version" ]; then
-            echo "smoke test failed: $binary reports \"$got\", want \"gauntlet $version\"" >&2
-            exit 1
-          fi
+          make smoke VERSION="${GITHUB_REF_NAME#v}"
           (cd dist && sha256sum -c checksums.txt)
           test -s dist/sbom.txt
 

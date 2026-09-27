@@ -1,4 +1,5 @@
 .scratch/
+.scratch_*
 /gauntlet-go
 /gauntlet
 dist/

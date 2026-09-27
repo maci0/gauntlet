@@ -142,6 +142,12 @@ anything is built. Cut the tag from a commit `main` already carries: the
 workflow does not re-run the pull-request checks, and a tag is what
 `gauntlet update` serves.
 
+The post-build half of that is `make smoke VERSION=<version>`, the target both
+the release job and the pull-request `dist` job run: it starts the host binary
+`dist` just built and compares the version it reports with the one it was
+stamped with. Run it after `make dist VERSION=<version>` to check a release
+path by hand before tagging.
+
 ## Rolling back a bad release
 
 A published release is immutable. The workflow refuses to replace a

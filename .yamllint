@@ -1,5 +1,5 @@
 # The CI definitions are the repository's second syntax: a workflow that
-# parses is not a workflow GitHub accepts. `make check-workflows` runs
+# parses is not a workflow GitHub accepts. `make check-scripts` runs
 # yamllint, and ci.yml's scripts job runs the same command, so a broken
 # definition fails on a pull request instead of on the tag that needs it.
 #

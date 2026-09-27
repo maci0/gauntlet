@@ -498,18 +498,83 @@ func TestMakefileFmtScriptsTarget(t *testing.T) {
 
 // The asset name has three would-be sources of truth: the Makefile's dist
 // target, the two release workflows' smoke tests, and the runtime lookup in
-// internal/selfupdate. The workflows must ask the Makefile, or a rename
-// leaves a job running a path that no longer exists.
+// internal/selfupdate. The workflows must run the Makefile's check, which
+// resolves the asset through host-artifact, or a rename leaves a job running a
+// path that no longer exists.
 func TestReleaseSmokeTestsAskTheMakefileForTheAsset(t *testing.T) {
 	root := moduleRoot(t)
 	for _, workflow := range []string{"ci.yml", "release.yml"} {
 		t.Run(workflow, func(t *testing.T) {
 			text := readRepoFile(t, filepath.Join(root, ".github", "workflows", workflow))
-			if !strings.Contains(text, "make --no-print-directory host-artifact VERSION=") {
-				t.Errorf("%s: the smoke test must resolve the binary with `make host-artifact`, not spell out the asset name", workflow)
+			if !strings.Contains(text, "make smoke VERSION=") {
+				t.Errorf("%s: the smoke test must run `make smoke`, the one implementation of the check", workflow)
 			}
 			if strings.Contains(text, "gauntlet_${version}_linux_amd64") || strings.Contains(text, "dist/gauntlet_ci_linux_amd64") {
 				t.Errorf("%s: the smoke test restates the asset name; make host-artifact owns it", workflow)
+			}
+		})
+	}
+}
+
+// The check the two workflows share must live in the Makefile, ask
+// host-artifact for the asset, and compare what the binary reports against the
+// version it was stamped with. A workflow that inlines the comparison again
+// is the duplication this target exists to end.
+func TestSmokeTargetRunsTheHostArtifact(t *testing.T) {
+	recipe := makefileRecipe(makefileText(t), "smoke")
+	if recipe == "" {
+		t.Fatal("Makefile smoke target has no recipe")
+	}
+	for _, want := range []string{
+		"host-artifact VERSION=$(VERSION)",
+		`"$$binary" version`,
+		`[ "$$got" = "$(BINARY) $(VERSION)" ]`,
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make smoke missing %q", want)
+		}
+	}
+}
+
+// The target has to pass on a binary that reports the stamped version and
+// fail on one that does not, or the workflows run a check that decides
+// nothing. DIST points the recipe at a stand-in, so no cross-compilation is
+// needed to drive the real target.
+func TestSmokePassesAndFailsOnWhatTheBinaryReports(t *testing.T) {
+	const version = "1.2.3"
+	for _, tc := range []struct {
+		name    string
+		reports string
+		wantErr bool
+	}{
+		{name: "stamped", reports: "gauntlet " + version},
+		{name: "wrong version", reports: "gauntlet 0.0.1", wantErr: true},
+		{name: "not the binary", reports: "segfault", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dist := t.TempDir()
+			asset := filepath.Join(dist, "gauntlet_"+version+"_"+runtime.GOOS+"_"+runtime.GOARCH)
+			if err := os.WriteFile(asset, []byte("#!/bin/sh\necho '"+tc.reports+"'\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "smoke",
+				"VERSION="+version, "DIST="+dist)
+			cmd.Dir = moduleRoot(t)
+			cmd.Env = cleanMakeEnv()
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("a binary reporting %q passed the smoke test:\n%s", tc.reports, out)
+				}
+				if !strings.Contains(string(out), "smoke:") {
+					t.Fatalf("the failure must say which check failed:\n%s", out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("make smoke on a binary reporting %q: %v\n%s", tc.reports, err, out)
 			}
 		})
 	}
