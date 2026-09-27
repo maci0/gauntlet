@@ -18,6 +18,7 @@ import (
 	"github.com/muesli/termenv"
 	"github.com/rivo/uniseg"
 
+	"github.com/maci0/gauntlet/internal/envx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -1079,11 +1080,15 @@ const motionStill = "◐"
 func motionOff() bool {
 	for _, env := range []string{"GAUNTLET_NO_ANIMATION", "NO_MOTION", "REDUCED_MOTION"} {
 		if v, ok := os.LookupEnv(env); ok {
-			v = strings.ToLower(strings.TrimSpace(v))
-			if v != "" && v != "0" && v != "false" && v != "no" && v != "off" {
+			if envx.On(v) {
 				return true
 			}
-			if env == "GAUNTLET_NO_ANIMATION" && (v == "0" || v == "false" || v == "no" || v == "off") {
+			// An explicit off on the gauntlet-prefixed name settles the
+			// question, rather than falling through to the generic names: an
+			// operator who writes GAUNTLET_NO_ANIMATION=0 beside an inherited
+			// NO_MOTION=1 has said which one they meant. Empty is not that, so
+			// it keeps walking the list.
+			if env == "GAUNTLET_NO_ANIMATION" && strings.TrimSpace(v) != "" {
 				return false
 			}
 		}

@@ -19,6 +19,7 @@ import (
 // here only when DESIGN.md says the direction is intentional.
 var allowedInternalImports = map[string][]string{
 	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome", "internal/runx"},
+	"internal/envx":         {},
 	"internal/fuzzy":        {},
 	"internal/gauntlethome": {},
 	"internal/ghx":          {"internal/runx"},
@@ -34,7 +35,7 @@ var allowedInternalImports = map[string][]string{
 	"internal/runx":       {},
 	"internal/selfupdate": {"internal/gauntlethome"},
 	"internal/streamjson": {},
-	"internal/ui":         {"internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
+	"internal/ui":         {"internal/envx", "internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
 }
 
 // TestInternalImportGraph fails when a package imports another against the

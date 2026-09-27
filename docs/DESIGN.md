@@ -46,6 +46,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
+| `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
@@ -53,9 +54,12 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
-formatters, and the `fuzzy` fold behind the picker's filter, and nothing
+formatters, the `fuzzy` fold behind the picker's filter, and the `envx`
+rule for the boolean environment variables, and nothing
 else. The picker takes the file-signal suggester name from `PickConfig`
-rather than importing `runner` for it. `prompt` imports `gitx`, so project
+rather than importing `runner` for it. `cmd/gauntlet` imports `envx` for the
+same rule, so the one list of values that mean off, which `docs/CLI.md`
+states once for all five variables, is written once. `prompt` imports `gitx`, so project
 discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
 same hardened resolver and safe config as every other git invocation,
 `normalize` so catalog and summary clips use the same rune-bounded ellipsis,

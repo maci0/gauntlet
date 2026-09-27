@@ -165,7 +165,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`. Wins if both are set, matching GitHub CLI. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
 | `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty, `0`, `false`, `no`, or `off`: force color on, so piping through `less -R` keeps its palette. |
-| `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. |
+| `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. Read like the two above, so any case and surrounding space are ignored. |
 | `GIT_SSH_COMMAND` | Optional. The command git uses for SSH. Empty or whitespace-only defaults to `ssh`, which outranks a repository-local `core.sshCommand`; set it to use a different binary or options. |
 
 (`GAUNTLET_STATE` exists too, but only within one hot reload: it names the

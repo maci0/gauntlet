@@ -281,7 +281,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 // without reading the source. Presence, not meaning: the value of a variable
 // is printed as the operator set it, and nothing here interprets it, because
 // the rules differ per variable (NO_COLOR counts however it is set, the
-// motion and color-force names only above empty, 0, false, no, off).
+// motion and color-force names count as on above empty, 0, false, no, off,
+// and TERM is compared against dumb).
 //
 // GAUNTLET_HOME is left out: the State line above already names it and where
 // it came from. A variable carrying a secret is reported as present and never

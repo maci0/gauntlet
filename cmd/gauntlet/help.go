@@ -177,7 +177,7 @@ var helpEnvVars = []helpEnvVar{
 	{"NO_COLOR", "disable color, however it is set", false},
 	{"CLICOLOR_FORCE", "keep color when the output is piped", false},
 	{"FORCE_COLOR", "same as CLICOLOR_FORCE", false},
-	{"TERM", "\"dumb\" disables color, even with the two above", false},
+	{"TERM", "\"dumb\" in any case disables color, even with the two above", false},
 	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads", true},
 	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set", true},
 	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it", false},

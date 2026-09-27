@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/envx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -54,18 +55,27 @@ const (
 	envForceColor    = "FORCE_COLOR"
 )
 
+// termDumb is the TERM value that cannot render a palette.
+const termDumb = "dumb"
+
 // colorEnabled honors NO_COLOR (set at all, see no-color.org), TERM=dumb, and
 // whether the stream is a terminal. CLICOLOR_FORCE / FORCE_COLOR turn color
 // back on for a pipe, which is what `gauntlet … | less -R` needs.
+//
+// TERM is compared the way every other documented value is read, trimmed and
+// case-folded. An exact match let TERM=DUMB, or a TERM carrying a trailing
+// space from a wrapper that appends to it, keep a palette a dumb terminal
+// cannot show, while the variable two lines below answered the same question
+// the documented way.
 func colorEnabled(f *os.File) bool {
 	if _, set := os.LookupEnv(envNoColor); set {
 		return false
 	}
-	if os.Getenv(envTerm) == "dumb" {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(envTerm)), termDumb) {
 		return false
 	}
 	for _, name := range []string{envCLIColorForce, envForceColor} {
-		if v := strings.ToLower(strings.TrimSpace(os.Getenv(name))); v != "" && v != "0" && v != "false" && v != "no" && v != "off" {
+		if envx.On(os.Getenv(name)) {
 			return true
 		}
 	}

@@ -211,6 +211,9 @@ func TestColorEnabledPrecedence(t *testing.T) {
 		{"NO_COLOR beats any opt-in", []string{"NO_COLOR=1", "CLICOLOR_FORCE=1"}, false},
 		{"NO_COLOR counts when empty", []string{"NO_COLOR=", "CLICOLOR_FORCE=1"}, false},
 		{"TERM=dumb beats any opt-in", []string{"TERM=dumb", "CLICOLOR_FORCE=1"}, false},
+		{"TERM=DUMB is the same answer", []string{"TERM=DUMB", "CLICOLOR_FORCE=1"}, false},
+		{"a padded TERM=dumb is too", []string{"TERM= dumb ", "CLICOLOR_FORCE=1"}, false},
+		{"TERM=xterm-256color is not dumb", []string{"TERM=xterm-256color", "CLICOLOR_FORCE=1"}, true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
