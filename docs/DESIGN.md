@@ -56,11 +56,12 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
-formatters, the `fuzzy` fold behind the picker's filter, and the `envx`
-rule for the boolean environment variables, and nothing
+formatters, and the `fuzzy` fold behind the picker's filter, and nothing
 else. The picker takes the file-signal suggester name from `PickConfig`
-rather than importing `runner` for it. `cmd/gauntlet` imports `envx` for the
-same rule. `prompt` imports `gitx`, so project
+rather than importing `runner` for it. `cmd/gauntlet` imports `envx`, the one
+reader of the boolean environment variables, so the one list of values that
+mean off, which `docs/CLI.md` states once for all five variables, is written
+once. `prompt` imports `gitx`, so project
 discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
 same hardened resolver and safe config as every other git invocation,
 `normalize` so catalog and summary clips use the same rune-bounded ellipsis,
