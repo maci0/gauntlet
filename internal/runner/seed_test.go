@@ -5,7 +5,10 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -388,4 +391,76 @@ func TestRunStartCarriesTheSeed(t *testing.T) {
 		return
 	}
 	t.Fatal("no run_start event published")
+}
+
+// TestSeededRunReplaysByteForByte is the end-to-end statement of what the seed
+// is for: two whole runs of the same tree, with the same seed and the same
+// frozen clock, publish the same events in the same order with the same
+// fields. Every earlier test in this file checks one draw; this one diffs the
+// run. A field that differs names the leak that leaked, so a regression here
+// says which source moved rather than only that something did.
+func TestSeededRunReplaysByteForByte(t *testing.T) {
+	reviews := []string{"aa-review", "ab-review", "ac-review", "ad-review"}
+	agents := []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
+	// Frozen so the timestamps, the elapsed figures, and the clock-derived
+	// values are the same input twice, leaving the seed as the only thing
+	// that can make the two runs differ.
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	// One tree and one pair of agent binaries, replayed: the same absolute
+	// paths in both recordings, so the recorded dir is compared rather than
+	// normalized away, and the fake agent changes nothing, so the second run
+	// starts from the state the first one left.
+	repo := testRepo(t)
+	set, _ := promptSet(t, reviews...)
+	dir := t.TempDir()
+	bin := map[string]string{
+		"claude": fakeAgent(t, dir, "claude", `echo "RESULT: no-changes"`),
+		"codex":  fakeAgent(t, dir, "codex", `echo "RESULT: no-changes"`),
+	}
+
+	record := func() string {
+		t.Helper()
+		cfg := baseConfig(t, repo, set, reviews, bin["claude"])
+		cfg.Agents, cfg.Bin, cfg.Seed = agents, bin, 4242
+
+		bus := NewBus()
+		bus.Now = func() time.Time { return stamp }
+		events := bus.Subscribe(256)
+		done := make(chan []Event, 1)
+		go collect(events, done)
+		runOn(t, cfg, bus)
+		var b strings.Builder
+		for _, ev := range <-done {
+			line, err := json.Marshal(ev)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b.Write(line)
+			b.WriteByte('\n')
+		}
+		return b.String()
+	}
+
+	first, second := record(), record()
+	if first != second {
+		t.Fatalf("two seeded runs of the same tree disagree, first at:\n%s",
+			firstDifference(first, second))
+	}
+	if !strings.Contains(first, `"review_start"`) {
+		t.Fatalf("the recorded run published no reviews, so nothing was compared:\n%s", first)
+	}
+}
+
+// firstDifference names the first event line the two recordings part ways on
+// and says where in each it sits, so a leak is reported as the field that
+// moved rather than as two transcripts nobody reads to the end.
+func firstDifference(first, second string) string {
+	a, b := strings.Split(first, "\n"), strings.Split(second, "\n")
+	for i := range min(len(a), len(b)) {
+		if a[i] != b[i] {
+			return fmt.Sprintf("event %d\nfirst:  %s\nsecond: %s", i+1, a[i], b[i])
+		}
+	}
+	return fmt.Sprintf("the runs differ in length: %d events against %d", len(a), len(b))
 }

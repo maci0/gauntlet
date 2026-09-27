@@ -229,7 +229,13 @@ the unit of safe parallelism is **the directory**, not the agent.
   whether a sample is a fresh walk or a cached value and therefore which
   review a diff is attributed to. Results are reported in review-name
   order, not lane completion order, so a replayed seed prints the same
-  report.
+  report. Every git invocation runs with `LC_ALL=C`, because git translates
+  its own output and that output reaches the journal and the error a failed
+  review reports: without it a machine set to a translated locale records
+  different bytes for the same run than a CI machine does.
+  `internal/runner/seed_test.go` replays a whole seeded run against itself
+  and diffs every event field, which is what the seed is worth; a field that
+  differs names the source that leaked.
 
 ### Isolated parallel reviews (`--jobs N`)
 

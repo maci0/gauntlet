@@ -269,6 +269,27 @@ func TestEmptyGitSSHCommandDefaultsToSSH(t *testing.T) {
 	}
 }
 
+// Git translates its own output, and that output reaches the journal and the
+// error a failed review reports. Pinning the C locale is what keeps a run
+// recorded on a translated machine byte-comparable with a replay elsewhere.
+func TestGitLocaleIsPinnedToC(t *testing.T) {
+	for _, val := range []string{"", "de_DE.UTF-8"} {
+		t.Setenv("LC_ALL", val)
+		env := gitEnv()
+		found := false
+		for _, kv := range env {
+			if kv == gitLocale {
+				found = true
+			} else if strings.HasPrefix(kv, "LC_ALL=") {
+				t.Fatalf("LC_ALL=%q left an unexpected entry: %q", val, kv)
+			}
+		}
+		if !found {
+			t.Fatalf("LC_ALL=%q did not yield %s", val, gitLocale)
+		}
+	}
+}
+
 func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
 	listing := strings.Join([]string{
 		"filter.evil.smudge=touch pwned",

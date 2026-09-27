@@ -376,15 +376,26 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 // not fill RAM. A var so tests can shrink it; production always sees this.
 var gitOutputMax = 32 << 20
 
-// gitEnv is os.Environ with cwd-relative PATH entries dropped and, unless the
-// operator already exported a non-empty one, GIT_SSH_COMMAND=ssh. Git's own
-// helpers (ssh, a credential helper, diffie) inherit this, so a planted ./ssh
-// cannot run.
+// gitLocale pins git's messages to the C locale. Git translates its own
+// output, and the runner puts that output in the journal, in an event's Text,
+// and in the error a failed review reports, so a machine set to a translated
+// locale records different bytes for the same run than a CI machine does and
+// a replayed seed no longer diffs cleanly. LC_ALL outranks LANG and
+// LC_MESSAGES, so the one variable is enough and none of them have to be
+// dropped. Paths stay byte-exact either way: core.quotepath decides that, and
+// it is not the locale.
+const gitLocale = "LC_ALL=C"
+
+// gitEnv is os.Environ with cwd-relative PATH entries dropped, the locale
+// pinned, and, unless the operator already exported a non-empty one,
+// GIT_SSH_COMMAND=ssh. Git's own helpers (ssh, a credential helper, diffie)
+// inherit this, so a planted ./ssh cannot run.
 func gitEnv() []string {
-	if strings.TrimSpace(os.Getenv("GIT_SSH_COMMAND")) != "" {
-		return runx.AbsPATHEnv()
+	extra := []string{gitLocale}
+	if strings.TrimSpace(os.Getenv("GIT_SSH_COMMAND")) == "" {
+		extra = append(extra, "GIT_SSH_COMMAND=ssh")
 	}
-	return overlayEnv(runx.AbsPATHEnv(), []string{"GIT_SSH_COMMAND=ssh"})
+	return overlayEnv(runx.AbsPATHEnv(), extra)
 }
 
 // mergeGitEnv overlays extra KEY=value pairs on gitEnv, replacing any
