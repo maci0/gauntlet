@@ -52,7 +52,9 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
 			r.log("Cannot remove the conflict checkout for %s: %v", review, err)
 		}
-		r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch)
+		if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch); err != nil {
+			r.log("Cannot delete the conflict branch for %s: %v", review, err)
+		}
 	}()
 
 	paths, err := wt.SquashIn(ctx, branch)

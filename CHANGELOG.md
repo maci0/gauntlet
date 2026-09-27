@@ -26,6 +26,7 @@ minor instead and were listed under Changed.
 - A run journal rebuilt after a crash no longer records a zero exit code for a run that never closed; `exit_code` is absent until a clean `Close` records it.
 - A review that ends with a status this build does not recognize reconciles into a new `other` index bucket, so every review a rebuilt summary counts lands in exactly one bucket and the FAILED column keeps explaining the exit code.
 - The usage-limit probe runs once per review a lane actually starts, and not at all on the way out, so a cancelled or finished loop no longer waits out concurrent probes.
+- Report a review or lane branch that could not be deleted instead of leaving it stranded: `gitx.DeleteBranch` and `gitx.DeleteBranchesMatching` return the failure, and every runner call site logs it. A sweep that cannot list its own pattern now reports that too, rather than reading as a sweep that found nothing to delete.
 
 ## 1.23.3
 

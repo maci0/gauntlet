@@ -418,10 +418,22 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 
 	// Deleting a non-existent branch name formatted like a flag must report
 	// branch not found, not fail with an unrecognized option.
-	r.DeleteBranch(ctx, "--abort")
+	err := r.DeleteBranch(ctx, "--abort")
+	if err == nil {
+		t.Fatal("deleting a branch that does not exist must report the failure")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "--abort") ||
+		strings.Contains(msg, "unrecognized option") {
+		t.Fatalf("DeleteBranch must name the branch and report branch-not-found, got: %s", msg)
+	}
 
 	// Deleting branches matching a pattern with dashed prefix
 	r.DeleteBranchesMatching(ctx, "--pattern*")
+
+	// An empty branch name is a no-op, not a git invocation that always fails.
+	if err := r.DeleteBranch(ctx, ""); err != nil {
+		t.Fatalf("DeleteBranch with an empty name must be a no-op, got: %v", err)
+	}
 
 	wt, err := r.AddWorktree(ctx, "lane", "test-tag", "HEAD")
 	if err != nil {

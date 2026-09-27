@@ -523,9 +523,14 @@ func (w *Worktree) Remove(ctx context.Context) error {
 // survive), and reading that metadata while AddWorktree or PruneWorktrees is
 // halfway through its own update fails exactly the way their doc comment
 // describes. The failure would be swallowed here, leaving the branch stranded.
-func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
-	if r == nil || !Available() {
-		return
+//
+// A branch that outlives its review is a leftover the operator has to find and
+// delete by hand, so the error is returned rather than dropped: the wrapped
+// message names the branch and carries git's own explanation. An empty branch
+// name is a no-op, not a git invocation that always fails.
+func (r *Repo) DeleteBranch(ctx context.Context, branch string) error {
+	if branch == "" || r == nil || !Available() {
+		return nil
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
@@ -533,29 +538,43 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) {
 	// concerned, though its content is in the commit that just landed. This
 	// is only ever called after that commit succeeded, or for a branch that
 	// never left its base.
-	_, _ = r.run(ctx, gitNormal, "branch", "-D", "--", branch)
+	if _, err := r.run(ctx, gitNormal, "branch", "-D", "--", branch); err != nil {
+		return fmt.Errorf("delete branch %s: %w", branch, err)
+	}
+	return nil
 }
 
 // DeleteBranchesMatching deletes every branch matching a glob pattern.
 // Used to sweep review branches that a cancelled lane may have left behind.
 // Prunes stale worktree registrations first so a branch is not rejected as
 // "checked out" in a worktree that was already removed from disk.
-func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) {
+//
+// A sweep that cannot list its own pattern has deleted nothing and says so.
+// One that lists branches but fails to delete some still deletes the rest, and
+// reports every branch that survived: a partial sweep reported as a clean one
+// is how a run leaves a pile of review branches behind with nothing to show
+// for it.
+func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error {
 	if r == nil || !Available() {
-		return
+		return nil
 	}
 	r.PruneWorktrees(ctx)
 	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {
-		return
+		return fmt.Errorf("list branches matching %s: %w", pattern, err)
 	}
+	var failed []error
 	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimRight(line, "\r")
 		name := strings.TrimSpace(line)
-		if name != "" {
-			r.DeleteBranch(ctx, name)
+		if name == "" {
+			continue
+		}
+		if err := r.DeleteBranch(ctx, name); err != nil {
+			failed = append(failed, err)
 		}
 	}
+	return errors.Join(failed...)
 }
 
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which

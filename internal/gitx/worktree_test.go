@@ -471,6 +471,31 @@ func TestDeleteBranchesMatching(t *testing.T) {
 	}
 }
 
+// A sweep that deletes everything it listed reports success; one whose
+// listing failed reports the failure instead of reporting a clean sweep that
+// deleted nothing.
+func TestDeleteBranchesMatchingReportsFailure(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-0")
+
+	if err := r.DeleteBranchesMatching(ctx, "gauntlet/run-lane*"); err != nil {
+		t.Fatalf("a sweep that deleted every match must not report an error: %v", err)
+	}
+
+	// A directory that is not a repository cannot list its branches at all, so
+	// the sweep deleted nothing: that has to reach the caller rather than
+	// reading as a sweep that found nothing to do.
+	notRepo := Open(filepath.Join(t.TempDir(), "not-a-repo"))
+	err := notRepo.DeleteBranchesMatching(ctx, "gauntlet/run-lane*")
+	if err == nil {
+		t.Fatal("a sweep that could not list its pattern must report the failure")
+	}
+	if msg := err.Error(); !strings.Contains(msg, "list branches matching") {
+		t.Fatalf("the failure must name the operation, got: %s", msg)
+	}
+}
+
 func TestRemoveTwiceConverges(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

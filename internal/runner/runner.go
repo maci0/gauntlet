@@ -661,7 +661,9 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 					if err := lanes[j].Remove(context.WithoutCancel(ctx)); err != nil {
 						r.log("Cannot remove lane %d: %v", j, err)
 					}
-					r.repo.DeleteBranch(context.WithoutCancel(ctx), lanes[j].Branch)
+					if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), lanes[j].Branch); err != nil {
+						r.log("Cannot delete lane branch %s: %v", lanes[j].Branch, err)
+					}
 				}
 			}
 			return r.runLoopSequential(ctx, loopNo)
@@ -678,18 +680,24 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 				r.log("Cannot remove lane worktree %s: %v", wt.Dir, err)
 			}
 			if wt.Branch != "" {
-				r.repo.DeleteBranch(cleanCtx, wt.Branch)
+				if err := r.repo.DeleteBranch(cleanCtx, wt.Branch); err != nil {
+					r.log("Cannot delete lane branch %s: %v", wt.Branch, err)
+				}
 			}
 		}
 		if ctx.Err() != nil {
 			// A cancel can race advance(), leaving review branches that
 			// no lane cleaned up. Conflict branches are not worth
 			// preserving from a cancelled run.
-			r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane*")
+			if err := r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane*"); err != nil {
+				r.log("Cannot sweep lane branches: %v", err)
+			}
 			// Lane branches live under gauntlet/<tag>/lane-*, which the
 			// pattern above does not match because its separator is "/"
 			// where the pattern expects "-". Sweep them too.
-			r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"/lane-*")
+			if err := r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"/lane-*"); err != nil {
+				r.log("Cannot sweep lane branches: %v", err)
+			}
 		}
 	}()
 
@@ -809,7 +817,9 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		return res
 	}
 	if oldBranch != "" && oldBranch != branch {
-		r.repo.DeleteBranch(cleanCtx, oldBranch)
+		if err := r.repo.DeleteBranch(cleanCtx, oldBranch); err != nil {
+			r.log("Cannot delete lane branch %s before %s: %v", oldBranch, review, err)
+		}
 	}
 
 	// advance resets the lane to the current HEAD so it is ready for the next
@@ -829,7 +839,9 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 			r.log("Cannot advance lane %d after %s: %v", laneIdx, review, err)
 		}
 		if deleteBranch && branchToDelete != "" {
-			r.repo.DeleteBranch(cleanCtx, branchToDelete)
+			if err := r.repo.DeleteBranch(cleanCtx, branchToDelete); err != nil {
+				r.log("Cannot delete review branch %s for %s: %v", branchToDelete, review, err)
+			}
 		}
 	}
 

@@ -485,7 +485,9 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 			// stack's own local leftover is reclaimed; any other branch
 			// sitting at the parent is stale and merely ignored.
 			if name == provisional && !remoteFound {
-				r.repo.DeleteBranch(context.WithoutCancel(ctx), name)
+				if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), name); err != nil {
+					r.log("Cannot delete the provisional stack branch %s: %v", name, err)
+				}
 			}
 			continue
 		}
