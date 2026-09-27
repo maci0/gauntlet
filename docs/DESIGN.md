@@ -41,7 +41,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
-| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
+| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`) every temp-file writer needs |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
@@ -64,11 +64,13 @@ the binary does. `agent`
 and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere; the CLI
 uses it for unknown commands and flags too.
-`agent`, `journal`, and `selfupdate` import `gauntlethome`, the one resolver
-of the state root; the reload handoff it writes needs the same durable
-directory flush the journal's own rename-based writes do. Nothing inside
-`internal/` imports `ui`, so the loop runs headless with zero TUI cost.
-`cmd/gauntlet` pins this graph.
+`agent`, `journal`, and `selfupdate` import `gauntlethome`: the first two for
+the one resolver of the state root, the last for the durable-write helpers
+that keep an atomic replace, a stale-temp sweep, or the reload handoff from
+tearing, the same durable directory flush the journal's own rename-based
+writes need. `gauntlethome` imports nothing, so the direction stays
+downward. Nothing inside `internal/` imports `ui`, so the loop runs headless
+with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 

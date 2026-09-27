@@ -23,8 +23,9 @@ import (
 
 // semcodeIndexTimeout bounds one directory's index build. The indexer walks
 // the whole tree before the first review starts; without a cap a wedged build
-// would hang the run indefinitely.
-const semcodeIndexTimeout = 30 * time.Minute
+// would hang the run indefinitely. It is a var so tests can shrink it;
+// production always sees 30 minutes.
+var semcodeIndexTimeout = 30 * time.Minute
 
 // buildSemcodeIndex runs the indexer once per directory before the loop, so
 // reviews can answer call-graph and type queries from an index.
@@ -38,6 +39,11 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 		fmt.Fprintf(out, "Building semcode index in %s\n", d.dir)
 		ictx, cancel := context.WithTimeout(ctx, semcodeIndexTimeout)
 		code := runIndexer(ictx, idx, []string{"-s", "."}, d.dir)
+		// The deadline is latched by the context that fired it, so reading it
+		// after the cancel below still answers DeadlineExceeded for a build
+		// that ran out of budget; a deadline that had not fired yet is not a
+		// timeout to report.
+		timedOut := errors.Is(ictx.Err(), context.DeadlineExceeded)
 		cancel()
 		if code == 0 {
 			continue
@@ -46,7 +52,7 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 			return 128 + int(syscall.SIGINT)
 		}
 		switch {
-		case ictx.Err() == context.DeadlineExceeded:
+		case timedOut:
 			fmt.Fprintf(os.Stderr, "semcode-index timed out after %v in %s\n",
 				semcodeIndexTimeout, d.dir)
 		case code < 0:
