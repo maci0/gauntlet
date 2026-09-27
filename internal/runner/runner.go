@@ -242,11 +242,16 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		start = bus.now()
 	}
 	seed := seedOrClock(cfg.Seed, bus.now)
+	repo := gitx.Open(cfg.Dir)
+	// The sample debounce is a time decision about a review's line
+	// attribution, so it reads the run's clock, not the wall clock: one seed
+	// has to attribute the same lines to the same review on every replay.
+	repo.Now = bus.now
 	r := &Runner{
 		cfg:            cfg,
 		bus:            bus,
 		st:             &Stats{Start: start},
-		repo:           gitx.Open(cfg.Dir),
+		repo:           repo,
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),
 		tools:          resolveTools(cfg.Reviews),

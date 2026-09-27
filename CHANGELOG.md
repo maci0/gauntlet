@@ -20,6 +20,8 @@ minor instead and were listed under Changed.
 
 - A run listing shows `n/a` instead of `+0/-0` when the run's line counts could not be attributed, so a run with no counts no longer reads like a run that changed nothing.
 - A retry handed to a different agent continues the attempt sequence instead of restarting it, and `review_end` now carries the attempt it closes, so every outcome in a journal pairs with the launch that produced it.
+- Report a run's reviews in review-name order rather than the order parallel lanes happened to finish in, so a replayed seed prints the same result and pull-request list every time.
+- Print the effective seed on the first line of a headless run, so a run started without `--seed` reports the seed that replays it.
 
 ### Fixed
 
@@ -28,6 +30,7 @@ minor instead and were listed under Changed.
 - The usage-limit probe runs once per review a lane actually starts, and not at all on the way out, so a cancelled or finished loop no longer waits out concurrent probes.
 - Report a review or lane branch that could not be deleted instead of leaving it stranded: `gitx.DeleteBranch` and `gitx.DeleteBranchesMatching` return the failure, and every runner call site logs it. A sweep that cannot list its own pattern now reports that too, rather than reading as a sweep that found nothing to delete.
 - Fsync a run journal when it closes, its shard directory when the file is created, the index directory after a rebuild renames it into place, and the reload handoff directory after saving it, so a power cut cannot leave a listing, a run, or a hot-reload handoff without the file it names.
+- Drive the line-sample debounce from the run's injected clock instead of wall time, so a replayed run attributes the same lines to the same review.
 
 ## 1.23.3
 

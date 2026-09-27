@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -176,6 +177,38 @@ func TestTokensPerSec(t *testing.T) {
 	}
 	if got := (AgentSummary{Tokens: 100, Elapsed: 20 * time.Second}).TokensPerSec(); got != 5 {
 		t.Errorf("got %v, want 5", got)
+	}
+}
+
+// TestResultsOrderIndependentOfCompletionOrder pins that a run reports its
+// reviews in name order, not in the order the lanes happened to finish. Two
+// stats fed the same reviews in opposite completion orders must read
+// identically, and a review that ran in two loops keeps its loop order.
+func TestResultsOrderIndependentOfCompletionOrder(t *testing.T) {
+	reviews := []string{"aa-review", "ab-review", "ac-review", "ad-review"}
+	forward := &Stats{Start: time.Now()}
+	for _, name := range reviews {
+		forward.Add(Result{Review: name, Status: StatusOK})
+	}
+	forward.Add(Result{Review: "aa-review", Status: StatusFail, Detail: "loop two"})
+
+	backward := &Stats{Start: time.Now()}
+	for i := len(reviews) - 1; i >= 0; i-- {
+		backward.Add(Result{Review: reviews[i], Status: StatusOK})
+	}
+	backward.Add(Result{Review: "aa-review", Status: StatusFail, Detail: "loop two"})
+
+	got, want := backward.Results(), forward.Results()
+	if !slices.EqualFunc(got, want, func(a, b Result) bool {
+		return a.Review == b.Review && a.Status == b.Status && a.Detail == b.Detail
+	}) {
+		t.Fatalf("completion order leaked into the result list:\n%+v\n%+v", got, want)
+	}
+	if names := []string{got[0].Review, got[1].Review}; names[0] != "aa-review" || names[1] != "aa-review" {
+		t.Fatalf("the two loops of one review must stay adjacent and in run order: %+v", got)
+	}
+	if got[0].Status != StatusOK || got[1].Status != StatusFail {
+		t.Fatalf("loop order within a review reversed: %+v", got[:2])
 	}
 }
 

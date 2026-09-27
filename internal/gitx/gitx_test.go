@@ -294,6 +294,42 @@ func TestSampleNegativeElapsedBypassesCache(t *testing.T) {
 	}
 }
 
+// TestSampleDebounceUsesInjectedClock pins the seam: a run whose clock is
+// frozen keeps serving the cached sample, and moving that clock past the
+// debounce interval is what lets a fresh walk through. With wall time here
+// instead, the interval is whatever the machine felt like and a replayed run
+// attributes lines to whichever review crossed it.
+func TestSampleDebounceUsesInjectedClock(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	now := stamp
+	r.Now = func() time.Time { return now }
+
+	st, ok := r.Sample(ctx, nil)
+	if !ok {
+		t.Fatal("sample failed")
+	}
+	newFile := filepath.Join(r.Dir, "later.go")
+	if err := os.WriteFile(newFile, []byte("x\ny\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if st2, _ := r.Sample(ctx, nil); st2 != st {
+		t.Fatalf("a frozen clock must hold the cached sample, got %+v want %+v", st2, st)
+	}
+	if err := os.Remove(newFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(newFile, []byte("x\ny\nz\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	now = stamp.Add(minSampleInterval)
+	if st3, _ := r.Sample(ctx, nil); st3.Ins <= st.Ins {
+		t.Fatalf("past the interval the sample must measure fresh, got %+v want > %+v", st3, st)
+	}
+}
+
 func TestSampleNeedsABaseline(t *testing.T) {
 	if !Available() {
 		t.Skip("git is required for gitx tests")

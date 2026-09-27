@@ -102,11 +102,19 @@ func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.commitFails += commitFails
 }
 
-// Results returns a copy of every result so far.
+// Results returns a copy of every result so far, in review-name order.
+//
+// Lanes finish in whatever order the OS scheduler picks, so insertion order
+// would make a --jobs > 1 run report its reviews, and any list built from
+// them, differently on every replay of the same seed. The sort is stable: the
+// same review can run once per loop, and those are sequential, so keeping
+// insertion order within a name keeps the loops in the order they ran.
 func (s *Stats) Results() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]Result(nil), s.results...)
+	out := append([]Result(nil), s.results...)
+	slices.SortStableFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
+	return out
 }
 
 // Counts tallies results by status.

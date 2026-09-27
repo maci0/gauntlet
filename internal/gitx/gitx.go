@@ -134,6 +134,22 @@ type Repo struct {
 	safeMu    sync.Mutex
 	extraSafe []string
 	safeReady bool
+
+	// Now is the clock Sample debounces its cache against and stamps it
+	// with. nil means time.Now. The debounce decides whether a sample is a
+	// fresh walk or a cached value, so a run whose only injected clock is
+	// wall time attributes lines to whichever review happened to cross the
+	// interval. One handle per run, set once by the owner.
+	Now func() time.Time
+}
+
+// now is the repo clock: the injected Now, or wall time. Nil-safe so a zero
+// Repo can still be asked.
+func (r *Repo) now() time.Time {
+	if r != nil && r.Now != nil {
+		return r.Now()
+	}
+	return time.Now()
 }
 
 // lineCount is one cached count and the stat it was measured against. mtime
@@ -461,8 +477,10 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.haveLast && time.Since(r.lastAt) >= 0 && time.Since(r.lastAt) < minSampleInterval {
-		return r.lastVal, true
+	if r.haveLast {
+		if since := r.now().Sub(r.lastAt); since >= 0 && since < minSampleInterval {
+			return r.lastVal, true
+		}
 	}
 
 	// The two queries are independent reads of the same tree: running them
@@ -506,7 +524,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 		st.Ins += r.countLinesCached(p)
 	}
 
-	r.lastVal, r.lastAt, r.haveLast = st, time.Now(), true
+	r.lastVal, r.lastAt, r.haveLast = st, r.now(), true
 	return st, true
 }
 

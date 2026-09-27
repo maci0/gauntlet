@@ -25,6 +25,7 @@ import (
 func TestReporterRendersEveryEventKind(t *testing.T) {
 	ins, del := 12, 3
 	events := []runner.Event{
+		{Kind: runner.EvRunStart, Seed: 7},
 		{Kind: runner.EvLog, Dir: "/repo/b", Text: "starting"},
 		{Kind: runner.EvOutput, Review: "sec-review", Text: "+new",
 			LineKind: normalize.DiffAdd, Repeat: 2},
@@ -41,6 +42,7 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
+		"seed 7, rerun with --seed 7",
 		"[b] starting",
 		"sec-review │ +new (x2)",
 		"MERGE CONFLICT: sec-review kept on gauntlet/x/sec-review",

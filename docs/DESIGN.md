@@ -157,7 +157,12 @@ the unit of safe parallelism is **the directory**, not the agent.
   all read it, so a test that pins the clock also pins those. Stochastic
   choices (shuffle, agent pick, backoff jitter) are keyed draws from the
   seed, not a shared random stream, so a recorded seed replays them even
-  when `--jobs` interleaves lanes.
+  when `--jobs` interleaves lanes. The line-sample debounce reads the same
+  clock through `gitx.Repo.Now`, wired from the bus, because it decides
+  whether a sample is a fresh walk or a cached value and therefore which
+  review a diff is attributed to. Results are reported in review-name
+  order, not lane completion order, so a replayed seed prints the same
+  report.
 
 ### Isolated parallel reviews (`--jobs N`)
 

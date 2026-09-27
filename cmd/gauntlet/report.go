@@ -102,6 +102,11 @@ func (r *reporter) handle(ev runner.Event) {
 		tag = "[" + filepath.Base(ev.Dir) + "] "
 	}
 	switch ev.Kind {
+	case runner.EvRunStart:
+		// The effective seed, not the configured one: --seed 0 derives it
+		// from the clock, so this is the only place a headless run states
+		// the seed that replays it.
+		r.logf(ev.Time, "%sseed %d, rerun with --seed %d", tag, ev.Seed, ev.Seed)
 	case runner.EvLog:
 		r.logf(ev.Time, "%s%s", tag, ev.Text)
 	case runner.EvOutput:
