@@ -540,7 +540,7 @@ technical backstop behind them.
 
 1. **R2, unsigned update channel.** `checksums.txt` is self-referential;
    consider signing releases or documenting the GitHub-account trust anchor
-   explicitly next to `make release` (`Makefile:231`,
+   explicitly next to `make release` (`Makefile:332`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
    (`internal/agent/agent.go:548-560`). Auto-detection already ignores it (`Installed`

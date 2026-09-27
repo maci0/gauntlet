@@ -89,19 +89,45 @@ run: build ## build, then run one loop here with the dashboard
 
 # RUN is a go test -run pattern (default: every test in the package).
 RUN ?=
-PKG ?= ./...
+# test-pkg only. `make test` always runs the whole tree, so it takes no package
+# argument, and a PKG= passed there would have nothing to select from.
+PKG ?=
+
+# `go test -run` exits 0 when the pattern selects nothing, so a mistyped test
+# name reads as a pass and the edit-test loop loses an iteration before the
+# contributor notices. tee keeps the per-package lines streaming; the status
+# file carries go test's own exit code, which a pipeline would drop, because
+# this Makefile is POSIX sh and has no pipefail.
+define RUN_TESTS
+	@log="$(TMPDIR)/test.$$$$.log"; \
+	{ TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(1) 2>&1; \
+	echo $$? >"$$log.status"; } | tee "$$log"; \
+	rc=$$(cat "$$log.status"); \
+	if [ "$$rc" -ne 0 ]; then rm -f "$$log" "$$log.status"; exit "$$rc"; fi; \
+	if [ -n "$(RUN)" ] && ! awk '/^ok / && $$0 !~ /no tests to run/ { ran = 1 } END { exit !ran }' "$$log"; then \
+		echo "test: no test matches RUN='$(RUN)'; go test reports success when a -run pattern selects nothing" >&2; \
+		echo "test: list the candidates with 'make test-pkg PKG=$(PKG)' (no RUN), or 'go test $(GOTAGS) -list . $(PKG)'" >&2; \
+		rm -f "$$log" "$$log.status"; exit 1; \
+	fi; \
+	rm -f "$$log" "$$log.status"
+endef
 
 .PHONY: test
 test: | test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
-	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' ./...
+	$(call RUN_TESTS,./...)
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
 # test` so a green package here stays green in the full run.
 .PHONY: test-pkg
 test-pkg: | test-tmpdir test-cgo
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
-	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
+	@case "$(PKG)" in ""|./...) \
+		echo "test-pkg needs a package: make test-pkg PKG=./internal/prompt [RUN=TestName]" >&2; \
+		echo "test-pkg: PKG is empty, so it would run every package under a target that promises one" >&2; \
+		exit 1 ;; \
+	esac
+	$(call RUN_TESTS,$(PKG))
 
 .PHONY: cover
 cover: | test-tmpdir test-cgo

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -260,6 +261,75 @@ func TestMakefileCheckScriptsPreflight(t *testing.T) {
 	}
 }
 
+// `make test-pkg` promises one package. With PKG unset it used to fall back
+// to ./... and run the whole suite under that name, so the target meant for
+// the fast loop was the slow one.
+func TestMakefileTestPkgRefusesToRunEveryPackage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-pkg")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("make test-pkg with no PKG ran the whole tree instead of refusing:\n%s", out)
+	}
+	if !strings.Contains(string(out), "make test-pkg PKG=./internal/prompt") {
+		t.Fatalf("make test-pkg must name the invocation that works:\n%s", out)
+	}
+}
+
+// `go test -run` exits 0 when the pattern selects nothing, so a mistyped test
+// name reported a pass. Both targets that take RUN must turn that into a
+// failure that names the pattern and how to list the real names.
+func TestMakefileTestRefusesARunThatSelectsNothing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-pkg",
+		"PKG=./internal/humanize", "RUN=TestNoSuchTestNameAnywhere")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("make test-pkg with a RUN that matches nothing reported success:\n%s", out)
+	}
+	if !strings.Contains(string(out), "TestNoSuchTestNameAnywhere") {
+		t.Fatalf("the failure must name the pattern that selected nothing:\n%s", out)
+	}
+	if !strings.Contains(string(out), "-list") {
+		t.Fatalf("the failure must say how to list the real test names:\n%s", out)
+	}
+}
+
+// A package whose tests really do match must still pass, so the guard above
+// cannot be satisfied by refusing everything.
+func TestMakefileTestPkgRunsAMatchingTest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-pkg",
+		"PKG=./internal/humanize", "RUN=TestDuration")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("make test-pkg PKG=./internal/humanize RUN=TestDuration: %v\n%s", err, out)
+	}
+}
+
+// The Makefile exports the build environment, so a test that shells out to it
+// inherits a command line the caller never wrote.
+func cleanMakeEnv() []string {
+	var env []string
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		switch key {
+		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL":
+			continue
+		}
+		env = append(env, entry)
+	}
+	return env
+}
+
 func TestMakefileTestPreflight(t *testing.T) {
 	text := makefileText(t)
 	for _, want := range []string{
@@ -317,6 +387,55 @@ func TestHostArtifactNamesABinaryDistBuilds(t *testing.T) {
 	got := strings.TrimSpace(string(out))
 	if want := filepath.Join("dist", "gauntlet_1.2.3_"+runtime.GOOS+"_"+runtime.GOARCH); got != want {
 		t.Fatalf("make host-artifact = %q, want %q", got, want)
+	}
+}
+
+// A doc pointer into the Makefile is a promise that the line a reader lands
+// on is the thing the sentence names. Editing the Makefile moved the release
+// target out from under one of them, and the reference that caught it is the
+// only thing that keeps the rest from going stale the same way.
+func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
+	root := moduleRoot(t)
+	lines := strings.Split(makefileText(t), "\n")
+	doc := readRepoFile(t, filepath.Join(root, "docs", "THREAT_MODEL.md"))
+	for _, tc := range []struct {
+		name string
+		want string
+	}{
+		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
+		{name: "make release", want: ".PHONY: release"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checked := 0
+			for i := 0; ; {
+				at := strings.Index(doc[i:], "Makefile:")
+				if at < 0 {
+					break
+				}
+				i += at + len("Makefile:")
+				// The sentence that owns the reference is the one naming
+				// it, so a reference belongs to a case only when that
+				// name is close behind it.
+				if from := max(0, i-200); !strings.Contains(doc[from:i], tc.name) {
+					continue
+				}
+				end := strings.IndexAny(doc[i:], "-)\n,`")
+				if end < 0 {
+					t.Fatal("unterminated Makefile reference in THREAT_MODEL.md")
+				}
+				atol, err := strconv.Atoi(doc[i : i+end])
+				if err != nil || atol < 1 || atol > len(lines) {
+					t.Fatalf("THREAT_MODEL.md has a Makefile reference with no usable line number: %q", doc[i-9:i+end])
+				}
+				checked++
+				if !strings.Contains(lines[atol-1], tc.want) {
+					t.Errorf("THREAT_MODEL.md points at Makefile:%d for %s, which reads %q", atol, tc.name, lines[atol-1])
+				}
+			}
+			if checked == 0 {
+				t.Fatalf("THREAT_MODEL.md has no Makefile reference that names %s", tc.name)
+			}
+		})
 	}
 }
 

@@ -39,9 +39,14 @@ make test-pkg PKG=./internal/prompt RUN=TestStripReportSections   # one test in 
 ```
 
 `test-pkg` uses the same tags, race detector, and temp directory as
-`make test`, so a green loop stays green in the full run. Plain `go test`
-also works, but without `-tags sqlite` you are testing the no-database
-build rather than the default one.
+`make test`, so a green loop stays green in the full run. It takes the
+package it is named for and refuses to run without one; `PKG` applies to it
+alone, since `make test` always runs the whole tree. A
+`RUN=` pattern that matches no test is an error rather than a pass, so a
+mistyped name cannot read as a green loop; the error names the pattern and
+the command that lists the real ones. Plain `go test` also works, but
+without `-tags sqlite` you are testing the no-database build rather than the
+default one.
 
 Tests must not write into a tmpfs or into an ignored path inside this repo:
 the prompt discovery tests would otherwise see their own fixtures as
