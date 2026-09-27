@@ -27,6 +27,24 @@ func (r *recorder) Send(msg tea.Msg) {
 
 func (r *recorder) Run() (tea.Model, error) { return nil, nil }
 func (r *recorder) Quit()                   {}
+func (r *recorder) Kill()                   {}
+
+// parked is a program that behaves like a real one before Run: Send blocks,
+// because the message channel is unbuffered and nothing serves it yet. Only
+// Kill releases it, as a real program cancels its own context.
+type parked struct {
+	killed chan struct{}
+	once   sync.Once
+}
+
+func newParked() *parked { return &parked{killed: make(chan struct{})} }
+
+func (p *parked) Send(tea.Msg) { <-p.killed }
+func (p *parked) Run() (tea.Model, error) {
+	return nil, nil
+}
+func (p *parked) Quit() {}
+func (p *parked) Kill() { p.once.Do(func() { close(p.killed) }) }
 
 func (r *recorder) seen() []tea.Msg {
 	r.mu.Lock()
@@ -94,4 +112,36 @@ func TestFinishReturnsAfterTheBusCloses(t *testing.T) {
 			t.Fatalf("message %d is %#v after shutdown, want doneMsg or nothing", i, msg)
 		}
 	}
+}
+
+// A run can fail between subscribing the dashboard and entering Run, leaving
+// the forwarder parked in Send on a channel no one serves. Only Run or Release
+// shuts that program down, so without Release the goroutine, and the bus
+// subscription with it, is stranded for the rest of the process.
+func TestReleaseJoinsTheForwarderWithoutRun(t *testing.T) {
+	events := make(chan runner.Event, 1)
+	prog := newParked()
+	d := newDashboard(Config{}, events, prog)
+
+	// Queued while the forwarder is still finding its feet, so it reaches Send.
+	events <- runner.Event{Kind: runner.EvLog, Text: "runner is starting"}
+
+	done := make(chan struct{})
+	go func() { d.Release(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Release blocked on a program Run was never entered on")
+	}
+
+	// Joined, not merely signalled: the forwarder is gone, not on its way out.
+	select {
+	case <-d.forwarded:
+	default:
+		t.Fatal("Release returned before the forwarder did")
+	}
+
+	// Idempotent, so a path that releases and then unwinds through another
+	// return does not block on the second call.
+	d.Release()
 }

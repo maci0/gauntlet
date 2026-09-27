@@ -6,6 +6,7 @@ package ui
 import (
 	"path/filepath"
 	"slices"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -201,6 +202,9 @@ type program interface {
 	Send(tea.Msg)
 	Run() (tea.Model, error)
 	Quit()
+	// Kill shuts the program down without waiting for it to drain, so it is
+	// safe on a program Run was never entered on.
+	Kill()
 }
 
 // Dashboard owns the terminal for the duration of a run.
@@ -218,6 +222,11 @@ type Dashboard struct {
 	// for an acknowledgement that will never come.
 	done      chan chan struct{}
 	forwarded chan struct{}
+
+	// released closes when the caller gives up on the program, and
+	// releaseOnce keeps Release idempotent across the paths that both reach it.
+	released    chan struct{}
+	releaseOnce sync.Once
 }
 
 // newModel builds the dashboard state for one run.
@@ -277,13 +286,15 @@ func newDashboard(cfg Config, events <-chan runner.Event, prog program) *Dashboa
 		events:    events,
 		done:      make(chan chan struct{}),
 		forwarded: make(chan struct{}),
+		released:  make(chan struct{}),
 	}
 	// Started here, not in Run: Finish can be called from another goroutine
 	// before Run is entered, and a forwarder that did not exist yet would let
 	// the end-of-run marker land ahead of everything the bus had already
 	// queued. Send parks on the program's unbuffered channel and returns
 	// immediately once the program has shut down, so an early or late send is
-	// safe either way.
+	// safe either way. Only Run or Release shuts that program down: a run that
+	// returns in between has to call Release, or the forwarder parks for good.
 	go d.forward()
 	return d
 }
@@ -304,6 +315,8 @@ func (d *Dashboard) forward() {
 			d.drain()
 			d.prog.Send(doneMsg{})
 			close(ack)
+		case <-d.released:
+			return
 		}
 	}
 }
@@ -351,6 +364,20 @@ func (d *Dashboard) Finish() {
 // Quit closes the dashboard without waiting for a keypress. A hot reload uses
 // it: the successor needs the terminal, and nobody is there to press q.
 func (d *Dashboard) Quit() { d.prog.Quit() }
+
+// Release shuts the program down and joins the forwarder, for a run that
+// returns without ever entering Run. Only Run serves the program's unbuffered
+// message channel, so a forwarder parked in Send is released by neither a
+// Close on the bus nor Quit: it would hold the bus subscription, and every
+// event the channel still carries, for the rest of the process. Release kills
+// the program (which is what unparks Send) and then waits, so no message
+// arrives after the caller believes the dashboard is gone. It is idempotent,
+// and a no-op on a program Run has already shut down.
+func (d *Dashboard) Release() {
+	d.releaseOnce.Do(func() { close(d.released) })
+	d.prog.Kill()
+	<-d.forwarded
+}
 
 type eventMsg runner.Event
 type tickMsg time.Time

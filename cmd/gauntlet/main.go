@@ -462,6 +462,11 @@ func run(argv []string) int {
 			// `s` on the dashboard is the same request SIGQUIT makes.
 			OnFinish: func() { graceful.request(nil) },
 		}, bus.Subscribe(4096))
+		// Every exit below, including the failures between here and Run that
+		// never reach it, has to leave the event forwarder. It parks on the
+		// program's unbuffered channel, which only Run serves, so a run that
+		// returns first would strand it with the bus subscription.
+		defer dash.Release()
 	} else {
 		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet}
 		consumers.Go(func() {
