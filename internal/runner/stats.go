@@ -262,6 +262,10 @@ func (s *Stats) ByAgent() []AgentSummary {
 // Skipped is included: a review that never ran (unknown name, unreadable
 // prompt) is why exit code 1 exists alongside ok and interrupted, and the
 // detailed list must account for every nonzero exit the counts report.
+//
+// Sorted like Results, and stable for the same reason: a review that failed
+// in two loops contributes two rows, each carrying its own branch, exit
+// code, and lines, and an unstable sort would print them in either order.
 func (s *Stats) Failures() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -271,6 +275,6 @@ func (s *Stats) Failures() []Result {
 			out = append(out, r)
 		}
 	}
-	slices.SortFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
+	slices.SortStableFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
 	return out
 }

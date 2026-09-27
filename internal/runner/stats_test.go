@@ -212,6 +212,38 @@ func TestResultsOrderIndependentOfCompletionOrder(t *testing.T) {
 	}
 }
 
+// TestFailuresOrderIndependentOfCompletionOrder pins that the failure list
+// reads by name and then by loop, the way Results does. A review that failed
+// in two loops contributes two rows, each with its own branch and lines, so an
+// unstable sort would print one run's failures in either order.
+func TestFailuresOrderIndependentOfCompletionOrder(t *testing.T) {
+	reviews := []string{"aa-review", "ab-review", "ac-review", "ad-review"}
+	forward := &Stats{Start: time.Now()}
+	for _, name := range reviews {
+		forward.Add(Result{Review: name, Status: StatusFail})
+	}
+	forward.Add(Result{Review: "aa-review", Status: StatusTimeout, Branch: "loop-two"})
+
+	backward := &Stats{Start: time.Now()}
+	for _, review := range slices.Backward(reviews) {
+		backward.Add(Result{Review: review, Status: StatusFail})
+	}
+	backward.Add(Result{Review: "aa-review", Status: StatusTimeout, Branch: "loop-two"})
+
+	got, want := backward.Failures(), forward.Failures()
+	if !slices.EqualFunc(got, want, func(a, b Result) bool {
+		return a.Review == b.Review && a.Status == b.Status && a.Branch == b.Branch
+	}) {
+		t.Fatalf("completion order leaked into the failure list:\n%+v\n%+v", got, want)
+	}
+	if len(got) != 5 {
+		t.Fatalf("failure list: %+v", got)
+	}
+	if got[0].Status != StatusFail || got[1].Status != StatusTimeout {
+		t.Fatalf("loop order within a review reversed: %+v", got[:2])
+	}
+}
+
 // TestStatsSurvivesConcurrentUse pins the documented guarantee under the race
 // detector: parallel lanes Add results and record commit steps while readers
 // tally, and a hot-reload Seed lands mid-run. Every access must go through the

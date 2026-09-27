@@ -159,12 +159,20 @@ func WriteFileAtomic(dir, pattern, path string, data []byte) error {
 
 // SweepStaleTemps removes regular files in dir matching prefix whose modification
 // time is older than age. Best effort: failures are ignored.
-func SweepStaleTemps(dir, prefix string, age time.Duration) {
+//
+// now is the clock the cutoff is measured against, nil meaning time.Now. The
+// cutoff is the one decision here that depends on when the sweep runs, so a
+// caller that owns a clock passes it and the sweep boundary is reproducible
+// from that clock alone rather than from when it happened to run.
+func SweepStaleTemps(dir, prefix string, age time.Duration, now func() time.Time) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
-	cutoff := time.Now().Add(-age)
+	if now == nil {
+		now = time.Now
+	}
+	cutoff := now().Add(-age)
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {

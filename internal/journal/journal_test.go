@@ -2314,7 +2314,8 @@ func TestIndexRewriteKeepsUnreadableAndOversizedRows(t *testing.T) {
 // The index lock is taken with LOCK_EX across processes, so a peer that never
 // releases it would park every reader behind it. The acquisition is bounded
 // instead, and the bound is visible as an error naming the lock file rather
-// than as a wait with no end.
+// than as a wait with no end. The bound runs on the injected clock, so the
+// test costs no real waiting and the retry count is fixed by that clock.
 func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	holder, err := os.OpenFile(indexLockPath(),
@@ -2334,7 +2335,13 @@ func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 	}
 	defer other.Close()
 
-	err = lockIndex(int(other.Fd()), 10*time.Millisecond)
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	at := start
+	polls := 0
+	clock := func() time.Time { return at }
+	sleep := func(d time.Duration) { polls++; at = at.Add(d) }
+
+	err = lockIndex(int(other.Fd()), 10*time.Millisecond, clock, sleep)
 	if err == nil {
 		t.Fatal("a second acquisition succeeded while the lock was held")
 	}
@@ -2343,6 +2350,45 @@ func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), indexLockPath()) {
 		t.Errorf("the failure does not name the lock file: %v", err)
+	}
+	// The bound is 10ms and a poll is 50ms, so the first pause already
+	// carries the clock past it: one poll, and no real time spent.
+	if polls != 1 {
+		t.Errorf("the wait polled %d times, want 1", polls)
+	}
+}
+
+// A peer that releases mid-wait must not cost the waiter the lock: the retry
+// after the pause takes it.
+func TestIndexLockTakesALockReleasedWhileWaiting(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	holder, err := os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("cannot hold the index lock: %v", err)
+	}
+
+	other, err := os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	at := start
+	clock := func() time.Time { return at }
+	sleep := func(time.Duration) {
+		holder.Close()
+		at = at.Add(time.Millisecond)
+	}
+
+	if err := lockIndex(int(other.Fd()), time.Second, clock, sleep); err != nil {
+		t.Fatalf("the lock released while waiting was not taken: %v", err)
 	}
 }
 
@@ -2356,7 +2402,9 @@ func TestIndexLockTakesAFreeLock(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer syscall.Close(fd)
-	if err := lockIndex(fd, time.Second); err != nil {
+	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return start }
+	if err := lockIndex(fd, time.Second, clock, nil); err != nil {
 		t.Fatalf("a free lock was not taken: %v", err)
 	}
 }

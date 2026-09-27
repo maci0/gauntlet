@@ -276,11 +276,14 @@ func collectTotals(results []*dirRun) runTotals {
 		t.byAgent = append(t.byAgent, a)
 	}
 	// A fixed order, not a map range: the same run must summarize the same way
-	// every time, whichever order the directories finished in.
+	// every time, whichever order the directories finished in. The failure
+	// list is sorted stably for the reason Stats.Failures is: a review that
+	// failed in two loops is two rows, and the loops have to stay in run
+	// order.
 	slices.SortFunc(t.byAgent, func(a, b runner.AgentSummary) int {
 		return cmp.Compare(a.Label, b.Label)
 	})
-	slices.SortFunc(t.failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
+	slices.SortStableFunc(t.failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
 	return t
 }
 

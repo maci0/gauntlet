@@ -28,10 +28,6 @@ import (
 var (
 	dshPatchMu sync.Mutex
 	dshPatches = map[string]string{}
-
-	dshProbeOnce sync.Once
-	dshProvider  string
-	dshProbeErr  error
 )
 
 var dshProviderRe = regexp.MustCompile(`^\s+provider:\s*['"]?([\w.-]+)['"]?\s*$`)
@@ -59,9 +55,58 @@ func parseDshProvider(dump string) string {
 // gives up on an unreapable child.
 const dshProbeGrace = 10 * time.Second
 
+// dshProbeTimeout bounds the config dump. A hung launcher must not park the
+// first dsh:model launch for the rest of the run.
+const dshProbeTimeout = 120 * time.Second
+
 // dshDumpMaxBytes bounds stdout and stderr of dsh --dump-config. A YAML dump
 // is tens of kilobytes; an unbounded read must not exhaust RAM.
 const dshDumpMaxBytes = 4 << 20
+
+// dshProbe memoizes one provider probe per process. It is a var holding the
+// struct rather than three package-level values so a caller that needs the
+// probe run again (a second run in one process, a test covering both
+// outcomes) replaces the whole memo rather than reaching into fields the
+// probe owns.
+var dshProbe = &dshProviderProbe{}
+
+// dshProviderProbe is one memoized probe: a result and its error, taken once.
+type dshProviderProbe struct {
+	once     sync.Once
+	provider string
+	err      error
+}
+
+// dumpDshConfig runs the launcher's config dump and returns the provider the
+// headless profile's agent-default-model entry names. A var because the call
+// leaves the process: a test supplies a listing, or the failure a missing
+// binary produces, without a launcher on PATH and without the fetch the bunx
+// fallback would make.
+var dumpDshConfig = func(base []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), dshProbeTimeout)
+	defer cancel()
+	argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = os.TempDir()
+	cmd.Env = runx.AbsPATHEnv()
+	cmd.Stdin = nil
+	out, errOut := runx.Bound(cmd, dshDumpMaxBytes, dshProbeGrace)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
+	if err := cmd.Run(); err != nil {
+		if detail := strings.TrimSpace(errOut.String()); detail != "" {
+			return "", fmt.Errorf("%s --dump-config failed: %w: %s", argv[0], err, runx.FirstLine(detail))
+		}
+		return "", fmt.Errorf("%s --dump-config failed: %w", argv[0], err)
+	}
+	if out.Hit || errOut.Hit {
+		return "", fmt.Errorf("--dump-config output exceeded %d bytes", dshDumpMaxBytes)
+	}
+	provider := parseDshProvider(out.String())
+	if provider == "" {
+		return "", errors.New("the headless profile config has no agent-default-model provider")
+	}
+	return provider, nil
+}
 
 // dshDefaultProvider probes the headless profile's configured provider once
 // per process. A failed probe keeps its error, not just an empty result, so
@@ -72,34 +117,10 @@ const dshDumpMaxBytes = 4 << 20
 // killed child would hold that pipe open and hang this call forever. KillGroup
 // is deferred so grandchildren are reaped on normal exit as well.
 func dshDefaultProvider(base []string) (string, error) {
-	dshProbeOnce.Do(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer cancel()
-		argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
-		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-		cmd.Dir = os.TempDir()
-		cmd.Env = runx.AbsPATHEnv()
-		cmd.Stdin = nil
-		out, errOut := runx.Bound(cmd, dshDumpMaxBytes, dshProbeGrace)
-		defer runx.KillGroup(cmd, syscall.SIGKILL)
-		if err := cmd.Run(); err != nil {
-			if detail := strings.TrimSpace(errOut.String()); detail != "" {
-				dshProbeErr = fmt.Errorf("%s --dump-config failed: %w: %s", argv[0], err, runx.FirstLine(detail))
-				return
-			}
-			dshProbeErr = fmt.Errorf("%s --dump-config failed: %w", argv[0], err)
-			return
-		}
-		if out.Hit || errOut.Hit {
-			dshProbeErr = fmt.Errorf("%s --dump-config output exceeded %d bytes", argv[0], dshDumpMaxBytes)
-			return
-		}
-		dshProvider = parseDshProvider(out.String())
-		if dshProvider == "" {
-			dshProbeErr = errors.New("the headless profile config has no agent-default-model provider")
-		}
+	dshProbe.once.Do(func() {
+		dshProbe.provider, dshProbe.err = dumpDshConfig(base)
 	})
-	return dshProvider, dshProbeErr
+	return dshProbe.provider, dshProbe.err
 }
 
 // dshPatchKey names one overlay file. Every spelling two distinct
@@ -170,7 +191,7 @@ func writeDshPatch(key, body string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	gauntlethome.SweepStaleTemps(dir, "."+key+".yml-", gauntlethome.StaleTempAge)
+	gauntlethome.SweepStaleTemps(dir, "."+key+".yml-", gauntlethome.StaleTempAge, nil)
 	path := filepath.Join(dir, key+".yml")
 	if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-*", path, []byte(body)); err != nil {
 		return "", err

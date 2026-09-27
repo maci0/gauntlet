@@ -185,7 +185,7 @@ func TestSweepStaleTempsRemovesOnlyAbandonedDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge)
+	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge, nil)
 
 	for _, p := range []string{fresh, other} {
 		if _, err := os.Stat(p); err != nil {

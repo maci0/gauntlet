@@ -141,7 +141,7 @@ func SaveState(dir, runID string, v any) (string, error) {
 	}
 	// The state dir is gauntlet's own, so every regular file in it is a
 	// handoff or the temp of one that died mid-write.
-	gauntlethome.SweepStaleTemps(dir, "", gauntlethome.StaleTempAge)
+	gauntlethome.SweepStaleTemps(dir, "", gauntlethome.StaleTempAge, nil)
 	path := filepath.Join(dir, runID+".json")
 	data, err := json.Marshal(v)
 	if err != nil {

@@ -47,8 +47,19 @@ const indexLockPoll = 50 * time.Millisecond
 // lockIndex takes the cross-process index lock, giving up after wait.
 // LOCK_EX alone would block forever, so LOCK_NB is retried until the deadline
 // and the failure names the holder's lock file.
-func lockIndex(fd int, wait time.Duration) error {
-	deadline := time.Now().Add(wait)
+//
+// now and sleep are the wait loop's clock and pause, nil meaning time.Now and
+// time.Sleep. They are the two reads that decide when a contended lock gives
+// up, so a caller that owns a clock supplies both and the bound is reached on
+// that clock instead of on however long the retries happened to take.
+func lockIndex(fd int, wait time.Duration, now func() time.Time, sleep func(time.Duration)) error {
+	if now == nil {
+		now = time.Now
+	}
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	deadline := now().Add(wait)
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
@@ -57,11 +68,11 @@ func lockIndex(fd int, wait time.Duration) error {
 		if !errors.Is(err, syscall.EWOULDBLOCK) {
 			return err
 		}
-		if time.Now().After(deadline) {
+		if now().After(deadline) {
 			return fmt.Errorf("index lock %s is held by another gauntlet: %w",
 				indexLockPath(), err)
 		}
-		time.Sleep(indexLockPoll)
+		sleep(indexLockPoll)
 	}
 }
 
@@ -85,7 +96,7 @@ func withIndexLock(fn func() error) error {
 	if st.Mode&syscall.S_IFMT != syscall.S_IFREG {
 		return fmt.Errorf("index lock path is not a regular file: %s", indexLockPath())
 	}
-	if err := lockIndex(fd, indexLockWait); err != nil {
+	if err := lockIndex(fd, indexLockWait, nil, nil); err != nil {
 		return err
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)
@@ -714,7 +725,7 @@ func commitIndex(write func(io.Writer) error) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
-	gauntlethome.SweepStaleTemps(Home(), ".index.jsonl-", gauntlethome.StaleTempAge)
+	gauntlethome.SweepStaleTemps(Home(), ".index.jsonl-", gauntlethome.StaleTempAge, nil)
 	tmp, err := os.CreateTemp(Home(), ".index.jsonl-*")
 	if err != nil {
 		return err

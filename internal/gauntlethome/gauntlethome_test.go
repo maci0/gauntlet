@@ -324,12 +324,14 @@ func TestSweepStaleTemps(t *testing.T) {
 	old := write(".prefix-old")
 	fresh := write(".prefix-new")
 	other := write("other")
-	past := time.Now().Add(-48 * time.Hour)
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-48 * time.Hour)
 	if err := os.Chtimes(old, past, past); err != nil {
 		t.Fatal(err)
 	}
+	clock := func() time.Time { return now }
 
-	SweepStaleTemps(dir, ".prefix-", 24*time.Hour)
+	SweepStaleTemps(dir, ".prefix-", 24*time.Hour, clock)
 
 	for _, p := range []string{fresh, other} {
 		if _, err := os.Stat(p); err != nil {
@@ -338,5 +340,37 @@ func TestSweepStaleTemps(t *testing.T) {
 	}
 	if _, err := os.Stat(old); !os.IsNotExist(err) {
 		t.Errorf("the old file should be gone (stat err=%v)", err)
+	}
+}
+
+// A sweep that ran at a different time must not sweep differently: the cutoff
+// comes from the caller's clock, so a replay of the same state with the same
+// clock removes the same files.
+func TestSweepStaleTempsFollowsTheInjectedClock(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, ".prefix-a")
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mtime := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	if err := os.Chtimes(p, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+
+	// The clock sits behind the file, so a wall-clock sweep would not have
+	// reached it yet either: nothing goes.
+	SweepStaleTemps(dir, ".prefix-", 24*time.Hour, func() time.Time {
+		return mtime.Add(-time.Hour)
+	})
+	if _, err := os.Stat(p); err != nil {
+		t.Fatalf("a file newer than the cutoff must survive: %v", err)
+	}
+
+	// The clock steps past the cutoff and the same file goes.
+	SweepStaleTemps(dir, ".prefix-", 24*time.Hour, func() time.Time {
+		return mtime.Add(25 * time.Hour)
+	})
+	if _, err := os.Stat(p); !os.IsNotExist(err) {
+		t.Errorf("a file past the cutoff should be gone (stat err=%v)", err)
 	}
 }

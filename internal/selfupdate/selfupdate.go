@@ -248,7 +248,7 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	dir := filepath.Dir(self)
 	// A kill, an OOM, or a power cut skips every defer, so without the sweep
 	// each interrupted download leaves up to maxAssetBytes beside the binary.
-	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge)
+	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge, nil)
 	tmp, err := os.CreateTemp(dir, ".gauntlet-update-*")
 	if err != nil {
 		return "", fmt.Errorf("cannot write next to %s: %w", self, err)

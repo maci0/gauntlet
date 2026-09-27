@@ -5,6 +5,7 @@ package agent
 
 import (
 	"encoding/json"
+	"errors"
 	"maps"
 	"math/rand/v2"
 	"os"
@@ -2083,6 +2084,78 @@ func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
 			t.Errorf("%s: overlay does not pin the pair:\n got %q\nwant %q", c.model, body, c.want)
 		}
 	}
+}
+
+// A model with no provider has to ask the launcher which one the headless
+// profile uses. That leaves the process, so the probe goes through dumpDshConfig
+// and the memo through dshProbe: both outcomes are reachable without a dsh on
+// PATH and without the fetch the bunx fallback would make.
+func TestBareDshModelProbesTheHeadlessProvider(t *testing.T) {
+	isolateDshPatches(t)
+	const dump = "plugins:\n  - id: agent-default-model\n    provider: 'deepseek'\n"
+	calls := 0
+	probeDshConfig(t, func([]string) (string, error) {
+		calls++
+		return parseDshProvider(dump), nil
+	})
+
+	for range 2 {
+		argv, err := BuildCmd(Spec{Tool: "dsh", Model: "chat"}, "PROMPT", BuildOpts{})
+		if err != nil {
+			t.Fatalf("a bare dsh:model must resolve: %v", err)
+		}
+		var patch string
+		for i, a := range argv {
+			if a == "--patch" && i+1 < len(argv) {
+				patch = argv[i+1]
+			}
+		}
+		if patch == "" {
+			t.Fatalf("no --patch overlay in %v", argv)
+		}
+		body, err := os.ReadFile(patch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(body), "provider: 'deepseek'") {
+			t.Errorf("the probed provider is not pinned: %s", body)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("the probe ran %d times, want 1 per process", calls)
+	}
+}
+
+// A failed probe names the launcher and its cause: "use dsh:provider/model" is
+// the way out, so the message has to reach the operator through the error.
+func TestBareDshModelReportsAFailedProbe(t *testing.T) {
+	isolateDshPatches(t)
+	probeDshConfig(t, func([]string) (string, error) {
+		return "", errors.New("exec: \"dsh\": executable file not found in $PATH")
+	})
+
+	_, err := BuildCmd(Spec{Tool: "dsh", Model: "chat"}, "PROMPT", BuildOpts{})
+	if err == nil {
+		t.Fatal("a failed probe must not produce a command")
+	}
+	for _, want := range []string{"chat", "use dsh:<provider>/<model>", "not found"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the failure does not mention %q: %v", want, err)
+		}
+	}
+}
+
+// probeDshConfig points the probe at dump for the length of one test, with a
+// fresh memo so the next test probes again.
+func probeDshConfig(t *testing.T, dump func(base []string) (string, error)) {
+	t.Helper()
+	savedDump := dumpDshConfig
+	dumpDshConfig = dump
+	dshProbe = &dshProviderProbe{}
+	t.Cleanup(func() {
+		dumpDshConfig = savedDump
+		dshProbe = &dshProviderProbe{}
+	})
 }
 
 func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
