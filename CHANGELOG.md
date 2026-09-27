@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.24.0
+
 ### Added
 
 - The repository's YAML is linted: `make check-scripts` and the `scripts` CI job run `yamllint --strict` on `.github`, with the rule set in `.yamllint` and the version pinned beside the ruff and mypy pins. A malformed workflow is a syntax error nothing else in the tree can see, and a warning now fails instead of scrolling past.
