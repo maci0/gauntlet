@@ -146,6 +146,52 @@ func TestDocsCLIMatchesTheContract(t *testing.T) {
 	}
 }
 
+// .env.example is how a consumer discovers the variables this binary reads
+// without reading the help screen. Nothing ties it to the contract, so a new
+// variable could ship documented in docs/CLI.md and missing from the template,
+// or a stale one could linger with no reader. Both directions are checked
+// here: every contracted name appears, and every name in the file is
+// documented in docs/CLI.md.
+func TestEnvExampleMatchesTheContract(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", ".env.example"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli, err := os.ReadFile(filepath.Join("..", "..", "docs", "CLI.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(cli)
+
+	var listed []string
+	for line := range strings.SplitSeq(string(data), "\n") {
+		entry := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "#"))
+		name, _, ok := strings.Cut(entry, "=")
+		if !ok || name == "" {
+			continue
+		}
+		if strings.ContainsFunc(name, func(r rune) bool {
+			return !(r >= 'A' && r <= 'Z') && !(r >= '0' && r <= '9') && r != '_'
+		}) {
+			continue
+		}
+		listed = append(listed, name)
+	}
+	if len(listed) == 0 {
+		t.Fatal(".env.example names no variables; it is the discovery surface for every variable this binary reads")
+	}
+	for _, env := range goldenEnvVars {
+		if !slices.Contains(listed, env) {
+			t.Errorf(".env.example does not mention %s; every contracted variable needs a template entry", env)
+		}
+	}
+	for _, name := range listed {
+		if !strings.Contains(text, name) {
+			t.Errorf(".env.example lists %s, which docs/CLI.md does not document", name)
+		}
+	}
+}
+
 // A package outside internal/ that is not a main package is importable by
 // other programs, which makes its exported API part of the consumer contract
 // whether it was meant to be or not. New code belongs under internal/; a

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
@@ -228,6 +229,27 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			break
 		}
 	}
+	// Which tree this process reads, and where the answer came from, plus
+	// where persistent definitions are read from. Neither is shown anywhere
+	// else on the screen, so a run that wrote somewhere unexpected cannot be
+	// told apart from one that did not. Printed before the verdict, because a
+	// box with no agent CLI is exactly the box whose state root is in
+	// question. The definitions file is named only when it exists: missing is
+	// missing.
+	root, homeOK := gauntlethome.Dir()
+	src := "from $HOME"
+	switch {
+	case !homeOK:
+		src = "no usable HOME: GAUNTLET_HOME unset and HOME missing, so beside the working directory"
+	case strings.TrimSpace(os.Getenv("GAUNTLET_HOME")) != "":
+		src = "from GAUNTLET_HOME"
+	}
+	writeln(pal.dim("State: " + root + "  (" + src + ")"))
+	if p := agent.CustomFilePath(); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			writeln(pal.dim("Definitions: " + p))
+		}
+	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
@@ -238,14 +260,6 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	if len(missingRec) > 0 {
 		writeln(pal.dim("Worth installing: ") + wrapIndent(strings.Join(missingRec, " "), width, 2))
-	}
-	// Where persistent definitions were read from, so a definition that
-	// misbehaves can be traced to its file (and to any GAUNTLET_HOME in
-	// play). Named only when the file exists: missing is missing.
-	if p := agent.CustomFilePath(); p != "" {
-		if _, err := os.Stat(p); err == nil {
-			writeln(pal.dim("Definitions: " + p))
-		}
 	}
 	writeln(pal.dim(tokenSourceLine))
 	writeln(pal.dim("Stack-specific tools only matter for the languages you review."))

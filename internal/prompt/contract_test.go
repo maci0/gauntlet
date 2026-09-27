@@ -168,7 +168,10 @@ func TestReadmeInstallPinsTheResolvedTag(t *testing.T) {
 	if strings.Contains(text, "releases/latest/download/") {
 		t.Fatal("README install fetches from releases/latest/download/; use releases/download/v${ver}/ so the binary matches the tag just resolved")
 	}
-	if !strings.Contains(text, "releases/download/v${ver}/") {
-		t.Fatal("README install must fetch from releases/download/v${ver}/")
+	// The base is matched without a trailing slash: the script may carry it
+	// itself or build "$base/$asset", and both pin the tag that was just
+	// resolved. What matters is that ${ver} is interpolated into the path.
+	if !strings.Contains(text, "releases/download/v${ver}") {
+		t.Fatal("README install must fetch from releases/download/v${ver}/ so the binary matches the tag just resolved")
 	}
 }

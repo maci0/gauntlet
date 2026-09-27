@@ -104,6 +104,50 @@ func TestDoctorDshViaBunxExitsOneWhenNoAutoDetectableAgent(t *testing.T) {
 	}
 }
 
+// The state root decides where the journal, the handoff files, and
+// agents.json live, and a GAUNTLET_HOME pointing somewhere unexpected is
+// invisible everywhere else on the screen. doctor names it and where the
+// answer came from, so a config question needs no second command.
+func TestDoctorNamesTheStateRootAndItsSource(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "State: "+state) || !strings.Contains(out, "from GAUNTLET_HOME") {
+		t.Fatalf("doctor should name the GAUNTLET_HOME state root and its source:\n%s", out)
+	}
+
+	t.Setenv("GAUNTLET_HOME", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	buf.Reset()
+	doctor(&buf, palette{}, nil, 80)
+	out = buf.String()
+	want := "State: " + filepath.Join(home, ".gauntlet")
+	if !strings.Contains(out, want) || !strings.Contains(out, "from $HOME") {
+		t.Fatalf("doctor should fall back to the HOME state root and say so:\n%s", out)
+	}
+}
+
+// A box with no usable agent is the one whose state root most needs saying, so
+// the line is printed before the verdict rather than after it.
+func TestDoctorNamesTheStateRootWithoutAUsableAgent(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+
+	var buf strings.Builder
+	if code := doctor(&buf, palette{}, nil, 80); code != exitFail {
+		t.Fatalf("doctor exit code = %d, want %d (exitFail)", code, exitFail)
+	}
+	if out := buf.String(); !strings.Contains(out, "State: "+state) {
+		t.Fatalf("doctor should name the state root even when it fails:\n%s", out)
+	}
+}
+
 func TestDoctorReportsOutputFailure(t *testing.T) {
 	sink := &doctorFailWriter{remaining: 0}
 	code, diagnostic := captureStderrFor(t, func() int {
