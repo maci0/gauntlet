@@ -7,19 +7,26 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-27 against commit ef6eb5c. This pass read the eight
-commits since the previous baseline (93b004c) and changed three things in the
-model. One entry point and one gap were added for a surface the document had
-never covered: `make repro` archives the whole working tree, so anything a
+Last reviewed: 2026-09-27 against commit 4cdb72c. This pass read the eighteen
+commits since the previous baseline (ef6eb5c) and changed no risk, no entry
+point, and no gap; it re-anchored citations the build commits moved. Three
+commits in that range changed the Makefile's shape, and the pointers into it
+were not carried along: `make release` sits at `Makefile:446` and `make repro`
+at `Makefile:508-532`, so every reference to the earlier anchors was stale and
+`TestDocsPointAtTheMakefileLineTheyName` was red on both. That test only
+checked the pointers naming `make release` and `GOVULNCHECK_VERSION`, which is
+why the other five went unnoticed; it now covers the `repro` target and its
+member list too. The `make repro` entry point and gap added at the previous
+baseline still stand: it archives the whole working tree, so anything a
 developer has in their checkout that is not in `.gitignore` is copied under
 `$HOME/.cache/gauntlet/repro` for the length of the build
-(`Makefile:503-528`; the archive's members now come from git's ignore-aware
-listing and tests hold the recipe to it, `cmd/gauntlet/makefile_test.go:773-917`). Two controls that
-landed since the last baseline are now carried: a commit subject an agent
-supplies is dropped for the generated one when it credits a model or an agent
-CLI (`attributionRe`, `internal/runner/subject.go:54`), because the trailer
-sweep on the finished message never reached the subject; and the
-conflict-resolution marker scan now covers the commit's whole scope rather
+(`Makefile:508-532`; the archive's members come from git's ignore-aware
+listing and tests hold the recipe to it, `cmd/gauntlet/makefile_test.go:865-981`).
+The two controls that baseline added are re-anchored, not changed: a commit
+subject an agent supplies is dropped for the generated one when it credits a
+model or an agent CLI (`attributionRe`, `internal/runner/subject.go:55`),
+because the trailer sweep on the finished message never reached the subject;
+and the conflict-resolution marker scan covers the commit's whole scope rather
 than only the paths git reported as conflicted (`commitScope`,
 `internal/runner/conflict.go:102-119`), so a marker the resolver left in a file
 it was not asked about blocks the merge. Citations that moved with those
@@ -273,7 +280,7 @@ Untrusted inputs with their validation point:
 | `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:74-111` | runs only for a `dsh:<model>` pin; child environment isolated with `runx.AbsPATHEnv()` (`dsh.go:81`); bounded to 4 MiB output via `runx.Bound` (`dsh.go:65,84`); own process group, 120s cap, deferred group SIGKILL via `runx.KillGroup` (`dsh.go:85`); provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:323`); provider and model validated against `dshModelRe` (`dsh.go:135-136`); overlay key rejects path separators and traversal (`dsh.go:116-133`) |
 | Interactive launcher / picker keyboard input | `cmd/gauntlet/pick.go`, `internal/ui/pick.go`, `internal/ui/ui.go` | navigation keys jump to bounds (`g`/`G` in `internal/ui/pick.go:364-367`); cursor clamped to valid review rows via `clampReviewCursor` (`internal/ui/pick.go:320,409,412,454-464`); Esc/Ctrl-C during filter editing resets typing and clamps cursor (`internal/ui/pick.go:407-409`); empty filter matches block launch, with the reason returned by `blocked` and checked on Enter (`internal/ui/pick_view.go:114-125`, `internal/ui/pick.go:328-332`); Enter key terminates completed runs (`internal/ui/ui.go:425-429`) |
 | Planted symlinks/FIFOs in the tree | prompt discovery inspects candidates with `os.Lstat` requiring regular files (`prompt/discover.go:244,278`); prompt reads `prompt.go:278-329`, lock creation `runner/lock.go:53-89`, untracked counting `gitx.go:543-625`, reload handoff `reload.go:188-196` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stats, size caps; stat errors propagated on open regular files (`gitx.go:545-557`); `LoadState` verifies regular file with `Lstat` (`reload.go:187-196`) |
-| Developer build surface: `make repro` archives the working tree | `Makefile:503-528`; member list and archive `Makefile:511-512`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:773-917` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
+| Developer build surface: `make repro` archives the working tree | `Makefile:508-532`; member list and archive `Makefile:516-517`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:865-981` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
 
 ## Threats per boundary
 
@@ -633,7 +640,7 @@ fails is a warning; the run's own report has already been written
 | History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:36-140,141-173`, `internal/journal/index.go:571-614` |
 | Embedded basic-auth credentials in remote URLs | userinfo stripped from git stderr strings before errors are returned, printed, or journaled | `runx.RedactUserinfo`, `internal/gitx/gitx.go:358-364` |
 | Known-vulnerable dependencies shipping to users | govulncheck weekly and on dependency changes in CI | `.github/workflows/vulnscan.yml` |
-| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:503-528`, `cmd/gauntlet/makefile_test.go:773-917`, `.gitignore:10` |
+| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:508-532`, `cmd/gauntlet/makefile_test.go:865-981`, `.gitignore:10` |
 | Silent loss of audit trail | journal as event-bus subscriber, run id + published seed for reproduction; journal failure degrades loudly, not silently | DESIGN.md "Run journal", `journal/` |
 
 Single point of failure: the embedded containment rules
@@ -686,7 +693,7 @@ technical backstop behind them.
 8. **The developer build surface is not in the runtime model.** `make repro`
    archives the whole working tree, so anything a developer has in their
    checkout that is not ignored lands under `$HOME/.cache/gauntlet/repro` for
-   the length of the build (`Makefile:503-528`). The members are git's
+   the length of the build (`Makefile:508-532`). The members are git's
    ignore-aware listing, which covers the entries
    in `.gitignore`, a derivation, not a guarantee: an untracked
    credentials file, a private key, or a second `.env` under another name is

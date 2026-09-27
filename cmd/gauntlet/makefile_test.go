@@ -731,6 +731,11 @@ func releasePlatforms(makefile string) []string {
 // on is the thing the sentence names. Editing the Makefile moved the release
 // target out from under one of them, and the reference that caught it is the
 // only thing that keeps the rest from going stale the same way.
+//
+// Every pointer in the document is a case here. Covering two names while five
+// more pointed into the same file is how those five survived a build commit
+// that moved every one of them, and how TestDocsPointAtTheMakefileLineTheyName
+// sat red for a whole pass. A new `Makefile:` citation is a new case.
 func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 	root := moduleRoot(t)
 	lines := strings.Split(makefileText(t), "\n")
@@ -741,9 +746,12 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 	}{
 		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
 		{name: "make release", want: ".PHONY: release"},
+		{name: "make repro", want: ".PHONY: repro"},
+		{name: "member list and archive", want: "git ls-files -z --cached --others --exclude-standard"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checked := 0
+			prev := 0
 			for i := 0; ; {
 				at := strings.Index(doc[i:], "Makefile:")
 				if at < 0 {
@@ -752,8 +760,14 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 				i += at + len("Makefile:")
 				// The sentence that owns the reference is the one naming
 				// it, so a reference belongs to a case only when that
-				// name is close behind it.
-				if from := max(0, i-200); !strings.Contains(doc[from:i], tc.name) {
+				// name is close behind it. The lookback stops at the
+				// previous reference, not at a fixed offset: a
+				// sentence that cites two targets would otherwise put
+				// both names in front of the second pointer, and each
+				// case would then demand the other's line.
+				from := max(prev, i-200)
+				prev = i
+				if !strings.Contains(doc[from:i], tc.name) {
 					continue
 				}
 				end := strings.IndexAny(doc[i:], "-)\n,`")
