@@ -4,9 +4,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -92,6 +94,62 @@ func TestSigtermStopsImmediately(t *testing.T) {
 	waitFor(t, "SIGTERM terminating the run", func() bool { return ctx.Err() != nil })
 	if graceful.asking() {
 		t.Fatal("SIGTERM must not be softened into a finish request")
+	}
+}
+
+// arm is where a finish request that arrived before the runners existed is
+// handed to them, and where the run decides which stream the "Finishing" line
+// belongs on. That stream is the log file or io.Discard under --tui, because a
+// raw write into the alt screen leaves stray text across the frame, which is
+// why the dashboard's own `s` key asks with no writer at all (main.go's
+// OnFinish) and relies on the armed one. Both halves are pinned here: arming
+// asks for nothing by itself, and a later request lands on the armed stream
+// rather than the one it was handed.
+func TestArmedRequestLandsOnTheRunStream(t *testing.T) {
+	var armed, callers bytes.Buffer
+	g := &gracefulStop{}
+	g.arm(nil, &armed)
+
+	if g.asking() {
+		t.Fatal("arming the runners must not ask for a finish nobody requested")
+	}
+	if armed.Len() != 0 {
+		t.Fatalf("arming wrote %q before anything asked for a finish", armed.String())
+	}
+
+	// What the dashboard's finish key does: ask without a writer of its own.
+	g.request(nil)
+	if !g.asking() {
+		t.Fatal("a request must be recorded, so the runners behind it can see it")
+	}
+	if !strings.Contains(armed.String(), "Finishing:") {
+		t.Fatalf("the finish notice belongs on the armed stream, got %q", armed.String())
+	}
+
+	// A request made later by a path that has a writer of its own still goes
+	// to the armed one, for the same reason.
+	g.request(&callers)
+	if callers.Len() != 0 {
+		t.Fatalf("the notice went to the caller's stream too, %q", callers.String())
+	}
+}
+
+// A finish asked for before the runners were armed applies the moment they
+// are, and the operator sees the notice once: they have already seen it.
+func TestArmAppliesAnEarlyRequestWithoutAskingTwice(t *testing.T) {
+	var early, armed bytes.Buffer
+	g := &gracefulStop{}
+	g.request(&early)
+	if !strings.Contains(early.String(), "Finishing:") {
+		t.Fatalf("the first request should announce itself, got %q", early.String())
+	}
+
+	g.arm(nil, &armed)
+	if !g.asking() {
+		t.Fatal("arming must leave an early request standing")
+	}
+	if armed.Len() != 0 {
+		t.Fatalf("the notice was printed a second time on arming: %q", armed.String())
 	}
 }
 

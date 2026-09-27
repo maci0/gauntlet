@@ -11,7 +11,26 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/term"
 )
+
+// The launcher draws on the alt screen and reads keys from stdin, so a pick
+// without a terminal on both streams is refused before any tree is touched.
+// This is the same gate --tui applies and TestTUINeedsBothTerminals pins
+// there: a dashboard launched anyway quits on its first tick with nothing
+// said, and the refusal is the only thing standing between the two.
+func TestPickNeedsBothTerminals(t *testing.T) {
+	// The test binary's stdout is a pipe under `go test`, so the gate trips
+	// whether or not the developer's own terminal is attached.
+	if term.IsTerminal(int(os.Stdout.Fd())) && stdinIsTerminal() {
+		t.Skip("both streams are terminals here, so the refusal cannot be reached")
+	}
+	got := captureStderr(t, func() int { return run([]string{"pick"}) })
+	if !strings.Contains(got, "pick needs a terminal on stdin and stdout") {
+		t.Fatalf("the refusal should name both streams, got %q", got)
+	}
+}
 
 func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
