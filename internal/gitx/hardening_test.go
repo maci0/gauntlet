@@ -427,8 +427,12 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 		t.Fatalf("DeleteBranch must name the branch and report branch-not-found, got: %s", msg)
 	}
 
-	// Deleting branches matching a pattern with dashed prefix
-	r.DeleteBranchesMatching(ctx, "--pattern*")
+	// Deleting branches matching a pattern with dashed prefix. The pattern
+	// matches nothing, so the sweep must come back clean; a `git branch -D
+	// --pattern*` that reached git as an option would fail instead.
+	if err := r.DeleteBranchesMatching(ctx, "--pattern*"); err != nil {
+		t.Fatalf("DeleteBranchesMatching on an option-shaped pattern: %v", err)
+	}
 
 	// An empty branch name is a no-op, not a git invocation that always fails.
 	if err := r.DeleteBranch(ctx, ""); err != nil {
@@ -455,7 +459,20 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 	}
 
 	// Aborting worktree add or reclaiming empty branch with dashed branch name.
-	r.abortWorktreeAdd(ctx, filepath.Join(r.Dir, "temp-wt"), "--abort")
+	// The abort reports nothing, so the traces it must leave are the
+	// assertions: the half-created checkout is gone and no branch was created
+	// for the option-shaped name.
+	tempWT := r.worktreeDir("temp-wt")
+	if err := os.MkdirAll(filepath.Join(tempWT, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.abortWorktreeAdd(ctx, tempWT, "--abort")
+	if _, err := os.Stat(tempWT); !os.IsNotExist(err) {
+		t.Fatalf("abortWorktreeAdd left %s behind: %v", tempWT, err)
+	}
+	if out := gitOut(t, r.Dir, "for-each-ref", "--format=%(refname)", "refs/heads/"); strings.Contains(out, "--abort") {
+		t.Fatalf("abortWorktreeAdd created a branch for the option-shaped name: %s", out)
+	}
 	tip, err := r.Tip(ctx, "HEAD")
 	if err != nil {
 		t.Fatal(err)
@@ -476,8 +493,8 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CommitSubject failed with HEAD file present: %v", err)
 	}
-	if subj == "" {
-		t.Fatal("CommitSubject returned empty subject")
+	if subj != "init" {
+		t.Fatalf("CommitSubject = %q, want the seed commit subject %q", subj, "init")
 	}
 
 	if _, err := r.StripAITrailers(ctx, ""); err != nil {
@@ -492,8 +509,17 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 		t.Fatalf("ChangedFiles failed with HEAD file present: %v", err)
 	}
 
-	// abortMerge with HEAD file present must succeed without ambiguous argument error.
+	// abortMerge with HEAD file present must reset the tree: a `reset --hard
+	// HEAD` that hit "ambiguous argument" would leave the edit in place, and
+	// the call itself reports nothing.
+	tracked := filepath.Join(r.Dir, "main.go")
+	if err := os.WriteFile(tracked, []byte("package main\n\nfunc main() { panic(\"dirty\") }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	r.abortMerge(ctx)
+	if got := gitOut(t, r.Dir, "diff", "--name-only", "HEAD", "--"); got != "" {
+		t.Fatalf("abortMerge did not reset the tree with a HEAD file present, still dirty: %s", got)
+	}
 
 	// ResetToBase with HEAD file present must succeed.
 	if err := wt.ResetToBase(ctx); err != nil {

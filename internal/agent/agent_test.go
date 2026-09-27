@@ -616,8 +616,12 @@ func TestBuildCmdAgyStreamAndPrintTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(streamed, "stream-json") || !slices.Contains(streamed, "--output-format") {
-		t.Fatalf("Stream must ask for stream-json: %v", streamed)
+	// Two independent Contains checks would pass on the wrong value under the
+	// wrong flag, so the whole streamed argv is pinned.
+	wantStreamed := []string{"agy", "--output-format", "stream-json",
+		"--dangerously-skip-permissions", "-p", "P"}
+	if !slices.Equal(streamed, wantStreamed) {
+		t.Fatalf("streamed argv:\n got %v\nwant %v", streamed, wantStreamed)
 	}
 	if slices.Contains(streamed, "--print-timeout") {
 		t.Fatalf("zero Timeout must leave the CLI default: %v", streamed)
@@ -1406,8 +1410,17 @@ func TestPiFamilyDefinitions(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if argv[0] != name || argv[len(argv)-1] != "PROMPT" {
-			t.Errorf("%s: argv %v", name, argv)
+		// Checking only the two ends passes on a dropped one-shot flag, which
+		// is the whole point of each definition: pi-family CLIs read the
+		// prompt from a flag, not from stdin.
+		want := map[string][]string{
+			"pi":          {"pi", "-p", "PROMPT"},
+			"prime-agent": {"prime-agent", "-p", "PROMPT"},
+			"feynman":     {"feynman", "--prompt", "PROMPT"},
+			"omp":         {"omp", "-p", "PROMPT"},
+		}[name]
+		if !slices.Equal(argv, want) {
+			t.Errorf("%s: argv\n got %v\nwant %v", name, argv, want)
 		}
 		if !takesModel(name) {
 			t.Errorf("%s: should accept a model", name)
@@ -1420,16 +1433,20 @@ func TestPiFamilyStreamAndTranscripts(t *testing.T) {
 	// their argv; feynman does not, and must not be given a flag it would
 	// reject.
 	for _, name := range []string{"pi", "prime-agent", "omp"} {
-		plain, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{})
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
 		streamed, err := BuildCmd(Spec{Tool: name}, "PROMPT", BuildOpts{Stream: true})
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if slices.Equal(plain, streamed) {
-			t.Errorf("%s should support machine-readable output", name)
+		// "argv changed" is the weakest statement about a flag contract: it
+		// passes on a typo. Each of the three is a pi fork, so the machine
+		// readable mode is the one read off pi's --help.
+		want := map[string][]string{
+			"pi":          {"pi", "-p", "--mode", "json", "PROMPT"},
+			"prime-agent": {"prime-agent", "-p", "--mode", "json", "PROMPT"},
+			"omp":         {"omp", "-p", "--mode", "json", "PROMPT"},
+		}[name]
+		if !slices.Equal(streamed, want) {
+			t.Errorf("%s: streamed argv\n got %v\nwant %v", name, streamed, want)
 		}
 	}
 	plain, err := BuildCmd(Spec{Tool: "feynman"}, "PROMPT", BuildOpts{})

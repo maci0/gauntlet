@@ -622,15 +622,12 @@ func TestExpandSetsAndWeights(t *testing.T) {
 		t.Fatal(err)
 	}
 	// quick contributes code-review and sec-review (test/error/functionality
-	// are absent here); naming sec again weights it.
-	count := 0
-	for _, n := range got {
-		if n == "sec-review" {
-			count++
-		}
-	}
-	if count != 2 {
-		t.Fatalf("weighting lost: %v", got)
+	// are absent here); naming sec again weights it. Counting sec-review alone
+	// would also pass on a list that dropped code-review or grew a duplicate
+	// of anything else, so the whole expansion is pinned.
+	want := []string{"code-review", "sec-review", "sec-review"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Expand = %v, want %v", got, want)
 	}
 }
 

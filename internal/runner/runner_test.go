@@ -1635,8 +1635,10 @@ echo "RESULT: changed=1"`)
 	if n := countKind(got, EvMerge); n != 0 {
 		t.Fatalf("%d merge events, want none: the tree was dirty", n)
 	}
-	if r.Stats().CommitFails() == 0 {
-		t.Fatal("a refused merge must be counted, not passed over in silence")
+	// One review, one refusal: a count that double-counted or reported the
+	// refusal under another heading would still clear a "!= 0" check.
+	if got := r.Stats().CommitFails(); got != 1 {
+		t.Fatalf("CommitFails = %d, want exactly 1: a refused merge must be counted once", got)
 	}
 	if tip := gitOut(t, repo, "rev-parse", "main-line"); tip != gitOut(t, repo, "rev-parse", "HEAD") {
 		t.Fatal("nothing was committed, so main-line must not have moved")
@@ -1665,8 +1667,10 @@ echo "RESULT: changed=1"`)
 	if n := countKind(got, EvMerge); n != 0 {
 		t.Fatalf("%d merge events, want none: there is no branch to merge from", n)
 	}
-	if r.Stats().CommitFails() == 0 {
-		t.Fatal("a refused merge must be counted, not passed over in silence")
+	// One review, one refusal: a count that double-counted or reported the
+	// refusal under another heading would still clear a "!= 0" check.
+	if got := r.Stats().CommitFails(); got != 1 {
+		t.Fatalf("CommitFails = %d, want exactly 1: a refused merge must be counted once", got)
 	}
 	if gitOut(t, repo, "rev-parse", "main-line") != before {
 		t.Fatal("main-line must not have moved: the work is on a detached commit")
@@ -1714,8 +1718,10 @@ echo "RESULT: changed=1"`)
 	if n := countKind(got, EvMerge); n != 0 {
 		t.Fatalf("%d merge events, want none: git status could not be read", n)
 	}
-	if r.Stats().CommitFails() == 0 {
-		t.Fatal("a refused merge must be counted, not passed over in silence")
+	// One review, one refusal: a count that double-counted or reported the
+	// refusal under another heading would still clear a "!= 0" check.
+	if got := r.Stats().CommitFails(); got != 1 {
+		t.Fatalf("CommitFails = %d, want exactly 1: a refused merge must be counted once", got)
 	}
 	if gitOut(t, repo, "rev-parse", "main-line") != before {
 		t.Fatal("main-line must not have moved: cleanliness could not be verified")

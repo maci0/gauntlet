@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -106,10 +107,18 @@ func TestFastSuggestFollowsTheFiles(t *testing.T) {
 // set decide what exists, and the suggester does not get to widen that.
 func TestFastSuggestStaysInThePool(t *testing.T) {
 	dir := tree(t, "main.go", "Dockerfile")
+	var names []string
 	for _, s := range fastSuggest(dir, []string{"code-review"}, prompt.Set{}) {
 		if s.Name != "code-review" {
 			t.Fatalf("%s is outside the pool", s.Name)
 		}
+		names = append(names, s.Name)
+	}
+	// The loop above also passes when fastSuggest returns nothing at all, so
+	// the pool check needs a positive control: this tree is a Go program, and
+	// code-review is in the pool.
+	if len(names) != 1 {
+		t.Fatalf("a Go tree proposed %v, want exactly code-review", names)
 	}
 }
 
@@ -134,6 +143,11 @@ func TestFastSuggestIgnoresVendoredTrees(t *testing.T) {
 		strings.Contains(strings.Join(names, ","), "resource-review") {
 		t.Fatalf("vendored files drove the suggestion: %v", names)
 	}
+	// Only the README is outside the vendored trees, so it is the one signal
+	// that has to survive: without it an empty proposal would pass.
+	if !slices.Contains(names, "doc-review") {
+		t.Fatalf("a tree with a README proposed %v, want doc-review", names)
+	}
 }
 
 // Presence is not proportion: one stylesheet in a Go repository is not a
@@ -146,11 +160,18 @@ func TestFastSuggestWeighsHowMuchOfATreeAThingIs(t *testing.T) {
 	files = append(files, "docs/theme.css")
 	pool := []string{"code-review", "ux-review", "a11y-review", "webperf-review"}
 
+	var names []string
 	for _, s := range fastSuggest(tree(t, files...), pool, prompt.Set{}) {
+		names = append(names, s.Name)
 		if strings.HasPrefix(s.Name, "ux") || strings.HasPrefix(s.Name, "a11y") ||
 			strings.HasPrefix(s.Name, "webperf") {
 			t.Fatalf("one .css file proposed %s (%s)", s.Name, s.Reason)
 		}
+	}
+	// The absence checks pass on an empty proposal, so pin the one the Go
+	// files alone must justify.
+	if !slices.Contains(names, "code-review") {
+		t.Fatalf("30 .go files proposed %v, want code-review", names)
 	}
 }
 
@@ -330,7 +351,7 @@ func TestFastSuggestMatchesMarkAcrossNormalizationForms(t *testing.T) {
 	if reason == "" {
 		t.Fatal("an NFD spelling of café in a source file never matched mark:café")
 	}
-	if !strings.Contains(reason, "mark:café") && !strings.Contains(reason, "mark:caf") {
+	if !strings.Contains(reason, "mark:café") {
 		t.Errorf("evidence was %q, which does not name the mark that matched", reason)
 	}
 }

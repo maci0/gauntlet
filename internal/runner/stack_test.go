@@ -167,12 +167,18 @@ echo 'RESULT: changed=1'`)
 			published = append(published, ev)
 		}
 	}
-	if published[0].Branch != b1 || published[0].Base != "main" || published[0].URL == "" ||
-		published[1].Branch != b2 || published[1].Base != b1 || published[1].URL == "" {
+	// The URLs are the same two the state file above pins, one per layer: a
+	// "non-empty" check would pass if every event reported the same PR.
+	if published[0].Branch != b1 || published[0].Base != "main" ||
+		published[0].URL != "https://github.com/owner/repo/pull/1" ||
+		published[1].Branch != b2 || published[1].Base != b1 ||
+		published[1].URL != "https://github.com/owner/repo/pull/2" {
 		t.Fatalf("pull request event fields: %+v", published)
 	}
-	if published[0].Ins == nil || *published[0].Ins == 0 {
-		t.Fatalf("pull request event missing line counts: %+v", published[0])
+	// One file per layer, so the counts are exact rather than merely present.
+	if published[0].Ins == nil || *published[0].Ins != 1 ||
+		published[0].Del == nil || *published[0].Del != 0 {
+		t.Fatalf("pull request event line counts: %+v", published[0])
 	}
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
 		t.Fatalf("stack worktree survived:\n%s", list)

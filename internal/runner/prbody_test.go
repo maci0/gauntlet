@@ -132,11 +132,13 @@ func TestPRBodyNeutralizesUntrustedText(t *testing.T) {
 func TestPRBodyBoundsEveryUntrustedValue(t *testing.T) {
 	// A prompt file or a path is untrusted input, so its length is an input
 	// too: without a cap one line pushes everything worth reading off screen.
-	long := strings.Repeat("x", 4000)
+	long := strings.Repeat("é", 4000)
 	body := prBody{Title: long, Scope: long, Files: []string{long},
 		Base: long, Root: long, Layer: 2}.render()
-	if len(body) > 4000 {
-		t.Fatalf("unbounded body of %d bytes", len(body))
+	// The cap counts runes, not bytes: an ASCII fixture makes the two agree,
+	// so a body of multi-byte runes is what actually pins the limit.
+	if n := utf8.RuneCountInString(body); n > prBodyMax {
+		t.Fatalf("body is %d runes, cap is %d", n, prBodyMax)
 	}
 	if !strings.Contains(body, "…") {
 		t.Fatalf("nothing was truncated:\n%s", body)
