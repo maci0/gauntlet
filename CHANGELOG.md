@@ -3,12 +3,20 @@
 Notable changes per release. Versions follow SemVer against this consumer
 contract: review names (`*-review.md` stems consumed by `--reviews`), set
 names (`quick`, `standard`, ...), CLI flags and their documented behavior,
-the documented environment variables, exit codes, and every non-internal Go
-package in this module another program can import (the Go
-import-compatibility rule). Removing or renaming any of these is breaking
-and waits for a major version; new flags and other additions may land in a
-minor. While the project was 0.x, other behavior changes could land in a
-minor instead and were listed under Changed.
+the documented environment variables, exit codes, and the event stream under
+`~/.gauntlet/runs`, which `docs/RUNS.md` tells operators to read with `jq`
+or their own tools. Removing or renaming any of these is breaking and waits
+for a major version; new flags and other additions may land in a minor. While
+the project was 0.x, other behavior changes could land in a minor instead and
+were listed under Changed.
+
+There is no Go API in this contract, because no other program can import
+anything in this module: every package is under `internal/`, and the one
+outside it, `cmd/gauntlet`, is `package main`. Signatures under `internal/`
+are refactored freely: they change without a major bump, and each change
+lands in Changed for anyone vendoring the tree rather than going unrecorded.
+`TestNoAccidentalPublicPackages` in `cmd/gauntlet` fails the build if that
+stops being true, which is the moment a major version would be owed.
 
 ## Unreleased
 
@@ -45,6 +53,7 @@ minor instead and were listed under Changed.
 - The command reference, the design map, and the token telemetry page say what the code does: the dashboard stops on `q` and `esc` only cancels an armed quit, `gauntlet pick` also takes `--target-dirs`, a defined agent's `usage.cumulative` and `usage.header_cwd` are documented, a clock-derived `--seed` is not replayable, `--max-loops` defaults to 1 only under `--stacked-prs`, an agent with no transcript adapter still gets a rate from the stream, and `gitx.DeleteBranch` is documented as the force-delete it is. The help screen's review count matches the 53 bundled prompts, and it now says the same about `--max-loops` as the command reference.
 - The design map's file-signal suggester names the marker's shape rather than seven of them, so the list it prints matches the table the code searches.
 - `make test`, `make cover`, `make test-pkg`, and `make repro` ignore an exported `TMPDIR` or `REPRO_DIR` from the environment and use `~/.cache/gauntlet` as documented, so a shell that exports the tmpfs those rules exist to avoid cannot move the test scratch space, and `make repro` cannot be pointed at an arbitrary path to delete. Override them on the make command line.
+- Exported signatures under `internal/` changed, which is a Changed entry rather than a major bump because nothing outside this module can import them: `gitx.DeleteBranch` and `gitx.DeleteBranchesMatching` return the failure instead of swallowing it, `prompt.ParseSuggestions` returns a third value counting the names it had to drop, `gitx.StackBranchPrefix`, `gitx.StackProvisionalBranch`, and `gitx.StackFinalBranch` are gone, and `gitx.Repo` gained a `Now` clock field. Anyone vendoring the tree updates these call sites.
 
 ### Fixed
 

@@ -4,6 +4,8 @@
 package main
 
 import (
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -15,12 +17,13 @@ import (
 )
 
 // CHANGELOG.md states the consumer contract: CLI flags, the commands, the
-// environment variables, the exit codes, and every importable non-internal
-// Go package in this module are API. Removing or renaming one is breaking
-// and waits for the next major version; additions may land in a minor.
-// These snapshots turn drift into a failed test, so every change to the
-// surface is conscious, lands in the same commit as its changelog entry,
-// and gets the right bump kind.
+// environment variables, the exit codes, and the run journal's event stream
+// are API. Removing or renaming one is breaking and waits for the next major
+// version; additions may land in a minor. There is no Go API in the contract,
+// because nothing here is importable; TestNoAccidentalPublicPackages is what
+// keeps that true. These snapshots turn drift into a failed test, so every
+// change to the surface is conscious, lands in the same commit as its
+// changelog entry, and gets the right bump kind.
 //
 // The flags snapshot rides on TestHelpMatchesTheRealFlags: helpGroups is
 // already proven equal to the registered flag set, so pinning help pins what
@@ -197,6 +200,11 @@ func TestEnvExampleMatchesTheContract(t *testing.T) {
 // other programs, which makes its exported API part of the consumer contract
 // whether it was meant to be or not. New code belongs under internal/; a
 // deliberately public package updates this test and the changelog together.
+//
+// CHANGELOG.md's contract says the same thing about the packages under cmd/:
+// they are not importable, so changing them freely is not a major bump. That
+// holds only while every one of them is a main package, so cmd/ is walked too
+// and its package clause is read rather than assumed.
 func TestNoAccidentalPublicPackages(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", ".."))
 	if err != nil {
@@ -206,6 +214,7 @@ func TestNoAccidentalPublicPackages(t *testing.T) {
 	internalDir := filepath.Join(root, "internal")
 
 	var found []string
+	nonMain := map[string]string{}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -217,7 +226,7 @@ func TestNoAccidentalPublicPackages(t *testing.T) {
 				return nil
 			case strings.HasPrefix(name, "."), name == "testdata":
 				return fs.SkipDir
-			case path == cmdDir || path == internalDir,
+			case path == internalDir,
 				path == filepath.Join(root, "dist"),
 				path == filepath.Join(root, "assets"),
 				path == filepath.Join(root, "docs"):
@@ -229,10 +238,23 @@ func TestNoAccidentalPublicPackages(t *testing.T) {
 			return nil
 		}
 		dir := filepath.Dir(path)
-		if slices.Contains(found, dir) {
+		if !strings.HasPrefix(dir, cmdDir) {
+			if slices.Contains(found, dir) {
+				return nil
+			}
+			found = append(found, dir)
 			return nil
 		}
-		found = append(found, dir)
+		rel, err := filepath.Rel(root, dir)
+		if err != nil {
+			return err
+		}
+		clause := packageClause(path)
+		if prev, ok := nonMain[rel]; ok && prev != clause {
+			nonMain[rel] = "mixed: " + prev + " and " + clause
+		} else if !ok {
+			nonMain[rel] = clause
+		}
 		return nil
 	})
 	if err != nil {
@@ -242,6 +264,27 @@ func TestNoAccidentalPublicPackages(t *testing.T) {
 		t.Fatalf("Go packages outside internal/ and cmd/ are importable by other programs and become consumer-facing API under CHANGELOG.md's contract: %s. Move the code under internal/, or accept the public surface deliberately: update this test and record the package in CHANGELOG.md.",
 			strings.Join(found, ", "))
 	}
+	for rel, clause := range nonMain {
+		if clause != "main" {
+			t.Errorf("%s is `package %s` under cmd/, so it is importable by other programs and its exported API is consumer surface: CHANGELOG.md promises no Go API to break, and a non-main package under cmd/ makes that promise false. Make it `package main`, move it under internal/, or accept the surface deliberately and update this test and the contract together.",
+				rel, clause)
+		}
+	}
+}
+
+// packageClause returns the package name a .go file declares. A file whose
+// clause is a build-constrained variant of the same name ("main_test") is the
+// package itself; anything the parser cannot read comes back as "" and the
+// caller's comparison fails, which is the safe direction.
+func packageClause(path string) string {
+	f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.PackageClauseOnly)
+	if err != nil {
+		return ""
+	}
+	if f.Name == nil {
+		return ""
+	}
+	return f.Name.Name
 }
 
 // assertSurfaceUnchanged fails with the SemVer consequence spelled out,
