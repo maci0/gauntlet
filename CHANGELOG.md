@@ -69,6 +69,9 @@ stops being true, which is the moment a major version would be owed.
 
 ### Fixed
 
+- A `*-review.md` whose file name is not text (a filesystem name holding bytes that are not valid UTF-8) is ignored with a warning, the way a name carrying a control character already was: the name is identity, and JSON rewrote it to U+FFFD in the run journal, so the run named a review that `--reviews` could not ask for and that no later command could name again.
+- Text that is not valid UTF-8 is repaired the same way whether or not a control character sits beside it, instead of being passed through untouched unless the string also held something to strip.
+- The pending-line bound in the display writer cuts at a character boundary: a line that had grown past the cap with a multibyte character starting just before it was emitted with that character split, and the repair above turned the fragment into a replacement character on screen.
 - A review canceled while it waits to retry is recorded as interrupted rather than failed, the way every other cancellation already was, so a run ended by Ctrl+C no longer reports the review that was in flight as one the repository did not pass.
 - The triage step keeps and prints a bounded number of the review names an agent proposed that no catalog holds, and each name at a bounded length, so an agent that answered with a screenful of `RELEVANT:` lines naming nothing no longer leaves a run holding every one of them and logging them without end. The log line says how many it left out.
 - The launcher's key legend keeps the keys its pane acts on at a hundred columns: it tightens the gap between segments and shortens the arrow keys' action before dropping anything, where the `a` key fell off the end and a pane that offers it showed no way to select all.

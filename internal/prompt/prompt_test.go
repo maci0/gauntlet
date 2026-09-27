@@ -1491,3 +1491,48 @@ func TestSameDirOnThisVolume(t *testing.T) {
 		}
 	}
 }
+
+// A file name off the filesystem may hold bytes that are not UTF-8, which the
+// name then carries into every comparison, into --reviews selection, and into
+// the journal, where JSON rewrites them to U+FFFD: the run would name a review
+// nobody can ask for. Both discovery paths drop such a file and say so.
+func TestDiscoveryDropsNamesThatAreNotText(t *testing.T) {
+	dir := t.TempDir()
+	bad := "caf\xe9-review.md"
+	if err := os.WriteFile(filepath.Join(dir, bad), []byte("Your goal is to be skipped.\n"), 0o644); err != nil {
+		t.Skipf("the filesystem refuses a name with invalid UTF-8: %v", err)
+	}
+	write(t, filepath.Join(dir, "kept-review.md"), "Your goal is to stay.\n")
+
+	byName, warnings, err := promptsFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := byName["kept-review"]; !ok {
+		t.Error("the printable prompt was dropped too")
+	}
+	for name := range byName {
+		if name != "kept-review" {
+			t.Errorf("prompt %q was accepted from a name that is not text", name)
+		}
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "not printable text") {
+		t.Errorf("warnings = %q, want one naming the unreadable file", warnings)
+	}
+	if strings.Contains(warnings[0], "\xe9") {
+		t.Errorf("the warning carries the raw byte: %q", warnings[0])
+	}
+
+	project := map[string]Review{}
+	warnings = addProjectPrompts(project, []string{
+		filepath.Join(dir, bad), filepath.Join(dir, "kept-review.md")}, nil)
+	if len(project) != 1 {
+		t.Errorf("project prompts = %v, want only kept-review", project)
+	}
+	if _, ok := project["kept-review"]; !ok {
+		t.Error("the project walk dropped the printable prompt too")
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "not printable text") {
+		t.Errorf("project warnings = %q, want one naming the unreadable file", warnings)
+	}
+}

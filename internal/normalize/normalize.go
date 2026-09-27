@@ -254,8 +254,16 @@ func hasASCIILetter(s string) bool {
 // stripControl removes C0/C1 controls and Unicode formatting characters
 // (bidi overrides included) that can drive or spoof a terminal. Tabs become
 // spaces so alignment survives.
+//
+// A byte sequence that is not valid UTF-8 becomes U+FFFD. The rebuild loop
+// already does that (ranging over a string decodes a bad byte as RuneError),
+// but the fast path returned such text untouched, so the same byte came back
+// repaired in one string and raw in another that happened to hold no control
+// character. The filesystem allows those bytes in a file name, and JSON
+// rewrites them to U+FFFD wherever a journal or a report keeps one, so leaving
+// them raw made a name depend on what else sat beside it.
 func stripControl(s string) string {
-	if !strings.ContainsFunc(s, needsStripControl) {
+	if !strings.ContainsFunc(s, needsStripControl) && utf8.ValidString(s) {
 		return s
 	}
 	var b strings.Builder
@@ -360,7 +368,10 @@ func (n *Normalizer) classifyDiff(s string) (Kind, bool) {
 }
 
 // Sanitize strips control and formatting characters from untrusted display
-// text (file names, prompt descriptions, agent output shown outside the feed).
+// text (file names, prompt descriptions, agent output shown outside the feed),
+// and repairs bytes that are not valid UTF-8 (see stripControl). A value that
+// survives it unchanged is safe to show and to store as text; one that does
+// not carried something a reader could not be shown verbatim.
 func Sanitize(s string) string {
 	return stripControl(strings.ReplaceAll(s, "\t", " "))
 }
@@ -469,8 +480,18 @@ func (w *DisplayWriter) drain(end string, final bool) error {
 		cut = maxPendingBytes
 		// A producer can emit bytes that are not valid UTF-8, so the cut
 		// walks back to a boundary but never past the start of the buffer.
-		for cut > 0 && !utf8.RuneStart(w.held[cut-1]) {
+		// Starting a rune is not enough: the byte before the cut can be a
+		// lead byte whose continuation is still held, and emitting it would
+		// put half a character on the wire.
+		for cut > 0 && (!utf8.RuneStart(w.held[cut-1]) || !utf8.FullRune(w.held[cut-1:cut])) {
 			cut--
+		}
+		if cut == 0 {
+			// The whole pending line is undecodable at its head, so no
+			// prefix of it is a clean cut. Emitting it is what keeps a child
+			// streaming invalid bytes from growing the buffer without bound,
+			// and Display repairs what goes out.
+			cut = len(w.held)
 		}
 	}
 	line := Display(string(w.held[:cut]))

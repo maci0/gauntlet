@@ -212,6 +212,35 @@ func TestSanitizeStripsBidiAndControls(t *testing.T) {
 	}
 }
 
+// A file name off a Unix filesystem may hold bytes that are not UTF-8 at all.
+// They are repaired the same way whether or not a control character sits
+// beside them: the answer must not depend on the rest of the string, and JSON
+// rewrites them to U+FFFD wherever a run keeps one.
+func TestSanitizeRepairsInvalidUTF8(t *testing.T) {
+	const bad = string(utf8.RuneError)
+	cases := map[string]string{
+		"a\xffb":     "a" + bad + "b",
+		"caf\xe9.md": "caf" + bad + ".md",
+		// One replacement character per bad byte: that is what decoding the
+		// string yields, not one per run of them.
+		"\xff\xfe\xfd": bad + bad + bad,
+	}
+	for in, want := range cases {
+		got := Sanitize(in)
+		if got != want {
+			t.Errorf("Sanitize(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// The same bytes beside a control character: both are dealt with, and the
+	// answer for the invalid bytes does not change.
+	if got, want := Sanitize("a\xff\x01b"), "a�b"; got != want {
+		t.Errorf("Sanitize = %q, want %q", got, want)
+	}
+	if got := Display("a\xffb\x1b[31m"); got != "a�b" {
+		t.Errorf("Display = %q, want %q", got, "a�b")
+	}
+}
+
 func TestTruncatesVeryLongLines(t *testing.T) {
 	got := push(New(Config{MaxWidth: 10}), strings.Repeat("a", 500))
 	if len(got) != 1 {

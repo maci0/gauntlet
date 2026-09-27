@@ -95,7 +95,7 @@ func promptsFromDir(promptDir string) (map[string]Review, []string, error) {
 		}
 		stem := nfc(strings.TrimSuffix(name, ".md"))
 		if sanitize(stem) != stem {
-			warnings = append(warnings, "ignoring prompt with control characters in its name: "+sanitize(full))
+			warnings = append(warnings, "ignoring prompt whose name is not printable text: "+sanitize(full))
 			continue
 		}
 		byName[stem] = Review{Name: stem, Path: full, Origin: Dir}
@@ -118,7 +118,7 @@ func addProjectPrompts(byName map[string]Review, candidates []string, ignored ma
 		}
 		stem := nfc(strings.TrimSuffix(filepath.Base(path), ".md"))
 		if sanitize(stem) != stem {
-			warnings = append(warnings, "ignoring project prompt with control characters in its name: "+sanitize(path))
+			warnings = append(warnings, "ignoring project prompt whose name is not printable text: "+sanitize(path))
 			continue
 		}
 		if prev, dup := seen[stem]; dup {
