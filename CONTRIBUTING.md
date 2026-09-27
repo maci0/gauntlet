@@ -73,8 +73,8 @@ make ci               # make check && make test
 
 One command runs the analysis, the scripts lint, and the suite under all three
 tag sets, for when a red check would otherwise first appear after push. A
-pull request also runs `make cover`, `make dist`, and `make repro`, which the
-release path adds on top:
+pull request also runs `make cover`, `make dist`, `make artifacts`, and
+`make repro`, which the release path adds on top:
 
 ```sh
 make verify           # check, check-scripts, and the suite under all three tag sets
@@ -150,6 +150,12 @@ the release job and the pull-request `dist` job run: it starts the host binary
 `dist` just built and compares the version it reports with the one it was
 stamped with. Run it after `make dist VERSION=<version>` to check a release
 path by hand before tagging.
+
+The other half is `make artifacts VERSION=<version>`, which writes
+`dist/checksums.txt` and `dist/sbom.json` from the binaries `dist` built and
+verifies the checksums against them. `make release` is `check test dist
+artifacts`; the pull-request `dist` job runs `make artifacts` too, so a change
+that broke the inventory or the checksums fails there rather than at a tag.
 
 ## Rolling back a bad release
 

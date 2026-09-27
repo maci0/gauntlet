@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"sort"
@@ -795,19 +796,30 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 // that `make ci` rejects.
 func TestReleaseRunsCheck(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "\nrelease: check test dist ##") {
-		t.Fatal("make release must run check as well as the tests and dist")
+	if !strings.Contains(text, "\nrelease: check test dist artifacts ##") {
+		t.Fatal("make release must run check as well as the tests, dist, and the artifacts beside the binaries")
 	}
 }
 
 // The inventory a release ships is a CycloneDX document a scanner can
 // read, generated from the binaries dist just built, and it carries no build
-// directory path: the modules it names are the same on every machine.
+// directory path: the modules it names are the same on every machine. Both
+// it and checksums.txt are written by `artifacts`, so a target that reaches
+// the binaries must not skip that.
 func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	text := makefileText(t)
-	recipe := makefileRecipe(text, "release")
+	recipe := makefileRecipe(text, "artifacts")
+	if recipe == "" {
+		t.Fatal("Makefile has no artifacts target: the files beside the binaries are written by the release recipe and nothing else exercises them")
+	}
 	if !strings.Contains(recipe, "$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*") {
-		t.Fatal("make release must write dist/sbom.json from the binaries dist built, through cmd/sbom")
+		t.Fatal("make artifacts must write dist/sbom.json from the binaries dist built, through cmd/sbom")
+	}
+	if !strings.Contains(recipe, "$(BINARY)_* > checksums.txt") {
+		t.Fatal("make artifacts must write dist/checksums.txt from the binaries dist built")
+	}
+	if !strings.Contains(recipe, "sha256sum -c checksums.txt") {
+		t.Fatal("make artifacts must verify the checksums it just wrote against the binaries they name")
 	}
 	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json") {
 		t.Fatal("make dist must remove a previous sbom.json, so a stale inventory cannot ship with new binaries")
@@ -1132,4 +1144,47 @@ func makeTargetsInLine(line string) []string {
 		}
 		out = append(out, name)
 	}
+}
+
+// Three places build the shipped binary: the Makefile's `build`, the
+// screenshot script, and the suggester calibrator. The first two used to
+// spell the go invocation out, which meant the tag set, the ldflags, and the
+// build environment had three owners; the calibrator had drifted furthest and
+// was scoring a binary no release ships. One build command, called by all
+// three, is what keeps a number or a screenshot comparable to the last one.
+func TestMaintainerScriptsBuildThroughTheMakefile(t *testing.T) {
+	root := moduleRoot(t)
+	calibrate := readRepoFile(t, filepath.Join(root, "scripts", "suggest-calibrate.py"))
+	shots := readRepoFile(t, filepath.Join(root, "scripts", "shots.sh"))
+
+	if !strings.Contains(calibrate, `"--no-print-directory", "build"`) {
+		t.Error("scripts/suggest-calibrate.py must run `make build` rather than a go build of its own: the tag set, ldflags, and build environment have one owner, the Makefile")
+	}
+	if strings.Contains(calibrate, `"-buildvcs=false"`) {
+		t.Error("scripts/suggest-calibrate.py must not spell out a go build; a second copy of the flags is a second thing to forget")
+	}
+
+	// shots.sh cannot call `make build`: it needs `go test` to write the
+	// frames, not a linked binary. It does have to name the same tag set the
+	// Makefile's default does, or a picture is drawn from a build flavor no
+	// release ships and nothing downstream notices.
+	tags := makefileDefault(makefileText(t), "TAGS")
+	if tags == "" {
+		t.Fatal("Makefile does not give TAGS a default")
+	}
+	if want := "-tags " + tags; !strings.Contains(shots, want) {
+		t.Errorf("scripts/shots.sh must build the frames with %q, the Makefile's default tag set", want)
+	}
+}
+
+// makefileDefault reads the default value of a Makefile variable, so a
+// reference to it names the tree's setting rather than a value typed again
+// where it is checked.
+func makefileDefault(makefile, name string) string {
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + `\s+\?=\s*(\S+)$`)
+	m := re.FindStringSubmatch(makefile)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }

@@ -50,10 +50,14 @@ UV_VERSION ?= 0.12.6
 SHELLCHECK_VERSION ?= 0.11.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
-# Release artifacts must not depend on the build host's locale: the shell
-# orders glob expansion with strcoll, so checksums.txt would list assets in a
-# different order on hosts with a different LC_COLLATE.
+# Release artifacts must not depend on the build host's locale or timezone:
+# the shell orders glob expansion with strcoll, so checksums.txt would list
+# assets in a different order on hosts with a different LC_COLLATE, and a
+# recipe that formats a date would read the host's zone. `make repro` is the
+# exception: it strips both from its second tree copy, which is the point of
+# that target, so pinning them here is what makes the comparison meaningful.
 export LC_ALL := C
+export TZ := UTC
 
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
@@ -450,14 +454,24 @@ smoke: ## run the host binary dist built and check the version it reports
 # library alone: the artifact that describes the dependency surface must not
 # add to it.
 .PHONY: release
-release: check test dist ## build every platform and write dist/checksums.txt and dist/sbom.json
+release: check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
+	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
+
+# The two files that sit beside the binaries rather than being them, split out
+# of `release` so the dist job runs them on every push. Before this they were
+# written only by a tagged release, so a change that broke the inventory, or a
+# checksums.txt whose entries no longer matched what it names, reached a tag
+# before anything noticed; `dist` and `smoke` in CI exercise the binaries alone.
+.PHONY: artifacts
+artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built binaries
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
 		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
 	$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*
-	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
+	@cd $(DIST) && (sha256sum -c checksums.txt 2>/dev/null || shasum -a 256 -c checksums.txt) >/dev/null; \
+	echo "artifacts: checksums.txt and sbom.json in $(DIST)/"
 
 # The same source must produce the same bytes wherever it is built: -trimpath
 # strips build paths, nothing in a Go binary embeds a timestamp, and
@@ -465,11 +479,10 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # directories, locale, timezone, and git state are byte-identical. This
 # target proves it instead of asserting it: two full copies of the tree, one
 # built pinned to C/UTC, one under the ambient environment, then cmp. Side b
-# strips LC_ALL rather than inheriting the C this Makefile exports, so the
-# second build really does see the host's locale; TZ is genuinely ambient
-# either way. The tree is archived to a file then extracted twice: a tar pipe
-# would hide a failing create behind a successful extract (POSIX sh has no
-# pipefail). The archive is the whole working tree minus what .gitignore
+# strips LC_ALL and TZ rather than inheriting the C and UTC this Makefile
+# exports, so the second build really does see the host's locale and zone. The
+# tree is archived to a file then extracted twice: a tar pipe would hide a
+# failing create behind a successful extract (POSIX sh has no pipefail). The archive is the whole working tree minus what .gitignore
 # covers, so anything a build or a run leaves behind would otherwise be copied
 # into two trees under $HOME. That is why `.gauntlet/` and `.gauntlet.lock`
 # are ignored (a run of this tool in its own checkout leaves a lane worktree
@@ -527,7 +540,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 			(cd "$(REPRO_DIR)/a" && GOCACHE="$(REPRO_DIR)/a.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
 				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
 			pa=$$!; \
-			(cd "$(REPRO_DIR)/b" && GOCACHE="$(REPRO_DIR)/b.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL \
+			(cd "$(REPRO_DIR)/b" && GOCACHE="$(REPRO_DIR)/b.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL -u TZ \
 				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
 			pb=$$!; \
 			wait $$pa || exit 1; wait $$pb || exit 1; \

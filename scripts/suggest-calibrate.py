@@ -129,31 +129,24 @@ def main() -> None:
     root = module_root()
     binary = root / ".scratch" / "gauntlet-calibrate"
     binary.parent.mkdir(parents=True, exist_ok=True)
-    go = shutil.which("go")
-    if go is None:
-        msg = "go is not on PATH"
+    make = shutil.which("make")
+    if make is None:
+        msg = "make is not on PATH"
         raise SystemExit(msg)
-    env = dict(
-        os.environ,
-        CGO_ENABLED="0",
-        GOWORK="off",
-        GOTOOLCHAIN="local",
-    )
+    # `make build` is the only build of this binary the project maintains, and
+    # it owns the tag set, the ldflags, and the environment the go build needs
+    # (CGO_ENABLED, GOWORK, GOTOOLCHAIN, -mod=readonly). Spelling the go build
+    # out here instead left this scoring a binary no release would ever ship:
+    # the Makefile's default TAGS is sqlite, and this one had no tags at all,
+    # so a number produced against the wrong flavor of the same source was
+    # being compared to the previous run's. `make build` writes ./gauntlet;
+    # move it rather than building a second copy of the tree.
     subprocess.run(
-        [
-            go,
-            "build",
-            "-mod=readonly",
-            "-trimpath",
-            "-buildvcs=false",
-            "-o",
-            str(binary),
-            "./cmd/gauntlet",
-        ],
+        [make, "--no-print-directory", "build"],
         cwd=root,
-        env=env,
         check=True,
     )
+    shutil.move(root / "gauntlet", binary)
 
     scores: list[tuple[float, float]] = []
     for directory, picked in sorted(agent_picks().items()):

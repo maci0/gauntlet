@@ -135,6 +135,13 @@ jobs:
       # a contributor runs before tagging, and the asset name stays owned by
       # host-artifact. Stamp is VERSION=ci, the same value dist just used.
       - run: make smoke VERSION=ci
+      # checksums.txt and sbom.json are what a consumer verifies a download
+      # against, and they were written only by a tagged release, so nothing
+      # tested them until one shipped. `make artifacts` builds them from the
+      # binaries just built and verifies the checksums against them, so both
+      # files are exercised on every push instead of at the tag.
+      - run: make artifacts VERSION=ci
+      - run: test -s dist/sbom.json
       # A reproducibility claim nobody tests is decoration: same source, two
       # paths, different locale and TZ, must give byte-identical binaries, for
       # every platform dist ships.
