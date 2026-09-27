@@ -433,6 +433,8 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 			"does not apply to 'gauntlet version'", nil},
 		{"stray jobs under version", []string{"version", "--jobs", "4"},
 			"does not apply to 'gauntlet version'", nil},
+		{"log under a missing parent", []string{"--log", "/nonexistent-gauntlet-dir/run.log"},
+			"--log /nonexistent-gauntlet-dir/run.log", nil},
 		{"global log follows version", []string{"version", "--log", "gauntlet.log"}, "", func(t *testing.T, o *options) {
 			t.Helper()
 			if o.logFile != "gauntlet.log" {
@@ -752,6 +754,22 @@ func TestCommandNamesMatchTheHelpScreen(t *testing.T) {
 		if !found {
 			t.Errorf("command %q is missing from the help screen", name)
 		}
+	}
+}
+
+// --tui draws on the alt screen and reads keys from stdin. A run whose stdin
+// is a file or /dev/null must be refused here, not have the dashboard quit it
+// on the first tick with the reviews in flight killed silently.
+func TestTUINeedsBothTerminals(t *testing.T) {
+	_, err := parseFlags([]string{"--tui"})
+	if err == nil {
+		t.Fatal("--tui should be refused without a terminal on both streams")
+	}
+	if !strings.Contains(err.Error(), "stdin and stdout") {
+		t.Fatalf("the refusal should name both streams, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "plain log output") {
+		t.Fatalf("the refusal should say what to do instead, got %v", err)
 	}
 }
 

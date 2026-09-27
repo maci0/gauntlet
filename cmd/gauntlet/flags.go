@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -765,8 +766,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.tui && len(active) > 0 {
 		return nil, fmt.Errorf("--tui conflicts with %s", active[0])
 	}
-	if o.tui && !term.IsTerminal(int(os.Stdout.Fd())) {
-		return nil, errors.New("--tui needs a terminal; drop it to get plain log output")
+	if o.tui && (!term.IsTerminal(int(os.Stdout.Fd())) || !stdinIsTerminal()) {
+		// Both, the same gate cmdPick applies. A dashboard reads keys from
+		// stdin, so a redirected one hands it EOF and the run quits on the
+		// first tick: the reviews in flight die with nothing said on the way
+		// out, which is the opposite of what --tui was asked for.
+		return nil, errors.New("--tui needs a terminal on stdin and stdout; drop it to get plain log output")
 	}
 	if o.list {
 		// Nothing is executed in list mode, so a commit step would be a lie.
@@ -813,6 +818,18 @@ func validateLog(o *options, fs *flag.FlagSet) error {
 		if !fi.Mode().IsRegular() {
 			return fmt.Errorf("--log %s: not a regular file", expanded)
 		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("--log %s: %v", expanded, err)
+	} else if fi, err := os.Stat(filepath.Dir(expanded)); err != nil || !fi.IsDir() {
+		// The file not existing yet is the normal case and openLogFile creates
+		// it. Its parent existing is not, and the open is the only thing that
+		// says so: without this the one --log value no other rejection covers
+		// failed after the run had started, as a bare syscall message rather
+		// than the usage error every other --log mistake gets.
+		if err != nil {
+			return fmt.Errorf("--log %s: %v", expanded, err)
+		}
+		return fmt.Errorf("--log %s: %s is not a directory", expanded, filepath.Dir(expanded))
 	}
 	o.logFile = expanded
 	return nil
