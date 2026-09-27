@@ -7,9 +7,40 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-27 against commit c36fa56. This pass read the fourteen
-commits since the previous baseline (ef6eb5c) and entered the one surface they
-added, a release-time inventory generator the document had never covered:
+Last reviewed: 2026-09-27 against commit e35371d. This pass read the
+twenty-three commits since the previous baseline (c36fa56) and entered the one
+entry point among them the model had never named: the operator's `--paths`
+scope, whose entries are pasted into the review prompt as instructions
+(`pathsNote`, `internal/prompt/compose.go:212-245`). A wrapper that builds the
+flag from a file list rather than from a person typing it is free text reaching
+an agent with its permissions bypassed, so an entry is now refused at the flag
+when it carries a line break, a control character, a backtick, or more than
+200 runes (`PathEntrySafe`, `internal/prompt/compose.go:156-175`, called from
+`finishFlags`, `cmd/gauntlet/flags.go:628-641`), and an entry that cannot be
+named as itself is left out of the scope block with the count reported, because
+a scope that reads shorter than the flag is a wider one
+(`PathsNamed`, `internal/prompt/compose.go:201-210`; the refusal note in
+`pathsNote`). The prompt fence gained the same treatment: a review body whose
+markers share their dashes re-formed one at the seam of a single rewrite pass,
+so the agent read the review as ending mid-body with the body's own text where
+the ground rules belong. The rewrite now repeats until no marker is left
+(`escapeMarkers`, `internal/prompt/compose.go:44-61`). Three controls the other
+commits added are carried: a lane drops its unstarted queue once the usage
+probe trips, where it used to take a review off the queue and launch it
+without re-reading the flag (`runLane`, `internal/runner/runner.go:839-867`),
+which is R6's subject and not a closure of it; untracked paths in a lane run's
+start-of-run note are sanitized like every other git path the package prints
+(`safePaths`, `internal/runner/sanitize.go:14-19`, called at
+`internal/runner/runner.go:478`); and an index rebuild keeps the row a journal
+it cannot summarize instead of dropping the only copy of the arguments, exit
+code, and elapsed time the journal does not carry
+(`rebuildIndex`, `internal/journal/index.go:685-720`), which is the repudiation
+half of R9. Nothing in the numbered risk table changed. Owner and review cadence
+are organizational decisions; none is assigned here.
+
+Last reviewed previously: 2026-09-27 against commit c36fa56. That pass read the
+fourteen commits since ef6eb5c and entered the one surface they added, a
+release-time inventory generator the document had never covered:
 `cmd/sbom` reads the modules out of each built binary's own build info and
 writes the CycloneDX document a release ships
 (`cmd/sbom/main.go:47-73`, `internal/sbom/sbom.go:81-129`, run by the
@@ -19,7 +50,7 @@ the compiler stamped into a file, so it narrows R2's dependency picture without
 being an integrity control for it, and the writer takes an operator-supplied
 `-o` path with `os.WriteFile` at 0644, following a symlink and leaving a
 pre-existing file's mode alone, where the runtime `--log` path refuses both
-(`cmd/sbom/main.go:71` against `cmd/gauntlet/main.go:672-696`). Four controls
+(`cmd/sbom/main.go:71` against `cmd/gauntlet/main.go:691-711`). Four controls
 that landed in these commits are now carried: `clipSubject` is the one function
 every commit subject passes through, including one read back out of history
 during a stack recovery, where an agent that committed on its own, a resolved
@@ -27,7 +58,7 @@ conflict, or the operator wrote it
 (`internal/runner/subject.go:229-235`, `internal/runner/stack.go:527-535`);
 the cross-process index lock is now a bounded wait rather than an unbounded
 `LOCK_EX` that could park `runs`, `history`, and the exit-time prune behind a
-peer that never released it (`lockIndex`, `internal/journal/index.go:36-66`);
+peer that never released it (`lockIndex`, `internal/journal/index.go:55-77`);
 a failed or partial append to `.git/info/exclude` is reported rather than
 swallowed, including the short write that would otherwise make every
 subsequent run append the same entry again (`internal/gitx/worktree.go:73-124`,
@@ -91,20 +122,20 @@ Last reviewed previously: 2026-09-27 against commit a6e6c7f. That pass
 covered the twelve commits between dd793d8 and that commit. One named gap
 closed: `--semcode`
 indexer output now passes through the same display filter as every other child
-stream (`normalize.NewDisplayWriter`, `internal/normalize/normalize.go:436-501`,
+stream (`normalize.NewDisplayWriter`, `internal/normalize/normalize.go:445-545`,
 wired per stream in `runIndexer`, `cmd/gauntlet/semcode.go:86-108`), so R8 is
 no longer a gap. One new surface: `doctor` reports which documented environment
 variables this process saw, printing a secret-bearing name as `(set)` and never
-as a value (`envSettingLines`, `cmd/gauntlet/doctor.go:289-311`; the table it
+as a value (`envSettingLines`, `cmd/gauntlet/doctor.go:313-335`; the table it
 reads is `helpEnvVars`, `cmd/gauntlet/help.go:172-184`). New controls verified
 against the code: the writer is per stream and flushed after `Run` joins the
-copy goroutines (`normalize.go:443-463`, `semcode.go:92-100`), with a 1 MiB cap
+copy goroutines (`normalize.go:463-487`, `semcode.go:92-100`), with a 1 MiB cap
 on the partial line it holds so an endless line cannot grow the buffer
-(`maxPendingBytes`, `normalize.go:414-418`); invalid UTF-8 is repaired on the
+(`maxPendingBytes`, `normalize.go:445`); invalid UTF-8 is repaired on the
 fast path of `Sanitize` too, so a hostile file name no longer renders
 differently depending on what sits beside it (`stripControl`,
-`normalize.go:265-282`); run IDs keep the whole pid, so two live processes
-cannot share a journal file (`runIDFor`, `internal/journal/journal.go:69-73`);
+`normalize.go:267-284`); run IDs keep the whole pid, so two live processes
+cannot share a journal file (`runIDFor`, `internal/journal/journal.go:69-79`);
 atomic writes are one helper with a `Sync()` and a rename
 (`gauntlethome.WriteFileAtomic`, `internal/gauntlethome/gauntlethome.go:138-161`),
 which `SaveState`, the dsh overlay patch, and the journal index all call, so a
@@ -132,10 +163,10 @@ set and corrected one claim. The correction is the more important of the two:
 this document asserted three times that `show`'s journal replay isolated a pager
 environment with `runx.AbsPATHEnv()` (`cmd/gauntlet/runs.go:170`). `show` spawns
 nothing. It writes a `bufio.Writer` straight to the caller's stdout
-(`cmd/gauntlet/runs.go:108-140`), imports no `os/exec` and no `runx`, and no
+(`cmd/gauntlet/runs.go:158-190`), imports no `os/exec` and no `runx`, and no
 `PAGER` or `LESS` lookup survives anywhere in the tree, so the mitigation named a
 process that does not exist. The sanitization it was hanging on is real and is
-still there (`normalize.Sanitize`, `cmd/gauntlet/runs.go:132`); the pager is not,
+still there (`normalize.Sanitize`, `cmd/gauntlet/runs.go:182`); the pager is not,
 and the three PATH claims that listed a pager alongside the agents, git, `gh`,
 and the usage probe no longer count it. The moved citations are the other half:
 splitting the dashboard and launcher into state and view halves
@@ -146,7 +177,7 @@ launch gate, which now reads its reason from `blocked`
 (`internal/ui/pick_view.go:114-125`, consulted at `internal/ui/pick.go:328-332`)
 instead of where it used to sit. Two surfaces this pass added: `runs --limit N`,
 which is an unbounded number reaching a local allocation and is now capped by
-`maxTailHint` before it reserves anything (`internal/journal/index.go:833-852`),
+`maxTailHint` before it reserves anything (`internal/journal/index.go:922-945`),
 and the run seed, which is resolved once per run and carried across a hot
 reload, so the seed the journal records now replays the draws it names
 (`cmd/gauntlet/reload.go:106-110`, `internal/runner/draw.go:45-110`). The
@@ -164,10 +195,10 @@ assigned here.
 | R3 | A prompt-injected or compromised agent reads every secret its user can: environment-inherited API keys, agent config stores, SSH keys, `~/.netrc` | B2/B5 | Consequence of R1; containerization is the documented answer (DESIGN.md non-goals) |
 | R4 | Confidentiality of reviewed source: agents send code to third-party model APIs over the network | B2 | Inherent to the tool's purpose; users must know it |
 | R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching `@deepseek-ai/dsh` from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap (deliberate feature, unreviewed supply-chain hop) |
-| R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas. `--token-budget` now bounds the tokens the run's own reviews report, but the counters are agent-reported, exclude the commit and conflict steps, and are checked between reviews, not inside one (`budgetExhausted`, `internal/runner/runner.go:640-648`); the usage limit probe runs isolated from the repository but fails open on errors (`internal/runner/exec.go:100-143`, `internal/runner/usagelimit.go:46-72,84-113`) |
-| R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; a symlink or non-regular destination is refused, the open carries `O_NOFOLLOW` and 0600 with a post-open chmod, but content is not secret-redacted and the parent directory is not confined (`openLogFile`, `cmd/gauntlet/main.go:672-696`) |
-| R8 | `--semcode` indexer output carrying file names from a hostile tree reaches the operator's terminal | B1 -> B3 | Closed: both of the indexer's streams pass through `normalize.DisplayWriter`, one writer per stream, flushed after the child exits (`cmd/gauntlet/semcode.go:86-108`, `internal/normalize/normalize.go:414-501`) |
-| R9 | The run history is bounded and evicted on every run (`--keep-runs`, default 200), and eviction is ordered by the run ID's timestamp rather than by a protected property of the journal | B6 | Partly closed. Eviction moves the journal to `pruned/` and `gauntlet runs --restore` moves it back, so a wrong bound is recoverable until the same number of newer runs has replaced it; what remains is a run older than that, which no bound distinguishes. The move is confined to real shard directories holding validated run IDs, and the run just finished is the newest row, so a skewing clock or a hostile planted file under `runs/` is what puts evidence out of reach (`internal/journal/retain.go:36-165`, `internal/journal/quarantine.go`, `internal/journal/index.go:571-614`) |
+| R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas. `--token-budget` now bounds the tokens the run's own reviews report, but the counters are agent-reported, exclude the commit and conflict steps, and are checked between reviews, not inside one (`budgetExhausted`, `internal/runner/runner.go:640-653`); a lane now drops its unstarted queue the moment the usage probe trips, so `--jobs N` cannot spend the window on reviews taken off the queue before the flag was read (`runLane`, `internal/runner/runner.go:851-861`), which narrows the lane path and leaves the sequential and stacked ones where they were; the usage limit probe runs isolated from the repository but fails open on errors (`internal/runner/exec.go:100-143`, `internal/runner/usagelimit.go:46-72,84-113`) |
+| R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; a symlink or non-regular destination is refused, the open carries `O_NOFOLLOW` and 0600 with a post-open chmod, but content is not secret-redacted and the parent directory is not confined (`openLogFile`, `cmd/gauntlet/main.go:691-711`) |
+| R8 | `--semcode` indexer output carrying file names from a hostile tree reaches the operator's terminal | B1 -> B3 | Closed: both of the indexer's streams pass through `normalize.DisplayWriter`, one writer per stream, flushed after the child exits (`cmd/gauntlet/semcode.go:86-108`, `internal/normalize/normalize.go:445-545`) |
+| R9 | The run history is bounded and evicted on every run (`--keep-runs`, default 200), and eviction is ordered by the run ID's timestamp rather than by a protected property of the journal | B6 | Partly closed. Eviction moves the journal to `pruned/` and `gauntlet runs --restore` moves it back, so a wrong bound is recoverable until the same number of newer runs has replaced it; what remains is a run older than that, which no bound distinguishes. The move is confined to real shard directories holding validated run IDs, and the run just finished is the newest row, so a skewing clock or a hostile planted file under `runs/` is what puts evidence out of reach (`internal/journal/retain.go:39-181`, `internal/journal/quarantine.go`, `internal/journal/index.go:571-614`). An index rebuild now keeps the row the index already holds for a journal it cannot summarize, because the argv, exit code, and elapsed time live on that row alone and nothing reconstructs them afterwards (`rebuildIndex`, `internal/journal/index.go:685-720`), so a corrupt or truncated journal no longer spends the only copy of its own summary |
 
 The order reflects reachability and blast radius, not measured likelihood.
 R1/R3/R4 require only content reaching a launched agent; R2 requires control
@@ -201,7 +232,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
 - **Audit trail**: the journal under `~/.gauntlet`
   (`internal/journal/journal.go`) and the commits each run leaves behind.
   Optional `--log` files also retain displayed output, potentially including
-  source and credentials quoted by an agent (`openLogFile`, `cmd/gauntlet/main.go:672-696`).
+  source and credentials quoted by an agent (`openLogFile`, `cmd/gauntlet/main.go:691-711`).
 
 ## Trust boundaries
 
@@ -252,10 +283,10 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
 - **B3, agents <-> user terminal, dashboard, journal.** Agent output is
   untrusted display input; sanitization before any terminal write, including
   the two inspection paths (`--show-prompt`, `cmd/gauntlet/modes.go:65-66`;
-  `show`'s journal replay, `cmd/gauntlet/runs.go:132`, which writes through a
+  `show`'s journal replay, `cmd/gauntlet/runs.go:182`, which writes through a
   `bufio.Writer` to the caller's stdout and spawns nothing, so there is no
   pager environment to isolate) and the dashboard feed
-  (`internal/ui/ui.go:683-687`).
+  (`internal/ui/ui.go:731-745`).
 - **B4, internet <-> binary.** GitHub releases API and release assets reach
   the self-update path; what lands on disk is executed by hot reload. The
   publishing side of the same channel is GitHub Actions: `release.yml` builds
@@ -293,11 +324,11 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
 - **B6, gauntlet <-> local state.** `~/.gauntlet` (or `GAUNTLET_HOME`): the
   JSONL journal, hot-reload handoff files, `agents.json`. This is also the one
   boundary where the run deletes: `--keep-runs` prunes the history at the end
-  of every run (`internal/journal/retain.go:36-140`). Journal paths are
+  of every run (`internal/journal/retain.go:39-148`). Journal paths are
   guarded by run ID validation (`validRunID`, `internal/journal/history.go:88-104`)
   and date-sharded from run ID timestamps (`shardFromRunID`, `internal/journal/history.go:167`).
   Optional `--log` crosses into a separate operator-selected output path, not
-  necessarily that state directory (`openLogFile`, `cmd/gauntlet/main.go:672-696`), validated to
+  necessarily that state directory (`openLogFile`, `cmd/gauntlet/main.go:691-711`), validated to
   not name an existing directory (`validateLog`, `cmd/gauntlet/flags.go:794-819`).
 
 ## Entry points
@@ -308,16 +339,17 @@ Untrusted inputs with their validation point:
 |---|---|---|
 | Project `*-review.md` files | git `ls-files` glob, walk fallback, `internal/prompt/discover.go`; read `prompt.go` via `readNoFollow` (`prompt.go:278-329`) | prompt discovery candidates inspected with `os.Lstat` requiring regular files (`discover.go:244,278`); regular files only, `O_NOFOLLOW\|O_NONBLOCK`, 1 MiB cap; skipDirs and hidden directories dropped; git-ignored files refused; project prompts override bundled ones of the same name; duplicate detection reads bounded |
 | Prompt names (file stems) | `discover.go:68,88` | NFC-normalized keys (`prompt.go:338-340`); control/Cf characters reject the file with a warning (`discover.go:70,90`; strip at `prompt.go:342-346`) |
-| Prompt descriptions ("Your goal" line) | `prompt.go:88-108`, fed to the suggest catalog `compose.go:247-294,304-313` | the prefix is matched on the line as written, before sanitize repairs it, so a line the file never wrote as a goal cannot supply a description; the extracted value is sanitized and NFC-normalized; name and description both fenced: `</catalog>` and `RELEVANT:` neutralized; 200-rune cap on a rune boundary (`compose.go:247-294,304-313`) |
+| Prompt descriptions ("Your goal" line) | `prompt.go:88-108`, fed to the suggest catalog `compose.go:369-396` | the prefix is matched on the line as written, before sanitize repairs it, so a line the file never wrote as a goal cannot supply a description; the extracted value is sanitized and NFC-normalized; name and description both fenced: `</catalog>` and `RELEVANT:` neutralized; 200-rune cap on a rune boundary (`compose.go:369-396`) |
 | Prompt `Summary:` line | `prompt.go:153-171`, fed to stacked PR bodies `internal/runner/prbody.go` | sanitized, cut to 60 runes at read, and normalized to NFC before truncation (`prompt.go:159-170`), the goal-line fallback bounded the same way; PR rendering strips controls, flattens to one line, NFC-normalizes to prevent rune splitting, and bounds again (`prbody.go:26-44,86,146-173; stack.go:655`) |
 | Prompt `Signals:` line | `prompt.go:199-232`, consumed by the file-signal suggester `internal/runner/suggest_fast.go:527-556` | known kinds only (`ext`/`name`/`path`/`mark`), charset-restricted values, 12 tokens × 40 runes; anything else dropped |
-| CLI flags: `--agents`, `--bin TOOL=PATH`, `--agent-cmd NAME=ARGV`, `--prompt-dir DIR`, `--dirs` | `cmd/gauntlet/flags.go`, `cmd/gauntlet/paths.go`; parsed by `ParseSpecs` (`agent.go:336`), `ParseBin` (`agent.go:648`), `ParseAgentCmd` (`custom.go:346`), `discover.go:44-77`, `resolveDirs` (`paths.go:23-86`) | allow-listed tool names; dsh model charset-restricted (`dshModelRe`); `@effort` charset-restricted for every agent and refused where no verified flag exists (`effortRe`, `takesEffort`); argv split on spaces, no shell; `--bin` paths made absolute before any chdir (`ParseBin`); non-empty checks for `--agents`, `--bin`, `--agent-cmd`, `--usage-cmd`, `--suggest-agent`, `--exclude`, `--merge-into`, `--pr-base`, `--show-prompt` (`cmd/gauntlet/flags.go:560-660`); target dirs expanded and deduplicated by realpath (`paths.go:23-86`); `--prompt-dir` takes regular files only, validated to be a directory if existing (`flags.go:775-788`), control-char names rejected; `--log` validates destination is not a directory (`validateLog`, `flags.go:794-819`); subcommands refuse flags they do not read (`rejectStrayFlags`, `flags.go:535,874`); custom agent loading gated to subcommands using agents (`usesAgents`, `flags.go:555,821-830`); subcommand peeling ignores empty arguments and lone dashes (`flags.go:1002-1030`); branch and revision commands separate options with `--` and `--end-of-options` (`branch.go:51,90,125,146,177,276,289,363,397,429,440,456,478,489`, `worktree.go:278,308,436,509,530,583,604,788`, `gitx.go:667,686`) |
-| Run budgets: `--runtime`, `--token-budget` | `cmd/gauntlet/flags.go:341-344`; `budgetExhausted` (`internal/runner/runner.go:640-648`), `Stats.Tokens` (`internal/runner/stats.go:177-185`) | operator-set, both default 0 (unlimited) and both refused negative (`flags.go:648-659`); the token ceiling is a count of what the reviews themselves reported, summed across loops, lanes, and a hot-reload predecessor, so it is a scheduling bound, not a spend quota: it excludes the commit and conflict launches, is checked between reviews rather than during one, and a review that under-reports its tokens lowers nothing else |
-| `--keep-runs N` history prune | `journal.Prune` (`internal/journal/retain.go:36-140`) called from `writeSummary` (`cmd/gauntlet/main.go:846-848`); default 200 (`cmd/gauntlet/flags.go:201-206`) | `N <= 0` keeps everything; negative refused (`flags.go:654-656`); deletion is taken from a walk that takes only real shard directories (`d.IsDir()`, `internal/journal/index.go:571-593`) and only `<id>.jsonl` files whose stem passes `validRunID` (`internal/journal/history.go:88-104`), so a symlinked shard or a planted name never widens the blast radius; the index row is dropped before its journal, the rewrite is under the index lock, an index line is capped at 4 MiB (`indexLineMax`, `retain.go:169-173`), and a prune failure is a warning that leaves the tree growing |
-| `runs --limit N` index listing | `fs.IntVar(&o.runsLimit, "limit", ...)`, `cmd/gauntlet/flags.go:403`; refused on any subcommand but `runs` (`flags.go:532,868`); read by `journal.Recent` into `parseTail` (`internal/journal/index.go:852`) | operator-set on local state, but the number is unbounded, so it no longer sizes an allocation: `parseTail` reserves `min(n, maxTailHint)` with `maxTailHint = 1024` (`index.go:833-838`), because a `Summary` is a few hundred bytes and `runs --limit 100000000` otherwise reserved gigabytes for an index holding a handful of rows. The cap is a hint, not a limit: append still grows the slice to what the index really holds |
+| CLI flags: `--agents`, `--bin TOOL=PATH`, `--agent-cmd NAME=ARGV`, `--prompt-dir DIR`, `--dirs` | `cmd/gauntlet/flags.go`, `cmd/gauntlet/paths.go`; parsed by `ParseSpecs` (`agent.go:392`), `ParseBin` (`agent.go:714`), `ParseAgentCmd` (`custom.go:346`), `discover.go:44-77`, `resolveDirs` (`paths.go:23-86`) | allow-listed tool names; dsh model charset-restricted (`dshModelRe`); `@effort` charset-restricted for every agent and refused where no verified flag exists (`effortRe`, `takesEffort`); argv split on spaces, no shell; `--bin` paths made absolute before any chdir (`ParseBin`); non-empty checks for `--agents`, `--bin`, `--agent-cmd`, `--usage-cmd`, `--suggest-agent`, `--exclude`, `--merge-into`, `--pr-base`, `--show-prompt` (`cmd/gauntlet/flags.go:560-660`); target dirs expanded and deduplicated by realpath (`paths.go:23-86`); `--prompt-dir` takes regular files only, validated to be a directory if existing (`flags.go:775-788`), control-char names rejected; `--log` validates destination is not a directory (`validateLog`, `flags.go:794-819`); subcommands refuse flags they do not read (`rejectStrayFlags`, `flags.go:535,874`); custom agent loading gated to subcommands using agents (`usesAgents`, `flags.go:555,821-830`); subcommand peeling ignores empty arguments and lone dashes (`flags.go:1002-1030`); branch and revision commands separate options with `--` and `--end-of-options` (`branch.go:51,90,125,146,177,276,289,363,397,429,440,456,478,489`, `worktree.go:278,308,436,509,530,583,604,788`, `gitx.go:667,686`) |
+| `--paths` scope entries | `raw.paths` collected in `cmd/gauntlet/flags.go`, refused in `finishFlags` (`flags.go:629-640`), then pasted into the review prompt as an instruction by `pathsNote` (`internal/prompt/compose.go:212-245`), outside the review markers with the other operator instructions | operator-set, but free text wherever a wrapper built the list rather than a person typing it, and what the agent obeys is the prompt, not the flag: an entry is refused where the operator can see which one it was when it is empty, past `PathEntryMax` (200 runes), or carries a backtick, a control character, a `Cf`/`Zl`/`Zp` character, or any whitespace but a plain space (`PathEntrySafe`, `compose.go:156-175`). The scope block names at most 20 entries (`pathsNoteMax`, `compose.go:141-154`) and re-renders each through `pathEntry` (line breaks and controls to spaces, a backtick to an apostrophe, NFC, then a render equal to the entry or nothing, `compose.go:177-198`), so an entry that survives is named as itself and cannot read as an instruction around `quoteList`'s backticks. What is dropped is counted in the prompt rather than silently narrowed (`PathsNamed`, `compose.go:201-210`; the note in `pathsNote`); when nothing survives, the block says the scope is empty and asks for no findings and no edits. The scope is prompt-enforced, not mechanical: an agent is told the listed paths and can ignore them, and the suggest, commit, and conflict prompts deliberately keep the whole tree in view (`pathsNote`) |
+| Run budgets: `--runtime`, `--token-budget` | `cmd/gauntlet/flags.go:341-344`; `budgetExhausted` (`internal/runner/runner.go:640-653`), `Stats.Tokens` (`internal/runner/stats.go:177-185`) | operator-set, both default 0 (unlimited) and both refused negative (`flags.go:648-659`); the token ceiling is a count of what the reviews themselves reported, summed across loops, lanes, and a hot-reload predecessor, so it is a scheduling bound, not a spend quota: it excludes the commit and conflict launches, is checked between reviews rather than during one, and a review that under-reports its tokens lowers nothing else |
+| `--keep-runs N` history prune | `journal.Prune` (`internal/journal/retain.go:39-148`) called from `writeSummary` (`cmd/gauntlet/main.go:846-848`); default 200 (`cmd/gauntlet/flags.go:201-206`) | `N <= 0` keeps everything; negative refused (`flags.go:654-656`); deletion is taken from a walk that takes only real shard directories (`d.IsDir()`, `internal/journal/index.go:571-593`) and only `<id>.jsonl` files whose stem passes `validRunID` (`internal/journal/history.go:88-104`), so a symlinked shard or a planted name never widens the blast radius; the index row is dropped before its journal, the rewrite is under the index lock, an index line is capped at 4 MiB (`indexLineMax`, `retain.go:183-187`), and a prune failure is a warning that leaves the tree growing |
+| `runs --limit N` index listing | `fs.IntVar(&o.runsLimit, "limit", ...)`, `cmd/gauntlet/flags.go:403`; refused on any subcommand but `runs` (`flags.go:532,868`); read by `journal.Recent` into `parseTail` (`internal/journal/index.go:941`) | operator-set on local state, but the number is unbounded, so it no longer sizes an allocation: `parseTail` reserves `min(n, maxTailHint)` with `maxTailHint = 1024` (`index.go:922-927`), because a `Summary` is a few hundred bytes and `runs --limit 100000000` otherwise reserved gigabytes for an index holding a handful of rows. The cap is a hint, not a limit: append still grows the slice to what the index really holds |
 | `doctor` state-root probe | `stateRootProblem` (`cmd/gauntlet/doctor.go:329-357`) | diagnostic only, but it writes: a temp file named `.gauntlet-doctor-*` in the state root, closed and removed before the check reports, and an unwritable or undeletable root is now the command's failure verdict (`doctor.go:260-266,278-280`) rather than a line that scrolls past; a root that does not exist yet is not probed, so doctor creates nothing the first run would not |
 | `.git/info/exclude` append | `ExcludeOwnArtifacts` (`internal/gitx/worktree.go:73-124`) | the reviewed tree picks `gitDir`, so `MkdirAll` and `OpenFile` would follow a planted `.git` symlink or gitfile out of the repository; the parent directory is re-checked with `os.Lstat` requiring a real directory (`realDir`, `worktree.go:130-133`) and the append is refused when it is not. Every failure now comes back, including the write and the close, and the run logs it (`internal/runner/runner.go:277-282`): a short write is a failure rather than a success, because the next run's substring check would not match a truncated line and would append the same entry again on every run |
-| Environment: `PATH` | `pathNoCWD` (`agent.go:173`), `resolveGit`/`gitEnv` (`gitx.go:68-96,375-412`), `ghx.binary` (`internal/ghx/ghx.go:97-111`), `probeEnv`/`resolveProbe` (`usagelimit.go:84-113`) | cwd-relative and relative entries dropped for agent, git, git-child, `gh`, and usage probe resolution; child process environments isolated to absolute-only PATH via `CleanPATH`/`AbsPATH`/`AbsPATHEnv` (`internal/runx/runx.go:111-133`) and executable lookup consolidated via `runx.LookPath` which resolves relative paths with path separators to absolute paths (`internal/runx/runx.go:150-166`) |
+| Environment: `PATH` | `pathNoCWD` (`agent.go:183-188`), `resolveGit`/`gitEnv` (`gitx.go:68-96,375-412`), `ghx.binary` (`internal/ghx/ghx.go:97-111`), `probeEnv`/`resolveProbe` (`usagelimit.go:84-113`) | cwd-relative and relative entries dropped for agent, git, git-child, `gh`, and usage probe resolution; child process environments isolated to absolute-only PATH via `CleanPATH`/`AbsPATH`/`AbsPATHEnv` (`internal/runx/runx.go:111-133`) and executable lookup consolidated via `runx.LookPath` which resolves relative paths with path separators to absolute paths (`internal/runx/runx.go:150-166`) |
 | Environment: `HOME` (through `os.UserHomeDir`), `GAUNTLET_HOME`, `GH_TOKEN`/`GITHUB_TOKEN`, `TERM`/`NO_COLOR`/`CLICOLOR_FORCE`/`FORCE_COLOR`, `GAUNTLET_STATE`, `GAUNTLET_NO_ANIMATION`, `NO_MOTION`, `REDUCED_MOTION`, `GIT_SSH_COMMAND` | `internal/gauntlethome/gauntlethome.go:33-52`, `selfupdate.go:84-108`, `cmd/gauntlet/report.go:46-86`, `internal/selfupdate/reload.go:22,188-196,220-244`, `internal/ui/view.go:386-421`, `internal/envx/envx.go`, `internal/gitx/gitx.go:378-393` | operator-controlled, same-user trust; the list is closed by a test that walks non-test source for `os.Getenv`/`os.LookupEnv` and requires every literal, constant, or ranged-over name to be in the help table or recorded as internal with a reason (`cmd/gauntlet/env_surface_test.go:31-33,35-59`), so a new knob cannot ship undocumented; `HOME` is the default state root only, and a home that cannot be read degrades to a local `.gauntlet` that custom agent loading refuses (`internal/gauntlethome/gauntlethome.go:28-46`); `GAUNTLET_HOME` validates unresolvable environment variables at startup (`flags.go:545-552`) and degrades safely to local `.gauntlet` (`internal/gauntlethome/gauntlethome.go:33-52`); expands tildes and environment variables and is made absolute at resolution so the state root cannot depend on the current directory (`CustomFilePath`, `custom.go:474`); `GAUNTLET_STATE` is read only where the process set it (`reload.go:188-196`) and is replaced on re-exec rather than inherited (`Reexec`, `reload.go:220-244`); its handoff file is verified by `LoadState` to require `.json` extension, absolute path, clean path without traversal, verified via `os.Lstat` as a regular file (rejecting symlinks and directories without deleting), and read capped to 16 MiB (`maxHandoffBytes`, `reload.go:179-188,198-208`); `SaveState` validates `runID` against directory traversal and path separators (`reload.go:136`) and flushes with `tmp.Sync()` before atomic rename; `GAUNTLET_NO_ANIMATION`, `NO_MOTION`, and `REDUCED_MOTION` disable TUI animation glyphs (`internal/ui/view.go:386-420`); the values that mean off for those three and for `CLICOLOR_FORCE`/`FORCE_COLOR` are one list, trimmed and case-folded, in `internal/envx/envx.go`, and `TERM` is compared against `dumb` the same way, so a wrapper exporting `TERM=DUMB` or a padded value still loses its palette (`cmd/gauntlet/report.go:48-84`); `GIT_SSH_COMMAND` overrides repository-local SSH commands and empty or whitespace-only values default to `ssh` (`internal/gitx/gitx.go:378-393`); color variables configure ANSI output (`cmd/gauntlet/report.go:46-86`); `--update-repo` is `owner/repo` only (`ParseRepo`, `selfupdate.go:65`) |
 | Agent stdout/stderr | pipes in `exec.go:115-136`; line scan `exec.go:370-420` | 4 MiB per line emitted in chunks with UTF-8 rune boundary preservation (`exec.go:34-42,380-394`), trailing CR stripped (`exec.go:365-367`), escape/control/bidi/separator strip before terminal (`internal/normalize/normalize.go:373 Display`), width cap 2000 cols (`exec.go:47`), rate limit 200 lines/s (`runner.go:26`); ANSI CSI sequences terminated on standard final characters in token width calculation (`internal/ui/theme.go:246-283`); stalled command groups force-killed with SIGKILL on drain timeout (`exec.go:321-328`); even `--raw` passes `Display` (`exec.go:269-276`); usage and sink callbacks serialized across stdout and stderr streams (`exec.go:169,196-198,208,226-228`) |
 | Stream-JSON events from agents | `internal/runner/exec.go:245-265`; `internal/streamjson/streamjson.go:81-99,107-138,199,202,217-248` | extraction depth capped at 8; role and type values normalized case-insensitively; objects marked role `tool`/`user` or type `user`/`tool_use`/`tool_result` contribute neither text nor usage; classification is not origin authentication; malformed JSON falls back to plain text and `--raw` bypasses classification |
@@ -325,38 +357,50 @@ Untrusted inputs with their validation point:
 | GitHub release metadata | `selfupdate.Check`, `selfupdate.go:159` | HTTPS, 4 MiB decode cap; bounded by `fetch` (`selfupdate.go:362-404`); `owner/repo` charset-checked before it is concatenated into the API path |
 | Release asset + `checksums.txt` | `applyTo`, `selfupdate.go:221` | validated by `validateAssetURL` (`selfupdate.go:287-324`) to require HTTPS and authorized GitHub release hosts (`github.com`, `api.github.com`, `objects.githubusercontent.com`, `release-assets.githubusercontent.com`, or loopback in tests); HTTP requests routed through `getAsset` (`selfupdate.go:324-344`); HTTP redirects re-verify `validateAssetURL` and are capped at 10 (`client.CheckRedirect`, `selfupdate.go:145-157`); checksums fetched first (1 MiB cap), asset streamed with 256 MiB cap; SHA-256 verified using constant-time comparison (`subtle.ConstantTimeCompare`, `selfupdate.go:266`); downloaded binary flushed via `tmp.Sync()` (`selfupdate.go:269`) before atomic replace; `fetch` rejects responses exceeding size limit (`selfupdate.go:362-404`); download and error paths drain HTTP response bodies up to limits via `drainBody` (`selfupdate.go:184,187,346,356,373,393,396,349,358`); remote error messages decoded up to 4 KiB on failure via `responseError` (`selfupdate.go:180,345-355,362-380`); a listing entry counts only as 64 hex digits (`checksumFor`/`isHexDigest`, `selfupdate.go:405-429`) |
 | `gh` CLI JSON and PR URLs | `internal/ghx/ghx.go` `Find`/`Create` | argv-only; executable invoked with `runx.AbsPATHEnv()` (`internal/ghx/ghx.go:239`); PR URL must be `https` on the expected host (`validateURL`, `internal/ghx/ghx.go:222-228`); a PR is reused only when its head owner matches the push destination (`ownsHead`, `internal/ghx/ghx.go:161-170`) |
-| Git outputs (shortstat, porcelain, check-ignore) | `gitx.go:431,705,788` | regex/line parsing; CRLF `\r` stripped (`gitx.go:715,799`); C-quoted paths decoded (`unquoteC`, `gitx.go:854-916`) then display-sanitized before any message (`safePaths`, `internal/runner/sanitize.go:14-19`; dashboard `internal/ui/ui.go:683-687`; plain reporter `report.go:87-100`); counts only, never executed |
+| Git outputs (shortstat, porcelain, check-ignore) | `gitx.go:431,705,788` | regex/line parsing; CRLF `\r` stripped (`gitx.go:715,799`); C-quoted paths decoded (`unquoteC`, `gitx.go:854-916`) then display-sanitized before any message (`safePaths`, `internal/runner/sanitize.go:14-19`; dashboard `internal/ui/ui.go:731-745`; plain reporter `report.go:143-148`); counts only, never executed |
 | Reviewed repo's `.git/config` and `.gitattributes` | every git call, `internal/gitx/gitx.go:43-67,233-274,321-372` | `core.fsmonitor`, `core.hooksPath=/dev/null`, `core.pager=cat`, `diff.external`, `core.gitProxy` forced empty; `protocol.ext.allow=never`; `attr.tree` pointed at the empty tree so in-tree `.gitattributes` cannot select a smudge filter or merge driver; local `filter.*`/`merge.*`/`diff.*` commands, `core.editor`, `core.askpass`, and peers blanked from `--local --list`; extra safe config propagated to worktrees and sub-repos via `subRepo` (`internal/gitx/gitx.go:648-663`, `internal/gitx/worktree.go:33-51`); git resolved on absolute-only PATH so a planted `./git` cannot run; `GIT_SSH_COMMAND=ssh` outranks a repo-local `core.sshCommand` unless the operator already exported one, and empty or whitespace-only values default to `ssh` (`mergeGitEnv`, `gitEnv`, `gitx.go:378-393`); git's own children die with its process group and bounded pipe wait (`gitx.go:349-357`); git stderr redacts embedded userinfo credentials (`gitx.go:358-364`); branch and revision commands separate options with `--` and `--end-of-options` (`internal/gitx/branch.go:51,90,125,146,177,276,289,363,397,429,440,456,478,489`, `internal/gitx/worktree.go:278,308,436,509,530,583,604,788`, `internal/gitx/gitx.go:667,686`) |
 | `.gauntlet.lock` holder note | read back on lock conflict, `runner/lock.go:123-139` | the note lives in the reviewed tree, where an agent could rewrite it: one line, 120 runes, `Display`-sanitized and NFC-normalized before it reaches a terminal or file (`lock.go:22-25,94-119,123-139`); `Note` and `readNote` handle `EINTR` and partial writes in retry loops (`lock.go:99-119,123-139`); lock release preserves the descriptor flock and truncates the note to prevent file deletion and inode recycling races (`lock.go:161-175`) |
-| Conflicted paths interpolated into the conflict prompt | `git diff -z` into `runConflictAgent`, `conflict.go:130-183`, then `ConflictPrompt` (`compose.go:202-242`) | a path is named only when it equals `normalize.Sanitize(p)` and `conflictPathOK` (control/Cf omitted, `RESOLVE:` and `</files>` omitted, 1024-rune cap); 50-file cap (over-cap skips the launch); list fenced in `<files>`; human-facing conflict hints quote branch and message via `runx.ShQuote` (`conflict.go:185-187`); a dropped path is still scanned for markers, so it holds the branch with a human |
-| Helper-tool inventory appended to prompts | PATH probe at startup, `internal/runner/runner.go:617-625`, rendered `compose.go:95-125` | operator-machine facts crossing outward with every prompt: which helper binaries exist and that installing missing ones is forbidden |
+| Conflicted paths interpolated into the conflict prompt | `git diff -z` into `runConflictAgent`, `conflict.go:130-183`, then `ConflictPrompt` (`compose.go:305-351`) | a path is named only when it equals `normalize.Sanitize(p)` and `conflictPathOK` (control/Cf omitted, `RESOLVE:` and `</files>` omitted, 1024-rune cap); 50-file cap (over-cap skips the launch); list fenced in `<files>`; human-facing conflict hints quote branch and message via `runx.ShQuote` (`conflict.go:185-187`); a dropped path is still scanned for markers, so it holds the branch with a human |
+| Helper-tool inventory appended to prompts | PATH probe at startup, `internal/runner/runner.go:617-625`, rendered `compose.go:99-138` | operator-machine facts crossing outward with every prompt: which helper binaries exist and that installing missing ones is forbidden |
 | File-signal suggester tree walk | `suggest_fast.go:570-604` | 100k files, depth 12, 2k file heads × 4 KiB; opens via `os.OpenRoot` (`suggest_fast.go:687-692`) so a symlink or path that escapes the reviewed tree is skipped |
-| `~/.gauntlet/agents.json` | `internal/agent/custom.go:87-225,293,346,369-406,474-480` | rejects null, unknown fields, duplicate keys (including NFC-normalized case-variant duplicates and nested usage duplicates), trailing data, and built-in redefinitions; requires `{prompt}` in argv exactly once and forbids `{prompt}` in model/effort/stream/continue; requires `{model}` in model and `{effort}` in effort if set; forbids `{model}` and `{effort}` across stream and continue; forbids model when argv contains `{model}` and effort when argv contains `{effort}`; forbids placeholders in argv executable, usage roots, and usage suffix; rejects empty/blank arguments in argv, model, effort, stream, and continue; rejects whitespace-only notes; expands tildes and environment variables in custom executable `cmd[0]` (`agent.go:490-496`); validates non-empty usage roots and model; rejects whitespace-only usage suffix; validates all definitions before registration; strips UTF-8 BOM if present (`custom.go:377`); `CustomFilePath` (`custom.go:474`) returns empty without a state root; file read has no size cap and follows symlinks, so state storage must remain trusted |
+| `~/.gauntlet/agents.json` | `internal/agent/custom.go:87-225,293,346,369-406,474-480` | rejects null, unknown fields, duplicate keys (including NFC-normalized case-variant duplicates and nested usage duplicates), trailing data, and built-in redefinitions; requires `{prompt}` in argv exactly once and forbids `{prompt}` in model/effort/stream/continue; requires `{model}` in model and `{effort}` in effort if set; forbids `{model}` and `{effort}` across stream and continue; forbids model when argv contains `{model}` and effort when argv contains `{effort}`; forbids placeholders in argv executable, usage roots, and usage suffix; rejects empty/blank arguments in argv, model, effort, stream, and continue; rejects whitespace-only notes; expands tildes and environment variables in custom executable `cmd[0]` (`agent.go:333-340`); validates non-empty usage roots and model; rejects whitespace-only usage suffix; validates all definitions before registration; strips UTF-8 BOM if present (`custom.go:377`); `CustomFilePath` (`custom.go:474`) returns empty without a state root; file read has no size cap and follows symlinks, so state storage must remain trusted |
 | `--usage-cmd` probe | `internal/runner/usagelimit.go:84-113` | argv-only; isolated execution directory (`os.TempDir()`); relative and cwd-relative entries dropped from `PATH` in `probeEnv()` and executable resolved against absolute-only PATH (`resolveProbe`, `runx.LookPath`); child process environment isolated via `runx.AbsPATHEnv()`; 10s deadline, 4 KiB per output stream; own process group killed on return as well as cancellation; final non-empty line parsed as finite 0-100, rejecting NaN and Inf (`parseUsagePercent`, `internal/runner/usagelimit.go:125-154`); usage limit check guards against NaN (`usagelimit.go:47`); failure warns once and leaves the threshold unenforced; finish flag set via atomic swap (`internal/runner/usagelimit.go:68-71`) |
-| `--log FILE` destination | `openLogFile`, `cmd/gauntlet/main.go:672-696`; `validateLog`, `flags.go:794-819` | startup rejects an existing directory target; at open an `os.Lstat` refuses a symlink and any non-regular file, the open itself carries `syscall.O_NOFOLLOW` with 0600, and a regular file that survived is chmod'd to 0600 before any output; no parent-directory confinement, no size cap, and no rotation |
-| `--semcode` indexer | `buildSemcodeIndex`/`runIndexer`, `cmd/gauntlet/semcode.go:86-108` | `semcode-index` resolved through `agent.Resolve` (`pathNoCWD`, `internal/agent/agent.go:228-236`), so a planted `./semcode-index` in the tree cannot win; argv-only, no shell; child environment isolated with `runx.AbsPATHEnv()`; 30-minute per-directory cap with a deferred process-group SIGKILL (`runx.Guard`, `runx.KillGroup`); the child's working directory is the reviewed tree, so the tree decides both what it walks and the file names it reports, and each of its streams gets its own `normalize.DisplayWriter` (`cmd/gauntlet/semcode.go:91-100`), which passes every complete line through `Display` and holds an unterminated one until `Flush` after `Run` joins the copy goroutines (`internal/normalize/normalize.go:414-501`); the held partial line is capped at 1 MiB and released on a rune boundary (`normalize.go:471-501`) |
-| `doctor` environment report | `envSettingLines`, `cmd/gauntlet/doctor.go:250,289-311`; table `helpEnvVars`, `cmd/gauntlet/help.go:172-184` | reads only the documented names, so nothing the operator did not set for gauntlet is echoed; a variable the table marks secret is reported as `(set)` and never as a value, so a pasted `doctor` transcript carries no token (`doctor.go:296-306`); `GAUNTLET_HOME` is left out because the State line above already names it; nothing here interprets the value, and presence is the only thing reported. A test pins the set: every `os.Getenv`/`os.LookupEnv` name in non-test source is either in the help table or recorded as internal with a reason (`cmd/gauntlet/env_surface_test.go:31-33,35-59`) |
-| `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:74-111` | runs only for a `dsh:<model>` pin; child environment isolated with `runx.AbsPATHEnv()` (`dsh.go:81`); bounded to 4 MiB output via `runx.Bound` (`dsh.go:65,84`); own process group, 120s cap, deferred group SIGKILL via `runx.KillGroup` (`dsh.go:85`); provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:323`); provider and model validated against `dshModelRe` (`dsh.go:135-136`); overlay key rejects path separators and traversal (`dsh.go:116-133`) |
+| `--log FILE` destination | `openLogFile`, `cmd/gauntlet/main.go:691-711`; `validateLog`, `flags.go:794-819` | startup rejects an existing directory target; at open an `os.Lstat` refuses a symlink and any non-regular file, the open itself carries `syscall.O_NOFOLLOW` with 0600, and a regular file that survived is chmod'd to 0600 before any output; no parent-directory confinement, no size cap, and no rotation |
+| `--semcode` indexer | `buildSemcodeIndex`/`runIndexer`, `cmd/gauntlet/semcode.go:86-108` | `semcode-index` resolved through `agent.Resolve` (`pathNoCWD`, `internal/agent/agent.go:238-268`), so a planted `./semcode-index` in the tree cannot win; argv-only, no shell; child environment isolated with `runx.AbsPATHEnv()`; 30-minute per-directory cap with a deferred process-group SIGKILL (`runx.Guard`, `runx.KillGroup`); the child's working directory is the reviewed tree, so the tree decides both what it walks and the file names it reports, and each of its streams gets its own `normalize.DisplayWriter` (`cmd/gauntlet/semcode.go:91-100`), which passes every complete line through `Display` and holds an unterminated one until `Flush` after `Run` joins the copy goroutines (`internal/normalize/normalize.go:445-545`); the held partial line is capped at 1 MiB and released on a rune boundary (`normalize.go:498-545`) |
+| `doctor` environment report | `envSettingLines`, `cmd/gauntlet/doctor.go:252,313-335`; table `helpEnvVars`, `cmd/gauntlet/help.go:172-184` | reads only the documented names, so nothing the operator did not set for gauntlet is echoed; a variable the table marks secret is reported as `(set)` and never as a value, so a pasted `doctor` transcript carries no token (`doctor.go:313-335`); `GAUNTLET_HOME` is left out because the State line above already names it; nothing here interprets the value, and presence is the only thing reported. A test pins the set: every `os.Getenv`/`os.LookupEnv` name in non-test source is either in the help table or recorded as internal with a reason (`cmd/gauntlet/env_surface_test.go:31-33,35-59`) |
+| `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:83-122` | runs only for a `dsh:<model>` pin; child environment isolated with `runx.AbsPATHEnv()` (`dsh.go:89`); bounded to 4 MiB output via `runx.Bound` (`dsh.go:64,84`); own process group, 120s cap, deferred group SIGKILL via `runx.KillGroup` (`dsh.go:85`); provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:379`); provider and model validated against `dshModelRe` (`dsh.go:135-137`); overlay key rejects path separators and traversal (`dsh.go:124-137`) |
 | Interactive launcher / picker keyboard input | `cmd/gauntlet/pick.go`, `internal/ui/pick.go`, `internal/ui/ui.go` | navigation keys jump to bounds (`g`/`G` in `internal/ui/pick.go:364-367`); cursor clamped to valid review rows via `clampReviewCursor` (`internal/ui/pick.go:320,409,412,454-464`); Esc/Ctrl-C during filter editing resets typing and clamps cursor (`internal/ui/pick.go:407-409`); empty filter matches block launch, with the reason returned by `blocked` and checked on Enter (`internal/ui/pick_view.go:114-125`, `internal/ui/pick.go:328-332`); Enter key terminates completed runs (`internal/ui/ui.go:425-429`) |
 | Planted symlinks/FIFOs in the tree | prompt discovery inspects candidates with `os.Lstat` requiring regular files (`prompt/discover.go:244,278`); prompt reads `prompt.go:278-329`, lock creation `runner/lock.go:53-89`, untracked counting `gitx.go:543-625`, reload handoff `reload.go:188-196` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stats, size caps; stat errors propagated on open regular files (`gitx.go:545-557`); `LoadState` verifies regular file with `Lstat` (`reload.go:187-196`) |
 | Developer build surface: `make repro` archives the working tree | `Makefile:524-549`; member list and archive `Makefile:532-533`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:868-956` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
-| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:459`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:80,102-110`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:672-696`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
+| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:459`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:80,102-110`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:691-711`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
 
 ## Threats per boundary
 
 **B1 -> B2 (the injection path).** A hostile repository plants
 `evil-review.md`; discovery prefers it over the bundled prompt of the same
 name, composition fences it between markers, and both the opening and closing
-marker strings in the body are escaped (`compose.go:170-175`). The agent that
+marker strings in the body are escaped, repeatedly until none is left
+(`escapeMarkers`, `compose.go:44-61`). The agent that
 receives it has its own permission system disabled or auto-approved (or, for a
 custom agent, whatever the operator put in argv). Applicable classes: elevation of privilege (repo
 author -> code execution with user rights), tampering (working tree,
 commits), info disclosure (secrets, source exfiltration). The fence is
 advisory: the ground rules forbid git, deletion, and persistence, and
-prompt-review gets a narrow exception (`compose.go:157-164`), but nothing
+prompt-review gets a narrow exception (`compose.go:265-272`), but nothing
 technical stops a sufficiently persuasive prompt from talking an agent out of
 them. This is the accepted core risk; DESIGN.md answers it operationally: run
 untrusted repos in a container.
+The operator's own text is a second fence, and on this path the one an attacker
+does not need the repository to reach: `--paths` is pasted into the same prompt
+as a scope the agent is told the review body cannot widen
+(`pathsNote`, `internal/prompt/compose.go:212-245`). An entry that is not a
+path is refused at the flag, and the entries that survive are capped, counted,
+and rendered so none can read as an instruction around the list
+(`PathEntrySafe`, `compose.go:156-175`; `PathsNamed`, `compose.go:201-210`).
+The scope is advisory in the way the rest of the suffix is: an agent can ignore
+a narrow list and edit the whole tree, which is why the count of what was left
+out is stated in the prompt, and why a scope of nothing asks for no findings and
+no edits rather than naming an empty list.
 
 **B1 -> B3 (the indexer path).** `--semcode` builds the optional semantic
 index before the first review launches, and the indexer is the one child
@@ -367,17 +411,17 @@ display input like any agent stream. It is now filtered as one:
 (`cmd/gauntlet/semcode.go:91-100`), which passes every complete line through
 `Display` and holds a partial line until the child is done, then `Flush`es
 after `Run` has joined both copy goroutines
-(`internal/normalize/normalize.go:414-501`). One writer per stream matters:
+(`internal/normalize/normalize.go:445-545`). One writer per stream matters:
 `DisplayWriter` is per-stream state and the two copy goroutines run
 concurrently, so sharing one would interleave held bytes. The held partial line
 is capped at 1 MiB and released on a rune boundary, so an indexer streaming one
 endless line grows the buffer to the cap and no further
-(`normalize.go:471-501`).
+(`normalize.go:498-545`).
 What remains on this path is display integrity, not a second code-execution
 path. The indexer's working directory is the reviewed tree (`cmd.Dir = d.dir`),
 so the tree decides what it walks, and the binary itself is not plantable from
 the tree: it is resolved with `agent.Resolve`, whose `pathNoCWD` PATH drops
-cwd-relative entries (`internal/agent/agent.go:228-236`, `agent.go:173`), and it
+cwd-relative entries (`internal/agent/agent.go:238-268`, `agent.go:183-188`), and it
 runs argv-only with an absolute-only-PATH environment, a 30-minute per-directory
 cap, and a deferred process-group SIGKILL
 (`cmd/gauntlet/semcode.go:25-29,94-100`). The filter removes escape, control,
@@ -460,7 +504,7 @@ privilege transition:
   under the same process discipline as any review.
 - **Conflict resolution:** `resolveConflict` (`conflict.go:37`) cuts a
   scratch checkout, replays the branch, and launches one agent with
-  `ConflictPrompt` (`compose.go:202-242`, rules in `rules/conflict.md`) for up to
+  `ConflictPrompt` (`compose.go:305-351`, rules in `rules/conflict.md`) for up to
   10 minutes (`conflict.go:26`). The prompt lists only sanitization-safe
   paths and forbids git; conflict hints quote branch and message via `runx.ShQuote`
   (`conflict.go:185-187`) to prevent shell injection if pasted; the marker
@@ -497,7 +541,7 @@ privilege transition:
 
 **B2, spend (the two budgets).** `--runtime` bounds wall clock and
 `--token-budget` bounds the tokens the run's reviews report
-(`budgetExhausted`, `internal/runner/runner.go:640-648`; `Stats.Tokens`,
+(`budgetExhausted`, `internal/runner/runner.go:640-653`; `Stats.Tokens`,
 `internal/runner/stats.go:177-185`). Both are read before a loop and before a
 review is taken, never during one, and the token figure is a sum the agents
 supplied through their own output, carried across a hot reload through
@@ -528,11 +572,11 @@ orders agents and retry backoff, and nothing in the draw is a capability.
 **B3.** Display sanitization addresses terminal escape injection, not the
 truth or origin of printable content. The composed prompt shown by
 `--show-prompt` (`modes.go:65-66`), the journal replayed by `show`
-(`runs.go:132`, which spawns no pager), the plain reporter
-(`report.go:87-100`), and the dashboard feed
-(`internal/ui/ui.go:683-687`) pass through the same stripping, which removes ASCII controls,
+(`runs.go:182`, which spawns no pager), the plain reporter
+(`report.go:143-148`), and the dashboard feed
+(`internal/ui/ui.go:731-745`) pass through the same stripping, which removes ASCII controls,
 Unicode formatting/bidi (`Cf`), and line/paragraph separators (`Zl`/`Zp`), and
-truncates at whole grapheme cluster boundaries (`internal/normalize/normalize.go:375-397`).
+truncates at whole grapheme cluster boundaries (`internal/normalize/normalize.go:377-400`).
 Stream classification excludes recognized tool/user objects (normalized case-insensitively) before their text reaches the report
 parsers, but trusts the producer's role/type fields
 (`internal/streamjson/streamjson.go:199,202,217-248`,
@@ -547,7 +591,7 @@ When readers are stalled by orphaned grandchildren, gauntlet issues a process-gr
 drain timeout (`exec.go:327-334`). The one child whose output is not parsed,
 the `--semcode` indexer, is filtered by the same `Display` on the way to the
 terminal, one `DisplayWriter` per stream (`cmd/gauntlet/semcode.go:91-100`,
-`internal/normalize/normalize.go:414-501`), so no subprocess stream reaches a
+`internal/normalize/normalize.go:445-545`), so no subprocess stream reaches a
 terminal unfiltered. Parser bounds do not limit a child's disk writes, network
 traffic, CPU, or provider spend. A non-positive process timeout also removes the per-launch
 deadline (`internal/runner/exec.go:293-300`).
@@ -577,12 +621,12 @@ goroutines are coordinated via context cancellation and WaitGroup on shutdown
 advisory scanner in CI (`vulnscan.yml`) watches the dependency graph, not this
 channel. The `bunx @deepseek-ai/dsh` fallback (and the `--dump-config` probe
 that uses the same argv) is a second fetch-and-execute path, from the npm
-registry rather than GitHub releases, with no checksum (`internal/agent/agent.go:548-560`,
-`internal/agent/dsh.go:74-111`). The probe is bounded to 4 MiB output via `runx.Bound`
-(`internal/agent/dsh.go:65,84`) and reclaims process groups via `runx.KillGroup` (`dsh.go:85`).
+registry rather than GitHub releases, with no checksum (`internal/agent/agent.go:611-624`,
+`internal/agent/dsh.go:83-122`). The probe is bounded to 4 MiB output via `runx.Bound`
+(`internal/agent/dsh.go:64,84`) and reclaims process groups via `runx.KillGroup` (`dsh.go:85`).
 Overlay configurations validate provider and model identifiers
-against `dshModelRe` (`internal/agent/dsh.go:135-136`), and overlay keys reject path traversal
-(`internal/agent/dsh.go:116-133`).
+against `dshModelRe` (`internal/agent/dsh.go:135-137`), and overlay keys reject path traversal
+(`internal/agent/dsh.go:124-137`).
 
 **B5.** Secret egress: the updater explicitly attaches `GH_TOKEN` /
 `GITHUB_TOKEN` only to requests whose scheme is HTTPS and hostname is
@@ -620,7 +664,7 @@ Journal entry and index writes are flushed with `Sync()` (`internal/journal/inde
 and Close preserves and joins both file and index errors (`internal/journal/journal.go:243-265`).
 Index mutations take a cross-process `flock` in a sibling file, and the
 acquisition is a bounded poll rather than a blocking `LOCK_EX`
-(`lockIndex`, `internal/journal/index.go:36-66`): a peer that dies holding
+(`lockIndex`, `internal/journal/index.go:55-77`): a peer that dies holding
 the lock, or a rebuild on a long history or a network home that takes
 longer than 30s, fails the command by name instead of parking
 `gauntlet runs`, `gauntlet history`, and the exit-time prune behind a holder
@@ -654,7 +698,7 @@ file deletion and inode recycling races (`internal/runner/lock.go:161-175`).
 A malicious agent already runs as that operator and can tamper with local evidence.
 
 `--log` is a separate confidentiality and availability boundary: it retains
-output that the journal omits. `openLogFile` (`cmd/gauntlet/main.go:672-696`)
+output that the journal omits. `openLogFile` (`cmd/gauntlet/main.go:691-711`)
 refuses a symlink and any non-regular file with `os.Lstat` before opening,
 opens with `syscall.O_NOFOLLOW` and 0600, and chmods a surviving regular file
 to 0600 before this run writes anything, so a looser umask or an older run's
@@ -666,7 +710,7 @@ not redact arbitrary secrets (`internal/runner/exec.go:269-280`). Same-user
 agents can read or alter the log just as they can the journal.
 
 **B6, destruction.** The state tree is the only place a run deletes, and it
-does so on every exit rather than on request. `Prune` (`internal/journal/retain.go:36-140`)
+does so on every exit rather than on request. `Prune` (`internal/journal/retain.go:39-148`)
 keeps the newest `keep` journals and index rows by run ID, which embeds a UTC
 start time, and removes the rest oldest first (`internal/journal/index.go:571-614`).
 Threats: **repudiation**, in the ordinary sense of a run whose evidence is gone
@@ -676,7 +720,7 @@ rather than of anything the journal asserts, so a run whose clock sat behind
 another run's is evicted first, and a same-user agent that can write `runs/`
 controls which names sort above which; **denial of service**, bounded and
 small, since the index rewrite is the only unbounded read in the path
-(`readAllIndex` with a 4 MiB line cap, `retain.go:141-173`). What the walk
+(`readAllIndex` with a 4 MiB line cap, `retain.go:155-181`). What the walk
 prevents is the version of this that reaches outside: it takes only entries
 the readdir reports as real directories and only `<id>.jsonl` files whose stem
 passes `validRunID`, so a planted symlinked shard is skipped rather than
@@ -691,44 +735,49 @@ fails is a warning; the run's own report has already been written
 | Repo config executing code during git calls | forced-empty safe config, `protocol.ext.allow=never`, `attr.tree` empty, local drivers blanked, absolute-only git PATH, `GIT_SSH_COMMAND=ssh` (defaulting on empty/whitespace env, `gitx.go:378-393`); propagated to worktrees and sub-repos via `subRepo`; branch and revision commands separate options with `--` and `--end-of-options`; a merge target is refused before `worktree add`, which takes no `--`, can read a leading dash as an option | `internal/gitx/gitx.go:43-67,233-274,321-372,374-389,633-647,663,682`, `worktree.go:33-51,278,308,436,509,530,583,604,788`, `branch.go:139-150,465-489` |
 | Writing outside the repository through a planted `.git` | `.git/info/exclude` append re-checks the parent directory on the path it is about to write, with `os.Lstat` requiring a real directory, because the reviewed tree picks `gitDir` and both `MkdirAll` and `OpenFile` follow a link at any component | `internal/gitx/worktree.go:73-133` |
 | Runaway git grandchildren (hooks, merge drivers) holding pipes | process-group SIGKILL on deadline, bounded WaitDelay | `gitx.go:349-357` |
-| Planted executables shadowing agents/git/`gh` | cwd-relative PATH entries stripped and child environments isolated with absolute-only PATH via `runx.AbsPATHEnv` for agent, git, git-child, `gh`, and usage probe resolution; executable lookup consolidated via `runx.LookPath` which resolves relative paths with path separators to absolute paths | `agent.go:173`, `gitx.go:68-96,375-412`, `internal/ghx/ghx.go:97-111,239`, `usagelimit.go:84-113`, `exec.go:109`, `runx.go:111-166` |
+| Planted executables shadowing agents/git/`gh` | cwd-relative PATH entries stripped and child environments isolated with absolute-only PATH via `runx.AbsPATHEnv` for agent, git, git-child, `gh`, and usage probe resolution; executable lookup consolidated via `runx.LookPath` which resolves relative paths with path separators to absolute paths | `agent.go:183-188`, `gitx.go:68-96,375-412`, `internal/ghx/ghx.go:97-111,239`, `usagelimit.go:84-113`, `exec.go:109`, `runx.go:111-166` |
 | Symlink/FIFO race into permission-bypassed runs | `O_NOFOLLOW` opens, regular-file stats, size caps; stat errors propagated on open regular files; prompt discovery inspects candidates with `os.Lstat` requiring regular files; suggester peeks via `os.OpenRoot`; reload handoff verified regular file via `Lstat`; the tree lock is created 0600 and `Fchmod`ed to 0600 on the descriptor, so a note naming the run, review, and agent CLI is not left group- or world-readable in a directory the reviewed tree picks; a note read is trimmed of a partial UTF-8 rune before it reaches a terminal | `prompt.go:278-329`, `discover.go:244,278`, `gitx.go:543-625`, `runner/lock.go:53-89,123-159`, `suggest_fast.go:687-692`, `reload.go:187-196` |
-| Prompt injection blending into containment rules | begin/end markers, both markers escaped in the body, report-section stripping fails open | `compose.go:34-39,53-75,170-175` |
-| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, NFC normalization before truncation, strict suggestion grammar checked against known set, reasons capped to the same budget; the unknown half of a triage answer is capped at 20 names of 200 runes with the remainder counted and reported as truncated, so a confused or hostile agent cannot leave a megabyte of retained strings or a line of log with no end | `compose.go:247-294,304-313,317-354` |
+| Prompt injection blending into containment rules | begin/end markers, both markers escaped in the body, report-section stripping fails open; the escape repeats until no marker is left (`escapeMarkers`, bounded at 8 passes), because the `(text)` form ends in the same `---` the marker does and a body whose markers shared their dashes re-formed one at the seam, which left the agent reading the review as ended with the body's text where the ground rules belong | `compose.go:36-41,44-61,75-97` |
+| Operator scope text becoming prompt instructions | `--paths` entries are refused at the flag where the operator can see which one it was, unless each is non-empty, at most 200 runes, and free of backticks, controls, `Cf`/`Zl`/`Zp`, and whitespace other than a plain space; the block names at most 20 entries, re-renders each so a surviving entry equals its own rendering, and counts what it dropped, because a scope that reads shorter than the flag is a wider one | `internal/prompt/compose.go:141-245`, `cmd/gauntlet/flags.go:628-641` |
+| A usage limit probe that trips after a lane has already taken a review | the lane re-reads the finish flag the probe set and drops its unstarted queue, so the remaining `--jobs` reviews do not start against a window the run decided was spent | `internal/runner/runner.go:851-861`, `internal/runner/runner.go:579` |
+| A hostile untracked file name reaching the run journal | every git path a run note prints goes through `safePaths` before the humanize list renders it, the same filter the dirty-tree note and a stack's path list use; the lane's untracked note was the one that did not | `internal/runner/sanitize.go:14-19`, `internal/runner/runner.go:474,478` |
+| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, NFC normalization before truncation, strict suggestion grammar checked against known set, reasons capped to the same budget; the unknown half of a triage answer is capped at 20 names of 200 runes with the remainder counted and reported as truncated, so a confused or hostile agent cannot leave a megabyte of retained strings or a line of log with no end | `compose.go:369-396,317-354` |
 | Injection via `Signals:` into the file-signal suggester | known kinds, charset, 12×40-rune caps; `mark:` values search file heads, not executed; a head that could not be read whole is left unscanned, because a partial prefix either declares a mark the file does not carry or hides one past the truncation, and a wrong signal steers which reviews auto-run | `prompt.go:199-232`, `suggest_fast.go:527-556,687-692,715-728` |
-| Terminal-driven or spoofed output, including prompt preview, journal replay, reporter, and dashboard | `Display`/`Sanitize` strip escapes, controls, bidi, and separators, and repair bytes that are not valid UTF-8 so one file name renders the same whatever sits beside it; width cap; rate limit; duplicate collapse; grapheme-preserving truncation; ANSI CSI sequences terminated on standard final characters in token width calculation; usage and sink callbacks serialized | `internal/normalize/normalize.go:265-282,375-397`, `modes.go:65-66`, `runs.go:132`, `report.go:87-100`, `internal/ui/ui.go:683-687`, `internal/ui/theme.go:246-283`, `exec.go:42,47,169,196-198,208,226-228,272-279`, `runner.go:26` |
+| Terminal-driven or spoofed output, including prompt preview, journal replay, reporter, and dashboard | `Display`/`Sanitize` strip escapes, controls, bidi, and separators, and repair bytes that are not valid UTF-8 so one file name renders the same whatever sits beside it; width cap; rate limit; duplicate collapse; grapheme-preserving truncation; ANSI CSI sequences terminated on standard final characters in token width calculation; usage and sink callbacks serialized | `internal/normalize/normalize.go:267-284,377-400`, `modes.go:65-66`, `runs.go:182`, `report.go:143-148`, `internal/ui/ui.go:731-745`, `internal/ui/theme.go:246-283`, `exec.go:42,47,169,196-198,208,226-228,272-279`, `runner.go:26` |
 | Hostile file names reaching messages or logs | C-quote decoding then sanitization of every git path before a terminal write; CRLF stripped | `gitx.go:715,799,854-916`, `internal/runner/sanitize.go:14-19`, `lock.go:22-25`, `conflict.go:130-183` |
-| Hostile file names forging conflict-prompt instructions | drop unsanitary paths (control/Cf, `RESOLVE:`, fence-closer); 1024-rune path cap; 50-file cap (over-cap skips the launch); list fenced in `<files>`; markers still block the merge | `compose.go:202-242`, `conflict.go:130-183` |
+| Hostile file names forging conflict-prompt instructions | drop unsanitary paths (control/Cf, `RESOLVE:`, fence-closer); 1024-rune path cap; 50-file cap (over-cap skips the launch); list fenced in `<files>`; markers still block the merge | `compose.go:305-351`, `conflict.go:130-183` |
 | A conflict marker left outside the conflicted file set reaching the merge | the marker scan covers the commit's whole scope, the conflicted paths plus every tracked and untracked path `CommitAll` would stage, and a file the scan cannot read counts as unresolved rather than clean; an unreadable status falls back to the narrower conflicted list | `commitScope`, `internal/runner/conflict.go:68,102-119`, `Worktree.CommitScope`, `internal/gitx/worktree.go:469-487` |
 | Shell injection in conflict resolution hints | branch names and commit messages quoted with POSIX escaping via `runx.ShQuote` in `conflictHint` | `internal/runner/conflict.go:185-187`, `internal/runx/runx.go:176-184` |
 | Model output written as a commit subject | ASCII controls, Unicode Cf (bidi), Zl/Zp stripped; grapheme cluster preserved; NFC normalization before truncation; 100-rune cap where the line is parsed and 72 where it is committed, so a long line is clipped before it reaches history, a PR title, and a merge message; a subject carrying an attribution credit line is dropped for the generated one; one line | `internal/agent/notes.go:76-118`, `internal/runner/subject.go:40-63,73-228` |
 | A commit subject read back out of history reaching a PR title | one choke point, `clipSubject`, sanitizes and clips whatever a subject's source was: generated from the changed files, parsed out of agent output, or read back with `CommitSubject` during a stack recovery, where an agent that committed on its own, a resolved conflict, or the operator wrote it. The layer's PR title comes from that read, so a title crafted in a branch left behind by a killed run is sanitized on the way to GitHub, and a source added later inherits the guarantee rather than needing its own call | `internal/runner/subject.go:224-235`, `internal/runner/stack.go:527-535` |
 | A generated branch name cut inside a multi-byte character | the abbreviated commit id a branch or probe name carries is clipped by runes at a grapheme boundary, not by bytes, so a base ref a hostile repository reported cannot land a half-encoded character in a branch name, a probe ref, or an error message | `normalize.Clip` at `internal/runner/stack.go:166,183,597`, `shortTipLen`/`shortDisambiguatorLen` at `internal/runner/stack.go:190-196` |
 | A commit subject an agent supplies crediting itself or a model CLI | a narrow regex over the parsed subject (`attributionRe`, `internal/runner/subject.go:54`) drops a trailer or phrase that credits a tool, replacing it with the generated subject; the word alone is not a match, so a change that genuinely concerns one of those tools still describes itself; the trailer sweep on the finished message (`StripAITrailers`, `internal/gitx/trailers.go:71-95`) does not reach the subject, which is why the check is here | `internal/runner/subject.go:40-63` |
-| Output-volume DoS from a chatty agent | 4 MiB line cap emitted in chunks with UTF-8 rune boundary preservation, trailing CR stripped, feed error trigram prefilter, bounded tail buffers (1 MiB suggest tail) | `exec.go:34-42,365-367,380-394,448-462`, `internal/normalize/normalize.go:304-323` |
+| Output-volume DoS from a chatty agent | 4 MiB line cap emitted in chunks with UTF-8 rune boundary preservation, trailing CR stripped, feed error trigram prefilter, bounded tail buffers (1 MiB suggest tail) | `exec.go:34-42,365-367,380-394,448-462`, `internal/normalize/normalize.go:301-326` |
 | Oversized prompt files | 1 MiB read cap; argv-length pre-check with named failure | `prompt.go:33-37`, `agent.go:496-503` |
 | Runaway/hung agents | per-review timeout, process group SIGTERM then SIGKILL, deferred SIGKILL on normal exit to clean up orphaned grandchildren, drain timeout process group SIGKILL escalation to unblock stuck readers, stdin null device, own session (no controlling terminal, so Ctrl-C cannot be disabled from inside an agent), drain grace for stuck grandchildren | `exec.go:25-32,100-350,140-146,327-334,453-485` |
 | Commit step running away | separate 5-minute cap, same process discipline, journaled outcome; runner-side publication is workflow separation, not removal of agent credentials | `internal/runner/commit.go:24,137-225` |
 | Conflict step running away | separate 10-minute cap, same process discipline; unresolved markers keep the branch | `conflict.go:26,37-90` |
-| Indexer binary shadowed by a planted `./semcode-index` | resolved with `agent.Resolve` (`pathNoCWD`), argv-only, absolute-only PATH in the child, 30-minute per-directory cap, deferred process-group SIGKILL | `cmd/gauntlet/semcode.go:86-108`, `internal/agent/agent.go:228-236`, `internal/runx/runx.go:111-166` |
-| File names from a hostile tree reaching the terminal through the indexer | one `normalize.DisplayWriter` per stream, each complete line through `Display`, partial line held to a 1 MiB cap and flushed after the child is reaped; no child stream is written straight to the terminal any more | `cmd/gauntlet/semcode.go:91-100`, `internal/normalize/normalize.go:414-501` |
-| A secret reaching a pasted `doctor` transcript | the environment report prints a name the table marks secret as `(set)`, never as a value, and reads only documented names; every environment name in the source is pinned to the table or to a stated reason it is internal | `cmd/gauntlet/doctor.go:289-311`, `cmd/gauntlet/help.go:172-184`, `cmd/gauntlet/env_surface_test.go:31-33,35-59` |
+| Indexer binary shadowed by a planted `./semcode-index` | resolved with `agent.Resolve` (`pathNoCWD`), argv-only, absolute-only PATH in the child, 30-minute per-directory cap, deferred process-group SIGKILL | `cmd/gauntlet/semcode.go:86-108`, `internal/agent/agent.go:238-268`, `internal/runx/runx.go:111-166` |
+| File names from a hostile tree reaching the terminal through the indexer | one `normalize.DisplayWriter` per stream, each complete line through `Display`, partial line held to a 1 MiB cap and flushed after the child is reaped; no child stream is written straight to the terminal any more | `cmd/gauntlet/semcode.go:91-100`, `internal/normalize/normalize.go:445-545` |
+| A secret reaching a pasted `doctor` transcript | the environment report prints a name the table marks secret as `(set)`, never as a value, and reads only documented names; every environment name in the source is pinned to the table or to a stated reason it is internal | `cmd/gauntlet/doctor.go:313-335`, `cmd/gauntlet/help.go:172-184`, `cmd/gauntlet/env_surface_test.go:31-33,35-59` |
 | Unbounded or unauthorized downloads | 256 MiB asset, 4 MiB metadata, 1 MiB checksum caps; HTTPS and authorized GitHub release host check (`validateAssetURL`); unified `getAsset` check; HTTP redirects re-verify host allowlist and stop after 10 redirects; fetch strictly rejects responses exceeding limit; download and error responses drain HTTP bodies up to limits via `drainBody`; error messages decoded up to 4 KiB on failure via `responseError`; digest-shaped entries only; constant-time checksum comparison; binary flushed with `Sync()`; verify-before-rename, atomic replace | `selfupdate.go:117,145-157,159,180,184,187,221,266,269,287-324,324-344,373,381-404,362-380,405-429` |
 | Partial binary observed by reload | two immediate identical stat readings reject visible changes, but do not prove completeness or authenticity; safe replacement depends on atomic writers and disk flushes | `internal/selfupdate/reload.go:87-134`; updater rename and sync at `internal/selfupdate/selfupdate.go:269-274` |
 | Concurrent agents corrupting one tree | flock per directory with inode preservation across releases; partial-write and EINTR retry handling on note I/O; parallelism only across directories or with worktree isolation + serialized merges; worktree paths confined to `.gauntlet/worktrees`, worktree mutex synchronization, orphaned directory cleanup on add and remove; a conflict is resolved in a scratch checkout or keeps its branch | `runner/lock.go:53-175`, `worktree.go:195-208,249-273,504-543,556-557`, DESIGN.md concurrency section |
 | Option injection and revision collisions in git commands | branch and revision arguments separated with `--` and `--end-of-options` across rev-parse, log, diff, merge, squash, rebase, delete, rename, trailer stripping, and reset; `worktree add` takes no `--`, so a merge target is shape-validated with `ValidateBranchName` before it is passed; a GitHub remote whose host or repository name begins with a dash is refused at parse, before the selector reaches `gh repo view`'s positional | `internal/gitx/gitx.go:667,686`, `internal/gitx/trailers.go:82`, `internal/gitx/branch.go:51,90,125,139-150,465-489`, `internal/gitx/worktree.go:278,308,436,509,530,583,604,788`, `internal/gitx/snapshot.go:41`, `internal/ghx/ghx.go:54-98` |
 | Accidental launch of unconstrained run from empty filter | `blocked` returns the reason before the flag is set, and Enter consults it first, so a filter matching zero reviews cannot compose a run of all of them; the same notice is rendered in the pane | `internal/ui/pick_view.go:114-125,564-568`, `internal/ui/pick.go:328-332` |
-| Reviewed tree defining its own agents | `CustomFilePath` empty without state root; argv is exec, not shell; argv, model, effort, stream, continue reject blank elements; NFC normalization of keys and names; case-insensitive duplicate field detection, single `{prompt}` placeholder requirement, `{prompt}` forbidden in model/effort/stream/continue, `{model}` and `{effort}` restricted to appropriate fields, tilde and environment variable expansion in executable `cmd[0]`, UTF-8 BOM stripped, non-empty model and usage roots, usage.suffix cannot be whitespace only | `custom.go:87-225,293,346,369-406,474-480`, `agent.go:490-496` |
+| Reviewed tree defining its own agents | `CustomFilePath` empty without state root; argv is exec, not shell; argv, model, effort, stream, continue reject blank elements; NFC normalization of keys and names; case-insensitive duplicate field detection, single `{prompt}` placeholder requirement, `{prompt}` forbidden in model/effort/stream/continue, `{model}` and `{effort}` restricted to appropriate fields, tilde and environment variable expansion in executable `cmd[0]`, UTF-8 BOM stripped, non-empty model and usage roots, usage.suffix cannot be whitespace only | `custom.go:87-225,293,346,369-406,474-480`, `agent.go:333-340` |
 | Directory traversal or poisoned journal run IDs | run ID length bounded (<= 128), charset-restricted (`[a-zA-Z0-9_.-]`), ".." rejected; date sharding derived from run ID timestamp; journal writes flushed via `Sync()` | `internal/journal/journal.go:156`, `internal/journal/index.go:105,279,705`, `internal/journal/history.go:88-104,167` |
-| History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:36-140,141-173`, `internal/journal/index.go:571-614` |
+| History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:39-181`, `internal/journal/index.go:571-614` |
 | Embedded basic-auth credentials in remote URLs | userinfo stripped from git stderr strings before errors are returned, printed, or journaled | `runx.RedactUserinfo`, `internal/gitx/gitx.go:358-364` |
 | Known-vulnerable dependencies shipping to users | govulncheck weekly and on dependency changes in CI | `.github/workflows/vulnscan.yml` |
 | Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:524-549`, `cmd/gauntlet/makefile_test.go:868-956`, `.gitignore:10` |
 | Silent loss of audit trail | journal as event-bus subscriber, run id + published seed for reproduction; journal failure degrades loudly, not silently | DESIGN.md "Run journal", `journal/` |
-| A wedged peer parking the journal index lock forever | the cross-process index lock is a bounded poll, `LOCK_EX` with `LOCK_NB` retried to a 30s deadline, and the failure names the lock file, so `gauntlet runs`, `gauntlet history`, and the exit-time prune report a held lock instead of waiting on a peer that will never release it. The holder walks the whole journal tree on a rebuild or a prune, so on a long history or a network home the wait is not instant and the bound is not a formality | `lockIndex`, `internal/journal/index.go:36-66`, used at `index.go:88` |
+| A wedged peer parking the journal index lock forever | the cross-process index lock is a bounded poll, `LOCK_EX` with `LOCK_NB` retried to a 30s deadline, and the failure names the lock file, so `gauntlet runs`, `gauntlet history`, and the exit-time prune report a held lock instead of waiting on a peer that will never release it. The holder walks the whole journal tree on a rebuild or a prune, so on a long history or a network home the wait is not instant and the bound is not a formality | `lockIndex`, `internal/journal/index.go:55-77`, used at `index.go:88` |
 | Silent loss of a `.git/info/exclude` entry | the append returns its failures, both the write and the close, and the run logs them; a short write counts as a failure, since the next run's substring check would not match a truncated line and would append the same entry again on every run. The exclusion is still best effort in the sense that nothing downstream depends on it, and the run continues | `internal/gitx/worktree.go:73-124`, `internal/runner/runner.go:277-282` |
 | A discarded stack layer leaving a branch nothing names | `DiscardCurrent` reports a branch git refuses to delete instead of dropping the error; the name is cleared either way, so a leftover branch on the remote used to survive a pass in which no later cleanup looks for it | `internal/gitx/worktree.go:386-403` |
 | A release inventory that describes a different build than the one shipped | `Merge` refuses a module path recorded at two versions across a release's binaries, and the command refuses a binary whose main module path is not the first one's, so a release assembled from two trees fails instead of shipping a merged or arbitrarily chosen version | `internal/sbom/sbom.go:110-129`, `cmd/sbom/main.go:55-64` |
+| An index rebuild spending the only copy of a run's summary | a journal the rebuild cannot summarize keeps the row the index already holds (path refreshed), because argv, exit code, and elapsed time are on the row alone; the walk is unchanged, so a journal that is gone is still just gone | `internal/journal/index.go:685-720` |
+| A prunes or a dashboard run stranding a forwarder on the bus | a run that returns without ever entering the dashboard's `Run` releases the forwarder, which otherwise parks on the program's unbuffered message channel holding the bus subscription and every event it still carries; `Release` is idempotent and kills the program before joining | `Dashboard.Release`, `internal/ui/ui.go:368-381`, deferred at `cmd/gauntlet/main.go:469` |
 
 Single point of failure: the embedded containment rules
 (`internal/prompt/rules/`) carry every high-impact threat on the B1->B2 path.
@@ -742,10 +791,10 @@ technical backstop behind them.
    explicitly next to `make release` (`Makefile:456`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
-   (`internal/agent/agent.go:548-560`). Auto-detection already ignores it (`Installed`
-   requires the binary under its own name, `agent.go:300-321`); a
+   (`internal/agent/agent.go:611-624`). Auto-detection already ignores it (`Installed`
+   requires the binary under its own name, `agent.go:356-375`); a
    `dsh:<model>` pin additionally execs the same argv as `--dump-config`
-   (`internal/agent/dsh.go:74-111`). Documentation should say plainly that naming `dsh`
+   (`internal/agent/dsh.go:83-122`). Documentation should say plainly that naming `dsh`
    without the launcher installs and runs an npm package, including at
    probe time.
 3. **No SECURITY.md.** There is no documented path from "vulnerability
@@ -757,13 +806,13 @@ technical backstop behind them.
    threshold is checked between reviews and fails open on probe errors
    (`internal/runner/usagelimit.go:46-72,84-113`); `--token-budget` counts what
    the reviews report, excludes the commit and conflict launches, and is checked
-   only between reviews (`internal/runner/runner.go:640-648`). None is a hard
+   only between reviews (`internal/runner/runner.go:640-653`). None is a hard
    spend quota.
 5. **Secrets hygiene around spawned agents.** Gauntlet inherits the full
    operator environment to every agent; a scrubbed env or documented
    container workflow would shrink R3. Design decision, not a bug.
 6. **R9, bounded audit trail.** `--keep-runs` deletes run journals and index
-   rows on every run's exit (`internal/journal/retain.go:36-140`,
+   rows on every run's exit (`internal/journal/retain.go:39-148`,
    `cmd/gauntlet/main.go:846-848`), ordering by the timestamp inside the run ID
    rather than by anything the journal asserts, with no way to keep everything
    except by setting 0. A security owner who wants the history of an incident
@@ -774,7 +823,7 @@ technical backstop behind them.
    run can read and delete, but nothing on this boundary authenticates the
    state directory: a run ID collision or a planted file under a real shard is
    decided by string shape and timestamps. Run IDs now carry the whole pid
-   (`runIDFor`, `internal/journal/journal.go:69-77`), which removes the
+   (`runIDFor`, `internal/journal/journal.go:69-79`), which removes the
    truncation collision, but the ordering property R9 names is unchanged.
    A protected `GAUNTLET_HOME` remains a precondition the code cannot enforce.
 8. **The developer build surface is not in the runtime model.** `make repro`
@@ -801,7 +850,7 @@ technical backstop behind them.
    destination has: `os.WriteFile` at 0644 (`cmd/sbom/main.go:71`) follows a
    symlink at the destination and leaves a pre-existing file's mode alone,
    where the log destination is refused as a symlink or non-regular file and
-   opened `O_NOFOLLOW` at 0600 (`cmd/gauntlet/main.go:672-696`). The rest of
+   opened `O_NOFOLLOW` at 0600 (`cmd/gauntlet/main.go:691-711`). The rest of
    the release target's output is no tighter: `checksums.txt` comes from a
    shell redirect over `dist` (`Makefile:455-459`), which follows a symlink
    too. Exploitability is low, since reaching either needs a compromised
@@ -814,6 +863,17 @@ technical backstop behind them.
 The tool has one authenticated user (the operator), so the hostile actor is
 the reviewed repository's author:
 
+- **Scope-laundering through a wrapper.** A CI wrapper builds `--paths` from a
+  file list or a changed-file feed rather than from a person typing it, so a
+  name carrying a line of prose, a backtick, or a marker arrives as flag text
+  and lands in a prompt an agent runs with permissions bypassed. The entry is
+  refused where the operator can see which one it was
+  (`cmd/gauntlet/flags.go:628-641`), the block names at most 20 entries and
+  counts the rest rather than reading narrower than the flag
+  (`internal/prompt/compose.go:141-245`), and an entry that survives is
+  re-rendered so it equals its own rendering. What remains is the design the
+  prompt already states: the scope is prompt-enforced, and an agent that
+  ignores it is stopped by nothing.
 - **Steering the fix fleet.** Plant `sec-review.md` in the tree with the
   bundled name and different content; discovery warns but obeys
   (`discover.go:104-111`). The planted body rides past the markers into an
@@ -833,7 +893,7 @@ the reviewed repository's author:
   the reviews left behind (`cmd/gauntlet/main.go:875-905`).
 - **Suggestion gaming.** A planted prompt whose description primes
   `RELEVANT:` output steers which reviews auto-run; the grammar check and
-  known-set filter (`compose.go:204,266-294`) bound it to reviews that exist
+  known-set filter (`compose.go:372,381-396`) bound it to reviews that exist
   in the discovered set, including the attacker's own.
 - **Signals: steering.** A planted `Signals:` line on a project prompt is
   parsed into the file-signal suggester (`prompt.go:199-232`,
@@ -860,7 +920,7 @@ the reviewed repository's author:
   `~/.gauntlet/runs/`, and `Prune` orders by the ID's embedded timestamp, so
   names it fabricates displace real runs from the newest 200 without ever
   touching a file outside the state tree
-  (`internal/journal/retain.go:36-140`, `internal/journal/index.go:571-614`).
+  (`internal/journal/retain.go:39-148`, `internal/journal/index.go:571-614`).
   What it cannot do is delete anything the operator pointed at elsewhere: the
   walk refuses a shard that is not a real directory and a stem that is not a
   valid run ID.
@@ -881,14 +941,27 @@ None of these is demonstrated here; evidence is the cited code paths.
   narrower than the code.
 - Response readiness: the journal supports run reconstruction, not a complete
   security audit, and it is now bounded: `--keep-runs` evicts the oldest rows on
-  every run's exit, default 200 (`internal/journal/retain.go:36-140`). Agent
+  every run's exit, default 200 (`internal/journal/retain.go:39-148`). Agent
   output and live usage events are explicitly excluded
   (`cmd/gauntlet/main.go:516-528`), writes are buffered, and write failures are
   retained for reporting at close (`internal/journal/journal.go:205-233`).
   It does not authenticate agent claims or record every child action; same-user
   agents can alter local evidence. The disclosure and supported-version gaps
   above remain undocumented organizational decisions.
-- Verification scope and baseline: 2026-09-27 against commit c36fa56. This
+- Verification scope and baseline: 2026-09-27 against commit e35371d. This
+  pass read the twenty-three commits since c36fa56. It entered the operator's
+  `--paths` scope as an entry point, a fence, and an abuse case, because the
+  entries are pasted into a prompt as instructions and a wrapper that builds
+  the list from a file feed is free text reaching an agent with its permissions
+  bypassed. It carried four controls those commits added: the repeated marker
+  escape, the lane's drop of its unstarted queue when the usage probe trips,
+  the sanitized untracked-path note, and the index rebuild that keeps the row a
+  journal cannot summarize. It re-anchored the citations the composition,
+  normalization, journal, reporter, and dashboard edits moved, and closed no
+  risk. The numbered table is unchanged: R1/R3/R4's core, R2's unsigned
+  channel, R5's `bunx` fallback, R6's unenforced spend, and R9's bounded audit
+  trail are all still open and still named where they were.
+- Earlier baseline: 2026-09-27 against commit c36fa56. That
   pass read the fourteen commits since ef6eb5c. It entered the release-time
   inventory generator as an entry point, a boundary note, a mitigations row,
   and a gap, because every release now ships a document describing its own
