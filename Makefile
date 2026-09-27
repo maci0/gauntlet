@@ -488,7 +488,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b"; \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
-			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
+			--exclude=./.scratch --exclude=./.scratch_* --exclude=./.ruff_cache --exclude=./.mypy_cache \
 			--exclude=./__pycache__ --exclude=./.gauntlet --exclude=./.gauntlet.lock \
 			--exclude=./.env \
 			-cf "$(REPRO_DIR)/src.tar" . && \
