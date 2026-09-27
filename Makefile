@@ -85,9 +85,22 @@ run: build ## build, then run one loop here with the dashboard
 RUN ?=
 PKG ?= ./...
 
+# `go test -run` exits 0 when the pattern matches nothing, so a typo or a
+# renamed test reports a green run that executed no test at all. List the
+# names first and fail loudly instead. Costs one cached build, and only when
+# RUN is set.
+define run-guard
+@if [ -n '$(RUN)' ] && ! $(GO) test $(GOTAGS) -list '$(RUN)' $(1) 2>/dev/null | grep -qE '^(Test|Fuzz|Example|Benchmark)'; then \
+	echo "RUN=$(RUN) matched no test in $(1)." >&2; \
+	echo "names: $(GO) test $(GOTAGS) -list '.*' $(1)" >&2; \
+	exit 1; \
+fi
+endef
+
 .PHONY: test
 test: | test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
+	$(call run-guard,./...)
 	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' ./...
 
 # One package at a time keeps the edit-test loop fast; the flags match `make
@@ -95,6 +108,7 @@ test: ## run all tests with the race detector, shuffled order
 .PHONY: test-pkg
 test-pkg: | test-tmpdir test-cgo
 test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
+	$(call run-guard,$(PKG))
 	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(PKG)
 
 .PHONY: cover

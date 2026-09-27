@@ -299,3 +299,44 @@ func TestMakefileReproPreflight(t *testing.T) {
 		t.Fatal(`make repro must verify REPRO_DIR is not unset`)
 	}
 }
+
+// `go test -run` exits 0 when the pattern matches no test, so a renamed or
+// mistyped RUN reports a green run that executed nothing. Both targets that
+// take RUN must list the names first and fail.
+func TestMakefileTestTargetsRejectEmptyRUN(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "define run-guard") {
+		t.Fatal("Makefile must define the run-guard snippet shared by test and test-pkg")
+	}
+	for _, want := range []string{
+		"$(call run-guard,./...)",
+		"$(call run-guard,$(PKG))",
+		`-list '$(RUN)'`,
+		"matched no test in",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Makefile missing %q", want)
+		}
+	}
+}
+
+// The documented minimum toolchain lives in two machine-readable files. A
+// version manager reads .go-version, CI reads go.mod, and CONTRIBUTING.md
+// names both, so neither file may drift from the other.
+func TestGoVersionFileMatchesGoMod(t *testing.T) {
+	root := moduleRoot(t)
+	gomod := readRepoFile(t, filepath.Join(root, "go.mod"))
+	version := ""
+	for line := range strings.SplitSeq(gomod, "\n") {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "go "); ok {
+			version = strings.TrimSpace(rest)
+			break
+		}
+	}
+	if version == "" {
+		t.Fatal("go.mod has no go directive")
+	}
+	if got := strings.TrimSpace(readRepoFile(t, filepath.Join(root, ".go-version"))); got != "go"+version {
+		t.Errorf(".go-version is %q, want %q: the file version managers read must name the go.mod minimum", got, "go"+version)
+	}
+}

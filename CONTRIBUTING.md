@@ -43,6 +43,11 @@ make test-pkg PKG=./internal/prompt RUN=TestStripReportSections   # one test in 
 also works, but without `-tags sqlite` you are testing the no-database
 build rather than the default one.
 
+A `RUN` pattern that matches no test fails the command. `go test -run` alone
+exits 0 in that case, which reads as a green run that executed nothing; the
+Makefile lists the test names first and stops with the names it found. List
+them yourself with `go test -tags sqlite -list '.*' ./...`.
+
 Tests must not write into a tmpfs or into an ignored path inside this repo:
 the prompt discovery tests would otherwise see their own fixtures as
 ignored. The Makefile points `TMPDIR` at `~/.cache/gauntlet/test` for that

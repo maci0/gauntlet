@@ -12,6 +12,11 @@ minor instead and were listed under Changed.
 
 ## Unreleased
 
+### Fixed
+
+- Fail `make test RUN=...` and `make test-pkg RUN=...` when the pattern matches no test, naming the command that lists the available names, instead of reporting a green run that executed nothing.
+- Add the `.go-version` file CONTRIBUTING.md documents, pinned to the `go` directive in go.mod by a contract test.
+
 ## 1.23.3
 
 ### Security
