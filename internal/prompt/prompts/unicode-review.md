@@ -50,6 +50,7 @@ Review the following:
 
 Instructions:
 - Fix order: data corruption in storage or round-trips > identity confusion (equality, uniqueness, lookups) > crashes on legal input (invalid bytes, weird filenames, astral characters) > truncation and length-unit defects > cosmetic mis-rendering.
+- If available, use: `uconv -x Any-NFC` (ICU; feed it the NFD spelling of a string and see whether it collapses to the NFC one, which settles the equality question a finding turns on), and the language's own normalize, case-fold, and length functions on the concrete input. Where the two disagree, the library under review is the truth and ICU is only showing what normalization does. Never install tools.
 - For each finding name a concrete input that breaks: an NFD string, a specific emoji sequence, a Turkish i, a lone surrogate. A pattern with no demonstrable failing input is a low-severity note.
 - Establish the codebase's intended conventions first (encoding at boundaries, normalization form, length units) from code and docs; where no convention exists, that absence on identity-bearing paths is itself a finding.
 - Prefer explicit over default: named encodings at every boundary, one normalization form applied at ingestion, length units stated at each limit.

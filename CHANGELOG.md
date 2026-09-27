@@ -45,6 +45,7 @@ stops being true, which is the moment a major version would be owed.
 
 ### Changed
 
+- `time-review`, `unicode-review`, and `dst-review` name the evidence an agent should run instead of only the defect to look for: the zone database (`zdump`, `date` under a zone) settles whether a wall-clock time exists or repeats, ICU's `uconv` and the language's own normalization settle whether two spellings are the same string, and a seeded harness run twice with one seed settles determinism. The three were the only prompts demanding a concrete failing input with no way to produce one.
 - `gauntlet pick` asks for a second `q` before it discards a composed run, and says so on the status line and in the key legend while the first press is waiting. It arms the key the dashboard already arms, for the same reason: a slip of the finger used to throw away a screenful of picking. Any other key, or `esc`, takes it back.
 - `+` in the launcher stops at the machine's cpu count, the ceiling `space` already applied to the same row. Past it the concurrency meter reads full and the extra lane has nothing to run on, so the two keys now stop in the same place.
 - The dashboard's key legend and help no longer offer the graceful finish (`s`, `ctrl+c`) to a run that has no finish to ask for, instead of listing a key that does nothing.

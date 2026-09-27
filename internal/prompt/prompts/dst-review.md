@@ -78,6 +78,7 @@ Review the following:
 
 Instructions:
 - Fix order: hardcoded sources of nondeterminism on the critical path (real clock, OS random, raw I/O) > missing injection seams that prevent any simulation > simulation harness gaps (missing fault injection, incomplete seed coverage) > CI integration and regression seeds.
+- If available, use: an existing seeded harness run twice with the same seed and its output diffed. A non-empty diff is a confirmed determinism leak, and the first differing field names the source that leaked; a claim that the system is deterministic, or is not, has no other evidence. Never install tools.
 - In auto-fix mode replace a concrete wall-clock or unseeded RNG call with an existing injectable seam; do not introduce a simulation harness, rewrite I/O, or add a new clock/RNG abstraction in one pass. Do not add CI jobs or soak pipelines (infra-review).
 - Preserve cryptographically secure randomness for security-sensitive values in production (tokens, keys, nonces, salts); deterministic substitutes must be confined to tests or simulation mode. Trace the production wiring before changing an RNG call; sec-review owns insecure randomness.
 - Be concrete: name the call site (`time.Now()` in scheduler.go), the missing seam, or the un-injected dependency.
