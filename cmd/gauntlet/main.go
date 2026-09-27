@@ -436,10 +436,7 @@ func run(argv []string) int {
 	consumers.Go(func() { noteLocks(runs, runID, lockEvents) })
 	consumers.Go(func() {
 		for ev := range journalEvents {
-			// The feed and the live usage ticks are high volume and
-			// reconstructible; the results they add up to are not, and those
-			// are recorded in full.
-			if ev.Kind == runner.EvOutput || ev.Kind == runner.EvUsage {
+			if runner.Droppable(ev.Kind) {
 				continue
 			}
 			jrnl.Write(ev)

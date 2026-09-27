@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -461,6 +463,93 @@ func TestHostArtifactNamesABinaryDistBuilds(t *testing.T) {
 	if want := filepath.Join("dist", "gauntlet_1.2.3_"+runtime.GOOS+"_"+runtime.GOARCH); got != want {
 		t.Fatalf("make host-artifact = %q, want %q", got, want)
 	}
+}
+
+// The README install snippet names the asset from uname rather than asking
+// the Makefile, because it runs before anything is built. That only works
+// while every platform in PLATFORMS is one the snippet can spell: a release
+// adding one its uname mapping does not produce ships an asset a user on that
+// platform cannot install, and the smoke tests never see it because they run
+// on the CI runner.
+func TestReadmeInstallNamesEveryReleasedPlatform(t *testing.T) {
+	root := moduleRoot(t)
+	readme := readRepoFile(t, filepath.Join(root, "README.md"))
+	_, rest, ok := strings.Cut(readme, "\n## Install\n")
+	if !ok {
+		t.Fatal("README.md has no Install section")
+	}
+	block, _, _ := strings.Cut(rest, "\n## ")
+
+	asset := strings.Index(block, "asset=\"gauntlet_")
+	if asset < 0 {
+		t.Fatal("README install script does not build the asset name")
+	}
+	expr := block[asset:]
+	if end := strings.IndexByte(expr, '\n'); end >= 0 {
+		expr = expr[:end]
+	}
+
+	platforms := releasePlatforms(makefileText(t))
+	if len(platforms) == 0 {
+		t.Fatal("no platform parsed out of the Makefile's PLATFORMS; this test would pass on nothing")
+	}
+	for _, platform := range platforms {
+		goos, goarch, _ := strings.Cut(platform, "/")
+		if !strings.Contains(expr, "uname -s") {
+			t.Fatalf("README asset expression %q does not read uname -s, so it cannot name %s", expr, platform)
+		}
+		if !strings.Contains(expr, "uname -m") {
+			t.Fatalf("README asset expression %q does not read uname -m, so it cannot name %s", expr, platform)
+		}
+		// The lowercased uname -s has to equal the GOOS the asset carries, and
+		// the sed has to map some uname -m onto the GOARCH. Both hold for every
+		// entry, so a platform outside the vocabulary below is what needs a
+		// mapping added, not a test change.
+		switch goos {
+		case "linux", "darwin":
+		default:
+			t.Errorf("PLATFORMS ships %s; the README install snippet maps uname -s onto linux and darwin only", platform)
+		}
+		lower := goarch
+		if goarch == "amd64" {
+			lower = "x86_64"
+		} else if goarch == "arm64" {
+			lower = "aarch64"
+		} else {
+			t.Errorf("PLATFORMS ships %s; the README install snippet maps uname -m with the x86_64 and aarch64 cases only", platform)
+		}
+		if !strings.Contains(expr, lower) {
+			t.Errorf("README asset expression %q does not map uname -m %s, so it names no %s asset", expr, lower, platform)
+		}
+	}
+}
+
+// releasePlatforms returns the os/arch pairs the Makefile builds a binary for.
+// PLATFORMS is a variable assignment, not a rule, and its value is continued
+// across indented lines.
+func releasePlatforms(makefile string) []string {
+	lines := strings.Split(makefile, "\n")
+	var out []string
+	for i, line := range lines {
+		if !strings.HasPrefix(line, "PLATFORMS") {
+			continue
+		}
+		value := line
+		for _, next := range lines[i+1:] {
+			if !strings.HasPrefix(next, "\t") {
+				break
+			}
+			value += " " + next
+		}
+		for _, field := range strings.Fields(value) {
+			if strings.Count(field, "/") == 1 && !strings.HasPrefix(field, "$(") {
+				out = append(out, field)
+			}
+		}
+		break
+	}
+	sort.Strings(out)
+	return slices.Compact(out)
 }
 
 // A doc pointer into the Makefile is a promise that the line a reader lands

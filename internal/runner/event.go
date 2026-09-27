@@ -155,10 +155,11 @@ func (b *Bus) Subscribe(buffer int) <-chan Event {
 	return ch
 }
 
-// droppable reports whether a full subscriber may miss this event. Output and
-// live usage are high-volume and reconstructible (the final counts ride on
-// review_end); everything else is a result and is delivered.
-func droppable(k Kind) bool { return k == EvOutput || k == EvUsage }
+// Droppable reports whether a full subscriber may miss this event, and
+// whether it is written to the run journal. Output and live usage are
+// high-volume and reconstructible (the final counts ride on review_end);
+// everything else is a result and is delivered and journaled.
+func Droppable(k Kind) bool { return k == EvOutput || k == EvUsage }
 
 // Publish delivers an event to every subscriber. Droppable kinds are skipped
 // for a subscriber whose buffer is full; every other kind blocks until
@@ -173,7 +174,7 @@ func (b *Bus) Publish(e Event) {
 		return
 	}
 	for _, ch := range b.subs {
-		if droppable(e.Kind) {
+		if Droppable(e.Kind) {
 			select {
 			case ch <- e:
 			default:

@@ -364,7 +364,8 @@ jq 'select(.ev=="review_end")' ~/.gauntlet/runs/*/*.jsonl   # or use your own to
 
 Events are one JSON object per line (`run_start`, `loop_start`,
 `review_start`, `review_end`, `merge`, `pull_request`, `commit`, `loop_end`,
-`reload`, `run_end`, plus runner log lines). `review_start` and `review_end` carry
+`reload`, `run_end`, plus the runner's own `log` lines, which carry the
+narration in `text`). `review_start` and `review_end` carry
 `prompt_sha256`, the SHA-256 of the prompt text that launch was composed
 from, so an output stays attributable to exact words after the prompt file
 has changed or disappeared, and both carry `attempt`, the 1-based try the

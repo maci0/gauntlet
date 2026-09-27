@@ -126,8 +126,9 @@ A release is a tag push; nothing else. Rename `## Unreleased` in
 CHANGELOG.md to `## <version>`, commit, then:
 
 ```sh
-git tag -s v1.23.4 -m "v1.23.4"   # -s signs; drop it if you have no GPG key
-git push origin v1.23.4
+ver=X.Y.Z                            # the version that heading now names
+git tag -s "v$ver" -m "v$ver"   # -s signs; drop it if you have no GPG key
+git push origin "v$ver"
 ```
 
 [release.yml](.github/workflows/release.yml) runs the race suite, builds
@@ -154,6 +155,16 @@ published deliberately. Two moves, in order:
 To check what users would get before publishing one, `gauntlet update
 --check` resolves the same `releases/latest` endpoint the install snippet
 uses.
+
+## Supported versions
+
+One supported version: the latest release. `gauntlet update` and the README
+install both resolve `releases/latest`, never a version list, so an older tag
+is what a user keeps until they update. There is no backport branch, and a
+security fix ships as a new patch tag rather than as a second release on an
+old one, so a consumer has to be on the latest to receive it. Older tags stay
+downloadable and immutable: they are what a reported issue is reproduced
+against, and the journal a run left is read with the version that wrote it.
 
 ## Layout
 

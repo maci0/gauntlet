@@ -147,6 +147,12 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from, as `owner/repo`. A URL or extra path segment is a usage error. |
 | `--check` | off | Report the latest release without installing. |
 
+Only the latest release is supported. `gauntlet update` resolves
+`releases/latest` rather than a version list, so an older tag is what a user
+keeps until they update, and a fix (a security one included) ships as a new
+patch release rather than as a second release on an old one. Older tags stay
+downloadable: the journal a run left is read with the version that wrote it.
+
 **History**
 
 | Flag | Default | Purpose |

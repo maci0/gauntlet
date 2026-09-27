@@ -18,6 +18,12 @@ lands in Changed for anyone vendoring the tree rather than going unrecorded.
 `TestNoAccidentalPublicPackages` in `cmd/gauntlet` fails the build if that
 stops being true, which is the moment a major version would be owed.
 
+Each part of the contract has a snapshot that fails the suite when it moves,
+so a breaking change cannot reach a tag unnoticed: flags, commands, exit
+codes, and environment variables in `cmd/gauntlet/contract_test.go`, review
+and set names in `internal/prompt/contract_test.go`, and the `ev` values of
+the journaled event stream in `internal/runner/contract_test.go`.
+
 ## Unreleased
 
 ### Added
@@ -94,6 +100,8 @@ stops being true, which is the moment a major version would be owed.
 - The launcher's key legend keeps the keys its pane acts on at a hundred columns: it tightens the gap between segments and shortens the arrow keys' action before dropping anything, where the `a` key fell off the end and a pane that offers it showed no way to select all.
 - The launcher's catch-all group names its members instead of the group heading, so a tree carrying a review no bundled set claims composes a command line the parser accepts.
 - A flag the parser rejects is named the way the help screen names it in the suggestion too: an unknown `--tuii` reads `flag provided but not defined: --tuii (did you mean --tui?)`.
+- `gauntlet runs --limit 100000000` reserves a bounded hint instead of one slot per requested row. `--limit` has no upper bound and a summary is a few hundred bytes, so listing a short index asked for gigabytes up front; the slice still grows into every row the index holds.
+- The journaled event names are pinned by a test, so renaming or dropping one fails the suite instead of breaking a consumer's `jq` query after the release. `docs/RUNS.md` names the `log` event it had described only as "runner log lines", and the journal writer asks the runner which kinds are droppable rather than restating the list. The kinds on the bus but not in the journal (`output`, `usage`) are not part of the contract and are not pinned.
 - `gauntlet doctor` reports a per-review helper with alternative binaries as present when any of them is installed, and names it by its primary, the way the prompt does; entries like `ast-grep|sg` were compared against a probe keyed per binary and so never matched.
 - An agent defined with a capital letter in its name is selectable under any spelling, the way a built-in is; two definitions differing only by case are refused rather than leaving one of them unreachable.
 - `--raw` output is width-capped like every other line headed for a terminal, so one overlong line no longer arrives as a single uncapped frame.
