@@ -134,11 +134,21 @@ type Repo struct {
 	// extraSafe is the per-repo -c overlay on top of safeConfig: attr.tree
 	// pointed at the empty tree (so in-tree .gitattributes cannot select a
 	// smudge filter or merge driver) and local filter/merge/diff commands
-	// blanked, for git versions that ignore attr.tree. Computed once; a
-	// hostile config is a property of the clone, not of one call.
-	safeMu    sync.Mutex
-	extraSafe []string
-	safeReady bool
+	// blanked, for git versions that ignore attr.tree.
+	//
+	// safeConfig names the local config file the overlay was derived from and
+	// safeStamp is that file's size and mtime when it was. A review runs with
+	// its permissions bypassed and can write .git/config itself, so a hostile
+	// config is not only a property of the clone as unpacked: a driver planted
+	// after the first git call would be executed by the next checkout or merge
+	// with nothing blanking it. The overlay is therefore rebuilt when the file
+	// it was read from changes, which is a stat per git call rather than the
+	// two subprocesses a rebuild costs.
+	safeMu     sync.Mutex
+	extraSafe  []string
+	safeReady  bool
+	safeConfig string
+	safeStamp  configStamp
 
 	// Now is the clock Sample debounces its cache against and stamps it
 	// with. nil means time.Now. The debounce decides whether a sample is a
@@ -171,6 +181,27 @@ type lineCount struct {
 // lineCountCacheMax bounds the table. A var so tests can shrink it;
 // production always sees 4096.
 var lineCountCacheMax = 4096
+
+// configStamp identifies one reading of a local config file. Size and mtime
+// are the same pair countLinesCached trusts, and for the same reason: a
+// rewrite inside one filesystem timestamp tick reads as unchanged, and the
+// consequence there is one stale line count on a display number rather than a
+// driver git executes.
+type configStamp struct {
+	size    int64
+	modTime time.Time
+}
+
+// stampConfig reads a config file's identity. A file that cannot be read
+// stamps as the zero value, so a config that is missing and one that cannot be
+// opened do not read differently from a config that was never there.
+func stampConfig(path string) configStamp {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return configStamp{}
+	}
+	return configStamp{size: fi.Size(), modTime: fi.ModTime()}
+}
 
 // Stats are cumulative worktree line changes against a baseline commit.
 type Stats struct {
@@ -232,25 +263,24 @@ func (r *Repo) argv(args []string) []string {
 	return append(out, args...)
 }
 
-// extraSafeConfig returns the per-repo -c flags, computing them once.
+// extraSafeConfig returns the per-repo -c flags, recomputing them whenever the
+// local config they were derived from has changed.
 func (r *Repo) extraSafeConfig() []string {
 	if r == nil {
 		return nil
 	}
 	r.safeMu.Lock()
 	defer r.safeMu.Unlock()
-	if r.safeReady {
-		return r.extraSafe
-	}
-	r.extraSafe = r.buildExtraSafe()
-	r.safeReady = true
-	return r.extraSafe
+	return r.extraSafeConfigLocked()
 }
 
 // buildExtraSafe must run with safeMu held and must not call extraSafeConfig:
-// it bootstraps through execGit with only the static safeConfig.
+// it bootstraps through execGit with only the static safeConfig. It also
+// records which config file it read, so the caller can tell a stale overlay
+// from a current one.
 func (r *Repo) buildExtraSafe() []string {
 	var extra []string
+	r.safeConfig = r.localConfigPath()
 	out, err := r.execGit(context.Background(), bytes.NewReader(nil), gitQuick,
 		staticArgv("hash-object", "-t", "tree", "--stdin")...)
 	if err == nil {
@@ -268,6 +298,24 @@ func (r *Repo) buildExtraSafe() []string {
 		extra = append(extra, disableLocalDrivers(string(list))...)
 	}
 	return extra
+}
+
+// localConfigPath is the file `git config --local` reads, which is what the
+// overlay above blanks drivers from. It is resolved once per rebuild and
+// stat-ed on every git call, so the cost is one lstat rather than a second
+// subprocess. Outside a repository git refuses the query and the answer is
+// "", which stamps as the zero value: there is no config to watch.
+func (r *Repo) localConfigPath() string {
+	out, err := r.execGit(context.Background(), nil, gitQuick,
+		staticArgv("rev-parse", "--absolute-git-dir")...)
+	if err != nil {
+		return ""
+	}
+	dir := strings.TrimSpace(string(out))
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "config")
 }
 
 // staticArgv is the static safeConfig followed by args, on a fresh slice so a
@@ -660,17 +708,41 @@ func countLinesFrom(f *os.File) int {
 }
 
 func (r *Repo) subRepo(dir string) *Repo {
-	var extra []string
-	ready := false
+	sub := &Repo{Dir: dir}
 	if r != nil {
-		extra = r.extraSafeConfig()
-		ready = true
+		// Adopt the parent's overlay rather than rebuilding it, and with it
+		// the config path and stamp that make the adoption self-invalidating:
+		// a sub-repo of the same repository reads the same local config, so
+		// sharing all three keeps one rebuild per change, not one per handle.
+		sub.adoptSafeConfig(r)
 	}
-	return &Repo{
-		Dir:       dir,
-		extraSafe: extra,
-		safeReady: ready,
+	return sub
+}
+
+// adoptSafeConfig copies an already-computed overlay and the config identity it
+// was derived from, so a handle that inherits the answer also inherits the
+// check that retires it.
+func (r *Repo) adoptSafeConfig(parent *Repo) {
+	parent.safeMu.Lock()
+	defer parent.safeMu.Unlock()
+	// The parent's own validation happens in extraSafeConfig, which the
+	// callers reach through this; take the same path so an inherited overlay
+	// is never one generation staler than a computed one.
+	r.extraSafe = parent.extraSafeConfigLocked()
+	r.safeReady = true
+	r.safeConfig = parent.safeConfig
+	r.safeStamp = parent.safeStamp
+}
+
+// extraSafeConfigLocked is extraSafeConfig for a caller already holding
+// safeMu, and for a handle that has inherited another one's overlay.
+func (r *Repo) extraSafeConfigLocked() []string {
+	if !r.safeReady || r.safeStamp != stampConfig(r.safeConfig) {
+		r.extraSafe = r.buildExtraSafe()
+		r.safeReady = true
+		r.safeStamp = stampConfig(r.safeConfig)
 	}
+	return r.extraSafe
 }
 
 // DiffStat reports the lines changed between two commits, measured inside

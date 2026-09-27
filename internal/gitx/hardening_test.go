@@ -643,3 +643,42 @@ func TestExcludeOwnArtifactsRefusesASymlinkedInfoDir(t *testing.T) {
 		t.Fatalf("reading the planted exclude: %v", err)
 	}
 }
+
+// A review runs with its permissions bypassed and can write .git/config
+// itself. The per-repo overlay that blanks filter/merge/diff drivers is
+// derived from that file, so an overlay computed once and never rechecked
+// would hand the next checkout a driver the review planted after the first
+// git call, with nothing blanking it.
+func TestExtraSafeConfigRebuildsAfterConfigChanges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	first := r.extraSafeConfig()
+	if r.safeConfig == "" {
+		t.Fatal("no local config path was recorded for the overlay")
+	}
+	if slices.Contains(first, "filter.late.smudge=") {
+		t.Fatalf("overlay blanks a driver that is not configured yet: %q", first)
+	}
+
+	// The config grows, so size alone tells the stamp it changed.
+	gitIn(t, r.Dir, "config", "filter.late.smudge", "touch pwned")
+	second := r.extraSafeConfig()
+	if !slices.Contains(second, "filter.late.smudge=") {
+		t.Fatalf("overlay kept a stale answer after .git/config changed: %q", second)
+	}
+
+	// And it is still correct when nothing changed: a second call must not
+	// rebuild into a different answer, and must not lose the blank either.
+	gitIn(t, r.Dir, "config", "filter.later.smudge", "touch pwned")
+	third := r.extraSafeConfig()
+	if !slices.Contains(third, "filter.late.smudge=") ||
+		!slices.Contains(third, "filter.later.smudge=") {
+		t.Fatalf("overlay lost a blank on rebuild: %q", third)
+	}
+	if again := r.extraSafeConfig(); strings.Join(again, "\x00") != strings.Join(third, "\x00") {
+		t.Fatalf("an unchanged config produced a different overlay: %q vs %q", again, third)
+	}
+	if _, err := r.Status(ctx, nil); err != nil {
+		t.Fatalf("git status after the rebuilds: %v", err)
+	}
+}

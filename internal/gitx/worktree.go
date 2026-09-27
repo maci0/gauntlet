@@ -37,17 +37,14 @@ func (w *Worktree) subRepo() *Repo {
 		return nil
 	}
 	if w.sub == nil {
-		var extra []string
-		ready := false
+		sub := &Repo{Dir: w.Dir}
 		if w.repo != nil {
-			extra = w.repo.extraSafeConfig()
-			ready = true
+			// A linked worktree reads the same local config as the repository
+			// it was cut from, so it adopts the parent's overlay and the
+			// config identity that retires it, rather than resolving its own.
+			sub.adoptSafeConfig(w.repo)
 		}
-		w.sub = &Repo{
-			Dir:       w.Dir,
-			extraSafe: extra,
-			safeReady: ready,
-		}
+		w.sub = sub
 	}
 	return w.sub
 }
