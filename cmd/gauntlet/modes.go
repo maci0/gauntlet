@@ -207,8 +207,12 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 
 	type suggestion struct {
 		picked []prompt.Suggestion
-		spec   agent.Spec
-		err    error
+		// named is the reviews the person put on the command line, already
+		// filtered. It is what both the confirmation and the schedule are built
+		// from, so the two cannot disagree.
+		named []string
+		spec  agent.Spec
+		err   error
 	}
 	results := make([]suggestion, len(runs))
 	var logMu sync.Mutex
@@ -272,10 +276,12 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		if err != nil {
 			return err
 		}
-		if len(named) > 0 {
+		r.named = named
+		results[i] = r
+		if len(r.named) > 0 {
 			fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
-				"and %s, named on the command line", weighted(named))))
-			total += len(named)
+				"and %s, named on the command line", weighted(r.named))))
+			total += len(r.named)
 		}
 	}
 	if !opts.list && !opts.dryRun {
@@ -292,11 +298,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		// What the person named rides along with what the agent picked, and a
 		// review on both lists lands twice: repeats are weight to the
 		// scheduler, so naming one is how you ask for more of it.
-		named, err := namedIn(d, opts, excludes[i])
-		if err != nil {
-			return err
-		}
-		scheduled = append(scheduled, named...)
+		scheduled = append(scheduled, results[i].named...)
 		if len(scheduled) == 0 {
 			return fmt.Errorf("%s: the suggest step picked no reviews", d.dir)
 		}

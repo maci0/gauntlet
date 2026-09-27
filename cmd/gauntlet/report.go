@@ -200,172 +200,183 @@ func (r *reporter) paint(k normalize.Kind, text string) string {
 	}
 }
 
-// summary prints the end-of-run statistics block.
-func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) {
-	fmt.Fprintln(out)
-	fmt.Fprintln(out, pal.bold("=== Review loop stopped ==="))
+// runTotals is what every directory's stats add up to. Collecting it is
+// separate from printing it: the block below reads one struct, so a new figure
+// is one field here rather than another loop over results.
+type runTotals struct {
+	counts      runner.Counts
+	loops       int
+	commitRuns  int
+	commitFails int
+	ins, del    int
+	tokens      int
+	thinking    int
+	agentTime   time.Duration
+	timed       int
+	haveLines   bool
+	pullRequest []runner.Result
+	byAgent     []runner.AgentSummary
+	failures    []runner.Result
+}
 
-	var agg runner.Counts
-	loops, commitRuns, commitFails := 0, 0, 0
-	var ins, del, tokens, thinking int
-	var agentTime time.Duration
-	var timed int
-	haveLines := false
-	var pullRequests []runner.Result
-
+func collectTotals(results []*dirRun) runTotals {
+	var t runTotals
+	merged := map[string]runner.AgentSummary{}
 	for _, d := range results {
 		if d.stats == nil {
 			continue
 		}
-		c := d.stats.Counts()
-		agg.Add(c)
-		i, dl, t, at, tm, hl := d.stats.Totals()
-		ins, del, tokens = ins+i, del+dl, tokens+t
+		t.counts.Add(d.stats.Counts())
+		i, dl, tok, at, tm, hl := d.stats.Totals()
+		t.ins, t.del, t.tokens = t.ins+i, t.del+dl, t.tokens+tok
+		t.agentTime += at
+		t.timed += tm
+		t.haveLines = t.haveLines || hl
+		t.loops += d.loops
+		t.commitRuns += d.stats.CommitRuns()
+		t.commitFails += d.stats.CommitFails()
 		for _, r := range d.stats.Results() {
-			thinking += r.Thinking
+			t.thinking += r.Thinking
 			if r.URL != "" {
-				pullRequests = append(pullRequests, r)
+				t.pullRequest = append(t.pullRequest, r)
 			}
 		}
-		agentTime += at
-		timed += tm
-		haveLines = haveLines || hl
-		loops += d.loops
-		commitRuns += d.stats.CommitRuns()
-		commitFails += d.stats.CommitFails()
+		for _, a := range d.stats.ByAgent() {
+			cur := merged[a.Label]
+			cur.Label = a.Label
+			cur.Counts.Add(a.Counts)
+			cur.Tokens += a.Tokens
+			cur.Elapsed += a.Elapsed
+			merged[a.Label] = cur
+		}
+		t.failures = append(t.failures, d.stats.Failures()...)
 	}
+	t.byAgent = make([]runner.AgentSummary, 0, len(merged))
+	for _, a := range merged {
+		t.byAgent = append(t.byAgent, a)
+	}
+	// A fixed order, not a map range: the same run must summarize the same way
+	// every time, whichever order the directories finished in.
+	slices.SortFunc(t.byAgent, func(a, b runner.AgentSummary) int {
+		return cmp.Compare(a.Label, b.Label)
+	})
+	slices.SortFunc(t.failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
+	return t
+}
+
+// summary prints the end-of-run statistics block.
+func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) {
+	t := collectTotals(results)
+	fmt.Fprintln(out)
+	fmt.Fprintln(out, pal.bold("=== Review loop stopped ==="))
 
 	if len(results) > 1 {
 		fmt.Fprintf(out, "%s %d\n", pal.blue("Directories:"), len(results))
 	}
-	fmt.Fprintf(out, "%s %d\n", pal.blue("Completed loops:"), loops)
-	if len(pullRequests) > 0 {
+	fmt.Fprintf(out, "%s %d\n", pal.blue("Completed loops:"), t.loops)
+	if len(t.pullRequest) > 0 {
 		// One field per line: branch names and URLs are reference detail, and
 		// cramming them onto one row makes none of the three readable.
 		fmt.Fprintln(out, pal.bold("Pull requests"))
-		for _, pr := range pullRequests {
+		for _, pr := range t.pullRequest {
 			fmt.Fprintf(out, "  %s\n", pr.Review)
 			fmt.Fprintf(out, "    branch  %s\n", pr.Branch)
 			fmt.Fprintf(out, "    base    %s\n", pr.Base)
 			fmt.Fprintf(out, "    url     %s\n", pr.URL)
 		}
 	}
-	fmt.Fprintf(out, "%s %d\n", pal.blue("Total reviews run:"), agg.Total())
-	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(agg.OK)))
-	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(agg.Fail+agg.Timeout)))
-	// A fixed order, not a map range: the same run must summarize the same
-	// way every time.
+	fmt.Fprintf(out, "%s %d\n", pal.blue("Total reviews run:"), t.counts.Total())
+	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(t.counts.OK)))
+	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(t.counts.Fail+t.counts.Timeout)))
 	for _, row := range []struct {
 		label string
 		n     int
 	}{
-		{"  Skipped", agg.Skipped},
-		{"  Interrupted", agg.Interrupted},
-		{"  Merge conflicts", agg.Conflict},
+		{"  Skipped", t.counts.Skipped},
+		{"  Interrupted", t.counts.Interrupted},
+		{"  Merge conflicts", t.counts.Conflict},
 	} {
 		if row.n > 0 {
 			fmt.Fprintf(out, "%s: %d\n", row.label, row.n)
 		}
 	}
 	fmt.Fprintf(out, "%s %s\n", pal.blue("Total time:"), humanize.Duration(wall))
-	if timed > 0 {
+	if t.timed > 0 {
 		fmt.Fprintf(out, "%s %s across %d reviews (avg %s)\n", pal.blue("Agent time:"),
-			humanize.Duration(agentTime), timed, humanize.Duration(agentTime/time.Duration(timed)))
+			humanize.Duration(t.agentTime), t.timed,
+			humanize.Duration(t.agentTime/time.Duration(t.timed)))
 	}
-	if tokens > 0 {
+	if t.tokens > 0 {
 		rate := ""
-		if agentTime >= time.Second {
-			rate = fmt.Sprintf(", ~%.0f tok/s", float64(tokens)/agentTime.Seconds())
+		if t.agentTime >= time.Second {
+			rate = fmt.Sprintf(", ~%.0f tok/s", float64(t.tokens)/t.agentTime.Seconds())
 		}
 		note := ""
-		if thinking > 0 {
+		if t.thinking > 0 {
 			// Only agents that disclose the split contribute here, so this is
 			// a floor on reasoning, not a measurement of every agent.
-			pct := humanize.Share(thinking, tokens)
-			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(thinking), pct)
+			pct := humanize.Share(t.thinking, t.tokens)
+			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(t.thinking), pct)
 		}
-		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"), humanize.Count(tokens), rate, note)
+		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"),
+			humanize.Count(t.tokens), rate, note)
 	}
-	if haveLines {
-		fmt.Fprintf(out, "%s +%d -%d\n", pal.blue("Lines changed:"), ins, del)
+	if t.haveLines {
+		fmt.Fprintf(out, "%s +%d -%d\n", pal.blue("Lines changed:"), t.ins, t.del)
 	}
-	if commitRuns > 0 {
+	if t.commitRuns > 0 {
 		note := ""
-		if commitFails > 0 {
-			note = fmt.Sprintf(", %d failed (changes may be uncommitted)", commitFails)
+		if t.commitFails > 0 {
+			note = fmt.Sprintf(", %d failed (changes may be uncommitted)", t.commitFails)
 		}
-		fmt.Fprintf(out, "%s %d%s\n", pal.blue("Commit steps:"), commitRuns, note)
+		fmt.Fprintf(out, "%s %d%s\n", pal.blue("Commit steps:"), t.commitRuns, note)
 	}
-
-	// Per-agent breakdown, merged across directories.
-	byAgent := map[string]runner.AgentSummary{}
-	for _, d := range results {
-		if d.stats == nil {
-			continue
-		}
-		for _, a := range d.stats.ByAgent() {
-			cur := byAgent[a.Label]
-			cur.Label = a.Label
-			cur.Counts.Add(a.Counts)
-			cur.Tokens += a.Tokens
-			cur.Elapsed += a.Elapsed
-			byAgent[a.Label] = cur
-		}
-	}
-	if len(byAgent) > 1 {
-		labels := make([]string, 0, len(byAgent))
-		for l := range byAgent {
-			labels = append(labels, l)
-		}
-		slices.Sort(labels)
+	if len(t.byAgent) > 1 {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, pal.bold("Per-agent stats"))
-		for _, l := range labels {
-			a := byAgent[l]
+		for _, a := range t.byAgent {
 			rate := ""
 			if tps := a.TokensPerSec(); tps > 0 {
 				rate = fmt.Sprintf(", ~%.0f tok/s", tps)
 			}
 			fmt.Fprintf(out, "  %-20s ok=%d fail=%d timeout=%d%s\n",
-				l, a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
+				a.Label, a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
 		}
 	}
-
-	var failures []runner.Result
-	for _, d := range results {
-		if d.stats != nil {
-			failures = append(failures, d.stats.Failures()...)
-		}
-	}
-	if len(failures) > 0 {
-		slices.SortFunc(failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
+	if len(t.failures) > 0 {
 		fmt.Fprintln(out)
 		fmt.Fprintln(out, pal.bold("Failed reviews"))
-		for _, f := range failures {
-			detail := ""
-			switch f.Status {
-			case runner.StatusTimeout:
-				detail = "timeout"
-			case runner.StatusConflict:
-				detail = "merge conflict, kept on " + f.Branch
-			case runner.StatusSkipped:
-				if f.Detail != "" {
-					detail = "skipped: " + normalize.Sanitize(f.Detail)
-				} else {
-					detail = "skipped: never ran (unknown name or unreadable prompt)"
-				}
-			case runner.StatusFail:
-				if f.Detail != "" {
-					detail = normalize.Sanitize(f.Detail)
-				} else if f.ExitCode >= 0 {
-					detail = fmt.Sprintf("exit %d", f.ExitCode)
-				} else {
-					detail = "launch failed"
-				}
-			}
-			fmt.Fprintf(out, "  - %s (%s): %s\n", f.Review, f.Agent.Label(), detail)
+		for _, f := range t.failures {
+			fmt.Fprintf(out, "  - %s (%s): %s\n", f.Review, f.Agent.Label(), failureDetail(f))
 		}
 	}
+}
+
+// failureDetail is the one-line reason a review did not pass: what the agent
+// said when it said something, and the outcome's own vocabulary when it did
+// not. Every status that counts as a failure has a line here, so none prints
+// as an empty parenthesis.
+func failureDetail(f runner.Result) string {
+	switch f.Status {
+	case runner.StatusTimeout:
+		return "timeout"
+	case runner.StatusConflict:
+		return "merge conflict, kept on " + f.Branch
+	case runner.StatusSkipped:
+		if f.Detail == "" {
+			return "skipped: never ran (unknown name or unreadable prompt)"
+		}
+		return "skipped: " + normalize.Sanitize(f.Detail)
+	case runner.StatusFail:
+		if f.Detail != "" {
+			return normalize.Sanitize(f.Detail)
+		}
+		if f.ExitCode >= 0 {
+			return fmt.Sprintf("exit %d", f.ExitCode)
+		}
+		return "launch failed"
+	}
+	return string(f.Status)
 }
 
 // listReviews prints the available reviews, which are scheduled, and the sets.

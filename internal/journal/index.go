@@ -385,43 +385,46 @@ func readIndex(n int) ([]Summary, error) {
 // first so the listing stays chronological, without rewriting the rows Close
 // already wrote.
 func recoverIndex() error {
-	id, _, ok, err := newestJournal()
-	if err != nil {
+	id, indexed, err := indexState()
+	if err != nil || id == "" {
 		return err
 	}
-	if !ok {
-		return nil
-	}
-	newest, err := readIndex(1)
-	if err != nil {
-		return err
-	}
-	if len(newest) > 0 && newest[0].RunID == id {
+	if indexed == id {
 		return nil
 	}
 	return withIndexLock(recoverIndexLocked)
 }
 
 func recoverIndexLocked() error {
-	id, _, ok, err := newestJournal()
-	if err != nil {
+	id, indexed, err := indexState()
+	if err != nil || id == "" {
 		return err
 	}
-	if !ok {
-		return nil
-	}
-	newest, err := readIndex(1)
-	if err != nil {
-		return err
-	}
-	if len(newest) == 0 {
+	if indexed == "" {
 		_, err := rebuildIndex()
 		return err
 	}
-	if newest[0].RunID == id {
+	if indexed == id {
 		return nil
 	}
-	return recoverIndexTail(newest[0].RunID)
+	return recoverIndexTail(indexed)
+}
+
+// indexState pairs the newest journal on disk with the run the index's newest
+// row names. Either may be "": no journal under runs/, or no row the index can
+// answer with. Together they say which of the three recoveries applies, and
+// both callers read the pair under the same conditions, so a change to what
+// "stale" means cannot reach one path and miss the other.
+func indexState() (journalID, indexedID string, err error) {
+	journalID, _, ok, err := newestJournal()
+	if err != nil || !ok {
+		return "", "", err
+	}
+	newest, err := readIndex(1)
+	if err != nil || len(newest) == 0 {
+		return journalID, "", err
+	}
+	return journalID, newest[0].RunID, nil
 }
 
 // indexLookup is the newest index row for each of want, newest-first so a

@@ -730,18 +730,17 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	defer func() {
 		r.removeLanes(ctx, lanes)
 		if ctx.Err() != nil {
-			cleanCtx := context.WithoutCancel(ctx)
 			// A cancel can race advance(), leaving review branches that
 			// no lane cleaned up. Conflict branches are not worth
-			// preserving from a cancelled run.
-			if err := r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"-lane*"); err != nil {
-				r.log("Cannot sweep lane branches: %v", err)
-			}
-			// Lane branches live under gauntlet/<tag>/lane-*, which the
-			// pattern above does not match because its separator is "/"
-			// where the pattern expects "-". Sweep them too.
-			if err := r.repo.DeleteBranchesMatching(cleanCtx, "gauntlet/"+tag+"/lane-*"); err != nil {
-				r.log("Cannot sweep lane branches: %v", err)
+			// preserving from a cancelled run. Lane branches live under
+			// gauntlet/<tag>/lane-*; the older gauntlet/<tag>-lane* shape
+			// is swept too, since its separator is "-" where the current
+			// one is "/".
+			cleanCtx := context.WithoutCancel(ctx)
+			for _, pattern := range []string{"gauntlet/" + tag + "/lane-*", "gauntlet/" + tag + "-lane*"} {
+				if err := r.repo.DeleteBranchesMatching(cleanCtx, pattern); err != nil {
+					r.log("Cannot sweep lane branches: %v", err)
+				}
 			}
 		}
 	}()
@@ -899,7 +898,6 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	advance := func(deleteBranch bool) {
 		branchToDelete := wt.Branch
 		tip := base
-		cleanCtx := context.WithoutCancel(ctx)
 		if t, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
 			r.log("Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
 				review, laneIdx, err)
