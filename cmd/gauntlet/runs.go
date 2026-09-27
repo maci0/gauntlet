@@ -81,7 +81,11 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string) (code int) {
 			e.RunID, started, dur,
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
-	w.printf("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
+	// Where the journals live is a fact about this machine, not a row of the
+	// table, so it goes to stderr. The legend above stays on stdout: it heads
+	// the table and a consumer skipping two lines knows where the rows start.
+	// Without this the last line of `gauntlet runs | tail -1` was a path.
+	fmt.Fprintf(os.Stderr, "\nJournals: %s\n", filepath.Join(journal.Home(), "runs"))
 	// A prune is unattended, so the runs it moved out of the listing are
 	// named where the user reads the listing: a dropped run is recoverable
 	// only by someone who knows it is still on disk. The bound keeps a

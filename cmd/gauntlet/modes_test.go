@@ -71,6 +71,44 @@ func TestConfirmStackIsolationExplainsExcludedCheckout(t *testing.T) {
 	}
 }
 
+// An explicit but empty --reviews has to be refused by the run, since parsing
+// keeps it explicit so it cannot expand to every review. What it must not say
+// is "no reviews remain after filtering": nothing was filtered, and the flag
+// is the only thing that can say which one went wrong.
+func TestEmptyReviewsNamesTheFlag(t *testing.T) {
+	set := promptPair(t)
+	d := &dirRun{dir: t.TempDir(), set: set}
+	opts := &options{reviewsSet: true}
+	for _, f := range []struct {
+		name string
+		call func() error
+	}{
+		{"scheduleFor", func() error {
+			_, err := scheduleFor(d, opts, nil)
+			return err
+		}},
+		{"namedIn", func() error {
+			_, err := namedIn(d, opts, nil)
+			return err
+		}},
+	} {
+		t.Run(f.name, func(t *testing.T) {
+			err := f.call()
+			if err == nil || !strings.Contains(err.Error(), "--reviews is empty") {
+				t.Fatalf("empty --reviews error = %v", err)
+			}
+		})
+	}
+	// A named list is unaffected, and so is an omitted flag.
+	opts.reviews = "sec"
+	if _, err := scheduleFor(d, opts, nil); err != nil {
+		t.Fatalf("a named review should schedule: %v", err)
+	}
+	if _, err := scheduleFor(d, &options{}, nil); err != nil {
+		t.Fatalf("an omitted --reviews should schedule everything: %v", err)
+	}
+}
+
 // TestScheduleForTurnsFlagsIntoASchedule pins the decision of what runs:
 // no explicit --reviews means everything discovered, an explicit list wins,
 // exclusions apply to both, and a schedule that filters down to nothing is

@@ -311,7 +311,10 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 // exclusions. Empty when --reviews was not given: then the suggestion stands
 // on its own.
 func namedIn(d *dirRun, opts *options, excluded map[string]bool) ([]string, error) {
-	if !opts.reviewsSet || strings.TrimSpace(opts.reviews) == "" {
+	if err := refuseEmptyReviews(opts); err != nil {
+		return nil, err
+	}
+	if !opts.reviewsSet {
 		return nil, nil
 	}
 	names, err := d.set.Expand(opts.reviews, "--reviews", false)
@@ -325,6 +328,19 @@ func namedIn(d *dirRun, opts *options, excluded map[string]bool) ([]string, erro
 		}
 	}
 	return kept, nil
+}
+
+// refuseEmptyReviews reports the one --reviews value that is a flag asking for
+// nothing. Parsing keeps it explicit on purpose, so that an empty --reviews
+// cannot expand to every review, and the run is where it is caught: by then the flag
+// is the only thing that can say so, and "no reviews remain after filtering"
+// names a filter that never ran.
+func refuseEmptyReviews(opts *options) error {
+	if !opts.reviewsSet || strings.TrimSpace(opts.reviews) != "" {
+		return nil
+	}
+	return errors.New("--reviews is empty: name at least one review or set, " +
+		"or drop the flag to run every review")
 }
 
 // weighted names a schedule the way a person reads it: one entry per review,
@@ -367,6 +383,9 @@ func excludedIn(d *dirRun, opts *options) (map[string]bool, error) {
 
 // scheduleFor turns --reviews (or its absence) into one directory's list.
 func scheduleFor(d *dirRun, opts *options, excluded map[string]bool) ([]string, error) {
+	if err := refuseEmptyReviews(opts); err != nil {
+		return nil, err
+	}
 	var scheduled []string
 	if opts.reviewsSet {
 		names, err := d.set.Expand(opts.reviews, "--reviews", false)

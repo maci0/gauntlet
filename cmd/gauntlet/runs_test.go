@@ -210,6 +210,32 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	}
 }
 
+// The journal location is a fact about this machine, not a row of the table.
+// On stdout it was the last line `gauntlet runs | tail -1` printed, so a
+// consumer reading the newest run got a path.
+func TestRunsPrintsJournalLocationOnStderr(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	j, err := journal.Open(journal.NewRunID(start), start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: start, End: start.Add(time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	var table bytes.Buffer
+	code, note := captureStderrFor(t, func() int { return cmdRuns(&table, palette{}, 10, "") })
+	if code != exitOK {
+		t.Fatalf("listing exited %d", code)
+	}
+	if !strings.Contains(note.String(), journal.Home()) {
+		t.Fatalf("stderr should name the journal directory, got %q", note.String())
+	}
+	if strings.Contains(table.String(), journal.Home()) {
+		t.Fatalf("the journal path belongs on stderr, not in the table:\n%s", table.String())
+	}
+}
+
 func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
 	for _, populated := range []bool{false, true} {
 		t.Run(strconv.FormatBool(populated), func(t *testing.T) {

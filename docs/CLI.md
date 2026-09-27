@@ -65,6 +65,9 @@ Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 that is unset or empty is a usage error rather than expanding to nothing. An
 explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
 `--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, or `--exclude` is refused the same way `--dir` is.
+An empty `--reviews` is refused too, and by the run rather than by the parser, so
+that it cannot quietly expand to every review: nothing was filtered, and the
+message names the flag.
 
 A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 `-j 3`, and `-j=3` are the same flag.
