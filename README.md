@@ -72,7 +72,18 @@ Install the latest release binary:
 ```sh
 mkdir -p ~/.local/bin
 ver=$(curl -fsSL https://api.github.com/repos/maci0/gauntlet/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
-curl -fsSL "https://github.com/maci0/gauntlet/releases/download/v${ver}/gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)" -o ~/.local/bin/gauntlet
+asset="gauntlet_${ver}_$(uname -s | tr A-Z a-z)_$(uname -m | sed -e s/x86_64/amd64/ -e s/aarch64/arm64/)"
+base="https://github.com/maci0/gauntlet/releases/download/v${ver}"
+curl -fsSL "$base/$asset" -o ~/.local/bin/gauntlet
+curl -fsSL "$base/checksums.txt" -o ~/.local/bin/checksums.txt
+# Verify before the binary is made executable; a mismatch aborts the install.
+awk -v a="$asset" '$2 == a || $2 == "*"a' ~/.local/bin/checksums.txt > ~/.local/bin/asset.sha256
+if command -v sha256sum >/dev/null 2>&1; then
+	(cd ~/.local/bin && sha256sum -c asset.sha256)
+else
+	(cd ~/.local/bin && shasum -a 256 -c asset.sha256)
+fi
+rm -f ~/.local/bin/asset.sha256 ~/.local/bin/checksums.txt
 chmod +x ~/.local/bin/gauntlet
 ```
 

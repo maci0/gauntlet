@@ -6,9 +6,9 @@ configurations and a cross-compilation pass.
 
 ## Prerequisites
 
-- Go. The minimum version is the `go` line in [go.mod](go.mod) and
-  [.go-version](.go-version); any newer toolchain works. CI installs whatever
-  go.mod asks for, so there is nothing else to pin.
+- Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
+  toolchain works. CI installs whatever go.mod asks for, so there is nothing
+  else to pin.
 - GNU make and git, on Linux or macOS. The runner depends on POSIX semantics
   (process groups, flock, O_NOFOLLOW), so there is no Windows build.
 - A working C compiler for the race detector used by `make test`, `make
@@ -89,6 +89,41 @@ release workflow turns that section into the release notes and fails a tag
 push that has no matching `## <version>` section, so a fix or feature
 without an entry is found after push rather than before it. Internal
 refactors with no visible behavior need nothing.
+
+## Releasing
+
+A release is a tag push; nothing else. Rename `## Unreleased` in
+CHANGELOG.md to `## <version>`, commit, then:
+
+```sh
+git tag -s v1.23.4 -m "v1.23.4"   # -s signs; drop it if you have no GPG key
+git push origin v1.23.4
+```
+
+[release.yml](.github/workflows/release.yml) runs the race suite, builds
+every platform, smoke-tests the host binary against every line of
+`checksums.txt`, and publishes through a draft, so a failed upload is never
+visible to consumers. A tag with no matching CHANGELOG section fails before
+anything is built. Cut the tag from a commit `main` already carries: the
+workflow does not re-run the pull-request checks, and a tag is what
+`gauntlet update` serves.
+
+## Rolling back a bad release
+
+A published release is immutable. The workflow refuses to replace a
+published version's assets or notes, and a self-updating client compares
+versions exactly rather than by semver, so a "downgrade" is applied when
+published deliberately. Two moves, in order:
+
+1. Delete the release on GitHub (Edit release, then Delete). That stops
+   `gauntlet update` and the README install from resolving to it; users who
+   already installed it keep running it until they update again.
+2. Ship the fix forward as a new patch tag. Deleting a release does not
+   un-send a binary, so a yanked version is not a rollback.
+
+To check what users would get before publishing one, `gauntlet update
+--check` resolves the same `releases/latest` endpoint the install snippet
+uses.
 
 ## Layout
 

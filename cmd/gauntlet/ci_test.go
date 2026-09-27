@@ -304,6 +304,32 @@ func TestVulnscanUsesLocalTargetAndRunsOnMainGoModPush(t *testing.T) {
 	}
 }
 
+// The install script is the only path that puts a release binary on a user's
+// machine without going through `gauntlet update`, which verifies against
+// checksums.txt. Every release ships that file, so the script must too, and
+// must verify before the binary is made executable.
+func TestReadmeInstallVerifiesReleaseChecksum(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), "README.md"))
+	_, rest, ok := strings.Cut(text, "\n## Install\n")
+	if !ok {
+		t.Fatal("README.md has no Install section")
+	}
+	block, _, _ := strings.Cut(rest, "\n## ")
+	for _, want := range []string{"checksums.txt", "sha256sum", "shasum -a 256"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("README install script missing %q; it must verify the download", want)
+		}
+	}
+	verify := strings.Index(block, "sha256sum -c")
+	chmod := strings.Index(block, "chmod +x")
+	if verify < 0 || chmod < 0 {
+		t.Fatalf("install script must verify and then chmod: verify=%d chmod=%d", verify, chmod)
+	}
+	if verify > chmod {
+		t.Error("install script makes the binary executable before verifying it")
+	}
+}
+
 func TestReleaseSmokeTestsSbom(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	if !strings.Contains(text, "test -s dist/sbom.txt") {
