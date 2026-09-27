@@ -57,6 +57,7 @@ select = [
     "TC",
     "TD",
     "TID",
+    "TRY",
     "UP",
     "W",
     "YTT",

@@ -287,9 +287,9 @@ func TestShotRendererRichPinMatchesCI(t *testing.T) {
 	}
 }
 
-// check-scripts must use the same ruff, mypy, and rich pins as the scripts
-// job. A Makefile that lints with whatever is on PATH, or a CI bump that
-// forgets the Makefile, is an after-push failure.
+// check-scripts must use the same ruff, mypy, rich, and yamllint pins as the
+// scripts job. A Makefile that lints with whatever is on PATH, or a CI bump
+// that forgets the Makefile, is an after-push failure.
 func TestScriptsToolPinsMatchCI(t *testing.T) {
 	root := moduleRoot(t)
 	makefile := readRepoFile(t, filepath.Join(root, "Makefile"))
@@ -302,6 +302,7 @@ func TestScriptsToolPinsMatchCI(t *testing.T) {
 		{"ruff", makefilePin(makefile, "RUFF_VERSION"), toolAtPin(ci, "ruff")},
 		{"mypy", makefilePin(makefile, "MYPY_VERSION"), toolAtPin(ci, "mypy")},
 		{"rich", makefilePin(makefile, "RICH_VERSION"), richPin(ci)},
+		{"yamllint", makefilePin(makefile, "YAMLLINT_VERSION"), toolAtPin(ci, "yamllint")},
 		{"uv", makefilePin(makefile, "UV_VERSION"), uvSetupPin(ci)},
 	}
 	for _, c := range checks {
@@ -364,7 +365,7 @@ func checkScriptsCommands(makefile string) []string {
 
 // resolveMakeVars replaces $(NAME_VERSION) with the Makefile's assignment.
 func resolveMakeVars(cmd, makefile string) string {
-	for _, name := range []string{"RUFF_VERSION", "MYPY_VERSION", "RICH_VERSION"} {
+	for _, name := range []string{"RUFF_VERSION", "MYPY_VERSION", "RICH_VERSION", "YAMLLINT_VERSION"} {
 		if v := makefilePin(makefile, name); v != "" {
 			cmd = strings.ReplaceAll(cmd, "$("+name+")", v)
 		}

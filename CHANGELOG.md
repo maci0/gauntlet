@@ -22,6 +22,9 @@ stops being true, which is the moment a major version would be owed.
 
 ### Added
 
+- The repository's YAML is linted: `make check-scripts` and the `scripts` CI job run `yamllint --strict` on `.github`, with the rule set in `.yamllint` and the version pinned beside the ruff and mypy pins. A malformed workflow is a syntax error nothing else in the tree can see, and a warning now fails instead of scrolling past.
+- ruff's `TRY` rules on `scripts/`: an exception that re-raises a bare name, a `try` whose body is `pass`, or an `except` that swallows an error without a name is a defect class the tree was never checked for, and it already passes.
+
 - `--token-budget N` stops a run once its agents have reported N tokens in total, so a stalled agent that spends a whole timeout's tokens in seconds is bounded by what it costs as well as by how long it takes. Zero is unlimited, the default.
 - `gauntlet doctor` names the state root in use and whether it came from `GAUNTLET_HOME` or `$HOME`, printed before the verdict so a box with no agent CLI still shows it.
 - `--keep-runs N` bounds the run history: at the end of a run, journals and index rows past the newest `N` (200 by default, 0 keeps all) are deleted, and day directories left empty are removed. Nothing deleted the state tree before, so it kept one file per run for the life of the install.

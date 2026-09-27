@@ -254,6 +254,7 @@ func TestMakefileCheckScriptsPreflight(t *testing.T) {
 		"uvx ruff@$(RUFF_VERSION) check scripts",
 		"uvx ruff@$(RUFF_VERSION) format --check scripts",
 		"uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts",
+		"uvx yamllint@$(YAMLLINT_VERSION) --strict .github",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("Makefile missing %q", want)

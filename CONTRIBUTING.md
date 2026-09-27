@@ -89,7 +89,8 @@ removes tested code paths.
 
 A separate `scripts` job lints `scripts/` with ruff (rules in
 [pyproject.toml](pyproject.toml)), mypy `--strict`, and shellcheck on
-`scripts/shots.sh`. `make check-scripts` runs those same steps with
+`scripts/shots.sh`, and lints the YAML in [.github/](.github) with yamllint `--strict` (rules in
+[.yamllint](.yamllint)). `make check-scripts` runs those same steps with
 the versions CI pins. It needs `uvx` (shipped with
 [uv](https://docs.astral.sh/uv/getting-started/installation/)) and
 shellcheck on PATH. `make fmt-scripts` rewrites scripts with ruff format.
