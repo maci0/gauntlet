@@ -8,10 +8,12 @@
 package gauntlethome
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -97,6 +99,30 @@ func ExpandPath(p string) (string, error) {
 		return "", fmt.Errorf("cannot expand ~: home directory is unknown")
 	}
 	return filepath.Join(home, after), nil
+}
+
+// SyncDir flushes a directory entry change (a file created, or a rename that
+// replaced one) to stable storage. The state tree's writes are rename-based,
+// and a synced temp file is only half of that: without the directory sync the
+// rename itself is lost to a power cut, so the state the caller just made
+// durable is not there after a reboot.
+//
+// A kernel that refuses to sync a directory at all reports EINVAL or ENOTSUP;
+// there is no entry to flush there and the file contents are already synced,
+// so those two are not failures. Every other error is reported.
+func SyncDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	err = f.Sync()
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOTSUP) {
+		return nil
+	}
+	return err
 }
 
 // SweepStaleTemps removes regular files in dir matching prefix whose modification

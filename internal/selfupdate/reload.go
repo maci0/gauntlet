@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // stateEnv names the handoff file passed to the reloaded process.
@@ -162,6 +164,12 @@ func SaveState(dir, runID string, v any) (string, error) {
 		return "", err
 	}
 	if err := os.Rename(name, path); err != nil {
+		return "", err
+	}
+	// The exec follows immediately, so a power cut in this window has to
+	// leave the handoff in place: LoadState treats a missing file as a
+	// corrupt one and the successor exits rather than restarting the run.
+	if err := gauntlethome.SyncDir(dir); err != nil {
 		return "", err
 	}
 	return path, nil

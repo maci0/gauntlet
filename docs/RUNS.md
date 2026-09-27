@@ -411,10 +411,12 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 
 Review output lives in the reviewed repository's git history, not here. A
 run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
-buffer, with no `fsync`. A crash can lose the current loop's events still
-in that buffer, and the index row is written only when the process exits.
-Nothing here is replicated off the machine: `GAUNTLET_HOME` is a
-directory, and backups of it are yours.
+buffer, so a killed process can lose the current loop's events still in that
+buffer. The file is fsync'd when the run closes, before the index row is
+written, and the index directory is fsync'd after a rebuild renames it, so a
+power cut cannot leave a listing whose journal is gone. Nothing here is
+replicated off the machine: `GAUNTLET_HOME` is a directory, and backups of it
+are yours.
 
 ### Backup and restore
 

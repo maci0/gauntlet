@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -160,12 +161,30 @@ func Open(runID string, now time.Time) (*Journal, error) {
 	} else if ok {
 		path = prev
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_APPEND, 0o600)
+	created := err == nil
 	if err != nil {
-		return nil, err
+		if !errors.Is(err, fs.ErrExist) {
+			return nil, err
+		}
+		f, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if created {
+		// The journal is the source of truth the index is rebuilt from, so a
+		// machine that lost power must not lose the file that carries it. A
+		// new file's name lives in its directory until that directory is
+		// synced; the contents are synced at Close.
+		if err := gauntlethome.SyncDir(dir); err != nil {
+			f.Close()
+			return nil, err
+		}
 	}
 	w := bufio.NewWriterSize(f, 32<<10)
 	return &Journal{runID: runID, path: path, f: f, w: w, enc: json.NewEncoder(w)}, nil
@@ -310,12 +329,21 @@ func (j *Journal) CloseQuiet() {
 // closeFileLocked flushes and closes the journal file under j.mu.
 // The same keep-the-first-error rule Flush and CloseQuiet follow: a
 // mid-run write failure must not be eclipsed by a later flush result.
+//
+// The flush is followed by an fsync, once per close, so the event stream
+// this package calls the source of truth survives a power cut and not only
+// a killed process. The index append is synced for the same reason, and
+// syncing only the derived copy would leave a listing that outlives the
+// journal it was reconstructed from.
 func (j *Journal) closeFileLocked() {
 	if j.closed {
 		return
 	}
 	j.closed = true
 	if err := j.w.Flush(); err != nil && j.err == nil {
+		j.err = err
+	}
+	if err := j.f.Sync(); err != nil && j.err == nil {
 		j.err = err
 	}
 	if err := j.f.Close(); err != nil && j.err == nil {
@@ -729,7 +757,9 @@ func writeIndex(rows []Summary) error {
 	if err := os.Rename(name, indexPath()); err != nil {
 		return err
 	}
-	return nil
+	// The temp file is synced before the rename, which makes its contents
+	// durable; the rename itself is not, until the directory holding it is.
+	return gauntlethome.SyncDir(Home())
 }
 
 // indexEvent is the subset of a journal line summarizeFile and History read.

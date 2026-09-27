@@ -27,6 +27,7 @@ minor instead and were listed under Changed.
 - A review that ends with a status this build does not recognize reconciles into a new `other` index bucket, so every review a rebuilt summary counts lands in exactly one bucket and the FAILED column keeps explaining the exit code.
 - The usage-limit probe runs once per review a lane actually starts, and not at all on the way out, so a cancelled or finished loop no longer waits out concurrent probes.
 - Report a review or lane branch that could not be deleted instead of leaving it stranded: `gitx.DeleteBranch` and `gitx.DeleteBranchesMatching` return the failure, and every runner call site logs it. A sweep that cannot list its own pattern now reports that too, rather than reading as a sweep that found nothing to delete.
+- Fsync a run journal when it closes, its shard directory when the file is created, the index directory after a rebuild renames it into place, and the reload handoff directory after saving it, so a power cut cannot leave a listing, a run, or a hot-reload handoff without the file it names.
 
 ## 1.23.3
 

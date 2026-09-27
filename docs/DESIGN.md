@@ -522,6 +522,12 @@ Design points:
   so no caller branches on it.
 - A hot reload appends to the same file and writes **one** index row, from the
   successor, covering the whole run.
+- A closed run is **fsync'd**, and so is the directory that holds the index
+  after a rebuild renames it into place. Flushing a buffer protects a run from
+  a killed process; it does not protect the source of truth from a power cut,
+  and syncing only the derived index would leave a listing that outlives the
+  journal it is reconstructed from. The cost is one sync per run, not per
+  event.
 
 ## Dashboard
 
