@@ -2629,6 +2629,56 @@ exit 1`)
 	}
 }
 
+// docs/RUNS.md tells anyone reading a journal that one review_start is
+// published per attempt, the attempt that decides the review publishes the
+// review_end naming it, and a superseded attempt has a start with no end. A
+// retry on the same agent is that shape, and the fallback above is the other
+// one, so the documented rule is pinned here for the same-agent case.
+func TestRetriedAttemptPublishesASupersededStart(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	dir := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	marker := filepath.Join(t.TempDir(), "failed-once")
+	bin := fakeAgent(t, t.TempDir(), "claude", `if [ -e `+marker+` ]; then
+	echo "RESULT: no-changes"
+	exit 0
+fi
+touch `+marker+`
+exit 1`)
+	cfg := baseConfig(t, dir, set, []string{"sec-review"}, bin)
+	cfg.Retries = 1
+
+	r, events := runRecorded(t, cfg)
+
+	var starts, ends []Event
+	for _, ev := range events {
+		switch ev.Kind {
+		case EvReviewStart:
+			starts = append(starts, ev)
+		case EvReviewEnd:
+			ends = append(ends, ev)
+		}
+	}
+	if len(starts) != 2 {
+		t.Fatalf("started %d attempts, want 2", len(starts))
+	}
+	if len(ends) != 1 {
+		t.Fatalf("recorded %d endings, want 1: a superseded attempt publishes a start only", len(ends))
+	}
+	if ends[0].Attempt != 2 || starts[0].Attempt != 1 {
+		t.Errorf("attempts are %d then %d, want 1 then 2", starts[0].Attempt, ends[0].Attempt)
+	}
+	if ends[0].PromptSHA == "" || ends[0].PromptSHA != starts[1].PromptSHA {
+		t.Errorf("ending carries prompt %q, want the last start's %q", ends[0].PromptSHA, starts[1].PromptSHA)
+	}
+	if c := r.Stats().Counts(); c.Failures() != 0 {
+		t.Errorf("counts after a successful retry: %+v", c)
+	}
+}
+
 // A run's wall clock bounds how long it may take, not what the provider
 // charges: an agent that stalls can spend a whole timeout's tokens in seconds.
 // --token-budget is the other bound, and it has to stop the schedule rather

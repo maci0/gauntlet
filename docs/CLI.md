@@ -136,6 +136,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` stops the run after two presses, and `esc` cancels that armed quit; `s` is the graceful finish. It needs a terminal on stdin and stdout, like `pick`: the dashboard reads keys, and a redirected stdin would hand it end-of-file and quit the run on the first tick. |
 | `-V, --version` | Print the version. |
+| `-h, --help` | Print the help screen, the flags below, and exit 0. `gauntlet help` is the same thing. |
 
 **Updating**
 

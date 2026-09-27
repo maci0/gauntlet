@@ -365,9 +365,19 @@ Events are one JSON object per line (`run_start`, `loop_start`,
 `reload`, `run_end`, plus runner log lines). `review_start` and `review_end` carry
 `prompt_sha256`, the SHA-256 of the prompt text that launch was composed
 from, so an output stays attributable to exact words after the prompt file
-has changed or disappeared. Agent output and the live token ticks are
-not journaled: they are large and reconstructible, and the results are what
-matter later.
+has changed or disappeared, and both carry `attempt`, the 1-based try the
+event belongs to. One `review_start` is published per attempt, and the
+attempt that decides the review publishes the `review_end` carrying its
+number, so the end names the launch it closes and shares its `review` and
+`prompt_sha256`. A retry to a different agent carries on counting instead of
+restarting at 1. An attempt that failed and was retried therefore has a start
+with no end, and an end whose `attempt` is above 1 says how many tries came
+before it; only the end counts the review, since the earlier attempts have no
+outcome of their own. An end with no `prompt_sha256` is a review that never
+launched: skipped, or interrupted before it started. Before `attempt` existed
+a retry read as a review that restarted and a fallback to another agent read
+as a first attempt. Agent output and the live token ticks are not journaled:
+they are large and reconstructible, and the results are what matter later.
 
 The journals under `runs/` are the durable copy. `index.jsonl` is derived:
 `gauntlet runs` and the file-signal suggester rebuild it when the file is
@@ -417,6 +427,14 @@ written, and the index directory is fsync'd after a rebuild renames it, so a
 power cut cannot leave a listing whose journal is gone. Nothing here is
 replicated off the machine: `GAUNTLET_HOME` is a directory, and backups of it
 are yours.
+
+The history is bounded. `--keep-runs` (200 by default, `0` keeps every run)
+prunes at the end of a run: journals and index rows past the newest N are
+deleted, and a day directory left empty goes with them. The first run after
+an upgrade therefore deletes the runs past the newest 200, and `gauntlet show`
+cannot reach a run whose journal is gone. Raise the bound or set it to `0`
+before the first run on an install you want to keep in full, and read the
+retention as a deletion: nothing copies an evicted run anywhere.
 
 ### Backup and restore
 

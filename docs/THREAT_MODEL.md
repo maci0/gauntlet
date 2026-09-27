@@ -34,7 +34,18 @@ binary reads is pinned to the documented table or to a stated reason it is
 internal (`env_surface_test.go:31-33,35-59`). Re-anchored the citations that
 moved: `normalize.go` (the display path gained the writer),
 `internal/selfupdate/selfupdate.go` (the temp-file helpers moved out), and
-`internal/journal/history.go`. The 2026-09-26 and 2026-09-27 baselines for
+`internal/journal/history.go`. The nine commits after it (through d5d79a9) were
+read for surface changes rather than re-verified end to end. Four touch
+something this document covers: agent discovery falls back to absolute PATH
+prefixes when `PATH` is empty, so a box with no `PATH` resolves an agent CLI
+from `$HOME/.local/bin` and the system prefixes, which widens the set of
+executables a run will launch and sits under no numbered risk here; the
+display writer's pending-line bound cuts at a rune start, which is a fix to the
+R8 path rather than a new surface; `--tui --log` writes the log under one lock
+so a signal line cannot be spliced into an agent's line; and release artifacts
+are built with one pinned Go release, which narrows R2 rather than widening it.
+The two `Makefile:` pointers above were re-anchored when the Makefile moved
+under them. The 2026-09-26 and 2026-09-27 baselines for
 everything else are retained rather than re-verified; this is not a full
 assurance claim. Owner and review cadence are organizational decisions; none is
 assigned here.
@@ -147,7 +158,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   govulncheck weekly and on `go.mod`/`go.sum` pull-request changes and main
   pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
   the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
-  The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:42`,
+  The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:51`,
   invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-44`). Release and
   checksum downloads enforce `validateAssetURL` across HTTP redirects and cap
   redirects at 10 (`client.CheckRedirect`, `internal/selfupdate/selfupdate.go:145-157`).
@@ -564,7 +575,7 @@ technical backstop behind them.
 
 1. **R2, unsigned update channel.** `checksums.txt` is self-referential;
    consider signing releases or documenting the GitHub-account trust anchor
-   explicitly next to `make release` (`Makefile:348`,
+   explicitly next to `make release` (`Makefile:375`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
    (`internal/agent/agent.go:548-560`). Auto-detection already ignores it (`Installed`
