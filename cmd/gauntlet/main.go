@@ -143,8 +143,13 @@ func run(argv []string) int {
 				fmt.Fprintf(os.Stderr, "Warning: closing log file %s: %v\n", opts.logFile, err)
 			}
 		}()
-		logWriter = f
-		out = io.MultiWriter(os.Stdout, f)
+		// The lock belongs on the file, not on the console stream: while the
+		// dashboard owns the screen, the run-control messages, the file
+		// reporter, and both signal handlers write here and nowhere else, and
+		// only the console stream goes through stdout's wrapper. The file's own
+		// wrapper also covers the copy the console stream makes of every line,
+		// so the log holds whole lines whichever way they arrived.
+		logWriter, out = logWriters(os.Stdout, f)
 		pal.on = false // escape codes would land in the file too
 	}
 	stdout := io.Writer(&serialized{w: out})

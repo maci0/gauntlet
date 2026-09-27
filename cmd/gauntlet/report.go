@@ -90,6 +90,18 @@ func (s *serialized) Write(p []byte) (int, error) {
 	return s.w.Write(p)
 }
 
+// logWriters returns the --log destination and the console stream that tees to
+// it. The file carries a lock of its own rather than borrowing the console
+// stream's: while the dashboard owns the screen, the run-control messages, the
+// file reporter, and both signal handlers write to the file alone, and only the
+// lines the console stream copies would otherwise be covered. Two writers on
+// the same file without one lock between them can split a line, since a write
+// the kernel accepts only in part is finished in a second call.
+func logWriters(console, f io.Writer) (log, out io.Writer) {
+	log = &serialized{w: f}
+	return log, io.MultiWriter(console, log)
+}
+
 // errWriter remembers the first write error and ignores every write after it,
 // so a command built line by line can report the failure once, at the end,
 // instead of checking after each line.

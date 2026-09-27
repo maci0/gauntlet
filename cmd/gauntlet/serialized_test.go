@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -67,5 +69,49 @@ func TestSerializedKeepsLinesWholeUnderAMultiWriter(t *testing.T) {
 	}
 	if log.String() != got {
 		t.Fatalf("the two destinations disagree: log has %d bytes, screen %d", log.Len(), len(got))
+	}
+}
+
+// With the dashboard up, three writers reach the log file and only one of them
+// goes through the console stream: the file reporter, both signal handlers, and
+// whatever the console stream copies. Each must be a whole line, whichever of
+// them the kernel happens to split.
+func TestLogWritersSerializeEveryWriterToTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "run.log")
+	f, err := openLogFile(path)
+	if err != nil {
+		t.Fatalf("open log: %v", err)
+	}
+	defer f.Close()
+	var screen bytes.Buffer
+	log, _ := logWriters(&screen, f)
+	stdout := io.Writer(&serialized{w: log})
+
+	const writers, perWriter = 3, 200
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Go(func() {
+			for i := range perWriter {
+				fmt.Fprintf(stdout, "[console w%d] line %d padded to a real length\n", w, i)
+				// The file reporter and the signal handlers write to the file
+				// without passing the console stream at all.
+				fmt.Fprintf(log, "[file w%d] line %d padded to a real length\n", w, i)
+			}
+		})
+	}
+	wg.Wait()
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read log: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(got), "\n"), "\n")
+	if len(lines) != writers*perWriter*2 {
+		t.Fatalf("log has %d lines, want %d", len(lines), writers*perWriter*2)
+	}
+	for _, l := range lines {
+		if !strings.Contains(l, "padded to a real length") {
+			t.Fatalf("a line was split between two writers: %q", l)
+		}
 	}
 }
