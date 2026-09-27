@@ -280,7 +280,9 @@ Rules the runner enforces:
    to one agent launch, and merges what comes back. It runs under the merge
    lock, so the tip is fixed for its duration; it commits nothing that still
    carries conflict markers; and every failure path leaves exactly what a
-   plain conflict leaves. The prompt names only the conflicted files and
+   plain conflict leaves. The marker scan covers every path the commit would
+   contain, which `git add -A` makes the whole checkout, not only the files
+   git reported as conflicted. The prompt names only the conflicted files and
    forbids git, like every other agent this tool launches. A conflict with
    more files than the prompt will name, or with no path safe to put in the
    prompt, is left for a human instead of launching. The lane then advances

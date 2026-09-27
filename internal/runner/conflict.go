@@ -65,7 +65,7 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 	if len(paths) > 0 && !r.runConflictAgent(ctx, review, paths, wt) {
 		return gitx.MergeResult{}
 	}
-	left, err := wt.Unresolved(ctx, paths)
+	left, err := wt.Unresolved(ctx, commitScope(ctx, wt, paths))
 	if err != nil {
 		// The scan could not vouch for every path: neither markers nor a
 		// clean tree is proven here, so nothing is committed from this state.
@@ -88,6 +88,32 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 		return gitx.MergeResult{Merged: true}
 	}
 	return r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message)
+}
+
+// commitScope is what the resolution's commit will actually contain: the
+// conflicted paths plus everything the resolver touched in the scratch
+// checkout, since CommitAll stages it whole. Scanning only the conflicted list
+// would let a marker left in any other file through into the merge, and the
+// resolver runs with the tree open rather than fenced to the conflict.
+//
+// A status that cannot be read falls back to the conflicted paths, which is
+// what the scan covered before: narrower, and still correct about the files
+// git named.
+func commitScope(ctx context.Context, wt *gitx.Worktree, paths []string) []string {
+	scope, err := wt.CommitScope(ctx)
+	if err != nil {
+		return paths
+	}
+	seen := make(map[string]bool, len(scope)+len(paths))
+	out := make([]string, 0, len(scope)+len(paths))
+	for _, p := range append(append([]string{}, paths...), scope...) {
+		if seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	return out
 }
 
 // runConflictAgent launches the agent that edits the conflicted files, and

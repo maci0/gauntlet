@@ -362,6 +362,46 @@ func TestSquashInNamesTheConflictedPaths(t *testing.T) {
 	}
 }
 
+// CommitAll stages the whole checkout, so the scan a caller runs over "what
+// will be committed" has to include the files the resolver touched outside the
+// conflict, and the scope is what tells it those paths exist.
+func TestCommitScopeCoversUnrelatedEdits(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	if err := os.WriteFile(filepath.Join(wt.Dir, "notes.md"),
+		[]byte("<<<<<<< HEAD\nhalf-resolved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt.Dir, "scratch.md"), []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scope, err := wt.CommitScope(ctx)
+	if err != nil {
+		t.Fatalf("CommitScope: %v", err)
+	}
+	slices.Sort(scope)
+	if want := []string{"notes.md", "scratch.md"}; !slices.Equal(scope, want) {
+		t.Fatalf("CommitScope = %q, want %q", scope, want)
+	}
+	left, err := wt.Unresolved(ctx, scope)
+	if err != nil {
+		t.Fatalf("Unresolved: %v", err)
+	}
+	if !slices.Equal(left, []string{"notes.md"}) {
+		t.Fatalf("Unresolved = %q, want the marked file in the commit scope", left)
+	}
+}
+
 // A path that cannot be read proves nothing either way. Silently reading it
 // as "resolved" is how markers reach history behind a permissions problem, so
 // the scan must fail instead and the caller must keep the branch.

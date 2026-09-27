@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -465,6 +466,50 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 // problem on a half-edited file must fail the scan rather than authorize the
 // commit. The paths inspected so far come back either way, with an error that
 // tells the caller the resolution is unverified.
+// CommitScope lists the paths CommitAll would stage in this checkout, tracked
+// and untracked alike. It is the set a conflict-marker scan has to cover: the
+// resolver edits the files git reported as conflicted, but it runs with the
+// whole tree open, and `git add -A` commits whatever else it touched.
+func (w *Worktree) CommitScope(ctx context.Context) ([]string, error) {
+	if w == nil || w.repo == nil || w.Dir == "" {
+		return nil, errors.New("nil worktree")
+	}
+	ch, err := w.subRepo().Status(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("git status: %w", err)
+	}
+	out := make([]string, 0, len(ch.Tracked)+len(ch.Untracked))
+	out = append(out, ch.Tracked...)
+	return append(out, ch.Untracked...), nil
+}
+
+// maxScanBytes bounds one file the marker scan reads whole. Everything larger
+// is not source the resolver edited, and reading a hostile checkout's largest
+// file into memory to search it for seven characters is a bad trade. Such a
+// file counts as unresolved: an unread answer is not a clean one.
+const maxScanBytes = 8 << 20
+
+// readScanFile reads a file for the marker scan, refusing anything past
+// maxScanBytes by size rather than by reading it first.
+func readScanFile(name string) ([]byte, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if fi.IsDir() {
+		return nil, &fs.PathError{Op: "read", Path: name, Err: errors.New("is a directory")}
+	}
+	if fi.Size() > maxScanBytes {
+		return nil, fmt.Errorf("file is %d bytes, over the %d-byte scan limit", fi.Size(), maxScanBytes)
+	}
+	return io.ReadAll(io.LimitReader(f, maxScanBytes))
+}
+
 func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, error) {
 	if w == nil || w.Dir == "" {
 		return nil, errors.New("nil worktree")
@@ -474,7 +519,7 @@ func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, er
 		if err := ctx.Err(); err != nil {
 			return left, fmt.Errorf("conflict-marker scan stopped early: %w", err)
 		}
-		body, err := os.ReadFile(filepath.Join(w.Dir, filepath.FromSlash(p)))
+		body, err := readScanFile(filepath.Join(w.Dir, filepath.FromSlash(p)))
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				continue

@@ -135,6 +135,43 @@ func TestCommitSubjectComposesAgentSubject(t *testing.T) {
 	}
 }
 
+func TestCommitSubjectRejectsAttribution(t *testing.T) {
+	ch := gitx.Changes{Tracked: []string{"internal/foo.go"}}
+	credited := []string{
+		"fix: the nil guard (Co-Authored-By: Claude <noreply@anthropic.com>)",
+		"fix: the nil guard, Generated-By: Cursor",
+		"fix: the nil guard 🤖",
+		"fix: the nil guard, generated with claude code",
+	}
+	for _, s := range credited {
+		if got := commitSubject(s, ch); got != "chore: update foo.go" {
+			t.Fatalf("commitSubject(%q) = %q, want the generated subject", s, got)
+		}
+	}
+	// A subject that legitimately names one of those tools is a description of
+	// the change, not a credit line, and stays.
+	legit := []string{
+		"fix: cap the gemini token limit",
+		"feat: parse the claude stream-json usage field",
+	}
+	for _, s := range legit {
+		if got := commitSubject(s, ch); got != s {
+			t.Fatalf("commitSubject(%q) = %q, want it kept", s, got)
+		}
+	}
+}
+
+func TestCommitSubjectClipsTheAgentSubject(t *testing.T) {
+	long := "fix: " + strings.Repeat("a", 120)
+	got := commitSubject(long, gitx.Changes{})
+	if n := utf8.RuneCountInString(got); n > subjectMax {
+		t.Fatalf("agent subject kept %d runes, over the %d cap: %q", n, subjectMax, got)
+	}
+	if !strings.HasPrefix(got, "fix: ") {
+		t.Fatalf("clipped subject lost its head: %q", got)
+	}
+}
+
 func TestNoteKeyNormalizesNFC(t *testing.T) {
 	nfd := "./a/cafe\u0301.go"
 	nfc := "a/café.go"
