@@ -51,8 +51,8 @@ SHELLCHECK_VERSION ?= 0.11.0
 GOVULNCHECK_VERSION ?= v1.7.0
 
 # Release artifacts must not depend on the build host's locale: the shell
-# orders glob expansion with strcoll, so checksums.txt and sbom.txt would
-# list assets in a different order on hosts with a different LC_COLLATE.
+# orders glob expansion with strcoll, so checksums.txt would list assets in a
+# different order on hosts with a different LC_COLLATE.
 export LC_ALL := C
 
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
@@ -100,7 +100,7 @@ help: ## show available targets
 # refusal-to-build edge: with the default -buildvcs=auto, `go build` inside a
 # checkout whose `git status` fails (a container running as another uid) dies
 # instead of building. Nothing at runtime reads those fields; the version
-# string comes from main.version, and sbom.txt is the inventory.
+# string comes from main.version, and sbom.json is the inventory.
 .PHONY: build
 build: | toolchain-min
 build: ## build the gauntlet binary for this host
@@ -366,7 +366,7 @@ clean: ## remove build artifacts
 # A previous dist with a different VERSION or PLATFORMS must not leak into
 # this one: release globs dist/gauntlet_* both into checksums.txt and the
 # uploaded assets, so stale binaries here would ship as release artifacts.
-# checksums.txt and sbom.txt are rewritten by `release`; drop them here so
+# checksums.txt and sbom.json are rewritten by `release`; drop them here so
 # `make dist` cannot leave a previous version's inventory beside new binaries.
 #
 # The four cross-compiles run concurrently: they share a build cache and
@@ -384,7 +384,7 @@ clean: ## remove build artifacts
 dist: | toolchain
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
-	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.txt
+	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json
 	@set -e; pids=; for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
@@ -443,18 +443,21 @@ smoke: ## run the host binary dist built and check the version it reports
 # if/else, not `cmd && sum || fallback`: a sha256sum that exists but fails
 # mid-list would otherwise fall through to shasum and append a second,
 # conflicting copy of the entries to checksums.txt.
+#
+# The inventory is CycloneDX JSON, read out of each built binary's own build
+# info, so it names what shipped rather than what the tree would resolve to,
+# and a scanner reads it without this Makefile. cmd/sbom uses the standard
+# library alone: the artifact that describes the dependency surface must not
+# add to it.
 .PHONY: release
-release: check test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
+release: check test dist ## build every platform and write dist/checksums.txt and dist/sbom.json
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
 		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
-	@set -e; cd $(DIST) && for f in $(BINARY)_*; do \
-		echo "## $$f"; \
-		$(GO) version -m "$$f"; \
-	done > sbom.txt
-	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.txt)"
+	$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*
+	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
 
 # The same source must produce the same bytes wherever it is built: -trimpath
 # strips build paths, nothing in a Go binary embeds a timestamp, and

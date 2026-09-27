@@ -786,12 +786,17 @@ func TestReleaseRunsCheck(t *testing.T) {
 	}
 }
 
-// Release artifacts must generate inventory names relative to the dist
-// directory without leaking build directory paths into sbom.txt.
+// The inventory a release ships is a CycloneDX document a scanner can
+// read, generated from the binaries dist just built, and it carries no build
+// directory path: the modules it names are the same on every machine.
 func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "cd $(DIST) && for f in $(BINARY)_*; do") {
-		t.Fatal("make release must generate sbom.txt inside $(DIST) so paths match checksums.txt without $(DIST)/ prefixes")
+	recipe := makefileRecipe(text, "release")
+	if !strings.Contains(recipe, "$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*") {
+		t.Fatal("make release must write dist/sbom.json from the binaries dist built, through cmd/sbom")
+	}
+	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json") {
+		t.Fatal("make dist must remove a previous sbom.json, so a stale inventory cannot ship with new binaries")
 	}
 }
 

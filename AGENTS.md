@@ -48,7 +48,9 @@ but drops the sqlite driver.
 
 ## Layout
 
-`cmd/gauntlet` is flags and dispatch. Everything real lives in `internal/`.
+`cmd/gauntlet` is flags and dispatch, and `cmd/sbom` is the release-time
+command behind the `sbom.json` every release ships. Everything real lives in
+`internal/`.
 No package inside `internal/` imports `ui`, so a headless run costs nothing.
 The layering is pinned in `allowedInternalImports`
 (`cmd/gauntlet/layout_test.go`): a new internal package or a new edge between

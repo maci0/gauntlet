@@ -365,7 +365,10 @@ func TestReadmeInstallVerifiesReleaseChecksum(t *testing.T) {
 
 func TestReleaseSmokeTestsSbom(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
-	if !strings.Contains(text, "test -s dist/sbom.txt") {
-		t.Fatal("release job smoke test must verify dist/sbom.txt is non-empty before publication")
+	if !strings.Contains(text, "test -s dist/sbom.json") {
+		t.Fatal("release job smoke test must verify dist/sbom.json is non-empty before publication")
+	}
+	if !strings.Contains(text, "dist/checksums.txt dist/sbom.json") {
+		t.Fatal("release job must publish sbom.json beside the binaries and checksums.txt")
 	}
 }

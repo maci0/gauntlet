@@ -77,10 +77,10 @@ jobs:
         run: |
           make smoke VERSION="${GITHUB_REF_NAME#v}"
           (cd dist && sha256sum -c checksums.txt)
-          test -s dist/sbom.txt
+          test -s dist/sbom.json
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
-      # install an asset it cannot verify against it. sbom.txt is the module
+      # install an asset it cannot verify against it. sbom.json is the CycloneDX
       # inventory of what shipped, read back out of each built binary.
       #
       # Create a draft so a failed upload is never visible to consumers. A
@@ -101,12 +101,12 @@ jobs:
             exit 1
           elif [ "$draft" = true ]; then
             gh release upload "$GITHUB_REF_NAME" --clobber \
-              dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+              dist/gauntlet_* dist/checksums.txt dist/sbom.json
             gh release edit "$GITHUB_REF_NAME" --notes-file notes.md \
               --prerelease="$prerelease" --draft=false
           else
             gh release create "$GITHUB_REF_NAME" --draft --notes-file notes.md \
               --prerelease="$prerelease" \
-              dist/gauntlet_* dist/checksums.txt dist/sbom.txt
+              dist/gauntlet_* dist/checksums.txt dist/sbom.json
             gh release edit "$GITHUB_REF_NAME" --prerelease="$prerelease" --draft=false
           fi

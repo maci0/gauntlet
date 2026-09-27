@@ -25,7 +25,7 @@ than only the paths git reported as conflicted (`commitScope`,
 it was not asked about blocks the merge. Citations that moved with those
 commits were re-anchored (`internal/runner/conflict.go`, `subject.go`,
 `internal/agent/notes.go`, `internal/runx/runx.go`), and one pointer was
-corrected: `make release` is at `Makefile:441`, not 413, which had left
+corrected: `make release` is at `Makefile:447`, not 413, which had left
 `TestDocsPointAtTheMakefileLineTheyName` failing. Owner and review cadence are
 organizational decisions; none is assigned here.
 
@@ -645,7 +645,7 @@ technical backstop behind them.
 
 1. **R2, unsigned update channel.** `checksums.txt` is self-referential;
    consider signing releases or documenting the GitHub-account trust anchor
-   explicitly next to `make release` (`Makefile:441`,
+   explicitly next to `make release` (`Makefile:447`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
    (`internal/agent/agent.go:548-560`). Auto-detection already ignores it (`Installed`
@@ -780,7 +780,7 @@ None of these is demonstrated here; evidence is the cited code paths.
   nothing about it. It carried two controls that landed in those commits but
   were not in the model: the attribution check on an agent-supplied commit
   subject, and the widened conflict-marker scan. It corrected one pointer that
-  had left a test red (`make release` at `Makefile:441`), re-anchored the
+  had left a test red (`make release` at `Makefile:447`), re-anchored the
   citations those commits moved, and closed no risk. Nothing in the numbered
   risk table changed.
 - Earlier baseline: 2026-09-27 against commit 15b8fa9. That pass read the

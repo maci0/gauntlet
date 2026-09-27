@@ -34,6 +34,7 @@ var allowedInternalImports = map[string][]string{
 	},
 	"internal/runx":       {},
 	"internal/selfupdate": {"internal/gauntlethome"},
+	"internal/sbom":       {},
 	"internal/streamjson": {},
 	"internal/ui":         {"internal/envx", "internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
 }
