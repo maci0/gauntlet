@@ -1506,6 +1506,33 @@ func TestFooterSaysWidenWhenFiltered(t *testing.T) {
 	}
 }
 
+// The narrowed feed's label names everything it keeps. Diffs survive the
+// filter, so a title reading "results and errors" over hunks of code teaches
+// the reader that the label is decoration.
+func TestFeedFilterLabelNamesWhatItKeeps(t *testing.T) {
+	label := feedSignal.label()
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.apply(runner.Event{Kind: runner.EvOutput, Agent: "claude",
+		Text: "+ added a line", LineKind: normalize.DiffAdd})
+	m.filter = feedSignal
+	m.feedDirty = true
+	if !m.filter.keep(m.feed[0]) {
+		t.Fatal("a diff line does not survive the narrowed feed")
+	}
+	for _, want := range []string{"results", "errors", "diffs"} {
+		if !strings.Contains(label, want) {
+			t.Fatalf("the filter label %q does not name %s", label, want)
+		}
+	}
+	if !strings.Contains(stripANSI(m.feedTitle()), label) {
+		t.Fatalf("the FEED title does not carry the label:\n%s", stripANSI(m.feedTitle()))
+	}
+	if !strings.Contains(stripANSI(strings.Join(m.helpLines(), "\n")), label) {
+		t.Fatalf("the help does not carry the label:\n%s", m.helpLines())
+	}
+}
+
 // Lanes and the feed spell a review the way the grid already did: without the
 // -review suffix that is the same on every name.
 func TestDashboardSpellsReviewNamesWithoutTheSuffix(t *testing.T) {

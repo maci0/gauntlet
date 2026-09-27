@@ -310,6 +310,21 @@ func joinKeys(keys []keyHint, gap, fold string, w int, tight bool) (string, bool
 	return full, true
 }
 
+// fitSegments lays already-formatted segments on one row, dropping whole ones
+// from the right rather than cutting the last one: a key line ending in
+// "/ fi" names a key that does not exist. It is the small-terminal fallback's
+// version of joinKeys, which does the same over the styled legend.
+func fitSegments(segs []string, gap string, w int) string {
+	out := segs[0]
+	for _, s := range segs[1:] {
+		if lipgloss.Width(out)+lipgloss.Width(gap)+lipgloss.Width(s) > w {
+			break
+		}
+		out += gap + s
+	}
+	return out
+}
+
 // renderNarrow is the fallback for a terminal too small for the panels: the
 // choices still matter, so the command line is what survives. Rows clip to
 // the pane for the same reason the dashboard's fallback does: a wrapped
@@ -330,23 +345,35 @@ func (p *picker) renderNarrow() string {
 	case p.blocked() != "":
 		rows = append(rows, styleWarn.Render("⚠ "+p.blocked()))
 	}
-	keys := "⏎ run  q cancel  ? help"
+	// The filter key is named here, and not dropped with the panes: without the
+	// panels the composed command is the whole screen, and / is the only key
+	// that can still change it. It therefore sits ahead of help, the one
+	// segment here a reader can afford to lose: the wide legend keeps it late
+	// because the panes are there to make it unnecessary.
+	keys := []string{"⏎ run", "/ filter", "q cancel", "? help"}
 	if p.typing {
 		rows = append(rows, styleInfo.Render("filter: "+p.filter+"▏"))
-		keys = "⏎ keep  esc clear"
+		keys = []string{"⏎ keep", "esc clear", "↑↓ move"}
 	} else if p.filter != "" {
 		rows = append(rows, styleInfo.Render("filter: /"+p.filter))
-		keys = "⏎ run  esc clear  q cancel  ? help"
+		keys = []string{"⏎ run", "/ filter", "esc clear", "q cancel", "? help"}
 	}
-	rows = append(rows, styleDim.Render(keys))
+	rows = append(rows, styleDim.Render(fitSegments(keys, "  ", p.w)))
 	if p.h > 0 && len(rows) > p.h {
 		// A terminal too short for the whole view keeps the command it
 		// composes and the keys that act on it. The wordmark and the notice
 		// are what go: without the keys there is no way out of this screen,
-		// and without the command there is nothing to run.
+		// and without the command there is nothing to run. A one-row terminal
+		// has room for one of them, and takes the keys, the way the
+		// dashboard's fallback does: two rows on one line scroll, and what
+		// scrolls away is whatever the terminal felt like keeping.
 		keys := rows[len(rows)-1]
-		rows = append(rows[:max(p.h-2, 0):len(rows)-1],
-			rows[2], keys)
+		if p.h == 1 {
+			rows = []string{keys}
+		} else {
+			rows = append(rows[:max(p.h-2, 0):len(rows)-1],
+				rows[2], keys)
+		}
 	}
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)
@@ -362,6 +389,10 @@ func (p *picker) renderHelp() string {
 // away, and the way back is stated on the same line.
 const qLeave = "  q            leave without running (press twice; esc keeps it)"
 
+// escLeave is what esc does at each depth, in the order the key meets them: it
+// is the way back, so it has to be said where the way back is being looked for.
+const escLeave = "  esc          cancel a q, clear the filter, or leave once there is nothing to clear"
+
 func (p *picker) helpLines() []string {
 	lines := []string{
 		styleTitle.Render("compose a run"),
@@ -376,13 +407,14 @@ func (p *picker) helpLines() []string {
 		"  tab / shift+tab reviews, agents, and run options",
 		"  ↑ / ↓, j / k move within a pane",
 		"  pgup / pgdn  move by page",
-		"  home / end, g / G first / last row in this pane",
+		"  home / end first / last row in this pane; g / G the same, not while filtering",
 		"  space        toggle a review, a set, an agent, or a switch",
 		"  ← / →, h / l open or close a set; change a value",
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by name or description; enter keeps it, esc clears",
 		"  enter        run the composed command",
 		qLeave,
+		escLeave,
 		"",
 		styleDim.Render("  Picking no reviews runs all of them."),
 		styleDim.Render("  suggest: an agent proposes the reviews; anything ticked is also scheduled."),

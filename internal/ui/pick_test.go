@@ -78,6 +78,53 @@ func TestNarrowLauncherSaysWhyItCannotRun(t *testing.T) {
 	}
 }
 
+// The narrow fallback draws no panels, so the composed command is the whole
+// screen and / is the only key that can still change it. A key line that
+// stops before it leaves the reader with nothing to compose from.
+func TestNarrowLauncherNamesTheFilterKey(t *testing.T) {
+	for _, state := range []struct {
+		name  string
+		setup func(*picker)
+	}{
+		{"at rest", func(*picker) {}},
+		{"a kept filter", func(p *picker) { p.filter = "sec" }},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			p := demoPicker()
+			p.w, p.h = 40, 10
+			state.setup(p)
+			if got := stripANSI(p.renderNarrow()); !strings.Contains(got, "/ filter") {
+				t.Fatalf("the narrow fallback does not name the filter key:\n%s", got)
+			}
+		})
+	}
+}
+
+// A terminal one row tall keeps the keys, the way the dashboard's fallback
+// does. Two rows on one line scroll, and the command is what scrolls away.
+func TestNarrowLauncherKeepsTheKeysOnOneRow(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h = 40, 1
+	rows := strings.Split(stripANSI(p.renderNarrow()), "\n")
+	if len(rows) != 1 {
+		t.Fatalf("a one-row terminal drew %d rows:\n%s", len(rows), strings.Join(rows, "\n"))
+	}
+	if !strings.Contains(rows[0], "q cancel") {
+		t.Fatalf("a one-row terminal dropped the keys:\n%s", rows[0])
+	}
+}
+
+// esc is the way back, so the help has to say what it goes back from: a
+// reader who pressed it once to dismiss something and found the launcher
+// gone has no way to know it also leaves with nothing left to clear.
+func TestLauncherHelpSaysWhatEscDoes(t *testing.T) {
+	p := demoPicker()
+	lines := stripANSI(strings.Join(p.helpLines(), "\n"))
+	if !strings.Contains(lines, "esc") || !strings.Contains(lines, "leave once there is nothing to clear") {
+		t.Fatalf("the help does not say that esc leaves:\n%s", lines)
+	}
+}
+
 // The launcher's whole output is an argv, so that is what the tests pin: what
 // it composes must be a command a person could have typed.
 func TestPickComposesTheCommandItShows(t *testing.T) {

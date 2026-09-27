@@ -138,6 +138,9 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - A `--prompt-dir` that is also a project directory is excluded from project discovery on a case-insensitive volume, so it is no longer re-registered as a project prompt overriding the bundled one.
 - The dashboard's end-of-run marker follows the events the bus had already queued, so the summary screen no longer freezes one sample short of the run it is reporting.
 - A signal line is never spliced into the middle of an agent's output line in a `--log` file: the plain reporter and both signal handlers now write through one lock, so a multi-file write stays a single unit of work.
+- The launcher's small-terminal view names the filter key and drops whole keys instead of cutting one in half. Without the panels the composed command is the whole screen, and `/` is the only key that can still change it, but the key line did not carry it and clipped `/ filter` to `/ fi` on a narrow terminal. A one-row terminal now keeps the key line alone, the way the dashboard's fallback does, instead of writing two rows onto one.
+- The dashboard's narrowed feed is labelled with what it actually keeps, results, errors, and diffs, as the README already called it. Diffs survive the filter, so a title reading "results and errors" over hunks of code taught the reader the label was decoration.
+- The launcher's help says what `esc` does at each depth: it cancels a `q`, clears the filter, and leaves once there is nothing left to clear. The help documented it only as the cancel key, so a reader who pressed it to dismiss something found a composed run gone. The pane keys line says `home / end` where it used to promise `g / G` as well, which type as letters while a filter is open.
 
 ## 1.23.3
 

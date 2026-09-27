@@ -197,8 +197,8 @@ func (m *model) stateLabel() (string, lipgloss.Style) {
 }
 
 // logKind classifies runner narration for the feed filter. Failures and the
-// "how to land it" hint after a conflict have to survive "results and errors",
-// or the lines a reader narrowed the feed to see disappear.
+// "how to land it" hint after a conflict have to survive the narrowed feed, or
+// the lines a reader narrowed the feed to see disappear.
 func logKind(text string) normalize.Kind {
 	switch {
 	case strings.HasPrefix(text, "MERGE CONFLICT"),
@@ -804,7 +804,7 @@ func (m *model) helpLines() []string {
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed (or pgup / pgdn)",
 		"  g / G       jump to oldest / newest (home / end)",
-		"  f           narrow the feed to results and errors, and back",
+		"  f           narrow the feed to results, errors, and diffs, and back",
 		"  ?, h        toggle this help",
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),

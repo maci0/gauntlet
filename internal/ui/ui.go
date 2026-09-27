@@ -133,8 +133,11 @@ func (f feedFilter) keep(l feedLine) bool {
 }
 
 func (f feedFilter) label() string {
+	// The label names what keep lets through, diffs included: a narrowed feed
+	// that shows hunks under a title saying "results and errors" teaches the
+	// reader the label is decorative.
 	if f == feedSignal {
-		return "results and errors"
+		return "results, errors, and diffs"
 	}
 	return ""
 }
