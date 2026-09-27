@@ -904,9 +904,9 @@ func TestConcurrentWorktreesDoNotCollide(t *testing.T) {
 	}
 }
 
-// The tree scan asks git what belongs to the project, so ListFiles must be
-// exactly that: tracked files plus untracked ones git does not ignore.
-func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
+// The tree scan asks git what belongs to the project, so an unfiltered listing
+// must be exactly that: tracked files plus untracked ones git does not ignore.
+func TestListFilesMatchingFollowsWhatTheRepoIgnores(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	write := func(name, body string) {
@@ -923,7 +923,7 @@ func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
 	write("build/artifact.o", "x")
 	write("untracked.py", "x")
 
-	files, err := r.ListFiles(ctx)
+	files, err := r.ListFilesMatching(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,10 +932,10 @@ func TestListFilesFollowsWhatTheRepoIgnores(t *testing.T) {
 		got[f] = true
 	}
 	if !got["main.go"] || !got["untracked.py"] {
-		t.Fatalf("ListFiles missed the project's own files: %v", files)
+		t.Fatalf("ListFilesMatching missed the project's own files: %v", files)
 	}
 	if got["build/artifact.o"] {
-		t.Fatalf("ListFiles returned an ignored build artifact: %v", files)
+		t.Fatalf("ListFilesMatching returned an ignored build artifact: %v", files)
 	}
 }
 
@@ -1088,7 +1088,7 @@ func TestNULOutputKeepsSpacesInNames(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	files, err := r.ListFiles(ctx)
+	files, err := r.ListFilesMatching(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

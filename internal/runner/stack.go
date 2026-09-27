@@ -163,7 +163,7 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	if cfg.ResumeStackTip != "" {
 		has, err := repo.HasCommit(ctx, cfg.ResumeStackTip)
 		if err != nil {
-			return nil, fmt.Errorf("cannot verify pinned stack base %s: %w", shortTip(cfg.ResumeStackTip), err)
+			return nil, fmt.Errorf("cannot verify pinned stack base %s: %w", normalize.Clip(cfg.ResumeStackTip, shortTipLen), err)
 		}
 		if has {
 			baseTip = cfg.ResumeStackTip
@@ -180,7 +180,7 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	if err := gh.Preflight(ctx); err != nil {
 		return nil, err
 	}
-	probe := fmt.Sprintf("review/preflight-%s-%s", shortTip(baseTip), safeTag(cfg.RunID))
+	probe := fmt.Sprintf("review/preflight-%s-%s", normalize.Clip(baseTip, shortTipLen), safeTag(cfg.RunID))
 	if err := repo.CanPushBranch(ctx, cfg.PushRemote, baseTip, probe); err != nil {
 		return nil, fmt.Errorf("cannot push stack branches to %s: %w", cfg.PushRemote, err)
 	}
@@ -188,12 +188,12 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh, ReadRemote: readRemote}, nil
 }
 
-func shortTip(tip string) string {
-	if len(tip) > 12 {
-		return tip[:12]
-	}
-	return tip
-}
+// Lengths of the abbreviated commit ids a generated branch or probe name
+// carries.
+const (
+	shortTipLen           = 12
+	shortDisambiguatorLen = 6
+)
 
 func safeTag(tag string) string {
 	var b strings.Builder
@@ -594,7 +594,7 @@ func (r *Runner) stackFinalBranch(ctx context.Context, loopNo, index int, review
 	if !r.stackNameTaken(ctx, final) {
 		return final
 	}
-	final += "-" + shortDisambiguator(r.stackBaseTip)
+	final += "-" + normalize.Clip(r.stackBaseTip, shortDisambiguatorLen)
 	if final == current || r.stackNameTaken(ctx, final) {
 		return ""
 	}
@@ -610,13 +610,6 @@ func (r *Runner) stackNameTaken(ctx context.Context, name string) bool {
 	}
 	_, found, err := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, name)
 	return err != nil || found
-}
-
-func shortDisambiguator(tip string) string {
-	if len(tip) > 6 {
-		return tip[:6]
-	}
-	return tip
 }
 
 func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, body prBody) (string, error) {

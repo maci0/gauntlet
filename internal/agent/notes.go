@@ -10,7 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/rivo/uniseg"
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 // FileNote is one "PATH: <file>: <what was done>" line the review protocol
@@ -96,7 +96,9 @@ func ParseSubject(tail []byte) string {
 // result is a line of text, not a line of text with a ragged end. A subject
 // becomes a commit message, where a newline would forge a body or an author
 // trailer and a bidi override would reverse the log line; a file note lands
-// in a PR body with the same exposure.
+// in a PR body with the same exposure. The cut is by code points and lands on
+// a grapheme boundary: a commit subject survives verbatim, and a byte count
+// would land inside the UTF-8 encoding of anything past ASCII.
 func cleanReportedLine(s string, maxRunes int) string {
 	s = strings.Map(func(r rune) rune {
 		if r == ' ' {
@@ -110,32 +112,7 @@ func cleanReportedLine(s string, maxRunes int) string {
 	}, s)
 	s = strings.TrimSpace(s)
 	if utf8.RuneCountInString(s) > maxRunes {
-		s = strings.TrimSpace(truncateRunes(s, maxRunes))
-	}
-	return s
-}
-
-// truncateRunes cuts s to at most max runes. A commit subject survives an
-// agent's output verbatim, and a byte count would land the cut inside the
-// UTF-8 encoding of anything past ASCII: fifty CJK characters measure one
-// hundred bytes in runes and one hundred and fifty in bytes, so a byte cut
-// writes mojibake into permanent history. Like every other display limit
-// here (compose's catalog budget, --list's columns), it counts runes.
-func truncateRunes(s string, maxRunes int) string {
-	if maxRunes <= 0 {
-		return ""
-	}
-	if len(s) <= maxRunes {
-		return s
-	}
-	n := 0
-	clusters := uniseg.NewGraphemes(s)
-	for clusters.Next() {
-		n += utf8.RuneCountInString(clusters.Str())
-		if n > maxRunes {
-			start, _ := clusters.Positions()
-			return s[:start]
-		}
+		s = strings.TrimSpace(normalize.Clip(s, maxRunes))
 	}
 	return s
 }

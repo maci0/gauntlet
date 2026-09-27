@@ -915,24 +915,21 @@ func unquoteC(s string) string {
 	return b.String()
 }
 
-// ListFiles returns the repository's files, relative to its root and in git's
-// own idea of what belongs: tracked files plus untracked ones that are not
-// ignored. It is what a tree scan should walk, since the repo already declares
-// which directories are build output and which are dependencies.
-func (r *Repo) ListFiles(ctx context.Context) ([]string, error) {
-	return r.listFiles(ctx, 0)
-}
-
-// ListFilesAtMost is ListFiles stopped after n paths. A scan that will only
-// look at the first hundred thousand files must not keep the rest of a
-// million-file listing alive as substrings of one giant string.
+// ListFilesAtMost returns the repository's files, relative to its root and in
+// git's own idea of what belongs: tracked files plus untracked ones that are
+// not ignored. It is what a tree scan should walk, since the repo already
+// declares which directories are build output and which are dependencies.
+// The listing stops after n paths: a scan that will only look at the first
+// hundred thousand files must not keep the rest of a million-file listing
+// alive as substrings of one giant string. n <= 0 lists all of them.
 func (r *Repo) ListFilesAtMost(ctx context.Context, n int) ([]string, error) {
 	return r.listFiles(ctx, n)
 }
 
-// ListFilesMatching is ListFiles restricted to a git pathspec (a glob matched
-// against the basename when it contains no slash). Prompt discovery asks for
-// "*-review.md" so a large tree is not walked just to find a handful of files.
+// ListFilesMatching is ListFilesAtMost restricted to a git pathspec (a glob
+// matched against the basename when it contains no slash). Prompt discovery
+// asks for "*-review.md" so a large tree is not walked just to find a handful
+// of files. An empty glob lists everything.
 func (r *Repo) ListFilesMatching(ctx context.Context, glob string) ([]string, error) {
 	if glob == "" {
 		return r.listFiles(ctx, 0)

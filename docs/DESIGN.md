@@ -33,7 +33,7 @@ also publish its changes as a linear, unmerged PR stack.
 | Package | Responsibility |
 |---|---|
 | `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), the per-run preflight steps, and the plain reporter |
-| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.example.json`, and the usage-counter patterns in `usage.go` |
+| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.example.json`, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |

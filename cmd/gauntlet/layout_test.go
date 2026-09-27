@@ -18,7 +18,7 @@ import (
 // root and may import any of them. A new edge is a layering change; add it
 // here only when DESIGN.md says the direction is intentional.
 var allowedInternalImports = map[string][]string{
-	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome", "internal/runx"},
+	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome", "internal/normalize", "internal/runx"},
 	"internal/envx":         {},
 	"internal/fuzzy":        {},
 	"internal/gauntlethome": {},
