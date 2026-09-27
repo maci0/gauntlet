@@ -120,41 +120,150 @@ func TestDirectModulesAreTagged(t *testing.T) {
 	}
 }
 
-// docs/DESIGN.md says every linked module is MIT or BSD-3-Clause. Direct
-// modules are the ones this repository adopted; their LICENSE files are
-// the check that claim runs against, before a new require lands.
-func TestDirectModuleLicenses(t *testing.T) {
+// docs/DESIGN.md says every linked module is MIT or BSD-3-Clause. The
+// modules this repository chose are one half of that claim, but the graph
+// they drag in is the other half, and an unnamed transitive is an
+// unaudited one: the LICENSE files of everything a release links into are
+// what the claim is checked against, before a require lands and again on
+// every version bump.
+func TestLinkedModuleLicenses(t *testing.T) {
 	root := moduleRoot(t)
-	reqs := directReqs(t, root)
-	if len(reqs) == 0 {
-		t.Fatal("go.mod listed no direct modules")
-	}
-	dirs := moduleDirs(t, root, reqs)
-	for _, r := range reqs {
-		dir := dirs[r.path]
+	mods := shippedModules(t, root)
+	dirs := moduleDirs(t, root, moduleReqs(mods))
+	for _, mod := range mods {
+		dir := dirs[mod]
 		if dir == "" {
-			t.Errorf("%s: go list -m did not report a module directory", r.path)
+			t.Errorf("%s: go list -m did not report a module directory", mod)
 			continue
 		}
-		body := readLicense(t, dir, r.path)
+		body := readLicense(t, dir, mod)
 		switch kind := licenseKind(body); kind {
 		case "MIT", "BSD-3-Clause":
 		default:
-			t.Errorf("%s license is %s, not MIT or BSD-3-Clause; docs/DESIGN.md requires a check before adoption", r.path, kind)
+			t.Errorf("%s license is %s, not MIT or BSD-3-Clause; docs/DESIGN.md requires a check before adoption", mod, kind)
 		}
 	}
 }
 
-// sqlite and klauspost/compress are not imported here; they link because
-// toktop does. docs/DESIGN.md has to name them or the graph they add looks
-// like an accident.
-func TestDesignDocumentsToktopTransitives(t *testing.T) {
-	text := readRepoFile(t, filepath.Join(moduleRoot(t), "docs", "DESIGN.md"))
-	for _, want := range []string{"klauspost/compress", "modernc.org/sqlite"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("docs/DESIGN.md must name %s: it links through toktop", want)
+// docs/DESIGN.md inventories what a release ships. A module that links into
+// a shipped build and is named nowhere is an anonymous addition to the
+// binary, and a row left behind after a dependency leaves is a claim about
+// the supply chain that is no longer true. Both directions are checked
+// against the table itself, so an edit has to keep the whole surface honest.
+func TestDesignDocumentsLinkedModules(t *testing.T) {
+	root := moduleRoot(t)
+	design := readRepoFile(t, filepath.Join(root, "docs", "DESIGN.md"))
+	documented := designModules(design)
+
+	shipped := shippedModules(t, root)
+	for _, mod := range shipped {
+		if !documented[designModuleName(mod)] {
+			t.Errorf("docs/DESIGN.md does not name %s, which links into a shipped build; the dependency inventory is the record of what ships", mod)
 		}
 	}
+
+	direct := make(map[string]bool)
+	for _, path := range directModules(t, root) {
+		direct[designModuleName(path)] = true
+	}
+	for name := range documented {
+		if !direct[name] && !slices.ContainsFunc(shipped, func(mod string) bool { return designModuleName(mod) == name }) {
+			t.Errorf("docs/DESIGN.md names %s, which no shipped build links; drop the stale row", name)
+		}
+	}
+}
+
+// shipTagSets are the build-tag configurations a release ships, in the order
+// the Makefile documents them. A module linked by only some of them still
+// ships, so the inventory is the union: a release covers all three.
+var shipTagSets = []string{"sqlite", "", "notoktop"}
+
+const mainModule = "github.com/maci0/gauntlet"
+
+// shippedModules returns every third-party module whose packages link into a
+// build under any shipped tag set. go.mod lists more than this: the modules
+// it requires to resolve the graph but no binary imports. The difference is
+// the point, since the linked set is what a consumer's binary contains.
+func shippedModules(t *testing.T, root string) []string {
+	t.Helper()
+	seen := make(map[string]bool)
+	for _, tags := range shipTagSets {
+		for _, mod := range linkedModules(t, root, tags) {
+			seen[mod] = true
+		}
+	}
+	mods := slices.Sorted(maps.Keys(seen))
+	if len(mods) == 0 {
+		t.Fatal("no module links into any shipped build")
+	}
+	return mods
+}
+
+// linkedModules reports the modules of the packages the build imports under
+// the given build tags, the main module excluded. An empty tag set is the
+// TAGS= build, and -tags= says so as explicitly as an empty string.
+func linkedModules(t *testing.T, root, tags string) []string {
+	t.Helper()
+	cmd := exec.Command("go", "list", "-tags="+tags, "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./...")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("go list -tags=%s -deps: %v", tags, err)
+	}
+	seen := make(map[string]bool)
+	var mods []string
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		mod := strings.TrimSpace(line)
+		if mod == "" || mod == mainModule || seen[mod] {
+			continue
+		}
+		seen[mod] = true
+		mods = append(mods, mod)
+	}
+	slices.Sort(mods)
+	return mods
+}
+
+func moduleReqs(paths []string) []moduleReq {
+	out := make([]moduleReq, len(paths))
+	for i, path := range paths {
+		out[i] = moduleReq{path: path}
+	}
+	return out
+}
+
+// designModuleName is how docs/DESIGN.md writes a module path: the GitHub
+// host is noise in a table of module names, and the golang.org and
+// modernc.org paths are the module identity, not a prefix over it.
+func designModuleName(mod string) string {
+	return strings.TrimPrefix(mod, "github.com/")
+}
+
+// designModules returns the module column of the External dependencies
+// tables. The section is delimited so the other tables in the document, which
+// name packages and not modules, are not read as dependency rows.
+func designModules(design string) map[string]bool {
+	mods := make(map[string]bool)
+	inSection := false
+	for raw := range strings.SplitSeq(design, "\n") {
+		line := strings.TrimSpace(raw)
+		switch {
+		case strings.HasPrefix(line, "## "):
+			inSection = line == "## External dependencies"
+		case !inSection, !strings.HasPrefix(line, "|"):
+			continue
+		}
+		// The leading pipe is the row delimiter, not a column, so the
+		// module name is the cell after it.
+		row := strings.TrimPrefix(line, "|")
+		name, _, ok := strings.Cut(row, "|")
+		name = strings.Trim(strings.TrimSpace(name), "`")
+		if !ok || !strings.Contains(name, "/") {
+			continue
+		}
+		mods[name] = true
+	}
+	return mods
 }
 
 // The screenshot renderer and the scripts CI job must resolve the same rich.
@@ -497,18 +606,30 @@ func readLicense(t *testing.T, dir, module string) string {
 	return ""
 }
 
+// licenseKind names the license of a linked module's LICENSE file, so a
+// verdict that is neither MIT nor BSD-3-Clause names the license it found
+// instead of reporting "unknown".
 func licenseKind(body string) string {
 	switch {
 	case strings.Contains(body, "MIT License"), strings.Contains(body, "Permission is hereby granted"):
 		return "MIT"
-	case strings.Contains(body, "Redistribution and use in source and binary forms"):
+	case strings.Contains(body, "Redistribution and use in source and binary forms") &&
+		nonEndorsement.MatchString(body):
 		return "BSD-3-Clause"
+	case strings.Contains(body, "Redistribution and use in source and binary forms"):
+		return "BSD-2-Clause"
 	default:
 		return "unknown"
 	}
 }
 
 var pseudoVersion = regexp.MustCompile(`\d{14}-[0-9a-f]{12}$`)
+
+// nonEndorsement is the third BSD condition, the one that separates
+// BSD-3-Clause from BSD-2-Clause. Projects word it with a singular or a
+// plural name ("Neither the name of ...", "Neither the names of ..."), so
+// the marker is the endorsement clause, not the count of bullets.
+var nonEndorsement = regexp.MustCompile(`(?i)neither the names? of`)
 
 var richPinned = regexp.MustCompile(`rich==([0-9][0-9A-Za-z._-]*)`)
 

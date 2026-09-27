@@ -75,9 +75,7 @@ loop runs headless with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 
-Seven direct modules, plus sqlite and klauspost/compress which arrive
-through toktop. The rest of the graph is what those modules require.
-The default is no
+Seven direct modules, plus the modules they pull in. The default is no
 new dependency: each row earns its place by doing something the standard
 library cannot, and each was kept small on purpose.
 
@@ -87,11 +85,47 @@ library cannot, and each was kept small on purpose.
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
-| `klauspost/compress` | zstd decoder for dsh concatenated session logs | pulled in through toktop/agentusage; `-tags notoktop` drops it |
-| `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | pulled in through toktop; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `cmd/gauntlet`, and text truncation in `internal/agent` and `internal/normalize` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, and the file-signal suggester | `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
+
+No direct module is imported outside the column above, and no module is
+imported without a row: `TestDirectModuleImportSites` and
+`TestDesignDocumentsLinkedModules` hold both halves. The tables below are
+the rest of what a release links in, none of it adopted and none of it
+imported by name here. `TestLinkedModuleLicenses` reads the LICENSE file of
+every row, so an upgrade that changes a license fails before it ships.
+
+| Module | Why it links | Reached through |
+|---|---|---|
+| `charmbracelet/colorprofile` | maps a terminal profile onto lipgloss's renderer | `lipgloss`, `termenv` |
+| `charmbracelet/x/ansi` | ANSI and SGR parsing for the styled dashboard output | `lipgloss`, `bubbletea` |
+| `charmbracelet/x/cellbuf` | screen buffer and damage tracking behind `bubbletea`'s renderer | `bubbletea` |
+| `charmbracelet/x/term` | terminal queries and the OSC 52 clipboard `bubbletea` exposes | `bubbletea` |
+| `aymanbagabas/go-osc52/v2` | writes the OSC 52 sequence above | `charmbracelet/x/term` |
+| `lucasb-eyer/go-colorful` | color-space conversion for lipgloss's adaptive pairs | `lipgloss` |
+| `mattn/go-runewidth` | column width for the dashboard's tables | `bubbletea` |
+| `mattn/go-isatty` | is-this-a-terminal checks behind the raw-mode switch | `termenv`, `golang.org/x/term` |
+| `muesli/ansi` | ANSI writer the cell buffer emits its updates through | `charmbracelet/x/cellbuf` |
+| `muesli/cancelreader` | interruptible reads so a repaint never eats a keystroke | `bubbletea` |
+| `xo/terminfo` | terminal capability database behind termenv's profiles | `termenv` |
+| `golang.org/x/sys` | the `ioctl` and terminal calls the standard library does not wrap | `x/term`, `isatty` |
+| `klauspost/compress` | zstd decoder for dsh concatenated session logs | `toktop/agentusage`; `-tags notoktop` drops it |
+| `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | `toktop`; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
+| `modernc.org/libc` | the cgo-free libc the pure-Go SQLite driver is built on | `modernc.org/sqlite` |
+| `modernc.org/memory` | the allocator `libc` hands out | `modernc.org/libc` |
+| `modernc.org/mathutil` | bit helpers for the big-integer arithmetic in `libc` | `modernc.org/libc` |
+| `remyoudompheng/bigfft` | the transform behind the arbitrary-precision math in `libc` | `modernc.org/libc` |
+| `dustin/go-humanize` | byte and time formatting inside toktop's transcript parsing | `toktop`; `-tags notoktop` drops it |
+| `google/uuid` | session identifiers toktop uses to key a transcript | `toktop`; `-tags notoktop` drops it |
+
+`go.mod` also requires `erikgeiser/coninput`, `mattn/go-localereader`,
+and `ncruces/go-strftime`, and no shipped build links them. The first two
+are imported by bubbletea's `key_windows.go`, the third by
+`modernc.org/libc`; `go mod tidy` resolves imports for every build
+configuration, including GOOS=windows, so a POSIX-only release keeps three
+requires and compiles none of them. They stay pinned and hashed in
+`go.sum`, and no package in a released binary comes from them.
 
 What the hand-rolled packages replace: `humanize`, `streamjson`, and `fuzzy`
 exist because a general library for each would cost more in weight and
@@ -109,8 +143,9 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   reports vulnerabilities reachable from this code; dependabot owns version
   bumps, the scan owns advisories.
 - Licenses of every linked module are MIT or BSD-3-Clause, compatible with
-  this repo's AGPL-3.0-or-later. A dependency's license is checked before
-  adoption, not after.
+  this repo's AGPL-3.0-or-later. `TestLinkedModuleLicenses` reads the
+  LICENSE file of every module a shipped build links, transitive ones
+  included, so a version bump that changes a license fails the suite.
 - The sqlite driver tracks upstream SQLite closely; when auditing, read the
   `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
   self-constructed queries against agent-owned database files, never SQL
