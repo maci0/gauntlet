@@ -197,10 +197,21 @@ func padBlock(content string, innerW, innerH int) string {
 	}
 	for i, ln := range lines {
 		ln = strings.TrimRight(ln, "\r")
-		if lipgloss.Width(ln) > innerW {
-			ln = clip(ln, innerW)
+		// One measurement per line. lipgloss.Width walks the text grapheme by
+		// grapheme, and a frame measures every row of every panel twice over
+		// when the width is asked for once here and again inside clip.
+		w := lipgloss.Width(ln)
+		switch {
+		case innerW <= 0:
+			ln, w = "", 0
+		case w > innerW:
+			// A cut lands on a cluster boundary, so it can come up short of
+			// innerW (two 2-cell glyphs do not fit in 5). The remainder is
+			// real, so the cut result is measured again before it is padded.
+			ln = clipNarrow(ln, innerW)
+			w = lipgloss.Width(ln)
 		}
-		if gap := innerW - lipgloss.Width(ln); gap > 0 {
+		if gap := innerW - w; gap > 0 {
 			ln += strings.Repeat(" ", gap)
 		}
 		lines[i] = ln
@@ -222,6 +233,14 @@ func clip(s string, w int) string {
 	if lipgloss.Width(s) <= w {
 		return s
 	}
+	return clipNarrow(s, w)
+}
+
+// clipNarrow is clip for a string already known to be wider than w, so it skips
+// the width measurement clip starts with. A cut never lands inside a grapheme
+// cluster, and an unterminated styled run is closed so the reset cannot leak
+// into whatever is drawn next.
+func clipNarrow(s string, w int) string {
 	var b strings.Builder
 	visible := 0
 	for _, tok := range widthTokens(s) {

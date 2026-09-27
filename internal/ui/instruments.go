@@ -22,6 +22,19 @@ var brailleBits = [4][2]byte{
 	{0x40, 0x80},
 }
 
+// brailleSlots is how many dot patterns one cell can carry: the eight bits a
+// braille glyph is built from, so 0x2800+pattern always lands inside one
+// block.
+const brailleSlots = 256
+
+// dot is one rendered chart cell: the color it was drawn in and the glyph that
+// color produces. A cell holding an empty color is the one thing that means
+// "not drawn yet".
+type dot struct {
+	col   lipgloss.TerminalColor
+	glyph string
+}
+
 // chart renders a series as a braille dot matrix: every terminal cell is a 2x4
 // dot grid, so a w by h chart resolves w*2 by h*4 dots. Values fill upward from
 // the baseline and hug the right edge like a scope trace, with the newest
@@ -35,7 +48,12 @@ func chart(vals []float64, w, h int) string {
 	cols, peak := tailCols(vals, w)
 	dotH := h * 4
 
-	cache := map[[2]any]string{}
+	// A braille cell is eight dots, so pattern indexes 256 slots and the
+	// rendered glyph for one is fixed once the color is known. The table is a
+	// local array rather than a map: chart runs once per lane plus once for the
+	// activity strip on every frame, and a map keyed by the formatted color
+	// allocated and hashed a string for each of its cells.
+	var cache [brailleSlots]dot
 	rows := make([]strings.Builder, h)
 	for cy := range h {
 		for cx := range w {
@@ -60,13 +78,15 @@ func chart(vals []float64, w, h int) string {
 			default:
 				col = heatColor(frac)
 			}
-			key := [2]any{colorKey(col), pattern}
-			s, ok := cache[key]
-			if !ok {
-				s = lipgloss.NewStyle().Foreground(col).Render(string(rune(0x2800 + pattern)))
-				cache[key] = s
+			d := &cache[pattern]
+			if d.col != col {
+				// One pattern can be drawn in two colors: data at the heat
+				// ramp, or the unlit baseline stroke. The color is stored beside
+				// the glyph so a second one replaces it rather than serving the
+				// first.
+				*d = dot{col: col, glyph: styled(col, string(rune(0x2800+pattern)))}
 			}
-			rows[cy].WriteString(s)
+			rows[cy].WriteString(d.glyph)
 		}
 	}
 	out := make([]string, h)
@@ -75,11 +95,6 @@ func chart(vals []float64, w, h int) string {
 	}
 	return strings.Join(out, "\n")
 }
-
-// colorKey turns a color into a cache key. Every TerminalColor this package
-// builds is a plain value whose formatting is stable, and an adaptive pair
-// formats both of its tones, so one key covers both resolved variants.
-func colorKey(c lipgloss.TerminalColor) string { return fmt.Sprint(c) }
 
 // tailCols returns exactly w columns carrying the last w values, zero padded on
 // the left, plus their peak (floored at 1 so an all-zero series still renders).

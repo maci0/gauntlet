@@ -616,17 +616,25 @@ func (m *model) renderFooter() string {
 
 // footerLegend is the key legend as whole segments fitted to avail columns. The
 // first segment always survives: without it a reader has no way to leave.
+//
+// The running width is carried rather than re-measured, the way renderMinimal
+// fits its own hint: lipgloss.Width walks the text grapheme by grapheme, and
+// measuring the accumulated legend on every step re-walked it once per key.
 func (m *model) footerLegend(avail int) string {
 	var b strings.Builder
+	w := 0
 	for _, k := range m.footerKeys(true) {
 		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.d)
-		if b.Len() > 0 && lipgloss.Width(b.String())+2+lipgloss.Width(seg) > avail {
+		segW := lipgloss.Width(seg)
+		if w > 0 && w+2+segW > avail {
 			break
 		}
-		if b.Len() > 0 {
+		if w > 0 {
 			b.WriteString("  ")
+			w += 2
 		}
 		b.WriteString(seg)
+		w += segW
 	}
 	return b.String()
 }
@@ -638,15 +646,18 @@ func fitRight(segs []string, room int) string {
 	if len(segs) == 0 || room <= 0 {
 		return ""
 	}
-	if lipgloss.Width(segs[0]) > room {
+	out := segs[0]
+	w := lipgloss.Width(out)
+	if w > room {
 		return styleFaint.Render("…")
 	}
-	out := segs[0]
 	for _, s := range segs[1:] {
-		if lipgloss.Width(out)+2+lipgloss.Width(s) > room {
+		sw := lipgloss.Width(s)
+		if w+2+sw > room {
 			break
 		}
 		out += "  " + s
+		w += 2 + sw
 	}
 	return out
 }
