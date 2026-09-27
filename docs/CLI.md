@@ -52,11 +52,11 @@ several paths uses the first.
 | `space` | toggle a review, a whole set, an agent, or a switch. A set header toggles the members the filter is showing. |
 | `left`/`right`, `h`/`l` | collapse or expand a set; change the job count |
 | `a` | select all or none of what this pane is showing (the filter, if any, bounds it) |
-| `+` / `-` | raise or lower concurrency, from any pane |
+| `+` / `-` | raise or lower concurrency, from any pane, up to the machine's cpu count |
 | `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it. While typing, the key legend names those keys instead of run/cancel. |
 | `home` / `end`, `g` / `G` | first / last row in the focused pane |
 | `?` | toggle a help overlay; `q` / `esc` close it. When the terminal is too short for the whole overlay it scrolls: `j` / `k` or the arrow keys page it, `pgup` / `pgdn` jump, and `home` / `end` reach the ends. |
-| `enter` / `q` | run the composed command / leave without running |
+| `enter` / `q` | run the composed command / leave without running. `q` asks once: a second `q` discards the run, any other key or `esc` keeps it. |
 
 ## Options
 

@@ -1467,10 +1467,16 @@ func (m *model) helpLines() []string {
 	} else if m.finishing {
 		qLine = "  q, esc      stop now (a finish is already draining)"
 	}
+	lines = append(lines, qLine)
+	// A run with nothing to finish into does not get the key documented:
+	// ctrl+c would fall through to the hard quit, and s would do nothing.
+	if m.cfg.OnFinish != nil {
+		lines = append(lines,
+			"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
+			"  ctrl+c x2   quit while a finish is draining (stops the run)",
+		)
+	}
 	lines = append(lines,
-		qLine,
-		"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
-		"  ctrl+c x2   quit while a finish is draining (stops the run)",
 		"  esc         cancel quit confirmation, or reset paused/scrolled feed to live",
 		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed (or pgup / pgdn)",
@@ -1503,7 +1509,10 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	keys := []struct{ k, d string }{
 		{"q", q}, {"?", "help"},
 	}
-	if !m.done {
+	// Pausing holds a feed, and the fallback draws none: the key there would
+	// flip the state label to a feed the reader cannot see. A feed that is
+	// already paused still says so, and that is the state label's work.
+	if !m.done && scrollable {
 		space := "pause"
 		if m.paused {
 			space = "resume"
@@ -1516,7 +1525,7 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 			keys = append(keys, struct{ k, d string }{"esc", "live"})
 		}
 	}
-	if !m.done && !m.finishing {
+	if !m.done && !m.finishing && m.cfg.OnFinish != nil {
 		keys = append(keys, struct{ k, d string }{"s", "finish"})
 	}
 	if scrollable {

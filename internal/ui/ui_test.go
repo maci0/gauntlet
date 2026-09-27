@@ -29,6 +29,9 @@ func demoConfig() Config {
 		Reviews: []string{"sec-review", "code-review", "doc-review", "perf-review", "test-review"},
 		Jobs:    2, Timeout: 30 * time.Minute, Budget: 4 * time.Hour,
 		Started: time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC),
+		// Every run the CLI starts has a graceful quit to ask for; the one
+		// that does not is what the finish key is hidden from.
+		OnFinish: func() {},
 	}
 }
 
@@ -737,6 +740,25 @@ func TestDashboardFinishKeyAsksOnce(t *testing.T) {
 	}
 }
 
+// A run with nothing to finish into is not offered the key. ctrl+c would fall
+// through to the hard quit and s would do nothing, so the legend and the help
+// leave both out rather than describing a key that cannot work.
+func TestDashboardHidesFinishWhereThereIsNothingToFinish(t *testing.T) {
+	cfg := demoConfig()
+	cfg.OnFinish = nil
+	m := newModel(cfg)
+	m.w, m.h, m.ready = 100, 30, true
+	for _, got := range []string{lastLine(stripANSI(m.View())), stripANSI(m.renderHelp())} {
+		if strings.Contains(got, "finish") {
+			t.Fatalf("a run with no finish is offered one:\n%s", got)
+		}
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
+	if m.finishing {
+		t.Fatal("s started a finish that has nowhere to go")
+	}
+}
+
 // Theme tokens are pinned to WCAG 2.2 AA on both background variants they
 // ship with: any color that can sit behind text clears 4.5:1 (SC 1.4.3),
 // including the status hues that color grid names and feed lines, and the
@@ -1082,12 +1104,16 @@ func TestHeaderKeepsTheRunStateAtNarrowWidths(t *testing.T) {
 	}
 }
 
-// The fallback advertises only keys whose effect it can show: scrolling acts
-// on a feed it does not draw, so naming j/k there would be a dead key.
+// The fallback advertises only keys whose effect it can show: scrolling and
+// pausing both act on a feed it does not draw, so naming j/k or space there
+// would offer keys whose only visible result is a label about a feed the
+// reader is not looking at.
 func TestMinimalViewAdvertisesOnlyKeysItCanShow(t *testing.T) {
 	frame := stripANSI(staticFrame(demoConfig(), demoEvents(), 40, 10))
-	if strings.Contains(frame, "scroll") {
-		t.Fatalf("the minimal view advertises scroll with no feed to scroll:\n%s", frame)
+	for _, dead := range []string{"scroll", "pause"} {
+		if strings.Contains(frame, dead) {
+			t.Fatalf("the minimal view advertises %q with no feed behind it:\n%s", dead, frame)
+		}
 	}
 }
 

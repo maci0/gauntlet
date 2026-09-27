@@ -43,6 +43,10 @@ stops being true, which is the moment a major version would be owed.
 
 ### Changed
 
+- `gauntlet pick` asks for a second `q` before it discards a composed run, and says so on the status line and in the key legend while the first press is waiting. It arms the key the dashboard already arms, for the same reason: a slip of the finger used to throw away a screenful of picking. Any other key, or `esc`, takes it back.
+- `+` in the launcher stops at the machine's cpu count, the ceiling `space` already applied to the same row. Past it the concurrency meter reads full and the extra lane has nothing to run on, so the two keys now stop in the same place.
+- The dashboard's key legend and help no longer offer the graceful finish (`s`, `ctrl+c`) to a run that has no finish to ask for, instead of listing a key that does nothing.
+- The dashboard's small-terminal fallback no longer offers `space`. It draws no feed, so pausing one only turned the state label into a statement about something the reader cannot see; a feed already paused still says so.
 - A finished run writes its index row without reading and decoding the whole index first. The duplicate check walks the file a line at a time and only decodes a row that already spells the run id, so the cost of finishing a run no longer grows with the number of runs the install has recorded, and neither does its memory use.
 - `prompt-review` looks for prompts in the three places a loader can supply them (the project tree, an operator's prompt directory, a runner's compiled set) instead of skipping a repository that keeps no prompt file of its own, tells the agent to register a prompt it creates where the loader looks for it, and no longer asks it to add a missing data-not-instructions line to a prompt the runner already composes one into.
 - A review whose agent command would not build goes straight to the fallback agent instead of spending its retries on an argv that would fail the same way every time.

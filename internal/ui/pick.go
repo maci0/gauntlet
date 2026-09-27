@@ -140,6 +140,11 @@ type picker struct {
 
 	focus pane
 
+	// quitArmed is q pressed once: the composed run is discarded on the second
+	// press, and any other key takes it back. The dashboard arms q for the same
+	// reason, and here it costs a screenful of picking rather than a run.
+	quitArmed bool
+
 	suggest  bool            // let an agent pick the reviews instead
 	filter   string          // narrows the review tree by name or description
 	typing   bool            // keys are going into the filter, not the panes
@@ -291,9 +296,22 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return p.filterKey(msg, key)
 	}
 	switch key {
-	case "ctrl+c", "q":
+	case "ctrl+c":
 		return p, tea.Quit
+	case "q":
+		// One press arms, so a slip of the finger does not throw away what
+		// was picked; a second one leaves. Any other key takes the arm back,
+		// which is what the footer and the status line say is happening.
+		if p.quitArmed {
+			return p, tea.Quit
+		}
+		p.quitArmed = true
+		return p, nil
 	case "esc":
+		if p.quitArmed {
+			p.quitArmed = false
+			return p, nil
+		}
 		if p.filter != "" {
 			p.filter = ""
 			// Clearing a search restores the full tree. The cursor held a
@@ -358,14 +376,28 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.typing, p.focus = true, paneReviews
 	case "+", "=":
 		if !p.stacked() {
-			p.concurrency().n++
+			// The same ceiling space applies to this row: past the machine's
+			// cpus the meter is full and the extra lane has nothing to run on,
+			// so + stops where the pane's own toggle stops.
+			p.concurrency().n = min(p.concurrency().n+1, max(p.cfg.CPUs, 1))
 		}
 	case "-", "_":
 		if !p.stacked() {
 			p.concurrency().n = max(1, p.concurrency().n-1)
 		}
 	}
+	// A key that is neither of the two the arm waits for takes it back, so an
+	// arm set minutes ago cannot turn the next q into a press the reader never
+	// saw. The two cases above return first, so they are unaffected.
+	p.quitArmed = false
 	return p, nil
+}
+
+// concurrencyKeys reports whether the +/- keys can change anything here. The
+// legend drops them when they cannot, the way it drops every other key the
+// focused pane does not act on.
+func (p *picker) concurrencyKeys() bool {
+	return !p.stacked() && p.cfg.CPUs > 1
 }
 
 // filterKey types into the review filter. Everything is a character while it
@@ -1074,6 +1106,12 @@ func (p *picker) hint() string {
 // renderStatus is the line under the command: what is blocking a launch if
 // anything is, otherwise what the cursor is on.
 func (p *picker) renderStatus() string {
+	// An armed q outranks both: until it is answered, the question the
+	// reader has is whether the run is about to be thrown away, and this is
+	// the only line that answers it.
+	if p.quitArmed {
+		return clip(styleWarn.Render("⚠ q again to discard the run, esc to keep it"), p.w)
+	}
 	if p.typing {
 		return clip(styleDim.Render(p.hint()), p.w)
 	}
@@ -1100,10 +1138,24 @@ func (p *picker) renderKeys() string {
 	case paneAgents:
 		arrowAction = "pane"
 	}
+	q := "cancel"
+	if p.quitArmed {
+		q = "discard"
+	}
 	keys := []keyHint{
-		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
+		{"⏎", "run"}, {"q", q}, {"j/k", "move"},
 		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
-		{"/", "filter"}, {"+/-", "concurrency"},
+		{"/", "filter"},
+	}
+	// Concurrency is the one key that reaches from any pane, so it earns its
+	// place in the legend before the pane's own. It has no effect in stack
+	// mode, or on a machine with one cpu, and is dropped then rather than
+	// advertised as a key that does nothing.
+	if p.concurrencyKeys() {
+		keys = append(keys, keyHint{"+/-", "concurrency"})
+	}
+	if p.quitArmed {
+		keys = append(keys, keyHint{"esc", "keep"})
 	}
 	// a fills or empties what the focused pane is showing. The run pane shows
 	// switches rather than a selection, so there is nothing there for it to
@@ -1118,7 +1170,7 @@ func (p *picker) renderKeys() string {
 		// filter rather than launching. Advertising the pane keys here is
 		// how a reader thinks they cancelled a run they only searched.
 		keys = []keyHint{{"⏎", "keep"}, {"esc", "clear"}, {"↑↓", "move"}}
-	case p.filter != "":
+	case p.filter != "" && !p.quitArmed:
 		// A live filter keeps the run keys and adds the one that clears it.
 		keys = slices.Insert(slices.Clone(keys), 2, keyHint{"esc", "clear"})
 	}
@@ -1179,9 +1231,13 @@ func (p *picker) renderNarrow() string {
 	}
 	// Enter is dead while the run is blocked, and the reason is the only
 	// thing here that says so: the wide view carries it on the status line,
-	// but this view has no status line to carry it.
-	if why := p.blocked(); why != "" {
-		rows = append(rows, styleWarn.Render("⚠ "+why))
+	// but this view has no status line to carry it. An armed q replaces it:
+	// this view has no status line either, so the warning goes here.
+	switch {
+	case p.quitArmed:
+		rows = append(rows, styleWarn.Render("⚠ q again to discard, esc to keep"))
+	case p.blocked() != "":
+		rows = append(rows, styleWarn.Render("⚠ "+p.blocked()))
 	}
 	keys := "⏎ run  q cancel  ? help"
 	if p.typing {
@@ -1205,6 +1261,10 @@ func (p *picker) renderHelp() string {
 	return renderHelpPage(p.helpLines(), p.helpScroll, p.w, p.h)
 }
 
+// qLeave is how leaving is spelled: one press arms, a second throws the run
+// away, and the way back is stated on the same line.
+const qLeave = "  q            leave without running (press twice; esc keeps it)"
+
 func (p *picker) helpLines() []string {
 	lines := []string{
 		styleTitle.Render("compose a run"),
@@ -1224,14 +1284,18 @@ func (p *picker) helpLines() []string {
 		"  ← / →, h / l open or close a set; change a value",
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by name or description; enter keeps it, esc clears",
-		"  + / -        raise or lower concurrency",
 		"  enter        run the composed command",
-		"  q            leave without running",
+		qLeave,
 		"",
 		styleDim.Render("  Picking no reviews runs all of them."),
 		styleDim.Render("  suggest: an agent proposes the reviews; anything ticked is also scheduled."),
 		styleDim.Render("  stacked PRs: each changed review opens a PR on the previous one."),
 	)
+	// The key lines, like the legend, list what this screen can act on: a
+	// stack owns the job count, and one cpu leaves nothing to raise it to.
+	if p.concurrencyKeys() {
+		lines = append(lines, "  + / -        raise or lower concurrency, up to the cpu count")
+	}
 	if why := p.blocked(); why != "" {
 		lines = append(lines, "", styleWarn.Render("  "+why))
 	}

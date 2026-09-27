@@ -572,7 +572,9 @@ func TestPickHintShowsTheFocusedReviewDescription(t *testing.T) {
 	}
 }
 
-// Enter launches, q leaves with nothing.
+// Enter launches. q leaves with nothing, but only on the second press: a
+// composed run is a screenful of picking, and the dashboard arms the same key
+// for the same reason.
 func TestPickQuitKeys(t *testing.T) {
 	p := demoPicker()
 	p.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -580,9 +582,46 @@ func TestPickQuitKeys(t *testing.T) {
 		t.Fatal("enter should launch")
 	}
 	p = demoPicker()
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		t.Fatal("the first q must not leave")
+	}
+	if !strings.Contains(stripANSI(p.renderStatus()), "q again to discard") {
+		t.Fatalf("an armed q says nothing on screen:\n%s", stripANSI(p.renderStatus()))
+	}
+	if !strings.Contains(stripANSI(p.renderKeys()), "q:discard") {
+		t.Fatalf("the key line still offers to cancel:\n%s", stripANSI(p.renderKeys()))
+	}
+	// esc takes the arm back rather than clearing an empty filter, so the
+	// run is still there to be launched.
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc must cancel the arm, not leave")
+	}
+	if p.quitArmed {
+		t.Fatal("esc did not take the arm back")
+	}
 	press(p, "q")
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd == nil {
+		t.Fatal("a second q should leave")
+	}
 	if p.launch {
 		t.Fatal("q should leave without launching")
+	}
+}
+
+// Any key other than q or esc takes the arm back, so an arm set before a
+// search cannot turn the next q into a second press the reader never saw.
+func TestPickArmedQuitIsDroppedByAnotherKey(t *testing.T) {
+	p := demoPicker()
+	press(p, "q", "j")
+	if p.quitArmed {
+		t.Fatal("moving the cursor did not take the arm back")
+	}
+	press(p, "q", "/", "s", "e", "c", "enter")
+	if p.quitArmed {
+		t.Fatal("typing a filter left the arm set behind an invisible status line")
 	}
 }
 
@@ -680,8 +719,8 @@ func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
 	if p.launch {
 		t.Fatal("q on the overlay must not launch")
 	}
-	// A later q, with the view back, still leaves.
-	press(p, "q")
+	// A later q, with the view back, still leaves, on its second press.
+	press(p, "q", "q")
 	if p.launch {
 		t.Fatal("q should leave without launching")
 	}
@@ -1455,5 +1494,45 @@ func TestKeyLegendDropsTheDeadAllNoneKeyInTheRunPane(t *testing.T) {
 	}
 	if strings.Contains(got, "all/none") {
 		t.Fatalf("a filtered run pane advertises a dead key: %s", got)
+	}
+}
+
+// The legend drops every key the screen cannot act on, and +/- is no
+// exception: stack mode owns the job count, and a one-cpu machine has nothing
+// to raise it to.
+func TestPickLegendDropsDeadConcurrencyKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(p *picker)
+	}{
+		{"stack mode", func(p *picker) { p.optByFlag("--stacked-prs").on = true }},
+		{"one cpu", func(p *picker) { p.cfg.CPUs = 1 }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := demoPicker()
+			tc.setup(p)
+			if got := stripANSI(p.renderKeys()); strings.Contains(got, "concurrency") {
+				t.Fatalf("the legend offers a key that does nothing: %s", got)
+			}
+		})
+	}
+	p := demoPicker()
+	if got := stripANSI(p.renderKeys()); !strings.Contains(got, "+/-:concurrency") {
+		t.Fatalf("a live machine lost the concurrency keys: %s", got)
+	}
+}
+
+// + and space reach the same row, so they stop in the same place: past the
+// machine's cpus the meter is full and the lane has nothing to run on.
+func TestPickConcurrencyKeysStopAtTheCPUs(t *testing.T) {
+	p := demoPicker()
+	p.cfg.CPUs = 2
+	press(p, "+", "+", "+", "+")
+	if p.concurrency().n != 2 {
+		t.Fatalf("concurrency is %d, want the 2-cpu ceiling", p.concurrency().n)
+	}
+	press(p, "-", "-", "-")
+	if p.concurrency().n != 1 {
+		t.Fatalf("concurrency is %d, want the floor of 1", p.concurrency().n)
 	}
 }
