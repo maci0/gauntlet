@@ -247,16 +247,44 @@ clean: ## remove build artifacts
 # uploaded assets, so stale binaries here would ship as release artifacts.
 # checksums.txt and sbom.txt are rewritten by `release`; drop them here so
 # `make dist` cannot leave a previous version's inventory beside new binaries.
+#
+# The four cross-compiles run concurrently: they share a build cache and
+# nothing else, so serializing them made every dist and every release pay four
+# compile passes where the slowest one bounds the whole target. Each build
+# waits on its own pid and the target fails if any of them did, so parallel
+# here does not become "ship whatever finished".
+#
+# The last loop is the check the asset name alone cannot give: GOOS/GOARCH are
+# set per build, so a typo in PLATFORMS produced a correctly named binary for
+# the wrong platform, and the smoke test only ever ran the host's. `go version
+# -m` reads the platform out of the binary itself, so the name and the
+# contents are compared instead of trusted.
 .PHONY: dist
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
 	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.txt
-	@for target in $(PLATFORMS); do \
+	@set -e; pids=; for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		echo "building $$name"; \
-		CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
-			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
+		( CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
+			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) ) & \
+		pids="$$pids $$name:$$!"; \
+	done; \
+	status=0; for entry in $$pids; do \
+		name=$${entry%:*}; \
+		if wait "$${entry#*:}"; then echo "built $$name"; else echo "build failed: $$name" >&2; status=1; fi; \
+	done; [ $$status -eq 0 ] || exit $$status
+	@set -e; for target in $(PLATFORMS); do \
+		goos=$${target%/*}; goarch=$${target#*/}; \
+		f="$(DIST)/$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
+		info=$$($(GO) version -m "$$f" 2>/dev/null) || { echo "dist: $$f is missing or not a Go binary" >&2; exit 1; }; \
+		for kv in GOOS=$$goos GOARCH=$$goarch; do \
+			key=$${kv%%=*}; want=$${kv#*=}; \
+			got=$$(printf '%s\n' "$$info" | awk -v k="$$key" -v v="$$want" '$$1 == "build" && $$2 == k "=" v { print v }'); \
+			[ "$$got" = "$$want" ] || { echo "dist: $$f does not record $$kv, so it is not the binary its name claims" >&2; exit 1; }; \
+		done; \
+		echo "verified $$f ($$goos/$$goarch)"; \
 	done
 
 # The one place a release asset's name is computed. `gauntlet update` derives
@@ -301,6 +329,11 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # pipefail). Every platform in PLATFORMS is checked, not just the host's:
 # those are the binaries `dist` ships, and a reproducibility claim that covers
 # one of four proves nothing about the other three. CI runs it on every push.
+#
+# The two copies of a platform build at the same time and the platforms stay
+# in sequence, so a mismatch is still reported next to the platform it belongs
+# to. `set -e` carries the recipe rather than a `&&` chain: `cmd && (build) &`
+# would background the whole preceding list, archive and all.
 # `:=` for the reason TMPDIR has it, and the recipe below rm -rf's this path
 # before building: an exported REPRO_DIR would otherwise choose it.
 REPRO_DIR := $(HOME)/.cache/gauntlet/repro
@@ -308,23 +341,27 @@ REPRO_DIR := $(HOME)/.cache/gauntlet/repro
 .PHONY: repro
 repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
 	@test "$(REPRO_DIR)" != "/.cache/gauntlet/repro" || { echo "HOME is unset; set HOME or REPRO_DIR to a disk-backed directory" >&2; exit 1; }
-	@rm -rf "$(REPRO_DIR)" && mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b" && \
-		trap 'rm -rf "$(REPRO_DIR)"' EXIT && \
+	@set -e; \
+		rm -rf "$(REPRO_DIR)"; \
+		mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b"; \
+		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
 			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
 			--exclude=./__pycache__ \
 			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \
-		done && \
+		done; \
 		for target in $(PLATFORMS); do \
 			goos=$${target%/*}; goarch=$${target#*/}; \
-			echo "repro: $$target copy a (LC_ALL=C TZ=UTC)" && \
+			echo "repro: $$target (copy a: LC_ALL=C TZ=UTC, copy b: ambient locale and TZ)"; \
 			(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
-				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) && \
-			echo "repro: $$target copy b (ambient locale and TZ)" && \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
+			pa=$$!; \
 			(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL \
-				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) && \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
+			pb=$$!; \
+			wait $$pa || exit 1; wait $$pb || exit 1; \
 			cmp "$(REPRO_DIR)/a/$(BINARY)" "$(REPRO_DIR)/b/$(BINARY)" || exit 1; \
-		done && \
+		done; \
 		echo "repro: identical bytes from different paths, locales, and timezones"

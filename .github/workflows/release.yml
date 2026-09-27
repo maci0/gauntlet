@@ -22,9 +22,16 @@ jobs:
     # checkout, setup-go, `make release` (which runs the test suite), and the
     # smoke test; Publish puts it back. gh and anything that reads
     # GITHUB_TOKEN then cannot talk to the API until that step.
+    #
+    # LC_ALL and TZ cover the steps the Makefile cannot: the publish step
+    # globs dist/gauntlet_* outside make, and shell orders that expansion with
+    # strcoll, so the asset order a release shows would follow the runner's
+    # collation. The Makefile pins the same two for everything it runs.
     env:
       GITHUB_TOKEN: ""
       GH_TOKEN: ""
+      LC_ALL: C
+      TZ: UTC
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
