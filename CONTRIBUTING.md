@@ -7,8 +7,11 @@ configurations and a cross-compilation pass.
 ## Prerequisites
 
 - Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
-  toolchain works. CI installs whatever go.mod asks for, so there is nothing
-  else to pin.
+  toolchain builds, tests, and formats the tree. `make dist` and `make repro`
+  are the exception: release artifacts are built with the exact release named
+  by `GO_VERSION` in the [Makefile](Makefile), which is what every CI job
+  installs, and they refuse anything else. A deliberate toolchain bump edits
+  that one line, and `make dist GO_VERSION=<x.y.z>` overrides it without it.
 - GNU make and git, on Linux or macOS. The runner depends on POSIX semantics
   (process groups, flock, O_NOFOLLOW), so there is no Windows build.
 - A working C compiler for the race detector used by `make test`, `make

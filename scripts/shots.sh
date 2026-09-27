@@ -13,6 +13,11 @@ export GOFLAGS="-mod=readonly"
 export GOWORK=off
 export GOTOOLCHAIN=local
 export CGO_ENABLED=0
+# The PNGs are checked in, so they must not follow the host the maintainer
+# happens to be on. LC_ALL fixes collation, TZ fixes any date the renderer
+# prints. The Makefile pins the same two for everything it runs.
+export LC_ALL=C
+export TZ=UTC
 
 # Walk up to the module root rather than assuming where this script sits.
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,7 +64,11 @@ else
 	exit 1
 fi
 
-CLICOLOR_FORCE=1 SHOT_DIR="$work" go test "$root/internal/ui" -run TestWriteShots -count=1 >/dev/null
+# The screenshots come from the build configuration `make build` ships, the
+# Makefile's default TAGS. The two agree today; the tag is here so a future
+# tag-gated code path cannot quietly change a picture out from under the
+# checked-in PNGs, which nothing else would notice.
+CLICOLOR_FORCE=1 SHOT_DIR="$work" go test -tags sqlite "$root/internal/ui" -run TestWriteShots -count=1 >/dev/null
 
 for shot in 'dashboard:gauntlet --tui' 'launcher:gauntlet pick'; do
 	name="${shot%%:*}"

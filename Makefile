@@ -27,6 +27,15 @@ export GOARM64 := v8.0
 TAGS    ?= sqlite
 GOTAGS  := $(if $(TAGS),-tags $(TAGS),)
 
+# The one build input that cannot be normalized away is the compiler: a Go
+# binary records the version that compiled it, so the same source under two
+# toolchains is not the same artifact. The `go` line in go.mod is a language
+# minimum, and GOTOOLCHAIN=local below compiles with whatever is installed, so
+# without this pin the release is built by whichever 1.27.x the runner happened
+# to have that week. Every workflow installs exactly this release, and the
+# artifact targets refuse any other (TestGoVersionPinMatchesCI).
+GO_VERSION ?= 1.27.1
+
 # Scripts job pins, matching .github/workflows/ci.yml (TestScriptsToolPinsMatchCI).
 RUFF_VERSION ?= 0.16.4
 MYPY_VERSION ?= 2.3.1
@@ -166,6 +175,23 @@ test-cgo:
 vet: ## run go vet
 	$(GO) vet $(GOTAGS) ./...
 
+# Release artifacts, and only those: `make build`, `make test`, and `make
+# check` run on whatever toolchain a contributor has, which is right. A tagged
+# release is a different question, since the compiler version is recorded in
+# every binary it ships and the next patch release of Go would change those
+# bytes. The suffix a vendor toolchain carries (`-X:nodwarf5`) is not part of
+# the release, so only the goX.Y.Z prefix is compared. `?=` means an explicit
+# `make dist GO_VERSION=x.y.z` still overrides, which is how a maintainer ships
+# a deliberate toolchain bump without editing this file first.
+.PHONY: toolchain
+toolchain: ## fail unless the local Go release is the one release artifacts are built with
+	@got="$$($(GO) env GOVERSION)"; want="go$(GO_VERSION)"; \
+		[ "$${got%%-*}" = "$$want" ] || { \
+			echo "toolchain: this is $$got, release artifacts are built with $$want" >&2; \
+			echo "toolchain: install $$want, or pass GO_VERSION=<x.y.z> to build and record a different one" >&2; \
+			exit 1; \
+		}
+
 # Package directories only: the Go tool already ignores dot-directories, but
 # gofmt walks everything, including scratch fixtures.
 GOFILES = $(shell $(GO) list -mod=readonly -f '{{.Dir}}' ./...)
@@ -291,6 +317,7 @@ clean: ## remove build artifacts
 # -m` reads the platform out of the binary itself, so the name and the
 # contents are compared instead of trusted.
 .PHONY: dist
+dist: | toolchain
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
 	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.txt
@@ -380,6 +407,7 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 REPRO_DIR := $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
+repro: | toolchain
 repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
 	@test "$(REPRO_DIR)" != "/.cache/gauntlet/repro" || { echo "HOME is unset; set HOME or REPRO_DIR to a disk-backed directory" >&2; exit 1; }
 	@set -e; \

@@ -463,9 +463,13 @@ installed toolchain rather than downloading compiler releases from the network.
 Make also exports `GOAMD64=v1` and `GOARM64=v8.0`, so ambient CPU settings
 cannot raise the minimum processor requirements of release binaries.
 The one input that cannot be normalized is the toolchain: a binary records
-the compiler version, so reproducing a release byte-for-byte means checking
-out the tag with a clean tree and the Go version the `go` line in `go.mod`
-names. `make repro` proves the rest on every CI run by building twice and
+the compiler version, and the `go` line in `go.mod` is a language minimum, not
+the release that ships. So the exact Go release is pinned once, in the
+Makefile (`GO_VERSION`), every workflow installs exactly that one instead of
+resolving the `go` line, and the targets whose bytes ship (`make dist`, and
+`make repro` with it) refuse a toolchain the pin does not name. Rebuilding a
+release byte-for-byte means the tag, a clean tree, and that Go release.
+`make repro` proves the rest on every CI run by building twice and
 comparing, for each platform in `PLATFORMS`; the second build strips the
 locale the Makefile pins, so it runs under the host's ambient one.
 

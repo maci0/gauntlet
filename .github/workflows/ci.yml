@@ -38,7 +38,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          # The `go` line in go.mod is a minimum; a release is built with one exact
+          # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
+          go-version: 1.27.1
       # check compiles all three tag configurations itself and every build
       # constraint in the tree is a tag constraint, never a GOOS one, so its
       # verdict is identical in all six cells: run it once per OS and let the
@@ -110,7 +112,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          # The `go` line in go.mod is a minimum; a release is built with one exact
+          # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
+          go-version: 1.27.1
       # Cross-compilation is part of the contract: `gauntlet update` can only
       # install a platform that actually builds.
       - run: make dist VERSION=ci
@@ -144,5 +148,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
-          go-version-file: go.mod
+          # The `go` line in go.mod is a minimum; a release is built with one exact
+          # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
+          go-version: 1.27.1
       - run: make repro

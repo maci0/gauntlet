@@ -51,6 +51,78 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	}
 }
 
+// The compiler is the one build input nothing in the build normalizes: a Go
+// binary records the version that compiled it, and GOTOOLCHAIN=local compiles
+// with whatever is installed. So the exact release is pinned once, in the
+// Makefile, and every job installs that one. A workflow that resolved its Go
+// from go.mod would follow the `go` line, which is a minimum, and build
+// releases with whichever patch came out that week.
+func TestGoVersionPinMatchesCI(t *testing.T) {
+	root := moduleRoot(t)
+	pin := goPinFromMakefile(makefileText(t))
+	if pin == "" {
+		t.Fatal("Makefile must set GO_VERSION to the exact Go release artifacts are built with")
+	}
+	dir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps int
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".yml") {
+			continue
+		}
+		name := ent.Name()
+		text := readRepoFile(t, filepath.Join(dir, name))
+		if strings.Contains(text, "go-version-file:") {
+			t.Errorf("%s: go-version-file resolves the `go` line in go.mod, a minimum; pin go-version to %s", name, pin)
+		}
+		for line := range strings.SplitSeq(text, "\n") {
+			if !strings.Contains(line, "uses: actions/setup-go") {
+				continue
+			}
+			steps++
+			if !strings.Contains(text, "go-version: "+pin) {
+				t.Errorf("%s: actions/setup-go must install go-version: %s, the pin the Makefile builds release artifacts with", name, pin)
+			}
+		}
+	}
+	if steps == 0 {
+		t.Fatal("no workflow installs Go")
+	}
+}
+
+// goPinFromMakefile returns the Makefile's GO_VERSION, without the variable's
+// `?=` assignment.
+func goPinFromMakefile(text string) string {
+	for line := range strings.SplitSeq(text, "\n") {
+		rest, ok := strings.CutPrefix(strings.TrimSpace(line), "GO_VERSION ?= ")
+		if !ok {
+			continue
+		}
+		return strings.TrimSpace(rest)
+	}
+	return ""
+}
+
+// The artifact targets are the ones whose bytes ship, so they are the ones
+// that refuse a toolchain the pin does not name. build, test, and check must
+// keep working on whatever a contributor has installed.
+func TestToolchainPinGatesArtifactTargets(t *testing.T) {
+	text := makefileText(t)
+	for _, target := range []string{"dist", "repro"} {
+		if !strings.Contains(text, target+": | toolchain\n") {
+			t.Errorf("make %s must require the toolchain pin; a release is the compiler version recorded in every binary it ships", target)
+		}
+	}
+	for _, target := range []string{"build", "test", "check", "ci"} {
+		if strings.Contains(text, "\n"+target+": | toolchain\n") {
+			t.Errorf("make %s must not require the toolchain pin; contributors build and test on the toolchain they have", target)
+		}
+	}
+}
+
 func TestMakefileExportsBuildEnvironment(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
