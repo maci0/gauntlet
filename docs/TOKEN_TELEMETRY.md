@@ -224,8 +224,8 @@ shape exactly:
   `inputTokens`, `outputTokens`, and `reasoningTokens` (the streaming
   `assistant/chunk` usage event repeats those numbers).
 
-toktop 0.7.0 reads the concatenated zstd frames. Gauntlet does not ask dsh
-to write uncompressed JSONL.
+toktop (pinned in `go.mod`) reads the concatenated zstd frames. Gauntlet does
+not ask dsh to write uncompressed JSONL.
 
 Note that dsh's own `ctx.tokenMeter` is deliberately a heuristic (four
 characters per token). That number is never used here: an estimate presented

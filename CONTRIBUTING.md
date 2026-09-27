@@ -28,10 +28,11 @@ make test             # every package, race detector, shuffled order (~30s)
 ```
 
 The first run downloads Go modules; after that the loop is offline.
-`make` passes `-mod=readonly`, so a drift from go.sum fails the command
-instead of rewriting the lockfile. Change modules with `go get` / `go mod tidy`,
-not as a side effect of the build. `gofmt` is the one from `$(go env GOROOT)`,
-not whatever happens to be first on `PATH`.
+`make` passes `-mod=readonly` on every target except `make vuln`, so a drift
+from go.sum fails the command instead of rewriting the lockfile. Change
+modules with `go get` / `go mod tidy`, not as a side effect of the build.
+`gofmt` is the one from `$(go env GOROOT)`, not whatever happens to be first on
+`PATH`.
 
 For the edit-test loop, run one package or one test instead of the suite:
 
@@ -64,9 +65,10 @@ override it on the command line (`make test TMPDIR=...`) instead.
 make ci               # make check && make test
 ```
 
-One command runs every check a pull request runs, all three tag legs and the
-scripts lint included, for when a red check would otherwise first appear after
-push:
+One command runs the analysis, the scripts lint, and the suite under all three
+tag sets, for when a red check would otherwise first appear after push. A
+pull request also runs `make cover`, `make dist`, and `make repro`, which the
+release path adds on top:
 
 ```sh
 make verify           # check, check-scripts, and the suite under all three tag sets

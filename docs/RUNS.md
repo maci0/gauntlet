@@ -47,10 +47,12 @@ gauntlet -j 4 -a mixed --once
   with more files than the prompt will name, or with no path safe to put in
   the prompt, is left aborted with the branch kept, the same as a resolver
   that did not finish.
-- What the agent does not resolve (markers left in place, a launch that
-  failed, a timeout) leaves the merge **aborted and the branch kept**, named
-  after the review, so the work can be inspected or merged by hand. Unresolved
-  conflicts are reported as their own outcome and make the run exit nonzero.
+- What the agent does not resolve (markers left in place) leaves the merge
+  **aborted and the branch kept**, named after the review, so the work can be
+  inspected or merged by hand. So does a merge that fails outright.
+  Unresolved conflicts are reported as their own outcome and make the run exit
+  nonzero. A launch failure or a timeout never reaches a merge: its branch is
+  deleted, since the review committed nothing worth keeping.
 - A review that is retried (`--retries`, after a launch failure or a nonzero
   exit) starts over from the same files the first attempt saw: whatever the
   failed attempt left behind is reset away. Isolated reviews rewind their
@@ -369,7 +371,9 @@ has changed or disappeared, and both carry `attempt`, the 1-based try the
 event belongs to. One `review_start` is published per attempt, and the
 attempt that decides the review publishes the `review_end` carrying its
 number, so the end names the launch it closes and shares its `review` and
-`prompt_sha256`. A retry to a different agent carries on counting instead of
+`prompt_sha256`. A launch that never got as far as building its command
+publishes an end with no matching start. A retry to a different agent carries
+on counting instead of
 restarting at 1. An attempt that failed and was retried therefore has a start
 with no end, and an end whose `attempt` is above 1 says how many tries came
 before it; only the end counts the review, since the earlier attempts have no

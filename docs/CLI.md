@@ -102,12 +102,12 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `-C, --dir DIR` | cwd | Directory to review. |
 | `--dirs LIST` | none | Review several directories in parallel; globs are expanded. Conflicts with `--dir`. Also accepted as `--target-dirs`, the name the Python tool used. |
 | `--retries N` | 2 | Reruns of a failed review on the same agent, waiting longer each time (5s, then doubling, jittered). Each retry starts from the same tree the first attempt saw. A run that exhausts them still falls back to another agent. Retries and fallback require a restorable starting tree; unavailable snapshots (including outside Git) or failed restoration stop them. Timeouts are never retried, and neither is a command that would not build: the same argv would fail the same way, so that goes straight to the fallback. Retries and fallback stop when a run budget is exhausted, including during backoff. |
-| `-j, --jobs N` | 1 | Parallel lanes **per directory**; >1 uses N persistent worktrees and merges back. With `--dirs`, the agents running at once are `jobs x directories`. |
+| `-j, --jobs N` | 1 | Parallel lanes **per directory**; >1 uses N persistent worktrees and merges back. With `--dirs`, the agents running at once are `jobs x directories`. Above 1 the run needs a repository with at least one commit and no uncommitted changes to tracked files, which it refuses to start without: commit or stash first. Untracked files are fine, and stay out of the review. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Wall-clock budget for the whole run. |
 | `--token-budget N` | unlimited | Stop starting reviews once the run's agents have reported N tokens in total, across every loop, lane, and agent. Wall clock bounds a slow machine, not the bill: an agent that stalls can spend a whole timeout's tokens in seconds. Counted from the tokens the reviews report, so a review that reports none costs nothing against the ceiling. The commit and conflict steps launch agents whose tokens are not counted. The review in flight finishes, and the commit and merge steps still run. |
 | `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it; a value that splits into nothing is a usage error. Used only with `--usage-limit`. |
-| `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
+| `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The two are used together or not at all: either alone is a usage error. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
 | `-1, --once` | off | One loop, then stop. Conflicts with `--max-loops`. |
 | `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each a fresh worktree from the previous tip. |
 | `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any nonnegative integer literal (`0x…` included); `0` derives one from the clock. A headless run prints the effective seed in its first line, so a run started without `--seed` reports the one that replays it, but only an explicit value replays on its own: a derived seed differs every run. One seed drives the whole run, the suggest step's agent order included, and a hot reload carries it across the exec. |
@@ -151,7 +151,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--limit N` | `20` | How many past runs to list in `gauntlet runs`. |
+| `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
 
 ## Environment variables
 

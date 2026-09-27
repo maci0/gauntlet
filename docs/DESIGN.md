@@ -324,8 +324,10 @@ The invariants are:
    exact head/base PR exists. Publication failure therefore stops scheduling.
 4. No-change and exhausted agent failures reset and delete their unpublished
    layer, leaving the preceding successful layer as the next base.
-5. Branch names derive from the initial base object id, review position,
-   review name, and (after the first `--max-loops` pass) the pass number.
+5. A published branch name derives from the review position, the review name,
+   (after the first `--max-loops` pass) the pass number, and a topic slug taken
+   from the layer's commit subject. Only the provisional `-wip-` branch a
+   layer starts on carries a fragment of the base object id.
    Existing branches and PRs are checked before an agent starts, which makes
    hot reload and repeated invocation convergent. A `gh pr create` that fails
    after GitHub accepted it is recovered by that same head/base lookup, so a
