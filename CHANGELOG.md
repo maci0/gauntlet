@@ -35,6 +35,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Changed
 
+- `internal/humanize` gained `Plural`, and the two private `plural` helpers in `cmd/gauntlet` and `internal/runner` are gone. The runner's took a bare noun and appended an "s", so any word not ending in one was miscounted; both callers now name both spellings. The wording they render is unchanged, except that a `gauntlet doctor` count in the thousands is now grouped (`1,234 journals`) like every other count in the tree.
 - The release asset `sbom.txt` is now `sbom.json`. Anyone parsing the old file reads the CycloneDX document instead; the module paths and versions it listed are unchanged.
 
 ### Fixed

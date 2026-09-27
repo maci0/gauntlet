@@ -99,15 +99,13 @@ func (b prBody) changes() string {
 		lines = append(lines, "- "+mdCode(path, prBodyPathMax))
 	}
 	if rest := len(b.Files) - len(shown); rest > 0 {
-		noun := "files"
-		if rest == 1 {
-			noun = "file"
-		}
-		lines = append(lines, fmt.Sprintf("- and %d more %s", rest, noun))
+		lines = append(lines, fmt.Sprintf("- and %s", humanize.Plural(rest, "more file", "more files")))
 	}
 	if b.HaveLines {
 		stat := fmt.Sprintf("%s changed, %s, %s.",
-			plural(len(b.Files), "file"), plural(b.Ins, "insertion"), plural(b.Del, "deletion"))
+			humanize.Plural(len(b.Files), "file", "files"),
+			humanize.Plural(b.Ins, "insertion", "insertions"),
+			humanize.Plural(b.Del, "deletion", "deletions"))
 		if len(lines) > 0 {
 			stat = "\n" + stat
 		}
@@ -160,14 +158,4 @@ func mdText(s string, limit int) string {
 // character was there instead of silently getting a path that does not exist.
 func mdCode(s string, limit int) string {
 	return "`" + strings.ReplaceAll(mdText(s, limit), "`", "'") + "`"
-}
-
-// plural counts in words for a body that is read as a document rather than
-// scanned as a table, where "1 files changed" is the kind of seam that makes
-// a reader wonder what else was generated carelessly.
-func plural(n int, word string) string {
-	if n == 1 {
-		return "1 " + word
-	}
-	return fmt.Sprintf("%s %ss", humanize.Count(n), word)
 }

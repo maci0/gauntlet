@@ -12,6 +12,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 )
 
@@ -266,7 +267,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	if st, err := journal.Inspect(); err != nil {
 		w.println(pal.yellow("Run history unreadable: " + err.Error()))
 	} else if st.Journals > 0 || st.Pruned > 0 {
-		line := fmt.Sprintf("Run history: %s", plural(st.Journals, "journal", "journals"))
+		line := fmt.Sprintf("Run history: %s", humanize.Plural(st.Journals, "journal", "journals"))
 		if st.Disagreed > 0 {
 			w.println(pal.yellow(line + fmt.Sprintf(
 				", %d not matched by the index (gauntlet runs repairs what it can reconstruct)", st.Disagreed)))
@@ -276,7 +277,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		if st.Pruned > 0 {
 			w.println(pal.dim(fmt.Sprintf(
 				"  %s still recoverable: gauntlet runs --restore <run-id>",
-				plural(st.Pruned, "pruned run", "pruned runs"))))
+				humanize.Plural(st.Pruned, "pruned run", "pruned runs"))))
 		}
 	}
 	if usable == 0 && !pinned {
@@ -296,15 +297,6 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		return exitFail
 	}
 	return exitOK
-}
-
-// plural counts a thing in a sentence, where "1 journals" reads as a bug in
-// the report rather than in the tree.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return fmt.Sprintf("%d %s", n, one)
-	}
-	return fmt.Sprintf("%d %s", n, many)
 }
 
 // envSettingLines reports which documented variables this process actually

@@ -71,6 +71,16 @@ func Count(n int) string {
 	return b.String()
 }
 
+// Plural counts a thing in words, taking both spellings so a caller with an
+// irregular noun does not have to append an "s" to get it wrong. The count is
+// grouped, so a long figure reads as one number rather than as digits.
+func Plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return Count(n) + " " + many
+}
+
 // Share is part as a whole-number percentage of whole, truncated, and held
 // inside 0-100. whole <= 0 is no measurement and reports 0 rather than
 // dividing by it, and a part above the whole (an agent whose disclosed split
