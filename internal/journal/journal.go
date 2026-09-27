@@ -57,9 +57,21 @@ func Home() string {
 // StateDir holds hot-reload handoff files.
 func StateDir() string { return filepath.Join(Home(), "state") }
 
-// NewRunID returns a sortable, collision-resistant id for one run.
-func NewRunID(now time.Time) string {
-	return fmt.Sprintf("%s-%04x", now.UTC().Format("20060102T150405Z"), os.Getpid()&0xffff)
+// NewRunID returns a sortable id for one run: the UTC start instant, so ids
+// order by age, then the pid that minted it.
+//
+// The whole pid, not a prefix of it, because the id is the key the index
+// dedupes on and the journal file is opened by: two runs whose ids match share
+// one event stream, and the second one's ending replaces the first one's row.
+// Truncating the pid to its low 16 bits made that a question of a shared
+// second and a wrapped pid rather than of two live processes, and two live
+// processes never share a pid.
+func NewRunID(now time.Time) string { return runIDFor(now, os.Getpid()) }
+
+// runIDFor is NewRunID for a stated pid, so the one thing the id has to
+// guarantee can be tested against pids no live pair could be.
+func runIDFor(now time.Time, pid int) string {
+	return fmt.Sprintf("%s-%x", now.UTC().Format("20060102T150405Z"), pid)
 }
 
 // Summary is the one-line record of a finished run, appended to index.jsonl.

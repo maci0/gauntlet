@@ -77,8 +77,8 @@ func eventsFile(path string, gate func([]byte) bool, visit func([]byte)) error {
 // failure.
 var ErrNoJournal = errors.New("no journal for run")
 
-// maxRunIDLen bounds a run id: NewRunID produces 23 bytes, and a cap keeps a
-// hostile or fat-fingered argument from building absurd paths.
+// maxRunIDLen bounds a run id: NewRunID produces about 22 bytes, and a cap
+// keeps a hostile or fat-fingered argument from building absurd paths.
 const maxRunIDLen = 128
 
 // validRunID reports whether s may be joined into a journal path. Run ids are

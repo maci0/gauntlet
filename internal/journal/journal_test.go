@@ -18,6 +18,37 @@ import (
 	"time"
 )
 
+// A run id is the key the index dedupes on and the journal file is opened by:
+// two runs whose ids match share one event stream, and the second one's ending
+// replaces the first one's row. The suffix has to carry the whole pid, since
+// two live processes never share one, and truncating it makes a collision a
+// question of a wrapped pid rather than of anything at all. The pids here are
+// ones no live pair could hold, so the truncation this guards against cannot
+// pass by luck.
+func TestRunIDKeepsTheWholeProcessID(t *testing.T) {
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	const stamp = "20260825T131500Z"
+	for _, tc := range []struct {
+		name string
+		pid  int
+	}{
+		{name: "low", pid: 0x2340},
+		{name: "one wrap above low", pid: 0x12340},
+		{name: "two wraps above low", pid: 0x22340},
+	} {
+		id := runIDFor(now, tc.pid)
+		if !strings.HasPrefix(id, stamp) {
+			t.Fatalf("run id %q does not start with the start instant", id)
+		}
+		if !strings.HasSuffix(id, fmt.Sprintf("%x", tc.pid)) {
+			t.Errorf("run id %q does not carry the whole pid %x", id, tc.pid)
+		}
+	}
+	if a, b := runIDFor(now, 0x2340), runIDFor(now, 0x12340); a == b {
+		t.Fatalf("pids differing above bit 16 produced the same run id %q", a)
+	}
+}
+
 // collect replays runID's journal through Events and returns what it visited,
 // for tests that assert on whole streams.
 func collect(runID string) (out []map[string]any, err error) {

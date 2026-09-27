@@ -2714,3 +2714,61 @@ func TestBuildFailureGoesStraightToTheFallbackAgent(t *testing.T) {
 		t.Fatal("the failure carried no detail: the operator cannot see why it could not launch")
 	}
 }
+
+// A second pass over the same directory is the normal case, not an edge case:
+// the user reruns the CLI, the loop comes round again, a reload reexecs. With
+// an agent whose edit is itself convergent, the repository after two runs has
+// to be the repository after one: no second commit for work that is already
+// applied, no branch or lane left behind, and a clean tree.
+func TestSecondPassOverTheSameDirectoryChangesNothing(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	// The agent adds the line only when it is missing, so what differs between
+	// the two passes is the runner's own work, not the agent's.
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+grep -q marker main.go || echo '// marker' >> main.go
+echo "RESULT: $(git diff --stat | tail -1)"`)
+
+	git := func(t *testing.T, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repo
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	state := func(t *testing.T) (head, status, diff string) {
+		t.Helper()
+		return git(t, "rev-parse", "HEAD"),
+			git(t, "status", "--porcelain"),
+			git(t, "diff")
+	}
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	if r := runQuiet(t, cfg); r.Stats().Counts().OK != 1 {
+		t.Fatalf("first pass did not succeed: %+v", r.Stats().Counts())
+	}
+	firstHead, firstStatus, firstDiff := state(t)
+
+	if r := runQuiet(t, cfg); r.Stats().Counts().OK != 1 {
+		t.Fatalf("second pass did not succeed: %+v", r.Stats().Counts())
+	}
+	secondHead, secondStatus, secondDiff := state(t)
+	if secondStatus != firstStatus {
+		t.Errorf("second pass changed the working tree:\nfirst:\n%s\nsecond:\n%s",
+			firstStatus, secondStatus)
+	}
+	if secondDiff != firstDiff {
+		t.Errorf("second pass applied the review again:\nfirst:\n%s\nsecond:\n%s",
+			firstDiff, secondDiff)
+	}
+	if secondHead != firstHead {
+		t.Errorf("a no-op review committed again: %s then %s", firstHead, secondHead)
+	}
+	if refs := git(t, "for-each-ref", "--format=%(refname)",
+		"refs/heads/gauntlet", "refs/heads/review"); refs != "" {
+		t.Errorf("a lane or review branch survived the run:\n%s", refs)
+	}
+}
