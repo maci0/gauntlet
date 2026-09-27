@@ -291,15 +291,18 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 .PHONY: ci
 ci: check test ## Go pull-request checks: fmt, fix, vet, and the test suite
 
-# Everything ci.yml runs on a pull request, in one command, on one host. It is
-# the answer to "would this be green after push", and it is deliberately not
-# the edit-test loop: three race suites in a row is minutes, not seconds. The
-# three legs are recursive makes rather than three prerequisites, so a failing
-# tag stops the run and names the leg instead of continuing to the next one.
-# make cover is left out: it reruns the sqlite suite the first leg already ran,
-# and its floor is a CI measurement (see COVER_MIN).
+# The pull request's static checks and its test matrix, in one command, on one
+# host. It is the answer to "would this be green after push", and it is
+# deliberately not the edit-test loop: three race suites in a row is minutes,
+# not seconds. The three legs are recursive makes rather than three
+# prerequisites, so a failing tag stops the run and names the leg instead of
+# continuing to the next one. The dist job (dist, smoke, artifacts, repro) is
+# left out as well: it compiles every platform for two trees from cold, and
+# CONTRIBUTING says to run it when the change touches the release path. So is
+# make cover: it reruns the sqlite suite the first leg already ran, and its
+# floor is a CI measurement (see COVER_MIN).
 .PHONY: verify
-verify: check check-scripts ## everything a pull request runs, locally: check, all three tag legs, scripts lint
+verify: check check-scripts ## the pull request's static checks and all three tag legs, locally
 	$(MAKE) test
 	$(MAKE) test TAGS=
 	$(MAKE) test TAGS=notoktop
@@ -462,6 +465,9 @@ release: check test dist artifacts ## build every platform and write dist/checks
 # written only by a tagged release, so a change that broke the inventory, or a
 # checksums.txt whose entries no longer matched what it names, reached a tag
 # before anything noticed; `dist` and `smoke` in CI exercise the binaries alone.
+# A file that verifies its own checksums can still be empty, so the recipe ends
+# by refusing to report success for a missing or empty one: `test -s` over
+# dist/sbom.json was otherwise a check CI ran and no make target reproduced.
 .PHONY: artifacts
 artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built binaries
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
@@ -471,6 +477,9 @@ artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built bi
 	fi
 	$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*
 	@cd $(DIST) && (sha256sum -c checksums.txt 2>/dev/null || shasum -a 256 -c checksums.txt) >/dev/null; \
+	for f in checksums.txt sbom.json; do \
+		[ -s "$$f" ] || { echo "artifacts: $(DIST)/$$f is missing or empty" >&2; exit 1; }; \
+	done; \
 	echo "artifacts: checksums.txt and sbom.json in $(DIST)/"
 
 # The same source must produce the same bytes wherever it is built: -trimpath

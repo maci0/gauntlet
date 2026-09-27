@@ -46,7 +46,7 @@ const (
 // the seam and leave the fence open. The rewrite is repeated until it holds,
 // which takes at most a second pass in practice.
 func escapeMarkers(body string) string {
-	for pass := 0; pass < markerEscapePasses; pass++ {
+	for range markerEscapePasses {
 		if !strings.Contains(body, reviewEnd) && !strings.Contains(body, reviewBegin) {
 			break
 		}

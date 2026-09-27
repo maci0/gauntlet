@@ -821,6 +821,10 @@ func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	if !strings.Contains(recipe, "sha256sum -c checksums.txt") {
 		t.Fatal("make artifacts must verify the checksums it just wrote against the binaries they name")
 	}
+	if !strings.Contains(recipe, `for f in checksums.txt sbom.json; do`) ||
+		!strings.Contains(recipe, `[ -s "$$f" ]`) {
+		t.Fatal("make artifacts must refuse to report success for a missing or empty checksums.txt or sbom.json; CI checks that with `test -s`, and no make target reproduced it")
+	}
 	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json") {
 		t.Fatal("make dist must remove a previous sbom.json, so a stale inventory cannot ship with new binaries")
 	}

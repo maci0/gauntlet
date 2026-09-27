@@ -71,17 +71,17 @@ override it on the command line (`make test TMPDIR=...`) instead.
 make ci               # make check && make test
 ```
 
-One command runs the analysis, the scripts lint, and the suite under all three
-tag sets, for when a red check would otherwise first appear after push. A
-pull request also runs `make cover`, `make dist`, `make artifacts`, and
-`make repro`, which the release path adds on top:
+For the gate rather than the loop, one command runs the analysis, the scripts
+lint, and the suite under all three tag sets:
 
 ```sh
 make verify           # check, check-scripts, and the suite under all three tag sets
 ```
 
-It is minutes rather than seconds; `make ci` is the loop, `make verify` is the
-gate.
+It is minutes rather than seconds. A pull request also runs `make cover`,
+`make dist`, `make artifacts`, and `make repro`, which `make verify` leaves out
+on purpose; run those when the change touches the release path or removes
+tested code.
 
 `make check` is gofmt, `go fix`, and vet across all three tag configurations
 CI tests (default `sqlite`, bare, and `notoktop`). It mirrors ci.yml's first
