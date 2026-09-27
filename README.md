@@ -83,6 +83,10 @@ base="https://github.com/maci0/gauntlet/releases/download/v${ver}"
 	curl -fsSL "$base/$asset" -o "$asset"
 	curl -fsSL "$base/checksums.txt" -o checksums.txt
 	awk -v a="$asset" '$2 == a || $2 == "*"a' checksums.txt > asset.sha256
+	if [ ! -s asset.sha256 ]; then
+		echo "install failed: checksums.txt has no entry for $asset" >&2
+		exit 1
+	fi
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum -c asset.sha256
 	else

@@ -79,11 +79,18 @@ for shot in 'dashboard:gauntlet --tui' 'launcher:gauntlet pick'; do
 	printf '<html><body style="margin:0;background:#1e1e2e"><img src="%s.svg" width="%s" height="%s"></body></html>' \
 		"$name" "$w" "$h" > "$work/$name.html"
 	# A unique user-data-dir keeps headless Chrome on macOS from failing
-	# on a locked default profile.
-	"$browser" --headless --disable-gpu --hide-scrollbars \
+	# on a locked default profile. Its output and status are both discarded
+	# so nothing lands in the terminal, which means a browser that exits
+	# non-zero without a screenshot used to be reported as an ImageMagick
+	# failure on a file that was never written.
+	if ! "$browser" --headless --disable-gpu --hide-scrollbars \
 		--user-data-dir="$work/chrome-$name" \
 		--force-device-scale-factor=2 --window-size="$w,$h" \
-		--screenshot="$work/$name.raw.png" "$work/$name.html" >/dev/null 2>&1
+		--screenshot="$work/$name.raw.png" "$work/$name.html" >/dev/null 2>&1 ||
+		[ ! -s "$work/$name.raw.png" ]; then
+		echo "$name: $browser failed to rasterize $work/$name.html" >&2
+		exit 1
+	fi
 
 	"$im" "$work/$name.raw.png" -strip -colors 128 \
 		-define png:compression-level=9 "$root/assets/$name.png"

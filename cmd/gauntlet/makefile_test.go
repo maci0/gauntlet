@@ -345,3 +345,38 @@ func TestMakefileReproPreflight(t *testing.T) {
 		t.Fatal(`make repro must verify REPRO_DIR is not unset`)
 	}
 }
+
+// An exported TMPDIR points at the tmpfs the test rules exist to avoid, and
+// `?=` would keep it: make treats an environment variable as already defined.
+// The assignments must be `:=`, which a command-line override still beats.
+func TestAmbientTMPDIRDoesNotReachARecipe(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		target string
+		want   string
+	}{
+		{target: "test-tmpdir", want: `mkdir -p "` + filepath.Join(home, ".cache/gauntlet/test") + `"`},
+		{target: "repro", want: `rm -rf "` + filepath.Join(home, ".cache/gauntlet/repro") + `"`},
+	} {
+		t.Run(tc.target, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", tc.target)
+			cmd.Dir = moduleRoot(t)
+			cmd.Env = append(os.Environ(), "TMPDIR=/tmp", "REPRO_DIR=/tmp/repro")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make %s dry run: %v\n%s", tc.target, err, out)
+			}
+			if !strings.Contains(string(out), tc.want) {
+				t.Errorf("make %s with TMPDIR=/tmp in the environment:\n%swant a recipe using %s", tc.target, out, tc.want)
+			}
+			if strings.Contains(string(out), "/tmp/repro") {
+				t.Errorf("make %s acted on REPRO_DIR from the environment: %s", tc.target, out)
+			}
+		})
+	}
+}

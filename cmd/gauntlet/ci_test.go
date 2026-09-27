@@ -354,6 +354,12 @@ func TestReadmeInstallVerifiesReleaseChecksum(t *testing.T) {
 	if !strings.Contains(block, "set -e") {
 		t.Error("install script must abort on a failed verification, not carry on to chmod")
 	}
+	// awk matching nothing leaves an empty checksum file, and whether the
+	// verifier treats that as success is a property of the local coreutils or
+	// Perl shasum, not of this script. Refuse the install outright instead.
+	if !strings.Contains(block, "if [ ! -s asset.sha256 ]; then") {
+		t.Error("install script must refuse to install when checksums.txt lists no entry for the asset")
+	}
 }
 
 func TestReleaseSmokeTestsSbom(t *testing.T) {

@@ -26,7 +26,9 @@ but drops the sqlite driver.
   never lower it to make a change fit.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
-  ignored. `TMPDIR` is set by the Makefile for that reason.
+  ignored. `TMPDIR` is set by the Makefile for that reason, and an exported
+  `TMPDIR` in the environment is ignored on purpose; override it on the make
+  command line.
 - The Makefile, the workflows, and the tool pins in `scripts/` are pinned by
   tests in `cmd/gauntlet/` (`makefile_test.go`, `ci_test.go`, `deps_test.go`):
   change one without the other and `make test` fails.

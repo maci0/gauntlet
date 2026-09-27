@@ -46,7 +46,9 @@ build rather than the default one.
 Tests must not write into a tmpfs or into an ignored path inside this repo:
 the prompt discovery tests would otherwise see their own fixtures as
 ignored. The Makefile points `TMPDIR` at `~/.cache/gauntlet/test` for that
-reason; leave it alone unless you know better.
+reason; leave it alone unless you know better. An exported `TMPDIR` in your
+shell is ignored on purpose, since the usual one is the tmpfs this avoids;
+override it on the command line (`make test TMPDIR=...`) instead.
 
 ## Checks a pull request must pass
 

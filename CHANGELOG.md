@@ -29,6 +29,7 @@ minor instead and were listed under Changed.
 - Appending to `.git/info/exclude` refuses a symlinked `info` directory, so a repository that plants one no longer redirects the write outside its own tree.
 - `--merge-into` is checked with `check-ref-format` before it reaches `git worktree add`, which takes no `--` and would otherwise read a leading dash as an option.
 - A remote URL with a leading-dash host (`https://--json/owner/repo`) is refused when parsed, instead of reaching `gh repo view` as a bare positional.
+- The documented install script refuses to install when `checksums.txt` lists no entry for the asset, naming the asset, instead of handing the verifier an empty file whose verdict depends on the local coreutils or Perl `shasum`.
 
 ### Changed
 
@@ -43,6 +44,7 @@ minor instead and were listed under Changed.
 - Print the effective seed on the first line of a headless run, so a run started without `--seed` reports the seed that replays it.
 - The command reference, the design map, and the token telemetry page say what the code does: the dashboard stops on `q` and `esc` only cancels an armed quit, `gauntlet pick` also takes `--target-dirs`, a defined agent's `usage.cumulative` and `usage.header_cwd` are documented, a clock-derived `--seed` is not replayable, `--max-loops` defaults to 1 only under `--stacked-prs`, an agent with no transcript adapter still gets a rate from the stream, and `gitx.DeleteBranch` is documented as the force-delete it is. The help screen's review count matches the 53 bundled prompts, and it now says the same about `--max-loops` as the command reference.
 - The design map's file-signal suggester names the marker's shape rather than seven of them, so the list it prints matches the table the code searches.
+- `make test`, `make cover`, `make test-pkg`, and `make repro` ignore an exported `TMPDIR` or `REPRO_DIR` from the environment and use `~/.cache/gauntlet` as documented, so a shell that exports the tmpfs those rules exist to avoid cannot move the test scratch space, and `make repro` cannot be pointed at an arbitrary path to delete. Override them on the make command line.
 
 ### Fixed
 

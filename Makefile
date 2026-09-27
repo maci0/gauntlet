@@ -41,7 +41,13 @@ export LC_ALL := C
 
 # Tests must not write into a tmpfs (RAM) or into an ignored path inside this
 # repo, which would make prompt discovery see its own fixtures as ignored.
-TMPDIR ?= $(HOME)/.cache/gauntlet/test
+#
+# `:=`, not `?=`: make gives an exported environment variable the same status
+# as a command-line one, and `?=` keeps it. TMPDIR is exported on most Linux
+# shells and by launchd on macOS, usually pointing at the tmpfs the rule above
+# exists to avoid, and setting it in the environment was then silently
+# ignored. A command line (`make test TMPDIR=...`) still wins.
+TMPDIR := $(HOME)/.cache/gauntlet/test
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
 # groups, the directory lock needs flock, prompt reads need O_NOFOLLOW, and hot
@@ -282,7 +288,9 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # pipefail). Every platform in PLATFORMS is checked, not just the host's:
 # those are the binaries `dist` ships, and a reproducibility claim that covers
 # one of four proves nothing about the other three. CI runs it on every push.
-REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
+# `:=` for the reason TMPDIR has it, and the recipe below rm -rf's this path
+# before building: an exported REPRO_DIR would otherwise choose it.
+REPRO_DIR := $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
 repro: ## verify reproducibility: build twice from different paths/locale/TZ, compare
