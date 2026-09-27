@@ -249,3 +249,43 @@ func (w *doctorFailWriter) Write(p []byte) (int, error) {
 	}
 	return n, nil
 }
+
+// Which of the documented variables this process saw is otherwise knowable
+// only by reading the source, so a knob set to the wrong value, or set to
+// empty, has no way to be told from unset. doctor prints them, keeps a token
+// out of the transcript, and says so when nothing is set.
+func TestDoctorReportsTheEnvironmentItSaw(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("GIT_SSH_COMMAND", "ssh -i /tmp/id_test")
+	t.Setenv("GH_TOKEN", "ghp_do_not_print_this")
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 200)
+	out := buf.String()
+	if !strings.Contains(out, "GIT_SSH_COMMAND=ssh -i /tmp/id_test") {
+		t.Fatalf("doctor should report the value of a non-secret variable it saw:\n%s", out)
+	}
+	if strings.Contains(out, "ghp_do_not_print_this") || !strings.Contains(out, "GH_TOKEN=(set)") {
+		t.Fatalf("doctor must report a token as present without printing it:\n%s", out)
+	}
+
+	t.Setenv("GIT_SSH_COMMAND", "")
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("NO_COLOR", "")
+	// t.Setenv registers the restore; unsetting after it leaves the variable
+	// absent for this test and the original back afterwards.
+	if err := os.Unsetenv("GIT_SSH_COMMAND"); err != nil {
+		t.Fatal(err)
+	}
+	buf.Reset()
+	doctor(&buf, palette{}, nil, 200)
+	out = buf.String()
+	if !strings.Contains(out, "NO_COLOR=(empty)") {
+		t.Fatalf("doctor should tell a variable set to empty from one unset:\n%s", out)
+	}
+	if strings.Contains(out, "GIT_SSH_COMMAND") {
+		t.Fatalf("doctor should not name a variable that is unset:\n%s", out)
+	}
+}

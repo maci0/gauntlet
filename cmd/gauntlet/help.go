@@ -156,20 +156,31 @@ var helpExitCodes = []struct{ Code, Meaning string }{
 	{"130", "interrupted"},
 }
 
+// helpEnvVar is one row of the environment section. Secret marks a variable
+// whose value must never be printed; `gauntlet doctor` reports it as present
+// and never as a value, so the marking has one home rather than one here and
+// one there.
+type helpEnvVar struct {
+	Name, Help string
+	Secret     bool
+}
+
 // helpEnvVars is the environment section: the variables a consumer can set to
 // change gauntlet's behavior. GAUNTLET_HOME and GH_TOKEN/GITHUB_TOKEN are
 // read by internal packages (gauntlethome, selfupdate); the color names come
 // from report.go's consts, so this table cannot drift from colorEnabled.
-var helpEnvVars = []struct{ Name, Help string }{
-	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)"},
-	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion)"},
-	{"NO_COLOR", "disable color, however it is set"},
-	{"CLICOLOR_FORCE", "keep color when the output is piped"},
-	{"FORCE_COLOR", "same as CLICOLOR_FORCE"},
-	{"TERM", "\"dumb\" disables color, even with the two above"},
-	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads"},
-	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set"},
-	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it"},
+var helpEnvVars = []helpEnvVar{
+	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)", false},
+	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion)", false},
+	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION", false},
+	{"REDUCED_MOTION", "same as GAUNTLET_NO_ANIMATION", false},
+	{"NO_COLOR", "disable color, however it is set", false},
+	{"CLICOLOR_FORCE", "keep color when the output is piped", false},
+	{"FORCE_COLOR", "same as CLICOLOR_FORCE", false},
+	{"TERM", "\"dumb\" disables color, even with the two above", false},
+	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads", true},
+	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set", true},
+	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it", false},
 }
 
 // printUsage renders the help screen.

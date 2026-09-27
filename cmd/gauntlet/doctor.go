@@ -247,6 +247,9 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			w.println(pal.dim("Definitions: " + p))
 		}
 	}
+	for _, line := range envSettingLines() {
+		w.println(pal.dim(line))
+	}
 	// A root that cannot be written loses the run journal, and a run that
 	// cannot journal is only reported by one line of a warning that scrolls
 	// past mid-run. Here it is the finding, before the verdict.
@@ -271,6 +274,40 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		return exitFail
 	}
 	return exitOK
+}
+
+// envSettingLines reports which documented variables this process actually
+// saw, so an operator can tell a knob that is unset from one set to empty
+// without reading the source. Presence, not meaning: the value of a variable
+// is printed as the operator set it, and nothing here interprets it, because
+// the rules differ per variable (NO_COLOR counts however it is set, the
+// motion and color-force names only above empty, 0, false, no, off).
+//
+// GAUNTLET_HOME is left out: the State line above already names it and where
+// it came from. A variable carrying a secret is reported as present and never
+// as a value, so a pasted doctor transcript cannot leak one.
+func envSettingLines() []string {
+	var set []string
+	for _, e := range helpEnvVars {
+		if e.Name == "GAUNTLET_HOME" {
+			continue
+		}
+		value, present := os.LookupEnv(e.Name)
+		switch {
+		case !present:
+			continue
+		case e.Secret:
+			set = append(set, e.Name+"=(set)")
+		case value == "":
+			set = append(set, e.Name+"=(empty)")
+		default:
+			set = append(set, e.Name+"="+value)
+		}
+	}
+	if len(set) == 0 {
+		return []string{"Environment: no documented variable is set"}
+	}
+	return []string{"Environment: " + strings.Join(set, ", ")}
 }
 
 // binRunnable reports whether an explicit --bin path names a file that could

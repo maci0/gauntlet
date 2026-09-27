@@ -126,7 +126,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 | Flag | Purpose |
 |---|---|
-| `doctor` | Report installed agent CLIs and helper tools, the state root in use, and the file agent definitions were read from. A state root that is not a directory or cannot be written to is reported, since a run that cannot write it loses the journal. Exits 1 if no agent is usable or the state root is unusable. |
+| `doctor` | Report installed agent CLIs and helper tools, the state root in use, the file agent definitions were read from, and which of the environment variables below this process actually saw. A variable set to empty is reported as `(empty)`, so it is distinguishable from one left unset. `GITHUB_TOKEN` and `GH_TOKEN` are reported as `(set)` and never as values, so a pasted transcript cannot leak one. A state root that is not a directory or cannot be written to is reported, since a run that cannot write it loses the journal. Exits 1 if no agent is usable or the state root is unusable. |
 | `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. `--list` does not need an agent CLI on PATH; `--dry-run` does, because it names the agents a real run would launch. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. Does not need an agent CLI on PATH. |
 | `--log FILE` | Also write all output to FILE. |

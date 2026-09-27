@@ -55,12 +55,18 @@ func TestEveryEnvVarReadIsDocumented(t *testing.T) {
 	}
 }
 
-// envNamesReadIn returns every name passed to os.Getenv or os.LookupEnv as
-// a string literal in non-test Go files under root. A computed name is left
-// out: os.Expand's key function takes whatever the user typed, and nothing
-// static can be said about those.
+// envNamesReadIn returns every name passed to os.Getenv or os.LookupEnv in
+// non-test Go files under root. A name reaches one of those calls in three
+// ways in this tree, and all three are followed: a string literal, a constant
+// declared in the same package, and a range over a slice literal whose body
+// reads the environment. A computed name is left out: os.Expand's key
+// function takes whatever the user typed, and nothing static can be said
+// about those.
 func envNamesReadIn(root string) ([]string, error) {
-	var found []string
+	var sources []envSource
+	// Constants are collected for the whole tree before anything is matched:
+	// a constant may be declared in a file the walk has not reached yet.
+	consts := map[string]map[string]string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -82,36 +88,158 @@ func envNamesReadIn(root string) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		ast.Inspect(file, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok || len(call.Args) != 1 {
-				return true
+		sources = append(sources, envSource{path: path, file: file})
+		dir := filepath.Dir(path)
+		for ident, value := range stringConsts(file) {
+			if consts[dir] == nil {
+				consts[dir] = map[string]string{}
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if !ok || pkg.Name != "os" {
-				return true
-			}
-			if sel.Sel.Name != "Getenv" && sel.Sel.Name != "LookupEnv" {
-				return true
-			}
-			lit, ok := call.Args[0].(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
-			}
-			unquoted, err := strconv.Unquote(lit.Value)
-			if err != nil {
-				return true
-			}
-			if unquoted != "" && !slices.Contains(found, unquoted) {
-				found = append(found, unquoted)
+			consts[dir][ident] = value
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	var found []string
+	add := func(name string) {
+		if name == "" || slices.Contains(found, name) {
+			return
+		}
+		found = append(found, name)
+	}
+	for _, src := range sources {
+		pkg := consts[filepath.Dir(src.path)]
+		ast.Inspect(src.file, func(n ast.Node) bool {
+			switch node := n.(type) {
+			case *ast.CallExpr:
+				if name, ok := envNameArg(node, pkg); ok {
+					add(name)
+				}
+			case *ast.RangeStmt:
+				for _, name := range rangedEnvNames(node, pkg) {
+					add(name)
+				}
 			}
 			return true
 		})
+	}
+	return found, nil
+}
+
+// envSource is one parsed non-test file, held until every constant in the
+// tree is known.
+type envSource struct {
+	path string
+	file *ast.File
+}
+
+// envNameArg returns the variable name a call to os.Getenv or os.LookupEnv
+// reads: the string literal passed directly, or the constant that identifier
+// names. The second case is the common one, and skipping it left every
+// consumer-facing name in this tree invisible to the check.
+func envNameArg(call *ast.CallExpr, consts map[string]string) (string, bool) {
+	if len(call.Args) != 1 {
+		return "", false
+	}
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return "", false
+	}
+	if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "os" {
+		return "", false
+	}
+	if sel.Sel.Name != "Getenv" && sel.Sel.Name != "LookupEnv" {
+		return "", false
+	}
+	return constName(call.Args[0], consts), true
+}
+
+// rangedEnvNames returns the names a range statement walks over when its body
+// reads the environment. Those loops hold the read in the body and the names
+// in the slice, so neither the call nor the names alone can be matched.
+func rangedEnvNames(rs *ast.RangeStmt, consts map[string]string) []string {
+	lit, ok := rs.X.(*ast.CompositeLit)
+	if !ok || !readsEnv(rs.Body) {
 		return nil
+	}
+	names := make([]string, 0, len(lit.Elts))
+	for _, elt := range lit.Elts {
+		name := constName(elt, consts)
+		if name == "" {
+			// One unknown element makes the whole set unprovable, so nothing
+			// is claimed rather than a partial list that reads as complete.
+			return nil
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+// readsEnv reports whether the subtree contains a call to os.Getenv or
+// os.LookupEnv.
+func readsEnv(node ast.Node) bool {
+	found := false
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "os" &&
+			(sel.Sel.Name == "Getenv" || sel.Sel.Name == "LookupEnv") {
+			found = true
+		}
+		return true
 	})
-	return found, err
+	return found
+}
+
+// constName resolves an expression to a name: a string literal unquoted, or
+// an identifier naming a string constant. Anything else is "".
+func constName(expr ast.Expr, consts map[string]string) string {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		if e.Kind != token.STRING {
+			return ""
+		}
+		unquoted, err := strconv.Unquote(e.Value)
+		if err != nil {
+			return ""
+		}
+		return unquoted
+	case *ast.Ident:
+		return consts[e.Name]
+	}
+	return ""
+}
+
+// stringConsts returns the string constants a file declares, by name.
+func stringConsts(file *ast.File) map[string]string {
+	declared := map[string]string{}
+	for _, decl := range file.Decls {
+		gen, ok := decl.(*ast.GenDecl)
+		if !ok || gen.Tok != token.CONST {
+			continue
+		}
+		for _, spec := range gen.Specs {
+			values, ok := spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			for i, ident := range values.Names {
+				if i >= len(values.Values) {
+					continue
+				}
+				if name := constName(values.Values[i], nil); name != "" {
+					declared[ident.Name] = name
+				}
+			}
+		}
+	}
+	return declared
 }

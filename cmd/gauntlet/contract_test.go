@@ -84,6 +84,8 @@ var goldenEnvVars = []string{
 	"GH_TOKEN",
 	"GITHUB_TOKEN",
 	"NO_COLOR",
+	"NO_MOTION",
+	"REDUCED_MOTION",
 	"TERM",
 }
 
