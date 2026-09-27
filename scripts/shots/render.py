@@ -24,6 +24,7 @@ FONTS = "DejaVu Sans Mono, MesloLGS Nerd Font Mono, monospace"
 
 
 def main() -> None:
+    """Render one captured frame to SVG and print its pixel size."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("source", type=pathlib.Path, help="captured ANSI frame")
     ap.add_argument("dest", type=pathlib.Path, help="SVG to write")
@@ -54,7 +55,8 @@ def main() -> None:
 
     box = re.search(r'viewBox="0 0 ([\d.]+) ([\d.]+)"', svg)
     if box is None:
-        raise SystemExit(f"{args.dest}: rich wrote no viewBox to size the shot by")
+        msg = f"{args.dest}: rich wrote no viewBox to size the shot by"
+        raise SystemExit(msg)
     print(int(float(box.group(1))), int(float(box.group(2))))
 
 

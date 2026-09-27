@@ -33,26 +33,48 @@ PICK_MAX = 30
 
 
 def module_root() -> pathlib.Path:
-    """The repository root, found by walking up for go.mod."""
+    """Find the repository root by walking up for go.mod."""
     here = pathlib.Path(__file__).resolve()
     for d in here.parents:
         if (d / "go.mod").is_file():
             return d
-    raise SystemExit(f"cannot find the module root from {here}")
+    msg = f"cannot find the module root from {here}"
+    raise SystemExit(msg)
 
 
 def gauntlet_home() -> pathlib.Path:
+    """Locate the run journal, honoring GAUNTLET_HOME when it is set."""
     raw = os.environ.get("GAUNTLET_HOME")
     if raw and raw.strip():
         return pathlib.Path(raw.strip()).expanduser()
     return pathlib.Path.home() / ".gauntlet"
 
 
+def run_picks(run: pathlib.Path) -> tuple[str, set[str]]:
+    """Read one recorded run: its directory and the reviews it started in loop 1."""
+    directory: str = ""
+    loop, reviews = 0, set()
+    for entry in run.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            event = json.loads(entry)
+        except json.JSONDecodeError:
+            continue
+        match event.get("ev"):
+            case "run_start":
+                directory = event.get("dir")
+            case "loop_start":
+                loop = event.get("loop", 0)
+            case "review_start" if loop == 1:
+                reviews.add(event.get("review"))
+    return directory, reviews
+
+
 def agent_picks() -> dict[str, set[str]]:
-    """What the triage step scheduled, per directory, across recorded runs."""
+    """Collect what the triage step scheduled, per directory, across recorded runs."""
     index = gauntlet_home() / "index.jsonl"
     if not index.is_file():
-        raise SystemExit(f"no runs to calibrate against: {index} is missing")
+        msg = f"no runs to calibrate against: {index} is missing"
+        raise SystemExit(msg)
     picks: dict[str, set[str]] = {}
     for line in index.read_text(encoding="utf-8", errors="replace").splitlines():
         try:
@@ -64,26 +86,14 @@ def agent_picks() -> dict[str, set[str]]:
         run = pathlib.Path(summary.get("path", ""))
         if not run.is_file():
             continue
-        directory, loop, reviews = None, 0, set()
-        for entry in run.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                event = json.loads(entry)
-            except json.JSONDecodeError:
-                continue
-            match event.get("ev"):
-                case "run_start":
-                    directory = event.get("dir")
-                case "loop_start":
-                    loop = event.get("loop", 0)
-                case "review_start" if loop == 1:
-                    reviews.add(event.get("review"))
+        directory, reviews = run_picks(run)
         if directory and PICK_MIN <= len(reviews) <= PICK_MAX:
             picks.setdefault(directory, set()).update(reviews)
     return picks
 
 
 def fast_picks(binary: pathlib.Path, directory: str) -> set[str]:
-    """What --suggest-agent gauntlet proposes for one directory today."""
+    """List what --suggest-agent gauntlet proposes for one directory today."""
     proc = subprocess.run(
         [
             str(binary),
@@ -106,6 +116,7 @@ def fast_picks(binary: pathlib.Path, directory: str) -> set[str]:
 
 
 def main() -> None:
+    """Build the binary, replay the suggester, and print recall and precision."""
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
         "--detail", action="store_true", help="print each directory and what was missed"
@@ -117,7 +128,8 @@ def main() -> None:
     binary.parent.mkdir(parents=True, exist_ok=True)
     go = shutil.which("go")
     if go is None:
-        raise SystemExit("go is not on PATH")
+        msg = "go is not on PATH"
+        raise SystemExit(msg)
     env = dict(
         os.environ,
         CGO_ENABLED="0",
@@ -157,7 +169,8 @@ def main() -> None:
             )
             print(f"   missed: {sorted(picked - proposed)}")
     if not scores:
-        raise SystemExit("no --suggest runs recorded yet: nothing to calibrate against")
+        msg = "no --suggest runs recorded yet: nothing to calibrate against"
+        raise SystemExit(msg)
     recall = sum(r for r, _ in scores) / len(scores)
     precision = sum(p for _, p in scores) / len(scores)
     f1 = 2 * recall * precision / max(1e-9, recall + precision)

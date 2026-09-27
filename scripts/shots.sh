@@ -65,8 +65,16 @@ for shot in 'dashboard:gauntlet --tui' 'launcher:gauntlet pick'; do
 	name="${shot%%:*}"
 	title="${shot#*:}"
 
-	read -r w h < <(uv run --quiet "$root/scripts/shots/render.py" \
-		"$work/$name.ansi" "$work/$name.svg" "$title")
+	# A process substitution masks the renderer's exit status, so a failed
+	# render used to leave w and h empty and rasterize an empty page. Take
+	# the output as a value instead and stop on a non-zero status.
+	if ! size="$(uv run --quiet "$root/scripts/shots/render.py" \
+		"$work/$name.ansi" "$work/$name.svg" "$title")"; then
+		echo "$name: render failed" >&2
+		exit 1
+	fi
+	read -r w h <<<"$size"
+	[ -n "$w" ] && [ -n "$h" ] || { echo "$name: renderer printed no size" >&2; exit 1; }
 
 	printf '<html><body style="margin:0;background:#1e1e2e"><img src="%s.svg" width="%s" height="%s"></body></html>' \
 		"$name" "$w" "$h" > "$work/$name.html"

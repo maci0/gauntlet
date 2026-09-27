@@ -84,8 +84,11 @@ jobs:
       # rich has type information, so mypy needs it installed to see it.
       - run: uvx --with rich==15.0.0 mypy@2.3.1 --strict scripts
       # Preinstalled on the Ubuntu runner image; shots.sh is the only shell
-      # script in the tree.
-      - run: shellcheck scripts/shots.sh
+      # script in the tree. check-extra-masked-returns is off by default and
+      # is the class where a command's failure is swallowed: a pipeline, a
+      # test, or a process substitution that reports success while the work
+      # inside it died.
+      - run: shellcheck --enable=check-extra-masked-returns scripts/shots.sh
 
   dist:
     runs-on: ubuntu-24.04

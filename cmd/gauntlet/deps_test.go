@@ -213,6 +213,80 @@ func TestScriptsToolPinsMatchCI(t *testing.T) {
 	}
 }
 
+// Matching pins are not the same as running the same checks: the two can
+// agree on every version and still differ on a flag, so a rule enabled
+// locally reads as passing while the pull request runs something else.
+// Every analysis command in check-scripts, pins resolved, must appear in the
+// scripts job.
+func TestScriptsChecksMatchCI(t *testing.T) {
+	root := moduleRoot(t)
+	makefile := readRepoFile(t, filepath.Join(root, "Makefile"))
+	ci := readRepoFile(t, filepath.Join(root, ".github", "workflows", "ci.yml"))
+
+	cmds := checkScriptsCommands(makefile)
+	if len(cmds) == 0 {
+		t.Fatal("check-scripts runs no analysis commands")
+	}
+	for _, cmd := range cmds {
+		if !strings.Contains(ci, cmd) {
+			t.Errorf("check-scripts runs %q, which ci.yml does not: local and CI enforce different rules", cmd)
+		}
+	}
+}
+
+// checkScriptsCommands returns the analysis commands of the check-scripts
+// recipe with $(NAME)_VERSION references resolved to the values the Makefile
+// sets. Commands that are not analysis (the preflight probes, which only
+// print what CI would run) are skipped.
+func checkScriptsCommands(makefile string) []string {
+	recipe := makefileRecipe(makefile, "check-scripts")
+	cmds := make([]string, 0, 4)
+	for line := range strings.SplitSeq(recipe, "\n") {
+		cmd := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(cmd, "uvx "), strings.HasPrefix(cmd, "shellcheck "):
+		default:
+			continue
+		}
+		cmds = append(cmds, resolveMakeVars(cmd, makefile))
+	}
+	return cmds
+}
+
+// resolveMakeVars replaces $(NAME_VERSION) with the Makefile's assignment.
+func resolveMakeVars(cmd, makefile string) string {
+	for _, name := range []string{"RUFF_VERSION", "MYPY_VERSION", "RICH_VERSION"} {
+		if v := makefilePin(makefile, name); v != "" {
+			cmd = strings.ReplaceAll(cmd, "$("+name+")", v)
+		}
+	}
+	return cmd
+}
+
+// makefileRecipe returns the lines of the named target, from the rule to the
+// next rule that starts in column zero.
+func makefileRecipe(makefile, target string) string {
+	lines := strings.Split(makefile, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.HasPrefix(line, target+":") {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	end := len(lines)
+	for i := start; i < len(lines); i++ {
+		if line := lines[i]; line != "" && !strings.HasPrefix(line, "\t") {
+			end = i
+			break
+		}
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	root, err := filepath.Abs(filepath.Join("..", ".."))

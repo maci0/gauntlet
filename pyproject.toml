@@ -17,8 +17,11 @@ select = [
     "B",
     "BLE",
     "C4",
+    "C90",
+    "D",
     "DTZ",
     "E",
+    "EM",
     "ERA",
     "EXE",
     "F",
@@ -57,6 +60,15 @@ select = [
     "UP",
     "W",
     "YTT",
+]
+
+# D203 and D213 are each the negation of a rule the formatter's own output
+# already settles (the blank line before a class, the summary line of a
+# multi-line docstring). One of each pair is enough; ruff warns and silently
+# drops the other, which puts a stderr line in every local run.
+ignore = [
+    "D203",
+    "D213",
 ]
 
 [tool.ruff.lint.per-file-ignores]

@@ -180,7 +180,7 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 		echo "CI runs: uvx ruff@$(RUFF_VERSION) check scripts" >&2; \
 		echo "         uvx ruff@$(RUFF_VERSION) format --check scripts" >&2; \
 		echo "         uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts" >&2; \
-		echo "         shellcheck scripts/shots.sh" >&2; \
+		echo "         shellcheck --enable=check-extra-masked-returns scripts/shots.sh" >&2; \
 		exit 1; \
 	}
 	@command -v shellcheck >/dev/null 2>&1 || { \
@@ -194,7 +194,7 @@ check-scripts: ## ruff, mypy --strict, and shellcheck on scripts/ (CI parity)
 	uvx ruff@$(RUFF_VERSION) check scripts
 	uvx ruff@$(RUFF_VERSION) format --check scripts
 	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts
-	shellcheck scripts/shots.sh
+	shellcheck --enable=check-extra-masked-returns scripts/shots.sh
 
 .PHONY: fmt-scripts
 fmt-scripts: ## rewrite scripts with ruff format
