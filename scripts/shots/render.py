@@ -34,7 +34,7 @@ def main() -> None:
     text = Text.from_ansi(body)
     width = max(len(line) for line in text.plain.splitlines())
 
-    with open(os.devnull, "w", encoding="utf-8") as sink:
+    with pathlib.Path(os.devnull).open("w", encoding="utf-8") as sink:
         console = Console(
             record=True,
             width=width,

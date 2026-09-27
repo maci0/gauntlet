@@ -40,6 +40,7 @@ select = [
     "PIE",
     "PL",
     "PT",
+    "PTH",
     "PYI",
     "Q",
     "RET",
