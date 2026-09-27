@@ -206,8 +206,8 @@ and the runner (never the agent) commits each one and merges them back one
 at a time.
 
 Stack mode is sequential for a different reason: every review must see the
-commits below it. From base `main`, changed reviews produce `review-1 → main`,
-then `review-2 → review-1`, and so on. The PRs stay open; gauntlet removes only
+commits below it. From base `main`, changed reviews produce `review/01-… → main`,
+then `review/02-… → review/01-…`, and so on. The PRs stay open; gauntlet removes only
 the scratch checkout. It fetches the remote base without moving your local
 branch. If the original checkout has uncommitted files, gauntlet names them
 and asks before leaving them out of the review. See
@@ -251,9 +251,10 @@ you do:
 
 | Key | Action |
 |---|---|
-| `q`, `esc` | press twice to stop the run, killing what is running; the first press arms it |
+| `q` | press twice to stop the run, killing what is running; the first press arms it, and any other key disarms |
+| `esc` | cancel an armed `q`; otherwise unpause the feed, scroll to the newest entry, and close the screen once the run is done |
 | `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
-| `enter`, `q`, `esc` | close the dashboard once the run has finished (`q` and `esc` arm a stop while running) |
+| `enter`, `q`, `esc` | close the dashboard once the run has finished (`q` arms a stop while running) |
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |

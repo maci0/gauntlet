@@ -6,11 +6,11 @@ future reader can judge whether the problem still exists.
 ## Worktree setup hook
 
 **Problem.** `--jobs N` runs reviews in N persistent lane worktrees, each a
-bare checkout of the current tip. Many repos do not build in a bare checkout:
-local `.env` files, `node_modules`, virtualenvs, and build caches are
-untracked, so they are absent. The agent's verification step then fails for
-reasons unrelated to the review, and the review either wastes its budget or
-reports a false problem.
+checkout of the current tip with none of the untracked files. Many repos do
+not build there: local `.env` files, `node_modules`, virtualenvs, and build
+caches are untracked, so they are absent. The agent's verification step then
+fails for reasons unrelated to the review, and the review either wastes its
+budget or reports a false problem.
 
 **Shape of the fix.** `--worktree-setup CMD`, run once in each new lane
 checkout before the first agent starts (symlink `node_modules`, copy `.env`,
