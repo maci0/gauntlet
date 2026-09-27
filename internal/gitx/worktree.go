@@ -246,6 +246,7 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		r.abortWorktreeAdd(ctx, dir, "")
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
+	tightenCheckout(dir)
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
 }
 
@@ -287,14 +288,48 @@ func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 	}
 }
 
+// ownerOnly is the mode every directory this package creates is left at. The
+// reviewed repository may be private, and a checkout of it is a second copy of
+// that data on a machine that may have more than one local account: a
+// directory left at 0755 hands every other user on the machine a readable copy
+// of the whole tree.
+const ownerOnly = 0o700
+
 // prepareWorktreeDir clears a leftover checkout at dir and creates its parent.
 // Callers hold wtMu.
 func (r *Repo) prepareWorktreeDir(ctx context.Context, dir string) error {
 	if err := r.removeWorktreeDir(ctx, dir); err != nil {
 		return err
 	}
-	return os.MkdirAll(filepath.Dir(dir), 0o755)
+	if err := os.MkdirAll(filepath.Dir(dir), ownerOnly); err != nil {
+		return err
+	}
+	// MkdirAll leaves a directory an earlier run already made at the mode it
+	// was made with, so the components are narrowed rather than assumed.
+	tightenWorktreeRoot(r.Dir)
+	return nil
 }
+
+// tightenWorktreeRoot narrows the scratch directories under repo to their
+// owner. Best effort: a component this account does not own cannot be chmod'ed,
+// and best-effort is also what the run lock does with the file it finds
+// already there.
+func tightenWorktreeRoot(repo string) {
+	root, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return
+	}
+	dir := root
+	for part := range strings.SplitSeq(worktreeRoot, "/") {
+		dir = filepath.Join(dir, part)
+		_ = os.Chmod(dir, ownerOnly)
+	}
+}
+
+// tightenCheckout narrows one finished checkout, which git itself created at
+// its own umask. Called only after a successful add: an aborted one is removed
+// again, and the umask git ran under is not this package's to decide.
+func tightenCheckout(dir string) { _ = os.Chmod(dir, ownerOnly) }
 
 // reclaimEmptyBranch deletes branch when it still points at base, which means
 // it carries no committed work. A leftover branch would fail worktree add: a
@@ -338,6 +373,7 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 		r.abortWorktreeAdd(ctx, dir, branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
+	tightenCheckout(dir)
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
 }
 

@@ -712,3 +712,42 @@ func TestCleanWorktreeRoot(t *testing.T) {
 		t.Fatalf("CleanWorktreeRoot deleted non-empty root content: %v", err)
 	}
 }
+
+// A checkout is a second copy of the reviewed repository, and the reviewed
+// repository may be private. The machine may have more than one local account,
+// so every directory holding one is left readable by its owner only.
+func TestWorktreeDirsAreOwnerOnly(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	snap, err := r.AddSnapshotWorktree(ctx, "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = snap.Remove(context.WithoutCancel(ctx)) }()
+
+	for _, dir := range []string{
+		wt.Dir,
+		snap.Dir,
+		r.worktreeRootDir(),
+		filepath.Dir(r.worktreeRootDir()),
+	} {
+		fi, err := os.Stat(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := fi.Mode().Perm(); got != ownerOnly {
+			t.Errorf("%s is %#o, want %#o: another local user could read the checkout",
+				dir, got, ownerOnly)
+		}
+	}
+}

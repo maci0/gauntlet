@@ -38,6 +38,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A per-review checkout is a second copy of the reviewed repository, and it is now readable by its owner only. `.gauntlet/worktrees` and the checkout itself were created at 0755, so on a machine with more than one local account every other user could read a private repository's contents out of the scratch tree. Both are now 0700, including a tree an earlier run created under a looser umask.
 - Every review with an applicability gate now carries an `## Applicability` section in its output format, naming the subject that makes the review fit. The gate already told the agent to print a skip result, but 22 of the gated prompts had nowhere in their template to put one.
 - `functionality-review` gained the applicability gate its siblings carry. It is the one review in `quick` with no stated ground to stand on: where no README, help text, public API, or test says what the software is supposed to do, every item below was a finding about an intent the agent had to invent.
 - `gauntlet runs` keeps the table on stdout. The trailing line naming the journal directory went there with the rows, so `gauntlet runs | tail -1` printed a path instead of the newest run; it is on stderr now, where a note about this machine belongs. The header and the FAILED legend stay on stdout: they head the table.
