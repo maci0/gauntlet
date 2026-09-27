@@ -254,7 +254,7 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	if start.IsZero() {
 		start = bus.now()
 	}
-	seed := seedOrClock(cfg.Seed, bus.now)
+	seed := SeedOrClock(cfg.Seed, bus.now)
 	repo := gitx.Open(cfg.Dir)
 	// The sample debounce is a time decision about a review's line
 	// attribution, so it reads the run's clock, not the wall clock: one seed

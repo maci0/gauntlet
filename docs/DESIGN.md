@@ -196,7 +196,14 @@ the unit of safe parallelism is **the directory**, not the agent.
   subscribers must keep draining until the bus closes.
 - The event bus carries an injectable clock (`Bus.Now`). Event timestamps,
   review and loop elapsed times, the `--runtime` budget, and a zero `--seed`
-  all read it, so a test that pins the clock also pins those. Stochastic
+  all read it, so a test that pins the clock also pins those. The run's
+  effective seed is resolved once, where the run's start instant is read
+  (`runner.SeedOrClock`), and that one number is what the suggest step's
+  agent order and the schedule's shuffles both draw from: a derived seed
+  read twice would hand the two consumers different numbers, and the seed
+  the journal prints would replay only the schedule. A hot reload carries
+  the seed in its handoff, so a successor finishes the run from the seed the
+  journal already recorded rather than a fresh one. Stochastic
   choices (shuffle, agent pick, backoff jitter) are keyed draws from the
   seed, not a shared random stream, so a recorded seed replays them even
   when `--jobs` interleaves lanes. The line-sample debounce reads the same
@@ -493,7 +500,8 @@ When a replacement is detected, the swap proceeds like this:
    the launcher and a suggested run does not repeat selection.
 5. The successor seeds its stats from the handoff, resumes the interrupted
    loop from its remaining reviews, subtracts finished loops from
-   `--max-loops`, keeps the original start time for `--runtime`, and appends
+   `--max-loops`, keeps the original start time for `--runtime` and the
+   run's RNG seed, and appends
    to the same journal file. An unreadable handoff is a hard failure: the
    successor exits rather than starting a fresh run that would repeat work.
 

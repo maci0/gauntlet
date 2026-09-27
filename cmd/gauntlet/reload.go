@@ -28,7 +28,13 @@ type handoff struct {
 	// jump when the wall clock steps (NTP, a manual set) during the exec.
 	// Omitempty keeps an old handoff that lacks the field readable: resume
 	// then falls back to the wall-clock difference from StartedAt.
-	Elapsed time.Duration         `json:"elapsed,omitempty"`
+	Elapsed time.Duration `json:"elapsed,omitempty"`
+	// Seed is the run's effective RNG seed, the one the journal prints with
+	// the summary. A successor keeps it, so the reviews it still has to run
+	// draw from the same seed the interrupted process drew from and the run
+	// as a whole replays from that one number. Omitempty: a handoff written
+	// before the field existed resolves a fresh seed.
+	Seed    uint64                `json:"seed,omitempty"`
 	Reloads int                   `json:"reloads"`
 	Dirs    map[string]dirHandoff `json:"dirs"`
 }
@@ -90,6 +96,20 @@ func resumeStart(now time.Time, prior handoff) time.Time {
 	return now.Add(-max(elapsed, 0))
 }
 
+// effectiveSeed is the run's one RNG seed: what --seed named, else the seed
+// the interrupted process recorded, else a value derived from the clock. It is
+// resolved once per process because two consumers draw from it (the suggest
+// step's agent order and the schedule's shuffles) and two clock reads would
+// hand them two seeds, leaving the one the journal prints replaying only the
+// schedule. priorSeed 0 means no handoff carried one, which is also a handoff
+// written before the field existed.
+func effectiveSeed(flagSeed, priorSeed uint64, now func() time.Time) uint64 {
+	if flagSeed != 0 {
+		return flagSeed
+	}
+	return runner.SeedOrClock(priorSeed, now)
+}
+
 // startReloadWatch arms the hot-reload watcher. When the executable changes,
 // every runner is asked to stop at its next quiescent point; the exec happens
 // after the summary is written.
@@ -128,10 +148,11 @@ func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *r
 // doReload hands control to the new binary. It returns a nonnegative exit code
 // only when the exec failed and the caller should exit normally instead.
 func doReload(path, runID string, start time.Time, elapsed time.Duration, runs []*dirRun, prior handoff,
-	argv []string, out io.Writer) int {
+	seed uint64, argv []string, out io.Writer) int {
 	h := handoff{
-		RunID: runID, StartedAt: start, Elapsed: elapsed, Reloads: prior.Reloads + 1,
-		Dirs: make(map[string]dirHandoff, len(runs)),
+		RunID: runID, StartedAt: start, Elapsed: elapsed, Seed: seed,
+		Reloads: prior.Reloads + 1,
+		Dirs:    make(map[string]dirHandoff, len(runs)),
 	}
 	for _, d := range runs {
 		if d.stats == nil {

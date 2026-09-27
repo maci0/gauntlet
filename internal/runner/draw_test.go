@@ -103,31 +103,31 @@ func TestBackoffIgnoresOtherDraws(t *testing.T) {
 
 func TestSeedOrClock(t *testing.T) {
 	// Explicit seed passes through untouched.
-	if got := seedOrClock(42, nil); got != 42 {
-		t.Fatalf("seedOrClock with explicit seed = %d, want 42", got)
+	if got := SeedOrClock(42, nil); got != 42 {
+		t.Fatalf("SeedOrClock with explicit seed = %d, want 42", got)
 	}
 
 	// Zero seed derives from clock.
 	fixed := time.Unix(1234567890, 987654321)
 	clock := func() time.Time { return fixed }
-	if got := seedOrClock(0, clock); got != uint64(fixed.UnixNano()) {
-		t.Fatalf("seedOrClock from clock = %d, want %d", got, fixed.UnixNano())
+	if got := SeedOrClock(0, clock); got != uint64(fixed.UnixNano()) {
+		t.Fatalf("SeedOrClock from clock = %d, want %d", got, fixed.UnixNano())
 	}
 
 	// Zero UnixNano falls back to 1 (seed 0 means unset).
 	zeroClock := func() time.Time { return time.Unix(0, 0) }
-	if got := seedOrClock(0, zeroClock); got != 1 {
-		t.Fatalf("seedOrClock with zero clock = %d, want 1", got)
+	if got := SeedOrClock(0, zeroClock); got != 1 {
+		t.Fatalf("SeedOrClock with zero clock = %d, want 1", got)
 	}
 
 	// Zero Time falls back to 1 without invoking undefined UnixNano behavior.
 	uninitClock := func() time.Time { return time.Time{} }
-	if got := seedOrClock(0, uninitClock); got != 1 {
-		t.Fatalf("seedOrClock with uninitialized Time = %d, want 1", got)
+	if got := SeedOrClock(0, uninitClock); got != 1 {
+		t.Fatalf("SeedOrClock with uninitialized Time = %d, want 1", got)
 	}
 
 	// Nil clock uses time.Now and returns non-zero.
-	if got := seedOrClock(0, nil); got == 0 {
-		t.Fatal("seedOrClock with nil clock returned 0")
+	if got := SeedOrClock(0, nil); got == 0 {
+		t.Fatal("SeedOrClock with nil clock returned 0")
 	}
 }

@@ -11,7 +11,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
 // A reload whose handoff state cannot be saved must not exec: the successor
@@ -91,7 +93,7 @@ func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 	// of execing anything. The abort is reported on stderr, where the
 	// exec-failure path reports too.
 	code, errs := captureStderrFor(t, func() int {
-		return doReload("", "20260827T120000Z-dead", start, 0, runs, handoff{}, []string{}, &out)
+		return doReload("", "20260827T120000Z-dead", start, 0, runs, handoff{}, 7, []string{}, &out)
 	})
 	if code != exitFail {
 		t.Errorf("an unsavable handoff should abort the reload with exit %d, got %d", exitFail, code)
@@ -144,4 +146,58 @@ func captureStderrFor(t *testing.T, f func() int) (int, *bytes.Buffer) {
 		t.Fatal(err)
 	}
 	return code, &buf
+}
+
+// The seed has to survive the exec: the journal records the number the run
+// drew from, and a successor that resolved a fresh one would leave that
+// number unable to replay the reviews the successor still had to run.
+func TestHandoffCarriesTheSeed(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	path, err := selfupdate.SaveState(journal.StateDir(), "seeded-run",
+		handoff{RunID: "seeded-run", Seed: 4242, Dirs: map[string]dirHandoff{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_STATE", path)
+
+	var got handoff
+	ok, err := selfupdate.LoadState(&got)
+	if err != nil || !ok {
+		t.Fatalf("LoadState = %v, %v; want the handoff back", ok, err)
+	}
+	if got.Seed != 4242 {
+		t.Fatalf("the handoff seed is %d, want 4242", got.Seed)
+	}
+
+	// A handoff written before the field existed still loads; it just has no
+	// seed to continue from.
+	old := filepath.Join(t.TempDir(), "old.json")
+	if err := os.WriteFile(old, []byte(`{"run_id":"seeded-run","dirs":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_STATE", old)
+	var prior handoff
+	if ok, err := selfupdate.LoadState(&prior); err != nil || !ok {
+		t.Fatalf("LoadState = %v, %v; want an old handoff to load", ok, err)
+	}
+	if prior.Seed != 0 {
+		t.Fatalf("an old handoff read a seed of %d, want 0", prior.Seed)
+	}
+}
+
+// One seed per run: --seed wins, a resumed run continues its predecessor's,
+// and only a run with neither derives one. Two clock reads here would hand the
+// suggest step and the schedule different seeds, so the number printed on
+// failure would replay only the schedule.
+func TestEffectiveSeedPrefersTheFlagThenThePredecessor(t *testing.T) {
+	now := func() time.Time { return time.Unix(0, 1700000000000000000).UTC() }
+	if got := effectiveSeed(7, 99, now); got != 7 {
+		t.Errorf("an explicit --seed must win, got %d", got)
+	}
+	if got := effectiveSeed(0, 99, now); got != 99 {
+		t.Errorf("a resumed run must keep the interrupted seed, got %d", got)
+	}
+	if got := effectiveSeed(0, 0, now); got != uint64(now().UnixNano()) {
+		t.Errorf("a fresh run derives its seed from the clock, got %d", got)
+	}
 }

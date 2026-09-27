@@ -25,8 +25,10 @@ type SuggestConfig struct {
 	Bin     map[string]string
 	Timeout time.Duration
 	Log     func(string, ...any)
-	// Seed shuffles the agent try order; zero derives one from the clock, so
-	// the same seed replays which agent was asked first.
+	// Seed shuffles the agent try order. The caller resolves the run's
+	// effective seed once (SeedOrClock) and passes the same number to the
+	// schedule, so the seed the journal records replays this step too; zero
+	// here still derives one from the clock, for a caller with no run seed.
 	Seed uint64
 }
 
@@ -67,7 +69,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		// suggest step is driven by the one seed the journal records and its
 		// order is a pure function of seed and pool size, stable across builds
 		// (math/rand's Shuffle is not pinned by anything in-tree).
-		seed := seedOrClock(cfg.Seed, nil)
+		seed := SeedOrClock(cfg.Seed, nil)
 		for i := len(order) - 1; i > 0; i-- {
 			j := drawIndex(seed, fmt.Sprintf("suggest-shuffle\x00%d", i), i+1)
 			order[i], order[j] = order[j], order[i]

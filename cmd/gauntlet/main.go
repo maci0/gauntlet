@@ -250,15 +250,26 @@ func run(argv []string) int {
 	// a UTC midnight would put a fresh run's id date and its directory one
 	// day apart.
 	now := time.Now()
+	// The same reading everywhere below: the seed this run derives has to be
+	// the one the id was stamped with, not a second read a microsecond later.
+	clock := func() time.Time { return now }
 	if !resumed || runID == "" {
 		runID = journal.NewRunID(now)
 		origin, startedAt = now, now
+		// The run's one RNG seed, resolved here and nowhere else: the suggest
+		// step's agent order and the schedule's shuffles both draw from it, so
+		// the number the journal prints on failure replays the whole run
+		// rather than the schedule alone.
+		opts.seed = effectiveSeed(opts.seed, 0, clock)
 	} else {
 		origin = prior.StartedAt
 		startedAt = resumeStart(now, prior)
 		if origin.IsZero() || origin.After(now) {
 			origin = startedAt
 		}
+		// The interrupted process's seed, so the reviews this one still has to
+		// run draw from the number the journal already recorded.
+		opts.seed = effectiveSeed(opts.seed, prior.Seed, clock)
 	}
 
 	ownArtifacts := map[string]bool{}
@@ -626,7 +637,8 @@ func run(argv []string) int {
 	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
-		if code := doReload(*path, runID, origin, max(time.Since(startedAt), 0), runs, prior, argv, stdout); code >= 0 {
+		if code := doReload(*path, runID, origin, max(time.Since(startedAt), 0), runs, prior,
+			opts.seed, argv, stdout); code >= 0 {
 			// The exec failed, or the handoff could not be saved and the
 			// reload was aborted: no successor is coming, so finish the run
 			// here. Returning without the summary would orphan the whole

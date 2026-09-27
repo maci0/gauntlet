@@ -83,11 +83,16 @@ func fnvAppendUint(h uint64, val uint64) uint64 {
 	return h
 }
 
-// seedOrClock returns the configured seed, or one derived from the clock when
+// SeedOrClock returns the configured seed, or one derived from the clock when
 // unset, so production keeps its random shuffle while a seeded run replays it.
 // now nil means time.Now. A derived seed is never 0: 0 means "unset" and would
 // be re-derived on replay instead of reproducing the original draws.
-func seedOrClock(seed uint64, now func() time.Time) uint64 {
+//
+// Exported because the seed must be resolved once per run, not once per
+// consumer: the suggest step and the review schedule draw from it, and two
+// clock reads would hand them two seeds, so the one the journal records would
+// replay only the schedule.
+func SeedOrClock(seed uint64, now func() time.Time) uint64 {
 	if seed != 0 {
 		return seed
 	}
