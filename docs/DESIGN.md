@@ -39,7 +39,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
-| `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage*.go`, dropped by `-tags notoktop` |
+| `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
@@ -237,6 +237,8 @@ selected review order for a pass. A changed review contributes exactly one
 commit and becomes the base of the next changed review. `--max-loops` (default
 1; 0 is unlimited) starts each later pass in a fresh worktree cut from the
 previous pass's last published tip, so already-applied fixes stay in the tree.
+In stack mode `--max-loops` defaults to 1, unlike the rest of the CLI where it
+defaults to 0 (unlimited); an explicit `-n 0` asks for unlimited passes.
 
 ```mermaid
 flowchart LR

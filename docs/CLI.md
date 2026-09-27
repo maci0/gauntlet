@@ -17,7 +17,7 @@ installed.
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
-`-C/--dir`, `--dirs`, and `--prompt-dir`, `doctor` takes `--bin` and
+`-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
 `--limit`, and `show`, `version`, and `help` take none of their own. `--log` and
 `--no-color` work everywhere, and may precede the subcommand, so
@@ -109,7 +109,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
 | `-1, --once` | off | One loop, then stop. Conflicts with `--max-loops`. |
 | `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each a fresh worktree from the previous tip. |
-| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any nonnegative integer literal (`0x…` included); `0` derives one from the clock. A headless run prints the effective seed in its first line, so a run started without `--seed` reports the one that replays it. |
+| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts any nonnegative integer literal (`0x…` included); `0` derives one from the clock. A headless run prints the effective seed in its first line, so a run started without `--seed` reports the one that replays it, but only an explicit value replays on its own: a derived seed differs every run. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
 | `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. Untracked files do not block it, matching `--jobs`. A dirty tree, or one whose git status cannot be read, is refused rather than reported as merged. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
@@ -132,7 +132,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--stream` | On by default: agents that have a machine-readable mode are asked for it, giving live token counts and the reasoning/output split shown separately in the feed (`--stream=false` launches them as before). |
 | `--no-color` | Disable color everywhere, the plain log and the dashboard/launcher both. The `NO_COLOR` environment variable does the same. |
 | `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
-| `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` / `esc` stop the run after two presses; `s` is the graceful finish. |
+| `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` stops the run after two presses, and `esc` cancels that armed quit; `s` is the graceful finish. |
 | `-V, --version` | Print the version. |
 
 **Updating**
@@ -202,7 +202,11 @@ in the environment.)
 that asks the CLI for machine-readable output (`--stream`), `continue` is the
 argument list that resumes the agent's last session in this directory under
 `--continue-sessions`, and `usage` says where it keeps session transcripts,
-which is what gives a defined agent live token counts. `model` (e.g.
+which is what gives a defined agent live token counts. `usage.cumulative`
+switches the reader to subtracting a per-session baseline, for a format whose
+counters only ever grow across the whole file rather than resetting per record;
+`usage.header_cwd` says the working directory appears once at the top of a
+session file rather than on every record. `model` (e.g.
 `["--model", "{model}"]`) is appended when a spec pins a model, and `effort`
 (e.g. `["--effort", "{effort}"]`) likewise when a spec pins a reasoning
 effort; without an `effort` list (or an `{effort}` placeholder in `argv`),

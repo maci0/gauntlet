@@ -94,10 +94,11 @@ approximately right:
    hold thousands of old sessions), and a file whose mtime has not moved is not
    reopened.
 
-An agent with no adapter (`gemini`, `grok`, `agy`, …) simply has
-no watcher, and its lane shows no rate. Adding one is a `parse` function plus a
-table entry, and the tests carry real record shapes as fixtures so a format
-change fails loudly instead of silently returning zero.
+An agent with no transcript adapter (`gemini`, `grok`, `agy`, …) has no
+watcher. Its lane still shows a rate when its counters come from the stream or
+from a database instead; only the transcript source is missing. Adding one is a
+`parse` function plus a table entry, and the tests carry real record shapes as
+fixtures so a format change fails loudly instead of silently returning zero.
 
 ### What the dashboard does with it
 

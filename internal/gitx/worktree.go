@@ -539,8 +539,9 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	return w.repo.removeWorktreeDir(ctx, dir)
 }
 
-// DeleteBranch removes a merged review branch. Unmerged branches need -D and
-// are kept instead, so nothing is destroyed by accident.
+// DeleteBranch force-removes a review branch. It is only ever called once the
+// review's content is in a commit, or for a branch that never left its base,
+// so an unmerged branch is deleted rather than kept.
 //
 // It takes wtMu like every other worktree-bookkeeping command: deleting a
 // branch walks the registered worktrees (a branch checked out anywhere has to

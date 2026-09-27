@@ -166,12 +166,18 @@ func TestReadmeInstallPinsTheResolvedTag(t *testing.T) {
 	}
 	text := string(readme)
 	if strings.Contains(text, "releases/latest/download/") {
-		t.Fatal("README install fetches from releases/latest/download/; use releases/download/v${ver}/ so the binary matches the tag just resolved")
+		t.Fatal("README install fetches from releases/latest/download/; use releases/download/v${ver} so the binary matches the tag just resolved")
 	}
-	// The base is matched without a trailing slash: the script may carry it
-	// itself or build "$base/$asset", and both pin the tag that was just
-	// resolved. What matters is that ${ver} is interpolated into the path.
+	// The base is matched without a trailing slash: the README builds one base
+	// URL and appends the asset name, so the slash is applied where the path is
+	// joined. Either way ${ver} has to be interpolated into the path.
 	if !strings.Contains(text, "releases/download/v${ver}") {
 		t.Fatal("README install must fetch from releases/download/v${ver}/ so the binary matches the tag just resolved")
+	}
+	// Pinning the base only helps if every download goes through it.
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.Contains(line, "curl") && strings.Contains(line, "github.com/maci0/gauntlet/releases") {
+			t.Errorf("README install fetches a hardcoded release URL, bypassing the resolved tag: %s", strings.TrimSpace(line))
+		}
 	}
 }

@@ -178,7 +178,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 
 	fmt.Fprintf(out, "%s %s\n%s\n",
 		pal.bold("gauntlet"), pal.dim(version),
-		pal.dim("Run your codebase through ~50 specialized review prompts, dispatched to"))
+		pal.dim("Run your codebase through 53 specialized review prompts, dispatched to"))
 	fmt.Fprintln(out, pal.dim("the AI coding agents you have installed. Fixes land in the working tree."))
 
 	head("usage")
