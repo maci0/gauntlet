@@ -626,6 +626,18 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if isFlagSet(fs, "paths") && len(raw.paths) == 0 {
 		return nil, errors.New("--paths is empty: name at least one file, directory, or glob, or drop the flag")
 	}
+	// Each entry is pasted into the review prompt as an instruction, so one
+	// carrying a line break or a backtick is prompt text, not a path. Refuse it
+	// here, where the operator can see which entry it was, rather than
+	// rewriting it into the prompt behind a scope block that reads narrower
+	// than what was asked for.
+	for _, p := range raw.paths {
+		if !prompt.PathEntrySafe(p) {
+			return nil, fmt.Errorf("invalid --paths entry %q: name a file, directory, or glob "+
+				"with no line break, no backtick, and at most %d characters",
+				p, prompt.PathEntryMax)
+		}
+	}
 	o.paths = raw.paths
 
 	// "suggest" is a request, not a review name: it can arrive as --suggest or

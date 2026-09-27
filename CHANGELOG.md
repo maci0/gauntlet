@@ -37,6 +37,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - `internal/humanize` gained `Plural`, and the two private `plural` helpers in `cmd/gauntlet` and `internal/runner` are gone. The runner's took a bare noun and appended an "s", so any word not ending in one was miscounted; both callers now name both spellings. The wording they render is unchanged, except that a `gauntlet doctor` count in the thousands is now grouped (`1,234 journals`) like every other count in the tree.
 - The release asset `sbom.txt` is now `sbom.json`. Anyone parsing the old file reads the CycloneDX document instead; the module paths and versions it listed are unchanged.
+- A `--paths` entry that is not a path is refused. The entries are pasted into the review prompt as instructions, and nothing checked them: a wrapper that built the flag from a file list could put a line break or a line of prose in a file name, and the scope block would carry it as the agent's own instructions. An entry with a line break, a backtick, a control or formatting character, or more than 200 characters is now refused at the flag, and the prompt renders the rest one line per entry, counted rather than clipped when the list runs past its cap. Every other entry is unchanged.
 
 ### Fixed
 
