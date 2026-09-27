@@ -1,0 +1,2 @@
+go test fuzz v1
+string("Yo\x00ur goal")

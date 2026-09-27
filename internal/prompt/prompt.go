@@ -91,11 +91,17 @@ func descFromBody(body string) string {
 		// project prompt may indent its goal (a list item, a blockquote) or
 		// carry CRLF line endings, and an untrimmed line misses both, leaving
 		// the review with no description at all.
-		line = strings.TrimSpace(sanitize(line))
+		//
+		// The prefix is matched on the line as written, never on the repaired
+		// one. Sanitize repairs by deleting control characters, so matching
+		// afterwards would read "Yo\x00ur goal is to ..." as a goal the file
+		// never declared. The value is sanitized once extracted, which is the
+		// part that reaches the display.
+		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, goalPrefix) {
 			line = strings.TrimPrefix(line, goalPrefix+" is to ")
 			line = strings.TrimPrefix(line, goalPrefix+" is ")
-			return strings.TrimSpace(nfc(line))
+			return strings.TrimSpace(nfc(sanitize(line)))
 		}
 	}
 	return ""
@@ -138,6 +144,13 @@ func (r Review) Summary() string {
 	if err != nil {
 		return ""
 	}
+	return summaryFromBody(body)
+}
+
+// summaryFromBody reads the Summary: line out of a body, falling back to the
+// goal line. It is the body half of Summary, split out so a fuzz target can
+// drive a prompt file's text without putting the bytes on disk first.
+func summaryFromBody(body string) string {
 	for line := range strings.SplitSeq(body, "\n") {
 		line = strings.TrimSpace(line)
 		if !strings.HasPrefix(line, summaryPrefix) {
@@ -149,7 +162,12 @@ func (r Review) Summary() string {
 		}
 		return normalize.Truncate(nfc(s), summaryRuneMax)
 	}
-	return descFromBody(body)
+	// The goal-line fallback is bounded like the declared one. Desc is the
+	// long form and runs to a full sentence or several, but the places that
+	// show one line per review are exactly the ones that reach for Summary,
+	// so a review declaring no Summary: line would otherwise be the one
+	// entry there that never fits.
+	return normalize.Truncate(descFromBody(body), summaryRuneMax)
 }
 
 // Signal tokens a review may declare, so the file-signal suggester can

@@ -1536,3 +1536,60 @@ func TestDiscoveryDropsNamesThatAreNotText(t *testing.T) {
 		t.Errorf("project warnings = %q, want one naming the unreadable file", warnings)
 	}
 }
+
+// The goal line and the Summary: line are read out of a *-review.md in the
+// reviewed tree, and what they yield is display text: a picker entry, a
+// --list row, a grid cell in the README. Whatever the file holds, both
+// extractions must terminate, stay on one line, come back as valid text, and
+// carry no control or formatting character a reader's terminal or editor would
+// act on. Sanitize runs before the Unicode normalization, so the result is
+// also NFC-stable: normalizing it again changes nothing.
+func FuzzReviewMetadata(f *testing.F) {
+	for _, seed := range []string{
+		"You are a senior engineer. Your goal is to review this tree.\n",
+		"Your goal is to do the thing.\n",
+		"Summary: stale reads, cross-tenant bleed\n",
+		"  Summary:   indented, CRLF\r\n",
+		"Summary:\n",
+		"Summary: \x1b[31mred\x1b[0m and \u202egnihs\u202c\n",
+		"Your goal is to \x00 drop \xff bytes.\n",
+		"\ufeffSummary: with a BOM\n",
+		"Summary: " + strings.Repeat("é", 200) + "\n",
+		// A long goal line is the fallback Summary falls back to, and the one
+		// path the 60-rune bound used to skip.
+		"Your goal is to " + strings.Repeat("keep going", 40) + "\n",
+		"Yo\x00ur goal\n",
+		strings.Repeat("Summary: a\n", 500),
+		"- Your goal is to survive CRLF\r\n- Summary: no newline at the end",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, body string) {
+		desc := descFromBody(body)
+		summary := summaryFromBody(body)
+		for _, got := range []string{desc, summary} {
+			switch {
+			case !utf8.ValidString(got):
+				t.Fatalf("emitted invalid UTF-8: %q", got)
+			case sanitize(got) != got:
+				t.Fatalf("emitted a character sanitize removes: %q", got)
+			case strings.ContainsRune(got, '\n'):
+				t.Fatalf("emitted more than one line: %q", got)
+			}
+		}
+		if n := utf8.RuneCountInString(summary); n > summaryRuneMax+1 {
+			t.Fatalf("summary is %d runes, past the %d bound: %q", n, summaryRuneMax, summary)
+		}
+		if nfc(desc) != desc {
+			t.Fatalf("desc is not in the form names are compared in: %q", desc)
+		}
+		// A body that declares neither line describes nothing. A summary
+		// line that is present but empty falls back to the goal line, so the
+		// emptiness check reads the markers, not the results.
+		if !strings.Contains(body, goalPrefix) && !strings.Contains(body, summaryPrefix) {
+			if desc != "" || summary != "" {
+				t.Fatalf("a body with no declared line yielded %q / %q", desc, summary)
+			}
+		}
+	})
+}
