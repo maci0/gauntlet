@@ -28,8 +28,10 @@ but drops the sqlite driver.
   ignored. `TMPDIR` is set by the Makefile for that reason.
 - User-visible changes land in `CHANGELOG.md` under `## Unreleased` in the
   same change (each impact heading `Added`, `Changed`, `Deprecated`, `Removed`,
-  `Fixed`, `Security` at most once per version). Internal refactors with no
-  visible behavior need nothing.
+  `Fixed`, `Security` at most once per version). `## Unreleased` may not carry
+  `Removed`: removals are breaking and wait for a major release, and
+  `cmd/gauntlet/changelog_test.go` fails the suite on one. Internal refactors
+  with no visible behavior need nothing.
 
 ## Layout
 
