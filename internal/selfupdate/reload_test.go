@@ -330,6 +330,108 @@ func TestFingerprintValidAndStat(t *testing.T) {
 	}
 }
 
+// watchFile is Watch without os.Executable: the loop is what decides a reload,
+// and the file it watches is the only thing a test may substitute for the
+// running binary. Watch itself resolves the real executable, which a test
+// cannot replace.
+func watchFile(t *testing.T, ctx context.Context, path string) <-chan string {
+	t.Helper()
+	base, err := stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := make(chan string, 1)
+	w := &Watcher{path: path, every: 10 * time.Millisecond, base: base, Change: ch}
+	go w.run(ctx, ch)
+	return ch
+}
+
+// replace swaps the watched file the way self-update does: a new file built
+// beside it and renamed over, so a reader sees one whole binary or the other.
+func replace(t *testing.T, path, body string) {
+	t.Helper()
+	tmp := path + ".new"
+	if err := os.WriteFile(tmp, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWatchReportsAReplacedBinary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gauntlet")
+	if err := os.WriteFile(path, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ch := watchFile(t, t.Context(), path)
+
+	// Untouched for a few ticks first: a watcher that fired on the file it
+	// started from would reload in a loop forever.
+	select {
+	case p, ok := <-ch:
+		t.Fatalf("watcher fired with no change to the binary: %q (open=%t)", p, ok)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	replace(t, path, "new binary, longer")
+	select {
+	case p, ok := <-ch:
+		if !ok {
+			t.Fatal("watcher closed the channel without reporting the change")
+		}
+		if p != path {
+			t.Fatalf("watcher named %q, want the watched path %q", p, path)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not notice the replaced binary")
+	}
+	// The loop ends after reporting: a second binary replacing the first
+	// needs a fresh watcher, which is what the caller starts.
+	select {
+	case p, ok := <-ch:
+		if ok {
+			t.Fatalf("watcher reported a second change %q without a new binary", p)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not stop after reporting the change")
+	}
+}
+
+func TestWatchIgnoresAMissingBinary(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gauntlet")
+	if err := os.WriteFile(path, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ch := watchFile(t, t.Context(), path)
+
+	// A self-update that removes the target before renaming into place is a
+	// rename caught mid-flight, not a deletion the operator asked for. It must
+	// not fire a reload on a half-written file.
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case p, ok := <-ch:
+		t.Fatalf("watcher reported a change for a missing binary: %q (open=%t)", p, ok)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// The file coming back is the change worth reporting.
+	replace(t, path, "restored binary")
+	select {
+	case p, ok := <-ch:
+		if !ok {
+			t.Fatal("watcher closed the channel without reporting the restored binary")
+		}
+		if p != path {
+			t.Fatalf("watcher named %q, want %q", p, path)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not notice the binary come back")
+	}
+}
+
 func TestWatchContextCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

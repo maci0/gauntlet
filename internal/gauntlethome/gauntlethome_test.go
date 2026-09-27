@@ -237,6 +237,81 @@ func FuzzExpandPath(f *testing.F) {
 	})
 }
 
+// WriteFileAtomic is the only way the state tree replaces a file, so the
+// contract that matters is what a reader opening the path at any moment can
+// see: the previous contents, or the whole new ones. A truncate-then-write
+// would let a reader land between the two and read a short file.
+func TestWriteFileAtomicReplacesTheWholeFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "index.json")
+	if err := WriteFileAtomic(dir, ".index-", path, []byte(`{"old":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	// Longer than the first write, so a partial overwrite would show up as a
+	// tail of the old contents rather than a prefix of the new.
+	if err := WriteFileAtomic(dir, ".index-", path, []byte(`{"run":"second","rows":[1,2,3]}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"run":"second","rows":[1,2,3]}`; string(got) != want {
+		t.Fatalf("file holds %q, want %q", got, want)
+	}
+	// The temp file is renamed into place, not left beside the target.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "index.json" {
+			t.Errorf("write left %q behind in %s", e.Name(), dir)
+		}
+	}
+}
+
+func TestWriteFileAtomicFailsLoudlyOnAMissingDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "absent")
+	err := WriteFileAtomic(dir, ".index-", filepath.Join(dir, "index.json"), []byte("x"))
+	if err == nil {
+		t.Fatal("writing into a directory that does not exist must fail, not report success")
+	}
+}
+
+func TestWriteFileAtomicLeavesNoTempBehindOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	// The rename cannot succeed: the target is a directory, not a file. The
+	// write itself succeeds, so this reaches the one step that can fail after
+	// the temp file exists.
+	if err := os.Mkdir(filepath.Join(dir, "target"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFileAtomic(dir, ".target-", filepath.Join(dir, "target"), []byte("x")); err == nil {
+		t.Fatal("renaming a file over a directory must fail")
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if e.Name() != "target" {
+			t.Errorf("failed write left %q behind in %s", e.Name(), dir)
+		}
+	}
+}
+
+func TestSyncDir(t *testing.T) {
+	if err := SyncDir(t.TempDir()); err != nil {
+		t.Fatalf("syncing a real directory: %v", err)
+	}
+	// A directory that is not there is a real failure, not the EINVAL case:
+	// there was no entry to flush, so nothing was lost either.
+	if err := SyncDir(filepath.Join(t.TempDir(), "absent")); err == nil {
+		t.Fatal("syncing a directory that does not exist must report the error")
+	}
+}
+
 func TestSweepStaleTemps(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name string) string {
