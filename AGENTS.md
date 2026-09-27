@@ -11,12 +11,13 @@ but drops the sqlite driver.
   under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
   apply reported Go fixes under the same three tag sets before committing.
 - `make ci`: `make check` across all three tag sets, then `make test` for
-  the selected `TAGS` (default `sqlite`). CI also tests bare and `notoktop`
-  builds on Linux and macOS and checks coverage, dist, and reproducibility.
+  the selected `TAGS` (default `sqlite`). The GitHub workflow
+  (`.github/workflows/ci.yml`) is wider: bare and `notoktop` builds on Linux
+  and macOS, plus coverage, dist, and reproducibility.
 - `make check-scripts`: ruff and mypy `--strict` via version-pinned `uvx`,
   plus shellcheck from PATH, on `scripts/`. Rule selection is `pyproject.toml`.
   Run `make fmt-scripts` to rewrite scripts with ruff format.
-- `make test [RUN=TestName]`: the suite with the race detector and shuffled order.
+- `make test RUN=TestName`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
   with the same race, shuffle, and tag flags.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
@@ -26,6 +27,9 @@ but drops the sqlite driver.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
   ignored. `TMPDIR` is set by the Makefile for that reason.
+- The Makefile, the workflows, and the tool pins in `scripts/` are pinned by
+  tests in `cmd/gauntlet/` (`makefile_test.go`, `ci_test.go`, `deps_test.go`):
+  change one without the other and `make test` fails.
 - User-visible changes land in `CHANGELOG.md` under `## Unreleased` in the
   same change (each impact heading `Added`, `Changed`, `Deprecated`, `Removed`,
   `Fixed`, `Security` at most once per version). `## Unreleased` may not carry
