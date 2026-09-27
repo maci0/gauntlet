@@ -597,6 +597,122 @@ func FuzzDisplay(f *testing.F) {
 	})
 }
 
+// FuzzDisplayWriter drives the writer a child process's raw output goes
+// through. FuzzDisplay covers the text transform; this covers the buffering
+// around it, which is where the arithmetic lives: drain cuts the held line at
+// maxPendingBytes and walks back to a rune boundary, and a byte at a time is
+// the worst case for that, since no write boundary may be assumed to line up
+// with a newline or with the cut.
+//
+// Two paths run for every input. The raw one asserts the sink's contracts:
+// nothing terminal-driving reaches the terminal, the output is decodable text
+// however the held line was split, no newline is invented, and the buffer
+// stays bounded no matter how long a line grows. The translated one replaces
+// each input byte with an inert rune of varying width, so the content is
+// always something Display leaves alone and the writer has to be a transparent
+// pass-through: any byte dropped, duplicated, or split mid-character by the
+// cut shows up as a diff against the input. That is the only assertion here
+// that can fail without a crash, and it is the one the cap path needs.
+func FuzzDisplayWriter(f *testing.F) {
+	for _, s := range []string{
+		"",
+		"indexed a/b.go\nwarning: 2 files skipped\n",
+		"no trailing newline",
+		"\n\n\n",
+		"trailing newline\n",
+		"héllo 中文 🎯 wide runes at the cut",
+	} {
+		f.Add(s, false)
+		f.Add(s, true)
+	}
+	f.Fuzz(func(t *testing.T, s string, oversize bool) {
+		t.Run("raw", func(t *testing.T) {
+			var out bytes.Buffer
+			w := NewDisplayWriter(&out)
+			for i := 0; i < len(s); i++ {
+				n, err := w.Write([]byte(s[i : i+1]))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if n != 1 {
+					t.Fatalf("Write reported %d bytes for a 1-byte write", n)
+				}
+				if len(w.held) > maxPendingBytes+utf8.UTFMax {
+					t.Fatalf("held buffer grew to %d bytes on a %d-byte line", len(w.held), len(s))
+				}
+			}
+			if err := w.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			got := out.String()
+			if !utf8.ValidString(got) {
+				t.Fatalf("writer emitted undecodable text: %q", got)
+			}
+			for _, r := range got {
+				// The newline is the writer's own terminator, appended after
+				// Display has run, so it is the one control it may emit.
+				if r == '\n' {
+					continue
+				}
+				if r == 0x1b {
+					t.Fatalf("writer emitted an escape byte: %q", got)
+				}
+				if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+					t.Fatalf("writer emitted terminal-driving %q in %q", r, got)
+				}
+			}
+			// Every newline the input carried is a line the writer owes the
+			// reader, and a final unterminated line owes none: drain appends
+			// the terminator, so the counts have to match exactly.
+			if n, want := strings.Count(got, "\n"), strings.Count(s, "\n"); n != want {
+				t.Fatalf("writer emitted %d newlines for %d in the input", n, want)
+			}
+			if len(w.held) != 0 {
+				t.Fatalf("Flush left %d bytes held: %q", len(w.held), w.held)
+			}
+		})
+		t.Run("transparent", func(t *testing.T) {
+			safe := inert(s)
+			if oversize {
+				// Cross maxPendingBytes so the cut and its walk back to a
+				// rune boundary run, with a multi-byte rune deliberately
+				// straddling the cut.
+				safe = strings.Repeat("中", maxPendingBytes) + safe
+			}
+			var out bytes.Buffer
+			w := NewDisplayWriter(&out)
+			for i := 0; i < len(safe); i++ {
+				if _, err := w.Write([]byte(safe[i : i+1])); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := w.Flush(); err != nil {
+				t.Fatal(err)
+			}
+			if got := out.String(); got != safe {
+				t.Fatalf("writer changed inert text:\n got %d bytes\nwant %d bytes", len(got), len(safe))
+			}
+		})
+	})
+}
+
+// inertRunes is every rune inert translates an input byte to: no escape, no
+// control or formatting rune, all valid UTF-8, and deliberately of differing
+// byte widths so the cut has to find a real rune boundary.
+var inertRunes = []rune{'a', 'b', 'Z', '0', '9', '-', '_', '.', ':', ' ', '\n', 'é', '中', '🎯'}
+
+// inert maps s to a string Display returns unchanged, one rune per input
+// byte, so the fuzzed content still shapes the line structure and the buffer
+// while remaining something the writer must reproduce exactly.
+func inert(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) * 2)
+	for i := range len(s) {
+		b.WriteRune(inertRunes[int(s[i])%len(inertRunes)])
+	}
+	return b.String()
+}
+
 // DisplayWriter is a pass-through for a program that writes plain text: the
 // same bytes in, the same bytes out, whatever the write boundaries. Only the
 // sequences and control characters Display strips are removed.
@@ -620,6 +736,85 @@ func TestDisplayWriterPassesPlainTextThrough(t *testing.T) {
 	}
 	if got.String() != text {
 		t.Fatalf("plain text was altered:\n got %q\nwant %q", got.String(), text)
+	}
+}
+
+// A blank line is a line. drain used to return early whenever it held
+// nothing, so the terminator of an empty line went out with it and every
+// blank line a child wrote vanished.
+func TestDisplayWriterKeepsBlankLines(t *testing.T) {
+	for _, text := range []string{"\n", "\n\n\n", "a\n\nb\n", "\n\n\n\n\n", "a\n\n\n"} {
+		var got bytes.Buffer
+		w := NewDisplayWriter(&got)
+		if _, err := w.Write([]byte(text)); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != text {
+			t.Fatalf("blank lines were dropped:\n got %q\nwant %q", got.String(), text)
+		}
+	}
+}
+
+// Past maxPendingBytes the writer emits the oldest part of an unterminated
+// line so the buffer stays bounded, and that cut must land between characters.
+// The cap is a byte count and every rune in this line is three bytes wide, so
+// the cut falls inside a character on most offsets; a boundary search that
+// walks the wrong way never finds one and repairs the tail to U+FFFD instead,
+// which loses the character rather than deferring it.
+func TestDisplayWriterCutsOnRuneBoundary(t *testing.T) {
+	// maxPendingBytes is not a multiple of three, so the cut lands mid-rune on
+	// some drains and between runes on others. Both must come out whole.
+	for _, pad := range []int{0, 1, 2} {
+		line := strings.Repeat("中", pad) + strings.Repeat("x", maxPendingBytes) + strings.Repeat("中", 64)
+		var got bytes.Buffer
+		w := NewDisplayWriter(&got)
+		// One byte at a time: no write boundary may be assumed to line up
+		// with the cut, which is the case the cap logic actually runs in.
+		for i := 0; i < len(line); i++ {
+			if _, err := w.Write([]byte(line[i : i+1])); err != nil {
+				t.Fatal(err)
+			}
+			if len(w.held) > maxPendingBytes+utf8.UTFMax {
+				t.Fatalf("held buffer grew to %d bytes, past the cap", len(w.held))
+			}
+		}
+		if err := w.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		if got.String() != line {
+			t.Fatalf("pad %d: the cut split a character", pad)
+		}
+	}
+}
+
+// runeBoundary answers the question the cut turns on: where does b[:i] stop
+// splitting a UTF-8 sequence. The byte before a boundary is a continuation
+// byte, so the answer is the nearest rune start at or before the cut, and in a
+// line of nothing but multi-byte runes no byte after the first is one.
+func TestRuneBoundary(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		cut  int
+		want int
+	}{
+		{"abc", 3, 3},
+		{"abc", 2, 2},
+		{"中中中", 9, 9},
+		{"中中中", 8, 6},
+		{"中中中", 7, 6},
+		{"中中中", 5, 3},
+		{"中中中", 1, 0},
+		{"", 0, 0},
+		{"中", 1, 0},
+		// A cut past the end of the buffer clamps rather than reading it.
+		{"abc", 99, 3},
+	} {
+		if got := runeBoundary([]byte(tc.in), tc.cut); got != tc.want {
+			t.Errorf("runeBoundary(%q, %d) = %d, want %d", tc.in, tc.cut, got, tc.want)
+		}
 	}
 }
 

@@ -4,6 +4,7 @@
 package streamjson
 
 import (
+	"bytes"
 	"encoding/json"
 	"math"
 	"strconv"
@@ -440,8 +441,9 @@ func BenchmarkParse(b *testing.B) {
 
 // FuzzParse feeds the parser arbitrary agent output and pins the invariants
 // every caller relies on: a rejected line contributes nothing, no counter is
-// ever negative or platform-dependent, parsing is deterministic, and anything
-// encoding/json accepts as an object is accepted as an event.
+// ever negative, out of range, or platform-dependent, parsing is deterministic,
+// anything encoding/json accepts as an object is accepted as an event, and the
+// text reported is text the line carried rather than text the parser composed.
 func FuzzParse(f *testing.F) {
 	seeds := []string{
 		`{"type":"assistant","message":{"content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":10,"output_tokens":2}}}`,
@@ -464,10 +466,35 @@ func FuzzParse(f *testing.F) {
 		if ev.Usage.Output < 0 || ev.Usage.Thinking < 0 || ev.Usage.Total < 0 {
 			t.Fatalf("negative counter: %q -> %+v", line, ev.Usage)
 		}
+		// The upper bound matters as much as the lower one. runner divides
+		// these to get a percentage, and asInt refuses a counter past
+		// maxPlausible precisely so a 2^62 cannot wrap that division
+		// negative. Nothing above the walk can add to them, so a counter past
+		// the cap means the guard stopped applying somewhere.
+		if ev.Usage.Output > maxPlausible || ev.Usage.Thinking > maxPlausible ||
+			ev.Usage.Total > maxPlausible {
+			t.Fatalf("counter past maxPlausible: %q -> %+v", line, ev.Usage)
+		}
 		if ev2, ok2 := Parse(line); ok2 != ok || ev2 != ev {
 			t.Fatalf("Parse is not deterministic for %q", line)
 		}
 		if ok {
+			// Parse concatenates and reclassifies; it never authors. Every
+			// segment it reports has to be a string the line actually carried,
+			// because the dashboard shows it as the agent's own words.
+			source := carriedStrings(line)
+			for _, s := range []string{ev.Text, ev.Thinking} {
+				for seg := range strings.SplitSeq(s, "\n") {
+					if seg != "" && !strings.Contains(source, seg) {
+						t.Fatalf("emitted %q, which %q never carried", seg, line)
+					}
+				}
+			}
+			// Concatenation leaves no dangling separator: the caller writes
+			// each line straight into a feed.
+			if strings.HasSuffix(ev.Text, "\n") || strings.HasSuffix(ev.Thinking, "\n") {
+				t.Fatalf("left a trailing separator: %q -> %+v", line, ev)
+			}
 			return
 		}
 		trimmed := strings.TrimSpace(string(line))
@@ -478,4 +505,23 @@ func FuzzParse(f *testing.F) {
 			}
 		}
 	})
+}
+
+// carriedStrings joins every string value the line carries, so a segment of
+// extracted text can be traced back to the input it came from. It walks the
+// decoded document rather than the raw bytes, so an escape in the input is
+// compared as the character it decodes to.
+func carriedStrings(line []byte) string {
+	dec := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(line)))
+	var b strings.Builder
+	for {
+		tok, err := dec.Token()
+		if err != nil {
+			return b.String()
+		}
+		if s, ok := tok.(string); ok {
+			b.WriteString(s)
+			b.WriteByte('\n')
+		}
+	}
 }

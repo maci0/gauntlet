@@ -470,27 +470,25 @@ func (w *DisplayWriter) Flush() error {
 // unconditionally.
 func (w *DisplayWriter) drain(end string, final bool) error {
 	if len(w.held) == 0 {
-		return nil
+		if end == "" {
+			return nil // nothing held, and no terminator to owe the reader
+		}
+		// An empty line is still a line. Skipping it would drop a blank line
+		// the child wrote, which is a rewrite of its output, not a filter.
+		_, err := io.WriteString(w.dst, end)
+		return err
 	}
 	cut := len(w.held)
 	if end == "" && !final {
 		if cut <= maxPendingBytes {
 			return nil // the line may still grow; wait for its newline
 		}
-		cut = maxPendingBytes
-		// A producer can emit bytes that are not valid UTF-8, so the cut
-		// walks back to a boundary but never past the start of the buffer.
-		// Starting a rune is not enough: the byte before the cut can be a
-		// lead byte whose continuation is still held, and emitting it would
-		// put half a character on the wire.
-		for cut > 0 && (!utf8.RuneStart(w.held[cut-1]) || !utf8.FullRune(w.held[cut-1:cut])) {
-			cut--
-		}
+		cut = runeBoundary(w.held, maxPendingBytes)
 		if cut == 0 {
-			// The whole pending line is undecodable at its head, so no
-			// prefix of it is a clean cut. Emitting it is what keeps a child
-			// streaming invalid bytes from growing the buffer without bound,
-			// and Display repairs what goes out.
+			// No prefix of the pending line ends on a rune boundary, so no
+			// cut is clean. Emitting the whole buffer is what keeps a child
+			// streaming invalid bytes from growing it without bound, and
+			// Display repairs what goes out.
 			cut = len(w.held)
 		}
 	}
@@ -498,6 +496,36 @@ func (w *DisplayWriter) drain(end string, final bool) error {
 	w.held = append(w.held[:0], w.held[cut:]...)
 	_, err := io.WriteString(w.dst, line+end)
 	return err
+}
+
+// runeBoundary returns an index i at or below cut where b[:i] ends on a UTF-8
+// sequence boundary, or 0 when the bytes before cut hold no boundary at all.
+//
+// b[:i] ends on a boundary exactly when b[i] starts a rune, so the search is
+// for the nearest rune start at or before cut. That direction is the whole
+// point. The byte *before* a boundary is a continuation byte, so a walk that
+// steps back while the byte it lands on is a continuation byte walks straight
+// past every boundary in text whose characters are multi-byte. Asking
+// FullRune about the single byte before the cut is the same trap wearing a
+// different hat: it is false for every multi-byte lead, so it rejects each
+// boundary in turn and, in a line of nothing but CJK, ends at the front of the
+// buffer having found none. What goes out is then the whole line, its tail
+// repaired to U+FFFD, and the rest of the character arrives too late to repair
+// back.
+//
+// The walk is bounded by the longest rune: a cut is at most three bytes past
+// the boundary before it. Cutting back rather than forward keeps the split
+// character in the buffer, so it is emitted whole once the rest of it arrives.
+func runeBoundary(b []byte, cut int) int {
+	if cut >= len(b) {
+		return len(b) // nothing is being held back past the cut
+	}
+	for i := cut; i > 0 && cut-i < utf8.UTFMax-1; i-- {
+		if utf8.RuneStart(b[i]) {
+			return i
+		}
+	}
+	return 0
 }
 
 // Clip cuts s to at most max code points, without splitting a grapheme
