@@ -5,22 +5,18 @@ package main
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
-	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl.
@@ -158,31 +154,4 @@ func cmdShow(out io.Writer, runID string) int {
 		return exitFail
 	}
 	return exitOK
-}
-
-// indexerWaitGrace is how long Wait may outlive the deadline kill before it
-// gives up on an unreapable child, the same insurance runProc carries.
-const indexerWaitGrace = 10 * time.Second
-
-// runIndexer runs a helper binary to completion, streaming nothing: its output
-// goes straight to the terminal.
-//
-// The child gets its own process group and the deadline kill takes down the
-// whole group: semcode-index is an external binary that may have children of
-// its own, and killing only its pid would orphan them (see runProc for the
-// same rule applied to agents).
-func runIndexer(ctx context.Context, bin string, args []string, dir string) int {
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = dir
-	cmd.Env = runx.AbsPATHEnv()
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	runx.Guard(cmd, indexerWaitGrace)
-	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	if err := cmd.Run(); err != nil {
-		if ee, ok := errors.AsType[*exec.ExitError](err); ok {
-			return ee.ExitCode()
-		}
-		return 1
-	}
-	return 0
 }

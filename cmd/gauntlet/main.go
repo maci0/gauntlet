@@ -774,44 +774,6 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 	}
 }
 
-// semcodeIndexTimeout bounds one directory's index build. The indexer walks
-// the whole tree before the first review starts; without a cap a wedged build
-// would hang the run indefinitely.
-const semcodeIndexTimeout = 30 * time.Minute
-
-// buildSemcodeIndex runs the indexer once per directory before the loop, so
-// reviews can answer call-graph and type queries from an index.
-func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
-	idx := agent.Resolve("semcode-index")
-	if idx == "" {
-		fmt.Fprintln(os.Stderr, "Required tool not found in PATH: semcode-index")
-		return exitUsage
-	}
-	for _, d := range runs {
-		fmt.Fprintf(out, "Building semcode index in %s\n", d.dir)
-		ictx, cancel := context.WithTimeout(ctx, semcodeIndexTimeout)
-		code := runIndexer(ictx, idx, []string{"-s", "."}, d.dir)
-		cancel()
-		if code == 0 {
-			continue
-		}
-		if ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
-		}
-		switch {
-		case ictx.Err() == context.DeadlineExceeded:
-			fmt.Fprintf(os.Stderr, "semcode-index timed out after %v in %s\n",
-				semcodeIndexTimeout, d.dir)
-		case code < 0:
-			fmt.Fprintf(os.Stderr, "semcode-index failed in %s (interrupted or killed)\n", d.dir)
-		default:
-			fmt.Fprintf(os.Stderr, "semcode-index failed in %s with exit code %d\n", d.dir, code)
-		}
-		return exitFail
-	}
-	return exitOK
-}
-
 // needPlanning returns the directories whose reviews still have to be chosen,
 // after giving every resumed directory back the schedule it was already
 // running. A hot reload is a handover: choosing again would re-ask an agent
