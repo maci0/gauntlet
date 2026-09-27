@@ -477,6 +477,26 @@ func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 	}
 }
 
+// A shared GOCACHE lets the second copy reuse the first copy's compiled
+// objects, since -trimpath makes both builds hash to one cache key, so a build
+// that leaked its own directory would still compare equal. Each side needs its
+// own. `.gauntlet/` holds a lane worktree per job when this tool runs in its own
+// checkout, which has no business in a reproducibility archive or in a commit.
+func TestMakefileReproIsolatesBuildCachesAndWorktrees(t *testing.T) {
+	text := makefileText(t)
+	for _, want := range []string{`GOCACHE="$(REPRO_DIR)/a.gocache"`, `GOCACHE="$(REPRO_DIR)/b.gocache"`, "--exclude=./.gauntlet"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("make repro missing %q", want)
+		}
+	}
+	ignore := readRepoFile(t, filepath.Join(moduleRoot(t), ".gitignore"))
+	for _, want := range []string{".gauntlet/", ".gauntlet.lock"} {
+		if !strings.Contains(ignore, want) {
+			t.Errorf(".gitignore must list %q; a run of the tool writes both into the reviewed tree", want)
+		}
+	}
+}
+
 // make repro must preflight REPRO_DIR so an unset HOME does not wipe root directories.
 func TestMakefileReproPreflight(t *testing.T) {
 	text := makefileText(t)

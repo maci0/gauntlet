@@ -357,7 +357,10 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # second build really does see the host's locale; TZ is genuinely ambient
 # either way. The tree is archived to a file then extracted twice: a tar pipe
 # would hide a failing create behind a successful extract (POSIX sh has no
-# pipefail). Every platform in PLATFORMS is checked, not just the host's:
+# pipefail). `.gauntlet/` is excluded because a run of this tool in its own
+# checkout leaves a lane worktree per job there, and a reproducibility check
+# that copies a second checkout of the tree is not one. Every platform in
+# PLATFORMS is checked, not just the host's:
 # those are the binaries `dist` ships, and a reproducibility claim that covers
 # one of four proves nothing about the other three. CI runs it on every push.
 #
@@ -365,6 +368,13 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # in sequence, so a mismatch is still reported next to the platform it belongs
 # to. `set -e` carries the recipe rather than a `&&` chain: `cmd && (build) &`
 # would background the whole preceding list, archive and all.
+#
+# Each copy gets its own GOCACHE, because a shared one lets the second build
+# reuse the first build's compiled objects: -trimpath makes the two builds
+# hash to the same cache key, so a build that leaked its own directory would
+# hand copy b the object copy a compiled, and cmp would compare a with a and
+# pass. GOMODCACHE stays shared, since it holds downloads verified by go.sum
+# and nothing path-dependent is built from it.
 # `:=` for the reason TMPDIR has it, and the recipe below rm -rf's this path
 # before building: an exported REPRO_DIR would otherwise choose it.
 REPRO_DIR := $(HOME)/.cache/gauntlet/repro
@@ -378,7 +388,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
 			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
-			--exclude=./__pycache__ \
+			--exclude=./__pycache__ --exclude=./.gauntlet \
 			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \
@@ -386,10 +396,10 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		for target in $(PLATFORMS); do \
 			goos=$${target%/*}; goarch=$${target#*/}; \
 			echo "repro: $$target (copy a: LC_ALL=C TZ=UTC, copy b: ambient locale and TZ)"; \
-			(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
+			(cd "$(REPRO_DIR)/a" && GOCACHE="$(REPRO_DIR)/a.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
 				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
 			pa=$$!; \
-			(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL \
+			(cd "$(REPRO_DIR)/b" && GOCACHE="$(REPRO_DIR)/b.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL \
 				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
 			pb=$$!; \
 			wait $$pa || exit 1; wait $$pb || exit 1; \

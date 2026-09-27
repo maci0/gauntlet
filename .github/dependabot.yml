@@ -1,10 +1,23 @@
 version: 2
 updates:
+  # Major versions stay in their own pull request: the Charm stack is adopted
+  # through a dedicated migration pass, never bundled into a routine bump.
   - package-ecosystem: gomod
     directory: /
     schedule:
       interval: weekly
+    groups:
+      go-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns:
+          - "*"

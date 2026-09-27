@@ -100,7 +100,10 @@ jobs:
 
   dist:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # `make repro` gives each of its two tree copies its own build cache, so
+    # every platform is compiled from cold on both sides; the previous bound
+    # left too little room for that on a loaded runner.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
