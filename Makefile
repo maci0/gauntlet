@@ -451,10 +451,16 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # second build really does see the host's locale; TZ is genuinely ambient
 # either way. The tree is archived to a file then extracted twice: a tar pipe
 # would hide a failing create behind a successful extract (POSIX sh has no
-# pipefail). `.gauntlet/` is excluded because a run of this tool in its own
-# checkout leaves a lane worktree per job there, and a reproducibility check
-# that copies a second checkout of the tree is not one. Every platform in
-# PLATFORMS is checked, not just the host's:
+# pipefail). The exclude list is every entry in .gitignore, plus the built
+# binary: the archive is the whole working tree, so anything a build or a run
+# leaves behind is copied into two trees under $HOME. That is why `.gauntlet/`
+# and `.gauntlet.lock` are there (a run of this tool in its own checkout
+# leaves a lane worktree per job and its lock behind) and why `.env` is: the
+# tokens .env.example is a template for. One of the copies would then build
+# from state the other does not have. TestMakefileReproArchiveMirrorsGitignore
+# holds the list to .gitignore, so a new ignored output cannot be archived by
+# forgetting an exclude. Every platform in PLATFORMS is checked, not just the
+# host's:
 # those are the binaries `dist` ships, and a reproducibility claim that covers
 # one of four proves nothing about the other three. CI runs it on every push.
 #
@@ -483,7 +489,8 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
 		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
 			--exclude=./.scratch --exclude=./.ruff_cache --exclude=./.mypy_cache \
-			--exclude=./__pycache__ --exclude=./.gauntlet \
+			--exclude=./__pycache__ --exclude=./.gauntlet --exclude=./.gauntlet.lock \
+			--exclude=./.env \
 			-cf "$(REPRO_DIR)/src.tar" . && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \

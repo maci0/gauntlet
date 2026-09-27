@@ -770,6 +770,45 @@ func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 	}
 }
 
+// The archive is the whole working tree, copied to two directories under
+// $HOME, so anything a build or a run of this tool leaves in the checkout is
+// an input to one copy and not the other. Every .gitignore entry is such a
+// file, which makes the exclude list derivable rather than a list to remember
+// to extend.
+func TestMakefileReproArchiveMirrorsGitignore(t *testing.T) {
+	text := strings.NewReplacer("$(BINARY)", "gauntlet", "$(DIST)", "dist").Replace(makefileText(t))
+	for _, entry := range gitignoreEntries(t) {
+		if want := "--exclude=./" + entry; !strings.Contains(text, want) {
+			t.Errorf(".gitignore lists %q but make repro has no %q exclude; the archive copies the whole tree", entry, want)
+		}
+	}
+}
+
+// Dropping .env from both lists at once would satisfy the mirror above, and
+// .env is the one file here holding credentials: .env.example is the template
+// a developer copies, and the copy is theirs.
+func TestEnvFileIsIgnoredAndOutOfTheReproArchive(t *testing.T) {
+	if !slices.Contains(gitignoreEntries(t), ".env") {
+		t.Error(".gitignore must list .env; the copy of .env.example a developer makes holds real tokens")
+	}
+	if !strings.Contains(makefileText(t), "--exclude=./.env") {
+		t.Error("make repro must exclude .env; the archive is the working tree, tokens and all")
+	}
+}
+
+func gitignoreEntries(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for line := range strings.SplitSeq(readRepoFile(t, filepath.Join(moduleRoot(t), ".gitignore")), "\n") {
+		entry := strings.Trim(strings.TrimSpace(line), "/")
+		if entry == "" || strings.HasPrefix(entry, "#") {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 // A shared GOCACHE lets the second copy reuse the first copy's compiled
 // objects, since -trimpath makes both builds hash to one cache key, so a build
 // that leaked its own directory would still compare equal. Each side needs its
