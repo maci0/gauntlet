@@ -45,6 +45,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Security
 
+- A subject read back out of history during a stacked-PR recovery pass is sanitized before it becomes a pull request title and a journal line. The commit holding it was made by an agent that committed on its own, by a conflict resolution, or by an operator, so its subject can carry the escape sequence or bidi override no `SUBJECT:` line was allowed to, and nothing filtered it on the way out.
+- Every subject now passes one clipping helper that sanitizes as well as clips, so a source added later inherits the guarantee instead of having to remember it.
 - `--semcode` runs the indexer's output through the same display filter as every other child process, on both streams. It reports the file names it walked, so a reviewed repository could otherwise hand a file name carrying an escape sequence or a bidi override to the operator's terminal through the one child whose output nothing filtered.
 - The documented install script verifies the downloaded release binary against the release's `checksums.txt` before making it executable, and aborts on a mismatch.
 - The install script downloads the release asset under the name `checksums.txt` lists, so the checksum it verifies is the checksum of the bytes it installs, and a failed verification now aborts the install instead of continuing to `chmod`.

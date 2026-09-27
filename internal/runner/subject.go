@@ -220,8 +220,13 @@ func commitToken(s string) string {
 	return strings.TrimSpace(s)
 }
 
+// clipSubject is the one function every subject passes through, whatever its
+// source: generated from the changed files, parsed out of agent output, or
+// read back out of history during a recovery pass. Sanitizing here rather than
+// at each call site means a source added later inherits the guarantee, and it
+// is idempotent for the sources that already sanitized upstream.
 func clipSubject(s string) string {
-	s = norm.NFC.String(s)
+	s = norm.NFC.String(normalize.Sanitize(s))
 	if utf8.RuneCountInString(s) <= subjectMax {
 		return s
 	}

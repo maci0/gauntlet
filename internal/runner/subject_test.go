@@ -244,3 +244,43 @@ func FuzzSubjectFromChanges(f *testing.F) {
 		}
 	})
 }
+
+// A subject read back out of history during a recovery pass is whatever the
+// commit that landed there holds: an agent that committed on its own, a
+// resolved conflict, or an operator. It reaches a pull request title and a
+// journal line, so clipSubject has to strip what a reader must never be shown
+// even though no SUBJECT: line ever carried it.
+func TestClipSubjectStripsWhatHistoryCanHold(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"ansi escape", "fix: \x1b[31mred\x1b[0m write", "fix: [31mred[0m write"},
+		{"bidi override", "fix: \u202Eevil\u202C subject", "fix: evil subject"},
+		{"nul and bell", "fix: nul\x00 bell\x07 here", "fix: nul bell here"},
+		{"line separator", "fix: split\u2028subject", "fix: splitsubject"},
+		{"invalid utf-8", "fix: caf\xe9 write", "fix: caf\uFFFD write"},
+		{"tab becomes a space", "fix:\tthe write", "fix: the write"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := clipSubject(tc.in); got != tc.want {
+				t.Fatalf("clipSubject(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+			// Idempotent: a source that already sanitized must not change.
+			if once, twice := clipSubject(tc.in), clipSubject(clipSubject(tc.in)); once != twice {
+				t.Fatalf("clipSubject is not idempotent: %q then %q", once, twice)
+			}
+		})
+	}
+}
+
+// Sanitizing is not a substitute for the length bound: a subject of nothing
+// but control characters still has to come out within the conventional cap.
+func TestClipSubjectBoundsAfterSanitizing(t *testing.T) {
+	got := clipSubject("fix: " + strings.Repeat("\x1b", subjectMax*2) + strings.Repeat("x", subjectMax*2))
+	if n := utf8.RuneCountInString(got); n > subjectMax {
+		t.Fatalf("clipSubject returned %d runes, want at most %d: %q", n, subjectMax, got)
+	}
+}

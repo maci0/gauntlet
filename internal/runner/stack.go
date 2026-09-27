@@ -527,6 +527,12 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	if err != nil {
 		return parent, parentTip, false, err
 	}
+	// The subject is read back out of history, where an agent that committed
+	// on its own, a resolved conflict, or an operator left whatever they
+	// wrote. Everything downstream treats the title as display text, so it
+	// gets the same clipping and sanitizing a subject written this run would
+	// have had.
+	title = clipSubject(title)
 	_, remoteFound := remotes[branch]
 	// A killed run can stop between commit and rename. Finish the rename here,
 	// but never for a name the remote already knows: the remote must stay
