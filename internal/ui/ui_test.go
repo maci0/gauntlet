@@ -356,6 +356,27 @@ func TestCountersReflectResults(t *testing.T) {
 	}
 }
 
+// A review that reports no usable duration must not keep the duration its
+// previous run of the same name recorded: agentTime would count that span a
+// second time and the footer's average tok/s would divide by a time the run
+// never took.
+func TestReviewEndWithoutDurationDoesNotKeepTheLast(t *testing.T) {
+	base := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	m := newModel(demoConfig())
+	m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "sec-review",
+		Agent: "claude", Status: runner.StatusOK, Elapsed: 92, Time: base})
+	if m.agentTime != 92*time.Second {
+		t.Fatalf("agent time = %v, want 92s", m.agentTime)
+	}
+	for _, elapsed := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "sec-review",
+			Agent: "claude", Status: runner.StatusOK, Elapsed: elapsed, Time: base})
+		if m.agentTime != 92*time.Second {
+			t.Fatalf("elapsed %v: agent time = %v, want the 92s already recorded", elapsed, m.agentTime)
+		}
+	}
+}
+
 // Interrupted reviews keep their ␘ cells, so the tally must account for them
 // once any exist, and stay out of the way while there are none.
 func TestInterruptedReviewsReachTheTally(t *testing.T) {

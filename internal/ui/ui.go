@@ -563,6 +563,12 @@ func (m *model) apply(ev runner.Event) {
 		r := m.review(ev.Review)
 		r.status = ev.Status
 		r.agentLbl = ev.Agent
+		// Cleared first, so a run that reports no usable duration (zero, a
+		// NaN, a value past the nanosecond range) does not leave the previous
+		// run of the same name standing: agentTime would then carry that
+		// duration a second time and the average tok/s would divide a
+		// whole run's tokens by a time it never took.
+		r.elapsed = 0
 		if d, ok := humanize.Seconds(ev.Elapsed); ok {
 			r.elapsed = d
 		}
