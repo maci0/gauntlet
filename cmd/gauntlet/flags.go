@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -881,14 +882,6 @@ func rejectStrayFlags(o *options, fs *flag.FlagSet, showVersion bool) error {
 		spellFlag(stray), o.command, strings.Join(takes, ", "))
 }
 
-// spellFlag names a flag the way it is written on the command line.
-func spellFlag(name string) string {
-	if len(name) == 1 {
-		return "-" + name
-	}
-	return "--" + name
-}
-
 // trimFlag trims a string flag's value in place and refuses an explicitly
 // empty one, so `--dir " "` cannot pass as a directory. Every registered name
 // for the flag goes in names, shorthand included, since an explicit value is
@@ -1082,22 +1075,41 @@ func unknownCommand(name string) error {
 		name, hint, strings.Join(commandNames, ", "))
 }
 
+// flagSpelling matches the flag name in each message the flag package writes
+// when a flag is unknown, missing its value, or given a value it cannot parse.
+var flagSpelling = regexp.MustCompile(`(defined: |argument: |for flag )-([A-Za-z0-9][A-Za-z0-9-]*)`)
+
+// spellFlag names a flag the way the help screen and every message of this
+// CLI's own do: two dashes for a long form, one for a shorthand.
+func spellFlag(name string) string {
+	if utf8.RuneCountInString(name) == 1 {
+		return "-" + name
+	}
+	return "--" + name
+}
+
+// enhanceFlagError rewrites the flag package's own failure messages. The
+// package names every flag with a single dash, whatever length it is, so
+// `--timeout` comes back as `-timeout`: a spelling no flag on this CLI has,
+// next to messages that write the same flag as `--timeout`. A close miss keeps
+// the package's wording and gains the suggestion the unknown-command error has.
 func enhanceFlagError(err error, fs *flag.FlagSet) error {
+	msg := flagSpelling.ReplaceAllStringFunc(err.Error(), func(m string) string {
+		g := flagSpelling.FindStringSubmatch(m)
+		return g[1] + spellFlag(g[2])
+	})
 	const prefix = "flag provided but not defined: -"
 	name, ok := strings.CutPrefix(err.Error(), prefix)
-	if !ok || name == "" {
-		return err
-	}
 	// A one-letter miss is one substitution from every short flag; guessing
 	// `-1` for `-Z` is noise.
-	if utf8.RuneCountInString(name) < 2 {
-		return err
+	if !ok || name == "" || utf8.RuneCountInString(name) < 2 {
+		return errors.New(msg)
 	}
 	var names []string
 	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
 	c := fuzzy.Closest(name, names)
 	if c == "" {
-		return err
+		return errors.New(msg)
 	}
 	return fmt.Errorf("%s (did you mean %s?)", err, spellFlag(c))
 }

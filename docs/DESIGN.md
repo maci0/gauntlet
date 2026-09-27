@@ -65,8 +65,10 @@ and `prompt` import `fuzzy`, so a
 mistyped review or agent name gets the same suggestion everywhere; the CLI
 uses it for unknown commands and flags too.
 `agent`, `journal`, and `selfupdate` import `gauntlethome`, the one resolver
-of the state root. Nothing inside `internal/` imports `ui`, so the loop runs headless
-with zero TUI cost. `cmd/gauntlet` pins this graph.
+of the state root; the reload handoff it writes needs the same durable
+directory flush the journal's own rename-based writes do. Nothing inside
+`internal/` imports `ui`, so the loop runs headless with zero TUI cost.
+`cmd/gauntlet` pins this graph.
 
 ## External dependencies
 

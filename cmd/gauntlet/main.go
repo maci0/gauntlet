@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -578,6 +579,11 @@ func run(argv []string) int {
 		})
 	}
 
+	// ranToEnd records that every runner finished on its own. The dashboard
+	// returning does not say whether they did: q on a finished screen closes a
+	// run that completed, and q during a review stops one that did not.
+	var ranToEnd atomic.Bool
+	interrupted := false
 	if dash != nil {
 		// The dashboard owns the terminal and returns when the user quits or
 		// the run ends; quitting cancels the run. A pending hot reload closes
@@ -585,6 +591,7 @@ func run(argv []string) int {
 		// keypress would stall the swap indefinitely.
 		go func() {
 			workers.Wait()
+			ranToEnd.Store(true)
 			dash.Finish()
 			// A reload needs the terminal back, and a graceful quit was a
 			// request to leave: neither should wait for a keypress.
@@ -595,6 +602,10 @@ func run(argv []string) int {
 		if err := dash.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "dashboard error: %v\n", err)
 		}
+		// Settle the ending before the cancel below: that cancel is this
+		// process letting go of the context now the dashboard is gone, and a
+		// run that finished would then exit 130 for closing its own screen.
+		interrupted = wasInterrupted(ctx.Err() != nil, true, ranToEnd.Load())
 		stop()
 	}
 	workers.Wait()
@@ -633,7 +644,12 @@ func run(argv []string) int {
 		fmt.Fprintf(stdout, "Run %s saved. Replay it with: gauntlet show %s\n", runID, runID)
 	}
 
-	code := exitCode(ctx, runs)
+	// Without a dashboard, nothing cancels the context on the way out but a
+	// signal, so the two are the same question.
+	if dash == nil {
+		interrupted = ctx.Err() != nil
+	}
+	code := exitCode(interrupted, runs)
 	if reloadFailed {
 		code = exitFail
 	}
@@ -710,9 +726,23 @@ func stdinIsTerminal() bool { return isTerminal(os.Stdin) }
 
 func isTerminal(f *os.File) bool { return term.IsTerminal(int(f.Fd())) }
 
+// wasInterrupted reports whether the run was cut short instead of running to
+// its own end. A cancelled context does not say on its own: the dashboard
+// cancels the run context as it closes, so a run that finished would report an
+// interrupt nobody asked for. Whether the runners had finished by the time the
+// dashboard returned settles it: a q on a finished screen closes a run that
+// completed, a q during a review stops one that did not, and a signal cancels
+// the context either way.
+func wasInterrupted(cancelled, dashboardClosing, ranToEnd bool) bool {
+	if dashboardClosing {
+		return cancelled || !ranToEnd
+	}
+	return cancelled
+}
+
 // exitCode maps the run's outcome onto the documented codes.
-func exitCode(ctx context.Context, runs []*dirRun) int {
-	if ctx.Err() != nil {
+func exitCode(interrupted bool, runs []*dirRun) int {
+	if interrupted {
 		return 128 + int(syscall.SIGINT)
 	}
 	for _, d := range runs {

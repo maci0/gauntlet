@@ -781,6 +781,27 @@ func TestUnknownFlagSuggestsClosest(t *testing.T) {
 	}
 }
 
+// The flag package names every flag with one dash, whatever its length, so
+// `--timeout` used to come back as `-timeout`: a spelling no flag on this CLI
+// has, printed next to messages that write the same flag as `--timeout`. A
+// shorthand keeps the one dash, and it is the only form that has one.
+func TestFlagErrorsSpellFlagsTheWayTheHelpScreenDoes(t *testing.T) {
+	for _, c := range []struct{ args, want string }{
+		{"--timeout", "flag needs an argument: --timeout"},
+		{"-t", "flag needs an argument: -t"},
+		{"--timeout=x", `invalid value "x" for flag --timeout`},
+		{"--jobs=x", `invalid value "x" for flag --jobs`},
+	} {
+		_, err := parseFlags(strings.Fields(c.args))
+		if err == nil {
+			t.Fatalf("%s: expected a usage error", c.args)
+		}
+		if !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s reported %q, want it to contain %q", c.args, err, c.want)
+		}
+	}
+}
+
 func TestGlobalFlagsMayPrecedeSubcommand(t *testing.T) {
 	o, err := parseFlags([]string{"--no-color", "doctor"})
 	if err != nil {

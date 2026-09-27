@@ -4,7 +4,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -432,7 +431,7 @@ func TestExitCodeMapsTheDocumentedCodes(t *testing.T) {
 			{run(runner.StatusInterrupted)},
 			{run(runner.StatusOK), run(runner.StatusInterrupted)},
 		} {
-			if got := exitCode(context.Background(), runs); got != exitOK {
+			if got := exitCode(false, runs); got != exitOK {
 				t.Errorf("exitCode(%d results) = %d, want %d", len(runs), got, exitOK)
 			}
 		}
@@ -443,7 +442,7 @@ func TestExitCodeMapsTheDocumentedCodes(t *testing.T) {
 			runner.StatusFail, runner.StatusTimeout,
 			runner.StatusConflict, runner.StatusSkipped,
 		} {
-			if got := exitCode(context.Background(), []*dirRun{run(status)}); got != exitFail {
+			if got := exitCode(false, []*dirRun{run(status)}); got != exitFail {
 				t.Errorf("%s should exit %d, got %d", status, exitFail, got)
 			}
 		}
@@ -453,18 +452,40 @@ func TestExitCodeMapsTheDocumentedCodes(t *testing.T) {
 		d := &dirRun{dir: "/repo", stats: &runner.Stats{}}
 		d.stats.Add(runner.Result{Review: "r-review", Status: runner.StatusOK})
 		d.stats.Seed(nil, 2, 1) // two commit steps ran, one failed
-		if got := exitCode(context.Background(), []*dirRun{d}); got != exitFail {
+		if got := exitCode(false, []*dirRun{d}); got != exitFail {
 			t.Errorf("commit step failure should exit %d, got %d", exitFail, got)
 		}
 	})
 
 	t.Run("an interrupted run reports the interrupt", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		cancel()
-		if got := exitCode(ctx, []*dirRun{run(runner.StatusOK)}); got != 130 {
-			t.Errorf("a cancelled context should exit 130, got %d", got)
+		if got := exitCode(true, []*dirRun{run(runner.StatusOK)}); got != 130 {
+			t.Errorf("an interrupted run should exit 130, got %d", got)
 		}
 	})
+}
+
+// A dashboard run that reached its end and one stopped on a keypress both
+// leave the run context cancelled, so the exit code cannot read the context
+// alone: the whole --tui surface would exit 130, and a successful run would
+// be journaled as an interrupted one.
+func TestWasInterruptedTellsFinishedRunsFromStoppedOnes(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		cancelled bool
+		closing   bool
+		ended     bool
+		want      bool
+	}{
+		{"plain run, nothing cancelled", false, false, false, false},
+		{"plain run, interrupted", true, false, false, true},
+		{"dashboard closed after the run ended", false, true, true, false},
+		{"dashboard closed while reviews ran", false, true, false, true},
+		{"dashboard closed after a signal stopped the run", true, true, true, true},
+	} {
+		if got := wasInterrupted(c.cancelled, c.closing, c.ended); got != c.want {
+			t.Errorf("%s: wasInterrupted = %t, want %t", c.name, got, c.want)
+		}
+	}
 }
 
 // A run that dies while the runners are being built must still close its
