@@ -128,8 +128,15 @@ refactors with no visible behavior need nothing.
 
 ## Releasing
 
-A release is a tag push; nothing else. Rename `## Unreleased` in
-CHANGELOG.md to `## <version>`, commit, then:
+A release is a tag push; nothing else. Move the `## Unreleased` heading down
+to `## <version>` in CHANGELOG.md and put an empty `## Unreleased` back
+above it, so the released section keeps the entries it already had and the
+next change has somewhere to land. Do not rename it in place:
+`TestChangelogSectionsAreWellFormed` requires the first version heading to be
+`Unreleased`, so a tree without one fails the suite the release job runs. The
+number in the heading follows from what the section holds:
+`TestChangelogSemVerBumps` rejects an `### Added` in a patch and a `### Removed`
+below 1.0. Commit that, then:
 
 ```sh
 ver=X.Y.Z                            # the version that heading now names

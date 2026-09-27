@@ -44,6 +44,16 @@ organizational decisions; none is assigned here.
 
 The previous passes' baselines follow, retained rather than re-verified.
 
+Last reviewed previously: 2026-09-27 against commit c63fa85. That pass read
+the six commits since the previous baseline (4cdb72c). One adds a control,
+recorded in B6 below: a per-review checkout is a second copy of a possibly
+private repository, so the checkout and the scratch root under it are narrowed
+to their owner. The rest change no risk, no entry point, and no gap. The build
+commit re-anchored the Makefile pointers in the same change that moved the
+Makefile, so both anchors were stale on arrival and
+`TestDocsPointAtTheMakefileLineTheyName` was red; they read `Makefile:456` and
+`Makefile:524-549` now.
+
 Last reviewed previously: 2026-09-27 against commit 4cdb72c. That pass read
 the eighteen commits since ef6eb5c and changed no risk, no entry point, and no
 gap; it re-anchored citations the build commits moved. Three commits in that
@@ -75,8 +85,7 @@ it was not asked about blocks the merge. Citations that moved with those
 commits were re-anchored (`internal/runner/conflict.go`, `subject.go`,
 `internal/agent/notes.go`, `internal/runx/runx.go`), and one pointer was
 corrected: `make release` is at `Makefile:456`, not 413, which had left
-`TestDocsPointAtTheMakefileLineTheyName` failing. Owner and review cadence are
-organizational decisions; none is assigned here.
+`TestDocsPointAtTheMakefileLineTheyName` failing.
 
 Last reviewed previously: 2026-09-27 against commit a6e6c7f. That pass
 covered the twelve commits between dd793d8 and that commit. One named gap
@@ -588,7 +597,15 @@ control exists; the boundary is the operating system, hence the container
 guidance.
 
 **B6.** Journal creation requests 0600 files and 0700 directories
-(`internal/journal/journal.go:176-186`, `internal/journal/index.go:78-93,682-705`);
+(`internal/journal/journal.go:176-186`, `internal/journal/index.go:78-93,682-705`).
+A per-review worktree is a second copy of a reviewed repository that may be
+private, so `.gauntlet/worktrees`, its components, and each finished checkout
+are narrowed to their owner rather than left at the 0755 git and `MkdirAll`
+produce, including a directory an earlier run made at a looser umask
+(`ownerOnly`, `tightenWorktreeRoot`, `tightenCheckout` in
+`internal/gitx/worktree.go:296,317-331`); chmod on a component this account
+does not own fails, which is left best-effort for the reason the run lock
+treats the file it finds already there the same way;
 handoffs use a sibling temp
 file, disk flush via `Sync()`, and atomic rename (`internal/selfupdate/reload.go:135-172`).
 Stale temp files in the journal index directory, the reload state directory, and
