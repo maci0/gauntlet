@@ -5,6 +5,7 @@ package runx
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -259,6 +260,32 @@ func TestShQuote(t *testing.T) {
 		if got := ShQuote(tc.in); got != tc.want {
 			t.Errorf("ShQuote(%q) = %q, want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+func TestOutcomeNamesTheDeadline(t *testing.T) {
+	if err := Outcome(context.Background(), nil); err != nil {
+		t.Fatalf("a successful run reported %v", err)
+	}
+	// A child that failed on its own keeps its own error, untouched.
+	own := errors.New("exit status 128")
+	if got := Outcome(context.Background(), own); !errors.Is(got, own) {
+		t.Fatalf("Outcome = %v, want the child's own error", got)
+	}
+	// A child the deadline killed must not read as a crash: "signal: killed"
+	// says nothing, and the commonest cause is a hung remote.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	killed := errors.New("signal: killed")
+	got := Outcome(ctx, killed)
+	if !errors.Is(got, context.Canceled) {
+		t.Errorf("Outcome = %v, want it to report the cancel", got)
+	}
+	if !errors.Is(got, killed) {
+		t.Errorf("Outcome = %v, want it to keep the child's error", got)
+	}
+	if !strings.Contains(got.Error(), "context canceled") {
+		t.Errorf("Outcome = %q, want the cancel named in the text", got)
 	}
 }
 

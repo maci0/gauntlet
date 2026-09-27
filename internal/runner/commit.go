@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
@@ -22,6 +23,12 @@ import (
 // commitTimeout caps the commit and push step; a review's own --timeout may be
 // much longer, but writing a commit message is not a long job.
 const commitTimeout = 5 * time.Minute
+
+// commitTailBytes bounds what the commit step keeps of the agent's output to
+// quote in a failure. A commit step is short and its last line is the reason
+// it stopped, so a small tail is enough and memory stays flat however much
+// the agent prints.
+const commitTailBytes = 64 << 10
 
 // CommitOpts describes a commit step run on its own, outside a loop: the
 // offer gauntlet makes when --jobs needs a clean tree and the only thing in
@@ -56,23 +63,39 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	}
 	repo := gitx.Open(o.Dir)
 	before, _ := repo.Tip(ctx, "HEAD")
-	var sink func(normalize.Line)
-	if o.Out != nil {
-		sink = func(l normalize.Line) { o.Out(l.Text) }
+	// The agent's last line is the only statement of why a commit step
+	// stopped where it did, and a caller that redirects o.Out (or the TUI,
+	// which routes through the bus) never sees the streamed text. Keep a
+	// tail of it so the returned error and the exit status carry the cause.
+	tail := agent.NewTail(commitTailBytes)
+	var mu sync.Mutex
+	sink := func(l normalize.Line) {
+		mu.Lock()
+		_, _ = tail.WriteString(l.Text)
+		_, _ = tail.WriteString("\n")
+		mu.Unlock()
+		if o.Out != nil {
+			o.Out(l.Text)
+		}
 	}
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: o.Dir, Timeout: timeout,
 		MaxLinesPerSec: outputRateLimit, Sink: sink,
 	})
+	mu.Lock()
+	tailText := string(tail.Bytes())
+	mu.Unlock()
 	switch {
 	case pr.Err != nil:
 		return fmt.Errorf("commit step could not launch %s: %w", o.Agent.Label(), pr.Err)
 	case pr.TimedOut:
-		return fmt.Errorf("commit step timed out after %s", humanize.Duration(timeout))
+		return errors.New(withNote(
+			fmt.Sprintf("commit step timed out after %s", humanize.Duration(timeout)), tailText))
 	case pr.Canceled:
 		return context.Canceled
 	case pr.ExitCode != 0:
-		return fmt.Errorf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode)
+		return errors.New(withNote(
+			fmt.Sprintf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode), tailText))
 	}
 	if err := unfinishedCommit(ctx, repo, nil); err != nil {
 		return err

@@ -12,6 +12,8 @@ package runx
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -61,6 +63,24 @@ func KillGroup(cmd *exec.Cmd, sig syscall.Signal) {
 		return
 	}
 	_ = cmd.Process.Signal(sig)
+}
+
+// Outcome classifies a failed run so a deadline kill does not read like a
+// crash. A child the caller's own deadline killed returns "signal: killed" or
+// "exit status 128", which no operator can tell apart from a genuine failure
+// and which makes the commonest cause (a hung remote, a wedged binary)
+// unreadable. Naming the deadline is what turns that into a diagnosable
+// report, and wrapping both errors keeps errors.Is(err,
+// context.DeadlineExceeded) working for a caller that classifies. Returns nil
+// for a successful run.
+func Outcome(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("%w: %w", ctxErr, err)
+	}
+	return err
 }
 
 // Guard puts cmd in its own process group, kills the group on Cancel, and

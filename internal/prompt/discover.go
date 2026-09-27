@@ -52,6 +52,12 @@ func skipDir(name string) bool { return skipDirs[strings.ToLower(name)] }
 // permission-bypassed AI run.
 //
 // Warnings are display text for the user, already sanitized.
+//
+// A tree walk that did not finish returns its error rather than the prompts it
+// reached. A set cut short is indistinguishable from the whole set, and the
+// run behind it would quietly skip the reviews the walk never found. A single
+// unreadable directory inside the tree is not that: the walk skips it and
+// carries on, because nothing is discoverable in a corner it cannot read.
 func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string, error) {
 	byName := map[string]Review{}
 	var warnings []string
@@ -68,7 +74,12 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 		}
 	}
 
-	candidates := walkProject(ctx, projectRoot, promptDir)
+	candidates, err := walkProject(ctx, projectRoot, promptDir)
+	if err != nil {
+		// A walk that stopped early found some of the project's prompts, and
+		// the set built from them would read as the whole set. Say so instead.
+		return Set{}, warnings, fmt.Errorf("cannot walk %s for project prompts: %w", projectRoot, err)
+	}
 	ignored := gitx.Open(projectRoot).CheckIgnore(ctx, candidates)
 	warnings = append(warnings, addProjectPrompts(byName, candidates, ignored)...)
 
@@ -165,7 +176,7 @@ func isRegularFile(path string) bool {
 // just to find a handful of prompts is the startup cost that misses the
 // sub-100ms first-output budget on a large tree. The walk remains the
 // fallback when git is missing or the directory is not a repository.
-func walkProject(ctx context.Context, root, promptDir string) []string {
+func walkProject(ctx context.Context, root, promptDir string) ([]string, error) {
 	absPromptDir := ""
 	if promptDir != "" {
 		absPromptDir = gitx.RealPath(promptDir)
@@ -180,10 +191,15 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 		return filepath.Join(absRoot, strings.TrimPrefix(path, root))
 	}
 	if found, ok := gitProjectPrompts(ctx, root, absPromptDir, abspath); ok {
-		return found
+		return found, nil
 	}
 	var found []string
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	// A cancelled or aborted walk stops early, and what it found so far is a
+	// partial review set. Returning it would run a review pass that silently
+	// skipped whatever the walk had not reached, so the walk's own error is
+	// handed to the caller. A single unreadable subtree is not that case and
+	// stays skipped below.
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -215,8 +231,11 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 		found = append(found, path)
 		return nil
 	})
+	if walkErr != nil {
+		return nil, walkErr
+	}
 	sort.Strings(found)
-	return found
+	return found, nil
 }
 
 // gitProjectPrompts asks git for *-review.md files. ok is false when git

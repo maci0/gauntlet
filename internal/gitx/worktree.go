@@ -243,7 +243,10 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		r.abortWorktreeAdd(ctx, dir, "")
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
-	tightenCheckout(dir)
+	if err := tightenCheckout(dir); err != nil {
+		r.abortWorktreeAdd(ctx, dir, "")
+		return nil, err
+	}
 	return &Worktree{Dir: dir, base: base, repo: r}, nil
 }
 
@@ -326,7 +329,16 @@ func tightenWorktreeRoot(repo string) {
 // tightenCheckout narrows one finished checkout, which git itself created at
 // its own umask. Called only after a successful add: an aborted one is removed
 // again, and the umask git ran under is not this package's to decide.
-func tightenCheckout(dir string) { _ = os.Chmod(dir, ownerOnly) }
+//
+// A chmod that fails leaves a full copy of a possibly private repository
+// readable by every account on the machine, and nothing else in the run would
+// say so, so the failure is returned rather than swallowed.
+func tightenCheckout(dir string) error {
+	if err := os.Chmod(dir, ownerOnly); err != nil {
+		return fmt.Errorf("cannot restrict %s to its owner: %w", dir, err)
+	}
+	return nil
+}
 
 // reclaimEmptyBranch deletes branch when it still points at base, which means
 // it carries no committed work. A leftover branch would fail worktree add: a
@@ -370,7 +382,10 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 		r.abortWorktreeAdd(ctx, dir, branch)
 		return nil, fmt.Errorf("git worktree add: %w", err)
 	}
-	tightenCheckout(dir)
+	if err := tightenCheckout(dir); err != nil {
+		r.abortWorktreeAdd(ctx, dir, branch)
+		return nil, err
+	}
 	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
 }
 

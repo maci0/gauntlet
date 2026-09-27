@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -528,4 +529,20 @@ func captureProc(ctx context.Context, argv []string, dir string, timeout time.Du
 	mu.Lock()
 	defer mu.Unlock()
 	return string(tail.Bytes()), res
+}
+
+// withNote appends the agent's own last line to msg when it printed one. An
+// error that would otherwise carry only an exit code leaves the operator with
+// a number and no cause, and an agent states why it stopped there (quota
+// exhausted, credentials rejected, model name unknown) on its last line and
+// nowhere else. Redacted and cut to one line like every other piece of child
+// output that reaches an error string.
+func withNote(msg, out string) string {
+	lines := strings.Split(out, "\n")
+	for _, line := range slices.Backward(lines) {
+		if line := strings.TrimSpace(line); line != "" {
+			return msg + ": " + runx.FirstLine(line)
+		}
+	}
+	return msg
 }

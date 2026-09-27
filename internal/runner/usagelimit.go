@@ -94,7 +94,7 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	// subprocess here: a probe that forks must not outlive its own timeout.
 	out, errOut := runx.Bound(cmd, usageProbeMaxBytes, usageProbeWait)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	if err := cmd.Run(); err != nil {
+	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {
 			return 0, fmt.Errorf("%w: %s", err, runx.FirstLine(detail))
 		}

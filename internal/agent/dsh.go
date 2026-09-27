@@ -90,7 +90,7 @@ var dumpDshConfig = func(base []string) (string, error) {
 	cmd.Stdin = nil
 	out, errOut := runx.Bound(cmd, dshDumpMaxBytes, dshProbeGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	if err := cmd.Run(); err != nil {
+	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {
 			return "", fmt.Errorf("%s --dump-config failed: %w: %s", argv[0], err, runx.FirstLine(detail))
 		}

@@ -270,7 +270,7 @@ func (c Client) run(ctx context.Context, args ...string) ([]byte, error) {
 	// blocked on the output pipes past the kill.
 	out, errOut := runx.Bound(cmd, ghOutputMax, waitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	if err := cmd.Run(); err != nil {
+	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
 		detail := strings.TrimSpace(errOut.String())
 		if detail != "" {
 			return out.Bytes(), fmt.Errorf("%w: %s", err, runx.FirstLine(detail))

@@ -400,7 +400,7 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 	// enforce on their own children.
 	out, errBuf := runx.Bound(cmd, gitOutputMax, waitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
-	err := cmd.Run()
+	err := runx.Outcome(ctx, cmd.Run())
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into
 		// a bare exit status that says nothing about the cause. Userinfo is

@@ -5,6 +5,7 @@ package prompt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -914,6 +915,20 @@ func TestReadNoFollowRejectsOversize(t *testing.T) {
 // tree: its files are already offered through the Dir origin, and finding them
 // again as project prompts would double-report overrides. The walk must reach
 // the same verdict for absolute and relative roots.
+// A walk that stops early has not found every project prompt, and the set
+// built from what it did find reads exactly like a complete one. The run
+// behind that set silently skips the reviews the walk never reached, so
+// Discover has to say the walk failed.
+func TestDiscoverReportsACancelledWalk(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "a-review.md"), "Your goal is to review.\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := Discover(ctx, "", dir); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Discover = %v, want the cancelled walk reported", err)
+	}
+}
+
 func TestWalkProjectSkipsPromptDir(t *testing.T) {
 	dir := t.TempDir()
 	pd := filepath.Join(dir, "prompts")
@@ -957,7 +972,10 @@ func TestWalkProjectSkipsPromptDir(t *testing.T) {
 	for _, root := range []string{dir, "."} {
 		t.Chdir(dir)
 		for _, promptDir := range []string{pd, filepath.Join(alias, "prompts")} {
-			found := walkProject(t.Context(), root, promptDir)
+			found, err := walkProject(t.Context(), root, promptDir)
+			if err != nil {
+				t.Fatalf("root %q, promptDir %q: %v", root, promptDir, err)
+			}
 			if inDirFound(root, found) {
 				t.Errorf("root %q, promptDir %q: promptDir was walked: %v", root, promptDir, found)
 			}
@@ -1003,7 +1021,10 @@ func TestWalkProjectGitListingHonorsDirectorySkips(t *testing.T) {
 	}
 	write(t, filepath.Join(hidden, "buried-review.md"), "Your goal is to hide.\n")
 
-	found := walkProject(t.Context(), dir, "")
+	found, err := walkProject(t.Context(), dir, "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	stems := map[string]bool{}
 	for _, p := range found {
 		stems[strings.TrimSuffix(filepath.Base(p), ".md")] = true

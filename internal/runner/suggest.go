@@ -106,9 +106,11 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		case res.Canceled:
 			return nil, spec, context.Canceled
 		case res.TimedOut:
-			lastErr = fmt.Errorf("%s timed out while suggesting reviews", spec.Label())
+			lastErr = errors.New(withNote(
+				fmt.Sprintf("%s timed out while suggesting reviews", spec.Label()), out))
 		case res.ExitCode != 0:
-			lastErr = fmt.Errorf("%s failed while suggesting reviews (exit %d)", spec.Label(), res.ExitCode)
+			lastErr = errors.New(withNote(
+				fmt.Sprintf("%s failed while suggesting reviews (exit %d)", spec.Label(), res.ExitCode), out))
 		default:
 			picked, unknown, dropped := prompt.ParseSuggestions(out, cfg.Pool)
 			if len(unknown) > 0 {

@@ -1887,6 +1887,30 @@ git -c user.name=t -c user.email=t@e commit -qm "work" >/dev/null 2>&1`)
 	}
 }
 
+// A commit step that fails says why. The agent states the reason on its last
+// line and nowhere else, and the returned error is what reaches the caller's
+// exit status, so an error carrying only an exit number leaves the operator
+// with nothing to act on.
+func TestCommitNowFailureNamesWhyTheAgentStopped(t *testing.T) {
+	repo := testRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "new.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A caller with no Out (a redirect, or the TUI, which routes through the
+	// bus) must still get the reason.
+	quota := fakeAgent(t, t.TempDir(), "claude", `echo "usage limit reached, try again later" >&2; exit 1`)
+	err := CommitNow(context.Background(), CommitOpts{
+		Dir: repo, Agent: agent.Spec{Tool: "claude"},
+		Bin: map[string]string{"claude": quota}, Timeout: 30 * time.Second,
+	})
+	if err == nil {
+		t.Fatal("a commit step that exited 1 must fail")
+	}
+	if !strings.Contains(err.Error(), "usage limit reached") {
+		t.Fatalf("error %q does not carry the agent's own reason", err)
+	}
+}
+
 // What a run writes into a project's history is the project's, not this
 // tool's. This is the regression guard for a repository that once carried 125
 // commits authored by "gauntlet <gauntlet@localhost>", every one of them
