@@ -36,7 +36,7 @@ var goldenFlagNames = []string{
 	"dir", "dirs", "dry-run",
 	"exclude",
 	"h", "help", "hot-reload",
-	"j", "jobs",
+	"j", "jobs", "keep-runs",
 	"l", "limit", "list", "log",
 	"max-loops", "max-reviews", "merge-into",
 	"n", "no-color",

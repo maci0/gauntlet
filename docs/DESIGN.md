@@ -539,6 +539,12 @@ Design points:
   and syncing only the derived index would leave a listing that outlives the
   journal it is reconstructed from. The cost is one sync per run, not per
   event.
+- The history is **bounded**: at the end of a run, `--keep-runs` (200 by
+  default) drops the journals and index rows past the newest N, and a day
+  directory left empty is removed. The index is compacted before the journals
+  go, so a listing never names a run whose file is gone, and the run that just
+  finished is the newest one and can never be the one dropped. A run in
+  progress sorts above every run the prune can reach. `0` keeps everything.
 
 ## Dashboard
 

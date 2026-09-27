@@ -159,6 +159,11 @@ func TestReadmeGridMatchesBundled(t *testing.T) {
 // The install snippet resolves a tag, then must fetch that tag's asset. Using
 // releases/latest/download after the resolve can pair a newly published tag
 // name with the previous binary if a release lands between the two curls.
+//
+// The assertion is on the download base, not on one line of the snippet: the
+// script assigns that base to a variable so the binary and checksums.txt come
+// from the same directory, and a test that demanded the whole URL spelled out
+// inline would fail on a script that is right.
 func TestReadmeInstallPinsTheResolvedTag(t *testing.T) {
 	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {

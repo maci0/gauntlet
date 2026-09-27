@@ -120,6 +120,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
 | `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop. |
+| `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` are deleted, along with the day directories they emptied. Both copies are removed together, so the listing never names a run whose journal is gone. `0` keeps every run. |
 
 **Output and modes**
 

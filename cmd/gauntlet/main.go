@@ -654,7 +654,7 @@ func run(argv []string) int {
 	if reloadFailed {
 		code = exitFail
 	}
-	writeSummary(jrnl, origin, wall, dirs, agents, runs, code)
+	writeSummary(jrnl, origin, wall, dirs, agents, runs, code, opts.keepRuns)
 	return code
 }
 
@@ -810,7 +810,7 @@ func releaseAll(runs []*dirRun) {
 
 // writeSummary closes the journal with this run's index entry.
 func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, dirs []string,
-	agents []agent.Spec, runs []*dirRun, code int) {
+	agents []agent.Spec, runs []*dirRun, code, keepRuns int) {
 
 	s := journal.Summary{
 		Version: version, Dirs: dirs, Agents: agent.Labels(agents),
@@ -839,6 +839,12 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 	}
 	if err := j.Close(s); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: run journal incomplete: %v\n", err)
+	}
+	// The run's own row is the newest one, so pruning here never touches the
+	// run that just finished, and a failure only means the state tree keeps
+	// growing: it is not this run's problem to report as its own.
+	if _, err := journal.Prune(keepRuns); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: cannot prune old run journals: %v\n", err)
 	}
 }
 

@@ -20,6 +20,10 @@
 // in a row do not hide the older one. Nothing here is load-bearing for a run
 // in progress: a journal that cannot be written degrades to a warning, never
 // a failed run.
+//
+// Nothing here removes a run, so the tree would otherwise grow one file per run
+// for the life of the install. Prune is that bound, and it is what --keep-runs
+// drives.
 package journal
 
 import (

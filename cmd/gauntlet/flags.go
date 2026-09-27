@@ -110,6 +110,7 @@ type options struct {
 
 	// history
 	runsLimit int
+	keepRuns  int
 	showRun   string
 }
 
@@ -197,6 +198,12 @@ const (
 	defaultRetries = 2
 	// defaultRunsLimit is how many past runs `gauntlet runs` prints.
 	defaultRunsLimit = 20
+	// defaultKeepRuns is how many run journals survive under ~/.gauntlet. A
+	// run files a journal and an index row and nothing else ever removes
+	// either, so without a bound the state tree keeps one file per run for
+	// the life of the install. Far past what a listing or the review-history
+	// weights ever read, so the bound costs no history anyone looks at.
+	defaultKeepRuns = 200
 	// maxUsageLimit is the top of the percentage range --usage-limit accepts;
 	// above 100 the provider's window is already past.
 	maxUsageLimit = 100
@@ -218,7 +225,7 @@ func parseFlags(argv []string) (*options, error) {
 		bin: map[string]string{}, timeout: defaultTimeout,
 		suggestTimeout: defaultTimeout, jobs: 1, retries: defaultRetries,
 		hotReload: true, stream: true,
-		runsLimit: defaultRunsLimit, width: terminalWidth(),
+		runsLimit: defaultRunsLimit, keepRuns: defaultKeepRuns, width: terminalWidth(),
 	}
 
 	cmd, argv := peelSubcommand(argv)
@@ -372,6 +379,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "answer yes to confirmation prompts") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
 	fs.BoolVar(&o.continueSessions, "continue-sessions", false, "resume each agent's session between reviews")
+	fs.IntVar(&o.keepRuns, "keep-runs", defaultKeepRuns,
+		"how many run journals to keep under ~/.gauntlet; older ones are deleted at the end of a run (0 = keep all)")
 
 	alias("l", "list", func(n string) { fs.BoolVar(&o.list, n, false, "list available reviews and sets, then exit") })
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the planned schedule, then exit")
@@ -641,6 +650,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if o.maxReviews < 0 {
 		return nil, errors.New("--max-reviews must be >= 0")
+	}
+	if o.keepRuns < 0 {
+		return nil, errors.New("--keep-runs must be >= 0")
 	}
 	if o.push {
 		o.commit = true

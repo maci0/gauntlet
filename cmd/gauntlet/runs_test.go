@@ -102,6 +102,47 @@ func processAlive(pid int) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
+// --keep-runs is the only bound on the state tree, so the value a run parsed
+// has to reach the prune: a run that keeps everything leaves a journal per run
+// for the life of the install.
+func TestWriteSummaryAppliesTheKeepRunsBound(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+
+	finish := func(at time.Time, keep int) string {
+		t.Helper()
+		id := journal.NewRunID(at)
+		j, err := journal.Open(id, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeSummary(j, at, time.Minute, []string{"/project"}, nil, nil, 0, keep)
+		return id
+	}
+	kept := []string{finish(base, 0), finish(base.Add(time.Hour), 0)}
+	if _, err := os.Stat(filepath.Join(home, "runs", "2026-01-02", kept[0]+".jsonl")); err != nil {
+		t.Errorf("--keep-runs 0 deleted a run: %v", err)
+	}
+	// A third run with a bound of one drops the two before it and keeps itself.
+	recent := finish(base.Add(2*time.Hour), 1)
+	for _, id := range kept {
+		if _, err := os.Stat(filepath.Join(home, "runs", "2026-01-02", id+".jsonl")); err == nil {
+			t.Errorf("run %s survived a bound of one", id)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, "runs", "2026-01-02", recent+".jsonl")); err != nil {
+		t.Errorf("the run that just finished is gone: %v", err)
+	}
+	rows, err := journal.Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RunID != recent {
+		t.Errorf("listing is %v, want only the run just finished", rows)
+	}
+}
+
 func writeScript(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o755); err != nil {
@@ -123,7 +164,7 @@ func TestWriteSummaryPreservesInterruptedCount(t *testing.T) {
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
 	writeSummary(j, start, time.Minute, []string{"/project"}, nil,
-		[]*dirRun{{stats: stats}}, 130)
+		[]*dirRun{{stats: stats}}, 130, defaultKeepRuns)
 	data, err := os.ReadFile(filepath.Join(home, "index.jsonl"))
 	if err != nil {
 		t.Fatal(err)

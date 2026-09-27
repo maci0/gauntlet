@@ -28,6 +28,9 @@ import (
 
 func indexPath() string { return filepath.Join(Home(), "index.jsonl") }
 
+// runsDir holds the dated shards under which every run journal is filed.
+func runsDir() string { return filepath.Join(Home(), "runs") }
+
 func indexLockPath() string { return filepath.Join(Home(), ".index.lock") }
 
 // withIndexLock serializes index mutations across processes. writeIndex
@@ -455,7 +458,7 @@ type namedJournal struct {
 // newest first. Run ids embed a UTC timestamp, so a lexical max is the
 // latest start. visit returning false stops the walk.
 func walkJournals(visit func(namedJournal) bool) error {
-	root := filepath.Join(Home(), "runs")
+	root := runsDir()
 	days, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
