@@ -2087,9 +2087,7 @@ func TestBuildCmdDshModelPinsAnOverlay(t *testing.T) {
 }
 
 // A model with no provider has to ask the launcher which one the headless
-// profile uses. That leaves the process, so the probe goes through dumpDshConfig
-// and the memo through dshProbe: both outcomes are reachable without a dsh on
-// PATH and without the fetch the bunx fallback would make.
+// profile uses, so both outcomes have to be reachable without a dsh on PATH.
 func TestBareDshModelProbesTheHeadlessProvider(t *testing.T) {
 	isolateDshPatches(t)
 	const dump = "plugins:\n  - id: agent-default-model\n    provider: 'deepseek'\n"
@@ -2145,8 +2143,6 @@ func TestBareDshModelReportsAFailedProbe(t *testing.T) {
 	}
 }
 
-// probeDshConfig points the probe at dump for the length of one test, with a
-// fresh memo so the next test probes again.
 func probeDshConfig(t *testing.T, dump func(base []string) (string, error)) {
 	t.Helper()
 	savedDump := dumpDshConfig

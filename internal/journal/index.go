@@ -153,10 +153,9 @@ func appendIndexLocked(s Summary) (err error) {
 // index yet.
 //
 // The index is append-only and lives for the life of the install, so this
-// walks it a line at a time and stops at the first row that matches: the rows
-// are never all decoded, and nothing the size of the file is held. Only a line
-// that already carries the run id is decoded at all, which is what keeps the
-// walk a scan rather than a parse of every run ever recorded.
+// walks it a line at a time and stops at the first row that matches: nothing
+// the size of the file is held, and only a line that already carries the run id
+// is decoded at all.
 func indexNamesRun(runID string) (bool, error) {
 	if runID == "" {
 		return false, nil

@@ -71,10 +71,7 @@ func TestConfirmStackIsolationExplainsExcludedCheckout(t *testing.T) {
 	}
 }
 
-// An explicit but empty --reviews has to be refused by the run, since parsing
-// keeps it explicit so it cannot expand to every review. What it must not say
-// is "no reviews remain after filtering": nothing was filtered, and the flag
-// is the only thing that can say which one went wrong.
+// The error must name the flag, not the filter: nothing was filtered.
 func TestEmptyReviewsNamesTheFlag(t *testing.T) {
 	set := promptPair(t)
 	d := &dirRun{dir: t.TempDir(), set: set}

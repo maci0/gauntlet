@@ -63,11 +63,9 @@ const dshProbeTimeout = 120 * time.Second
 // is tens of kilobytes; an unbounded read must not exhaust RAM.
 const dshDumpMaxBytes = 4 << 20
 
-// dshProbe memoizes one provider probe per process. It is a var holding the
-// struct rather than three package-level values so a caller that needs the
-// probe run again (a second run in one process, a test covering both
-// outcomes) replaces the whole memo rather than reaching into fields the
-// probe owns.
+// dshProbe memoizes one provider probe per process. A var so a caller that
+// needs the probe run again replaces the whole memo rather than reaching into
+// fields the probe owns.
 var dshProbe = &dshProviderProbe{}
 
 // dshProviderProbe is one memoized probe: a result and its error, taken once.

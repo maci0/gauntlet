@@ -331,8 +331,8 @@ func namedIn(d *dirRun, opts *options, excluded map[string]bool) ([]string, erro
 }
 
 // refuseEmptyReviews reports the one --reviews value that is a flag asking for
-// nothing. Parsing keeps it explicit on purpose, so that an empty --reviews
-// cannot expand to every review, and the run is where it is caught: by then the flag
+// nothing. Parsing keeps an empty --reviews explicit on purpose so it cannot
+// expand to every review, and the run is where it is caught: by then the flag
 // is the only thing that can say so, and "no reviews remain after filtering"
 // names a filter that never ran.
 func refuseEmptyReviews(opts *options) error {
