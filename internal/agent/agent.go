@@ -275,8 +275,9 @@ func Resolve(name string) string {
 const resolveProbeLimit = 32
 
 // ResolveMany probes names concurrently and returns the installed subset as a
-// name -> absolute path map. One pool of goroutines beats a serial stat walk
-// over the ~90 binaries doctor asks about.
+// name -> absolute path map. Doctor asks about every bundled review's tools,
+// which is well over a hundred names, and one pool of goroutines beats a
+// serial stat walk over all of them.
 func ResolveMany(names []string) map[string]string {
 	out := make(map[string]string, len(names))
 	var mu sync.Mutex

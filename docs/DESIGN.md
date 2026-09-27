@@ -34,7 +34,7 @@ also publish its changes as a linear, unmerged PR stack.
 |---|---|
 | `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), the per-run preflight steps, and the plain reporter |
 | `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
-| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.example.json`, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
+| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
@@ -93,7 +93,7 @@ library cannot, and each was kept small on purpose.
 | `charmbracelet/bubbletea` | dashboard event loop | imported by `internal/ui` only |
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
-| `maci0/toktop` | transcript token counts for agents that print none | build tag `-tags notoktop` drops it entirely |
+| `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `cmd/gauntlet`, and text truncation in `internal/agent` and `internal/normalize` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, and the file-signal suggester | `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |

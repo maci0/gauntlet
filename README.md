@@ -283,10 +283,12 @@ The boundaries are drawn one by one in
 
 Counts come from what the agent prints, its machine-readable mode
 (`--stream`), its own session transcript, and, for the two agents that keep
-databases instead (crush, opencode), those. All of it is on in a default
-build; `make build TAGS=notoktop` drops transcript reading and `make build
+databases instead (crush, opencode), those. The build ships all of it;
+`make build TAGS=notoktop` drops transcript reading and `make build
 TAGS=` drops the database driver too. `gauntlet doctor` says which build you
-have. Per-agent coverage, and the public reading API, are in
+have. One of those sources is off unless you ask for it: opencode's store
+holds every project on the machine, so it is read only with
+`--opencode-db`. Per-agent coverage, and the public reading API, are in
 [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
 
 ## Documentation

@@ -35,10 +35,11 @@ type dot struct {
 	glyph string
 }
 
-// chart renders a series as a braille dot matrix: every terminal cell is a 2x4
-// dot grid, so a w by h chart resolves w*2 by h*4 dots. Values fill upward from
-// the baseline and hug the right edge like a scope trace, with the newest
-// column marked.
+// chart renders a series as a braille dot matrix. Every cell is a 2x4 dot
+// grid, and a lit cell always sets both of its columns, so the extra
+// resolution is vertical: a w by h chart draws w columns by h*4 dot rows.
+// Values fill upward from the baseline and hug the right edge like a scope
+// trace, with the newest column marked.
 //
 // An empty series still draws its grid: absence of signal is information.
 func chart(vals []float64, w, h int) string {

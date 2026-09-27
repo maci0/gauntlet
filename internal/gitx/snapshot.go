@@ -144,8 +144,8 @@ func (r *Repo) runIndex(ctx context.Context, index string, timeout time.Duration
 
 // sweepStaleSnapshots removes leftover gauntlet-snap-* index files from gitDir
 // that were left behind by a killed or crashed process. now is the repo clock:
-// the sweep runs on the path every isolated review takes, so a run under a
-// pinned clock must leave the same git directory a live run leaves.
+// the sweep runs only where a snapshot is taken, which is the in-place path,
+// so a run under a pinned clock leaves the same git directory a live run does.
 func sweepStaleSnapshots(gitDir string, now time.Time) {
 	entries, err := os.ReadDir(gitDir)
 	if err != nil {

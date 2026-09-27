@@ -91,7 +91,9 @@ var (
 // Config tunes one Normalizer. The zero value is usable: no rate limiting.
 type Config struct {
 	// MaxLinesPerSec caps the lines one stream may emit; a burst beyond the
-	// cap is dropped and reported once via Suppressed. 0 disables the cap.
+	// cap is dropped and counted, and Flush reports the count once as a
+	// synthetic line so the gap is visible rather than silent. 0 disables
+	// the cap.
 	MaxLinesPerSec int
 	// MaxWidth truncates very long lines (minified files, base64 blobs) to
 	// keep a single line from blowing up a frame. 0 disables truncation.

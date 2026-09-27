@@ -22,10 +22,9 @@ import (
 
 // subjectMax is the conventional 72-character cap for a subject, applied to
 // the generated and the agent-supplied alike. An agent's SUBJECT: line is
-// bounded separately on the way out of its output (agent.subjectMax) and
-// already went through that sanitizer; the clip here is the second half, the
-// one that keeps a 100-rune line from reaching history, a PR title, and a
-// merge message.
+// bounded separately at 100 runes by agent.ParseSubject and already went
+// through that sanitizer; the clip here is the second half, the one that keeps
+// that 100-rune line from reaching history, a PR title, and a merge message.
 const subjectMax = 72
 
 // commitSubject is what the history will say about a review's change: what

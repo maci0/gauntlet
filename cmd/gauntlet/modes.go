@@ -79,7 +79,9 @@ func toolsFor(review string) prompt.Tools {
 	return prompt.Tools{Have: have, Missing: missing}
 }
 
-// dryRun prints the planned schedule without launching anything.
+// dryRun prints the planned schedule. It starts no review, but --suggest has
+// already run by the time the mode is reached, so a dry run can still cost
+// tokens.
 func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opts *options) error {
 	w := errWriter{out: out}
 	for _, d := range runs {

@@ -49,7 +49,9 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string) (code int) {
 		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
 	// The column's name overstates what it counts; say so once, right where
 	// it first appears, or a run that only skipped reviews reads as broken.
-	w.printf("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
+	// It has to name every bucket, including the one that catches a terminal
+	// status a newer journal wrote and this build cannot read.
+	w.printf("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
 	for _, e := range entries {
 		dur := "n/a"
 		if d, ok := e.Duration(); ok {

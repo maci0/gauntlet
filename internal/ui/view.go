@@ -34,9 +34,10 @@ func (m *model) View() string {
 	}
 	// Four titled panels cost twelve rows of chrome around their content,
 	// the header and footer one each, and the sections never shrink below
-	// two activity, one agent, one grid, and three feed rows: twenty-two is
-	// the smallest terminal the full view can actually hold. Below that the
-	// fallback answers what matters instead of a frame with its bottom open.
+	// two activity, one agent, one grid, and three feed rows: twenty-one is
+	// the smallest terminal the full view can actually hold. The guard takes
+	// one row more than that, and below it the fallback answers what matters
+	// instead of a frame with its bottom open.
 	if m.w < 60 || m.h < 22 {
 		return m.renderMinimal()
 	}

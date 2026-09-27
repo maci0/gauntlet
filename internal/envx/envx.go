@@ -6,10 +6,11 @@
 // Five consumer-facing variables mean "on" or "off" by their value rather
 // than by their presence: CLICOLOR_FORCE, FORCE_COLOR, GAUNTLET_NO_ANIMATION,
 // NO_MOTION, and REDUCED_MOTION. They are read from two packages, the plain
-// reporter and the dashboard, and each held its own copy of the list of values
-// that mean off. docs/CLI.md states that list once for all of them, so two
-// copies of the rule are two places to edit when it changes, and one of them
-// answers differently the moment somebody forgets.
+// reporter in cmd/gauntlet and the dashboard in internal/ui, and each held its
+// own copy of the list of values that mean off. docs/CLI.md states that list
+// once for all of them, so two copies of the rule are two places to edit when
+// it changes, and one of them answers differently the moment somebody forgets.
+// Both read it here.
 package envx
 
 import "strings"
