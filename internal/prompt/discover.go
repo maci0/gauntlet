@@ -241,18 +241,16 @@ func sameContent(prev Review, path string) bool {
 	if err != nil {
 		return false
 	}
-	fi, err := os.Lstat(path)
-	if err != nil || !fi.Mode().IsRegular() {
+	size, ok := fileSize(path)
+	if !ok {
 		return false
 	}
 	// Body strips a UTF-8 BOM, so a file that is the body plus that mark is
 	// the same text. Any other size cannot match.
-	switch fi.Size() {
-	case int64(len(want)), int64(len(want) + len("\xef\xbb\xbf")):
-	default:
+	if size != int64(len(want)) && size != int64(len(want)+len("\xef\xbb\xbf")) {
 		return false
 	}
-	got, ok := readBounded(path, fi.Size()+1)
+	got, ok := readBounded(path, size+1)
 	return ok && stripBOM(string(got)) == want
 }
 

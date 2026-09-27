@@ -618,17 +618,11 @@ func BranchSlug(s string) string {
 	return out
 }
 
-// StackBranchPrefix is the deterministic head of every branch name one stack
+// StackLoopPrefix is the deterministic head of every branch name one stack
 // layer can publish under: the 1-based schedule position keeps merge order
 // visible and sortable, and the review stem says which pass wrote it. It is
 // computable before the review runs, which is what lets a repeated invocation
 // find layers it already published whatever topic they ended up named after.
-// It is the first-pass form; later --max-loops rounds use StackLoopPrefix.
-func StackBranchPrefix(index int, review string) string {
-	return StackLoopPrefix(1, index, review)
-}
-
-// StackLoopPrefix is StackBranchPrefix for stacked pass `loop` (1-based).
 // Pass 1 keeps the historical review/<NN>-<review> form so a one-pass run
 // and the first round of a multi-pass run recover the same branches. Later
 // passes insert the loop number (review/<loop>-<NN>-<review>) so they cannot
@@ -640,16 +634,11 @@ func StackLoopPrefix(loop, index int, review string) string {
 	return fmt.Sprintf("review/%02d-%02d-%s", loop, index+1, BranchSlug(review))
 }
 
-// StackProvisionalBranch names a layer before its commit exists, when there
-// is no subject to take a topic from. The base-tip fragment keeps provisional
-// branches of unrelated stacks (same repository, older base) from colliding
-// on one name; the -wip- marker is what publication or a recovery pass
-// renames away once the commit's subject is known.
-func StackProvisionalBranch(baseTip string, index int, review string) string {
-	return StackLoopProvisionalBranch(baseTip, 1, index, review)
-}
-
-// StackLoopProvisionalBranch is StackProvisionalBranch for stacked pass `loop`.
+// StackLoopProvisionalBranch names a layer before its commit exists, when
+// there is no subject to take a topic from. The base-tip fragment keeps
+// provisional branches of unrelated stacks (same repository, older base)
+// from colliding on one name; the -wip- marker is what publication or a
+// recovery pass renames away once the commit's subject is known.
 func StackLoopProvisionalBranch(baseTip string, loop, index int, review string) string {
 	tip := BranchSlug(baseTip)
 	if len(tip) > 6 {
@@ -658,14 +647,9 @@ func StackLoopProvisionalBranch(baseTip string, loop, index int, review string) 
 	return StackLoopPrefix(loop, index, review) + "-wip-" + tip
 }
 
-// StackFinalBranch names a published layer after its commit subject, or ""
-// when the subject yields no usable topic, in which case the layer keeps its
-// provisional name.
-func StackFinalBranch(index int, review, subject string) string {
-	return StackLoopFinalBranch(1, index, review, subject)
-}
-
-// StackLoopFinalBranch is StackFinalBranch for stacked pass `loop`.
+// StackLoopFinalBranch names a published layer after its commit subject, or
+// "" when the subject yields no usable topic, in which case the layer keeps
+// its provisional name.
 func StackLoopFinalBranch(loop, index int, review, subject string) string {
 	topic := TopicSlug(subject)
 	if topic == "" {

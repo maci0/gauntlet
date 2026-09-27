@@ -446,16 +446,9 @@ func checksumFor(listing, name string) (string, bool) {
 // any case folding: ToLower can grow a multibyte rune, so folding first could
 // turn a 64-byte non-digest into something of some other length entirely.
 func isHexDigest(s string) bool {
-	if len(s) != 64 {
+	if len(s) != sha256.Size*2 {
 		return false
 	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
-		default:
-			return false
-		}
-	}
-	return true
+	_, err := hex.DecodeString(s)
+	return err == nil
 }

@@ -35,7 +35,7 @@ func chart(vals []float64, w, h int) string {
 	cols, peak := tailCols(vals, w)
 	dotH := h * 4
 
-	cache := map[[2]int]string{}
+	cache := map[[2]any]string{}
 	rows := make([]strings.Builder, h)
 	for cy := range h {
 		for cx := range w {
@@ -60,7 +60,7 @@ func chart(vals []float64, w, h int) string {
 			default:
 				col = heatColor(frac)
 			}
-			key := [2]int{int(colorKey(col)), pattern}
+			key := [2]any{colorKey(col), pattern}
 			s, ok := cache[key]
 			if !ok {
 				s = lipgloss.NewStyle().Foreground(col).Render(string(rune(0x2800 + pattern)))
@@ -76,33 +76,10 @@ func chart(vals []float64, w, h int) string {
 	return strings.Join(out, "\n")
 }
 
-// colorKey turns a color into a cheap cache key. Adaptive pairs stringify
-// stably, so one key covers both resolved variants.
-func colorKey(c lipgloss.TerminalColor) uint32 {
-	switch v := c.(type) {
-	case lipgloss.AdaptiveColor:
-		var k uint32
-		for i := 0; i < len(v.Light); i++ {
-			k = k*31 + uint32(v.Light[i])
-		}
-		for i := 0; i < len(v.Dark); i++ {
-			k = k*31 + uint32(v.Dark[i])
-		}
-		return k
-	case lipgloss.Color:
-		var k uint32
-		for i := 0; i < len(v); i++ {
-			k = k*31 + uint32(v[i])
-		}
-		return k
-	default:
-		var k uint32
-		for _, ch := range fmt.Sprint(c) {
-			k = k*31 + uint32(ch)
-		}
-		return k
-	}
-}
+// colorKey turns a color into a cache key. Every TerminalColor this package
+// builds is a plain value whose formatting is stable, and an adaptive pair
+// formats both of its tones, so one key covers both resolved variants.
+func colorKey(c lipgloss.TerminalColor) string { return fmt.Sprint(c) }
 
 // tailCols returns exactly w columns carrying the last w values, zero padded on
 // the left, plus their peak (floored at 1 so an all-zero series still renders).

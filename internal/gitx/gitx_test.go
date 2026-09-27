@@ -811,7 +811,7 @@ func TestAddStackWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	branch := StackProvisionalBranch(base, 0, "sec-review")
+	branch := StackLoopProvisionalBranch(base, 1, 0, "sec-review")
 	wt, err := r.AddStackWorktree(ctx, branch, "run", base)
 	if err != nil {
 		t.Fatal(err)
@@ -1249,15 +1249,15 @@ func TestStackBranchNaming(t *testing.T) {
 	// must depend on nothing a run learns later; the provisional name extends
 	// it with the base tip so unrelated stacks cannot collide; the final name
 	// extends it with a topic cut from the commit subject.
-	prefix := StackBranchPrefix(2, "sec-bolide")
+	prefix := StackLoopPrefix(1, 2, "sec-bolide")
 	if prefix != "review/03-sec-bolide" {
 		t.Fatalf("prefix = %q", prefix)
 	}
-	prov := StackProvisionalBranch("a3f2c19deadbeef", 2, "sec-bolide")
+	prov := StackLoopProvisionalBranch("a3f2c19deadbeef", 1, 2, "sec-bolide")
 	if prov != "review/03-sec-bolide-wip-a3f2c1" {
 		t.Fatalf("provisional = %q", prov)
 	}
-	final := StackFinalBranch(2, "sec-bolide", "fix(input)!: validate the request body")
+	final := StackLoopFinalBranch(1, 2, "sec-bolide", "fix(input)!: validate the request body")
 	if final != "review/03-sec-bolide-validate-the-request-body" {
 		t.Fatalf("final = %q", final)
 	}
@@ -1270,9 +1270,6 @@ func TestStackBranchNaming(t *testing.T) {
 	if got := StackLoopPrefix(2, 0, "sec-bolide"); got != "review/02-01-sec-bolide" {
 		t.Fatalf("loop-2 prefix = %q", got)
 	}
-	if got := StackLoopPrefix(1, 2, "sec-bolide"); got != prefix {
-		t.Fatalf("loop-1 prefix diverged from StackBranchPrefix: %q", got)
-	}
 	provLoop2 := StackLoopProvisionalBranch("a3f2c19deadbeef", 2, 0, "sec-bolide")
 	if provLoop2 != "review/02-01-sec-bolide-wip-a3f2c1" {
 		t.Fatalf("loop-2 provisional = %q", provLoop2)
@@ -1283,7 +1280,7 @@ func TestStackBranchNaming(t *testing.T) {
 	}
 
 	// A subject with no usable topic leaves the layer on its provisional name.
-	if got := StackFinalBranch(0, "sec-review", "☃ ☃ ☃"); got != "" {
+	if got := StackLoopFinalBranch(1, 0, "sec-review", "☃ ☃ ☃"); got != "" {
 		t.Fatalf("unusable subject produced %q", got)
 	}
 
@@ -1297,7 +1294,7 @@ func TestStackBranchNaming(t *testing.T) {
 		"chore: " + strings.Repeat("wordy-", 40),
 		"not a conventional subject at all: with a colon later",
 	} {
-		name := StackFinalBranch(0, "sec-review", subject)
+		name := StackLoopFinalBranch(1, 0, "sec-review", subject)
 		if name == "" {
 			continue
 		}
@@ -1366,14 +1363,14 @@ func FuzzTopicSlug(f *testing.F) {
 			if second := TopicSlug(topic); second != topic {
 				t.Fatalf("TopicSlug is not idempotent on %q: got %q, then %q", subject, topic, second)
 			}
-			branch := StackFinalBranch(0, "sec-review", subject)
+			branch := StackLoopFinalBranch(1, 0, "sec-review", subject)
 			if branch == "" {
-				t.Fatalf("non-empty topic %q produced empty StackFinalBranch for %q", topic, subject)
+				t.Fatalf("non-empty topic %q produced empty StackLoopFinalBranch for %q", topic, subject)
 			}
 			if strings.Contains(branch, "..") || strings.Contains(branch, "@{") ||
 				strings.Contains(branch, "//") || strings.HasSuffix(branch, "/") ||
 				strings.HasSuffix(branch, ".lock") || strings.HasSuffix(branch, ".") {
-				t.Fatalf("StackFinalBranch(%q) produced invalid ref name %q", subject, branch)
+				t.Fatalf("StackLoopFinalBranch(1, %q) produced invalid ref name %q", subject, branch)
 			}
 		}
 

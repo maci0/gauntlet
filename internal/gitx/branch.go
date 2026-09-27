@@ -5,6 +5,7 @@ package gitx
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -355,12 +356,8 @@ func isHex(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, c := range s {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
-			return false
-		}
-	}
-	return true
+	_, err := hex.DecodeString(s)
+	return err == nil
 }
 
 // RemoteBranchTip reports a remote branch's object id without updating local

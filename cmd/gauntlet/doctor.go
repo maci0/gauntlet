@@ -37,8 +37,9 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// One parallel probe for every binary, instead of one blocking lookup per
 	// question. This is the difference between a snappy doctor and a second of
 	// stat calls on a cold cache.
-	probeNames := append(agent.AllProbeNames(), agent.CustomNames()...)
-	for _, n := range agent.CustomNames() {
+	custom := agent.CustomNames()
+	probeNames := append(agent.AllProbeNames(), custom...)
+	for _, n := range custom {
 		probeNames = append(probeNames, agent.Binary(n))
 	}
 	found := agent.ResolveMany(probeNames)
