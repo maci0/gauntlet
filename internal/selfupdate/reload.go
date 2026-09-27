@@ -199,9 +199,12 @@ func LoadState(v any) (ok bool, err error) {
 	_ = f.Close()
 	// Read once, then drop it: a stale handoff must not resurrect old counters
 	// on the next manual start.
-	_ = os.Remove(path)
+	dropErr := dropHandoff(path)
 	if readErr != nil {
 		return false, fmt.Errorf("reload handoff %s: %w", path, readErr)
+	}
+	if dropErr != nil {
+		return false, dropErr
 	}
 	if len(data) > maxHandoffBytes {
 		return false, fmt.Errorf("reload handoff %s exceeds %d bytes", path, maxHandoffBytes)
@@ -210,6 +213,24 @@ func LoadState(v any) (ok bool, err error) {
 		return false, fmt.Errorf("reload handoff %s: %w", path, err)
 	}
 	return true, nil
+}
+
+// dropHandoff removes a consumed handoff and makes the removal durable.
+//
+// The unlink is synced, not merely issued, and its failure is reported rather
+// than swallowed: a removal the filesystem has not recorded comes back after a
+// power cut, and a handoff that comes back resumes a run that already finished
+// under the counters it carried, so a successor would report reviews the
+// finished run had already done. A file another process dropped first is the
+// outcome the unlink wanted, so it is not a failure.
+func dropHandoff(path string) error {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reload handoff %s: cannot drop it: %w", path, err)
+	}
+	if err := gauntlethome.SyncDir(filepath.Dir(path)); err != nil {
+		return fmt.Errorf("reload handoff %s: cannot record its removal: %w", path, err)
+	}
+	return nil
 }
 
 // Reexec replaces this process with the binary at path, keeping the original

@@ -448,3 +448,24 @@ func TestWatchContextCancel(t *testing.T) {
 		t.Fatal("Watch did not terminate when context was cancelled")
 	}
 }
+
+// Dropping a handoff is the half of read-once that a power cut can undo, so
+// the removal is synced and a second drop of the same file is the outcome the
+// unlink wanted rather than a failure: the successor is the only reader, and
+// it is the reader that just read.
+func TestDropHandoffRemovesAndToleratesAMissingFile(t *testing.T) {
+	dir := t.TempDir()
+	path, err := SaveState(dir, "run-1", handoffBlob{Loops: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dropHandoff(path); err != nil {
+		t.Fatalf("dropping a handoff: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("the handoff survived its own drop: %v", err)
+	}
+	if err := dropHandoff(path); err != nil {
+		t.Fatalf("dropping a handoff that is already gone must succeed, got: %v", err)
+	}
+}

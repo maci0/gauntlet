@@ -133,7 +133,7 @@ func appendIndexLocked(s Summary) (err error) {
 	if drop {
 		return rewriteIndexDropping(s.RunID, line)
 	}
-	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
+	f, created, err := openIndexForAppend()
 	if err != nil {
 		return err
 	}
@@ -145,7 +145,42 @@ func appendIndexLocked(s Summary) (err error) {
 	if _, err = f.Write(line); err != nil {
 		return err
 	}
-	return f.Sync()
+	if err := f.Sync(); err != nil {
+		return err
+	}
+	if !created {
+		return nil
+	}
+	// The row is durable once the file is synced, but a file this call
+	// created has no directory entry until the state root records it: a power
+	// cut between the two loses the row of the install's first run, which the
+	// caller is told was written. The same requirement Open has for a new
+	// journal, and the one commitIndex meets for a rename.
+	return gauntlethome.SyncDir(Home())
+}
+
+// openIndexForAppend opens index.jsonl for appending and reports whether this
+// call is the one that created it, which is what decides whether the append has
+// a directory entry left to record.
+//
+// O_EXCL proves the create rather than a stat guessing at it: the two writers
+// this file has are serialized by the index lock, and an install whose first
+// run creates the index and loses power is exactly the case the flag is here
+// for. An existing file takes the plain append path, which is the one this
+// replaces.
+func openIndexForAppend() (*os.File, bool, error) {
+	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_APPEND, 0o600)
+	if err == nil {
+		return f, true, nil
+	}
+	if !errors.Is(err, os.ErrExist) {
+		return nil, false, err
+	}
+	f, err = os.OpenFile(indexPath(), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return nil, false, err
+	}
+	return f, false, nil
 }
 
 // indexNamesRun reports whether the index already holds a row for runID. A

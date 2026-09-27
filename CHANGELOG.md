@@ -74,6 +74,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - `--usage-limit` stops a lane the way it stops a sequential run. A lane took a review off the queue and launched it without re-reading the flag the probe had just set, so up to `--jobs` further reviews started against a provider window the run had already decided was spent. The lane now drops the rest of its queue once the probe trips, which is what the sequential and stacked loops already did.
 - Untracked paths in a lane run's start-of-run note are sanitized, like every other git path the package prints. A name carrying an escape sequence reached the run journal verbatim.
 - A pruned run's emptied day directory is now synced in `runs/` and not one level above it. The removals were flushed to the state root, which holds no entry for them, so a power cut could leave the directory back.
+- The state root is synced after an index append creates `index.jsonl`, not only after a rebuild renames it. The row of an install's first run was fsync'd into a file whose name the root had not recorded, so a power cut could lose a summary the run had reported writing. The create is proved with `O_EXCL` and reported, so only the call that made the file syncs the directory.
+- A consumed hot-reload handoff is unlinked durably, and a failure to drop it is reported. The removal's error was discarded and the directory never synced, so a power cut could bring the handoff back and resume a run that had already finished, counting the reviews it had already done. A handoff another process dropped first is not a failure.
 
 ## 1.24.0
 

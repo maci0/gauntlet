@@ -2540,3 +2540,51 @@ func TestIndexLockTakesAFreeLock(t *testing.T) {
 		t.Fatalf("a free lock was not taken: %v", err)
 	}
 }
+
+// The first run of an install creates index.jsonl, and the row it writes is
+// durable only once the state root records the new file. A create that is not
+// reported as one leaves the append unable to sync the directory, so a power
+// cut drops a row the caller was told was written. The flag is what decides
+// that, and a second open of the same file must report no create: a create
+// reported for an existing file would sync a directory that has no entry to
+// record, and the run that costs the most (the first, on a new install) is the
+// one that has to be right.
+func TestOpenIndexForAppendReportsTheCreate(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	f, created, err := openIndexForAppend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created {
+		t.Error("opening a missing index must report the create")
+	}
+	if _, err := f.WriteString("{\"run_id\":\"first\"}\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	again, created, err := openIndexForAppend()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created {
+		t.Error("opening an index that exists must not report a create")
+	}
+	if _, err := again.WriteString("{\"run_id\":\"second\"}\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := again.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The append path has to stay an append: a second writer that truncated
+	// would leave one row, and the listing would lose a run.
+	rows := indexRows(t)
+	if len(rows) != 2 {
+		t.Fatalf("index rows = %d, want 2: %+v", len(rows), rows)
+	}
+}

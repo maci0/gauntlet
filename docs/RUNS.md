@@ -424,7 +424,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 | `pruned/YYYY-MM-DD/<id>.jsonl` | runs the retention bound moved out of the listing | kept until `--keep-runs` newer runs replace them; `gauntlet runs --restore <id>` moves one back |
 | `.index.lock` | serializes index rebuilds and Close | ephemeral |
 | `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
-| `state/<id>.json` | hot-reload handoff | ephemeral, deleted after pickup; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
+| `state/<id>.json` | hot-reload handoff | ephemeral, deleted and the deletion synced after pickup, so a power cut cannot bring a handoff back and resume a run that already finished; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
 | `<repo>/.gauntlet.lock` | directory lock | persistent inode; holder note cleared on release; do not remove while runs can start |
 | `<repo>/.gauntlet/worktrees/` | isolated checkouts, `0700` | ephemeral; unmerged review branches stay in git |
 
@@ -432,8 +432,9 @@ Review output lives in the reviewed repository's git history, not here. A
 run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
 buffer, so a killed process can lose the current loop's events still in that
 buffer. The file is fsync'd when the run closes, before the index row is
-written, and the index directory is fsync'd after a rebuild renames it, so a
-power cut cannot leave a listing whose journal is gone. Nothing here is
+written, and the state root is fsync'd after a rebuild renames the index or
+after an append creates it, so a power cut cannot lose a row the run reported
+writing, nor leave a listing whose journal is gone. Nothing here is
 replicated off the machine: `GAUNTLET_HOME` is a directory, and backups of it
 are yours.
 
