@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -776,15 +777,26 @@ func exitCode(interrupted bool, runs []*dirRun) int {
 	return exitOK
 }
 
+// inFlight is what tells two concurrent instances of the same review apart. A
+// name is not an identity: a review scheduled twice means weight, and under
+// --jobs the two instances run at once in two lanes, each with its own branch.
+// Keyed by the name alone, the first one to end removed the other's entry and
+// the note read "idle" while a review was still running.
+type inFlight struct {
+	loop   int
+	review string
+	branch string
+}
+
 // noteLocks keeps each directory's lock file describing what that run is doing
 // now, so a second gauntlet turned away from the directory is told what holds
 // it rather than only that something does.
 func noteLocks(runs []*dirRun, runID string, events <-chan runner.Event) {
 	locks := make(map[string]*runner.Lock, len(runs))
-	running := make(map[string]map[string]string, len(runs))
+	running := make(map[string]map[inFlight]string, len(runs))
 	for _, d := range runs {
 		locks[d.dir] = d.lock
-		running[d.dir] = map[string]string{}
+		running[d.dir] = map[inFlight]string{}
 		d.lock.Note(fmt.Sprintf("gauntlet %s (pid %d, run %s): starting", version, os.Getpid(), runID))
 	}
 	write := func(dir string) {
@@ -796,9 +808,13 @@ func noteLocks(runs []*dirRun, runID string, events <-chan runner.Event) {
 		if active := running[dir]; len(active) > 0 {
 			parts := make([]string, 0, len(active))
 			for review, agent := range active {
-				parts = append(parts, review+" ("+agent+")")
+				parts = append(parts, review.review+" ("+agent+")")
 			}
 			sort.Strings(parts) // map order would make the note flicker
+			// Two lanes on one repeated review with the same agent would
+			// otherwise print it twice, which reads as two reviews rather
+			// than the one the reader is waiting for.
+			parts = slices.Compact(parts)
 			what = strings.Join(parts, ", ")
 		}
 		lock.Note(fmt.Sprintf("gauntlet %s (pid %d, run %s): %s",
@@ -809,11 +825,12 @@ func noteLocks(runs []*dirRun, runID string, events <-chan runner.Event) {
 		if !ours {
 			continue // an event from a directory this process does not hold
 		}
+		key := inFlight{loop: ev.Loop, review: ev.Review, branch: ev.Branch}
 		switch ev.Kind {
 		case runner.EvReviewStart:
-			active[ev.Review] = ev.Agent
+			active[key] = ev.Agent
 		case runner.EvReviewEnd:
-			delete(active, ev.Review)
+			delete(active, key)
 		default:
 			continue
 		}
