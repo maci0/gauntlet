@@ -352,6 +352,36 @@ func TestResolveFollowsPathChanges(t *testing.T) {
 	}
 }
 
+// launchd, systemd, and `env -i` all start a program with no PATH. The lookup
+// then has to fall back to the host's own absolute prefixes, which on macOS
+// are not the Linux ones, or doctor reports no agent on a stocked machine.
+// HOME/.local/bin leads the list because that is where this project's own
+// install target and the README put the binary.
+func TestResolveFindsAgentWithNoPathSet(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := filepath.Join(bin, "pretend-agent")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	if got := Resolve("pretend-agent"); got != stub {
+		t.Fatalf("Resolve = %q with an empty PATH and a stub in %s, want %q", got, bin, stub)
+	}
+	// The fallback must stay cwd-independent: a relative or empty segment is
+	// exactly what pathNoCWD exists to keep out.
+	for _, dir := range filepath.SplitList(pathNoCWD()) {
+		if dir == "" || !filepath.IsAbs(dir) {
+			t.Fatalf("empty-PATH fallback carries the non-absolute segment %q", dir)
+		}
+	}
+}
+
 func TestParseSubject(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		{"a plain subject", "PATH: x\nSUBJECT: fix: guard the nil map write\nRESULT: changed=1",

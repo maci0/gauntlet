@@ -118,3 +118,20 @@ jobs:
       # paths, different locale and TZ, must give byte-identical binaries, for
       # every platform dist ships.
       - run: make repro
+
+  # `repro` archives and extracts the tree twice before it builds, so it runs
+  # the host's tar and cmp as well as the Go toolchain. dist proved that on
+  # Ubuntu; this leg is the same claim checked against BSD userland, where a
+  # tar flag or a cmp exit code that means the same thing on GNU is the way a
+  # reproducible release quietly stops being one.
+  repro-macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - run: make repro
