@@ -1959,3 +1959,98 @@ func TestReconstructedRowBucketsUnknownStatus(t *testing.T) {
 		t.Errorf("reviews = %d, buckets do not account for it", got.Reviews)
 	}
 }
+
+// FuzzDecodeEvents covers the two decoders a run journal is read through:
+// indexEvent, which summarizesFile turns into a Summary, and historyEvent,
+// which History counts from. Both read a file a killed process left half
+// written, so the pair assertions matter: a field that drifts between the two
+// structs (a wrong JSON tag, a widened type) makes the history signal disagree
+// with the summary without either reader reporting a problem.
+func FuzzDecodeEvents(f *testing.F) {
+	seeds := []string{
+		`{"ev":"run_start","ts":"2026-08-25T12:00:00Z","dir":"a","version":"1.0.0","agents":["claude"]}`,
+		`{"ev":"review_end","ts":"2026-08-25T12:01:00Z","dir":"a","review":"sec","status":"ok","ins":3,"del":1,"tokens":900}`,
+		`{"ev":"review_end","dir":"a","review":"sec","status":"weird","ins":-4,"del":-4,"tokens":-1}`,
+		`{"ev":"loop_end"}` + "\n" + `{"ev":"merge","ins":10,"del":2}`,
+		`{"ev":"pull_request","dir":"a","review":"sec","status":"ok","ins":1,"del":0}`,
+		`{"ev":"run_start","ts":"bogus"}`,
+		`{"ev":` + "\n" + `{"ev":"review_end","status":"conflict"}`,
+		"{\"ev\":\"review_end\"}\n\nnot json\n{\"ev\":",
+		"",
+		strings.Repeat("{\"ev\":\"review_end\",\"status\":\"timeout\"}\n", 40),
+		strings.Repeat("{\"a\":", 200) + strings.Repeat("}", 200),
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s))
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		path := filepath.Join(t.TempDir(), "events.jsonl")
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		// A journal is read to tell the operator what happened. A torn
+		// tail, a hand edit, or a line from a newer version must not fail
+		// the listing: the readers skip what they cannot decode.
+		s, err := summarizeFile("fuzz", path)
+		if err != nil {
+			t.Fatalf("summarizeFile rejected a journal: %v", err)
+		}
+		if s.RunID != "fuzz" || s.Path != path {
+			t.Fatalf("summary lost its identity: %+v", s)
+		}
+
+		// Every review_end lands in one status bucket, so the buckets can
+		// never account for more reviews than ran. A status from a newer
+		// journal counts a review and no bucket, which is the other bound.
+		if bucketed := s.OK + s.Failed + s.Skipped + s.Conflicts + s.Interrupted; bucketed > s.Reviews {
+			t.Fatalf("buckets %d exceed reviews %d: %+v", bucketed, s.Reviews, s)
+		}
+		seen := map[string]bool{}
+		for _, d := range s.Dirs {
+			if seen[d] {
+				t.Fatalf("dir %q counted twice: %+v", d, s.Dirs)
+			}
+			seen[d] = true
+		}
+
+		// The counts above come from indexEvent. History reads the same
+		// lines as historyEvent; the two must see one event.
+		var index indexEvent
+		var historyLine historyEvent
+		decoded, reviews, loops := 0, 0, 0
+		if err := eventsFile(path, nil, func(line []byte) {
+			decoded++
+			index = indexEvent{}
+			historyLine = historyEvent{}
+			if err := json.Unmarshal(line, &index); err != nil {
+				return
+			}
+			if err := json.Unmarshal(line, &historyLine); err != nil {
+				t.Fatalf("indexEvent decoded what historyEvent cannot: %q", line)
+			}
+			if index.Ev != historyLine.Ev || index.Dir != historyLine.Dir ||
+				index.Review != historyLine.Review || index.Status != historyLine.Status ||
+				lines(index.Ins) != historyLine.Ins || lines(index.Del) != historyLine.Del {
+				t.Fatalf("decoders disagree on %q: %+v vs %+v", line, index, historyLine)
+			}
+			switch index.Ev {
+			case "review_end":
+				reviews++
+			case "loop_end":
+				loops++
+			}
+		}); err != nil {
+			t.Fatalf("eventsFile rejected a journal: %v", err)
+		}
+		if reviews != s.Reviews {
+			t.Fatalf("summary counts %d reviews, the event stream holds %d: %+v", s.Reviews, reviews, s)
+		}
+		if loops != s.Loops {
+			t.Fatalf("summary counts %d loops, the event stream holds %d: %+v", s.Loops, loops, s)
+		}
+		if decoded == 0 && (s.Reviews != 0 || s.Loops != 0 || len(s.Dirs) != 0 || s.Version != "" || len(s.Agents) != 0) {
+			t.Fatalf("summary built from a journal with no lines: %+v", s)
+		}
+	})
+}

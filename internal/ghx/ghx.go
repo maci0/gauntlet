@@ -133,6 +133,19 @@ func (c Client) Find(ctx context.Context, head, base string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find PR %s -> %s: %w", head, base, err)
 	}
+	url, err := c.matchPull(out, head, base)
+	if err != nil {
+		return "", fmt.Errorf("find PR %s -> %s: %w", head, base, err)
+	}
+	return url, nil
+}
+
+// matchPull picks the URL of the candidate gh listed for this head and base.
+// A decode failure is an error rather than no match: gh exiting zero with
+// output this cannot read means the CLI is not what Find expects, and
+// reporting "no pull request exists" there would have the caller open a
+// second one.
+func (c Client) matchPull(out []byte, head, base string) (string, error) {
 	var prs []pull
 	if err := json.Unmarshal(out, &prs); err != nil {
 		return "", fmt.Errorf("decode gh PR list: %w", err)

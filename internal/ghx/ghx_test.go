@@ -5,6 +5,7 @@ package ghx
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -415,4 +416,98 @@ func TestAvailable(t *testing.T) {
 	if Available() {
 		t.Fatal("Available() found planted gh in cwd via empty PATH component")
 	}
+}
+
+// FuzzMatchPull covers the decode of `gh pr list --json` and the choice of a
+// candidate from it. The bytes come from a subprocess the operator installed,
+// and the URL that comes back decides whether a stacked run republishes its
+// layer or opens a second pull request against it, so a mis-decode is a
+// duplicate-pr bug, not a parse error.
+func FuzzMatchPull(f *testing.F) {
+	seeds := []string{
+		`[{"url":"https://github.com/o/r/pull/1","headRefName":"h","baseRefName":"b","headRepositoryOwner":{"login":"o"}}]`,
+		`[{"url":"https://github.com/o/r/pull/1","headRefName":"h","baseRefName":"b","headRepositoryOwner":{"login":"other"}}]`,
+		`[{"url":"http://evil.example/pull/1","headRefName":"h","baseRefName":"b"}]`,
+		`[{"url":"https://evil.example/o/r/pull/1","headRefName":"h","baseRefName":"b"}]`,
+		`[{"url":"","headRefName":"h","baseRefName":"b"}]`,
+		`[{"url":"https://github.com/o/r/pull/1","headRefName":"hX","baseRefName":"b"}]`,
+		`[{"url":7,"headRefName":[]}]`,
+		`null`, `{}`, `[]`, ``, `not json`,
+		`[{"url":"https://github.com/o/r/pull/1","headRefName":"h","baseRefName":"b"},` +
+			`{"url":"https://github.com/o/r/pull/2","headRefName":"h","baseRefName":"b"}]`,
+		strings.Repeat(`{"url":"https://github.com/o/r/pull/1","headRefName":"h","baseRefName":"b"},`, 50) + `{}]`,
+	}
+	for _, s := range seeds {
+		f.Add([]byte(s), "h", "b")
+	}
+	f.Add([]byte(`[{"url":"https://github.com/o/r/pull/1","headRefName":"H","baseRefName":"B"}]`), "H", "B")
+	f.Add([]byte(`[{"url":"https://github.com/o/r/pull/1","headRefName":"h","baseRefName":"b","headRepositoryOwner":{"login":"O"}}]`), "h", "b")
+	f.Fuzz(func(t *testing.T, out []byte, head, base string) {
+		c := Client{Repo: "o/r"}
+		got, err := c.matchPull(out, head, base)
+
+		// A URL this client would publish must be one gh actually printed,
+		// for the requested head and base, from a head this client's pushes
+		// reach. Decoded independently, as generic JSON, so a wrong field
+		// mapping in pull cannot agree with itself.
+		var rows []map[string]any
+		decodable := json.Unmarshal(out, &rows) == nil
+		if got != "" {
+			if err != nil {
+				t.Fatalf("returned %q with error %v", got, err)
+			}
+			if u, uerr := c.validateURL(got); uerr != nil || u != got {
+				t.Fatalf("returned an unusable URL %q: %v", got, uerr)
+			}
+			if !decodable {
+				t.Fatalf("returned %q from output that does not decode", got)
+			}
+			eligible := false
+			for _, row := range rows {
+				if jsonString(row, "url") != got {
+					continue
+				}
+				owner, _ := jsonField(row, "headRepositoryOwner").(map[string]any)
+				login, _ := jsonField(owner, "login").(string)
+				if jsonString(row, "headRefName") == head && jsonString(row, "baseRefName") == base &&
+					(login == "" || strings.EqualFold(login, "o")) {
+					eligible = true
+				}
+			}
+			if !eligible {
+				t.Fatalf("returned %q, which no eligible candidate carried (head %q base %q)", got, head, base)
+			}
+		}
+		if err != nil && got != "" {
+			t.Fatalf("returned %q with error %v", got, err)
+		}
+		// A match the caller will act on is stable: the same listing must
+		// not name a different pull request on a retry.
+		if again, aerr := c.matchPull(out, head, base); again != got || (aerr == nil) != (err == nil) {
+			t.Fatalf("matchPull is not deterministic: %q/%v then %q/%v", got, err, again, aerr)
+		}
+	})
+}
+
+// jsonField reads a key the way encoding/json matches one: case-insensitively.
+// The oracle in FuzzMatchPull decodes with map[string]any and must agree with
+// the typed decode on which key a field came from.
+func jsonField(row map[string]any, key string) any {
+	if row == nil {
+		return nil
+	}
+	if v, ok := row[key]; ok {
+		return v
+	}
+	for k, v := range row {
+		if strings.EqualFold(k, key) {
+			return v
+		}
+	}
+	return nil
+}
+
+func jsonString(row map[string]any, key string) string {
+	s, _ := jsonField(row, key).(string)
+	return s
 }
