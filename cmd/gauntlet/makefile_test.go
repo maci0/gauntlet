@@ -380,6 +380,45 @@ func TestMakefileTestRefusesARunThatSelectsNothing(t *testing.T) {
 	}
 }
 
+// The command the failure prints is the only recovery a contributor has, so
+// it is run here rather than believed: it named an empty PKG and a bare `.`
+// regexp, which the go command reads as the module root and answers "no Go
+// files" while listing nothing.
+func TestMakefileTestPrintsAListCommandThatRuns(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-pkg",
+		"PKG=./internal/humanize", "RUN=TestNoSuchTestNameAnywhere")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("make test-pkg with a RUN that matches nothing reported success:\n%s", out)
+	}
+
+	const prefix = "test: list the candidates with: "
+	var listed string
+	for line := range strings.Lines(string(out)) {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), prefix); ok {
+			listed = strings.TrimSpace(after)
+		}
+	}
+	if listed == "" {
+		t.Fatalf("the failure must print the listing command after %q:\n%s", prefix, out)
+	}
+
+	run := exec.CommandContext(ctx, "sh", "-c", listed)
+	run.Dir = moduleRoot(t)
+	run.Env = cleanMakeEnv()
+	names, err := run.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the listing command the failure prints does not run: %s\n%s", listed, names)
+	}
+	if !strings.Contains(string(names), "Test") {
+		t.Fatalf("the listing command names no tests: %s\n%s", listed, names)
+	}
+}
+
 // A package whose tests really do match must still pass, so the guard above
 // cannot be satisfied by refusing everything.
 func TestMakefileTestPkgRunsAMatchingTest(t *testing.T) {
@@ -956,5 +995,122 @@ func TestAmbientTMPDIRDoesNotReachARecipe(t *testing.T) {
 				t.Errorf("make %s acted on REPRO_DIR from the environment: %s", tc.target, out)
 			}
 		})
+	}
+}
+
+// Every target a contributor is told to run is a promise that it exists, and
+// nothing held the promise: a rename in the Makefile left README.md,
+// CONTRIBUTING.md, and the pull-request checklist naming targets that fail with
+// "No rule to make target" on the first try of a clean clone.
+func TestDocumentedMakeTargetsExist(t *testing.T) {
+	declared := makefileTargets(t)
+	root := moduleRoot(t)
+	docs := []string{
+		filepath.Join(root, "README.md"),
+		filepath.Join(root, "CONTRIBUTING.md"),
+		filepath.Join(root, "AGENTS.md"),
+		filepath.Join(root, ".github", "pull_request_template.md"),
+	}
+	// CHANGELOG.md is history: it records the targets that shipped in a past
+	// release, which is not a claim about the current Makefile.
+	more, err := filepath.Glob(filepath.Join(root, "docs", "*.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	docs = append(docs, more...)
+
+	documented := map[string]bool{}
+	for _, doc := range docs {
+		for _, name := range documentedMakeInvocations(readRepoFile(t, doc)) {
+			documented[name] = true
+			if !declared[name] {
+				t.Errorf("%s tells a contributor to run `make %s`, which the Makefile does not declare", relativeTo(root, doc), name)
+			}
+		}
+	}
+	// The loop every contributor is told to run has to be in that set, or the
+	// scan above could pass by reading nothing.
+	for _, name := range []string{"build", "test", "test-pkg", "check", "ci", "verify"} {
+		if !documented[name] {
+			t.Errorf("no document runs `make %s`, so the scan above is reading less than it claims", name)
+		}
+	}
+}
+
+func relativeTo(root, path string) string {
+	if rel, err := filepath.Rel(root, path); err == nil {
+		return rel
+	}
+	return path
+}
+
+// makefileTargets reads the rules a `make <name>` can reach, which is every
+// line that starts at column 0 with a name and a colon. A variable assignment
+// is not a rule: its colon is followed by `=` or `?=`, never a space.
+func makefileTargets(t *testing.T) map[string]bool {
+	t.Helper()
+	targets := map[string]bool{}
+	for line := range strings.Lines(makefileText(t)) {
+		name, rest, ok := strings.Cut(line, ":")
+		if !ok || name == "" || strings.ContainsAny(name, " \t$(") {
+			continue
+		}
+		if rest != "" && !strings.HasPrefix(rest, " ") && !strings.HasPrefix(rest, "\t") {
+			continue
+		}
+		targets[name] = true
+	}
+	if len(targets) < 20 {
+		t.Fatalf("read %d targets from the Makefile, which cannot be right", len(targets))
+	}
+	return targets
+}
+
+// documentedMakeInvocations returns every `make <target>` a reader could copy,
+// which is the ones inside a fenced block or an inline code span. Prose says
+// "make a copy" as readily as it says "make test", and only the copyable one
+// is a promise about the Makefile.
+func documentedMakeInvocations(doc string) []string {
+	var out []string
+	fenced := false
+	for line := range strings.Lines(doc) {
+		if strings.HasPrefix(strings.TrimSpace(line), "```") {
+			fenced = !fenced
+			continue
+		}
+		if fenced {
+			out = append(out, makeTargetsInLine(line)...)
+			continue
+		}
+		// Splitting on the backtick leaves the code spans at the odd
+		// positions; the first and last are whatever surrounds them.
+		parts := strings.Split(line, "`")
+		for i := 1; i < len(parts); i += 2 {
+			out = append(out, makeTargetsInLine(parts[i])...)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
+}
+
+func makeTargetsInLine(line string) []string {
+	var out []string
+	rest := line
+	for {
+		at := strings.Index(rest, "make ")
+		if at < 0 {
+			return out
+		}
+		fields := strings.Fields(rest[at+len("make "):])
+		if len(fields) == 0 {
+			return out
+		}
+		rest = strings.Join(fields[1:], " ")
+		name := strings.Trim(fields[0], "\"'`(),.;:")
+		// An assignment, not a target: `make GO=1` is a variable.
+		if name == "" || strings.Contains(name, "=") {
+			continue
+		}
+		out = append(out, name)
 	}
 }

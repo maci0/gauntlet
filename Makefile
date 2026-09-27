@@ -118,9 +118,14 @@ PKG ?=
 
 # `go test -run` exits 0 when the pattern selects nothing, so a mistyped test
 # name reads as a pass and the edit-test loop loses an iteration before the
-# contributor notices. tee keeps the per-package lines streaming; the status
-# file carries go test's own exit code, which a pipeline would drop, because
-# this Makefile is POSIX sh and has no pipefail.
+# contributor notices. The command the failure prints has to be the one that
+# runs: `-list` takes a regexp, and a bare `.` is read as a package argument
+# instead, so the listing it names is the module root and go test answers "no
+# Go files" while listing nothing. That is also why the package is `$(1)`, the
+# one the caller already named, and not PKG, which is empty under `make test`.
+# tee keeps the per-package lines streaming; the status file carries go test's
+# own exit code, which a pipeline would drop, because this Makefile is POSIX sh
+# and has no pipefail.
 define RUN_TESTS
 	@log="$(TMPDIR)/test.$$$$.log"; \
 	{ TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(1) 2>&1; \
@@ -129,7 +134,7 @@ define RUN_TESTS
 	if [ "$$rc" -ne 0 ]; then rm -f "$$log" "$$log.status"; exit "$$rc"; fi; \
 	if [ -n "$(RUN)" ] && ! awk '/^ok / && $$0 !~ /no tests to run/ { ran = 1 } END { exit !ran }' "$$log"; then \
 		echo "test: no test matches RUN='$(RUN)'; go test reports success when a -run pattern selects nothing" >&2; \
-		echo "test: list the candidates with 'make test-pkg PKG=$(PKG)' (no RUN), or 'go test $(GOTAGS) -list . $(PKG)'" >&2; \
+		echo "test: list the candidates with: go test $(GOTAGS) -list '.*' $(1)" >&2; \
 		rm -f "$$log" "$$log.status"; exit 1; \
 	fi; \
 	rm -f "$$log" "$$log.status"

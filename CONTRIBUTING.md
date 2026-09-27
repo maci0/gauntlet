@@ -27,8 +27,11 @@ configurations and a cross-compilation pass.
 
 ```sh
 make build            # ./gauntlet for this host
-make test             # every package, race detector, shuffled order (~30s)
+make test             # every package, race detector, shuffled order
 ```
+
+The suite is ~30s once the build cache is warm. The first run on a fresh
+clone compiles every package under the race detector and takes minutes.
 
 The first run downloads Go modules; after that the loop is offline.
 `make` passes `-mod=readonly` on every target except `make vuln`, so a drift
