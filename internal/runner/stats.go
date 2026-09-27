@@ -51,6 +51,15 @@ type Stats struct {
 	mu      sync.Mutex
 	results []Result
 
+	// tokens is the running sum of Result.Tokens. A run with --max-loops 0
+	// records a result per review per loop for as long as it is left going, so
+	// results has no bound to give. A budget reads Tokens before every review
+	// it takes, and a scan of the whole slice per read is quadratic over such
+	// a run, under the mutex every other reader contends for. The total is
+	// kept alongside the slice so the budget costs the same on loop 2 and on
+	// loop 2000.
+	tokens int
+
 	commitRuns  int
 	commitFails int
 
@@ -88,6 +97,7 @@ func (s *Stats) addCommitFail() {
 func (s *Stats) Add(r Result) {
 	s.mu.Lock()
 	s.results = append(s.results, r)
+	s.tokens += r.Tokens
 	s.mu.Unlock()
 }
 
@@ -97,6 +107,9 @@ func (s *Stats) Add(r Result) {
 func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	for _, r := range results {
+		s.tokens += r.Tokens
+	}
 	s.results = append(append([]Result(nil), results...), s.results...)
 	s.commitRuns += commitRuns
 	s.commitFails += commitFails
@@ -172,16 +185,13 @@ func (s *Stats) Counts() Counts {
 }
 
 // Tokens is every token the run has recorded, including results a predecessor
-// process seeded. A token budget reads it, so a hot reload continues the same
-// ceiling instead of handing itself a fresh one.
+// process seeded. A token budget reads it before every review, so it reads the
+// running total rather than walking results, and a hot reload continues the
+// same ceiling instead of handing itself a fresh one.
 func (s *Stats) Tokens() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	n := 0
-	for _, r := range s.results {
-		n += r.Tokens
-	}
-	return n
+	return s.tokens
 }
 
 // Totals sums lines changed, tokens reported, and agent wall time.
@@ -194,13 +204,12 @@ func (s *Stats) Totals() (ins, del, tokens int, agentTime time.Duration, timed i
 			del += r.Del
 			haveLines = true
 		}
-		tokens += r.Tokens
 		if r.Elapsed > 0 {
 			agentTime += r.Elapsed
 			timed++
 		}
 	}
-	return ins, del, tokens, agentTime, timed, haveLines
+	return ins, del, s.tokens, agentTime, timed, haveLines
 }
 
 // AgentSummary is one agent's slice of the run.

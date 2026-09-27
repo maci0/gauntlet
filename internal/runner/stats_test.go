@@ -268,3 +268,40 @@ func TestTokensCountsCarriedOverResults(t *testing.T) {
 		t.Fatalf("Tokens() = %d, want 950", got)
 	}
 }
+
+func TestRunningTokenTotalMatchesTheRecordedResults(t *testing.T) {
+	// Tokens() reads a running total rather than walking results, so the
+	// total has to stay equal to the sum over what was recorded. A run with
+	// --max-loops 0 records forever, which is the case that would drift.
+	st := &Stats{Start: time.Now()}
+	want := 0
+	add := func(r Result) {
+		st.Add(r)
+		want += r.Tokens
+	}
+	add(Result{Review: "a-review", Tokens: 120, Elapsed: time.Second, Ins: 3, Del: 1, HaveLines: true})
+	add(Result{Review: "b-review", Tokens: 0, Status: StatusSkipped})
+	seeded := []Result{
+		{Review: "a-review", Tokens: 45},
+		{Review: "c-review", Tokens: 7, Elapsed: 2 * time.Second, Ins: 2, HaveLines: true},
+	}
+	st.Seed(seeded, 3, 1)
+	for _, r := range seeded {
+		want += r.Tokens
+	}
+
+	if got := st.Tokens(); got != want {
+		t.Fatalf("Tokens() = %d, want %d", got, want)
+	}
+	_, _, tokens, _, _, _ := st.Totals()
+	if tokens != want {
+		t.Fatalf("Totals() tokens = %d, want %d", tokens, want)
+	}
+	sum := 0
+	for _, r := range st.Results() {
+		sum += r.Tokens
+	}
+	if sum != want {
+		t.Fatalf("sum over Results() = %d, want %d", sum, want)
+	}
+}
