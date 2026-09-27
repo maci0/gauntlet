@@ -37,6 +37,8 @@ minor instead and were listed under Changed.
 - Fsync a run journal when it closes, its shard directory when the file is created, the index directory after a rebuild renames it into place, and the reload handoff directory after saving it, so a power cut cannot leave a listing, a run, or a hot-reload handoff without the file it names.
 - Drive the line-sample debounce from the run's injected clock instead of wall time, so a replayed run attributes the same lines to the same review.
 - Dashboard footer no longer keeps a live token rate from a lane whose review already started or finished.
+- The run index holds one row per run even when the run is listed before it closes: a listing that reconstructs the row from a journal still in flight no longer leaves a second row behind when the run's own close lands, and that row is the close's, with its args and exit code.
+- The documented install snippet builds the release base URL with a trailing slash, so the tag it resolves is the tag both fetches come from.
 
 ## 1.23.3
 

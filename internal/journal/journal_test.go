@@ -2054,3 +2054,75 @@ func FuzzDecodeEvents(f *testing.F) {
 		}
 	})
 }
+
+// A run that is still going can be listed before it Closes: any other
+// process reading the history reconstructs the missing row from the journal
+// on disk. When the run then Closes, the index must still hold one row for
+// it, carrying the Close's own fields, or a second execution of the same
+// ending leaves a duplicate that only dedupeRunIDs hides from the listing.
+func TestIndexHoldsOneRowWhenAStillRunningRunCloses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	start := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	id := NewRunID(start)
+	j, err := Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{
+		"ev": "run_start", "ts": start, "dir": "/live", "version": "test",
+	})
+	j.Write(map[string]any{
+		"ev": "review_end", "ts": start.Add(time.Minute), "dir": "/live",
+		"review": "doc-review", "status": "ok", "loop": 1,
+	})
+	j.Flush()
+
+	// A second process reads the history while the run is still in flight.
+	if _, err := Recent(10); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{
+		Dirs: []string{"/live"}, Start: start, End: start, Args: []string{"--once"},
+		ExitCode: new(0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rows := indexRows(t)
+	if len(rows) != 1 {
+		t.Fatalf("index rows = %d, want 1: %+v", len(rows), rows)
+	}
+	if rows[0].RunID != id {
+		t.Fatalf("index row run = %q, want %q", rows[0].RunID, id)
+	}
+	if rows[0].ExitCode == nil || *rows[0].ExitCode != 0 {
+		t.Errorf("the row must be the Close's own, not the reconstruction: %+v", rows[0])
+	}
+	if !slices.Equal(rows[0].Args, []string{"--once"}) {
+		t.Errorf("args = %v, want the Close's own", rows[0].Args)
+	}
+}
+
+// indexRows reads the index file itself, not the listing: the listing dedupes
+// by run id, which is exactly what these tests must not rely on.
+func indexRows(t *testing.T) []Summary {
+	t.Helper()
+	data, err := os.ReadFile(indexPath())
+	if err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	var rows []Summary
+	for line := range strings.SplitSeq(strings.TrimSpace(string(data)), "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var s Summary
+		if err := json.Unmarshal([]byte(line), &s); err != nil {
+			t.Fatalf("decode index row %q: %v", line, err)
+		}
+		rows = append(rows, s)
+	}
+	return rows
+}

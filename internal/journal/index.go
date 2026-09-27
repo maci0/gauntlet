@@ -63,9 +63,27 @@ func appendIndex(s Summary) error {
 	})
 }
 
+// The run id is the key, and a run can reach an ending twice: the process
+// that owns it Closes, while another process reading the history meanwhile
+// reconstructs the row from the journal on disk, because a run that has not
+// Closed yet has no row. Appending both would leave two rows for one run, and
+// the listing would show the right one only because dedupeRunIDs prefers the
+// newest. A row already naming this run is therefore dropped and the new one
+// written in its place, so the index holds one row per run and the file grows
+// by exactly one line per run however often the ending is reached.
 func appendIndexLocked(s Summary) (err error) {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
+	}
+	line, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	line = append(line, '\n')
+	if prev, err := readIndexFile(); err != nil {
+		return err
+	} else if kept, dropped := dropIndexRows(prev, s.RunID); dropped {
+		return writeIndexBytes(append(kept, line...))
 	}
 	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
@@ -76,14 +94,45 @@ func appendIndexLocked(s Summary) (err error) {
 			err = cerr
 		}
 	}()
-	line, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-	if _, err = f.Write(append(line, '\n')); err != nil {
+	if _, err = f.Write(line); err != nil {
 		return err
 	}
 	return f.Sync()
+}
+
+// readIndexFile reads the whole index, which is what proving a run id absent
+// costs. A missing index is empty content, not an error: the first run of an
+// install has none.
+func readIndexFile() ([]byte, error) {
+	data, err := os.ReadFile(indexPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, nil
+	}
+	return data, err
+}
+
+// dropIndexRows returns the index with every line naming runID removed, and
+// whether it removed any. A line that does not decode, or carries no id, is
+// kept: the index is a convenience log, and a mangled row is not this run's
+// to delete. Each surviving line is re-terminated, so a file that was not
+// already one-row-per-line comes out of the rewrite as one.
+func dropIndexRows(data []byte, runID string) (kept []byte, dropped bool) {
+	out := make([]byte, 0, len(data))
+	for line := range bytes.SplitSeq(data, []byte("\n")) {
+		line = bytes.TrimRight(line, "\r \t")
+		if len(line) == 0 {
+			continue
+		}
+		var row struct {
+			RunID string `json:"run_id"`
+		}
+		if runID != "" && json.Unmarshal(line, &row) == nil && row.RunID == runID {
+			dropped = true
+			continue
+		}
+		out = append(append(out, line...), '\n')
+	}
+	return out, dropped
 }
 
 // CloseQuiet flushes and closes the journal without writing an index entry.
@@ -499,6 +548,20 @@ func rebuildIndex() (int, error) {
 
 // writeIndex replaces index.jsonl. The caller holds the index lock.
 func writeIndex(rows []Summary) error {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	for _, s := range rows {
+		if err := enc.Encode(s); err != nil {
+			return err
+		}
+	}
+	return writeIndexBytes(buf.Bytes())
+}
+
+// writeIndexBytes replaces index.jsonl with body, through a temp file and a
+// rename, so a reader sees either the whole old index or the whole new one.
+// The caller holds the index lock.
+func writeIndexBytes(body []byte) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
@@ -515,11 +578,8 @@ func writeIndex(rows []Summary) error {
 	if err := tmp.Chmod(0o600); err != nil {
 		return err
 	}
-	enc := json.NewEncoder(tmp)
-	for _, s := range rows {
-		if err := enc.Encode(s); err != nil {
-			return err
-		}
+	if _, err := tmp.Write(body); err != nil {
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		return err
