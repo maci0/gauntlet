@@ -53,7 +53,11 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 	if cfg.Only != nil && cfg.Only.Tool == FastSuggestAgent {
 		spec := *cfg.Only
 		logf("Reading %s for review signals (no agent)", filepath.Base(cfg.Dir))
-		picked := fastSuggest(cfg.Dir, cfg.Pool, cfg.Set)
+		picked, historyErr := fastSuggest(cfg.Dir, cfg.Pool, cfg.Set)
+		if historyErr != nil {
+			logf("Cannot read this directory's run history, so every review counts "+
+				"as untried here: %v", historyErr)
+		}
 		if len(picked) == 0 {
 			return nil, spec, errors.New("no review matched anything in this tree")
 		}

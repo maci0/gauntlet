@@ -454,7 +454,14 @@ type scored struct {
 // evidence first, restricted to the pool. Reviews whose evidence does not
 // reach minScore are left out: proposing everything would be the same as
 // proposing nothing.
-func fastSuggest(dir string, pool []string, set prompt.Set) []prompt.Suggestion {
+//
+// The error is the journal this directory's history is read from, returned
+// beside the picks rather than folded into them: an unreadable index leaves
+// every review at its neutral weight, which quietly re-proposes the reviews
+// that have already finished here without changing a line several times
+// over. The file evidence stands on its own, so the picks are still worth
+// having; the caller says why the weighting is missing.
+func fastSuggest(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, error) {
 	s := scan(dir, declaredMarks(pool, set))
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
@@ -497,7 +504,7 @@ func fastSuggest(dir string, pool []string, set prompt.Set) []prompt.Suggestion 
 		}
 	}
 
-	history, _ := journal.History(dir)
+	history, historyErr := journal.History(dir)
 	out := make([]scored, 0, len(by))
 	for _, got := range by {
 		got.score *= historyWeight(history[got.name])
@@ -519,7 +526,7 @@ func fastSuggest(dir string, pool []string, set prompt.Set) []prompt.Suggestion 
 			Reason: strings.Join(got.reasons[:min(len(got.reasons), reasonsShown)], ", "),
 		})
 	}
-	return picked
+	return picked, historyErr
 }
 
 // matchDeclared reports whether the tree carries any signal a review declared,
