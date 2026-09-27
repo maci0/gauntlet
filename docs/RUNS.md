@@ -404,7 +404,10 @@ rewritten.
 skipped where they cannot be attributed, and a run with no counts is listed
 `n/a`, not `+0/-0`: git may have been missing, or concurrent reviews sharing
 one tree make no per-review split honest. A run whose journal carries no `ins`
-field on any event is unmeasured for the same reason.
+field on any event is unmeasured for the same reason. A `merge` or
+`pull_request` event repeated in one stream counts once: the rows are summed
+over layers, keyed on the branch the work landed on, so a layer a hot-reload
+successor re-recorded is one diff and not two.
 
 `other` counts reviews whose terminal `status` a build does not recognize. It
 exists so a journal written by a newer version still reconciles: every review

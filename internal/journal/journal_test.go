@@ -992,6 +992,51 @@ func TestHistoryIdempotentOnDuplicateEvents(t *testing.T) {
 	}
 }
 
+// A layer's publication can reach the journal twice: a hot-reload successor
+// re-records a layer its predecessor published before the handoff. The
+// rebuilt summary must count the diff once, and must still add a later loop's
+// layer, which is a different branch.
+func TestSummaryCountsAReplayedLayerOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w/layer", "review": "sec-review", "status": "ok"},
+		{"ev": "merge", "dir": "/w/layer", "review": "sec-review", "loop": 1,
+			"branch": "gauntlet/1-1/sec-review", "status": "ok", "ins": 9, "del": 3},
+		// The same layer, published a second time by the successor.
+		{"ev": "merge", "dir": "/w/layer", "review": "sec-review", "loop": 1,
+			"branch": "gauntlet/1-1/sec-review", "status": "ok", "ins": 9, "del": 3},
+		// The next loop's layer: same review, another branch, real work.
+		{"ev": "merge", "dir": "/w/layer", "review": "sec-review", "loop": 2,
+			"branch": "gauntlet/2-1/sec-review", "status": "ok", "ins": 4, "del": 1},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	// No Close: the index row is missing, so the listing below has to rebuild
+	// the summary from the event stream, which is the path that adds the lines.
+	j.Flush()
+
+	rows, err := Recent(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Recent(1) = %d rows, want the one unindexed run", len(rows))
+	}
+	if got := rows[0]; got.Ins != 13 || got.Del != 4 {
+		t.Fatalf("rebuilt summary = +%d/-%d, want +13/-4: the replayed layer counted twice",
+			got.Ins, got.Del)
+	}
+}
+
 // A journal that cannot be read to its end has already been tallied for every
 // line before the failure. Replaying it by id on top of that counted the same
 // review twice, and the suggester read a directory where every review always

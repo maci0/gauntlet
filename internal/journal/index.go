@@ -766,6 +766,7 @@ type indexEvent struct {
 	TS      time.Time `json:"ts"`
 	Dir     string    `json:"dir"`
 	Review  string    `json:"review"`
+	Branch  string    `json:"branch"`
 	Status  string    `json:"status"`
 	Loop    int       `json:"loop"`
 	Ins     *int      `json:"ins"`
@@ -773,6 +774,17 @@ type indexEvent struct {
 	Tokens  int       `json:"tokens"`
 	Version string    `json:"version"`
 	Agents  []string  `json:"agents"`
+}
+
+// layerKey names one published layer by what its merge or pull_request event
+// carries: the directory, the loop, the review, and the branch the work landed
+// on. A branch name is unique to a layer within a run, and a layer's
+// publication can reach the journal twice (a hot-reload successor re-recording
+// a layer its predecessor already published), so a repeated key is the same
+// work counted a second time.
+type layerKey struct {
+	dir, review, branch string
+	loop                int
 }
 
 // historyEvent holds only the fields History inspects, avoiding timestamp parsing
@@ -798,6 +810,10 @@ func lines(p *int) int {
 // summarizeFile rebuilds a Summary from one run's event stream. Args,
 // ExitCode, and Elapsed are not on the events, so they stay absent rather
 // than zero: only Close knows them.
+//
+// The line totals are the sum over layers, not over publications: a merge or
+// pull_request event repeated in one stream counts once, the way History
+// counts one run per review.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
 	f, err := os.Open(path)
@@ -808,6 +824,7 @@ func summarizeFile(runID, path string) (Summary, error) {
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	seenDir := map[string]bool{}
+	counted := map[layerKey]bool{}
 	var lastTS time.Time
 	for sc.Scan() {
 		var e indexEvent
@@ -857,6 +874,20 @@ func summarizeFile(runID, path string) (Summary, error) {
 			s.Del += lines(e.Del)
 			s.Tokens += e.Tokens
 		case "merge", "pull_request":
+			// A layer's counts are added once, keyed by the branch its work
+			// landed on. A publication that reaches the journal twice (a
+			// hot-reload successor re-recording a layer its predecessor
+			// already published) repeats every field the key is built from,
+			// and summing it twice would report one diff as two and leave the
+			// summary reconciling against nothing. An event carrying no counts
+			// claims none, so it never keeps a counted one out.
+			key := layerKey{dir: e.Dir, review: e.Review, branch: e.Branch, loop: e.Loop}
+			if counted[key] {
+				break
+			}
+			if e.Ins != nil {
+				counted[key] = true
+			}
 			s.Ins += lines(e.Ins)
 			s.Del += lines(e.Del)
 		}
