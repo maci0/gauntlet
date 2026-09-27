@@ -83,7 +83,13 @@ for shot in 'dashboard:gauntlet --tui' 'launcher:gauntlet pick'; do
 		exit 1
 	fi
 	read -r w h <<<"$size"
-	[ -n "$w" ] && [ -n "$h" ] || { echo "$name: renderer printed no size" >&2; exit 1; }
+	# Spelled as an if, not `A && B || C`: shellcheck's SC2015 is right that the
+	# `||` branch also runs when the left side fails for another reason, and the
+	# runner image carries an older shellcheck than the pin that reports it.
+	if [ -z "$w" ] || [ -z "$h" ]; then
+		echo "$name: renderer printed no size" >&2
+		exit 1
+	fi
 
 	printf '<html><body style="margin:0;background:#1e1e2e"><img src="%s.svg" width="%s" height="%s"></body></html>' \
 		"$name" "$w" "$h" > "$work/$name.html"
