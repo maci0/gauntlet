@@ -1107,7 +1107,8 @@ func spellFlag(name string) string {
 // package names every flag with a single dash, whatever length it is, so
 // `--timeout` comes back as `-timeout`: a spelling no flag on this CLI has,
 // next to messages that write the same flag as `--timeout`. A close miss keeps
-// the package's wording and gains the suggestion the unknown-command error has.
+// the package's wording, with the spelling fixed, and gains the suggestion
+// the unknown-command error has.
 func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	msg := flagSpelling.ReplaceAllStringFunc(err.Error(), func(m string) string {
 		g := flagSpelling.FindStringSubmatch(m)
@@ -1126,5 +1127,5 @@ func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	if c == "" {
 		return errors.New(msg)
 	}
-	return fmt.Errorf("%s (did you mean %s?)", err, spellFlag(c))
+	return fmt.Errorf("%s (did you mean %s?)", msg, spellFlag(c))
 }

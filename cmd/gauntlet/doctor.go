@@ -162,20 +162,25 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		n := 0
 		var cells []string
 		for _, t := range tools {
-			ok, rec := found[t] != "", agent.RecommendedTools[t]
+			// An entry with alternatives is present when any of its binaries
+			// resolved, and is named by its primary, the way SplitTools
+			// hands the same entry to the prompt. Looking the whole entry up
+			// would never match: the probe is per binary.
+			primary, _, _ := strings.Cut(t, "|")
+			ok, rec := have(t), agent.RecommendedTools[primary]
 			if ok {
 				n++
 			}
 			if rec {
-				seenRec[t] = ok || seenRec[t]
+				seenRec[primary] = ok || seenRec[primary]
 			} else {
-				seenOpt[t] = ok || seenOpt[t]
+				seenOpt[primary] = ok || seenOpt[primary]
 			}
 			star := ""
 			if rec {
 				star = "*"
 			}
-			label := t + star
+			label := primary + star
 			if !ok {
 				// The '*' carries the recommended distinction when color is
 				// off; styling only reinforces it.

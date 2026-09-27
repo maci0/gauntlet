@@ -309,24 +309,50 @@ func Register(name string, def Custom) error {
 		return fmt.Errorf("%q is a built-in agent and cannot be redefined", name)
 	}
 	customMu.Lock()
+	defer customMu.Unlock()
+	if prev, clash := lookupCustom(name); clash {
+		return fmt.Errorf("%q is already defined as %q; agent names differ by case alone, so only one spelling is selectable", name, prev)
+	}
 	custom[name] = def
-	customMu.Unlock()
 	return nil
 }
 
 // Unregister removes a custom agent definition.
 func Unregister(name string) {
 	customMu.Lock()
-	delete(custom, fuzzy.NFC(name))
-	customMu.Unlock()
+	defer customMu.Unlock()
+	if prev, ok := lookupCustom(fuzzy.NFC(name)); ok {
+		delete(custom, prev)
+	}
 }
 
-// CustomDef returns the definition for a custom agent.
+// CustomDef returns the definition for a custom agent. The name folds case,
+// the way every other lookup of an agent name does: -a folds the spelling
+// before it reaches here, so a definition written "MyAgent" is still found
+// under "myagent" and vice versa.
 func CustomDef(name string) (Custom, bool) {
 	customMu.RLock()
 	defer customMu.RUnlock()
-	d, ok := custom[fuzzy.NFC(name)]
-	return d, ok
+	key, ok := lookupCustom(fuzzy.NFC(name))
+	if !ok {
+		return Custom{}, false
+	}
+	return custom[key], true
+}
+
+// lookupCustom finds the stored key for a name, matching case-insensitively.
+// The caller holds customMu. A name differing from an existing one only by
+// case is refused at Register, so at most one key can match.
+func lookupCustom(name string) (string, bool) {
+	if _, ok := custom[name]; ok {
+		return name, true
+	}
+	for k := range custom {
+		if strings.EqualFold(k, name) {
+			return k, true
+		}
+	}
+	return "", false
 }
 
 // CustomNames lists the defined custom agents, in name order.
@@ -342,8 +368,10 @@ func CustomNames() []string {
 }
 
 // isBuiltinTool reports whether a name is compiled in, as opposed to defined.
+// Case folds, because a redefinition of a built-in under another spelling is
+// still a redefinition of it.
 func isBuiltinTool(name string) bool {
-	return slices.Contains(Valid, name)
+	return slices.ContainsFunc(Valid, func(v string) bool { return strings.EqualFold(v, name) })
 }
 
 // ParseAgentCmd parses a NAME=ARGV... definition from the command line, where

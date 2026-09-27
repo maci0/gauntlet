@@ -30,6 +30,8 @@ func demoPicker() *picker {
 		Branch:      "work",
 		Merge:       []string{"main", "release"},
 		CPUs:        8,
+		// The group names are set names, the way the launcher builds them.
+		Reserved: []string{"quick", "frontend", "all", "suggest"},
 	})
 	p.w, p.h, p.ready = 100, 30, true
 	return p
@@ -240,6 +242,30 @@ func TestPickNamesAReviewThatCollidesWithASetInFull(t *testing.T) {
 	}
 	if got := p.reviewArgs(); got != "" {
 		t.Errorf("selecting everything should name nothing, got %q", got)
+	}
+}
+
+// The catch-all group is a heading the launcher gives reviews no set claims,
+// not a set --reviews knows. Ticking it whole names its members instead, since
+// composing "-r other" is a command line the parser refuses.
+func TestPickNamesTheCatchAllGroupByItsMembers(t *testing.T) {
+	p := newPicker(PickConfig{
+		Dir: "/home/dev/project",
+		Groups: []PickGroup{
+			{Name: "quick", Reviews: []PickReview{{Name: "sec-review", Desc: "d"}}},
+			{Name: "other", Reviews: []PickReview{{Name: "cache-review", Desc: "d"}}},
+		},
+		Agents:   []string{"claude"},
+		CPUs:     8,
+		Reserved: []string{"quick", "all", "suggest"},
+	})
+	p.w, p.h, p.ready = 100, 30, true
+	p.knownReviews = []string{"sec-review", "cache-review"}
+	p.selected["sec-review"] = true
+	p.selected["cache-review"] = true
+	p.suggest = true
+	if got, want := p.reviewArgs(), "quick,cache"; got != want {
+		t.Fatalf("ticking the catch-all group composed -r %q, want %q", got, want)
 	}
 }
 

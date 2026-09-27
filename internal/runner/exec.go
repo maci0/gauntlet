@@ -273,8 +273,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 				// Verbatim means the visible characters survive untouched; the
 				// escape sequences and controls that could drive or spoof the
 				// terminal do not. Agent output is untrusted, and this line is
-				// headed for a terminal (or a log file) as-is.
-				emit(normalize.Line{Text: normalize.Display(line), Repeat: 1})
+				// headed for a terminal (or a log file) as-is. The width cap
+				// still applies: it is the frame size a reader's terminal has
+				// to absorb, not a rewrite of the text.
+				emit(normalize.Line{
+					Text:   normalize.Truncate(normalize.Display(line), streamLineCols),
+					Repeat: 1,
+				})
 				return
 			}
 			for _, l := range norm.Push(line) {

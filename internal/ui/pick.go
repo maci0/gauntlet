@@ -788,11 +788,19 @@ func (p *picker) reviewArgs() string {
 	var parts []string
 	covered := map[string]bool{}
 	for i, g := range p.cfg.Groups {
-		if len(g.Reviews) > 0 && p.groupOn(i) == len(g.Reviews) {
-			parts = append(parts, g.Name)
-			for _, rev := range g.Reviews {
-				covered[rev.Name] = true
-			}
+		if len(g.Reviews) == 0 || p.groupOn(i) != len(g.Reviews) {
+			continue
+		}
+		// Only a group named the way --reviews reads a set can be named in
+		// one word. The launcher's catch-all group is a heading, not a set,
+		// and passing it would compose a command line the parser refuses; its
+		// members are named one by one below instead.
+		if !slices.Contains(p.cfg.Reserved, g.Name) {
+			continue
+		}
+		parts = append(parts, g.Name)
+		for _, rev := range g.Reviews {
+			covered[rev.Name] = true
 		}
 	}
 	for _, name := range all {
@@ -1078,12 +1086,13 @@ func (p *picker) renderStatus() string {
 // keyHint is one key and what it does, as the key line shows it.
 type keyHint struct{ k, v string }
 
-// renderKeys names the keys, most important first, and drops from the right
-// end when the terminal is narrow: a keyboard user who cannot find how to
-// move between rows or leave is stranded, so those come before niceties like
-// bulk selection. What fits is what is shown, never clipped mid-name.
+// renderKeys names the keys, most important first. A key the focused pane
+// does not act on is left off rather than advertised as one that does
+// nothing. What does not fit is dropped from the right end, after the gap
+// between segments has been tightened, because a keyboard user who cannot
+// find how to move between rows or leave is stranded. What fits is what is
+// shown, never clipped mid-name.
 func (p *picker) renderKeys() string {
-	type keyHint struct{ k, v string }
 	arrowAction := "open/close"
 	switch p.focus {
 	case paneOptions:
@@ -1113,18 +1122,49 @@ func (p *picker) renderKeys() string {
 		// A live filter keeps the run keys and adds the one that clears it.
 		keys = slices.Insert(slices.Clone(keys), 2, keyHint{"esc", "clear"})
 	}
-	var b strings.Builder
-	for _, k := range keys {
-		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.v)
-		if w := lipgloss.Width(seg); b.Len() > 0 && lipgloss.Width(b.String())+2+w > p.w {
-			break
+	// A pane that offers a to take carries ten segments, which two spaces
+	// apart will not fit on a hundred columns. The gap tightens first, then
+	// the arrow keys say "fold" rather than "open/close"; a terminal narrower
+	// than that drops from the right end.
+	for _, tight := range []bool{false, true} {
+		for _, gap := range []string{"  ", " "} {
+			if line, fits := joinKeys(keys, gap, arrowFold, p.w, tight); fits {
+				return line
+			}
 		}
-		if b.Len() > 0 {
-			b.WriteString("  ")
-		}
-		b.WriteString(seg)
 	}
-	return clip(b.String(), p.w)
+	line, _ := joinKeys(keys, " ", arrowFold, p.w, true)
+	return line
+}
+
+// arrowFold names the arrow keys when the legend is short on columns. fold
+// covers both halves of open/close, which is what the keys do to a set.
+const arrowFold = "fold"
+
+// joinKeys renders the segments separated by gap, stopping before the one
+// that would pass w. tight swaps the arrow keys' long action for arrowFold.
+// It reports whether every segment fitted; the first is always written, since
+// a lone segment that overflows is clipped rather than leaving the line blank.
+func joinKeys(keys []keyHint, gap, fold string, w int, tight bool) (string, bool) {
+	segs := make([]string, 0, len(keys))
+	for _, k := range keys {
+		action := k.v
+		if tight && k.v == "open/close" {
+			action = fold
+		}
+		segs = append(segs, styleValue.Render(k.k)+styleDim.Render(":"+action))
+	}
+	wid := func(s string) int { return lipgloss.Width(s) }
+	full := strings.Join(segs, gap)
+	if wid(full) <= w {
+		return full, true
+	}
+	for i, seg := range segs {
+		if i > 0 && wid(strings.Join(segs[:i], gap))+len(gap)+wid(seg) > w {
+			return strings.Join(segs[:i], gap), false
+		}
+	}
+	return full, true
 }
 
 // renderNarrow is the fallback for a terminal too small for the panels: the

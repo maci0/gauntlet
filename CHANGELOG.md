@@ -42,6 +42,12 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- The launcher's key legend keeps the keys its pane acts on at a hundred columns: it tightens the gap between segments and shortens the arrow keys' action before dropping anything, where the `a` key fell off the end and a pane that offers it showed no way to select all.
+- The launcher's catch-all group names its members instead of the group heading, so a tree carrying a review no bundled set claims composes a command line the parser accepts.
+- A flag the parser rejects is named the way the help screen names it in the suggestion too: an unknown `--tuii` reads `flag provided but not defined: --tuii (did you mean --tui?)`.
+- `gauntlet doctor` reports a per-review helper with alternative binaries as present when any of them is installed, and names it by its primary, the way the prompt does; entries like `ast-grep|sg` were compared against a probe keyed per binary and so never matched.
+- An agent defined with a capital letter in its name is selectable under any spelling, the way a built-in is; two definitions differing only by case are refused rather than leaving one of them unreachable.
+- `--raw` output is width-capped like every other line headed for a terminal, so one overlong line no longer arrives as a single uncapped frame.
 - The dashboard footer keeps the run's diff, token, and budget readings on a terminal too narrow to hold them beside the key legend: it drops whole readings from the right end and marks the ones that cannot fit, where it used to drop all of them with no sign they had been there.
 - The dashboard's agent panel drops a whole counter column on a narrow terminal instead of cutting one at the pane edge, so a token total is no longer drawn truncated (`◌ 11` standing in for `11,111,110`) and a counter is never clipped mid-label.
 - A flag the parser rejects is named the way the help screen names it: `--timeout`, not `-timeout`. An unknown flag, a flag missing its value, and a value it cannot parse all say so, while a shorthand keeps its one dash.
