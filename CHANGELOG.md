@@ -30,6 +30,7 @@ minor instead and were listed under Changed.
 
 ### Changed
 
+- A finished run writes its index row without reading and decoding the whole index first. The duplicate check walks the file a line at a time and only decodes a row that already spells the run id, so the cost of finishing a run no longer grows with the number of runs the install has recorded, and neither does its memory use.
 - `prompt-review` looks for prompts in the three places a loader can supply them (the project tree, an operator's prompt directory, a runner's compiled set) instead of skipping a repository that keeps no prompt file of its own, tells the agent to register a prompt it creates where the loader looks for it, and no longer asks it to add a missing data-not-instructions line to a prompt the runner already composes one into.
 - A review whose agent command would not build goes straight to the fallback agent instead of spending its retries on an argv that would fail the same way every time.
 - `make repro` proves byte-identical output for every platform in `PLATFORMS`, not only the host's, and `make release` runs `make check` so a tag cannot publish a tree that fails `gofmt` or `go vet` under any of the three shipped tag sets.

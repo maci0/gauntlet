@@ -83,10 +83,12 @@ func appendIndexLocked(s Summary) (err error) {
 		return err
 	}
 	line = append(line, '\n')
-	if prev, err := readIndexFile(); err != nil {
+	drop, err := indexNamesRun(s.RunID)
+	if err != nil {
 		return err
-	} else if kept, dropped := dropIndexRows(prev, s.RunID); dropped {
-		return writeIndexBytes(append(kept, line...))
+	}
+	if drop {
+		return rewriteIndexDropping(s.RunID, line)
 	}
 	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
@@ -103,39 +105,145 @@ func appendIndexLocked(s Summary) (err error) {
 	return f.Sync()
 }
 
-// readIndexFile reads the whole index, which is what proving a run id absent
-// costs. A missing index is empty content, not an error: the first run of an
-// install has none.
-func readIndexFile() ([]byte, error) {
-	data, err := os.ReadFile(indexPath())
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+// indexNamesRun reports whether the index already holds a row for runID. A
+// missing index holds none, not an error: the first run of an install has no
+// index yet.
+//
+// The index is append-only and lives for the life of the install, so this
+// walks it a line at a time and stops at the first row that matches: the rows
+// are never all decoded, and nothing the size of the file is held. Only a line
+// that already carries the run id is decoded at all, which is what keeps the
+// walk a scan rather than a parse of every run ever recorded.
+func indexNamesRun(runID string) (bool, error) {
+	if runID == "" {
+		return false, nil
 	}
-	return data, err
+	f, err := os.Open(indexPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	needle := runIDNeedle(runID)
+	found := false
+	err = indexLines(f, func(line []byte) bool {
+		if !namesRun(line, needle, runID) {
+			return true
+		}
+		found = true
+		return false
+	})
+	return found, err
 }
 
-// dropIndexRows returns the index with every line naming runID removed, and
-// whether it removed any. A line that does not decode, or carries no id, is
-// kept: the index is a convenience log, and a mangled row is not this run's
-// to delete. Each surviving line is re-terminated, so a file that was not
-// already one-row-per-line comes out of the rewrite as one.
-func dropIndexRows(data []byte, runID string) (kept []byte, dropped bool) {
-	out := make([]byte, 0, len(data))
-	for line := range bytes.SplitSeq(data, []byte("\n")) {
-		line = bytes.TrimRight(line, "\r \t")
-		if len(line) == 0 {
-			continue
-		}
-		var row struct {
-			RunID string `json:"run_id"`
-		}
-		if runID != "" && json.Unmarshal(line, &row) == nil && row.RunID == runID {
-			dropped = true
-			continue
-		}
-		out = append(append(out, line...), '\n')
+// runIDNeedle is how a marshalled row spells the run id, used to skip rows
+// that cannot name this run before they are decoded. A generated id passes
+// validRunID, and that charset is written verbatim, so the needle is exact.
+// An id outside it gets no needle: json would escape the raw line and the
+// needle would then be a substring the line does not have.
+func runIDNeedle(runID string) []byte {
+	if !validRunID(runID) {
+		return nil
 	}
-	return out, dropped
+	return []byte(`"run_id":"` + runID + `"`)
+}
+
+// rewriteIndexDropping replaces the index with every row but the ones naming
+// runID, and puts newLine at the end. The rows are streamed to the temporary
+// file rather than gathered first, so a rewrite costs the size of the index
+// once instead of holding it, and a copy of it, in memory. The caller holds
+// the index lock.
+func rewriteIndexDropping(runID string, newLine []byte) error {
+	needle := runIDNeedle(runID)
+	return commitIndex(func(w io.Writer) error {
+		f, err := os.Open(indexPath())
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err == nil {
+			defer f.Close()
+			var writeErr error
+			walkErr := indexLines(f, func(line []byte) bool {
+				if namesRun(line, needle, runID) {
+					return true // drop this row and keep walking the rest
+				}
+				_, writeErr = w.Write(append(line, '\n'))
+				return writeErr == nil
+			})
+			if writeErr != nil {
+				return writeErr
+			}
+			if walkErr != nil {
+				return walkErr
+			}
+		}
+		_, err = w.Write(newLine)
+		return err
+	})
+}
+
+// namesRun reports whether one raw index line names runID. A line that does
+// not decode, or carries no id, names nothing: the index is a convenience
+// log, and a mangled row is not this run's to delete. The needle is a
+// prefilter, so only a line that could hold the id is decoded.
+func namesRun(line, needle []byte, runID string) bool {
+	if needle != nil && !bytes.Contains(line, needle) {
+		return false
+	}
+	var row struct {
+		RunID string `json:"run_id"`
+	}
+	return json.Unmarshal(line, &row) == nil && row.RunID == runID
+}
+
+// indexBufBytes sizes the buffers the index is streamed through: a summary
+// row is a few hundred bytes, so a line this size is already a corrupt file.
+const indexBufBytes = 64 << 10
+
+// indexLines walks a file one line at a time, handing each non-empty line to
+// visit with its terminator and trailing whitespace trimmed. visit returning
+// false stops the walk. The slice is reused between lines, so a visitor that
+// keeps one has to copy it.
+func indexLines(f *os.File, visit func([]byte) bool) error {
+	size := indexBufBytes
+	// Most installs hold a handful of runs, so a reader the size of the whole
+	// index beats one that is always the ceiling.
+	if fi, err := f.Stat(); err == nil && fi.Size() > 0 && fi.Size() < int64(size) {
+		size = int(fi.Size())
+	}
+	r := bufio.NewReaderSize(f, size)
+	var long []byte
+	for {
+		chunk, err := r.ReadSlice('\n')
+		line := chunk
+		if err == bufio.ErrBufferFull {
+			// A row longer than the buffer: gather it, since a visitor may
+			// need the whole line and the copy outlives the read.
+			long = append(long[:0], chunk...)
+			for err == bufio.ErrBufferFull {
+				chunk, err = r.ReadSlice('\n')
+				long = append(long, chunk...)
+			}
+			line = long
+		}
+		if err != nil && !errors.Is(err, io.EOF) {
+			return err
+		}
+		// ReadSlice hands back the terminator, so the line is cut there and
+		// then trimmed of the carriage return and blanks a writer may have
+		// left, which is what dropping a line and writing it back did.
+		if i := bytes.LastIndexByte(line, '\n'); i >= 0 {
+			line = line[:i]
+		}
+		if line = bytes.TrimRight(line, "\r \t"); len(line) > 0 && !visit(line) {
+			return nil
+		}
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+	}
 }
 
 // CloseQuiet flushes and closes the journal without writing an index entry.
@@ -551,20 +659,23 @@ func rebuildIndex() (int, error) {
 
 // writeIndex replaces index.jsonl. The caller holds the index lock.
 func writeIndex(rows []Summary) error {
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	for _, s := range rows {
-		if err := enc.Encode(s); err != nil {
-			return err
+	return commitIndex(func(w io.Writer) error {
+		enc := json.NewEncoder(w)
+		for _, s := range rows {
+			if err := enc.Encode(s); err != nil {
+				return err
+			}
 		}
-	}
-	return writeIndexBytes(buf.Bytes())
+		return nil
+	})
 }
 
-// writeIndexBytes replaces index.jsonl with body, through a temp file and a
-// rename, so a reader sees either the whole old index or the whole new one.
-// The caller holds the index lock.
-func writeIndexBytes(body []byte) error {
+// commitIndex replaces index.jsonl with what write emits, through a temp file
+// and a rename, so a reader sees either the whole old index or the whole new
+// one. The rows are streamed rather than gathered, so a rewrite holds one
+// buffer's worth of index instead of all of it. The caller holds the index
+// lock.
+func commitIndex(write func(io.Writer) error) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
@@ -581,7 +692,11 @@ func writeIndexBytes(body []byte) error {
 	if err := tmp.Chmod(0o600); err != nil {
 		return err
 	}
-	if _, err := tmp.Write(body); err != nil {
+	w := bufio.NewWriterSize(tmp, indexBufBytes)
+	if err := write(w); err != nil {
+		return err
+	}
+	if err := w.Flush(); err != nil {
 		return err
 	}
 	if err := tmp.Sync(); err != nil {

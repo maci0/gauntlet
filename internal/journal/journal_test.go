@@ -2126,3 +2126,65 @@ func indexRows(t *testing.T) []Summary {
 	}
 	return rows
 }
+
+// The duplicate check reads the index as a stream rather than as one buffer,
+// so the cases a whole-file read used to hide have to hold: a row that does
+// not decode survives the rewrite, a row longer than the read buffer is
+// still read, and the dropped row is replaced where the run's other rows are
+// left in the order the file had them.
+func TestIndexRewriteKeepsUnreadableAndOversizedRows(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	start := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	id := NewRunID(start)
+	j, err := Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": start, "dir": "/live", "version": "test"})
+
+	// A row longer than the streaming buffer, and a row that is not JSON.
+	long := Summary{RunID: "long-" + strings.Repeat("x", indexBufBytes*2), Start: start}
+	longLine, err := json.Marshal(long)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := []string{
+		`{"run_id":"older","start":"2026-09-01T10:00:00Z"}`,
+		"{not json at all",
+		string(longLine),
+		`{"run_id":"` + id + `","start":"2026-09-02T10:00:00Z"}`,
+		`{"run_id":"newer","start":"2026-09-03T10:00:00Z"}`,
+	}
+	if err := os.WriteFile(indexPath(), []byte(strings.Join(rows, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{Start: start, End: start, ExitCode: new(0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := os.ReadFile(indexPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+	// The rows that named another run keep the order the file had them in,
+	// and the Close's own row is the last one, replacing the one it dropped.
+	want := []string{rows[0], rows[1], rows[2], rows[4]}
+	if len(got) != len(want)+1 {
+		t.Fatalf("index rows = %d, want %d: %q", len(got), len(want)+1, got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("row %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+	var last Summary
+	if err := json.Unmarshal([]byte(got[len(got)-1]), &last); err != nil {
+		t.Fatal(err)
+	}
+	if last.RunID != id || last.ExitCode == nil || *last.ExitCode != 0 {
+		t.Errorf("the closing row is not the Close's own: %+v", last)
+	}
+}
