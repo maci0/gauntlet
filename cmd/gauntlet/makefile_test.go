@@ -224,6 +224,25 @@ func TestMakefileHasCITarget(t *testing.T) {
 	}
 }
 
+// The full local verification is otherwise a sentence in CONTRIBUTING that
+// names five commands, which is how a leg gets skipped and the failure only
+// appears after push. make verify runs them, all three tag legs included.
+func TestMakefileHasVerifyTarget(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "\nverify: check check-scripts ##") {
+		t.Fatal("make verify must run check and check-scripts, the two static pull-request jobs")
+	}
+	for _, want := range []string{
+		"\t$(MAKE) test\n",
+		"\t$(MAKE) test TAGS=\n",
+		"\t$(MAKE) test TAGS=notoktop\n",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("make verify missing recipe line %q", want)
+		}
+	}
+}
+
 // Missing uvx, shellcheck, or gofmt used to be a bare "command not found".
 func TestMakefileCheckScriptsPreflight(t *testing.T) {
 	text := makefileText(t)

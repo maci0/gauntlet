@@ -176,6 +176,19 @@ check: ## verify formatting, toolchain fixes, and vet (CI parity)
 .PHONY: ci
 ci: check test ## Go pull-request checks: fmt, fix, vet, and the test suite
 
+# Everything ci.yml runs on a pull request, in one command, on one host. It is
+# the answer to "would this be green after push", and it is deliberately not
+# the edit-test loop: three race suites in a row is minutes, not seconds. The
+# three legs are recursive makes rather than three prerequisites, so a failing
+# tag stops the run and names the leg instead of continuing to the next one.
+# make cover is left out: it reruns the sqlite suite the first leg already ran,
+# and its floor is a CI measurement (see COVER_MIN).
+.PHONY: verify
+verify: check check-scripts ## everything a pull request runs, locally: check, all three tag legs, scripts lint
+	$(MAKE) test
+	$(MAKE) test TAGS=
+	$(MAKE) test TAGS=notoktop
+
 # Local mirror of ci.yml's scripts job, including the pins. uvx fetches
 # those tools on first use; shellcheck stays a PATH binary because that is
 # what the Ubuntu runner already has.

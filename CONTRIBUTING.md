@@ -56,9 +56,23 @@ override it on the command line (`make test TMPDIR=...`) instead.
 make ci               # make check && make test
 ```
 
+One command runs every check a pull request runs, all three tag legs and the
+scripts lint included, for when a red check would otherwise first appear after
+push:
+
+```sh
+make verify           # check, check-scripts, and the suite under all three tag sets
+```
+
+It is minutes rather than seconds; `make ci` is the loop, `make verify` is the
+gate.
+
 `make check` is gofmt, `go fix`, and vet across all three tag configurations
 CI tests (default `sqlite`, bare, and `notoktop`). It mirrors ci.yml's first
-step exactly: if `make check` is green locally, that step is green there.
+step exactly: if `make check` is green locally, that step is green there. The
+pull request template
+([.github/pull_request_template.md](.github/pull_request_template.md))
+restates this list as a checklist.
 
 CI additionally runs the full suite under each tag configuration, then
 `make dist` and `make repro`. Reproduce the other two matrix legs locally
