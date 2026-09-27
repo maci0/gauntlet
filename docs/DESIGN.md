@@ -504,7 +504,12 @@ Design points:
   Close is filled from its journal for that listing; appending it would
   make it the newest index row and hide the later Close's `args`.
   Reconstructed rows omit `args`, `exit_code`, and `elapsed_s`, which only
-  `Close` records. Index rebuilds and Close serialize on a sibling lock so
+  `Close` records, so `exit_code` is a pointer: a plain zero would have told
+  a listing that a run killed mid-review exited cleanly. The same reasoning
+  gives `ins`/`del` a `lines_measured` flag, and the listing prints `n/a`
+  rather than `+0/-0` for a run whose lines could not be attributed. An
+  unrecognized terminal status reconciles into `other`, so every review a row
+  counts lands in exactly one bucket and FAILED still explains the exit code. Index rebuilds and Close serialize on a sibling lock so
   a listing cannot overwrite a just-written summary. The listing prefers
   `elapsed_s` (monotonic) over End−Start so an NTP step cannot rewrite how
   long a run lasted.

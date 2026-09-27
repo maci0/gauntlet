@@ -732,7 +732,7 @@ func (r *Runner) abandonQueue(loopNo int) {
 		res := Result{Review: review, Agent: r.pickAgent(review, nil), ExitCode: -1,
 			Status: StatusInterrupted}
 		r.st.Add(res)
-		r.publishReviewEnd(res, loopNo, "", "")
+		r.publishReviewEnd(res, loopNo, "", "", 1)
 	}
 }
 
@@ -754,11 +754,6 @@ func (r *Runner) pushLanded(ctx context.Context, review string) {
 // prompt cache hits after the first review in this lane.
 func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx int) {
 	for reviewIdx := 0; ; reviewIdx++ {
-		// Each lane asks before it starts another review, so a limit reached
-		// mid-loop is noticed by whichever lane frees up first rather than
-		// waiting for the whole loop to drain. Once the answer has tripped the
-		// graceful quit, the probe stops running.
-		r.checkUsageLimit(ctx)
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
 			return
 		}
@@ -769,6 +764,11 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 		if !ok {
 			return
 		}
+		// One probe per review this lane actually starts, and none on the way
+		// out: asked first, a lane that is about to stop waits out the probe
+		// anyway, so --jobs N paid for N concurrent probes on every loop's
+		// final turn and again on a cancel, to learn there was nothing to stop.
+		r.checkUsageLimit(ctx)
 		r.st.Add(r.runLaneReview(ctx, wt, review, loopNo, laneIdx, reviewIdx))
 	}
 }
@@ -782,7 +782,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	if ctx.Err() != nil {
 		res := Result{Review: review, Agent: r.pickAgent(review, nil),
 			ExitCode: -1, Status: StatusInterrupted}
-		r.publishReviewEnd(res, loopNo, "", "")
+		r.publishReviewEnd(res, loopNo, "", "", 1)
 		return res
 	}
 
@@ -805,7 +805,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
 		res := Result{Review: review, Agent: r.pickAgent(review, nil),
 			ExitCode: -1, Status: StatusSkipped, Detail: err.Error()}
-		r.publishReviewEnd(res, loopNo, "", "")
+		r.publishReviewEnd(res, loopNo, "", "", 1)
 		return res
 	}
 	if oldBranch != "" && oldBranch != branch {
@@ -923,7 +923,7 @@ func (r *Runner) runReview(ctx context.Context, review string, loopNo int, wt *g
 			defer func() { r.retrySnap = gitx.Snapshot{} }()
 		}
 	}
-	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{}, 0)
+	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{}, 1, 0)
 }
 
 // mayRetry reports whether a failed launch or nonzero exit can run again:
@@ -951,11 +951,17 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 	return resume
 }
 
+// firstAttempt is the 1-based attempt number this call begins at, and attempt
+// counts the retries already made on this agent. They differ once a failed
+// agent is set aside: the next attempt is the next one in the run's sequence,
+// not a restart of it, and both the event stream and the log have to say so.
 func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo int,
-	wt *gitx.Worktree, exclude map[agent.Spec]bool, attempt int) Result {
+	wt *gitx.Worktree, exclude map[agent.Spec]bool, firstAttempt, attempt int) Result {
 
 	spec := r.pickAgent(review, exclude)
 	res := Result{Review: review, Agent: spec, ExitCode: -1}
+	// The attempt this launch publishes as, and the one its outcome closes.
+	number := firstAttempt + attempt
 
 	dir := r.cfg.Dir
 	lane := ""
@@ -973,7 +979,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("No such review: %s", review)
 		res.Status = StatusSkipped
 		res.Detail = "unknown name"
-		r.publishReviewEnd(res, loopNo, "", lane)
+		r.publishReviewEnd(res, loopNo, "", lane, number)
 		return res
 	}
 	body, err := rev.Body()
@@ -981,7 +987,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("Cannot read prompt for %s (%v), skipping", review, err)
 		res.Status = StatusSkipped
 		res.Detail = err.Error()
-		r.publishReviewEnd(res, loopNo, "", lane)
+		r.publishReviewEnd(res, loopNo, "", lane, number)
 		return res
 	}
 	// Recorded on both of this attempt's events: a prompt edited mid-run makes
@@ -1007,10 +1013,10 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		res.Status = StatusFail
 		res.Detail = err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
-		r.publishReviewEnd(res, loopNo, promptSHA, lane)
+		r.publishReviewEnd(res, loopNo, promptSHA, lane, number)
 		return res
 	}
 
@@ -1022,7 +1028,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		humanize.Duration(r.cfg.Timeout))
 	r.bus.Publish(Event{
 		Kind: EvReviewStart, Dir: r.cfg.Dir, Review: review,
-		Agent: spec.Label(), Loop: loopNo, Attempt: attempt + 1,
+		Agent: spec.Label(), Loop: loopNo, Attempt: number,
 		PromptSHA: promptSHA, Branch: lane,
 	})
 
@@ -1122,7 +1128,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		res.Status = StatusFail
 		res.Detail = pr.Err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 	case pr.ExitCode != 0:
@@ -1130,7 +1136,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 			humanize.Duration(res.Elapsed), pr.ExitCode)
 		res.Status = StatusFail
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, attempt); ok {
+		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 	default:
@@ -1139,17 +1145,17 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 			humanize.Duration(res.Elapsed), linesNote(res))
 	}
 
-	r.publishReviewEnd(res, loopNo, promptSHA, lane)
+	r.publishReviewEnd(res, loopNo, promptSHA, lane, number)
 	return res
 }
 
 // publishReviewEnd puts one review's outcome on the bus. Every path that
 // decides a status uses it, including a skip that never launched, so the
 // journal and the dashboard cannot disagree with the stats.
-func (r *Runner) publishReviewEnd(res Result, loopNo int, promptSHA, lane string) {
+func (r *Runner) publishReviewEnd(res Result, loopNo int, promptSHA, lane string, attempt int) {
 	ev := Event{
 		Kind: EvReviewEnd, Dir: r.cfg.Dir, Review: res.Review,
-		Agent: res.Agent.Label(), Loop: loopNo, Status: res.Status,
+		Agent: res.Agent.Label(), Loop: loopNo, Status: res.Status, Attempt: attempt,
 		ExitCode: new(res.ExitCode), Elapsed: res.Elapsed.Seconds(),
 		Tokens: res.Tokens, Thinking: res.Thinking,
 		PromptSHA: promptSHA, Branch: lane, Text: res.Detail,
@@ -1183,7 +1189,7 @@ var (
 // one provider each wait on their own; a shared per-agent gate is the upgrade
 // if that turns out to matter.
 func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
-	exclude map[agent.Spec]bool, failed agent.Spec, attempt int) (Result, bool) {
+	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 
 	if ctx.Err() != nil || r.budgetExhausted() {
 		return Result{}, false
@@ -1198,7 +1204,7 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 		if !r.resetForRetry(ctx, review, wt) {
 			return Result{}, false
 		}
-		return r.runReviewExcluding(ctx, review, loopNo, wt, exclude, attempt+1), true
+		return r.runReviewExcluding(ctx, review, loopNo, wt, exclude, firstAttempt, attempt+1), true
 	}
 	next := map[agent.Spec]bool{failed: true}
 	for k := range exclude {
@@ -1211,7 +1217,10 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 	if !r.resetForRetry(ctx, review, wt) {
 		return Result{}, false
 	}
-	return r.runReviewExcluding(ctx, review, loopNo, wt, next, 0), true
+	// The failed agent is set aside, not the attempt sequence: the fallback is
+	// the next try, so a reader sees one continuous run of attempts instead of
+	// a second sequence starting over at one.
+	return r.runReviewExcluding(ctx, review, loopNo, wt, next, firstAttempt+attempt+1, 0), true
 }
 
 // resetForRetry rewinds the checkout to what the first attempt saw before the

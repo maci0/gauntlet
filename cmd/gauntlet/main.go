@@ -746,7 +746,7 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 
 	s := journal.Summary{
 		Version: version, Dirs: dirs, Agents: agent.Labels(agents),
-		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: code,
+		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: &code,
 	}
 	if elapsed > 0 {
 		s.Elapsed = elapsed.Seconds()
@@ -763,9 +763,10 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 		s.Skipped += c.Skipped
 		s.Conflicts += c.Conflict
 		s.Interrupted += c.Interrupted
-		ins, del, tokens, _, _, _ := d.stats.Totals()
+		ins, del, tokens, _, _, haveLines := d.stats.Totals()
 		s.Ins += ins
 		s.Del += del
+		s.LinesMeasured = s.LinesMeasured || haveLines
 		s.Tokens += tokens
 	}
 	if err := j.Close(s); err != nil {

@@ -64,7 +64,7 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 		for _, d := range e.Dirs {
 			dirs = append(dirs, filepath.Base(d))
 		}
-		bad := e.Failed + e.Skipped + e.Conflicts
+		bad := e.Failed + e.Skipped + e.Conflicts + e.Other
 		failed := failedCell(pal, bad)
 		// A run that reported no tokens says so, rather than showing zero.
 		tokens := "n/a"
@@ -72,6 +72,12 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 			tokens = humanize.Count(e.Tokens)
 		}
 		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
+		if !e.LinesMeasured {
+			// Git was missing, or concurrent reviews made attribution
+			// impossible. An unmeasured run is not a run that changed
+			// nothing, and +0/-0 says it was.
+			lines = "n/a"
+		}
 		started := "n/a"
 		if !e.Start.IsZero() {
 			started = e.Start.Local().Format("2006-01-02 15:04:05")

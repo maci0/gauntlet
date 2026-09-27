@@ -379,8 +379,23 @@ listed: the n newest journals are the listing, and a hole in that window is
 filled from the event stream without rewriting Close rows. `gauntlet show
 <run-id>` reads the journal file directly and does not need the index. A
 reconstructed summary has no `args`, `exit_code`, or `elapsed_s`; only a
-clean close records those. Rebuilds and Close serialize so a listing cannot
-drop a summary that landed while the index was being rewritten.
+clean close records those. A zero exit is therefore never invented for a run
+that died before closing, which is what `exit_code` being a pointer buys: a
+plain zero would have claimed the run succeeded. Rebuilds and Close serialize
+so a listing cannot drop a summary that landed while the index was being
+rewritten.
+
+`ins` and `del` carry the same rule through `lines_measured`. Line counts are
+skipped where they cannot be attributed, and a run with no counts is listed
+`n/a`, not `+0/-0`: git may have been missing, or concurrent reviews sharing
+one tree make no per-review split honest. A run whose journal carries no `ins`
+field on any event is unmeasured for the same reason.
+
+`other` counts reviews whose terminal `status` a build does not recognize. It
+exists so a journal written by a newer version still reconciles: every review
+the row counts sits in exactly one of `ok`, `failed`, `skipped`, `conflicts`,
+`interrupted`, or `other`, so the FAILED column keeps explaining the run's
+exit code.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 

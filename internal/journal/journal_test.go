@@ -1035,7 +1035,7 @@ func TestRecentPreservesSummariesWhenRunsCloseOutOfOrder(t *testing.T) {
 			newer.Write(map[string]any{"ev": "run_start", "ts": later, "dir": "/newer"})
 			want := Summary{
 				Dirs: []string{"/newer"}, Args: []string{"--once"},
-				Start: later, End: later.Add(time.Minute), Elapsed: 60, ExitCode: 1,
+				Start: later, End: later.Add(time.Minute), Elapsed: 60, ExitCode: new(1),
 			}
 			if err := newer.Close(want); err != nil {
 				t.Fatal(err)
@@ -1057,7 +1057,7 @@ func TestRecentPreservesSummariesWhenRunsCloseOutOfOrder(t *testing.T) {
 					t.Fatalf("newest run missing: %+v", runs)
 				}
 				got := runs[0]
-				if !slices.Equal(got.Args, want.Args) || got.ExitCode != want.ExitCode || got.Elapsed != want.Elapsed {
+				if !slices.Equal(got.Args, want.Args) || got.ExitCode == nil || want.ExitCode == nil || *got.ExitCode != *want.ExitCode || got.Elapsed != want.Elapsed {
 					t.Fatalf("recovery replaced the completed summary: %+v", got)
 				}
 			}
@@ -1085,7 +1085,7 @@ func TestRecentKeepsIndexArgsWhenHealthy(t *testing.T) {
 	j.Write(map[string]any{"ev": "run_start", "ts": now, "dir": "/repo"})
 	if err := j.Close(Summary{
 		Dirs: []string{"/repo"}, Args: []string{"--once", "--tui"},
-		Start: now, End: now, ExitCode: 1,
+		Start: now, End: now, ExitCode: new(1),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1097,7 +1097,7 @@ func TestRecentKeepsIndexArgsWhenHealthy(t *testing.T) {
 	if len(runs) != 1 || runs[0].RunID != id {
 		t.Fatalf("healthy index should list the closed run: %+v", runs)
 	}
-	if !slices.Equal(runs[0].Args, []string{"--once", "--tui"}) || runs[0].ExitCode != 1 {
+	if !slices.Equal(runs[0].Args, []string{"--once", "--tui"}) || runs[0].ExitCode == nil || *runs[0].ExitCode != 1 {
 		t.Fatalf("a matching index must not be rebuilt: %+v", runs[0])
 	}
 }
@@ -1242,7 +1242,7 @@ func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {
 	}
 	if err := j.Close(Summary{
 		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
-		OK: 3, Reviews: 3, ExitCode: 1,
+		OK: 3, Reviews: 3, ExitCode: new(1),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1253,7 +1253,7 @@ func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {
 	if len(runs) != 1 {
 		t.Fatalf("the close row and the reconstructed row are one run: %+v", runs)
 	}
-	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].OK != 3 || runs[0].ExitCode != 1 {
+	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].OK != 3 || runs[0].ExitCode == nil || *runs[0].ExitCode != 1 {
 		t.Fatalf("the close row should win: %+v", runs[0])
 	}
 }
@@ -1616,7 +1616,7 @@ func TestRecentIndexesAHoleBehindALaterClose(t *testing.T) {
 	})
 	if err := jC.Close(Summary{
 		Dirs: []string{"/c"}, Start: third, End: third, Args: []string{"--tui"},
-		ExitCode: 0,
+		ExitCode: new(0),
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1663,7 +1663,7 @@ func TestCloseRetriesAFailedIndexWrite(t *testing.T) {
 	}
 	if err := j.Close(Summary{
 		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
-		OK: 1, Reviews: 1, ExitCode: 1,
+		OK: 1, Reviews: 1, ExitCode: new(1),
 	}); err == nil {
 		t.Fatal("index write should fail while the path is a directory")
 	}
@@ -1672,7 +1672,7 @@ func TestCloseRetriesAFailedIndexWrite(t *testing.T) {
 	}
 	if err := j.Close(Summary{
 		Dirs: []string{"/repo"}, Args: []string{"--once"}, Start: now, End: now,
-		OK: 1, Reviews: 1, ExitCode: 1,
+		OK: 1, Reviews: 1, ExitCode: new(1),
 	}); err != nil {
 		t.Fatalf("retry should index the run: %v", err)
 	}
@@ -1684,7 +1684,7 @@ func TestCloseRetriesAFailedIndexWrite(t *testing.T) {
 	if len(runs) != 1 || runs[0].RunID != id {
 		t.Fatalf("retried close should list the run: %+v", runs)
 	}
-	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].ExitCode != 1 {
+	if !slices.Equal(runs[0].Args, []string{"--once"}) || runs[0].ExitCode == nil || *runs[0].ExitCode != 1 {
 		t.Fatalf("retried close should keep the close row: %+v", runs[0])
 	}
 }
@@ -1704,7 +1704,7 @@ func TestIndexRebuildDoesNotDropAConcurrentClose(t *testing.T) {
 		}
 		if err := jA.Close(Summary{
 			Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
-			ExitCode: 0,
+			ExitCode: new(0),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -1726,7 +1726,7 @@ func TestIndexRebuildDoesNotDropAConcurrentClose(t *testing.T) {
 		wg.Go(func() {
 			_ = jB.Close(Summary{
 				Dirs: []string{"/b"}, Start: second, End: second,
-				Args: []string{"--jobs", "2"}, ExitCode: 2,
+				Args: []string{"--jobs", "2"}, ExitCode: new(2),
 			})
 		})
 		wg.Wait()
@@ -1747,7 +1747,7 @@ func TestIndexRebuildDoesNotDropAConcurrentClose(t *testing.T) {
 		if !found {
 			t.Fatalf("closed run missing after rebuild race: %+v", runs)
 		}
-		if !slices.Equal(b.Args, []string{"--jobs", "2"}) || b.ExitCode != 2 {
+		if !slices.Equal(b.Args, []string{"--jobs", "2"}) || b.ExitCode == nil || *b.ExitCode != 2 {
 			t.Fatalf("Close row lost to rebuild: %+v", b)
 		}
 	}
@@ -1864,5 +1864,98 @@ func TestWriteIndexCleansStaleTemps(t *testing.T) {
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("stale index temp file %s still exists", stale)
+	}
+}
+
+// A run killed before Close has no outcome. The rebuilt row must say so
+// rather than serialize the zero value, which is the success code.
+func TestReconstructedRowRecordsNoExitCode(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Now()
+	j, err := Open("20260101T000000Z-abcd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now, "version": "test"})
+	j.Write(map[string]any{"ev": "review_end", "ts": now, "status": "ok", "ins": 3, "del": 1})
+	j.CloseQuiet()
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("rebuilt runs = %d, want 1", len(runs))
+	}
+	if runs[0].ExitCode != nil {
+		t.Errorf("a run that never closed reports exit %d, want none", *runs[0].ExitCode)
+	}
+	if !runs[0].LinesMeasured {
+		t.Error("a run whose events carry ins was counted, want LinesMeasured")
+	}
+	if runs[0].Ins != 3 || runs[0].Del != 1 {
+		t.Errorf("lines = +%d/-%d, want +3/-1", runs[0].Ins, runs[0].Del)
+	}
+}
+
+// A run with no attributable line counts (git missing, or concurrent reviews
+// sharing a tree) must not be listed as +0/-0.
+func TestReconstructedRowWithoutLinesIsUnmeasured(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Now()
+	j, err := Open("20260101T000000Z-abcd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now})
+	j.Write(map[string]any{"ev": "review_end", "ts": now, "status": "ok"})
+	j.CloseQuiet()
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("rebuilt runs = %d, want 1", len(runs))
+	}
+	if runs[0].LinesMeasured {
+		t.Error("no event carried ins, want LinesMeasured false")
+	}
+}
+
+// A status this build does not know is neither a pass nor silence: every
+// review counted has to land in exactly one bucket, or the FAILED column
+// stops explaining the exit code.
+func TestReconstructedRowBucketsUnknownStatus(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Now()
+	j, err := Open("20260101T000000Z-abcd", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": now})
+	j.Write(map[string]any{"ev": "review_end", "ts": now, "status": "wedged"})
+	j.CloseQuiet()
+
+	runs, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("rebuilt runs = %d, want 1", len(runs))
+	}
+	got := runs[0]
+	if got.OK != 0 || got.Failed != 0 || got.Other != 1 {
+		t.Errorf("unknown status bucketed as ok=%d failed=%d other=%d, want 0/0/1",
+			got.OK, got.Failed, got.Other)
+	}
+	if got.Reviews != got.OK+got.Failed+got.Skipped+got.Conflicts+got.Interrupted+got.Other {
+		t.Errorf("reviews = %d, buckets do not account for it", got.Reviews)
 	}
 }

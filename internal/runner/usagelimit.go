@@ -41,8 +41,9 @@ const usageProbeWait = 5 * time.Second
 // new starts. It is deliberately the same mechanism as an operator's finish
 // request rather than a second kind of stop.
 //
-// Called where the loops decide whether to start another review, so the cost
-// is one short-lived process per review, not per line of agent output.
+// Called once per review a lane takes on, never on the way out, so the cost
+// is one short-lived process per started review: not per line of agent
+// output, and not one wasted per lane when there is nothing left to stop.
 func (r *Runner) checkUsageLimit(ctx context.Context) {
 	if len(r.cfg.UsageCmd) == 0 || r.cfg.UsageLimit <= 0 || math.IsNaN(r.cfg.UsageLimit) {
 		return

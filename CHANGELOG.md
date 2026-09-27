@@ -16,6 +16,17 @@ minor instead and were listed under Changed.
 
 - The documented install script verifies the downloaded release binary against the release's `checksums.txt` before making it executable, and aborts on a mismatch.
 
+### Changed
+
+- A run listing shows `n/a` instead of `+0/-0` when the run's line counts could not be attributed, so a run with no counts no longer reads like a run that changed nothing.
+- A retry handed to a different agent continues the attempt sequence instead of restarting it, and `review_end` now carries the attempt it closes, so every outcome in a journal pairs with the launch that produced it.
+
+### Fixed
+
+- A run journal rebuilt after a crash no longer records a zero exit code for a run that never closed; `exit_code` is absent until a clean `Close` records it.
+- A review that ends with a status this build does not recognize reconciles into a new `other` index bucket, so every review a rebuilt summary counts lands in exactly one bucket and the FAILED column keeps explaining the exit code.
+- The usage-limit probe runs once per review a lane actually starts, and not at all on the way out, so a cancelled or finished loop no longer waits out concurrent probes.
+
 ## 1.23.3
 
 ### Security

@@ -1172,7 +1172,7 @@ func TestRetryStopsAtRuntimeBudget(t *testing.T) {
 				st:  &Stats{Start: start},
 			}
 			if _, retried := r.retry(context.Background(), "sec-review", 1, nil,
-				nil, r.cfg.Agents[0], 0); retried {
+				nil, r.cfg.Agents[0], 1, 0); retried {
 				t.Fatal("retried after the runtime budget expired")
 			}
 			for len(events) > 0 {
@@ -2497,5 +2497,48 @@ echo "RESULT: changed=1"`)
 	}
 	if *merged.Ins != 3 || *merged.Del != 0 {
 		t.Fatalf("merge event = +%d/-%d, want +3/-0", *merged.Ins, *merged.Del)
+	}
+}
+
+// A fallback to another agent is the next attempt, not a new sequence. The
+// journal has to be able to pair every review_end with the review_start it
+// closes, which it cannot when the count restarts at one.
+func TestFallbackContinuesTheAttemptSequence(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	dir := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `echo "RESULT: no-changes"
+exit 1`)
+	cfg := baseConfig(t, dir, set, []string{"sec-review"}, bin)
+	cfg.Agents = []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
+	cfg.Bin["codex"] = bin
+	cfg.Retries = 0
+
+	_, events := runRecorded(t, cfg)
+
+	var starts, ends []Event
+	for _, ev := range events {
+		switch ev.Kind {
+		case EvReviewStart:
+			starts = append(starts, ev)
+		case EvReviewEnd:
+			ends = append(ends, ev)
+		}
+	}
+	if len(starts) != 2 {
+		t.Fatalf("started %d attempts, want 2", len(starts))
+	}
+	if starts[0].Attempt != 1 || starts[1].Attempt != 2 {
+		t.Errorf("attempts = %d, %d, want 1, 2", starts[0].Attempt, starts[1].Attempt)
+	}
+	if len(ends) != 1 {
+		t.Fatalf("recorded %d endings, want 1", len(ends))
+	}
+	if ends[0].Attempt != starts[1].Attempt {
+		t.Errorf("ending carries attempt %d, want the last start's %d",
+			ends[0].Attempt, starts[1].Attempt)
 	}
 }

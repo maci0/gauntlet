@@ -80,10 +80,22 @@ type Summary struct {
 	Skipped     int       `json:"skipped,omitempty"`
 	Conflicts   int       `json:"conflicts,omitempty"`
 	Interrupted int       `json:"interrupted,omitempty"`
-	Ins         int       `json:"ins,omitempty"`
-	Del         int       `json:"del,omitempty"`
-	Tokens      int       `json:"tokens,omitempty"`
-	ExitCode    int       `json:"exit_code"`
+	// Other counts reviews whose terminal status this build does not
+	// recognize. It exists so a journal written by a newer version still
+	// reconciles: every review counted is in exactly one bucket.
+	Other int `json:"other,omitempty"`
+	Ins   int `json:"ins,omitempty"`
+	Del   int `json:"del,omitempty"`
+	// LinesMeasured says whether Ins and Del were counted. Without it a run
+	// whose git was unavailable, or whose reviews shared a tree so no honest
+	// attribution was possible, is listed as +0/-0, which reads exactly like a
+	// measured run that changed nothing.
+	LinesMeasured bool `json:"lines_measured,omitempty"`
+	Tokens        int  `json:"tokens,omitempty"`
+	// ExitCode is a pointer because 0 is the success code: only Close knows
+	// it, and a row rebuilt from a run that died before Close has none. A
+	// plain int would serialize that absence as a passing exit.
+	ExitCode *int `json:"exit_code,omitempty"`
 }
 
 // Duration is how long the run lasted, and whether that span is known.
@@ -729,8 +741,8 @@ type indexEvent struct {
 	Review  string    `json:"review"`
 	Status  string    `json:"status"`
 	Loop    int       `json:"loop"`
-	Ins     int       `json:"ins"`
-	Del     int       `json:"del"`
+	Ins     *int      `json:"ins"`
+	Del     *int      `json:"del"`
 	Tokens  int       `json:"tokens"`
 	Version string    `json:"version"`
 	Agents  []string  `json:"agents"`
@@ -747,8 +759,18 @@ type historyEvent struct {
 	Del    int    `json:"del"`
 }
 
+// lines unwraps a counted line delta. An absent field is zero here and
+// distinct in LinesMeasured, so "not attributed" never sums as "no change".
+func lines(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
 // summarizeFile rebuilds a Summary from one run's event stream. Args,
-// ExitCode, and Elapsed are not on the events; they stay zero.
+// ExitCode, and Elapsed are not on the events, so they stay absent rather
+// than zero: only Close knows them.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
 	f, err := os.Open(path)
@@ -798,14 +820,20 @@ func summarizeFile(runID, path string) (Summary, error) {
 				s.Conflicts++
 			case "interrupted":
 				s.Interrupted++
+			default:
+				// A status this build does not know. It is not a pass: the
+				// switch has to account for every review it counts, or the
+				// FAILED column stops explaining the run's exit code.
+				s.Other++
 			}
-			s.Ins += e.Ins
-			s.Del += e.Del
+			s.Ins += lines(e.Ins)
+			s.Del += lines(e.Del)
 			s.Tokens += e.Tokens
 		case "merge", "pull_request":
-			s.Ins += e.Ins
-			s.Del += e.Del
+			s.Ins += lines(e.Ins)
+			s.Del += lines(e.Del)
 		}
+		s.LinesMeasured = s.LinesMeasured || e.Ins != nil
 	}
 	if err := sc.Err(); err != nil {
 		return Summary{}, err
