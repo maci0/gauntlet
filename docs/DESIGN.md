@@ -463,9 +463,12 @@ in milliseconds and for no tokens. What it collects in one pass:
   its reviews at three files or a twentieth of the tree, so one stray
   stylesheet in a Go repository is not a frontend.
 - **What the files say inside.** The head of each source file (4 KB, up to
-  2000 files) is searched for a fixed table of markers: `net/http`, `asyncio`,
-  `sqlalchemy`, `prometheus`, `bcrypt`, `argparse`, `bubbletea`. What a
-  codebase imports is a fact about it; a directory name is a guess.
+  2000 files) is searched for a fixed table of markers, one per capability it
+  hints at (`net/http` and `fastapi` for http, `sqlalchemy` and `database/sql`
+  for sql, `prometheus` and `otel` for telemetry, and further ones for clock,
+  concurrency, cache, auth, unsafe, exec, model, cloud, retry, cli, tui,
+  translate, recovery, and numeric). What a codebase imports is a fact about
+  it; a directory name is a guess.
 - **What is missing.** No tests, no documentation, no CI: absence is the
   strongest argument for the review that would fix it, and presence-only rules
   said the opposite.

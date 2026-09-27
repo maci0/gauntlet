@@ -86,7 +86,7 @@ var helpGroups = []flagGroup{
 		{"", "usage-cmd", "CMD", "command printing the percent of the provider's usage window already spent"},
 		{"", "usage-limit", "PCT", "stop starting reviews at this percent of that window (0 = unlimited)"},
 		{"1", "once", "", "run a single loop and exit"},
-		{"n", "max-loops", "N", "stop after N loops (0 means unlimited)"},
+		{"n", "max-loops", "N", "stop after N loops (0 means unlimited; default 1 with --stacked-prs)"},
 		{"", "seed", "N", "RNG seed for review order and agent picks, recorded in the journal (default: random)"},
 		{"c", "commit", "", "after each review, an agent commits the changes"},
 		{"p", "push", "", "like --commit, and pushes"},

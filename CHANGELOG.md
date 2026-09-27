@@ -35,7 +35,8 @@ minor instead and were listed under Changed.
 - A retry handed to a different agent continues the attempt sequence instead of restarting it, and `review_end` now carries the attempt it closes, so every outcome in a journal pairs with the launch that produced it.
 - Report a run's reviews in review-name order rather than the order parallel lanes happened to finish in, so a replayed seed prints the same result and pull-request list every time.
 - Print the effective seed on the first line of a headless run, so a run started without `--seed` reports the seed that replays it.
-- The command reference, the design map, and the token telemetry page say what the code does: the dashboard stops on `q` and `esc` only cancels an armed quit, `gauntlet pick` also takes `--target-dirs`, a defined agent's `usage.cumulative` and `usage.header_cwd` are documented, a clock-derived `--seed` is not replayable, `--max-loops` defaults to 1 only under `--stacked-prs`, an agent with no transcript adapter still gets a rate from the stream, and `gitx.DeleteBranch` is documented as the force-delete it is. The help screen's review count matches the 53 bundled prompts.
+- The command reference, the design map, and the token telemetry page say what the code does: the dashboard stops on `q` and `esc` only cancels an armed quit, `gauntlet pick` also takes `--target-dirs`, a defined agent's `usage.cumulative` and `usage.header_cwd` are documented, a clock-derived `--seed` is not replayable, `--max-loops` defaults to 1 only under `--stacked-prs`, an agent with no transcript adapter still gets a rate from the stream, and `gitx.DeleteBranch` is documented as the force-delete it is. The help screen's review count matches the 53 bundled prompts, and it now says the same about `--max-loops` as the command reference.
+- The design map's file-signal suggester names the marker's shape rather than seven of them, so the list it prints matches the table the code searches.
 
 ### Fixed
 
