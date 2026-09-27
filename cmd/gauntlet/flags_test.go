@@ -290,6 +290,8 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"once with zero max-loops", []string{"--once", "--max-loops", "0"}, "conflicts", nil},
 		{"negative loops", []string{"-n", "-2"}, "must be >= 0", nil},
 		{"negative max-reviews", []string{"--max-reviews", "-1"}, "--max-reviews must be >= 0", nil},
+		{"negative token budget", []string{"--token-budget", "-1"}, "--token-budget must be >= 0", nil},
+		{"negative keep-runs", []string{"--keep-runs", "-1"}, "--keep-runs must be >= 0", nil},
 		{"zero max-reviews", []string{"--max-reviews", "0"}, "", func(t *testing.T, o *options) {
 			t.Helper()
 			if o.maxReviews != 0 {

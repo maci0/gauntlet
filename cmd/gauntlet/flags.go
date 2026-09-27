@@ -654,6 +654,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.keepRuns < 0 {
 		return nil, errors.New("--keep-runs must be >= 0")
 	}
+	if o.tokenBudget < 0 {
+		return nil, errors.New("--token-budget must be >= 0")
+	}
 	if o.push {
 		o.commit = true
 	}

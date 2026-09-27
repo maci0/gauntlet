@@ -39,6 +39,7 @@ stops being true, which is the moment a major version would be owed.
 - `--merge-into` is checked with `check-ref-format` before it reaches `git worktree add`, which takes no `--` and would otherwise read a leading dash as an option.
 - A remote URL with a leading-dash host (`https://--json/owner/repo`) is refused when parsed, instead of reaching `gh repo view` as a bare positional.
 - The documented install script refuses to install when `checksums.txt` lists no entry for the asset, naming the asset, instead of handing the verifier an empty file whose verdict depends on the local coreutils or Perl `shasum`.
+- A negative `--token-budget` is refused like every other count flag, instead of being read as unlimited because the budget is only enforced above zero.
 
 ### Changed
 
