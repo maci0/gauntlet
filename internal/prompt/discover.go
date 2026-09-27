@@ -23,7 +23,10 @@ import (
 const reviewFileSuffix = "-review.md"
 
 // skipDirs are never walked when looking for project prompts: build output,
-// dependency trees, and tool caches only ever hold copies.
+// dependency trees, and tool caches only ever hold copies. Every key is
+// lowercased and every lookup folds, so "Pods" is skipped whichever case the
+// volume holds it in: a case-insensitive macOS filesystem accepts both
+// spellings, and a repository that carries one is one repository, not two.
 var skipDirs = map[string]bool{
 	"node_modules": true, "vendor": true, "dist": true, "build": true,
 	".next": true, "target": true, ".git": true, "__pycache__": true,
@@ -31,8 +34,11 @@ var skipDirs = map[string]bool{
 	".ruff_cache": true, ".pytest_cache": true, ".mypy_cache": true,
 	".nox": true, ".hypothesis": true, ".eggs": true, "htmlcov": true,
 	"bower_components": true, ".turbo": true, ".parcel-cache": true,
-	".gradle": true, "Pods": true, ".terraform": true,
+	".gradle": true, "pods": true, ".terraform": true,
 }
+
+// skipDir reports whether a directory name is one of skipDirs, folded.
+func skipDir(name string) bool { return skipDirs[strings.ToLower(name)] }
 
 // Discover maps review name to prompt for one target tree.
 //
@@ -189,7 +195,7 @@ func walkProject(ctx context.Context, root, promptDir string) []string {
 				return nil
 			}
 			name := d.Name()
-			if skipDirs[name] || strings.HasPrefix(name, ".") {
+			if skipDir(name) || strings.HasPrefix(name, ".") {
 				return fs.SkipDir
 			}
 			if absPromptDir != "" && sameDir(abspath(path), absPromptDir) {
@@ -288,7 +294,7 @@ func skipProjectRel(rel string) bool {
 		return false
 	}
 	for _, part := range parts[:len(parts)-1] {
-		if skipDirs[part] || strings.HasPrefix(part, ".") {
+		if skipDir(part) || strings.HasPrefix(part, ".") {
 			return true
 		}
 	}

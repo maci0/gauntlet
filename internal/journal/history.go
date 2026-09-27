@@ -230,6 +230,11 @@ func historyGate(line []byte) bool {
 //
 // Runs that cannot be read are skipped: this is a convenience log, and a
 // suggestion is not worth failing over.
+//
+// A directory is matched by its resolved path, not by its spelling. On macOS
+// /tmp is a symlink into /private/tmp, so the same tree is journaled under
+// whichever of the two the operator typed, and comparing the text would read a
+// tree with a full history as one with none.
 func History(dir string) (map[string]ReviewHistory, error) {
 	runs, err := Recent(historyRuns)
 	if err != nil {
@@ -238,7 +243,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 	out := map[string]ReviewHistory{}
 	matched := 0
 	for _, run := range runs {
-		if !slices.Contains(run.Dirs, dir) {
+		if !slices.ContainsFunc(run.Dirs, func(d string) bool { return samePath(d, dir) }) {
 			continue
 		}
 		if matched++; matched > historyMatches {
@@ -249,7 +254,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			if err := json.Unmarshal(line, &e); err != nil {
 				return
 			}
-			if e.Dir != dir || e.Review == "" {
+			if e.Review == "" || !samePath(e.Dir, dir) {
 				return
 			}
 			ins, del := e.Ins, e.Del
@@ -300,4 +305,29 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		_ = events(run.RunID, historyGate, tally)
 	}
 	return out, nil
+}
+
+// samePath reports whether a and b name one directory, comparing the resolved
+// paths when the spellings differ. A path that cannot be resolved (a tree that
+// has since been removed, a journal written on another machine) compares as
+// its own text, so a missing directory never matches a present one.
+func samePath(a, b string) bool {
+	if a == b {
+		return true
+	}
+	return realPath(a) == realPath(b)
+}
+
+// realPath is filepath.Abs followed by symlink resolution, falling back to the
+// absolute form when the path does not resolve. It is local because the
+// journal cannot import gitx, which owns the same rule for the reviewed tree.
+func realPath(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		return resolved
+	}
+	return abs
 }

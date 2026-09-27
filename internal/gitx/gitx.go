@@ -382,8 +382,11 @@ var gitOutputMax = 32 << 20
 // locale records different bytes for the same run than a CI machine does and
 // a replayed seed no longer diffs cleanly. LC_ALL outranks LANG and
 // LC_MESSAGES, so the one variable is enough and none of them have to be
-// dropped. Paths stay byte-exact either way: core.quotepath decides that, and
-// it is not the locale.
+// dropped. The pin is also load-bearing for the counts rather than tidiness:
+// parseShortstat reads English "N insertion(s)" out of `git diff --shortstat`,
+// and a translated git reports zero changed lines for a review that changed
+// thousands. Paths stay byte-exact either way: core.quotepath decides that,
+// and it is not the locale.
 const gitLocale = "LC_ALL=C"
 
 // gitEnv is os.Environ with cwd-relative PATH entries dropped, the locale

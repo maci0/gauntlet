@@ -56,7 +56,9 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
-formatters, and the `fuzzy` fold behind the picker's filter, and nothing
+formatters, the `fuzzy` fold behind the picker's filter, and `envx`, the one
+reader of the boolean environment variables, which the motion-off variables
+go through for the same reason `cmd/gauntlet` does. Nothing
 else. The picker takes the file-signal suggester name from `PickConfig`
 rather than importing `runner` for it. `cmd/gauntlet` imports `envx`, the one
 reader of the boolean environment variables, so the one list of values that

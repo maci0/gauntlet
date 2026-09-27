@@ -271,7 +271,9 @@ func TestEmptyGitSSHCommandDefaultsToSSH(t *testing.T) {
 
 // Git translates its own output, and that output reaches the journal and the
 // error a failed review reports. Pinning the C locale is what keeps a run
-// recorded on a translated machine byte-comparable with a replay elsewhere.
+// recorded on a translated machine byte-comparable with a replay elsewhere,
+// and parseShortstat reads its counts out of English "N insertion(s)" text, so
+// a git carrying translated catalogs must not be the one answering either.
 func TestGitLocaleIsPinnedToC(t *testing.T) {
 	for _, val := range []string{"", "de_DE.UTF-8"} {
 		t.Setenv("LC_ALL", val)

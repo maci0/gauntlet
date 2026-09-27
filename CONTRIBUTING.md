@@ -104,7 +104,9 @@ A separate `scripts` job lints `scripts/` with ruff (rules in
 [.yamllint](.yamllint)). `make check-scripts` runs those same steps with
 the versions CI pins. It needs `uvx` (shipped with
 [uv](https://docs.astral.sh/uv/getting-started/installation/)) and
-shellcheck on PATH; shellcheck is the one tool the runner image supplies
+shellcheck on PATH; macOS ships no shellcheck, so install it with
+`brew install shellcheck` before running the gate there. Shellcheck is the one
+tool the runner image supplies
 rather than `uvx` installing, so a local copy whose version differs from
 `SHELLCHECK_VERSION` gets a note instead of a failure. `make fmt-scripts`
 rewrites scripts with ruff format.

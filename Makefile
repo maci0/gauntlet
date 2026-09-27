@@ -325,7 +325,7 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 		exit 1; \
 	}
 	@command -v shellcheck >/dev/null 2>&1 || { \
-		echo "check-scripts: shellcheck not found on PATH (CI uses the Ubuntu runner's copy)" >&2; \
+		echo "check-scripts: shellcheck not found on PATH; macOS ships none (brew install shellcheck), Linux packages it as shellcheck" >&2; \
 		exit 1; \
 	}
 	@got_uv=$$(uv version 2>/dev/null | awk '{print $$2}'); \

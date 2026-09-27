@@ -36,14 +36,17 @@ var allowedInternalImports = map[string][]string{
 	"internal/selfupdate": {"internal/gauntlethome"},
 	"internal/sbom":       {},
 	"internal/streamjson": {},
-	"internal/ui":         {"internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
+	"internal/ui":         {"internal/envx", "internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
 }
 
 // TestInternalImportGraph fails when a package imports another against the
 // documented direction, when a new internal package appears undeclared, when
 // a declared package is gone, or when the map permits an edge nothing takes.
 // ui importing runner is the dashboard reading event types; the picker takes
-// FastSuggest on PickConfig so it does not need that edge for itself. Nothing
+// FastSuggest on PickConfig so it does not need that edge for itself. ui
+// importing envx is the motion-off variables read by the one boolean reader,
+// so the single list of values that mean off is the list the dashboard answers
+// by. Nothing
 // in internal/ may import ui. A permission no import uses is a hole left open
 // for the next file, and docs/DESIGN.md would describe a dependency that does
 // not exist, so the map has to name only the edges the tree really has.

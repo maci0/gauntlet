@@ -833,6 +833,41 @@ func TestHistoryCountsPerDirectory(t *testing.T) {
 	}
 }
 
+// A tree reached through a symlink and through its real path is one tree.
+// macOS makes this ordinary: /tmp is a link into /private/tmp, so a run
+// journaled under one spelling must still be found under the other.
+func TestHistoryMatchesADirectoryThroughASymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	real := filepath.Join(t.TempDir(), "tree")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	now := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	j, err := Open(NewRunID(now), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "review_end", "dir": real, "review": "sec-review", "ins": 4, "del": 1})
+	if err := j.Close(Summary{Dirs: []string{real}}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := History(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != 1 || h.Changed != 1 {
+		t.Fatalf("sec-review through the symlink = %+v, want the run journaled under %s", h, real)
+	}
+}
+
 // Journals are read whole, so History stops after a fixed number of matching
 // runs. The cap has to land on historyMatches: one more run is one more full
 // journal read, and the weighting it feeds is not an audit.

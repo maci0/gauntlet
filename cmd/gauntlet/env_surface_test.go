@@ -29,6 +29,7 @@ var envInternalNames = map[string]string{
 	"PATH":           "where executables are resolved from; a security control (absolute-only PATH), not a setting",
 	"HOME":           "read through os.UserHomeDir, the default state root; GAUNTLET_HOME is the documented knob",
 	"GAUNTLET_STATE": "names the handoff file across one hot reload; docs/CLI.md says so, and it is set by the process itself",
+	"LC_ALL":         "read to decide whether a child git runs under the C locale this program parses its output in; not a setting, and an operator's own value is kept",
 }
 
 func TestEveryEnvVarReadIsDocumented(t *testing.T) {

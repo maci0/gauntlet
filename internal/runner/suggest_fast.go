@@ -95,7 +95,8 @@ const reasonsShown = 3
 
 // skipDirs are never walked when git cannot list the tree: they hold other
 // people's code or this tool's own scratch space, and neither says anything
-// about the project under review.
+// about the project under review. Every key is lowercased and every lookup
+// folds, so a directory is skipped whichever case the volume holds it in.
 var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, "dist": true,
 	"build": true, "target": true, ".next": true, ".venv": true,
