@@ -287,6 +287,20 @@ func TestReleaseRejectsEmptyNotes(t *testing.T) {
 	}
 }
 
+// `artifacts` depends on `dist` and both targets are phony, so a `make dist`
+// step of its own ahead of `make artifacts` cross-compiles every platform a
+// second time, cold, on every push. One build per job is the difference
+// between the job fitting its timeout and not.
+func TestDistJobCrossCompilesEveryPlatformOnce(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
+	if !strings.Contains(text, "run: make artifacts VERSION=ci") {
+		t.Fatal("dist job must build the platform binaries through `make artifacts`, which depends on dist")
+	}
+	if strings.Contains(text, "run: make dist VERSION=ci") {
+		t.Fatal("dist job must not run `make dist` before `make artifacts`; both are phony, so that cross-compiles every platform twice")
+	}
+}
+
 // The dist job must run the host binary it just built, not only link it.
 // Asking the Makefile for that check is what keeps the job from carrying a
 // second copy of it: `make smoke` resolves the asset through host-artifact and

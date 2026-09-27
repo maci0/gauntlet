@@ -18,7 +18,7 @@ rules:
   truthy:
     check-keys: false
 
-  # The longest line in the workflows is 107 characters, inside a run block.
+  # The longest line in the workflows is 110 characters, inside a run block.
   # 120 caps the tree without reflowing it; raise it only with the code.
   line-length:
     max: 120

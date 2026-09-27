@@ -126,21 +126,24 @@ jobs:
           # The `go` line in go.mod is a minimum; a release is built with one exact
           # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
           go-version: 1.27.1
+      # checksums.txt and sbom.json are what a consumer verifies a download
+      # against, and they were written only by a tagged release, so nothing
+      # tested them until one shipped. `make artifacts` builds them from the
+      # binaries just built and verifies the checksums against them, so both
+      # files are exercised on every push instead of at the tag.
+      #
       # Cross-compilation is part of the contract: `gauntlet update` can only
-      # install a platform that actually builds.
-      - run: make dist VERSION=ci
+      # install a platform that actually builds, and it is this step that does
+      # it. `artifacts` depends on `dist` and both are phony, so a `make dist`
+      # of its own ahead of it would cross-compile all four platforms twice
+      # and put a second cold build into every push.
+      - run: make artifacts VERSION=ci
       # Linking is not running: a host binary that builds and then refuses to
       # start would pass dist and fail only when a tag runs the release smoke
       # test. The check is the Makefile's, so the job cannot drift from the one
       # a contributor runs before tagging, and the asset name stays owned by
       # host-artifact. Stamp is VERSION=ci, the same value dist just used.
       - run: make smoke VERSION=ci
-      # checksums.txt and sbom.json are what a consumer verifies a download
-      # against, and they were written only by a tagged release, so nothing
-      # tested them until one shipped. `make artifacts` builds them from the
-      # binaries just built and verifies the checksums against them, so both
-      # files are exercised on every push instead of at the tag.
-      - run: make artifacts VERSION=ci
       - run: test -s dist/sbom.json
       # A reproducibility claim nobody tests is decoration: same source, two
       # paths, different locale and TZ, must give byte-identical binaries, for
