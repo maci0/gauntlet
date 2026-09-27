@@ -25,24 +25,11 @@ import (
 // written.
 func captureStderr(t *testing.T, f func() int) string {
 	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	orig := os.Stderr
-	os.Stderr = w
-	code := f()
-	w.Close()
-	os.Stderr = orig
+	code, out := captureFD(t, &os.Stderr, f)
 	if code != exitUsage {
 		t.Errorf("usage error should exit %d, got %d", exitUsage, code)
 	}
-	out, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(out)
+	return out
 }
 
 func TestLogFilePermissions(t *testing.T) {

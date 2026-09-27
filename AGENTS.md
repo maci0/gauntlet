@@ -36,9 +36,10 @@ but drops the sqlite driver.
   ignored. `TMPDIR` is set by the Makefile for that reason, and an exported
   `TMPDIR` in the environment is ignored on purpose; override it on the make
   command line.
-- The Makefile, the workflows, and the tool pins in `scripts/` are pinned by
-  tests in `cmd/gauntlet/` (`makefile_test.go`, `ci_test.go`, `deps_test.go`):
-  change one without the other and `make test` fails.
+- The Makefile, the workflows, and the tool pins the Makefile carries
+  (`RUFF_VERSION` and the rest) are pinned by tests in `cmd/gauntlet/`
+  (`makefile_test.go`, `ci_test.go`, `deps_test.go`): change one without the
+  other and `make test` fails.
 - User-visible changes land in `CHANGELOG.md` under `## Unreleased` in the
   same change (each impact heading `Added`, `Changed`, `Deprecated`, `Removed`,
   `Fixed`, `Security` at most once per version). `## Unreleased` may not carry

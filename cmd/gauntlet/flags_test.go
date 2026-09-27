@@ -707,25 +707,49 @@ func TestHelpIsNotAnError(t *testing.T) {
 	}
 }
 
-// captureStdout swaps os.Stdout for a pipe, runs f, and returns what was
-// written. Help must land on stdout so redirection can capture it.
-func captureStdout(t *testing.T, f func()) string {
+// captureFD points *target at a pipe, runs f, and returns f's result along
+// with whatever was written to it.
+//
+// The read side drains in a goroutine rather than after f returns: a pipe
+// holds a bounded kernel buffer (64 KiB on Linux), so a captured screen
+// larger than that blocks the write inside f and the package sits until the
+// go test timeout. Reading only once f is done makes the size of the output
+// decide whether the test answers at all.
+func captureFD(t *testing.T, target **os.File, f func() int) (int, string) {
 	t.Helper()
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	orig := os.Stdout
-	os.Stdout = w
-	f()
-	w.Close()
-	os.Stdout = orig
-	out, err := io.ReadAll(r)
-	if err != nil {
+	var out strings.Builder
+	done := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&out, r)
+		done <- err
+	}()
+	orig := *target
+	*target = w
+	code := f()
+	*target = orig
+	if err := w.Close(); err != nil {
 		t.Fatal(err)
 	}
-	return string(out)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	return code, out.String()
+}
+
+// captureStdout swaps os.Stdout for a pipe, runs f, and returns what was
+// written. Help must land on stdout so redirection can capture it.
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	_, out := captureFD(t, &os.Stdout, func() int {
+		f()
+		return exitOK
+	})
+	return out
 }
 
 func TestHelpPrintsToStdout(t *testing.T) {

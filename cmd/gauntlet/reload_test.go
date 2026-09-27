@@ -131,21 +131,8 @@ func TestRunAbortsOnUnreadableHandoff(t *testing.T) {
 // no assumption about which code a failure should produce.
 func captureStderrFor(t *testing.T, f func() int) (int, *bytes.Buffer) {
 	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer r.Close()
-	orig := os.Stderr
-	os.Stderr = w
-	code := f()
-	w.Close()
-	os.Stderr = orig
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(r); err != nil {
-		t.Fatal(err)
-	}
-	return code, &buf
+	code, out := captureFD(t, &os.Stderr, f)
+	return code, bytes.NewBufferString(out)
 }
 
 // The seed has to survive the exec: the journal records the number the run
