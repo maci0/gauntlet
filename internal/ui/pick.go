@@ -518,9 +518,14 @@ func (p *picker) move(d int) {
 	p.cursor[p.focus] = min(max(p.cursor[p.focus]+d, 0), n-1)
 }
 
+// viewChrome is the rows the launcher spends outside the panels: the header,
+// the command, the status line, the key line, and one panel's border and
+// padding. What is left is what the panes divide between them.
+const viewChrome = 7
+
 // paneHeight returns the visible content height of the given pane.
 func (p *picker) paneHeight(which pane) int {
-	free := max(4, p.h-9)
+	free := max(4, p.h-viewChrome)
 	switch which {
 	case paneReviews:
 		reviewRows := len(p.rows())

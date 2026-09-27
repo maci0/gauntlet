@@ -41,13 +41,28 @@ func (p *picker) View() string {
 		p.agentPanel(rightW, agentH),
 		p.runPanel(rightW, runH),
 	)
-	return strings.Join([]string{
+	return bottomAnchor(strings.Split(strings.Join([]string{
 		p.renderHeader(),
 		lipgloss.JoinHorizontal(lipgloss.Top, p.reviewPanel(leftW, reviewH), " ", right),
 		p.renderCommand(),
 		p.renderStatus(),
 		p.renderKeys(),
-	}, "\n")
+	}, "\n"), "\n"), p.h)
+}
+
+// bottomAnchor drops the room a taller terminal leaves between the panels and
+// the three lines under them. The panes are sized by what they hold, so a
+// terminal with few groups open and a short agent list leaves a gap; the gap
+// belongs above the command, the status line, and the keys, never inside the
+// last row. That is where the dashboard puts its footer too, so the keys a
+// reader reaches for sit on the bottom row at every terminal size.
+func bottomAnchor(rows []string, h int) string {
+	const floor = 3 // command, status, keys
+	if gap := h - len(rows); gap > 0 && len(rows) > floor {
+		rows = append(rows[:len(rows)-floor],
+			append(make([]string, gap), rows[len(rows)-floor:]...)...)
+	}
+	return strings.Join(rows, "\n")
 }
 
 // renderHeader is the dashboard's header at rest: the same wordmark, version,
@@ -325,7 +340,13 @@ func (p *picker) renderNarrow() string {
 	}
 	rows = append(rows, styleDim.Render(keys))
 	if p.h > 0 && len(rows) > p.h {
-		rows = rows[:p.h]
+		// A terminal too short for the whole view keeps the command it
+		// composes and the keys that act on it. The wordmark and the notice
+		// are what go: without the keys there is no way out of this screen,
+		// and without the command there is nothing to run.
+		keys := rows[len(rows)-1]
+		rows = append(rows[:max(p.h-2, 0):len(rows)-1],
+			rows[2], keys)
 	}
 	for i, r := range rows {
 		rows[i] = clip(r, p.w)

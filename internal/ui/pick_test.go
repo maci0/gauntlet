@@ -1536,3 +1536,42 @@ func TestPickConcurrencyKeysStopAtTheCPUs(t *testing.T) {
 		t.Fatalf("concurrency is %d, want the floor of 1", p.concurrency().n)
 	}
 }
+
+// The panes are sized by what they hold, so a terminal taller than the
+// launcher leaves a gap. It belongs above the command, the status line, and
+// the keys, never inside the last row: a reader who has to look for the keys
+// on a big terminal has to look for them every time.
+func TestLauncherAnchorsTheKeyLineToTheBottomRow(t *testing.T) {
+	for _, h := range []int{20, 30, 45} {
+		p := demoPicker()
+		p.w, p.h, p.ready = 100, h, true
+		rows := strings.Split(p.View(), "\n")
+		if len(rows) != h {
+			t.Errorf("h=%d: the frame is %d rows, want %d", h, len(rows), h)
+		}
+		if keys := stripANSI(lastLine(p.View())); !strings.Contains(keys, "run") {
+			t.Errorf("h=%d: the last row is not the key line: %q", h, keys)
+		}
+		if !strings.Contains(stripANSI(strings.Join(rows, "\n")), "$ gauntlet -C") {
+			t.Errorf("h=%d: the composed command left the screen", h)
+		}
+	}
+}
+
+// The narrow view has no panes and no status line, so a terminal too short
+// for the whole of it keeps the command it composes and the keys that act on
+// it. A screen that cannot say how to leave, or what it would run, is the
+// dead end the fallback exists to avoid.
+func TestNarrowLauncherKeepsTheCommandAndTheKeys(t *testing.T) {
+	for h := 2; h <= 5; h++ {
+		p := demoPicker()
+		p.w, p.h, p.ready = 40, h, true
+		view := stripANSI(p.View())
+		if !strings.Contains(view, "gauntlet -C") {
+			t.Errorf("h=%d: the composed command left the screen:\n%s", h, view)
+		}
+		if keys := stripANSI(lastLine(p.View())); !strings.Contains(keys, "run") || !strings.Contains(keys, "q") {
+			t.Errorf("h=%d: the last row is not the key line: %q", h, keys)
+		}
+	}
+}

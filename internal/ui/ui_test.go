@@ -1641,3 +1641,30 @@ func TestScrollHelpSupportsBForPageUp(t *testing.T) {
 		t.Fatalf("key 'b' did not scroll up: before %d, after %d", scroll, newScroll)
 	}
 }
+
+// The fallback's key line is its last row and is the one that stays: a
+// terminal three rows tall trimmed from the bottom is a tally and no way to
+// leave, which is the dead end the fallback exists to avoid.
+func TestMinimalViewKeepsTheKeysOnAShortTerminal(t *testing.T) {
+	for _, h := range []int{3, 4, 5} {
+		m := newModel(demoConfig())
+		m.w, m.h, m.ready = 40, h, true
+		keys := stripANSI(lastLine(m.renderMinimal()))
+		if !strings.Contains(keys, "q") || !strings.Contains(keys, "help") {
+			t.Errorf("h=%d: the last row is not the key line: %q", h, keys)
+		}
+		if got := len(strings.Split(m.renderMinimal(), "\n")); got > h {
+			t.Errorf("h=%d: the fallback is %d rows", h, got)
+		}
+	}
+}
+
+// Bubble Tea paints a frame before the window size arrives. A blank alternate
+// screen is a screen with nothing on it, so the wait is named, the way the
+// launcher names it.
+func TestDashboardNamesTheWaitForTheFirstFrame(t *testing.T) {
+	m := newModel(demoConfig())
+	if got := stripANSI(m.View()); !strings.Contains(got, "starting") {
+		t.Fatalf("the first frame says nothing: %q", got)
+	}
+}

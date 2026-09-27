@@ -23,7 +23,10 @@ import (
 
 func (m *model) View() string {
 	if !m.ready {
-		return ""
+		// Bubble Tea paints the first frame before the window size arrives, and
+		// a blank alternate screen is a screen with nothing on it. The
+		// launcher names the wait the same way.
+		return "\n  gauntlet is starting…"
 	}
 	if m.help {
 		return m.renderHelp()
@@ -750,7 +753,10 @@ func (m *model) renderMinimal() string {
 		styleDim.Render(hint.String()),
 	)
 	if m.h > 0 && len(rows) > m.h {
-		rows = rows[:m.h]
+		// The key line is the last row and is the one that stays: a terminal
+		// three rows tall trimmed from the bottom is a tally and no way to
+		// leave, which is the dead end the fallback exists to avoid.
+		rows = append(rows[:max(m.h-1, 0):len(rows)-1], rows[len(rows)-1])
 	}
 	for i, r := range rows {
 		rows[i] = clip(r, m.w)
