@@ -261,7 +261,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		if thinking > 0 {
 			// Only agents that disclose the split contribute here, so this is
 			// a floor on reasoning, not a measurement of every agent.
-			pct := min(100, max(0, int(int64(thinking)*100/int64(tokens))))
+			pct := humanize.Share(thinking, tokens)
 			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(thinking), pct)
 		}
 		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"), humanize.Count(tokens), rate, note)

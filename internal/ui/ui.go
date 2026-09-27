@@ -1356,7 +1356,7 @@ func (m *model) footerReadings() []string {
 	if m.tokens > 0 || m.liveRate > 0 {
 		segs = append(segs, styleValue.Render(humanize.Count(m.tokens))+styleDim.Render(" tok"))
 		if m.thinking > 0 && m.tokens > 0 {
-			pct := min(100, max(0, int(int64(m.thinking)*100/int64(m.tokens))))
+			pct := humanize.Share(m.thinking, m.tokens)
 			segs = append(segs, styleThink.Render("◌ "+fmt.Sprint(pct)+"% think"))
 		}
 		switch {

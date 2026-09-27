@@ -34,6 +34,28 @@ func TestCount(t *testing.T) {
 	}
 }
 
+// The reasoning share is displayed by two callers, so the percentage they
+// print has one definition: truncated, clamped, and undefined-safe.
+func TestShare(t *testing.T) {
+	cases := []struct {
+		part, whole, want int
+	}{
+		{0, 100, 0},
+		{1, 3, 33},
+		{50, 200, 25},
+		{100, 100, 100},
+		{150, 100, 100}, // a split that does not add up reads as full
+		{-5, 100, 0},
+		{5, 0, 0}, // no total is no measurement
+		{5, -1, 0},
+	}
+	for _, c := range cases {
+		if got := Share(c.part, c.whole); got != c.want {
+			t.Errorf("Share(%d, %d) = %d, want %d", c.part, c.whole, got, c.want)
+		}
+	}
+}
+
 // A one-line list names a few and counts the rest, so a message about 40
 // changed files still fits on a terminal line.
 func TestList(t *testing.T) {

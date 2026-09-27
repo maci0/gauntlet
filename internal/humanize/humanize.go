@@ -49,6 +49,18 @@ func Count(n int) string {
 	return b.String()
 }
 
+// Share is part as a whole-number percentage of whole, truncated, and held
+// inside 0-100. whole <= 0 is no measurement and reports 0 rather than
+// dividing by it, and a part above the whole (an agent whose disclosed split
+// does not add up to the total it also reported) reads as 100 rather than
+// past it. The arithmetic is int64 so a 32-bit int cannot wrap the multiply.
+func Share(part, whole int) int {
+	if whole <= 0 {
+		return 0
+	}
+	return min(100, max(0, int(int64(part)*100/int64(whole))))
+}
+
 // List names a few items and counts the rest, for a message that has to fit
 // on one line: "a.go, b.go, c.go and 4 more".
 func List(items []string, limit int) string {
