@@ -33,6 +33,38 @@ func runsDir() string { return filepath.Join(Home(), "runs") }
 
 func indexLockPath() string { return filepath.Join(Home(), ".index.lock") }
 
+// indexLockWait bounds how long a mutation waits for the cross-process index
+// lock. The holder walks the whole journal tree on a rebuild or a prune, so on
+// a long history or a network home the wait is not instant. It is bounded
+// anyway: an unbounded LOCK_EX parks `gauntlet runs`, `gauntlet history`, and
+// the exit-time Prune behind a peer that may never release it, and a wait that
+// ends is reportable where a hang is not.
+const indexLockWait = 30 * time.Second
+
+// indexLockPoll is how often a blocked acquisition retries the lock.
+const indexLockPoll = 50 * time.Millisecond
+
+// lockIndex takes the cross-process index lock, giving up after wait.
+// LOCK_EX alone would block forever, so LOCK_NB is retried until the deadline
+// and the failure names the holder's lock file.
+func lockIndex(fd int, wait time.Duration) error {
+	deadline := time.Now().Add(wait)
+	for {
+		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("index lock %s is held by another gauntlet: %w",
+				indexLockPath(), err)
+		}
+		time.Sleep(indexLockPoll)
+	}
+}
+
 // withIndexLock serializes index mutations across processes. writeIndex
 // replaces index.jsonl by rename, so the lock lives in a sibling file: a
 // flock on the index itself would be left on the old inode after the swap.
@@ -53,7 +85,7 @@ func withIndexLock(fn func() error) error {
 	if st.Mode&syscall.S_IFMT != syscall.S_IFREG {
 		return fmt.Errorf("index lock path is not a regular file: %s", indexLockPath())
 	}
-	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
+	if err := lockIndex(fd, indexLockWait); err != nil {
 		return err
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)

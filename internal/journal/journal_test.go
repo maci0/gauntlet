@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -2307,5 +2308,55 @@ func TestIndexRewriteKeepsUnreadableAndOversizedRows(t *testing.T) {
 	}
 	if last.RunID != id || last.ExitCode == nil || *last.ExitCode != 0 {
 		t.Errorf("the closing row is not the Close's own: %+v", last)
+	}
+}
+
+// The index lock is taken with LOCK_EX across processes, so a peer that never
+// releases it would park every reader behind it. The acquisition is bounded
+// instead, and the bound is visible as an error naming the lock file rather
+// than as a wait with no end.
+func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	holder, err := os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer holder.Close()
+	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("cannot hold the index lock: %v", err)
+	}
+
+	other, err := os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+
+	err = lockIndex(int(other.Fd()), 10*time.Millisecond)
+	if err == nil {
+		t.Fatal("a second acquisition succeeded while the lock was held")
+	}
+	if !errors.Is(err, syscall.EWOULDBLOCK) {
+		t.Errorf("the failure does not carry the cause: %v", err)
+	}
+	if !strings.Contains(err.Error(), indexLockPath()) {
+		t.Errorf("the failure does not name the lock file: %v", err)
+	}
+}
+
+// A free lock is taken on the first attempt, so the bound only ever ends a
+// wait that is genuinely contended.
+func TestIndexLockTakesAFreeLock(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	fd, err := syscall.Open(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(fd)
+	if err := lockIndex(fd, time.Second); err != nil {
+		t.Fatalf("a free lock was not taken: %v", err)
 	}
 }

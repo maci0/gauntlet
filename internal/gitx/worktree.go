@@ -71,11 +71,15 @@ const conflictMarker = "<<<<<<<"
 // ExcludeOwnArtifacts adds what a run writes into the reviewed tree, the
 // per-review checkouts and the run lock, to .git/info/exclude, so neither ever
 // shows up as an untracked file in the repository being reviewed. It is
-// idempotent and best effort: a failure only means noisier git status output.
-func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
+// idempotent, and nothing else in a run depends on it, so a failure is
+// reported and the run continues: the cost of a skipped exclude is noisier git
+// status output. A short write is a failure, though, not a success: the next
+// run's substring check would not match a truncated line and would append the
+// same entry again on every run.
+func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	out, err := r.run(ctx, gitQuick, "rev-parse", "--git-common-dir")
 	if err != nil {
-		return
+		return err
 	}
 	gitDir := strings.TrimSpace(string(out))
 	if !filepath.IsAbs(gitDir) {
@@ -91,10 +95,10 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 		}
 	}
 	if len(missing) == 0 {
-		return
+		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return
+		return err
 	}
 	// MkdirAll and OpenFile both follow a symlink at any component, and the
 	// reviewed tree picks gitDir: `.git` can be a symlink or a gitfile whose
@@ -102,19 +106,21 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) {
 	// through either writes a line the operator did not ask for, into a file
 	// outside the repository. Re-check on the descriptor's own directory.
 	if !realDir(filepath.Dir(path)) {
-		return
+		return fmt.Errorf("git exclude directory %s is not a real directory", filepath.Dir(path))
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return
+		return err
 	}
-	defer f.Close()
 	prefix := ""
 	if len(text) > 0 && !strings.HasSuffix(text, "\n") {
 		prefix = "\n"
 	}
-	fmt.Fprintf(f, "%s# gauntlet's own scratch: per-review worktrees and the run lock\n%s\n",
+	_, writeErr := fmt.Fprintf(f, "%s# gauntlet's own scratch: per-review worktrees and the run lock\n%s\n",
 		prefix, strings.Join(missing, "\n"))
+	// The close is where a full disk surfaces on an append that buffered, so
+	// both failures are reported rather than the first one alone.
+	return errors.Join(writeErr, f.Close())
 }
 
 // realDir reports whether path is an existing real directory. Lstat never
@@ -373,6 +379,10 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 // DiscardCurrent resets an unpublished layer, detaches the checkout at its
 // base, and deletes only that empty gauntlet branch. The next review can then
 // start another child without any failed or no-change branch in the stack.
+//
+// A branch git refuses to delete is reported rather than dropped: the caller
+// continues with deeper layers either way, and a leftover branch left silent
+// here is one no later cleanup names, because by then the name is gone.
 func (w *Worktree) DiscardCurrent(ctx context.Context) error {
 	if w == nil || w.repo == nil || w.Branch == "" || w.Dir == "" {
 		return nil
@@ -385,9 +395,11 @@ func (w *Worktree) DiscardCurrent(ctx context.Context) error {
 	if _, err := sub.run(ctx, gitNormal, "switch", "--quiet", "--detach", base); err != nil {
 		return fmt.Errorf("git switch --detach: %w", err)
 	}
+	delErr := w.repo.DeleteBranch(ctx, branch)
+	// Cleared either way: the layer is gone from the stack's point of view,
+	// and the name has to stay available so the next child can take it.
 	w.Branch = ""
-	w.repo.DeleteBranch(ctx, branch)
-	return nil
+	return delErr
 }
 
 // CommitAll stages everything in the worktree and commits it. It reports

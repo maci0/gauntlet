@@ -714,8 +714,16 @@ func peek(root string, paths []string, s *signals, declared []string) {
 		if err != nil {
 			continue
 		}
-		n, _ := f.Read(buf)
+		n, readErr := f.Read(buf)
 		f.Close()
+		// A read that failed or returned nothing is not the head of the file,
+		// and a partial head is worse than none: a mark past the truncation
+		// reads as undeclared, and one inside the prefix reads as declared by
+		// a file this pass never finished. Either way the signal would be
+		// wrong, so the file is left unscanned.
+		if readErr != nil || n == 0 {
+			continue
+		}
 		read++
 		markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
 		seenAll = len(s.mark) == kinds

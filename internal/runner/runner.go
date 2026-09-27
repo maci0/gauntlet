@@ -274,7 +274,12 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	// write worktrees under it. Neither is the project's, so neither should
 	// ever show up in its git status: the exclusion is local to the clone,
 	// which is the right place for one tool's scratch.
-	r.repo.ExcludeOwnArtifacts(ctx)
+	if err := r.repo.ExcludeOwnArtifacts(ctx); err != nil {
+		// Nothing downstream depends on the exclusion, so the run continues.
+		// Saying so is what keeps a full disk from reading as a run that
+		// simply never created its scratch.
+		r.log("Cannot record scratch paths in git exclude: %v", err)
+	}
 	if cfg.StackedPRs {
 		prep := cfg.StackPrep
 		if prep == nil {

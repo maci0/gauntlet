@@ -819,7 +819,7 @@ func validateLog(o *options, fs *flag.FlagSet) error {
 			return fmt.Errorf("--log %s: not a regular file", expanded)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("--log %s: %v", expanded, err)
+		return fmt.Errorf("--log %s: %w", expanded, err)
 	} else if fi, err := os.Stat(filepath.Dir(expanded)); err != nil || !fi.IsDir() {
 		// The file not existing yet is the normal case and openLogFile creates
 		// it. Its parent existing is not, and the open is the only thing that
@@ -827,7 +827,7 @@ func validateLog(o *options, fs *flag.FlagSet) error {
 		// failed after the run had started, as a bare syscall message rather
 		// than the usage error every other --log mistake gets.
 		if err != nil {
-			return fmt.Errorf("--log %s: %v", expanded, err)
+			return fmt.Errorf("--log %s: %w", expanded, err)
 		}
 		return fmt.Errorf("--log %s: %s is not a directory", expanded, filepath.Dir(expanded))
 	}
