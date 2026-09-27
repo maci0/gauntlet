@@ -560,10 +560,7 @@ func (r *Runner) takeNextFor(lane int) (string, bool) {
 // another lane's list, so the loop ends when the slowest lane's last review
 // does rather than when the last review anywhere does.
 func (r *Runner) setPending(names []string) {
-	jobs := r.cfg.Jobs
-	if jobs < 1 {
-		jobs = 1
-	}
+	jobs := max(r.cfg.Jobs, 1)
 	r.pendingMu.Lock()
 	r.pending = slices.Grow(r.pending[:0], len(names))[:0]
 	for i, name := range names {

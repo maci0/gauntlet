@@ -148,6 +148,83 @@ func TestDoctorNamesTheStateRootWithoutAUsableAgent(t *testing.T) {
 	}
 }
 
+// A state root that cannot be written loses the run journal, and the only
+// other report of that is one warning line in the middle of a run. doctor is
+// where a mistyped GAUNTLET_HOME is looked at, so the unusable root is the
+// finding and the exit code says so.
+func TestDoctorReportsAnUnusableStateRoot(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes to a mode-0500 directory")
+	}
+	state := t.TempDir()
+	if err := os.Chmod(state, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(state, 0o700) })
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+
+	var buf strings.Builder
+	code := doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "State root unusable") || !strings.Contains(out, "is not writable") {
+		t.Fatalf("doctor should report a state root that cannot be written:\n%s", out)
+	}
+	if code != exitFail {
+		t.Fatalf("doctor exit code = %d, want %d (exitFail) for an unusable state root", code, exitFail)
+	}
+}
+
+// A root that does not exist yet is a fresh install, not a misconfiguration:
+// the first run creates it, and doctor must not create it to find out.
+func TestDoctorLeavesAMissingStateRootAlone(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "later")
+	t.Setenv("GAUNTLET_HOME", root)
+	t.Setenv("PATH", t.TempDir())
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	if out := buf.String(); strings.Contains(out, "State root unusable") {
+		t.Fatalf("doctor should accept a state root the first run will create:\n%s", out)
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("doctor created the state root %s; it is a diagnostic", root)
+	}
+}
+
+func TestStateRootProblem(t *testing.T) {
+	dir := t.TempDir()
+	if problem := stateRootProblem(dir); problem != "" {
+		t.Errorf("a writable state root reported %q", problem)
+	}
+	if problem := stateRootProblem(filepath.Join(dir, "later")); problem != "" {
+		t.Errorf("a state root the first run creates reported %q", problem)
+	}
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if problem := stateRootProblem(file); !strings.Contains(problem, "is not a directory") {
+		t.Errorf("a state root that is a file reported %q", problem)
+	}
+}
+
+// The writability probe leaves nothing behind: a leftover file in the state
+// root would be mistaken for run state.
+func TestDoctorProbeLeavesNoFile(t *testing.T) {
+	state := t.TempDir()
+	if problem := stateRootProblem(state); problem != "" {
+		t.Fatalf("a writable temp state root reported %q", problem)
+	}
+	entries, err := os.ReadDir(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("the probe left %d entries behind in the state root", len(entries))
+	}
+}
+
 func TestDoctorReportsOutputFailure(t *testing.T) {
 	sink := &doctorFailWriter{remaining: 0}
 	code, diagnostic := captureStderrFor(t, func() int {

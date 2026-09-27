@@ -18,6 +18,8 @@ minor instead and were listed under Changed.
 - `gauntlet doctor` names the state root in use and whether it came from `GAUNTLET_HOME` or `$HOME`, printed before the verdict so a box with no agent CLI still shows it.
 - `--keep-runs N` bounds the run history: at the end of a run, journals and index rows past the newest `N` (200 by default, 0 keeps all) are deleted, and day directories left empty are removed. Nothing deleted the state tree before, so it kept one file per run for the life of the install.
 - `make host-artifact` prints the path `make dist` uses for the binary built for the current host, so the release smoke tests resolve the asset name from one place instead of restating it in each workflow.
+- `GIT_SSH_COMMAND` is part of the documented environment: `gauntlet help` lists it, `docs/CLI.md` gives it a row, and the value is taken only when it is set to something other than empty or whitespace.
+- `gauntlet doctor` says when the state root is not a directory or cannot be written to, and exits 1 for it. A `GAUNTLET_HOME` that cannot hold a journal previously surfaced only as one warning line in the middle of a run. A root that does not exist yet is left alone: the first run creates it.
 
 ### Security
 

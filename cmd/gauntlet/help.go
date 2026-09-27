@@ -169,6 +169,7 @@ var helpEnvVars = []struct{ Name, Help string }{
 	{"TERM", "\"dumb\" disables color, even with the two above"},
 	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads"},
 	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set"},
+	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it"},
 }
 
 // printUsage renders the help screen.
@@ -224,8 +225,14 @@ func printUsage(out io.Writer, pal palette, width int) {
 	}
 
 	head("environment")
+	envCol := 0
 	for _, e := range helpEnvVars {
-		fmt.Fprintf(out, "  %-14s %s\n", e.Name, pal.dim(e.Help))
+		envCol = max(envCol, len(e.Name))
+	}
+	envIndent := envCol + 4
+	for _, e := range helpEnvVars {
+		fmt.Fprintf(out, "  %-*s  %s\n", envCol, e.Name,
+			pal.dim(wrapIndent(e.Help, width, envIndent)))
 	}
 	fmt.Fprintln(out)
 }

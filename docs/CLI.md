@@ -126,7 +126,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 | Flag | Purpose |
 |---|---|
-| `doctor` | Report installed agent CLIs and helper tools, the state root in use, and the file agent definitions were read from. Exits 1 if no agent is usable. |
+| `doctor` | Report installed agent CLIs and helper tools, the state root in use, and the file agent definitions were read from. A state root that is not a directory or cannot be written to is reported, since a run that cannot write it loses the journal. Exits 1 if no agent is usable or the state root is unusable. |
 | `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. `--list` does not need an agent CLI on PATH; `--dry-run` does, because it names the agents a real run would launch. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. Does not need an agent CLI on PATH. |
 | `--log FILE` | Also write all output to FILE. |
@@ -158,18 +158,17 @@ None is required; unset, everything lives under `~/.gauntlet`.
 
 | Variable | Effect |
 |---|---|
-| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. `gauntlet doctor` prints the root in use and where it came from, so a mistyped value is visible without reading the journal. |
+| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard's animated reasoning glyph holds one frame instead of cycling, for motion sensitivity. The token count beside it keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`. Wins if both are set, matching GitHub CLI. |
 | `NO_COLOR` | If set at all, no color anywhere. Wins over the two below. |
 | `CLICOLOR_FORCE` / `FORCE_COLOR` | Anything but empty, `0`, `false`, `no`, or `off`: force color on, so piping through `less -R` keeps its palette. |
 | `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. |
+| `GIT_SSH_COMMAND` | Optional. The command git uses for SSH. Empty or whitespace-only defaults to `ssh`, which outranks a repository-local `core.sshCommand`; set it to use a different binary or options. |
 
 (`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
-handoff file passed across the exec. `GIT_SSH_COMMAND` defaults to `ssh` to
-isolate child commands from repository-local configuration, unless already set
-in the environment.)
+handoff file passed across the exec.)
 
 ## Signals
 

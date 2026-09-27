@@ -15,7 +15,8 @@ import (
 )
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
-// the process exit code: 1 when no agent can be launched at all.
+// the process exit code: 1 when no agent can be launched at all, or when the
+// state root cannot be written to.
 func doctor(out io.Writer, pal palette, overrides map[string]string, width int) (code int) {
 	var werr error
 	defer func() {
@@ -241,6 +242,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// box with no agent CLI is exactly the box whose state root is in
 	// question. The definitions file is named only when it exists: missing is
 	// missing.
+	var stateBad bool
 	root, homeOK := gauntlethome.Dir()
 	src := "from $HOME"
 	switch {
@@ -255,6 +257,13 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			writeln(pal.dim("Definitions: " + p))
 		}
 	}
+	// A root that cannot be written loses the run journal, and a run that
+	// cannot journal is only reported by one line of a warning that scrolls
+	// past mid-run. Here it is the finding, before the verdict.
+	if problem := stateRootProblem(root); problem != "" {
+		writeln(pal.red("State root unusable: " + problem))
+		stateBad = true
+	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
@@ -268,6 +277,9 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	writeln(pal.dim(tokenSourceLine))
 	writeln(pal.dim("Stack-specific tools only matter for the languages you review."))
+	if stateBad {
+		return exitFail
+	}
 	return exitOK
 }
 
@@ -277,3 +289,42 @@ func binRunnable(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular() && fi.Mode().Perm()&0o111 != 0
 }
+
+// stateRootProblem says why the state root cannot hold a run journal, or ""
+// when it can. A root that does not exist yet is not a problem: the first
+// run creates it, so nothing here is created on doctor's account.
+//
+// Writability is proved the way the run will find out: a temp file in the
+// root, removed again. The root is gauntlet's own directory and every run
+// writes there, so the probe touches nothing the operator has not already
+// agreed to; asking the kernel instead needs a direct dependency on
+// x/sys for one call.
+func stateRootProblem(root string) string {
+	fi, err := os.Stat(root)
+	switch {
+	case os.IsNotExist(err):
+		return ""
+	case err != nil:
+		return fmt.Sprintf("%s cannot be read: %v", root, err)
+	case !fi.IsDir():
+		return root + " is not a directory"
+	}
+	f, err := os.CreateTemp(root, stateProbePrefix+"*")
+	if err != nil {
+		return fmt.Sprintf("%s is not writable: %v", root, err)
+	}
+	name := f.Name()
+	if err := f.Close(); err != nil {
+		_ = os.Remove(name)
+		return fmt.Sprintf("%s is not writable: %v", root, err)
+	}
+	if err := os.Remove(name); err != nil {
+		return fmt.Sprintf("%s holds %s that cannot be removed: %v", root, name, err)
+	}
+	return ""
+}
+
+// stateProbePrefix names the temp file the writability probe creates, so one
+// left behind by an interrupted doctor is recognizable and never mistaken
+// for a run journal.
+const stateProbePrefix = ".gauntlet-doctor-"
