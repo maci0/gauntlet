@@ -461,18 +461,29 @@ release: check test dist ## build every platform and write dist/checksums.txt an
 # second build really does see the host's locale; TZ is genuinely ambient
 # either way. The tree is archived to a file then extracted twice: a tar pipe
 # would hide a failing create behind a successful extract (POSIX sh has no
-# pipefail). The exclude list is every entry in .gitignore, plus the built
-# binary: the archive is the whole working tree, so anything a build or a run
-# leaves behind is copied into two trees under $HOME. That is why `.gauntlet/`
-# and `.gauntlet.lock` are there (a run of this tool in its own checkout
-# leaves a lane worktree per job and its lock behind) and why `.env` is: the
-# tokens .env.example is a template for. One of the copies would then build
-# from state the other does not have. TestMakefileReproArchiveMirrorsGitignore
-# holds the list to .gitignore, so a new ignored output cannot be archived by
-# forgetting an exclude. Every platform in PLATFORMS is checked, not just the
-# host's:
-# those are the binaries `dist` ships, and a reproducibility claim that covers
-# one of four proves nothing about the other three. CI runs it on every push.
+# pipefail). The archive is the whole working tree minus what .gitignore
+# covers, so anything a build or a run leaves behind would otherwise be copied
+# into two trees under $HOME. That is why `.gauntlet/` and `.gauntlet.lock`
+# are ignored (a run of this tool in its own checkout leaves a lane worktree
+# per job and its lock behind) and why `.env` is: the tokens .env.example is a
+# template for. One of the copies would then build from state the other does
+# not have.
+#
+# The members come from git's own ignore-aware listing, handed to tar as file
+# names, not from tar `--exclude` patterns. libarchive matches a pattern with
+# no slash against the basename of every path component, so a pattern like
+# `--exclude=./gauntlet` also drops `cmd/gauntlet` and the copies cannot
+# build, while GNU tar anchors its patterns and never did: the two
+# implementations archived different trees. A name list has no dialect. It
+# also reaches into subdirectories, where an anchored `./__pycache__` exclude
+# never did, and a new `.gitignore` entry covers the archive the moment it is
+# written, which is what TestMakefileReproArchiveMirrorsGitignore holds the
+# recipe to. A tracked path missing from the working tree makes the tar step
+# fail, which is the honest reading of an archive of the working tree.
+#
+# Every platform in PLATFORMS is checked, not just the host's: those are the
+# binaries `dist` ships, and a reproducibility claim that covers one of four
+# proves nothing about the other three. CI runs it on every push.
 #
 # The two copies of a platform build at the same time and the platforms stay
 # in sequence, so a mismatch is still reported next to the platform it belongs
@@ -497,11 +508,8 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		rm -rf "$(REPRO_DIR)"; \
 		mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b"; \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
-		tar --exclude=./.git --exclude=./$(DIST) --exclude=./$(BINARY) --exclude=./$(BINARY)_* \
-			--exclude=./.scratch --exclude=./.scratch_* --exclude=./.ruff_cache --exclude=./.mypy_cache \
-			--exclude=./__pycache__ --exclude=./.gauntlet --exclude=./.gauntlet.lock \
-			--exclude=./.env \
-			-cf "$(REPRO_DIR)/src.tar" . && \
+		git ls-files -z --cached --others --exclude-standard > "$(REPRO_DIR)/src.files" && \
+		tar -cf "$(REPRO_DIR)/src.tar" --null -T "$(REPRO_DIR)/src.files" && \
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \
 		done; \

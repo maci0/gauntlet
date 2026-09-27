@@ -764,12 +764,63 @@ func TestMakefileCleanRemovesScratchAndBinaries(t *testing.T) {
 	}
 }
 
-// make repro must keep scratch and lint caches out of the test archives.
+// reproFileList is the command make repro builds its member list with, and the
+// only thing standing between the archive and a tree's ignored output. tar
+// cannot do this job on its own: libarchive matches an `--exclude` pattern with
+// no slash against the basename of every path component, so the pattern that
+// drops the built binary also drops the `cmd/<binary>` package and the copies
+// stop building. GNU tar anchors its patterns and archived a different tree.
+const reproFileList = `git ls-files -z --cached --others --exclude-standard`
+
+// reproRecipe returns the recipe of one target: its line through the last line
+// indented as its body.
+func reproRecipe(t *testing.T, target string) string {
+	t.Helper()
+	var out []string
+	seen := false
+	for line := range strings.SplitSeq(makefileText(t), "\n") {
+		if strings.HasPrefix(line, target+":") {
+			seen = true
+			continue
+		}
+		if !seen {
+			continue
+		}
+		if !strings.HasPrefix(line, "\t") {
+			break
+		}
+		out = append(out, line)
+	}
+	if !seen {
+		t.Fatalf("Makefile has no %s recipe", target)
+	}
+	return strings.Join(out, "\n")
+}
+
+// gitIgnores reports whether .gitignore keeps a repository-root path out of
+// git's listing, which is the member list the repro archive is built from.
+func gitIgnores(t *testing.T, path string) bool {
+	t.Helper()
+	cmd := exec.Command("git", "check-ignore", "--no-index", "--quiet", path)
+	cmd.Dir = moduleRoot(t)
+	return cmd.Run() == nil
+}
+
+// make repro must keep the tree's ignored output out of the archives, and the
+// ignore rules live in .gitignore, so the member list has to come from git's
+// own reading of them rather than from a second list that can go stale.
 func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
-	text := makefileText(t)
-	for _, want := range []string{"--exclude=./.scratch", "--exclude=./.ruff_cache", "--exclude=./.mypy_cache", "--exclude=./__pycache__"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("make repro missing %q exclude", want)
+	recipe := reproRecipe(t, "repro")
+	if !strings.Contains(recipe, reproFileList) {
+		t.Errorf("make repro must take its member list from %q", reproFileList)
+	}
+	if strings.Contains(recipe, "--exclude=") || strings.Contains(recipe, "--exclude ") {
+		t.Error("make repro must not filter the archive with tar excludes: libarchive matches a pattern with no slash against every basename, so one that drops the built binary also drops the package that shares its name")
+	}
+	ignore := readRepoFile(t, filepath.Join(moduleRoot(t), ".gitignore"))
+	for _, want := range []string{".scratch", ".ruff_cache", ".mypy_cache", "__pycache__"} {
+		if !strings.Contains(ignore, want) {
+			t.Errorf(".gitignore must list %q; the archive is the working tree minus what git ignores", want)
 		}
 	}
 }
@@ -777,13 +828,25 @@ func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 // The archive is the whole working tree, copied to two directories under
 // $HOME, so anything a build or a run of this tool leaves in the checkout is
 // an input to one copy and not the other. Every .gitignore entry is such a
-// file, which makes the exclude list derivable rather than a list to remember
-// to extend.
+// file, which is why the member list is git's ignore-aware listing: it cannot
+// drift from .gitignore, and a new entry covers the archive as soon as it is
+// written.
 func TestMakefileReproArchiveMirrorsGitignore(t *testing.T) {
-	text := strings.NewReplacer("$(BINARY)", "gauntlet", "$(DIST)", "dist").Replace(makefileText(t))
-	for _, entry := range gitignoreEntries(t) {
-		if want := "--exclude=./" + entry; !strings.Contains(text, want) {
-			t.Errorf(".gitignore lists %q but make repro has no %q exclude; the archive copies the whole tree", entry, want)
+	recipe := reproRecipe(t, "repro")
+	if !strings.Contains(recipe, reproFileList) {
+		t.Fatalf("make repro must archive what %q lists", reproFileList)
+	}
+	for _, entry := range gitignorePatterns(t) {
+		// The rule has to still bite for a path the entry names, or the
+		// entry has stopped keeping its output out of the archive. A
+		// directory pattern needs a path inside the directory: git matches
+		// no directory itself, and `.gitignore` lists `.scratch/`.
+		sample := strings.ReplaceAll(entry, "*", "1")
+		if strings.HasSuffix(sample, "/") {
+			sample += "content"
+		}
+		if !gitIgnores(t, sample) {
+			t.Errorf(".gitignore entry %q does not ignore %q: it no longer keeps that output out of the archive", entry, sample)
 		}
 	}
 }
@@ -795,20 +858,37 @@ func TestEnvFileIsIgnoredAndOutOfTheReproArchive(t *testing.T) {
 	if !slices.Contains(gitignoreEntries(t), ".env") {
 		t.Error(".gitignore must list .env; the copy of .env.example a developer makes holds real tokens")
 	}
-	if !strings.Contains(makefileText(t), "--exclude=./.env") {
-		t.Error("make repro must exclude .env; the archive is the working tree, tokens and all")
+	if !strings.Contains(reproRecipe(t, "repro"), reproFileList) {
+		t.Error("make repro must archive git's ignore-aware listing; the archive is the working tree, tokens and all")
 	}
+	// The listing excludes .env because .gitignore does, so prove the rule
+	// is the one that decides, with a path the file would have.
+	if !gitIgnores(t, ".env") {
+		t.Error(".gitignore no longer ignores .env: the archive would carry the tokens")
+	}
+}
+
+// gitignorePatterns returns the .gitignore lines as git reads them, with the
+// leading slash that anchors one at the repository root removed and everything
+// else, including a trailing slash, kept.
+func gitignorePatterns(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for line := range strings.SplitSeq(readRepoFile(t, filepath.Join(moduleRoot(t), ".gitignore")), "\n") {
+		entry := strings.TrimSpace(line)
+		if entry == "" || strings.HasPrefix(entry, "#") {
+			continue
+		}
+		out = append(out, strings.TrimPrefix(entry, "/"))
+	}
+	return out
 }
 
 func gitignoreEntries(t *testing.T) []string {
 	t.Helper()
 	var out []string
-	for line := range strings.SplitSeq(readRepoFile(t, filepath.Join(moduleRoot(t), ".gitignore")), "\n") {
-		entry := strings.Trim(strings.TrimSpace(line), "/")
-		if entry == "" || strings.HasPrefix(entry, "#") {
-			continue
-		}
-		out = append(out, entry)
+	for _, entry := range gitignorePatterns(t) {
+		out = append(out, strings.Trim(entry, "/"))
 	}
 	return out
 }
@@ -819,9 +899,9 @@ func gitignoreEntries(t *testing.T) []string {
 // own. `.gauntlet/` holds a lane worktree per job when this tool runs in its own
 // checkout, which has no business in a reproducibility archive or in a commit.
 func TestMakefileReproIsolatesBuildCachesAndWorktrees(t *testing.T) {
-	text := makefileText(t)
-	for _, want := range []string{`GOCACHE="$(REPRO_DIR)/a.gocache"`, `GOCACHE="$(REPRO_DIR)/b.gocache"`, "--exclude=./.gauntlet"} {
-		if !strings.Contains(text, want) {
+	recipe := reproRecipe(t, "repro")
+	for _, want := range []string{`GOCACHE="$(REPRO_DIR)/a.gocache"`, `GOCACHE="$(REPRO_DIR)/b.gocache"`, reproFileList} {
+		if !strings.Contains(recipe, want) {
 			t.Errorf("make repro missing %q", want)
 		}
 	}
@@ -830,6 +910,9 @@ func TestMakefileReproIsolatesBuildCachesAndWorktrees(t *testing.T) {
 		if !strings.Contains(ignore, want) {
 			t.Errorf(".gitignore must list %q; a run of the tool writes both into the reviewed tree", want)
 		}
+	}
+	if !gitIgnores(t, ".gauntlet/lanes/x") {
+		t.Error(".gitignore no longer ignores a lane worktree: the archive would copy one")
 	}
 }
 
