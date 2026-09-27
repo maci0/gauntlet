@@ -1172,6 +1172,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
+		interruptedOnCancel(ctx, &res)
 	case pr.ExitCode != 0:
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)
@@ -1180,6 +1181,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
+		interruptedOnCancel(ctx, &res)
 	default:
 		res.Status = StatusOK
 		r.log("Done: %s (%s) in %s%s", review, spec.Label(),
@@ -1198,6 +1200,16 @@ func (r *Runner) skipped(res Result, loopNo int, lane, detail string) Result {
 	res.Detail = detail
 	r.publishReviewEnd(res, loopNo, "", lane, 1)
 	return res
+}
+
+// interruptedOnCancel downgrades a recorded failure to interrupted when the
+// context ended the review. retry gives up on a canceled context as well as on
+// an exhausted budget, and a cancel is what every other path records, so a
+// review killed during its retry backoff is not a failure of the review.
+func interruptedOnCancel(ctx context.Context, res *Result) {
+	if ctx.Err() != nil {
+		res.Status = StatusInterrupted
+	}
 }
 
 // usageWatch tracks one review's live token usage from the two independent

@@ -1247,6 +1247,60 @@ exit 1`)
 	}
 }
 
+// A review killed while it waits to retry is interrupted, not failed. The
+// cancel is what ended the review, so recording the attempt's own failure
+// would count an operator quit as a review the repository did not pass.
+func TestReviewCanceledDuringRetryBackoffIsInterrupted(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Hour
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", "exit 1")
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries = 1
+
+	bus := NewBus()
+	events := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(events, done)
+	// A second subscriber watches for the backoff, so the cancel lands inside
+	// it rather than racing the drain above.
+	backoff := bus.Subscribe(16)
+	inBackoff := make(chan struct{})
+	go func() {
+		for ev := range backoff {
+			if ev.Kind == EvLog && strings.HasPrefix(ev.Text, "Retrying ") {
+				close(inBackoff)
+				return
+			}
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	r, err := New(ctx, cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { <-inBackoff; cancel() }()
+	r.Run(ctx)
+	bus.Close()
+	<-done
+
+	select {
+	case <-inBackoff:
+	default:
+		t.Fatal("the review never reached its retry backoff")
+	}
+	c := r.Stats().Counts()
+	if c.Interrupted != 1 || c.Fail != 0 {
+		t.Fatalf("a review canceled mid-retry recorded %+v, want one interrupted", c)
+	}
+}
+
 // Retries are bounded: with none configured, one failure is one failure.
 func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	repo := testRepo(t)

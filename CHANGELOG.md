@@ -44,6 +44,7 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- A review canceled while it waits to retry is recorded as interrupted rather than failed, the way every other cancellation already was, so a run ended by Ctrl+C no longer reports the review that was in flight as one the repository did not pass.
 - The triage step keeps and prints a bounded number of the review names an agent proposed that no catalog holds, and each name at a bounded length, so an agent that answered with a screenful of `RELEVANT:` lines naming nothing no longer leaves a run holding every one of them and logging them without end. The log line says how many it left out.
 - The launcher's key legend keeps the keys its pane acts on at a hundred columns: it tightens the gap between segments and shortens the arrow keys' action before dropping anything, where the `a` key fell off the end and a pane that offers it showed no way to select all.
 - The launcher's catch-all group names its members instead of the group heading, so a tree carrying a review no bundled set claims composes a command line the parser accepts.
