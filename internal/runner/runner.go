@@ -45,6 +45,18 @@ type Config struct {
 	MaxReviews int
 	Runtime    time.Duration
 
+	// TokenBudget caps the tokens the run may report before it stops starting
+	// reviews, across every loop, lane, and agent. Wall clock bounds a run on
+	// a machine that is slow; it does not bound what the provider charges, and
+	// an agent that stalls can spend a full timeout's worth of tokens in
+	// seconds. Zero means unlimited.
+	//
+	// It counts the tokens the reviews report. The commit and conflict steps
+	// launch agents too and are not counted, so the ceiling is on the review
+	// schedule, which is where the multiplier (--jobs, --max-loops, a repeated
+	// review) lives.
+	TokenBudget int
+
 	// UsageCmd is a command whose stdout is the percentage of the provider's
 	// usage window already spent, and UsageLimit is the percentage at which
 	// the run stops starting reviews. Both are needed for either to apply.
@@ -315,8 +327,8 @@ func (r *Runner) Run(ctx context.Context) {
 		if ctx.Err() != nil || r.soft.Load() {
 			return
 		}
-		if r.budgetExhausted() {
-			r.log("Runtime budget exhausted, finishing up")
+		if why := r.budgetExhausted(); why != "" {
+			r.log("%s budget exhausted, finishing up", why)
 			return
 		}
 		loopNo := r.Loops() + 1
@@ -580,8 +592,19 @@ func (r *Runner) log(format string, args ...any) {
 // now is the runner's clock: the bus's injected Now, or wall time.
 func (r *Runner) now() time.Time { return r.bus.now() }
 
-func (r *Runner) budgetExhausted() bool {
-	return r.cfg.Runtime > 0 && r.now().Sub(r.st.Start) >= r.cfg.Runtime
+// budgetExhausted names the run budget that has run out, or "" while reviews
+// may still start. --runtime is the wall clock; --token-budget is the total
+// tokens recorded so far, a hot reload's predecessor included, so a ceiling
+// survives the exec that reloads the run. Both are checked at the same points:
+// before a loop, and before a review is taken.
+func (r *Runner) budgetExhausted() string {
+	if r.cfg.Runtime > 0 && r.now().Sub(r.st.Start) >= r.cfg.Runtime {
+		return "Runtime"
+	}
+	if r.cfg.TokenBudget > 0 && r.st.Tokens() >= r.cfg.TokenBudget {
+		return "Token"
+	}
+	return ""
 }
 
 // runLoopSequential reviews the working tree in place, one review at a time.
@@ -608,8 +631,8 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 			r.dropPending()
 			break
 		}
-		if r.budgetExhausted() {
-			r.log("Runtime budget exhausted, finishing up")
+		if why := r.budgetExhausted(); why != "" {
+			r.log("%s budget exhausted, finishing up", why)
 			return false
 		}
 		review, ok := r.takeNext()
@@ -773,7 +796,7 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
 			return
 		}
-		if r.budgetExhausted() {
+		if r.budgetExhausted() != "" {
 			return
 		}
 		review, ok := r.takeNext()
@@ -1026,7 +1049,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		res.Status = StatusFail
 		res.Detail = err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retryWithDifferentAgent(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		r.publishReviewEnd(res, loopNo, promptSHA, lane, number)
@@ -1255,14 +1278,14 @@ const maxBackoffDoublings = 32
 func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 
-	if ctx.Err() != nil || r.budgetExhausted() {
+	if ctx.Err() != nil || r.budgetExhausted() != "" {
 		return Result{}, false
 	}
 	if attempt < r.cfg.Retries {
 		delay := r.backoff(review, attempt)
 		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
-		if !sleepCtx(ctx, delay) || r.budgetExhausted() {
+		if !sleepCtx(ctx, delay) || r.budgetExhausted() != "" {
 			return Result{}, false
 		}
 		if !r.resetForRetry(ctx, review, wt) {
@@ -1285,6 +1308,16 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 	// the next try, so a reader sees one continuous run of attempts instead of
 	// a second sequence starting over at one.
 	return r.runReviewExcluding(ctx, review, loopNo, wt, next, firstAttempt+attempt+1, 0), true
+}
+
+// retryWithDifferentAgent hands the review straight to another agent, skipping
+// the same-agent attempts. It is for a command that would not build: the argv
+// is a pure function of the prompt and the spec, so a second build of the same
+// pair fails the same way, and only another CLI's flags can change the outcome
+// (a prompt over one CLI's argument limit is under another's).
+func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loopNo int,
+	wt *gitx.Worktree, exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
+	return r.retry(ctx, review, loopNo, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
 }
 
 // resetForRetry rewinds the checkout to what the first attempt saw before the

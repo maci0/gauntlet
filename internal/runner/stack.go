@@ -277,8 +277,8 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			r.dropPending()
 			return true
 		}
-		if r.budgetExhausted() {
-			r.log("Runtime budget exhausted, finishing up")
+		if why := r.budgetExhausted(); why != "" {
+			r.log("%s budget exhausted, finishing up", why)
 			return false
 		}
 		review, ok := r.takeNext()

@@ -46,7 +46,7 @@ var goldenFlagNames = []string{
 	"r", "raw", "resolve-conflicts", "retries", "reviews", "runtime",
 	"s", "seed", "semcode", "show-prompt", "stacked-prs", "stream", "suggest",
 	"suggest-agent", "suggest-timeout",
-	"t", "target-dirs", "timeout", "tui",
+	"t", "target-dirs", "timeout", "token-budget", "tui",
 	"update-repo", "usage-cmd", "usage-limit",
 	"version",
 	"x",

@@ -171,6 +171,19 @@ func (s *Stats) Counts() Counts {
 	return c
 }
 
+// Tokens is every token the run has recorded, including results a predecessor
+// process seeded. A token budget reads it, so a hot reload continues the same
+// ceiling instead of handing itself a fresh one.
+func (s *Stats) Tokens() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, r := range s.results {
+		n += r.Tokens
+	}
+	return n
+}
+
 // Totals sums lines changed, tokens reported, and agent wall time.
 func (s *Stats) Totals() (ins, del, tokens int, agentTime time.Duration, timed int, haveLines bool) {
 	s.mu.Lock()

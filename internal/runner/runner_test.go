@@ -2542,3 +2542,89 @@ exit 1`)
 			ends[0].Attempt, starts[1].Attempt)
 	}
 }
+
+// A run's wall clock bounds how long it may take, not what the provider
+// charges: an agent that stalls can spend a whole timeout's tokens in seconds.
+// --token-budget is the other bound, and it has to stop the schedule rather
+// than only report, so a loop of expensive reviews cannot run away.
+func TestTokenBudgetStopsTheSchedule(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		budget  int
+		started int
+	}{
+		{name: "unlimited", budget: 0, started: 3},
+		{name: "after the first pair", budget: 1500, started: 2},
+		{name: "before the first", budget: 500, started: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := testRepo(t)
+			set, _ := promptSet(t, "a-review", "b-review", "c-review")
+			bin := fakeAgent(t, t.TempDir(), "chatty", `echo "Total tokens: 1000"`)
+			cfg := baseConfig(t, dir, set, []string{"a-review", "b-review", "c-review"}, bin)
+			cfg.TokenBudget = tc.budget
+
+			r, events := runRecorded(t, cfg)
+			if n := countKind(events, EvReviewStart); n != tc.started {
+				t.Fatalf("started %d reviews, want %d", n, tc.started)
+			}
+			if c := r.Stats().Counts(); c.OK != tc.started {
+				t.Fatalf("counts: %+v, want %d ok", c, tc.started)
+			}
+			if tc.budget == 0 {
+				return
+			}
+			// The review that crossed the ceiling still finished, and the
+			// merge step still ran: the budget stops what starts next.
+			for _, ev := range events {
+				if ev.Kind == EvLog && strings.Contains(ev.Text, "Token budget exhausted") {
+					return
+				}
+			}
+			t.Fatal("the run did not say the token budget was exhausted")
+		})
+	}
+}
+
+// A command that would not build is a pure function of the prompt and the
+// spec: building it again on the same agent fails the same way, and the wait
+// before each try only makes the failure slower. The fallback still runs,
+// because a prompt over one CLI's argument limit fits another's.
+func TestBuildFailureGoesStraightToTheFallbackAgent(t *testing.T) {
+	dir := testRepo(t)
+	prompts := t.TempDir()
+	body := "Your goal is to test big-review.\n" + strings.Repeat("padding. ", 20000)
+	if err := os.WriteFile(filepath.Join(prompts, "big-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set, _, err := Discover(t, prompts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := fakeAgent(t, t.TempDir(), "ok", "echo done")
+	cfg := baseConfig(t, dir, set, []string{"big-review"}, bin)
+	cfg.Agents = []agent.Spec{{Tool: "claude"}, {Tool: "codex"}}
+	cfg.Bin["codex"] = bin
+	cfg.Retries = 2
+
+	r, events := runRecorded(t, cfg)
+	if n := countKind(events, EvReviewStart); n != 0 {
+		t.Fatalf("launched %d attempts for a prompt that does not fit on argv", n)
+	}
+	var retries []string
+	for _, ev := range events {
+		if ev.Kind == EvLog && strings.HasPrefix(ev.Text, "Retrying ") {
+			retries = append(retries, ev.Text)
+		}
+	}
+	if len(retries) != 1 || !strings.Contains(retries[0], "with another agent") {
+		t.Fatalf("retries: %q, want the fallback and nothing else", retries)
+	}
+	res := r.Stats().Results()
+	if len(res) != 1 || res[0].Status != StatusFail {
+		t.Fatalf("results: %+v, want one failure", res)
+	}
+	if res[0].Detail == "" {
+		t.Fatal("the failure carried no detail: the operator cannot see why it could not launch")
+	}
+}

@@ -256,3 +256,15 @@ func TestStatsSurvivesConcurrentUse(t *testing.T) {
 		t.Fatalf("counters lost under concurrency: runs=%d fails=%d", runs, fails)
 	}
 }
+
+func TestTokensCountsCarriedOverResults(t *testing.T) {
+	// A hot reload continues the same run, so a token budget read here must
+	// include what the predecessor already spent.
+	st := &Stats{Start: time.Now()}
+	st.Add(Result{Review: "b-review", Tokens: 250})
+	st.Seed([]Result{{Review: "a-review", Tokens: 700}}, 0, 0)
+
+	if got := st.Tokens(); got != 950 {
+		t.Fatalf("Tokens() = %d, want 950", got)
+	}
+}

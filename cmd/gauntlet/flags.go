@@ -65,6 +65,7 @@ type options struct {
 	dirs             []string
 	timeout          time.Duration
 	runtime          time.Duration
+	tokenBudget      int
 	usageCmd         string
 	usageArgv        []string
 	usageLimit       float64
@@ -332,6 +333,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
 	})
 	fs.Var(durationFlag{d: &o.runtime, allowZero: true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
+	fs.IntVar(&o.tokenBudget, "token-budget", 0,
+		"stop starting reviews once the run's agents have reported this many tokens in total (0 = unlimited)")
 	fs.StringVar(&o.usageCmd, "usage-cmd", "",
 		"command printing the percentage of the provider's usage window already spent, for --usage-limit")
 	fs.Float64Var(&o.usageLimit, "usage-limit", 0,
