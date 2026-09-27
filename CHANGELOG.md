@@ -17,6 +17,7 @@ minor instead and were listed under Changed.
 - `--token-budget N` stops a run once its agents have reported N tokens in total, so a stalled agent that spends a whole timeout's tokens in seconds is bounded by what it costs as well as by how long it takes. Zero is unlimited, the default.
 - `gauntlet doctor` names the state root in use and whether it came from `GAUNTLET_HOME` or `$HOME`, printed before the verdict so a box with no agent CLI still shows it.
 - `--keep-runs N` bounds the run history: at the end of a run, journals and index rows past the newest `N` (200 by default, 0 keeps all) are deleted, and day directories left empty are removed. Nothing deleted the state tree before, so it kept one file per run for the life of the install.
+- `make host-artifact` prints the path `make dist` uses for the binary built for the current host, so the release smoke tests resolve the asset name from one place instead of restating it in each workflow.
 
 ### Security
 
@@ -31,6 +32,7 @@ minor instead and were listed under Changed.
 
 - `prompt-review` looks for prompts in the three places a loader can supply them (the project tree, an operator's prompt directory, a runner's compiled set) instead of skipping a repository that keeps no prompt file of its own, tells the agent to register a prompt it creates where the loader looks for it, and no longer asks it to add a missing data-not-instructions line to a prompt the runner already composes one into.
 - A review whose agent command would not build goes straight to the fallback agent instead of spending its retries on an argv that would fail the same way every time.
+- `make repro` proves byte-identical output for every platform in `PLATFORMS`, not only the host's, and `make release` runs `make check` so a tag cannot publish a tree that fails `gofmt` or `go vet` under any of the three shipped tag sets.
 - A run listing shows `n/a` instead of `+0/-0` when the run's line counts could not be attributed, so a run with no counts no longer reads like a run that changed nothing.
 - A retry handed to a different agent continues the attempt sequence instead of restarting it, and `review_end` now carries the attempt it closes, so every outcome in a journal pairs with the launch that produced it.
 - Report a run's reviews in review-name order rather than the order parallel lanes happened to finish in, so a replayed seed prints the same result and pull-request list every time.

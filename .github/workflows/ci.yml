@@ -104,12 +104,14 @@ jobs:
       # start would pass dist and fail only when a tag runs the release smoke
       # test. Stamp is VERSION=ci, the same value dist just used.
       - run: |
-          got="$(dist/gauntlet_ci_linux_amd64 version)"
-          echo "$got"
+          binary="$(make --no-print-directory host-artifact VERSION=ci)"
+          got="$("$binary" version)"
+          echo "$binary: $got"
           if [ "$got" != "gauntlet ci" ]; then
-            echo "smoke test failed: binary reports \"$got\", want \"gauntlet ci\"" >&2
+            echo "smoke test failed: $binary reports \"$got\", want \"gauntlet ci\"" >&2
             exit 1
           fi
       # A reproducibility claim nobody tests is decoration: same source, two
-      # paths, different locale and TZ, must give byte-identical binaries.
+      # paths, different locale and TZ, must give byte-identical binaries, for
+      # every platform dist ships.
       - run: make repro

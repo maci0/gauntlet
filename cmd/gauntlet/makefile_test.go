@@ -265,6 +265,52 @@ func TestMakefileFmtScriptsTarget(t *testing.T) {
 	}
 }
 
+// The asset name has three would-be sources of truth: the Makefile's dist
+// target, the two release workflows' smoke tests, and the runtime lookup in
+// internal/selfupdate. The workflows must ask the Makefile, or a rename
+// leaves a job running a path that no longer exists.
+func TestReleaseSmokeTestsAskTheMakefileForTheAsset(t *testing.T) {
+	root := moduleRoot(t)
+	for _, workflow := range []string{"ci.yml", "release.yml"} {
+		t.Run(workflow, func(t *testing.T) {
+			text := readRepoFile(t, filepath.Join(root, ".github", "workflows", workflow))
+			if !strings.Contains(text, "make --no-print-directory host-artifact VERSION=") {
+				t.Errorf("%s: the smoke test must resolve the binary with `make host-artifact`, not spell out the asset name", workflow)
+			}
+			if strings.Contains(text, "gauntlet_${version}_linux_amd64") || strings.Contains(text, "dist/gauntlet_ci_linux_amd64") {
+				t.Errorf("%s: the smoke test restates the asset name; make host-artifact owns it", workflow)
+			}
+		})
+	}
+}
+
+// make host-artifact must print a path dist actually built, or the smoke
+// tests that consume it fail on a file that was never produced.
+func TestHostArtifactNamesABinaryDistBuilds(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "host-artifact", "VERSION=1.2.3", "GO=go")
+	cmd.Dir = moduleRoot(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make host-artifact: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if want := filepath.Join("dist", "gauntlet_1.2.3_"+runtime.GOOS+"_"+runtime.GOARCH); got != want {
+		t.Fatalf("make host-artifact = %q, want %q", got, want)
+	}
+}
+
+// The race suite compiles the tree but never vets it or checks its
+// formatting, so a release gate that runs only the tests can publish a tag
+// that `make ci` rejects.
+func TestReleaseRunsCheck(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "\nrelease: check test dist ##") {
+		t.Fatal("make release must run check as well as the tests and dist")
+	}
+}
+
 // Release artifacts must generate inventory names relative to the dist
 // directory without leaking build directory paths into sbom.txt.
 func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {

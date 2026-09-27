@@ -14,8 +14,9 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    # Full race suite plus four-platform cross-compilation, with room to spare;
-    # bounded so a hung step cannot sit on the tag for hours.
+    # Formatting, vet, the full race suite, and four-platform
+    # cross-compilation, with room to spare; bounded so a hung step cannot sit
+    # on the tag for hours.
     timeout-minutes: 60
     # The job token can create releases. Keep it out of the environment for
     # checkout, setup-go, `make release` (which runs the test suite), and the
@@ -65,10 +66,11 @@ jobs:
       - name: Smoke-test what would be published
         run: |
           version="${GITHUB_REF_NAME#v}"
-          got="$(dist/gauntlet_${version}_linux_amd64 version)"
-          echo "$got"
+          binary="$(make --no-print-directory host-artifact VERSION="$version")"
+          got="$("$binary" version)"
+          echo "$binary: $got"
           if [ "$got" != "gauntlet $version" ]; then
-            echo "smoke test failed: binary reports \"$got\", want \"gauntlet $version\"" >&2
+            echo "smoke test failed: $binary reports \"$got\", want \"gauntlet $version\"" >&2
             exit 1
           fi
           (cd dist && sha256sum -c checksums.txt)

@@ -287,10 +287,16 @@ func TestReleaseRejectsEmptyNotes(t *testing.T) {
 	}
 }
 
+// The dist job must run the host binary it just built, not only link it. The
+// path comes from `make host-artifact` rather than a literal, so the job asks
+// the Makefile which asset it produced instead of restating the name.
 func TestDistJobSmokeTestsHostBinary(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
-	if !strings.Contains(text, "gauntlet_ci_linux_amd64 version") {
-		t.Fatal("dist job must run the host binary it just built, not only link it")
+	if !strings.Contains(text, "make --no-print-directory host-artifact VERSION=ci") {
+		t.Fatal("dist job must resolve the binary it just built with `make host-artifact`")
+	}
+	if !strings.Contains(text, `got="$("$binary" version)"`) {
+		t.Fatal("dist job must run the binary it resolved, not only link it")
 	}
 }
 

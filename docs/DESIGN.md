@@ -68,9 +68,10 @@ uses it for unknown commands and flags too.
 the one resolver of the state root, the last for the durable-write helpers
 that keep an atomic replace, a stale-temp sweep, or the reload handoff from
 tearing, the same durable directory flush the journal's own rename-based
-writes need. `gauntlethome` imports nothing, so the direction stays
-downward. Nothing inside `internal/` imports `ui`, so the loop runs headless
-with zero TUI cost. `cmd/gauntlet` pins this graph.
+writes need. `selfupdate` hands a run off through a file in that root and
+fsyncs the directory with the same helper. `gauntlethome` imports nothing, so
+the direction stays downward. Nothing inside `internal/` imports `ui`, so the
+loop runs headless with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 
@@ -423,8 +424,8 @@ The one input that cannot be normalized is the toolchain: a binary records
 the compiler version, so reproducing a release byte-for-byte means checking
 out the tag with a clean tree and the Go version the `go` line in `go.mod`
 names. `make repro` proves the rest on every CI run by building twice and
-comparing; the second build strips the locale the Makefile pins, so it runs
-under the host's ambient one.
+comparing, for each platform in `PLATFORMS`; the second build strips the
+locale the Makefile pins, so it runs under the host's ambient one.
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 five seconds and requires two immediately consecutive identical readings

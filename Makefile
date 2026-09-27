@@ -240,12 +240,25 @@ dist: ## build every release platform into dist/
 			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) || exit 1; \
 	done
 
+# The one place a release asset's name is computed. `gauntlet update` derives
+# the same name from GOOS/GOARCH at runtime (internal/selfupdate), and both
+# release workflows used to spell it out again in shell; asking the Makefile
+# means a renamed asset fails one test rather than a job pointing at a file
+# that no longer exists.
+.PHONY: host-artifact
+host-artifact: ## print the path dist/ uses for the binary built for this host
+	@echo "$(DIST)/$(BINARY)_$(VERSION)_$$($(GO) env GOOS)_$$($(GO) env GOARCH)"
+
+# `check` is a prerequisite, not a separate CI step: the test suite compiles
+# the tree but never vets it or checks its formatting, so without it a tag
+# could ship a binary built from a tree that `make ci` rejects.
+#
 # if/else, not `cmd && sum || fallback`: a sha256sum that exists but fails
 # mid-list would otherwise fall through to shasum and append a second,
 # conflicting copy of the entries to checksums.txt.
 .PHONY: release
-release: test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
-	@if command -v sha256sum >/dev/null 2>&1; then \
+release: check test dist ## build every platform and write dist/checksums.txt and dist/sbom.txt
+	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
 		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
@@ -266,7 +279,9 @@ release: test dist ## build every platform and write dist/checksums.txt and dist
 # second build really does see the host's locale; TZ is genuinely ambient
 # either way. The tree is archived to a file then extracted twice: a tar pipe
 # would hide a failing create behind a successful extract (POSIX sh has no
-# pipefail). CI runs it on every push.
+# pipefail). Every platform in PLATFORMS is checked, not just the host's:
+# those are the binaries `dist` ships, and a reproducibility claim that covers
+# one of four proves nothing about the other three. CI runs it on every push.
 REPRO_DIR ?= $(HOME)/.cache/gauntlet/repro
 
 .PHONY: repro
@@ -281,11 +296,14 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		for side in a b; do \
 			tar -C "$(REPRO_DIR)/$$side" -xf "$(REPRO_DIR)/src.tar" || exit 1; \
 		done && \
-		echo "repro: copy a (LC_ALL=C TZ=UTC)" && \
-		(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 TZ=UTC LC_ALL=C \
-			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
-		echo "repro: copy b (ambient locale and TZ)" && \
-		(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 env -u LC_ALL \
-			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY)_linux_amd64 $(CMD)) && \
-		cmp "$(REPRO_DIR)/a/$(BINARY)_linux_amd64" "$(REPRO_DIR)/b/$(BINARY)_linux_amd64" && \
+		for target in $(PLATFORMS); do \
+			goos=$${target%/*}; goarch=$${target#*/}; \
+			echo "repro: $$target copy a (LC_ALL=C TZ=UTC)" && \
+			(cd "$(REPRO_DIR)/a" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) && \
+			echo "repro: $$target copy b (ambient locale and TZ)" && \
+			(cd "$(REPRO_DIR)/b" && CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) && \
+			cmp "$(REPRO_DIR)/a/$(BINARY)" "$(REPRO_DIR)/b/$(BINARY)" || exit 1; \
+		done && \
 		echo "repro: identical bytes from different paths, locales, and timezones"
