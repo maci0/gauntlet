@@ -1396,3 +1396,38 @@ func TestPickFilterTypingShowsPromptEvenWithNoMatches(t *testing.T) {
 		t.Fatalf("typing mode should indicate no matches, got %q", status)
 	}
 }
+
+// The key legend names what the keys do in the pane that has the keyboard.
+// The run pane shows switches rather than a selection, so a does nothing
+// there: advertising it is naming a dead key. The reviews and agent panes do
+// have something to take, and keep it.
+func TestKeyLegendDropsTheDeadAllNoneKeyInTheRunPane(t *testing.T) {
+	p := demoPicker()
+	p.focus = paneOptions
+	got := stripANSI(p.renderKeys())
+	if strings.Contains(got, "all/none") {
+		t.Fatalf("the run pane advertises a dead key: %s", got)
+	}
+	for _, want := range []string{"⏎:run", "q:cancel", "space:toggle", "+/-:concurrency"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the run pane legend lost %q: %s", want, got)
+		}
+	}
+	for _, focus := range []pane{paneReviews, paneAgents} {
+		p.focus = focus
+		if got := stripANSI(p.renderKeys()); !strings.Contains(got, "a:all/none") {
+			t.Fatalf("pane %d lost a:all/none: %s", focus, got)
+		}
+	}
+	// A live filter keeps its place in the legend, so esc clears it from any
+	// pane that offers the key.
+	p.focus = paneOptions
+	p.filter = "sec"
+	got = stripANSI(p.renderKeys())
+	if !strings.Contains(got, "esc:clear") {
+		t.Fatalf("a filtered legend lost esc:clear: %s", got)
+	}
+	if strings.Contains(got, "all/none") {
+		t.Fatalf("a filtered run pane advertises a dead key: %s", got)
+	}
+}

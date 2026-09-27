@@ -1083,6 +1083,7 @@ type keyHint struct{ k, v string }
 // move between rows or leave is stranded, so those come before niceties like
 // bulk selection. What fits is what is shown, never clipped mid-name.
 func (p *picker) renderKeys() string {
+	type keyHint struct{ k, v string }
 	arrowAction := "open/close"
 	switch p.focus {
 	case paneOptions:
@@ -1093,7 +1094,14 @@ func (p *picker) renderKeys() string {
 	keys := []keyHint{
 		{"⏎", "run"}, {"q", "cancel"}, {"j/k", "move"},
 		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
-		{"/", "filter"}, {"+/-", "concurrency"}, {"a", "all/none"},
+		{"/", "filter"}, {"+/-", "concurrency"},
+	}
+	// a fills or empties what the focused pane is showing. The run pane shows
+	// switches rather than a selection, so there is nothing there for it to
+	// take: the key is left off rather than advertised as one that does
+	// nothing. The dashboard's legend drops dead keys the same way.
+	if p.focus != paneOptions {
+		keys = append(keys, keyHint{"a", "all/none"})
 	}
 	switch {
 	case p.typing:

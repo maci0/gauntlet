@@ -31,6 +31,8 @@ minor instead and were listed under Changed.
 
 ### Fixed
 
+- The dashboard footer keeps the run's diff, token, and budget readings on a terminal too narrow to hold them beside the key legend: it drops whole readings from the right end and marks the ones that cannot fit, where it used to drop all of them with no sign they had been there.
+- The dashboard's agent panel drops a whole counter column on a narrow terminal instead of cutting one at the pane edge, so a token total is no longer drawn truncated (`◌ 11` standing in for `11,111,110`) and a counter is never clipped mid-label.
 - A run journal rebuilt after a crash no longer records a zero exit code for a run that never closed; `exit_code` is absent until a clean `Close` records it.
 - A review that ends with a status this build does not recognize reconciles into a new `other` index bucket, so every review a rebuilt summary counts lands in exactly one bucket and the FAILED column keeps explaining the exit code.
 - The usage-limit probe runs once per review a lane actually starts, and not at all on the way out, so a cancelled or finished loop no longer waits out concurrent probes.

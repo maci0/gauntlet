@@ -974,6 +974,88 @@ func TestFooterKeepsHelpAndPauseWhileStatsGrow(t *testing.T) {
 	}
 }
 
+// The readings do not vanish whole when the legend takes the line: the
+// footer is the only place the run's diff and token totals are drawn, and a
+// tally that goes blank reads as a zero rather than as one that did not fit.
+// Whole segments drop from the right end instead, in the order they matter.
+func TestFooterKeepsReadingsAtCommonWidths(t *testing.T) {
+	m := newModel(demoConfig())
+	m.h, m.ready = 30, true
+	m.haveLines = true
+	m.ins, m.del = 120, 30
+	m.tokens, m.thinking = 123456, 12345
+	m.cfg.Budget = 4 * time.Hour
+	m.now = m.cfg.Started.Add(time.Hour)
+	for _, w := range []int{120, 110, 100, 90, 80} {
+		m.w = w
+		footer := lastLine(stripANSI(m.renderFooter()))
+		if !strings.Contains(footer, "+120/-30 lines") {
+			t.Fatalf("a %d column footer lost the diff:\n%s", w, footer)
+		}
+		if lipgloss.Width(footer) > w {
+			t.Fatalf("a %d column footer is %d wide:\n%s", w, lipgloss.Width(footer), footer)
+		}
+	}
+}
+
+// A line too narrow even for the first reading says so. Silence there is
+// indistinguishable from a run that has changed nothing yet.
+func TestFooterMarksReadingsThatCannotFit(t *testing.T) {
+	segs := []string{styleValue.Render("1,234 tok"), styleDim.Render(" budget")}
+	if got := fitRight(segs, 3); !strings.Contains(stripANSI(got), "…") {
+		t.Fatalf("narrow footer readings %q, want a marked absence", stripANSI(got))
+	}
+	if got := fitRight(segs, 0); got != "" {
+		t.Fatalf("a footer with no room drew %q", got)
+	}
+	if got := fitRight(nil, 40); got != "" {
+		t.Fatalf("a run with nothing measured drew %q", got)
+	}
+}
+
+// A lane's counters are the panel's content, so a pane too narrow for them
+// drops a whole column rather than cutting one: "11,111,110" shortened to
+// "11" is a false reading, and a half-written label is not a label.
+func TestLaneCountersDropWholeColumnsWhenNarrow(t *testing.T) {
+	m := newModel(demoConfig())
+	m.now = time.Date(2026, 8, 25, 0, 2, 0, 0, time.UTC)
+	l := m.lane("claude")
+	l.review, l.start = "perf-review", m.now.Add(-90*time.Second)
+	l.done, l.failed, l.tokens, l.thinkTokens = 33, 11, 4567890, 9876543
+	l.tokenRate, l.liveThinking, l.lastThinkAt = 12345, 1234567, m.now
+	for _, w := range []int{56, 60, 74, 90, 116, 140} {
+		row := stripANSI(firstLine(m.renderLanes(w, 8)))
+		if strings.Contains(row, "…") {
+			t.Fatalf("a %d column lane cut a value: %s", w, row)
+		}
+		for _, label := range []string{"do", "fa", "to"} {
+			if strings.Contains(row, label+" ") {
+				t.Fatalf("a %d column lane drew a half-label %q: %s", w, label, row)
+			}
+		}
+		if lipgloss.Width(stripANSI(m.renderLanes(w, 8))) > 0 && w < 56 {
+			t.Fatalf("a %d column lane overflows", w)
+		}
+	}
+	// The widest pane still shows every column, and the narrowest still shows
+	// what finished, which is the one counter a reader cannot do without.
+	wide := stripANSI(firstLine(m.renderLanes(140, 8)))
+	for _, want := range []string{"33 done", "11 fail", "4,567,890 tok", "12.3k/s", "11,111,110"} {
+		if !strings.Contains(wide, want) {
+			t.Fatalf("a wide lane lost %q:\n%s", want, wide)
+		}
+	}
+	narrow := stripANSI(firstLine(m.renderLanes(56, 8)))
+	if !strings.Contains(narrow, "33 done") {
+		t.Fatalf("a 56 column lane lost the done count:\n%s", narrow)
+	}
+}
+
+func firstLine(s string) string {
+	lines := strings.Split(s, "\n")
+	return lines[0]
+}
+
 func lastLine(s string) string {
 	lines := strings.Split(s, "\n")
 	return lines[len(lines)-1]

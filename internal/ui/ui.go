@@ -866,16 +866,20 @@ func (m *model) renderLanes(w, h int) string {
 	}
 	revW := 20
 	meterW := 12
-	const (
-		elapsedW = 7
-		statsW   = 52
-	)
+	elapsedW, statsW := 7, 52
 	if w < 90 {
 		revW = 14
 		meterW = 8
 		if len(m.cfg.Dirs) == 1 {
 			nameW = 12
 		}
+	}
+	if w < 74 {
+		// The narrowest tier gives the fixed columns room for the counters,
+		// which are what the panel is read for. The meter is the first thing
+		// to lose width: it reads from its own length, so a shorter one is
+		// still a correct meter, just a smaller one.
+		nameW, revW, meterW, elapsedW, statsW = 10, 12, 6, 5, 0
 	}
 	rows := make([]string, 0, h)
 	// A lane that does not fit is announced, not dropped: an agent missing
@@ -912,36 +916,28 @@ func (m *model) renderLanes(w, h int) string {
 			}
 			work = pad(styleValue.Render(trim(name, revW)), revW) + " " +
 				meter(frac, meterW, hue) + " " +
-				pad(styleDim.Render(humanize.Duration(m.now.Sub(l.start))), elapsedW)
+				pad(styleDim.Render(trim(humanize.Duration(m.now.Sub(l.start)), elapsedW)), elapsedW)
 		} else {
 			work = pad(styleDim.Render("idle"), revW) + " " +
 				styleTrack.Render(strings.Repeat("▱", meterW)) + " " +
 				strings.Repeat(" ", elapsedW)
 		}
 
-		tokens := humanize.Count(l.tokens + l.liveTokens)
-		rate := ""
-		if l.tokenRate > 0 {
-			rate = "  " + styled(hue, fmtRate(l.tokenRate)+"/s")
-		}
-		// Reasoning: the share of output the model spent before writing
-		// anything, and a marker while it is still spending it.
-		think := ""
-		if t := l.thinkTokens + l.liveThinking; t > 0 {
-			think = "  " + styleThink.Render(thinkGlyph(m.now, l.lastThinkAt)+" "+humanize.Count(t))
-		}
-		statLine := fmt.Sprintf("%s done  %s fail  %s tok%s%s",
-			styleValue.Render(fmt.Sprint(l.done)),
-			failStyle(l.failed).Render(fmt.Sprint(l.failed)),
-			styleDim.Render(tokens), rate, think)
-		stats := pad(statLine, statsW)
-		if w < 90 {
-			stats = statLine
-		}
-
-		row := pad(styled(hue, trim(label, nameW)), nameW) + " " + work + "  " + stats
-		if sparkW := w - lipgloss.Width(row) - 2; sparkW > 4 {
-			row += "  " + chart(l.lines, sparkW, 1)
+		prefix := pad(styled(hue, trim(label, nameW)), nameW) + " " + work + "  "
+		// The counters are built by priority into the room the prefix leaves,
+		// so a narrow pane leaves out the reasoning share whole rather than
+		// cutting its token count to "◌ 11": a number that reads as a
+		// measurement and is not one is worse than no number.
+		statW := w - lipgloss.Width(prefix) - 2
+		statLine, dropped := laneStats(m, l, hue, statW)
+		// The counters keep a fixed column wherever there is room for it, so
+		// the eye learns where each number lives and the sparkline starts at
+		// the same place on every lane.
+		row := prefix + pad(statLine, min(statsW, max(statW, 0)))
+		if !dropped {
+			if sparkW := statW - min(statsW, max(statW, 0)); sparkW > 4 {
+				row += "  " + chart(l.lines, sparkW, 1)
+			}
 		}
 		rows = append(rows, clip(row, w))
 	}
@@ -949,6 +945,35 @@ func (m *model) renderLanes(w, h int) string {
 		rows = append(rows, clip(styleFaint.Render(fmt.Sprintf("+%d more agents", hiddenLanes)), w))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// laneStats is one lane's counters, most important first: what finished, what
+// broke, what it cost, then the measured rate, then the reasoning share. A
+// segment that does not fit is left out whole, and dropped says so, because a
+// count cut to a few digits is a false reading rather than a missing one.
+func laneStats(m *model, l *laneState, hue lipgloss.AdaptiveColor, w int) (string, bool) {
+	segs := []string{
+		styleValue.Render(fmt.Sprint(l.done)) + styleDim.Render(" done"),
+		failStyle(l.failed).Render(fmt.Sprint(l.failed)) + styleDim.Render(" fail"),
+		styleDim.Render(humanize.Count(l.tokens+l.liveTokens)) + styleDim.Render(" tok"),
+	}
+	if l.tokenRate > 0 {
+		segs = append(segs, styled(hue, fmtRate(l.tokenRate)+"/s"))
+	}
+	// Reasoning: the share of output the model spent before writing anything,
+	// and a marker while it is still spending it. It is drawn subordinate to
+	// the counters, so it is the first one a narrow pane gives up.
+	if t := l.thinkTokens + l.liveThinking; t > 0 {
+		segs = append(segs, styleThink.Render(thinkGlyph(m.now, l.lastThinkAt)+" "+humanize.Count(t)))
+	}
+	out := segs[0]
+	for _, s := range segs[1:] {
+		if lipgloss.Width(out)+2+lipgloss.Width(s) > w {
+			return out, true
+		}
+		out += "  " + s
+	}
+	return out, false
 }
 
 // thinkingStill is how long after the last growth in reasoning the glyph stops
@@ -1185,38 +1210,88 @@ func lineStyle(k normalize.Kind) lipgloss.Style {
 	}
 }
 
+// renderFooter lays the key legend against the run's readings.
+//
+// The legend is placed first and holds its ground: the keys that keep a reader
+// oriented (quit, help, pause) outlast the ones only the data hungry need, and
+// they are the only place on the screen that names the keys at all. The
+// readings take what is left, a whole segment at a time, and a line that could
+// not hold even the first says so rather than going blank: a tally that
+// disappears reads as a zero. The full pause semantics live in help; here one
+// word.
 func (m *model) renderFooter() string {
-	// Order matters under width pressure: the footer clips from its right
-	// end once the token counters grow, so the keys that keep a reader
-	// oriented (quit, help, pause) come before the ones only the data
-	// hungry need. The full pause semantics live in help; here one word.
+	legend := m.footerLegend(m.w)
+	room := m.w - lipgloss.Width(legend)
+	if lipgloss.Width(legend) > 0 {
+		room -= 2
+	}
+	return spread(legend, fitRight(m.footerReadings(), room), m.w)
+}
+
+// footerLegend is the key legend as whole segments fitted to avail columns. The
+// first segment always survives: without it a reader has no way to leave.
+func (m *model) footerLegend(avail int) string {
 	var b strings.Builder
 	for _, k := range m.footerKeys(true) {
-		b.WriteString(styleValue.Render(k.k) + styleDim.Render(":"+k.d+"  "))
+		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.d)
+		if b.Len() > 0 && lipgloss.Width(b.String())+2+lipgloss.Width(seg) > avail {
+			break
+		}
+		if b.Len() > 0 {
+			b.WriteString("  ")
+		}
+		b.WriteString(seg)
 	}
-	right := ""
+	return b.String()
+}
+
+// fitRight lays the reading segments into room, dropping whole ones from the
+// right end. A line too narrow even for the first is marked, so what did not
+// fit is visibly absent rather than silently zero.
+func fitRight(segs []string, room int) string {
+	if len(segs) == 0 || room <= 0 {
+		return ""
+	}
+	if lipgloss.Width(segs[0]) > room {
+		return styleFaint.Render("…")
+	}
+	out := segs[0]
+	for _, s := range segs[1:] {
+		if lipgloss.Width(out)+2+lipgloss.Width(s) > room {
+			break
+		}
+		out += "  " + s
+	}
+	return out
+}
+
+// footerReadings is the run's own tally, most important first: the diff, the
+// tokens, the reasoning share, the rate, then how far through the budget the
+// run is.
+func (m *model) footerReadings() []string {
+	var segs []string
 	if m.haveLines {
-		right += styleDim.Render(fmt.Sprintf("+%d/-%d lines  ", m.ins, m.del))
+		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d/-%d lines", m.ins, m.del)))
 	}
 	if m.tokens > 0 || m.liveRate > 0 {
-		right += styleValue.Render(humanize.Count(m.tokens)) + styleDim.Render(" tok")
+		segs = append(segs, styleValue.Render(humanize.Count(m.tokens))+styleDim.Render(" tok"))
 		if m.thinking > 0 && m.tokens > 0 {
 			pct := min(100, max(0, int(int64(m.thinking)*100/int64(m.tokens))))
-			right += styleThink.Render(fmt.Sprintf("  ◌ %d%% think", pct))
+			segs = append(segs, styleThink.Render("◌ "+fmt.Sprint(pct)+"% think"))
 		}
 		switch {
 		case m.liveRate > 0:
 			// Measured from what the agents report as they stream.
-			right += "  " + styleValue.Render(fmtRate(m.liveRate)) + styleDim.Render(" tok/s live")
+			segs = append(segs, styleValue.Render(fmtRate(m.liveRate))+styleDim.Render(" tok/s live"))
 		case m.agentTime >= time.Second && m.tokens > 0:
-			right += styleDim.Render(fmt.Sprintf("  ~%s tok/s avg", fmtRate(float64(m.tokens)/m.agentTime.Seconds())))
+			segs = append(segs, styleDim.Render("~"+fmtRate(float64(m.tokens)/m.agentTime.Seconds())+" tok/s avg"))
 		}
 	}
 	if m.cfg.Budget > 0 {
 		frac := m.now.Sub(m.cfg.Started).Seconds() / m.cfg.Budget.Seconds()
-		right += "  " + meter(frac, 10, heatColor(frac)) + styleDim.Render(" budget")
+		segs = append(segs, meter(frac, 10, heatColor(frac))+styleDim.Render(" budget"))
 	}
-	return spread(b.String(), right, m.w)
+	return segs
 }
 
 // renderMinimal is the small-terminal fallback. It keeps what answers "is it

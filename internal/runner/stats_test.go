@@ -193,8 +193,8 @@ func TestResultsOrderIndependentOfCompletionOrder(t *testing.T) {
 	forward.Add(Result{Review: "aa-review", Status: StatusFail, Detail: "loop two"})
 
 	backward := &Stats{Start: time.Now()}
-	for i := len(reviews) - 1; i >= 0; i-- {
-		backward.Add(Result{Review: reviews[i], Status: StatusOK})
+	for _, review := range slices.Backward(reviews) {
+		backward.Add(Result{Review: review, Status: StatusOK})
 	}
 	backward.Add(Result{Review: "aa-review", Status: StatusFail, Detail: "loop two"})
 
