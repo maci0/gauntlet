@@ -575,6 +575,25 @@ func FuzzParseTail(f *testing.F) {
 	})
 }
 
+// n is a listing limit with no upper bound, so parseTail reserves a hint rather
+// than n slots: `runs --limit 100000000` on a small index used to reserve
+// gigabytes before reading a line. The hint must still grow into the full list.
+func TestParseTailReservesAHintNotTheLimit(t *testing.T) {
+	data := []byte(`{"run_id":"20260105T000001Z-1","reviews":1}` + "\n" +
+		`{"run_id":"20260105T000002Z-2","reviews":1}` + "\n")
+
+	got, _ := parseTail(data, false, 1<<30)
+	if cap(got) > maxTailHint {
+		t.Fatalf("cap = %d for a two-line index, want at most %d", cap(got), maxTailHint)
+	}
+	if len(got) != 2 {
+		t.Fatalf("got %d summaries, want both rows back", len(got))
+	}
+	if got[0].RunID != "20260105T000002Z-2" || got[1].RunID != "20260105T000001Z-1" {
+		t.Fatalf("newest first broken at a capped hint: %q then %q", got[0].RunID, got[1].RunID)
+	}
+}
+
 func TestShardFromRunID(t *testing.T) {
 	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
 	id := NewRunID(now)
@@ -810,6 +829,34 @@ func TestHistoryCountsPerDirectory(t *testing.T) {
 	}
 	if none, err := History("/w/three"); err != nil || len(none) != 0 {
 		t.Fatalf("a directory with no runs got %v, %v", none, err)
+	}
+}
+
+// Journals are read whole, so History stops after a fixed number of matching
+// runs. The cap has to land on historyMatches: one more run is one more full
+// journal read, and the weighting it feeds is not an audit.
+func TestHistoryStopsAtTheMatchCap(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	for i := range historyMatches + 3 {
+		now := time.Date(2026, 1, 5, 0, 0, i, 0, time.UTC)
+		j, err := Open(NewRunID(now), now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j.Write(map[string]any{"ev": "review_end", "dir": "/w/cap", "review": "sec-review"})
+		if err := j.Close(Summary{Dirs: []string{"/w/cap"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := History("/w/cap")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h := got["sec-review"]; h.Runs != historyMatches {
+		t.Fatalf("sec-review in /w/cap = %+v, want %d runs and no more", h, historyMatches)
 	}
 }
 

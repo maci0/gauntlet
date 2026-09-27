@@ -830,6 +830,13 @@ func summarizeFile(runID, path string) (Summary, error) {
 // runs at ~300 bytes each, so most installs never read twice.
 const recentChunk = 256 << 10
 
+// maxTailHint bounds the slice parseTail reserves up front. n is a caller's
+// listing limit, and --limit has no upper bound, so reserving n Summary values
+// (a few hundred bytes each) made `runs --limit 100000000` reserve gigabytes
+// for an index holding a handful of rows. The cap is a hint, not a limit:
+// append grows the slice to whatever the index really holds.
+const maxTailHint = 1024
+
 // parseTail parses newline-delimited summaries out of data, newest last,
 // returning up to n of them newest first. dropFirst says whether the head of
 // data may cut a line in half (it does whenever the slice starts past byte 0).
@@ -842,7 +849,7 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 	if n <= 0 {
 		return nil, false // up to zero entries is no entries
 	}
-	out = make([]Summary, 0, n)
+	out = make([]Summary, 0, min(n, maxTailHint))
 	end := len(data)
 	for end >= 0 {
 		start := 0
