@@ -178,18 +178,38 @@ func TestDesignDocumentsLinkedModules(t *testing.T) {
 // ships, so the inventory is the union: a release covers all three.
 var shipTagSets = []string{"sqlite", "", "notoktop"}
 
+// shipTargets are the platforms a release ships, matching the assets the
+// dist target publishes. The module graph is resolved per target: a
+// transitive only the darwin build links — `ncruces/go-strftime`, reached
+// through `modernc.org/libc` — is still in a binary that ships, so the
+// inventory unions the targets instead of reporting what the host resolves.
+// Without this, the same commit passes on Linux and fails on macOS, and a row
+// added for the darwin build reads as stale on Linux.
+var shipTargets = []struct {
+	goos   string
+	goarch string
+}{
+	{"linux", "amd64"},
+	{"linux", "arm64"},
+	{"darwin", "amd64"},
+	{"darwin", "arm64"},
+}
+
 const mainModule = "github.com/maci0/gauntlet"
 
 // shippedModules returns every third-party module whose packages link into a
-// build under any shipped tag set. go.mod lists more than this: the modules
-// it requires to resolve the graph but no binary imports. The difference is
-// the point, since the linked set is what a consumer's binary contains.
+// build under any shipped tag set, on any shipped platform. go.mod lists more
+// than this: the modules it requires to resolve the graph but no binary
+// imports. The difference is the point, since the linked set is what a
+// consumer's binary contains.
 func shippedModules(t *testing.T, root string) []string {
 	t.Helper()
 	seen := make(map[string]bool)
 	for _, tags := range shipTagSets {
-		for _, mod := range linkedModules(t, root, tags) {
-			seen[mod] = true
+		for _, target := range shipTargets {
+			for _, mod := range linkedModules(t, root, tags, target.goos, target.goarch) {
+				seen[mod] = true
+			}
 		}
 	}
 	mods := slices.Sorted(maps.Keys(seen))
@@ -200,15 +220,19 @@ func shippedModules(t *testing.T, root string) []string {
 }
 
 // linkedModules reports the modules of the packages the build imports under
-// the given build tags, the main module excluded. An empty tag set is the
-// TAGS= build, and -tags= says so as explicitly as an empty string.
-func linkedModules(t *testing.T, root, tags string) []string {
+// the given build tags for the given platform, the main module excluded. An
+// empty tag set is the TAGS= build, and -tags= says so as explicitly as an
+// empty string.
+func linkedModules(t *testing.T, root, tags, goos, goarch string) []string {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-tags="+tags, "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./...")
 	cmd.Dir = root
+	// GOOS/GOARCH are the target, not the host: the release is cross-compiled
+	// with CGO_ENABLED=0, and `go list` resolves the imports that build sees.
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+goarch, "CGO_ENABLED=0")
 	out, err := cmd.Output()
 	if err != nil {
-		t.Fatalf("go list -tags=%s -deps: %v", tags, err)
+		t.Fatalf("go list -tags=%s -deps for %s/%s: %v", tags, goos, goarch, err)
 	}
 	seen := make(map[string]bool)
 	var mods []string

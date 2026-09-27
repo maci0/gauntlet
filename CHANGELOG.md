@@ -29,6 +29,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 ### Fixed
 
 - `make check` and `make repro` no longer fail on a host whose scratch directory does not exist yet. Overriding `TMPDIR` keeps it exported, so every recipe that runs the go command hands it that path, and go refuses to start when the directory is missing; a fresh macOS runner has no `$HOME/.cache`, which failed the `check` and `repro-macos` jobs.
+- The linked-module inventory is resolved for every platform a release ships instead of for the host that reads it. `ncruces/go-strftime` links through `modernc.org/libc` in the darwin build and not in the Linux one, so Linux passed and macOS failed on a row naming a module the build does link. The row is in `docs/DESIGN.md`, and the test unions the four release targets so every runner reaches the same verdict.
 
 ## 1.24.0
 

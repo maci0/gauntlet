@@ -120,16 +120,21 @@ every row, so an upgrade that changes a license fails before it ships.
 | `modernc.org/memory` | the allocator `libc` hands out | `modernc.org/libc` |
 | `modernc.org/mathutil` | bit helpers for the big-integer arithmetic in `libc` | `modernc.org/libc` |
 | `remyoudompheng/bigfft` | the transform behind the arbitrary-precision math in `libc` | `modernc.org/libc` |
+| `ncruces/go-strftime` | the strftime the pure-Go `libc` provides itself where it cannot call the platform's C library, so the darwin build links it | `modernc.org/libc` |
 | `dustin/go-humanize` | byte and time formatting inside toktop's transcript parsing | `toktop`; `-tags notoktop` drops it |
 | `google/uuid` | session identifiers toktop uses to key a transcript | `toktop`; `-tags notoktop` drops it |
 
-`go.mod` also requires `erikgeiser/coninput`, `mattn/go-localereader`,
-and `ncruces/go-strftime`, and no shipped build links them. The first two
-are imported by bubbletea's `key_windows.go`, the third by
-`modernc.org/libc`; `go mod tidy` resolves imports for every build
-configuration, including GOOS=windows, so a POSIX-only release keeps three
-requires and compiles none of them. They stay pinned and hashed in
-`go.sum`, and no package in a released binary comes from them.
+`go.mod` also requires `erikgeiser/coninput` and `mattn/go-localereader`, and
+no shipped build links them: both are imported by bubbletea's
+`key_windows.go`, and no release target is Windows. `go mod tidy` resolves
+imports for every build configuration, including GOOS=windows, so a POSIX-only
+release keeps two requires and compiles neither. They stay pinned and hashed
+in `go.sum`, and no package in a released binary comes from them. The
+inventory is the union over the platforms a release ships, not over the host
+that reads it: `ncruces/go-strftime` links in the darwin build and not in the
+Linux one, so `cmd/gauntlet/deps_test.go` resolves every target the dist
+target publishes, and a row for either platform is never read as stale on the
+other.
 
 What the hand-rolled packages replace: `humanize`, `streamjson`, and `fuzzy`
 exist because a general library for each would cost more in weight and
