@@ -32,8 +32,8 @@ also publish its changes as a linear, unmerged PR stack.
 
 | Package | Responsibility |
 |---|---|
-| `cmd/gauntlet` | flag parsing, mode dispatch, exit codes |
-| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory |
+| `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), the per-run preflight steps, and the plain reporter |
+| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.example.json`, and the usage-counter patterns in `usage.go` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
@@ -43,7 +43,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/journal` | the JSONL run log under `~/.gauntlet` |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`) every temp-file writer needs |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
-| `internal/ui` | bubbletea dashboard |
+| `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/humanize` | one formatter for durations and counts, shared by all of them |
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |

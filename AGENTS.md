@@ -92,7 +92,7 @@ names are API.
   and ImageMagick, and nothing else in the build depends on them.
 - `README.md` is the landing page: keep it short; detail belongs in `docs/`.
 - A new flag is documented in `docs/CLI.md`, the help table in
-  `cmd/gauntlet/usage.go`, `CHANGELOG.md`, and `goldenFlagNames`
+  `cmd/gauntlet/help.go`, `CHANGELOG.md`, and `goldenFlagNames`
   (`cmd/gauntlet/contract_test.go`); flags are API.
 - `docs/IDEAS.md` records what was deliberately not built, and why. Move an
   entry out of it when it ships; do not leave both.

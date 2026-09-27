@@ -45,7 +45,7 @@ func (p palette) yellow(s string) string { return p.wrap("33", s) }
 func (p palette) blue(s string) string   { return p.wrap("34", s) }
 
 // Consumer-facing environment variables this package reads. One definition,
-// so the help screen's environment section (helpEnvVars in usage.go) cannot
+// so the help screen's environment section (helpEnvVars in help.go) cannot
 // drift from what colorEnabled actually reads.
 const (
 	envNoColor       = "NO_COLOR"
