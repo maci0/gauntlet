@@ -18,14 +18,14 @@ gauntlet -j 4 -a mixed --once
 
 (The fan-out and merge-back are drawn in the [README](../README.md#how-a-run-works).)
 
-
 - Requires git and no **uncommitted changes to tracked files** (a branch is cut
   from a commit, so that work would be invisible to every review and then
   collide with its merge). Untracked files do not block the run: they are in
   nobody's way, and the run says once that they are not reviewed.
 - `--jobs N` creates **N persistent lane worktrees** under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
-  Reviews pull from a shared queue: a lane that finishes one starts the next.
+  Reviews pull from a shared queue: the schedule is split up front, so a lane
+  that finishes one starts the next assigned to it.
   Each review still gets its own branch; the lane directory stays put so later
   reviews in that lane reuse the agent's prompt cache.
 - The runner (never the agent) commits each review, then lands the branches
@@ -279,7 +279,7 @@ Several ways, and they mean different things:
 |---|---|
 | `s` on the dashboard, `SIGQUIT` (`Ctrl-\`), or the first `Ctrl-C` | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
 | A second `Ctrl-C`, or `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. One more force-kills. |
-| `q` or `esc` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q TO STOP`); any other key disarms. `q` on the help overlay closes help and does not arm the stop. Before this, a single `q` killed the run immediately. |
+| `q` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q TO STOP`); any other key disarms, and `esc` cancels an armed one. `q` on the help overlay closes help and does not arm the stop. Before this, a single `q` killed the run immediately. |
 | `--once`, `--max-loops N`, `--runtime DUR` | Planned endings, decided before the run starts. |
 | `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
 

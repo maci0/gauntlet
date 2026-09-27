@@ -6,7 +6,7 @@
 // Every external binary gauntlet launches (git, gh, a usage probe, a dsh
 // config dump, the indexer) gets its own process group so a deadline kill
 // takes children with it, a WaitDelay so a grandchild holding the pipes
-// cannot park the caller, and — when the output is captured — a cap so a
+// cannot park the caller, and, when the output is captured, a cap so a
 // hostile listing cannot fill RAM.
 package runx
 

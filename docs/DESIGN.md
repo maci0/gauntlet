@@ -231,7 +231,7 @@ baseline commit
    ├── git worktree add  lane-1   .gauntlet/worktrees/…
    └── git worktree add  lane-2   .gauntlet/worktrees/…
          N agents run concurrently, each in a stable checkout
-         scheduled review i runs in lane i%N, whichever lane is free
+         scheduled review i runs in lane i%N
    ↓
    one commit per review (runner-authored, no AI attribution)
    ↓
@@ -297,8 +297,7 @@ selected review order for a pass. A changed review contributes exactly one
 commit and becomes the base of the next changed review. `--max-loops` (default
 1; 0 is unlimited) starts each later pass in a fresh worktree cut from the
 previous pass's last published tip, so already-applied fixes stay in the tree.
-In stack mode `--max-loops` defaults to 1, unlike the rest of the CLI where it
-defaults to 0 (unlimited); an explicit `-n 0` asks for unlimited passes.
+In stack mode an explicit `-n 0` asks for unlimited passes.
 
 ```mermaid
 flowchart LR

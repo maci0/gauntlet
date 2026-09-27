@@ -16,6 +16,10 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// filterMissedMsg is what a filter that matched nothing says, in the two
+// places that have room for a sentence: the block line and the hint.
+const filterMissedMsg = "no reviews match this filter (esc clears it, / to edit)"
+
 func (p *picker) View() string {
 	if !p.ready {
 		return "\n  gauntlet is warming up…"
@@ -134,7 +138,7 @@ func (p *picker) blocked() string {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
 	}
 	if p.filterMissed(p.rows()) {
-		return "no reviews match this filter (esc clears it, / to edit)"
+		return filterMissedMsg
 	}
 	return ""
 }
@@ -150,7 +154,7 @@ func (p *picker) hint() string {
 		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
 	}
 	if p.filterMissed(p.rows()) {
-		return "no reviews match this filter (esc clears it, / to edit)"
+		return filterMissedMsg
 	}
 	switch p.focus {
 	case paneOptions:
@@ -616,7 +620,7 @@ func (p *picker) reviewPanel(w, h int) string {
 	}
 	// A filter that matches nothing hides the whole tree: without a word,
 	// silence reads as an empty prompt set rather than a search that missed.
-	// The dashboard's feed carries the same message for the same reason.
+	// The dashboard's feed carries a parallel message for the same reason.
 	if p.filterMissed(rows) {
 		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
 	}

@@ -269,8 +269,8 @@ for _, p := range agentusage.Discover() {
 }
 ```
 
-`Discover` walks `/proc`, so it lists processes on Linux; elsewhere it
-returns nothing, which callers treat as "cannot tell". `Watch` and `Rate`
+`Discover` walks `/proc` on Linux and asks `ps` and `lsof` on macOS; on
+Windows it returns nothing, which callers treat as "cannot tell". `Watch` and `Rate`
 work wherever the transcripts do.
 
 `Rate` refuses to answer without two readings and a positive span, which is the
@@ -354,7 +354,7 @@ breaks on every upgrade.
 
 ### What the probe would have to do
 
-1. Attach a uprobe on the write path and a uretprobe on the read path (the
+1. Attach an uprobe on the write path and a uretprobe on the read path (the
    buffer is only filled when the call returns).
 2. Copy the plaintext buffer into a `BPF_MAP_TYPE_PERF_EVENT_ARRAY` or ring
    buffer, in chunks bounded by the verifier's stack limits (512 bytes per

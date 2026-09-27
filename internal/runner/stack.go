@@ -49,7 +49,7 @@ func (e *StackDirtyError) DisplayPaths() []string {
 	if e == nil {
 		return nil
 	}
-	paths := append(append([]string(nil), e.Tracked...), e.Untracked...)
+	paths := slices.Concat(e.Tracked, e.Untracked)
 	return safePaths(paths)
 }
 

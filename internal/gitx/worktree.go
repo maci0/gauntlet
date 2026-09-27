@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/runx"
@@ -455,17 +456,6 @@ func (w *Worktree) SquashIn(ctx context.Context, branch string) ([]string, error
 	return paths, nil
 }
 
-// Unresolved lists which of the given paths still carry conflict markers. It
-// is the check on a resolution: an agent that stopped halfway leaves a file
-// that looks edited and still has `<<<<<<<` in it, and committing that would
-// put markers into the project's history.
-//
-// A path that is gone is resolved: deleting the file is a valid answer to a
-// delete/modify conflict. A path that cannot be read at all is evidence of
-// nothing, and reporting nothing would read as "resolved": a permissions
-// problem on a half-edited file must fail the scan rather than authorize the
-// commit. The paths inspected so far come back either way, with an error that
-// tells the caller the resolution is unverified.
 // CommitScope lists the paths CommitAll would stage in this checkout, tracked
 // and untracked alike. It is the set a conflict-marker scan has to cover: the
 // resolver edits the files git reported as conflicted, but it runs with the
@@ -478,9 +468,7 @@ func (w *Worktree) CommitScope(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("git status: %w", err)
 	}
-	out := make([]string, 0, len(ch.Tracked)+len(ch.Untracked))
-	out = append(out, ch.Tracked...)
-	return append(out, ch.Untracked...), nil
+	return slices.Concat(ch.Tracked, ch.Untracked), nil
 }
 
 // maxScanBytes bounds one file the marker scan reads whole. Everything larger
@@ -510,6 +498,17 @@ func readScanFile(name string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(f, maxScanBytes))
 }
 
+// Unresolved lists which of the given paths still carry conflict markers. It
+// is the check on a resolution: an agent that stopped halfway leaves a file
+// that looks edited and still has `<<<<<<<` in it, and committing that would
+// put markers into the project's history.
+//
+// A path that is gone is resolved: deleting the file is a valid answer to a
+// delete/modify conflict. A path that cannot be read at all is evidence of
+// nothing, and reporting nothing would read as "resolved": a permissions
+// problem on a half-edited file must fail the scan rather than authorize the
+// commit. The paths inspected so far come back either way, with an error that
+// tells the caller the resolution is unverified.
 func (w *Worktree) Unresolved(ctx context.Context, paths []string) ([]string, error) {
 	if w == nil || w.Dir == "" {
 		return nil, errors.New("nil worktree")

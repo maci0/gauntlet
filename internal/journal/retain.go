@@ -13,7 +13,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -160,7 +159,7 @@ func readAllIndex() ([]Summary, error) {
 		}
 		rows = append(rows, s)
 	}
-	if err := sc.Err(); err != nil && !errors.Is(err, io.EOF) {
+	if err := sc.Err(); err != nil {
 		return nil, err
 	}
 	return rows, nil

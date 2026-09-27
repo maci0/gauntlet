@@ -8,6 +8,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,7 +72,7 @@ func treeChanges(ctx context.Context, dir string) gitx.Changes {
 }
 
 func subjectFromChanges(ch gitx.Changes) string {
-	files := append(append([]string{}, ch.Tracked...), ch.Untracked...)
+	files := slices.Concat(ch.Tracked, ch.Untracked)
 	if len(files) == 0 {
 		return "chore: update files"
 	}
