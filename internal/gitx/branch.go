@@ -222,22 +222,26 @@ func mergeNarration(out []byte, cause error) string {
 	return runx.FirstLine(text)
 }
 
+// withDetail attaches git's first line of narration to cause. The cause stays
+// wrapped so callers can still match on it; the narration goes beside it
+// because git splits the two across streams, and it says why git stopped.
+func withDetail(cause error, out []byte) error {
+	if detail := runx.FirstLine(strings.TrimSpace(string(out))); detail != "" {
+		return fmt.Errorf("%w: %s", cause, detail)
+	}
+	return cause
+}
+
 // Push sends the current branch to its upstream. It is used after a review
 // lands, so a long run publishes as it goes instead of holding everything
 // until the end, and a failure is reported rather than fatal: the work is
 // committed either way, and the next push will carry it.
 func (r *Repo) Push(ctx context.Context) error {
 	if r == nil || !Available() {
-		return errors.New("git is not available")
+		return errGitUnavailable
 	}
 	if out, err := r.run(ctx, gitPush, "push"); err != nil {
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			return fmt.Errorf("git push: %w", err)
-		}
-		// The cause stays attached so callers can still match on it; the
-		// narration is kept beside it because git splits it across streams.
-		return fmt.Errorf("git push: %w: %s", err, runx.FirstLine(detail))
+		return withDetail(fmt.Errorf("git push: %w", err), out)
 	}
 	return nil
 }
@@ -254,15 +258,11 @@ func (r *Repo) abortRebase(ctx context.Context) {
 // decides what divergence means.
 func (r *Repo) PullRebase(ctx context.Context) error {
 	if r == nil || !Available() {
-		return errors.New("git is not available")
+		return errGitUnavailable
 	}
 	if out, err := r.run(ctx, gitPush, "pull", "--rebase"); err != nil {
 		r.abortRebase(ctx)
-		detail := strings.TrimSpace(string(out))
-		if detail == "" {
-			return fmt.Errorf("git pull --rebase: %w", err)
-		}
-		return fmt.Errorf("git pull --rebase: %w: %s", err, runx.FirstLine(detail))
+		return withDetail(fmt.Errorf("git pull --rebase: %w", err), out)
 	}
 	return nil
 }
@@ -271,18 +271,12 @@ func (r *Repo) PullRebase(ctx context.Context) error {
 // It never force-pushes: a divergent remote branch is preserved and reported.
 func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 	if r == nil || !Available() {
-		return errors.New("git is not available")
+		return errGitUnavailable
 	}
 	out, err := r.run(ctx, gitPush, "push", "--set-upstream", "--", remote,
 		"refs/heads/"+branch+":refs/heads/"+branch)
 	if err != nil {
-		// Like Push: the cause stays attached so callers can still match on
-		// it, with git's narration beside it because git splits the two
-		// across streams.
-		if detail := runx.FirstLine(strings.TrimSpace(string(out))); detail != "" {
-			return fmt.Errorf("%w: %s", err, detail)
-		}
-		return err
+		return withDetail(err, out)
 	}
 	return nil
 }
@@ -290,15 +284,12 @@ func (r *Repo) PushBranch(ctx context.Context, remote, branch string) error {
 // CanPushBranch checks new-branch permission without changing the remote.
 func (r *Repo) CanPushBranch(ctx context.Context, remote, source, branch string) error {
 	if r == nil || !Available() {
-		return errors.New("git is not available")
+		return errGitUnavailable
 	}
 	out, err := r.run(ctx, gitPush, "push", "--dry-run", "--", remote,
 		source+":refs/heads/"+branch)
 	if err != nil {
-		if detail := runx.FirstLine(strings.TrimSpace(string(out))); detail != "" {
-			return fmt.Errorf("%w: %s", err, detail)
-		}
-		return err
+		return withDetail(err, out)
 	}
 	return nil
 }

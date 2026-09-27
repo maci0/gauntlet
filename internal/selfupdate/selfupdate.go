@@ -32,6 +32,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // DefaultRepo is the GitHub repository releases are fetched from when
@@ -113,12 +115,6 @@ var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
 // maxAssetBytes bounds a download. A release binary that large is a mistake or
 // an attack, and either way should not fill the disk.
 const maxAssetBytes = 256 << 20
-
-// staleTempAge is how old a leftover .gauntlet-update-* file must be before
-// the next update removes it. The window that creates one closes when the
-// process does, so anything a day old belongs to an update that never
-// finished; the age keeps a concurrent updater's in-flight download safe.
-const staleTempAge = 24 * time.Hour
 
 // Release is the subset of a GitHub release that matters here.
 type Release struct {
@@ -250,7 +246,9 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	}
 
 	dir := filepath.Dir(self)
-	sweepStaleTemps(dir, ".gauntlet-update-", staleTempAge)
+	// A kill, an OOM, or a power cut skips every defer, so without the sweep
+	// each interrupted download leaves up to maxAssetBytes beside the binary.
+	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge)
 	tmp, err := os.CreateTemp(dir, ".gauntlet-update-*")
 	if err != nil {
 		return "", fmt.Errorf("cannot write next to %s: %w", self, err)
@@ -281,29 +279,6 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 		return "", fmt.Errorf("cannot replace %s: %w", self, err)
 	}
 	return self, nil
-}
-
-// sweepStaleTemps removes the temp files of updates that died before their
-// rename: a kill, an OOM, or a power cut skips every defer, so without this
-// each interrupted download leaves up to maxAssetBytes beside the binary.
-// Best effort by design; a sweep that cannot run must not block the update.
-func sweepStaleTemps(dir, prefix string, age time.Duration) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	cutoff := time.Now().Add(-age)
-	for _, e := range entries {
-		name := e.Name()
-		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
-			continue
-		}
-		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(dir, name))
-	}
 }
 
 // validateAssetURL ensures the URL points to an authorized GitHub release

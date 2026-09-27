@@ -139,31 +139,15 @@ func SaveState(dir, runID string, v any) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	sweepStaleHandoffs(dir)
+	// The state dir is gauntlet's own, so every regular file in it is a
+	// handoff or the temp of one that died mid-write.
+	gauntlethome.SweepStaleTemps(dir, "", gauntlethome.StaleTempAge)
 	path := filepath.Join(dir, runID+".json")
 	data, err := json.Marshal(v)
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp(dir, "."+runID+".json-*")
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	defer func() {
-		tmp.Close()
-		os.Remove(name) // no-op once the rename succeeded
-	}()
-	if _, err := tmp.Write(data); err != nil {
-		return "", err
-	}
-	if err := tmp.Sync(); err != nil {
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(name, path); err != nil {
+	if err := gauntlethome.WriteFileAtomic(dir, "."+runID+".json-*", path, data); err != nil {
 		return "", err
 	}
 	// The exec follows immediately, so a power cut in this window has to
@@ -173,17 +157,6 @@ func SaveState(dir, runID string, v any) (string, error) {
 		return "", err
 	}
 	return path, nil
-}
-
-// sweepStaleHandoffs removes handoff files whose successor never ran. The same
-// crash shape as sweepStaleTemps in selfupdate.go: a kill, an OOM, a power cut,
-// or an exec failure skips every defer, and a handoff no future process will
-// ever read is garbage. The state dir is gauntlet's own, so every regular file
-// in it is a handoff or the temp of one that died mid-write; anything older
-// than the shared retention window is a corpse. Best effort by design, like
-// the temp sweep: one that cannot run must not block the reload.
-func sweepStaleHandoffs(dir string) {
-	sweepStaleTemps(dir, "", staleTempAge)
 }
 
 // maxHandoffBytes bounds the handoff file size. A legitimate state blob is a few

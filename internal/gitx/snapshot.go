@@ -33,7 +33,7 @@ func (s Snapshot) Valid() bool {
 // touched; the tree objects sit in the object store until gc.
 func (r *Repo) Snapshot(ctx context.Context) (Snapshot, error) {
 	if r == nil || !Available() {
-		return Snapshot{}, errors.New("git is not available")
+		return Snapshot{}, errGitUnavailable
 	}
 	head, err := r.Tip(ctx, "HEAD")
 	if err != nil || !isHex(head) {
@@ -61,7 +61,7 @@ func (r *Repo) Snapshot(ctx context.Context) (Snapshot, error) {
 // (`git clean -fd`); ignored files stay, matching ResetToBase.
 func (r *Repo) Restore(ctx context.Context, s Snapshot) error {
 	if r == nil || !Available() {
-		return errors.New("git is not available")
+		return errGitUnavailable
 	}
 	if !s.Valid() {
 		return errors.New("invalid snapshot")

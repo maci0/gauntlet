@@ -81,22 +81,12 @@ func toolsFor(review string) prompt.Tools {
 
 // dryRun prints the planned schedule without launching anything.
 func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opts *options) error {
-	var werr error
-	write := func(format string, args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintf(out, format, args...)
-		}
-	}
-	writeln := func(args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintln(out, args...)
-		}
-	}
+	w := errWriter{out: out}
 	for _, d := range runs {
 		if len(runs) > 1 {
-			write("\n%s\n", pal.bold(d.dir))
+			w.printf("\n%s\n", pal.bold(d.dir))
 		}
-		writeln(pal.bold("Dry run") + pal.dim(": planned schedule for one loop"))
+		w.println(pal.bold("Dry run") + pal.dim(": planned schedule for one loop"))
 		names := append([]string(nil), d.reviews...)
 		capped := opts.maxReviews > 0 && opts.maxReviews < len(d.reviews)
 		if opts.stackedPRs {
@@ -118,19 +108,19 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			if rev.IsProject() {
 				origin = " [project]"
 			}
-			write("  %s%s\n", padCells(n, col+1), origin)
+			w.printf("  %s%s\n", padCells(n, col+1), origin)
 		}
-		writeln()
+		w.println()
 		repeats := len(d.reviews) - len(uniq(d.reviews))
 		extra := ""
 		if repeats > 0 {
 			extra = fmt.Sprintf(" (%d extra from repeats)", repeats)
 		}
 		if capped {
-			write("Reviews per loop: %d of %d%s, capped by --max-reviews\n",
+			w.printf("Reviews per loop: %d of %d%s, capped by --max-reviews\n",
 				opts.maxReviews, len(d.reviews), extra)
 		} else {
-			write("Reviews per loop: %d%s\n", len(d.reviews), extra)
+			w.printf("Reviews per loop: %d%s\n", len(d.reviews), extra)
 		}
 	}
 	mode := "sequential, in place"
@@ -146,24 +136,24 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	if opts.yolo {
 		yolo = "  |  YOLO"
 	}
-	write("Agents: %s  |  timeout: %s  |  mode: %s%s\n",
+	w.printf("Agents: %s  |  timeout: %s  |  mode: %s%s\n",
 		strings.Join(agent.Labels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
 	limit := "infinite"
 	if opts.maxLoops > 0 {
 		limit = fmt.Sprint(opts.maxLoops)
 	}
-	write("Loop limit: %s\n", limit)
+	w.printf("Loop limit: %s\n", limit)
 	if opts.runtime > 0 {
-		write("Runtime budget: %s\n", humanize.Duration(opts.runtime))
+		w.printf("Runtime budget: %s\n", humanize.Duration(opts.runtime))
 	}
 	if opts.commit || opts.push {
 		action := "commit"
 		if opts.push {
 			action = "commit+push"
 		}
-		write("After each review: %s step (agent writes the message, no AI attribution)\n", action)
+		w.printf("After each review: %s step (agent writes the message, no AI attribution)\n", action)
 	}
-	return werr
+	return w.err
 }
 
 var (

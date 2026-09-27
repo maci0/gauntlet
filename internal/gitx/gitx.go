@@ -96,6 +96,10 @@ func gitPath() string {
 // Available reports whether git itself was found.
 func Available() bool { return gitPath() != "" }
 
+// errGitUnavailable is what every entry point returns when git is missing, so
+// a caller can tell "no git" from "git refused" with errors.Is.
+var errGitUnavailable = errors.New("git is not available")
+
 // Repo is a working tree git commands run against.
 type Repo struct {
 	Dir string
@@ -676,7 +680,7 @@ func (r *Repo) DiffStat(ctx context.Context, dir, from, to string) (ins, del int
 // arrives intact.
 func (r *Repo) ChangedFiles(ctx context.Context, dir, from, to string) ([]string, error) {
 	if !Available() {
-		return nil, errors.New("git is not available")
+		return nil, errGitUnavailable
 	}
 	sub := r.subRepo(dir)
 	out, err := sub.run(ctx, gitNormal, "diff", "--name-only", "--no-renames", "-z", "--end-of-options", from, to, "--")
@@ -938,7 +942,7 @@ func (r *Repo) ListFilesMatching(ctx context.Context, glob string) ([]string, er
 
 func (r *Repo) listFiles(ctx context.Context, limit int, pathspec ...string) ([]string, error) {
 	if r == nil || !Available() {
-		return nil, errors.New("git is not available")
+		return nil, errGitUnavailable
 	}
 	args := make([]string, 0, 6+len(pathspec))
 	args = append(args, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
@@ -962,7 +966,7 @@ func (r *Repo) listFiles(ctx context.Context, limit int, pathspec ...string) ([]
 // review should look.
 func (r *Repo) ChangedSince(ctx context.Context, since string) ([]string, error) {
 	if r == nil || !Available() {
-		return nil, errors.New("git is not available")
+		return nil, errGitUnavailable
 	}
 	out, err := r.run(ctx, gitSlow, "log", "--since="+since, "--name-only",
 		"--no-renames", "--pretty=format:", "-z")

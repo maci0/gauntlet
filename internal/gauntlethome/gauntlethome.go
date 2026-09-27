@@ -125,6 +125,38 @@ func SyncDir(dir string) error {
 	return err
 }
 
+// StaleTempAge is how old a leftover temp file beside a rename-based write
+// must be before the next write removes it. The window that creates one
+// closes when the process does, so anything a day old belongs to a write that
+// never finished; the age keeps a concurrent writer's in-flight file safe.
+const StaleTempAge = 24 * time.Hour
+
+// WriteFileAtomic writes data to a temp file in dir named by pattern, syncs
+// it, and renames it over path. The temp file is removed if anything fails
+// and the rename never happens, so a reader sees either the previous file or
+// the whole new one, never a truncated one.
+func WriteFileAtomic(dir, pattern, path string, data []byte) error {
+	tmp, err := os.CreateTemp(dir, pattern)
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(name) // no-op once the rename succeeded
+	}()
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(name, path)
+}
+
 // SweepStaleTemps removes regular files in dir matching prefix whose modification
 // time is older than age. Best effort: failures are ignored.
 func SweepStaleTemps(dir, prefix string, age time.Duration) {

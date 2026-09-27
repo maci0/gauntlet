@@ -18,23 +18,13 @@ import (
 // the process exit code: 1 when no agent can be launched at all, or when the
 // state root cannot be written to.
 func doctor(out io.Writer, pal palette, overrides map[string]string, width int) (code int) {
-	var werr error
+	w := errWriter{out: out}
 	defer func() {
-		if werr != nil {
-			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", werr)
+		if w.err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", w.err)
 			code = exitFail
 		}
 	}()
-	write := func(format string, args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintf(out, format, args...)
-		}
-	}
-	writeln := func(args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintln(out, args...)
-		}
-	}
 
 	// One parallel probe for every binary, instead of one blocking lookup per
 	// question. This is the difference between a snappy doctor and a second of
@@ -78,7 +68,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// are as real as the compiled-in ones and belong in the inventory.
 	agents := agent.AllNames()
 
-	writeln(pal.bold("Agent CLIs") +
+	w.println(pal.bold("Agent CLIs") +
 		pal.dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
@@ -122,11 +112,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				usable++
 			}
 		}
-		write("  %s %s%s\n", mark(ok, "dim"), a, note)
+		w.printf("  %s %s%s\n", mark(ok, "dim"), a, note)
 	}
 
-	writeln()
-	writeln(pal.bold("Core tools") + pal.dim("  (used by every review)"))
+	w.println()
+	w.println(pal.bold("Core tools") + pal.dim("  (used by every review)"))
 	coreHave := 0
 	for _, c := range agent.CoreTools {
 		ok := have(c.Name)
@@ -134,11 +124,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			coreHave++
 		}
 		label := strings.ReplaceAll(c.Name, "|", " or ")
-		write("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
+		w.printf("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
 	}
 
-	writeln()
-	writeln(pal.bold("Per-review helpers") + pal.dim("  (* = worth installing anywhere)"))
+	w.println()
+	w.println(pal.bold("Per-review helpers") + pal.dim("  (* = worth installing anywhere)"))
 	reviews := make([]string, 0, len(agent.ReviewTools)+len(agent.ReviewsWithoutTools))
 	for r := range agent.ReviewTools {
 		reviews = append(reviews, r)
@@ -157,7 +147,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	for _, review := range reviews {
 		tools := agent.ReviewTools[review]
 		if len(tools) == 0 {
-			write("  %-*s %s\n", nameCol, review, pal.dim("no external tools"))
+			w.printf("  %-*s %s\n", nameCol, review, pal.dim("no external tools"))
 			continue
 		}
 		n := 0
@@ -198,7 +188,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			cells = append(cells, mark(ok, missing)+" "+label)
 		}
 		head := fmt.Sprintf("  %-*s %s ", nameCol, review, ratio(n, len(tools)))
-		writeln(head + strings.Join(cells, "  "))
+		w.println(head + strings.Join(cells, "  "))
 	}
 
 	recHave, optHave := 0, 0
@@ -217,8 +207,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	sort.Strings(missingRec)
 
-	writeln()
-	write("%s %s   %s %s   %s %s   %s %s\n",
+	w.println()
+	w.printf("%s %s   %s %s   %s %s   %s %s\n",
 		pal.bold("Agents"), ratio(installed, len(agents)),
 		pal.bold("Core"), ratio(coreHave, len(agent.CoreTools)),
 		pal.bold("Recommended"), ratio(recHave, len(seenRec)),
@@ -251,17 +241,17 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	case strings.TrimSpace(os.Getenv("GAUNTLET_HOME")) != "":
 		src = "from GAUNTLET_HOME"
 	}
-	writeln(pal.dim("State: " + root + "  (" + src + ")"))
+	w.println(pal.dim("State: " + root + "  (" + src + ")"))
 	if p := agent.CustomFilePath(); p != "" {
 		if _, err := os.Stat(p); err == nil {
-			writeln(pal.dim("Definitions: " + p))
+			w.println(pal.dim("Definitions: " + p))
 		}
 	}
 	// A root that cannot be written loses the run journal, and a run that
 	// cannot journal is only reported by one line of a warning that scrolls
 	// past mid-run. Here it is the finding, before the verdict.
 	if problem := stateRootProblem(root); problem != "" {
-		writeln(pal.red("State root unusable: " + problem))
+		w.println(pal.red("State root unusable: " + problem))
 		stateBad = true
 	}
 	if usable == 0 && !pinned {
@@ -269,14 +259,14 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		if installed > 0 {
 			msg = "No auto-detectable agent CLI found: install one, or name an opt-in agent with --agents."
 		}
-		writeln(pal.red(msg))
+		w.println(pal.red(msg))
 		return exitFail
 	}
 	if len(missingRec) > 0 {
-		writeln(pal.dim("Worth installing: ") + wrapIndent(strings.Join(missingRec, " "), width, 2))
+		w.println(pal.dim("Worth installing: ") + wrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
-	writeln(pal.dim(tokenSourceLine))
-	writeln(pal.dim("Stack-specific tools only matter for the languages you review."))
+	w.println(pal.dim(tokenSourceLine))
+	w.println(pal.dim("Stack-specific tools only matter for the languages you review."))
 	if stateBad {
 		return exitFail
 	}

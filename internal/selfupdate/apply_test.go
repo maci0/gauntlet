@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // releaseServer serves one asset and a checksums.txt, optionally lying about
@@ -183,7 +185,7 @@ func TestSweepStaleTempsRemovesOnlyAbandonedDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	sweepStaleTemps(dir, ".gauntlet-update-", staleTempAge)
+	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge)
 
 	for _, p := range []string{fresh, other} {
 		if _, err := os.Stat(p); err != nil {

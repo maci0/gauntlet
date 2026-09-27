@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // handoffBlob mirrors what a reload carries: counters plus the unfinished
@@ -82,7 +84,7 @@ func TestSaveStateSweepsStaleHandoffs(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	old := time.Now().Add(-(staleTempAge + time.Hour))
+	old := time.Now().Add(-(gauntlethome.StaleTempAge + time.Hour))
 	if err := os.Chtimes(stale, old, old); err != nil {
 		t.Fatal(err)
 	}

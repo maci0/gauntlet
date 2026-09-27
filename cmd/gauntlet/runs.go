@@ -27,30 +27,25 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 		return exitFail
 	}
 	bw := bufio.NewWriter(out)
-	var werr error
+	w := errWriter{out: bw}
 	defer func() {
-		if err := bw.Flush(); werr == nil && err != nil {
-			werr = err
+		if err := bw.Flush(); w.err == nil && err != nil {
+			w.err = err
 		}
-		if werr != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", werr)
+		if w.err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", w.err)
 			code = exitFail
 		}
 	}()
-	write := func(format string, args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintf(bw, format, args...)
-		}
-	}
 	if len(entries) == 0 {
-		write("No runs recorded yet under %s\n", journal.Home())
+		w.printf("No runs recorded yet under %s\n", journal.Home())
 		return exitOK
 	}
-	write("%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
+	w.printf("%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
 		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
 	// The column's name overstates what it counts; say so once, right where
 	// it first appears, or a run that only skipped reviews reads as broken.
-	write("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
+	w.printf("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, and merge conflicts too"))
 	for _, e := range entries {
 		dur := "n/a"
 		if d, ok := e.Duration(); ok {
@@ -78,11 +73,11 @@ func cmdRuns(out io.Writer, pal palette, limit int) (code int) {
 		if !e.Start.IsZero() {
 			started = e.Start.Local().Format("2006-01-02 15:04:05")
 		}
-		write("%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
+		w.printf("%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
 			e.RunID, started, dur,
 			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
 	}
-	write("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
+	w.printf("\n%s\n", pal.dim("Journals: "+filepath.Join(journal.Home(), "runs")))
 	return exitOK
 }
 

@@ -90,6 +90,26 @@ func (s *serialized) Write(p []byte) (int, error) {
 	return s.w.Write(p)
 }
 
+// errWriter remembers the first write error and ignores every write after it,
+// so a command built line by line can report the failure once, at the end,
+// instead of checking after each line.
+type errWriter struct {
+	out io.Writer
+	err error
+}
+
+func (e *errWriter) printf(format string, args ...any) {
+	if e.err == nil {
+		_, e.err = fmt.Fprintf(e.out, format, args...)
+	}
+}
+
+func (e *errWriter) println(args ...any) {
+	if e.err == nil {
+		_, e.err = fmt.Fprintln(e.out, args...)
+	}
+}
+
 // reporter turns the event stream into terminal output. It is the non-TUI
 // consumer, and the only one that writes to stdout.
 type reporter struct {
@@ -354,22 +374,12 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 	for _, r := range scheduled {
 		weight[r]++
 	}
-	var werr error
-	write := func(format string, args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintf(out, format, args...)
-		}
-	}
-	writeln := func(args ...any) {
-		if werr == nil {
-			_, werr = fmt.Fprintln(out, args...)
-		}
-	}
-	write("Available reviews (%d):\n", set.Len())
+	w := errWriter{out: out}
+	w.printf("Available reviews (%d):\n", set.Len())
 	// The marks below are only as readable as their legend: spell them out
 	// once, right where they first appear. wrapIndent indents only its
 	// continuation lines, so the first line carries its own.
-	writeln(pal.dim(strings.Repeat(" ", 4) + wrapIndent(
+	w.println(pal.dim(strings.Repeat(" ", 4) + wrapIndent(
 		"✓ scheduled   ○ available, not selected   xN selected with repeated weight   "+
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
@@ -396,12 +406,12 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			desc = "(no description)"
 		}
 		room := max(width-cells(prefix), 20)
-		writeln(prefix + pal.dim(trimCells(desc, room)))
+		w.println(prefix + pal.dim(trimCells(desc, room)))
 	}
 
-	writeln()
+	w.println()
 	names := prompt.SetNames()
-	write("Sets usable with --reviews/--exclude (%d):\n", len(names))
+	w.printf("Sets usable with --reviews/--exclude (%d):\n", len(names))
 	setCol := 0
 	for _, n := range names {
 		setCol = max(setCol, cells(n))
@@ -413,7 +423,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			if name == "project" {
 				count = len(set.ProjectNames())
 			}
-			write("  %s %s (%d)\n", padCells(name, setCol), desc, count)
+			w.printf("  %s %s (%d)\n", padCells(name, setCol), desc, count)
 			continue
 		}
 		var present []string
@@ -426,9 +436,9 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		if body == "" {
 			body = "(no members in this prompt dir)"
 		}
-		write("  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
+		w.printf("  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
 	}
-	return werr
+	return w.err
 }
 
 // cells is how many terminal columns s occupies.

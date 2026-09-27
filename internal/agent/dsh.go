@@ -170,27 +170,9 @@ func writeDshPatch(key, body string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	gauntlethome.SweepStaleTemps(dir, "."+key+".yml-", 24*time.Hour)
+	gauntlethome.SweepStaleTemps(dir, "."+key+".yml-", gauntlethome.StaleTempAge)
 	path := filepath.Join(dir, key+".yml")
-	tmp, err := os.CreateTemp(dir, "."+key+".yml-*")
-	if err != nil {
-		return "", err
-	}
-	name := tmp.Name()
-	defer func() {
-		tmp.Close()
-		os.Remove(name) // no-op once the rename succeeded
-	}()
-	if _, err := tmp.WriteString(body); err != nil {
-		return "", err
-	}
-	if err := tmp.Sync(); err != nil {
-		return "", err
-	}
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if err := os.Rename(name, path); err != nil {
+	if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-*", path, []byte(body)); err != nil {
 		return "", err
 	}
 	dshPatches[key] = path
