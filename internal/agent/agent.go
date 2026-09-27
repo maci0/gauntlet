@@ -423,7 +423,12 @@ func parseEntry(entry string, add func(Spec)) error {
 	} else {
 		tool, effort = cutEffort(tool)
 	}
-	tool = strings.ToLower(strings.TrimSpace(tool))
+	// NFC before the case fold, the order every other name lookup uses: a
+	// terminal may hand over the decomposed spelling of a name a definition
+	// stored composed, and without this the two never meet. The Spec is the
+	// name everything downstream keys on, so an unnormalized one turns one
+	// agent into two pool entries and a --bin override into a miss.
+	tool = fuzzy.NFC(strings.ToLower(strings.TrimSpace(tool)))
 	model = strings.TrimSpace(model)
 	effort = strings.TrimSpace(effort)
 	if mixedKeywords[tool] {
@@ -712,7 +717,9 @@ func ParseBin(s string) (string, string, error) {
 	if !ok || tool == "" || path == "" {
 		return "", "", fmt.Errorf("expected TOOL=PATH, got: %q", s)
 	}
-	tool = strings.ToLower(tool)
+	// The map the runner reads is keyed by the name ParseSpecs produces, so
+	// the override is stored in that spelling and not the one typed here.
+	tool = fuzzy.NFC(strings.ToLower(tool))
 	if !isValid(tool) {
 		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, didYouMean(tool),
 			strings.Join(AllNames(), ", "))

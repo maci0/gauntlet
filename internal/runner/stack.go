@@ -669,9 +669,15 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 }
 
 // noteKey aligns an agent-printed path with a git-reported one: forward
-// slashes, no leading "./", and NFC normalized.
+// slashes, no leading "./", NFC normalized, and bytes that are not valid
+// UTF-8 repaired. The repair is not cosmetic: a name holding one is legal on
+// ext4 and APFS, the agent's line reaches this table already repaired to
+// U+FFFD by the parser that read it, and git still hands out the raw bytes.
+// Without it the two forms never meet and the note is dropped as if it had
+// described a file the commit never touched.
 func noteKey(p string) string {
-	return norm.NFC.String(strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./"))
+	p = strings.TrimPrefix(filepath.ToSlash(strings.TrimSpace(p)), "./")
+	return norm.NFC.String(normalize.Repair(p))
 }
 
 func (r *Runner) publishPullRequest(loop int, review, branch, base, prURL string, reused bool, res Result) {

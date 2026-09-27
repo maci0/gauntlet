@@ -417,24 +417,23 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		"✓ scheduled   ○ available, not selected   xN selected with repeated weight   "+
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
+	markCol := 2
 	for _, n := range set.Names {
 		nameCol = max(nameCol, cells(n))
+		// "x10" is three columns where every other mark is two, and padCells
+		// only pads, so a mark wider than its column would push the rest of
+		// that row out of line with the rows around it.
+		markCol = max(markCol, cells(reviewMark(weight[n])))
 	}
 	nameCol++
 	for _, name := range set.Names {
 		rev, _ := set.Get(name)
-		mark := "○"
-		switch w := weight[name]; {
-		case w > 1:
-			mark = fmt.Sprintf("x%d", w)
-		case w == 1:
-			mark = "✓"
-		}
+		mark := reviewMark(weight[name])
 		origin := ""
 		if rev.IsProject() {
 			origin = "[project]"
 		}
-		prefix := "  " + padCells(mark, 2) + " " + padCells(name, nameCol) + padCells(origin, 10) + " "
+		prefix := "  " + padCells(mark, markCol) + " " + padCells(name, nameCol) + padCells(origin, 10) + " "
 		desc := rev.Summary()
 		if desc == "" {
 			desc = "(no description)"
@@ -473,6 +472,19 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		w.printf("  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
 	}
 	return w.err
+}
+
+// reviewMark is the leading glyph for a review in the listing: how often it
+// was scheduled, with the repeat weight spelled out.
+func reviewMark(weight int) string {
+	switch {
+	case weight > 1:
+		return fmt.Sprintf("x%d", weight)
+	case weight == 1:
+		return "✓"
+	default:
+		return "○"
+	}
 }
 
 // cells is how many terminal columns s occupies.

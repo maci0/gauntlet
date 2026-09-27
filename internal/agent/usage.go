@@ -93,6 +93,12 @@ func maxMatch(pats []*regexp.Regexp, text string) int {
 	best := -1
 	for _, p := range pats {
 		for _, m := range p.FindAllStringSubmatchIndex(text, -1) {
+			// A sign is not part of the digits the pattern starts on, so
+			// "-1" would otherwise be read as one token counted. A negative
+			// count is not a measurement, whatever the agent meant by it.
+			if m[2] > 0 && (text[m[2]-1] == '-' || text[m[2]-1] == '+') {
+				continue
+			}
 			end := m[3]
 			if end < len(text) {
 				next := text[end]

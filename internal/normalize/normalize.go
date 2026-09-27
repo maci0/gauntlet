@@ -392,6 +392,31 @@ func Display(s string) string {
 	return Sanitize(s)
 }
 
+// Repair turns every byte that is not valid UTF-8 into U+FFFD, one per byte,
+// leaving every other character alone. It is the repair Sanitize performs,
+// on its own, for text that is compared rather than shown: an agent's printed
+// path has been through the agent-side sanitizer and is already repaired,
+// while the same file name from git still carries the raw bytes the
+// filesystem holds, and the two would never match without this.
+func Repair(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && size <= 1 {
+			b.WriteRune(utf8.RuneError)
+			i++
+			continue
+		}
+		b.WriteString(s[i : i+size])
+		i += size
+	}
+	return b.String()
+}
+
 // Truncate cuts s to at most w code points, without splitting a UTF-8
 // sequence, marking the cut with an ellipsis. Code points are a bound, not a
 // layout measurement: wide characters occupy two terminal cells and a
