@@ -50,10 +50,17 @@ but drops the sqlite driver.
 
 `cmd/gauntlet` is flags and dispatch. Everything real lives in `internal/`.
 No package inside `internal/` imports `ui`, so a headless run costs nothing.
+The layering is pinned in `allowedInternalImports`
+(`cmd/gauntlet/layout_test.go`): a new internal package or a new edge between
+two of them lands there and in `docs/DESIGN.md` in the same change, or
+`make test` fails on an undeclared package.
 `docs/DESIGN.md` is the map. A new bundled review is
-`internal/prompt/prompts/NAME-review.md` plus its stem in `goldenReviewNames`
+`internal/prompt/prompts/NAME-review.md`, whose `Summary:` line is the README
+grid cell, plus its stem in `goldenReviewNames`
 (`internal/prompt/contract_test.go`) and documented in `CHANGELOG.md`; review
-names are API.
+names are API. The grid lives between the `BEGIN REVIEWS` and `END REVIEWS`
+markers in `README.md`, and its test prints the finished block to paste back,
+so no cell is transcribed by hand.
 
 ## Tree conventions
 
@@ -120,6 +127,9 @@ names are API.
 - `README.md` is the landing page: keep it short; detail belongs in `docs/`.
 - A new flag is documented in `docs/CLI.md`, the help table in
   `cmd/gauntlet/help.go`, `CHANGELOG.md`, and `goldenFlagNames`
-  (`cmd/gauntlet/contract_test.go`); flags are API.
+  (`cmd/gauntlet/contract_test.go`); flags are API. A new environment
+  variable needs `docs/CLI.md`, the `helpEnvVars` table in `help.go`, a
+  `.env.example` entry, `goldenEnvVars`, and `CHANGELOG.md`; the contract
+  test reads both directions, so a leftover template name also fails.
 - `docs/IDEAS.md` records what was deliberately not built, and why. Move an
   entry out of it when it ships; do not leave both.
