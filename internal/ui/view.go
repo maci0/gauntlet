@@ -17,6 +17,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/rivo/uniseg"
 
+	"github.com/maci0/gauntlet/internal/envx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
@@ -382,22 +383,40 @@ const (
 // anything moving.
 const motionStill = "◐"
 
+// The names the motion accommodation is read from, in the order they are
+// consulted. Project-specific first: it is the one a user of this tool sets
+// deliberately, and an explicit false there has to be able to overrule a
+// REDUCED_MOTION inherited from a desktop session.
+const (
+	envNoAnimation   = "GAUNTLET_NO_ANIMATION"
+	envNoMotion      = "NO_MOTION"
+	envReducedMotion = "REDUCED_MOTION"
+)
+
 // motionOff reports whether the run asked for a still screen. Terminals have
 // no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION,
 // NO_MOTION, or REDUCED_MOTION: anything but empty, "0", "false", "no", or "off"
 // freezes the dashboard's one animated glyph, whose cycling otherwise starts
 // on its own and outlives five seconds of reasoning (WCAG 2.2.2: such motion
 // must be stoppable).
+//
+// The values that mean off come from envx, the same reader the color-force
+// variables go through: the list is stated once in docs/CLI.md, and a second
+// copy here is one that answers differently the moment one of them is edited.
 func motionOff() bool {
-	for _, env := range []string{"GAUNTLET_NO_ANIMATION", "NO_MOTION", "REDUCED_MOTION"} {
-		if v, ok := os.LookupEnv(env); ok {
-			v = strings.ToLower(strings.TrimSpace(v))
-			if v != "" && v != "0" && v != "false" && v != "no" && v != "off" {
-				return true
-			}
-			if env == "GAUNTLET_NO_ANIMATION" && (v == "0" || v == "false" || v == "no" || v == "off") {
-				return false
-			}
+	for _, env := range []string{envNoAnimation, envNoMotion, envReducedMotion} {
+		v, set := os.LookupEnv(env)
+		if !set {
+			continue
+		}
+		if envx.On(v) {
+			return true
+		}
+		// An explicit false on the project-specific name wins over the two
+		// standard ones. An empty value states nothing and defers to them,
+		// which is what an unset variable in a template means.
+		if env == envNoAnimation && strings.TrimSpace(v) != "" {
+			return false
 		}
 	}
 	return false

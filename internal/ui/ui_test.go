@@ -952,6 +952,18 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 		if got := thinkGlyph(now, last); got != motionStill {
 			t.Fatalf("glyph %q under %s=1, want held frame %q", got, env, motionStill)
 		}
+		// An empty GAUNTLET_NO_ANIMATION states nothing, so the standard name
+		// still decides. A padded false value is still a false value: the
+		// list is the shared one in envx, read the documented way.
+		t.Setenv("GAUNTLET_NO_ANIMATION", "  ")
+		if got := thinkGlyph(now, last); got != motionStill {
+			t.Fatalf("glyph %q with GAUNTLET_NO_ANIMATION blank under %s=1, want held frame %q", got, env, motionStill)
+		}
+		t.Setenv(env, "  OFF  ")
+		if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {
+			t.Fatalf("%s=%q should mean off", env, "  OFF  ")
+		}
+		t.Setenv(env, "1")
 		// Explicit GAUNTLET_NO_ANIMATION=0 overrides generic variables
 		t.Setenv("GAUNTLET_NO_ANIMATION", "0")
 		if thinkGlyph(now, last) == thinkGlyph(now.Add(thinkingFrame), last) {

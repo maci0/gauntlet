@@ -173,9 +173,9 @@ type helpEnvVar struct {
 // from report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []helpEnvVar{
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)", false},
-	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion)", false},
-	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION", false},
-	{"REDUCED_MOTION", "same as GAUNTLET_NO_ANIMATION", false},
+	{"GAUNTLET_NO_ANIMATION", "freeze the dashboard's animated reasoning glyph (reduced motion); read first, so set to 0 or false it outranks the two below", false},
+	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
+	{"REDUCED_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
 	{"NO_COLOR", "disable color, however it is set", false},
 	{"CLICOLOR_FORCE", "keep color when the output is piped", false},
 	{"FORCE_COLOR", "same as CLICOLOR_FORCE", false},
