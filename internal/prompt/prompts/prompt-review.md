@@ -64,7 +64,7 @@ Review the following:
 
 10. Maintenance signals
 - Prompts that drifted from the tooling that dispatches them (renamed flags, changed rules, stale references)
-- Prompts the dispatcher cannot load: a file the loader skips or ignores, or a name the runner's review set does not carry
+- Prompts the dispatcher cannot load: a file the loader skips or ignores, or a name the runner's name list does not carry. A curated set may omit a prompt and still dispatch it by name, so absence from a set is not the defect
 - References to files, reviews, or tools that no longer exist
 - Version-sensitive facts (standards, model names, CLI flags) with no way to notice staleness
 
@@ -79,12 +79,11 @@ Instructions:
 - Do not review prompt templates inside application source (llm-review), shipped skills (skills-review), agent rule files (agentrules-review), general documentation (doc-review), or PRDs/ADRs/RFCs (specs-review).
 - Test factual claims (tool names, flags, standards) before flagging them; a wrong correction is worse than the original.
 - If available, use: the review runner's own evidence over assumption. Its review listing (`--list`, or the loader's name test) settles whether a prompt is dispatchable and under which name; its help output settles what a flag does. Read the composition code when a claim is about what the agent actually receives, since a prompt's standalone text and its composed text differ. Never install tools.
-- Prefer fewer, high-value findings; a prompt set re-litigated wholesale every pass is churn, not review.
-- Leave well-constructed prompts alone.
+- Prefer fewer, high-value findings and leave well-constructed prompts alone: a prompt set re-litigated wholesale every pass is churn, not review.
 
 Missing prompts this repository warrants
-- Everything under this heading is a description of a file you would create. It is not a licence to edit the prompts already in the tree: the format below binds the new file alone, and applying it to existing prompts is the wholesale reformat the fix order above forbids. Create nothing unless you have already decided the repository lacks the coverage.
-- A repository whose subject matter is extensive, checkable, and drift-prone may be missing a review of its own: a deployment manifest family, a permissions matrix, a data-retention policy, an API compatibility surface, a release checklist. Name the subject, then check the sibling reviews above for one that already owns it: if one does, extend that prompt instead, and if the subject is genuinely new, create `<topic>-review.md` beside the repository's other prompts, or at the repository root when it has none. A second prompt over ground a sibling already covers is a defect, not coverage.
+- Everything under this heading describes a file being created. It is not a licence to reformat the prompts already in the tree: the format below binds the new file alone, and applying it to existing prompts is the wholesale rewrite the fix order above forbids. Create nothing unless you have already decided the repository lacks the coverage.
+- A repository whose subject matter is extensive, checkable, and drift-prone may be missing a review of its own: a deployment manifest family, a permissions matrix, a data-retention policy, an API compatibility surface, a release checklist. Name the subject, then check the repository's other review prompts (the runner's bundled set, anything under the operator's prompt directory, and any `*-review.md` in the tree) for one that already owns it: if one does, extend that prompt instead, and if the subject is genuinely new, create `<topic>-review.md` beside the repository's other prompts, or at the repository root when it has none. A second prompt over ground a sibling already covers is a defect, not coverage.
 - The new file's format, in this order: a one-line role sentence ("You are a senior ... Your task is to review ..."); a "Your goal is to" paragraph naming what the review evaluates and how it differs from neighbouring reviews; a "First decide if this review applies" paragraph with a concrete skip condition; a numbered "Review the following:" list of specific, checkable failure modes; an "Instructions:" section bounding auto-fix priorities, scope limits, and tool guidance (including an "If available, use:" line when real tools exist for the subject); the finding template and output-format sections the other prompts carry; and a closing "Important:" list bounding scope and effort.
 - Write it for a repeat pass, not a one-time audit: every item must be something that can be re-checked next month and can go wrong again. A prompt that would find nothing on its second run has not earned a slot in the loop.
 - One file, one subject, and only when the subject is not already covered by an existing review. Extending an existing prompt beats adding a near-duplicate.
