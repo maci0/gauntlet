@@ -819,16 +819,17 @@ func (r *Runner) interrupted(review string) Result {
 		ExitCode: -1, Status: StatusInterrupted}
 }
 
-// pushLanded publishes what just landed on this branch. A failure is logged
-// and counted, never fatal: the work is committed, and the next review's push
-// (or the commit step) carries it.
-func (r *Runner) pushLanded(ctx context.Context, review string) {
+// pushLanded pushes what just landed on this branch and returns the line to
+// publish, "" when there is nothing to say. A failure is counted, never fatal:
+// the work is committed, and the next review's push (or the commit step)
+// carries it. It runs under the merge lock, so the caller publishes the line
+// once that lock is free.
+func (r *Runner) pushLanded(ctx context.Context, review string) string {
 	if err := r.repo.Push(context.WithoutCancel(ctx)); err != nil {
-		r.log("Push after %s failed: %v", review, err)
 		r.st.addCommitFail()
-		return
+		return fmt.Sprintf("Push after %s failed: %v", review, err)
 	}
-	r.log("Pushed %s", review)
+	return fmt.Sprintf("Pushed %s", review)
 }
 
 // runLane takes the reviews the schedule assigned to this lane and runs them
@@ -960,15 +961,27 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	r.mergeMu.Lock()
 	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
 	resolved := false
+	// A log line is a blocking publish on the event bus, and every lane merges
+	// here, so the lines the merge step produces are held back and published
+	// once the lock is free. A subscriber that stalls must not park the merge
+	// lock with it.
+	var held []string
 	if !mr.Merged && mr.Conflict && r.cfg.ResolveConflicts && ctx.Err() == nil {
-		if fixed := r.resolveConflict(ctx, review, wt.Branch, tag, msg); fixed.Merged {
+		fixed, notes := r.resolveConflict(ctx, review, wt.Branch, tag, msg)
+		if fixed.Merged {
 			mr, resolved = fixed, true
 		}
+		held = append(held, notes...)
 	}
 	if mr.Merged && r.cfg.Push {
-		r.pushLanded(ctx, review)
+		held = append(held, r.pushLanded(ctx, review))
 	}
 	r.mergeMu.Unlock()
+	for _, line := range held {
+		if line != "" {
+			r.bus.Publish(Event{Kind: EvLog, Dir: r.cfg.Dir, Text: line})
+		}
+	}
 
 	switch {
 	case mr.Merged:

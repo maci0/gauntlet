@@ -24,6 +24,10 @@ import (
 // --jobs mode it is a persistent lane reused across reviews; stacked-PR mode
 // advances one through the stack. Results reach the main tree only through
 // Merge.
+//
+// A Worktree belongs to the one goroutine that created it, one lane each, and
+// its fields carry no lock of their own: repo.wtMu serializes git's worktree
+// bookkeeping, not this struct. Sharing one across goroutines is not supported.
 type Worktree struct {
 	Dir    string // absolute path of the checkout
 	Branch string
@@ -32,19 +36,30 @@ type Worktree struct {
 	sub    *Repo
 }
 
+// newWorktree builds the handle and the repository that drives the checkout.
+// The sub-handle is made here rather than on first use, so no field of a
+// published Worktree is ever lazily initialized: that check-then-act is the
+// shape a race takes when a second goroutine ever reaches the same checkout.
+func newWorktree(r *Repo, dir, branch, base string) *Worktree {
+	w := &Worktree{Dir: dir, Branch: branch, base: base, repo: r}
+	if dir == "" {
+		return w
+	}
+	w.sub = &Repo{Dir: dir}
+	if r != nil {
+		// A linked worktree reads the same local config as the repository
+		// it was cut from, so it adopts the parent's overlay and the
+		// config identity that retires it, rather than resolving its own.
+		w.sub.adoptSafeConfig(r)
+	}
+	return w
+}
+
+// subRepo is the handle that runs git inside the checkout. It is nil once the
+// checkout is gone, which Remove reports by clearing Dir.
 func (w *Worktree) subRepo() *Repo {
 	if w == nil || w.Dir == "" {
 		return nil
-	}
-	if w.sub == nil {
-		sub := &Repo{Dir: w.Dir}
-		if w.repo != nil {
-			// A linked worktree reads the same local config as the repository
-			// it was cut from, so it adopts the parent's overlay and the
-			// config identity that retires it, rather than resolving its own.
-			sub.adoptSafeConfig(w.repo)
-		}
-		w.sub = sub
 	}
 	return w.sub
 }
@@ -258,7 +273,7 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		r.abortWorktreeAdd(ctx, dir, "")
 		return nil, err
 	}
-	return &Worktree{Dir: dir, base: base, repo: r}, nil
+	return newWorktree(r, dir, "", base), nil
 }
 
 // removeWorktreeDir removes a worktree checkout and its bookkeeping. It is
@@ -397,7 +412,7 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 		r.abortWorktreeAdd(ctx, dir, branch)
 		return nil, err
 	}
-	return &Worktree{Dir: dir, Branch: branch, base: base, repo: r}, nil
+	return newWorktree(r, dir, branch, base), nil
 }
 
 // StartBranch advances a stack worktree onto a fresh child of base. The old
