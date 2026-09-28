@@ -206,6 +206,11 @@ func (r *Release) NewerThan(current string) bool {
 // verification leaves the running binary untouched. The binary being replaced
 // is kept beside it under PreviousSuffix, so an install that succeeds and then
 // misbehaves can be rolled back by renaming that copy back.
+//
+// Installing a release that is already on disk is a no-op rather than a second
+// install: the rollback copy is the only state an update changes besides the
+// binary, and reinstalling would overwrite it with the release just installed,
+// leaving nothing to roll back to.
 func Apply(ctx context.Context, rel *Release) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
@@ -273,6 +278,13 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	}
 	if err := tmp.Close(); err != nil {
 		return "", err
+	}
+	installed, err := fileSum(self)
+	if err != nil {
+		return "", err
+	}
+	if subtle.ConstantTimeCompare([]byte(installed), []byte(sum)) == 1 {
+		return self, nil
 	}
 	if err := os.Chmod(tmpName, 0o755); err != nil {
 		return "", err
@@ -467,6 +479,21 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 		return "", fmt.Errorf("asset exceeds %d bytes", int64(maxAssetBytes))
 	}
 	drainBody(resp, maxAssetBytes+1)
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// fileSum is the hex SHA-256 of the bytes already installed at path, so a
+// repeated install of the same release can be recognized and skipped.
+func fileSum(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", fmt.Errorf("cannot read %s: %w", path, err)
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", fmt.Errorf("cannot read %s: %w", path, err)
+	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 

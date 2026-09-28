@@ -211,6 +211,53 @@ func TestApplyKeepsTheReplacedBinaryForRollback(t *testing.T) {
 	}
 }
 
+// Installing the same release twice is the same run twice: a user runs the
+// command again, the auto-updater ticks twice, a reloaded process checks
+// again. The second install has nothing to replace, and doing it anyway
+// overwrites the rollback copy with the release just installed, so the
+// documented way back is gone.
+func TestApplyTwiceLeavesTheRollbackCopyAlone(t *testing.T) {
+	payload := []byte("#!/bin/sh\necho new\n")
+	h := sha256.Sum256(payload)
+	_, rel := releaseServer(t, payload, hex.EncodeToString(h[:]))
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "gauntlet")
+	old := []byte("#!/bin/sh\necho old\n")
+	if err := os.WriteFile(target, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := applyTo(context.Background(), rel, target); err != nil {
+		t.Fatal(err)
+	}
+	got, err := applyTo(context.Background(), rel, target)
+	if err != nil {
+		t.Fatalf("second install: %v", err)
+	}
+	if got != target {
+		t.Fatalf("second install replaced %q, want %q", got, target)
+	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != string(payload) {
+		t.Fatalf("second install left %q, want the release", body)
+	}
+	kept, err := os.ReadFile(target + PreviousSuffix)
+	if err != nil {
+		t.Fatalf("the second install dropped the rollback copy: %v", err)
+	}
+	if string(kept) != string(old) {
+		t.Fatalf("rollback copy is now %q, want the binary the first install replaced", kept)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, ".gauntlet-update-*"))
+	if len(matches) != 0 {
+		t.Fatalf("temp files left behind: %v", matches)
+	}
+}
+
 // A release that never verified replaced nothing, so there is nothing to roll
 // back to and the copy is not made.
 func TestApplyLeavesNoRollbackCopyAfterAFailedVerification(t *testing.T) {

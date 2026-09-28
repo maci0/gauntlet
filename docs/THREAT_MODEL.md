@@ -422,6 +422,11 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   refused rather than performed without a way back
   (`keepPrevious`, `internal/selfupdate/selfupdate.go:289-346`,
   `selfupdate.go:280`; `make install` keeps the same copy, `Makefile:416`).
+  A release whose bytes already match the installed binary installs nothing
+  (`fileSum` against the verified download, `applyTo`): a repeat of an update
+  would otherwise put the release it just installed in the copy and leave the
+  rollback naming the same version the rollback replaces. `make install` skips
+  the copy the same way, with `cmp` on the built binary.
   The copy is verified once, as part of the download that produced the binary
   it replaced. The rollback the documentation gives is a rename, so nothing
   checks it a second time: `docs/CLI.md:162-167` tells the reader to

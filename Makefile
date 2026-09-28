@@ -417,9 +417,9 @@ install: build ## install into ~/.local/bin
 	install -d "$(HOME)/.local/bin"
 	@# The binary being replaced is kept, under the same name `gauntlet
 	@# update` gives its copy, so a locally built install can be rolled back
-	@# the same way a released one is.
-	@[ ! -f "$(HOME)/.local/bin/$(BINARY)" ] || \
-		cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"
+	@# the same way a released one is, unless it is the same binary: a second
+	@# `make install` of an unchanged build would leave nothing to roll back to.
+	@if [ -f "$(HOME)/.local/bin/$(BINARY)" ] && ! cmp -s "$(BINARY)" "$(HOME)/.local/bin/$(BINARY)"; then cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"; fi
 	install -m 0755 $(BINARY) "$(HOME)/.local/bin/$(BINARY)"
 	@case ":$$PATH:" in *:"$(HOME)/.local/bin":*) ;; *) \
 		echo "note: $(HOME)/.local/bin is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
