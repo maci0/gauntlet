@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -100,7 +101,7 @@ func TestReporterLogsTheEventTime(t *testing.T) {
 	var out bytes.Buffer
 	r := &reporter{out: &out}
 	r.handle(runner.Event{Kind: runner.EvLog, Text: "hello", Time: stamp})
-	want := "[" + stamp.Local().Format("15:04:05") + "]"
+	want := "[" + humanize.Clock(stamp) + "]"
 	if !strings.Contains(out.String(), want) {
 		t.Fatalf("logged %q, want the event time prefix %s", out.String(), want)
 	}

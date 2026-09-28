@@ -54,6 +54,42 @@ func TestDuration(t *testing.T) {
 	}
 }
 
+// The prefix a log line and a journal replay carry has to name the zone, not
+// only the wall clock. A fall-back transition repeats one local hour, so the
+// two instants below render as the same 02:30:00 without it, an hour apart in
+// real time; the reading also has to fit the 13-column timestamp `gauntlet
+// show` pads to.
+func TestClockSeparatesRepeatedWallClock(t *testing.T) {
+	loc, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skipf("no zone database: %v", err)
+	}
+	// Clock renders in the host zone, so the host is the zone under test
+	// here. time.Local is a package var the runtime reads through, not one a
+	// TZ change refreshes, which is why this assigns it rather than setting
+	// TZ. It is restored before the next test reads it.
+	prev := time.Local
+	time.Local = loc
+	t.Cleanup(func() { time.Local = prev })
+	// 2026-10-25 02:30 CEST and 2026-10-25 02:30 CET: the hour the clock is
+	// put back over, the same wall clock twice.
+	summer := time.Date(2026, 10, 25, 0, 30, 0, 0, time.UTC).In(loc)
+	winter := time.Date(2026, 10, 25, 1, 30, 0, 0, time.UTC).In(loc)
+	first, second := Clock(summer), Clock(winter)
+	if first == second {
+		t.Fatalf("Clock rendered both readings of a repeated hour as %q", first)
+	}
+	if want := "02:30:00+0200"; first != want {
+		t.Errorf("Clock(early) = %q, want %q", first, want)
+	}
+	if want := "02:30:00+0100"; second != want {
+		t.Errorf("Clock(late) = %q, want %q", second, want)
+	}
+	if n := len(Clock(summer)); n != 13 {
+		t.Errorf("Clock width = %d, want 13 to fit the show column", n)
+	}
+}
+
 func TestCount(t *testing.T) {
 	cases := map[int]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567", -4321: "-4,321"}
 	for in, want := range cases {

@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/runner"
 )
@@ -485,7 +486,7 @@ func TestShowRendersEventTimeFromOffsetStamp(t *testing.T) {
 	if code := cmdShow(&buf, runID); code != exitOK {
 		t.Fatalf("replaying a recorded run should exit %d, got %d", exitOK, code)
 	}
-	want := stamp.Local().Format("15:04:05")
+	want := humanize.Clock(stamp)
 	if !strings.Contains(buf.String(), want) {
 		t.Fatalf("replay lost the event time prefix %s: %q", want, buf.String())
 	}
@@ -526,7 +527,7 @@ func TestShowTimeZero(t *testing.T) {
 		t.Fatalf("showTime(invalid) = %q, want empty", got)
 	}
 	stamp := time.Date(2026, 8, 25, 13, 15, 30, 0, time.UTC)
-	want := stamp.Local().Format("15:04:05")
+	want := humanize.Clock(stamp)
 	if got := showTime(stamp.Format(time.RFC3339)); got != want {
 		t.Fatalf("showTime(RFC3339) = %q, want %q", got, want)
 	}

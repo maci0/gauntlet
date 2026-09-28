@@ -51,6 +51,23 @@ func Duration(d time.Duration) string {
 	}
 }
 
+// Clock renders an instant as local wall clock with its zone offset: the
+// prefix a log line and a journal replay carry.
+//
+// The offset is not decoration. Local wall clock alone names one instant per
+// day unambiguously, so a run long enough to cross local midnight prints
+// 23:59:59 and then 00:00:01 as if time had run backwards, and on each DST
+// transition the same wall-clock hour is either absent or repeated: a run
+// logging 02:30:00+02:00 and an hour later 02:30:00+01:00 in Europe/Warsaw
+// prints the identical stamp for two events an hour apart. The offset is what
+// tells those readings apart, and it names the zone they are in besides.
+//
+// 13 characters, the width the `gauntlet show` timestamp column is already
+// padded to.
+func Clock(t time.Time) string {
+	return t.Local().Format("15:04:05-0700")
+}
+
 // Count renders an integer with thousands separators.
 func Count(n int) string {
 	s := strconv.Itoa(n)

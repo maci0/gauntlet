@@ -225,7 +225,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		if len(runs) > 1 {
 			where = " [" + filepath.Base(dir) + "]"
 		}
-		fmt.Fprintf(out, "[%s]%s %s\n", time.Now().Format("15:04:05"), where,
+		fmt.Fprintf(out, "[%s]%s %s\n", humanize.Clock(time.Now()), where,
 			fmt.Sprintf(format, a...))
 	}
 

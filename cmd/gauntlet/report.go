@@ -144,7 +144,7 @@ func (r *reporter) logf(at time.Time, format string, args ...any) {
 	if at.IsZero() {
 		at = time.Now()
 	}
-	fmt.Fprintf(r.out, "[%s] %s\n", at.Local().Format("15:04:05"),
+	fmt.Fprintf(r.out, "[%s] %s\n", humanize.Clock(at),
 		normalize.Sanitize(fmt.Sprintf(format, args...)))
 }
 

@@ -207,7 +207,8 @@ func failedCell(pal palette, bad int) string {
 	return s
 }
 
-// showTime renders a journal timestamp as local wall clock. UnmarshalText
+// showTime renders a journal timestamp as local wall clock and its offset.
+// UnmarshalText
 // is the inverse of encoding/json's time.Time marshal, so a Z stamp, an
 // offset, and a fractional second all round-trip; Parse(RFC3339Nano) is
 // close but not that inverse, and a stamp the encoder wrote must replay.
@@ -216,7 +217,7 @@ func showTime(s string) string {
 	if err := t.UnmarshalText([]byte(s)); err != nil || t.IsZero() {
 		return ""
 	}
-	return t.Local().Format("15:04:05")
+	return humanize.Clock(t)
 }
 
 // cmdShow replays one run's journal as readable lines.
