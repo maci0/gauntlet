@@ -57,7 +57,7 @@ Instructions:
 
 For each finding include:
 - Title
-- Severity: high (a caller reaches a stub, or a dropped field loses data) / medium (a closed set missing a case, a pair missing a half) / low (a deferral marker on a path that still works)
+- Severity: critical / high / medium / low (a caller reaching a stub, or a dropped field losing data, is critical; a closed set missing a case or a pair missing a half is high or medium)
 - Category
 - Location: file(s), symbol(s)
 - Confidence: confirmed / likely / potential

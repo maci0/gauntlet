@@ -92,7 +92,7 @@ Instructions:
 
 For each finding include:
 - Title
-- Severity: high (large deletion or whole subsystem unnecessary) / medium (construct fails the ladder) / low (small excess)
+- Severity: critical / high / medium / low (a whole subsystem or module proven unnecessary is critical; a construct that fails the ladder is high or medium)
 - Category
 - Location: file(s), symbol(s)
 - Confidence: confirmed / likely / potential

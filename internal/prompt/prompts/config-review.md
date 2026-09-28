@@ -108,18 +108,19 @@ Review the following:
 Instructions:
 - Fix order: dangerous defaults in production (debug on, open CORS) > missing validation of required values > inconsistent config patterns. Committed or hardcoded secrets: note the location; do not delete, move, or rewrite the value (sec-review owns that).
 - If available, use: `check-jsonschema` (schema validation), `yamllint` (YAML), `taplo` (TOML), `dotenv-linter` (.env files), `editorconfig-checker` (`.editorconfig` validation), `shfmt` (shell environment scripts). Never install tools.
+- In auto-fix mode make narrow, verifiable fixes: flip one dangerous default, add one required-value check where the value is read, or align one key with the sibling it contradicts. Do not introduce a configuration framework, a second config file format, or a secret manager in one pass; those are findings with a plan.
 - Inspect actual configuration files, environment setup, and how configuration is consumed in code.
 - Trace configuration values from source to usage to verify correctness.
-- Consider what happens when the application runs with default configuration in production.
+- Name the production consequence of a default: which value, left at its default, breaks which path. A default that is only wrong in a hypothetical deployment is a note, not a finding.
 - Do not recommend over-engineering for simple projects with few configuration options.
 - Focus on issues that cause real incidents: wrong values in production, leaked secrets, silent misconfiguration.
-- Consider the operational and onboarding burden of the configuration approach.
+- Rank operational friction by what it costs a user: a value that must be set from memory, an undocumented one whose absence is silent, a secret with no stated source.
 - Distinguish between:
   - dangerous defaults (configuration that causes incidents or security issues)
   - missing validation (bad values accepted silently)
   - inconsistencies (different patterns for the same thing)
   - operational friction (hard to configure, deploy, or debug)
-  - improvement opportunities (better patterns available)
+  - improvement opportunities (a pattern this repository already uses elsewhere, offered only then)
 
 For each finding include:
 - Title
