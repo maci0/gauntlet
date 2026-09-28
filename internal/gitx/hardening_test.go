@@ -440,10 +440,37 @@ func TestNoLocalCredentialHelperMeansNoReset(t *testing.T) {
 
 func TestCredentialHelperValuesKeepsOrderAndFoldsCase(t *testing.T) {
 	listing := "user.name=x\ncredential.helper=osxkeychain\nCredential.Helper=cache\n"
-	got := credentialHelperValues(listing)
+	got, files := credentialHelperValues(listing)
 	want := []string{"-c", "credential.helper=osxkeychain", "-c", "credential.helper=cache"}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("credentialHelperValues = %q, want %q", got, want)
+	}
+	if len(files) != 0 {
+		t.Fatalf("a listing with no origins named files to watch: %q", files)
+	}
+}
+
+// A --show-origin listing carries the file each line came from, an included
+// file's own origin included, and that file is what the overlay has to watch.
+func TestCredentialHelperValuesNamesItsOriginFiles(t *testing.T) {
+	listing := strings.Join([]string{
+		"file:/home/u/.gitconfig\tuser.name=x",
+		"file:/home/u/.gitconfig\tcredential.helper=osxkeychain",
+		"file:/home/u/.config/git/helpers\tcredential.helper=store",
+		"file:/home/u/.config/git/helpers\tcredential.helper=cache",
+		"command line:\tcredential.helper=osxkeychain",
+	}, "\n")
+	// A line from a scope that is not a file is still a value git reads, so it
+	// is re-asserted; it names no file, so there is nothing to watch.
+	got, files := credentialHelperValues(listing)
+	want := []string{"-c", "credential.helper=osxkeychain", "-c", "credential.helper=store",
+		"-c", "credential.helper=cache", "-c", "credential.helper=osxkeychain"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("credentialHelperValues = %q, want %q", got, want)
+	}
+	wantFiles := []string{"/home/u/.gitconfig", "/home/u/.config/git/helpers"}
+	if strings.Join(files, "\x00") != strings.Join(wantFiles, "\x00") {
+		t.Fatalf("credentialHelperValues files = %q, want %q", files, wantFiles)
 	}
 }
 
@@ -739,5 +766,48 @@ func TestExtraSafeConfigRebuildsAfterConfigChanges(t *testing.T) {
 	}
 	if _, err := r.Status(ctx, nil); err != nil {
 		t.Fatalf("git status after the rebuilds: %v", err)
+	}
+}
+
+// The overlay puts the operator's own credential helpers back behind the
+// reset, and those values come from the system and global config, not from
+// .git/config. Watching only the local one would keep asserting a helper the
+// operator has since removed, for every git call left in the run.
+func TestExtraSafeConfigRebuildsAfterGlobalConfigChanges(t *testing.T) {
+	if !Available() {
+		t.Skip("git is required for gitx tests")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	global := filepath.Join(home, ".gitconfig")
+	write := func(helper string) {
+		t.Helper()
+		if err := os.WriteFile(global, []byte("[credential]\n\thelper = "+helper+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("osxkeychain")
+
+	r := newRepo(t)
+	// The reset only runs when the local config names a helper, which is the
+	// case the operator's own chain is re-asserted behind.
+	gitIn(t, r.Dir, "config", "credential.helper", "!touch "+filepath.Join(t.TempDir(), "pwned"))
+	first := r.extraSafeConfig()
+	if !slices.Contains(first, "credential.helper=osxkeychain") {
+		t.Fatalf("overlay dropped the operator's helper: %q", first)
+	}
+	if len(r.safeWatched) == 0 {
+		t.Fatal("the global config the overlay read is not in its stamp")
+	}
+
+	// A different helper, and a different file size, so the stamp sees it.
+	write("cache--password-stored")
+	second := r.extraSafeConfig()
+	if slices.Contains(second, "credential.helper=osxkeychain") {
+		t.Fatalf("overlay kept a helper the operator removed: %q", second)
+	}
+	if !slices.Contains(second, "credential.helper=cache--password-stored") {
+		t.Fatalf("overlay did not pick up the changed global config: %q", second)
 	}
 }

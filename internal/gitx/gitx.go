@@ -145,11 +145,18 @@ type Repo struct {
 	// with nothing blanking it. The overlay is therefore rebuilt when the file
 	// it was read from changes, which is a stat per git call rather than the
 	// two subprocesses a rebuild costs.
-	safeMu     sync.Mutex
-	extraSafe  []string
-	safeReady  bool
-	safeConfig string
-	safeStamp  configStamp
+	//
+	// safeWatched is the same check for the config files outside the
+	// repository the overlay copied values from (the operator's own credential
+	// helpers, read at system and global scope). The local config alone does
+	// not cover them, and a helper the operator removed has to stop being
+	// asserted rather than pinned into every later git call.
+	safeMu      sync.Mutex
+	extraSafe   []string
+	safeReady   bool
+	safeConfig  string
+	safeStamp   configStamp
+	safeWatched []watchedConfig
 
 	// Now is the clock Sample debounces its cache against and stamps it
 	// with. nil means time.Now. The debounce decides whether a sample is a
@@ -191,6 +198,13 @@ var lineCountCacheMax = 4096
 type configStamp struct {
 	size    int64
 	modTime time.Time
+}
+
+// watchedConfig is one config file outside the repository that the cached
+// overlay was derived from, and that file's identity when it was.
+type watchedConfig struct {
+	path  string
+	stamp configStamp
 }
 
 // stampConfig reads a config file's identity. A file that cannot be read
@@ -282,6 +296,7 @@ func (r *Repo) extraSafeConfig() []string {
 func (r *Repo) buildExtraSafe() []string {
 	var extra []string
 	r.safeConfig = r.localConfigPath()
+	r.safeWatched = nil
 	out, err := r.execGit(context.Background(), bytes.NewReader(nil), gitQuick,
 		staticArgv("hash-object", "-t", "tree", "--stdin")...)
 	if err == nil {
@@ -326,28 +341,61 @@ func (r *Repo) operatorCredentialHelpers(localListing string) []string {
 	out := []string{"-c", "credential.helper="}
 	for _, scope := range []string{"--system", "--global"} {
 		list, err := r.execGit(context.Background(), nil, gitQuick,
-			staticArgv("config", scope, "--list")...)
+			staticArgv("config", scope, "--list", "--show-origin")...)
 		if err != nil {
 			continue // no file at that scope, or git refused to read it
 		}
-		out = append(out, credentialHelperValues(string(list))...)
+		values, files := credentialHelperValues(string(list))
+		out = append(out, values...)
+		// The overlay now carries these files' values, so they are part of
+		// what it is derived from and belong in its stamp.
+		for _, f := range files {
+			r.safeWatched = append(r.safeWatched, watchedConfig{path: f, stamp: stampConfig(f)})
+		}
 	}
 	return out
 }
 
 // credentialHelperValues picks the helper assignments out of one config
 // listing, in the order git reads them, so the reset can be followed by the
-// operator's own chain.
-func credentialHelperValues(listing string) []string {
-	var out []string
+// operator's own chain. It also returns the config files the listing was read
+// from, which the overlay's stamp has to watch: a helper the operator has
+// since removed from their global config would otherwise stay asserted into
+// every git call for the rest of the run.
+//
+// The listing is read with --show-origin, so each line carries the file it
+// came from and an included file's own origin. A line without an origin is
+// still read, and names no file to watch.
+func credentialHelperValues(listing string) (values, files []string) {
+	seen := map[string]bool{}
 	for line := range strings.SplitSeq(listing, "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		line = strings.TrimSpace(line)
+		origin, body := "", line
+		if i := strings.IndexByte(line, '\t'); i >= 0 {
+			origin, body = line[:i], strings.TrimSpace(line[i+1:])
+		}
+		key, value, ok := strings.Cut(body, "=")
 		if !ok || !strings.EqualFold(key, "credential.helper") {
 			continue
 		}
-		out = append(out, "-c", "credential.helper="+value)
+		if p, isFile := originFile(origin); isFile && !seen[p] {
+			seen[p] = true
+			files = append(files, p)
+		}
+		values = append(values, "-c", "credential.helper="+value)
 	}
-	return out
+	return values, files
+}
+
+// originFile is the config file a --show-origin line names, and whether it
+// named one. The other origins are the command line and the environment,
+// which are not files and so cannot be watched for a change.
+func originFile(origin string) (string, bool) {
+	p, ok := strings.CutPrefix(origin, "file:")
+	if !ok || p == "" {
+		return "", false
+	}
+	return p, true
 }
 
 // configHas reports whether a `git config --list` listing carries key. The
@@ -820,17 +868,29 @@ func (r *Repo) adoptSafeConfig(parent *Repo) {
 	r.safeReady = true
 	r.safeConfig = parent.safeConfig
 	r.safeStamp = parent.safeStamp
+	r.safeWatched = slices.Clone(parent.safeWatched)
 }
 
 // extraSafeConfigLocked is extraSafeConfig for a caller already holding
 // safeMu, and for a handle that has inherited another one's overlay.
 func (r *Repo) extraSafeConfigLocked() []string {
-	if !r.safeReady || r.safeStamp != stampConfig(r.safeConfig) {
+	if !r.safeReady || r.safeStamp != stampConfig(r.safeConfig) || r.safeWatchedStale() {
 		r.extraSafe = r.buildExtraSafe()
 		r.safeReady = true
 		r.safeStamp = stampConfig(r.safeConfig)
 	}
 	return r.extraSafe
+}
+
+// safeWatchedStale reports whether a config outside the repository that the
+// overlay copied values from has changed since the overlay was built.
+func (r *Repo) safeWatchedStale() bool {
+	for _, w := range r.safeWatched {
+		if w.stamp != stampConfig(w.path) {
+			return true
+		}
+	}
+	return false
 }
 
 // DiffStat reports the lines changed between two commits, measured inside
