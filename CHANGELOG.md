@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- `make check-scripts` read the local uv version with `uv version`, which reports the version pyproject.toml declares (`0.0.0`) rather than uv's own. The drift note compared that placeholder against `UV_VERSION` and fired on every run, so the one signal meant to separate a resolver difference from a clean tree was itself always red. It reads `uv --version` now.
+
 ## 1.25.0
 
 ### Added

@@ -117,6 +117,43 @@ the advisory scan of the dependency graph
 scan locally; run it before pushing a dependency bump rather than learning
 about it from a red check.
 
+## Maintainer scripts
+
+`scripts/` is not part of the build, and only its lint runs on a pull
+request. `make check-scripts` holds every file in it to the same rules CI
+does, but the two entry points below are run by hand, and neither has a
+`make` target.
+
+The README screenshots (`assets/dashboard.png`, `assets/launcher.png`) are
+generated, and the command that regenerates them is not `make`:
+
+```sh
+./scripts/shots.sh
+```
+
+It needs a Chromium-based browser and ImageMagick on top of `uv`, and the
+scripts job in CI installs only uv, so this is a maintainer task: the
+checked-in PNGs are what a clone gets. The frames it renders come from the
+renderer's own output: `internal/ui/shots_test.go` writes the ANSI frames
+into `.scratch/shots`,
+`scripts/shots/render.py` exports the SVG from them, and the browser
+rasterizes that because it has the font fallback the box-drawing and
+braille glyphs need. Nothing else writes those files, so a change to the
+dashboard or the launcher that does not regenerate them leaves the README
+showing the old screen. Refresh them in the same change when the screen
+changes shape.
+
+The file-signal suggester is scored against what agents actually picked in
+past runs, read from the journal:
+
+```sh
+uv run scripts/suggest-calibrate.py --detail
+```
+
+Run it before and after touching `internal/runner/suggest_fast.go`; read
+the numbers as movement between runs rather than as a grade, because the
+agent's pick is a reference and not ground truth.
+
 ## Changelog
 
 User-visible changes land in [CHANGELOG.md](CHANGELOG.md) under `##

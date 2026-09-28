@@ -313,6 +313,11 @@ verify: check check-scripts ## the pull request's static checks and all three ta
 # installed and a mismatch is a note, not a failure. The workflow
 # definitions are linted with the same uvx pins as the Python tools, since a
 # malformed one is a syntax error the Go build never sees.
+#
+# `uv --version`, not `uv version`: the latter with no argument reports the
+# version of the project pyproject.toml declares, which is the placeholder
+# 0.0.0, so the drift note below compared that against UV_VERSION and fired
+# on every run, on every machine, whatever uv was installed.
 .PHONY: check-scripts
 check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (CI parity)
 	@command -v uvx >/dev/null 2>&1 || { \
@@ -328,7 +333,7 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 		echo "check-scripts: shellcheck not found on PATH; macOS ships none (brew install shellcheck), Linux packages it as shellcheck" >&2; \
 		exit 1; \
 	}
-	@got_uv=$$(uv version 2>/dev/null | awk '{print $$2}'); \
+	@got_uv=$$(uv --version 2>/dev/null | awk '{print $$2}'); \
 		if [ -n "$$got_uv" ] && [ "$$got_uv" != "$(UV_VERSION)" ]; then \
 			echo "note: uv $$got_uv; CI pins $(UV_VERSION). Tools are version-locked, but resolver behavior can differ." >&2; \
 		fi

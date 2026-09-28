@@ -6,6 +6,8 @@
 
 - [ ] `make ci` passes (run it before pushing, not after the red check)
 - [ ] `make verify` passes if the change touches tagged files or `scripts/`
+- [ ] `make cover` passes if the change removes tested code (CI gates on a
+      coverage floor)
 - [ ] `CHANGELOG.md` has an entry under `## Unreleased`, if the change is
       user-visible; internal refactors need none
 
