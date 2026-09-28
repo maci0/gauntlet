@@ -98,6 +98,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
   diff in the body a reviewer reads. `[`, `]`, `<`, `>`, and `*` are now
   escaped in prose, so such a construct renders as the text it is. Paths in
   the file list are code spans and are unchanged.
+- A custom agent name carrying a control character or a Unicode formatting
+  character is refused at load, and one that is not valid UTF-8 is refused with
+  it. The name is the key every agent lookup uses, and it is drawn as a bare
+  label in the dashboard and the launcher: a newline breaks a row of the
+  launcher, a right-to-left override reverses the rest of the line, and a
+  zero-width joiner renders two different names identically. Bytes that are not
+  valid UTF-8 reach the journal and come back repaired to U+FFFD, so the agent a
+  run selected and the one its record names would differ. A name that has to be
+  rewritten is not the name the operator wrote, so the definition is refused
+  instead.
 
 ## 1.25.0
 

@@ -16,6 +16,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -95,6 +97,9 @@ func (c Custom) validate(name string) error {
 	if strings.ContainsAny(name, " \t,:=@") {
 		return fmt.Errorf("invalid agent name %q: no spaces, commas, colons, equals signs, or at signs", name)
 	}
+	if err := namePrintable(name); err != nil {
+		return err
+	}
 	if err := c.validateArgv(name); err != nil {
 		return err
 	}
@@ -123,6 +128,38 @@ func (c Custom) validate(name string) error {
 		return fmt.Errorf("custom agent %q: note cannot be whitespace only", name)
 	}
 	return nil
+}
+
+// namePrintable reports whether a name can be shown wherever it appears: as an
+// agent label in the dashboard and the launcher, in a log line, and in the
+// journal a run leaves behind.
+//
+// A name is the one string every other lookup keys on, and a name that is not
+// valid UTF-8 makes each of those a byte comparison nobody can reproduce: it
+// reaches a terminal as bytes no renderer can show, and it reads back from the
+// journal repaired to U+FFFD, so the agent a run selected is not the agent the
+// record names. A name holding a control character or a Unicode formatting
+// character draws as itself where it is placed: a newline breaks a row of the
+// launcher, a right-to-left override reverses the rest of the line, and a
+// zero-width joiner renders two different names identically. Both are refused
+// here rather than rewritten, the way every other untrusted display string in
+// this project is: a name that has to be changed is not the name the operator
+// wrote.
+func namePrintable(name string) error {
+	if !utf8.ValidString(name) {
+		return fmt.Errorf("invalid agent name %q: not valid UTF-8", name)
+	}
+	if strings.ContainsFunc(name, hiddenRune) {
+		return fmt.Errorf("invalid agent name %q: no control or formatting characters", name)
+	}
+	return nil
+}
+
+// hiddenRune reports a character that changes what a terminal draws rather than
+// which word is read.
+func hiddenRune(r rune) bool {
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
+		unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
 // validateArgv checks the launch line itself: a real executable, no

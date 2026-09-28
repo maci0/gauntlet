@@ -1328,6 +1328,20 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 	if err := Register("bad name", Custom{Argv: []string{"x", "{prompt}"}}); err == nil {
 		t.Error("a name with a space should be rejected")
 	}
+	// A name is drawn as a label in the dashboard and the launcher and is the
+	// key every lookup uses, so a control character or a formatting character in
+	// one corrupts the frame or makes two names print alike, and bytes that are
+	// not valid UTF-8 make every later comparison a byte comparison the reader
+	// cannot reproduce.
+	for _, name := range []string{
+		"two\nlines", "carriage\rreturn", "escape\x1b[31m", "delete\x7f",
+		"bidi\u202Eoverride", "zero\u200Bwidth", "line\u2028separator",
+		"invalid\xffutf8",
+	} {
+		if err := Register(name, Custom{Argv: []string{"x", "{prompt}"}}); err == nil {
+			t.Errorf("name %q should be rejected", name)
+		}
+	}
 	// Built-ins are not redefinable: a wrong redefinition of claude would be
 	// invisible and would run something else entirely.
 	if err := Register("claude", Custom{Argv: []string{"x", "{prompt}"}}); err == nil {
