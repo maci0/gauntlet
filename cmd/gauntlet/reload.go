@@ -132,7 +132,8 @@ func effectiveSeed(flagSeed, priorSeed uint64, now func() time.Time) uint64 {
 
 // startReloadWatch arms the hot-reload watcher. When the executable changes,
 // every runner is asked to stop at its next quiescent point; the exec happens
-// after the summary is written.
+// before anything final is printed, and the successor writes the one summary
+// that covers the whole run.
 func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *runner.Bus) *atomic.Pointer[string] {
 	var pending atomic.Pointer[string]
 	if !opts.hotReload {
@@ -166,7 +167,8 @@ func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *r
 }
 
 // doReload hands control to the new binary. It returns a nonnegative exit code
-// only when the exec failed and the caller should exit normally instead.
+// only when no exec was attempted, because the handoff could not be saved or
+// the exec itself failed, and the caller should exit normally instead.
 func doReload(path, runID string, start time.Time, elapsed time.Duration, runs []*dirRun, prior handoff,
 	seed uint64, argv []string, out io.Writer) int {
 	h := handoff{

@@ -207,8 +207,9 @@ func validateFixedArgs(name, field string, args []string) error {
 	return nil
 }
 
-// validate checks the transcript locator: real directories, and no
-// placeholder in any of them, since the reader resolves them as given.
+// validate checks the transcript locator: at least one root, none of them
+// blank, and no placeholder in any of them, since the reader resolves them as
+// given. Nothing here touches the filesystem.
 func (u UsageSpec) validate(name string) error {
 	if len(u.Roots) == 0 {
 		return fmt.Errorf("custom agent %q: usage.roots must name at least one directory", name)

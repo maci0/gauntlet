@@ -36,7 +36,7 @@ func indexLockPath() string { return filepath.Join(Home(), ".index.lock") }
 // indexLockWait bounds how long a mutation waits for the cross-process index
 // lock. The holder walks the whole journal tree on a rebuild or a prune, so on
 // a long history or a network home the wait is not instant. It is bounded
-// anyway: an unbounded LOCK_EX parks `gauntlet runs`, `gauntlet history`, and
+// anyway: an unbounded LOCK_EX parks `gauntlet runs`, `gauntlet show`, and
 // the exit-time Prune behind a peer that may never release it, and a wait that
 // ends is reportable where a hang is not.
 const indexLockWait = 30 * time.Second

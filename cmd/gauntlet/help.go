@@ -4,8 +4,9 @@
 package main
 
 // The help screen. Go's flag.PrintDefaults lists every alias as its own entry
-// and sorts them alphabetically, which turns 30 flags into 40 unordered lines.
-// This renders them grouped, aliased, aligned, and wrapped instead. A test
+// and sorts them alphabetically, which turns the flag set into one unordered
+// wall of lines. This renders them grouped, aliased, aligned, and wrapped
+// instead. A test
 // keeps this table and the registered flags from drifting apart.
 
 import (

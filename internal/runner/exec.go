@@ -299,7 +299,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	go func() { waitErr <- cmd.Wait() }()
 
 	var res procResult
-	// Timeout <= 0 means no bound, matching --runtime 0. time.NewTimer(0)
+	// A zero Timeout means no bound. time.NewTimer(0)
 	// fires immediately and would kill the child before it could start.
 	var timeoutC <-chan time.Time
 	if o.Timeout > 0 {

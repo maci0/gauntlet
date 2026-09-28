@@ -190,8 +190,8 @@ type lineCount struct {
 // production always sees 4096.
 var lineCountCacheMax = 4096
 
-// configStamp identifies one reading of a local config file. Size and mtime
-// are the same pair countLinesCached trusts, and for the same reason: a
+// configStamp identifies one reading of a config file, local or watched. Size
+// and mtime are the same pair countLinesCached trusts, and for the same reason: a
 // rewrite inside one filesystem timestamp tick reads as unchanged, and the
 // consequence there is one stale line count on a display number rather than a
 // driver git executes.
@@ -279,7 +279,8 @@ func (r *Repo) argv(args []string) []string {
 }
 
 // extraSafeConfig returns the per-repo -c flags, recomputing them whenever the
-// local config they were derived from has changed.
+// config they were derived from has changed: the repository's own, or one of
+// the system and global files it was layered over.
 func (r *Repo) extraSafeConfig() []string {
 	if r == nil {
 		return nil
@@ -726,8 +727,8 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 }
 
 // Invalidate drops the cached sample so the next call measures fresh. Called
-// right before and after a review, where an up-to-date number matters more
-// than the saved walk.
+// right before and after a review, and around a merge or a rebase, where an
+// up-to-date number matters more than the saved walk.
 func (r *Repo) Invalidate() {
 	if r == nil {
 		return
@@ -847,9 +848,10 @@ func (r *Repo) subRepo(dir string) *Repo {
 	sub := &Repo{Dir: dir}
 	if r != nil {
 		// Adopt the parent's overlay rather than rebuilding it, and with it
-		// the config path and stamp that make the adoption self-invalidating:
-		// a sub-repo of the same repository reads the same local config, so
-		// sharing all three keeps one rebuild per change, not one per handle.
+		// the config paths and stamps that make the adoption
+		// self-invalidating: a sub-repo of the same repository reads the same
+		// config files, so sharing all four keeps one rebuild per change,
+		// not one per handle.
 		sub.adoptSafeConfig(r)
 	}
 	return sub
