@@ -34,60 +34,68 @@ const conflictTimeout = 10 * time.Minute
 // Anything that does not work out leaves the branch exactly as a plain
 // conflict does: kept, unmerged, and reported. The review's output is never
 // dropped on the strength of a resolution nobody checked.
-func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, message string) gitx.MergeResult {
+//
+// It returns the lines it would have logged rather than logging them: the whole
+// step runs under the merge lock every lane is waiting on, and a log line is a
+// blocking publish on the event bus. The caller publishes them once the lock
+// is free, in the order they were produced.
+func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, message string) (mr gitx.MergeResult, notes []string) {
+	note := func(format string, args ...any) {
+		notes = append(notes, fmt.Sprintf(format, args...))
+	}
 	if ctx.Err() != nil {
-		return gitx.MergeResult{}
+		return mr, notes
 	}
 	tip, err := r.repo.Tip(ctx, "HEAD")
 	if err != nil {
-		r.log("Cannot resolve the %s conflict: %v", review, err)
-		return gitx.MergeResult{}
+		note("Cannot resolve the %s conflict: %v", review, err)
+		return mr, notes
 	}
 	wt, err := r.repo.AddWorktree(ctx, review, tag+"-fix", tip)
 	if err != nil {
-		r.log("Cannot resolve the %s conflict: %v", review, err)
-		return gitx.MergeResult{}
+		note("Cannot resolve the %s conflict: %v", review, err)
+		return mr, notes
 	}
 	defer func() {
 		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
-			r.log("Cannot remove the conflict checkout for %s: %v", review, err)
+			note("Cannot remove the conflict checkout for %s: %v", review, err)
 		}
 		if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch); err != nil {
-			r.log("Cannot delete the conflict branch for %s: %v", review, err)
+			note("Cannot delete the conflict branch for %s: %v", review, err)
 		}
 	}()
 
 	paths, err := wt.SquashIn(ctx, branch)
 	if err != nil {
-		r.log("Cannot resolve the %s conflict: %v", review, err)
-		return gitx.MergeResult{}
+		note("Cannot resolve the %s conflict: %v", review, err)
+		return mr, notes
 	}
-	if len(paths) > 0 && !r.runConflictAgent(ctx, review, paths, wt) {
-		return gitx.MergeResult{}
+	if len(paths) > 0 && !r.runConflictAgent(ctx, review, paths, wt, note) {
+		return mr, notes
 	}
 	left, err := wt.Unresolved(ctx, commitScope(ctx, wt, paths))
 	if err != nil {
 		// The scan could not vouch for every path: neither markers nor a
 		// clean tree is proven here, so nothing is committed from this state.
-		r.log("Cannot verify the %s conflict resolution: %v", review, err)
-		return gitx.MergeResult{}
+		note("Cannot verify the %s conflict resolution: %v", review, err)
+		return mr, notes
 	}
 	if len(left) > 0 {
-		r.log("%s still has conflict markers in %s, leaving the branch for a human",
+		note("%s still has conflict markers in %s, leaving the branch for a human",
 			review, humanize.List(safePaths(left), 3))
-		return gitx.MergeResult{}
+		return mr, notes
 	}
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), message)
 	if err != nil {
-		r.log("Cannot commit the resolved %s conflict: %v", review, err)
-		return gitx.MergeResult{}
+		note("Cannot commit the resolved %s conflict: %v", review, err)
+		return mr, notes
 	}
 	if !changed {
 		// The resolution kept the target branch's side of everything: there
 		// is nothing left to land, and the review's branch is spent.
-		return gitx.MergeResult{Merged: true}
+		return gitx.MergeResult{Merged: true}, notes
 	}
-	return r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message)
+	return r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message), notes
 }
 
 // commitScope is what the resolution's commit will actually contain: the
@@ -117,7 +125,9 @@ func commitScope(ctx context.Context, wt *gitx.Worktree, paths []string) []strin
 }
 
 // runConflictAgent launches the agent that edits the conflicted files, and
-// reports whether it finished. The caller checks its work either way.
+// reports whether it finished. The caller checks its work either way. It
+// reports through note, the caller's held-back log lines, for the reason
+// resolveConflict gives.
 //
 // The paths arrive from `git diff -z` against a possibly hostile tree, and
 // git is happy to carry control characters in a name: a file called
@@ -127,9 +137,9 @@ func commitScope(ctx context.Context, wt *gitx.Worktree, paths []string) []strin
 // list entirely: the marker scan still checks it, so it holds the resolution
 // open and the branch stays with a human — the same outcome a file the agent
 // could not resolve gets.
-func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []string, wt *gitx.Worktree) bool {
+func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []string, wt *gitx.Worktree, note func(string, ...any)) bool {
 	if len(paths) > prompt.ConflictFileMax {
-		r.log("%s has %d conflicted files, over the %d a resolver prompt will name; leaving the branch for a human",
+		note("%s has %d conflicted files, over the %d a resolver prompt will name; leaving the branch for a human",
 			review, len(paths), prompt.ConflictFileMax)
 		return false
 	}
@@ -139,12 +149,12 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 			named = append(named, p)
 			continue
 		}
-		r.log("Not naming %s in the conflict prompt: the path carries control characters",
+		note("Not naming %s in the conflict prompt: the path carries control characters",
 			normalize.Sanitize(p))
 	}
 	named = prompt.ConflictNamed(named)
 	if len(named) == 0 {
-		r.log("No conflicted path is safe to name in a prompt; leaving the branch for a human")
+		note("No conflicted path is safe to name in a prompt; leaving the branch for a human")
 		return false
 	}
 	spec := r.pickAgent("conflict", nil)
@@ -155,10 +165,10 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 	argv, err := agent.BuildCmd(spec, prompt.ConflictPrompt(named),
 		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: wt.Dir})
 	if err != nil {
-		r.log("Cannot build the conflict command for %s: %v", spec.Label(), err)
+		note("Cannot build the conflict command for %s: %v", spec.Label(), err)
 		return false
 	}
-	r.log("Resolving the %s conflict in %s with %s", review,
+	note("Resolving the %s conflict in %s with %s", review,
 		humanize.List(safePaths(paths), 3), spec.Label())
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
@@ -167,15 +177,15 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 	})
 	switch {
 	case pr.Err != nil:
-		r.log("Conflict step could not launch %s: %v", spec.Label(), pr.Err)
+		note("Conflict step could not launch %s: %v", spec.Label(), pr.Err)
 		return false
 	case pr.TimedOut:
-		r.log("Conflict step timed out after %s", humanize.Duration(timeout))
+		note("Conflict step timed out after %s", humanize.Duration(timeout))
 		return false
 	case pr.Canceled:
 		return false
 	case pr.ExitCode != 0:
-		r.log("Conflict step failed: %s exited %d", spec.Label(), pr.ExitCode)
+		note("Conflict step failed: %s exited %d", spec.Label(), pr.ExitCode)
 		return false
 	}
 	return true

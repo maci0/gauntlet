@@ -883,3 +883,36 @@ func TestWorktreeDirsAreOwnerOnly(t *testing.T) {
 		}
 	}
 }
+
+// The handle that runs git inside a checkout is built with the checkout, not
+// on first use: a Worktree is owned by one lane goroutine, and a lazily filled
+// field is a check-then-act that a second goroutine would turn into a race.
+// Remove retires it with the directory.
+func TestSubRepoIsBuiltWithTheWorktree(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "sec-review", "run-l1-00", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := wt.subRepo()
+	if sub == nil {
+		t.Fatal("a fresh worktree must have its checkout handle ready")
+	}
+	if sub != wt.subRepo() {
+		t.Fatal("the checkout handle must be the same one on every call")
+	}
+	if sub.Dir != wt.Dir {
+		t.Fatalf("checkout handle runs in %q, want %q", sub.Dir, wt.Dir)
+	}
+	if err := wt.Remove(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if wt.subRepo() != nil {
+		t.Fatal("a removed worktree must have no checkout handle")
+	}
+}

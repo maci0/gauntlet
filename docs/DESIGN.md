@@ -311,7 +311,10 @@ Rules the runner enforces:
    conflicting merge goes to the conflict step (below) and, if that does not
    land it, is aborted with its branch kept, named after the review, so the
    work can be inspected or merged by hand. Conflicts are reported as their
-   own outcome in the summary and the journal, never silently dropped.
+   own outcome in the summary and the journal, never silently dropped. The
+   lock covers git, not the reporting: the merge step holds its log lines back
+   and publishes them once the lock is free, because a log line is a blocking
+   publish and a stalled subscriber would otherwise park every lane.
 5. **Cleanup on the way out**: lane worktrees removed, merged review branches
    deleted, `git worktree prune` run. Unmerged branches survive on purpose.
    A run also sweeps the worktree root at startup, while it holds the run
