@@ -41,6 +41,17 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 		if i > 0 && strings.HasPrefix(line, "#") && lines[i-1] != "" {
 			t.Errorf("CHANGELOG.md:%d: %q follows a line of text; put a blank line above every heading", n, line)
 		}
+		// A leading ">" turns a bullet into a blockquote, so the entry
+		// drops out of the list the reader is scanning and renders as
+		// quoted text under nothing. The release workflow dumps a version
+		// section verbatim as the GitHub notes, so it ships that way. Prose
+		// in this file is never a blockquote, so the character at the start
+		// of a line inside a section is always a typo. One entry in
+		// Unreleased carried the stray character and was caught here
+		// before a tag.
+		if section != "" && strings.HasPrefix(line, ">") {
+			t.Errorf("CHANGELOG.md:%d: %q starts a blockquote; a stray \">\" before a bullet makes the release notes render it as quoted text", n, line)
+		}
 		switch {
 		case strings.HasPrefix(line, "### "):
 			if section == "" {
