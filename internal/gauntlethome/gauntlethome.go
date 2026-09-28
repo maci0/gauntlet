@@ -188,11 +188,20 @@ func SweepStaleTemps(dir, prefix string, age time.Duration, now func() time.Time
 	cutoff := now().Add(-age)
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasPrefix(name, prefix) || !e.Type().IsRegular() {
+		if !strings.HasPrefix(name, prefix) {
 			continue
 		}
+		// The mode comes from the stat, not from the directory entry type. A
+		// readdir that reports no type (some network and FUSE mounts, and
+		// XFS without ftype) makes Go hand back ModeIrregular, which reads as
+		// "not a regular file", and the sweep would then never remove
+		// anything on a tree whose state root is exactly such a mount: the
+		// leftovers accumulate beside the binary forever. Info is the lstat
+		// Go already performed for the entry's other fields, so it costs
+		// nothing extra where the type is known, and it keeps a symlink out
+		// of the way because the link itself is what is stat-ed.
 		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
+		if err != nil || !fi.Mode().IsRegular() || fi.ModTime().After(cutoff) {
 			continue
 		}
 		_ = os.Remove(filepath.Join(dir, name))

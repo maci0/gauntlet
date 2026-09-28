@@ -343,6 +343,50 @@ func TestSweepStaleTemps(t *testing.T) {
 	}
 }
 
+// The sweep removes files and nothing else. The kind is settled by the stat
+// rather than by the type the directory entry carries, so a mount reporting no
+// entry type sweeps the same set a local disk does, and a planted directory or
+// symlink under the prefix is still left alone.
+func TestSweepStaleTempsOnlyRemovesRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-48 * time.Hour)
+	age := func(name string) {
+		t.Helper()
+		if err := os.Chtimes(filepath.Join(dir, name), past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := os.Mkdir(filepath.Join(dir, ".prefix-dir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, ".prefix-dir", "keep"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(dir, ".prefix-link")); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".prefix-dir", "target", ".prefix-link"} {
+		age(name)
+	}
+
+	SweepStaleTemps(dir, ".prefix-", 24*time.Hour, func() time.Time { return now })
+
+	for _, name := range []string{".prefix-dir", ".prefix-link", "target"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s must survive the sweep: %v", name, err)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(dir, ".prefix-dir", "keep")); err != nil {
+		t.Errorf("the sweep must not have recursed into a directory: %v", err)
+	}
+}
+
 // A sweep that ran at a different time must not sweep differently: the cutoff
 // comes from the caller's clock, so a replay of the same state with the same
 // clock removes the same files.

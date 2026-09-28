@@ -120,7 +120,31 @@ func TestSnapshotCleansStaleIndices(t *testing.T) {
 	if err := os.WriteFile(stale, []byte("stale"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A directory and a symlink under the prefix are not a snapshot index, and
+	// the sweep says so from the stat rather than from the type the directory
+	// entry carries, so a git directory on a mount that reports no entry type
+	// still sweeps the same set this one does.
+	keep := map[string]string{
+		"gauntlet-snap-dir":  "",
+		"gauntlet-snap-link": stale,
+	}
+	if err := os.Mkdir(filepath.Join(gitDir, "gauntlet-snap-dir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for name, target := range keep {
+		if target == "" {
+			continue
+		}
+		if err := os.Symlink(target, filepath.Join(gitDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	oldTime := time.Now().Add(-2 * time.Hour)
+	for name := range keep {
+		if err := os.Chtimes(filepath.Join(gitDir, name), oldTime, oldTime); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.Chtimes(stale, oldTime, oldTime); err != nil {
 		t.Fatal(err)
 	}
@@ -129,5 +153,10 @@ func TestSnapshotCleansStaleIndices(t *testing.T) {
 	}
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("stale snapshot file %s still exists", stale)
+	}
+	for name := range keep {
+		if _, err := os.Lstat(filepath.Join(gitDir, name)); err != nil {
+			t.Errorf("%s is not a snapshot index and must survive: %v", name, err)
+		}
 	}
 }

@@ -94,7 +94,11 @@ func gitPath() string {
 	return gitPathFor
 }
 
-// Available reports whether git itself was found.
+// Available reports whether git itself was found. Found is not the whole
+// question: the calls below separate options with `--end-of-options` (git
+// 2.24) and create branches with `git switch` (2.23), so git older than 2.24
+// answers "unknown option" where a broken repository would have answered
+// something else. README states that floor.
 func Available() bool { return gitPath() != "" }
 
 // errGitUnavailable is what every entry point returns when git is missing, so

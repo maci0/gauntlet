@@ -154,11 +154,17 @@ func sweepStaleSnapshots(gitDir string, now time.Time) {
 	cutoff := now.Add(-time.Hour)
 	for _, e := range entries {
 		name := e.Name()
-		if !strings.HasPrefix(name, "gauntlet-snap-") || !e.Type().IsRegular() {
+		if !strings.HasPrefix(name, "gauntlet-snap-") {
 			continue
 		}
+		// The stat, not the directory entry type, decides what a leftover is.
+		// A readdir reporting no type hands back ModeIrregular, which reads as
+		// "not a regular file" and would leave every snapshot behind on a
+		// repository on a mount that reports it. The lstat Go already needs
+		// for the mtime answers it, and it keeps a symlink planted under the
+		// prefix out of the sweep.
 		fi, err := e.Info()
-		if err != nil || fi.ModTime().After(cutoff) {
+		if err != nil || !fi.Mode().IsRegular() || fi.ModTime().After(cutoff) {
 			continue
 		}
 		_ = os.Remove(filepath.Join(gitDir, name))

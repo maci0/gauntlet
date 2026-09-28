@@ -121,7 +121,8 @@ with `uv tool uninstall gauntlet-review` (or `pipx uninstall gauntlet-review`).
 Linux and macOS. The runner leans on POSIX semantics that Windows has no
 equivalent for: process groups to kill an agent's whole tree on timeout,
 `flock` for the directory lock, `O_NOFOLLOW` for prompt reads, and `execve`
-for hot reload.
+for hot reload. Git 2.24 or newer: branch and revision arguments are separated
+with `--end-of-options`, which older git rejects outright.
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
 `cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, plus the pi family

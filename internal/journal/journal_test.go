@@ -522,6 +522,38 @@ func TestRecentOnEmptyHome(t *testing.T) {
 	}
 }
 
+// The listing holds journals, and whether an entry is one is settled by the
+// stat rather than by the type the directory entry carries. A directory named
+// after a run id is what a restored backup or a mounted share leaves beside the
+// real file, and it must not be listed as a run whose journal cannot be read.
+func TestListingSkipsADirectoryNamedAfterARun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	start := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	real := NewRunID(start) + "aaaa"
+	record(t, real, start)
+	// A newer id, so the directory sorts first and cannot hide behind the
+	// real journal in a listing that stops early.
+	decoy := NewRunID(start.Add(time.Hour)) + "bbbb"
+	if err := os.MkdirAll(filepath.Join(home, "runs", shardFromRunID(decoy), decoy+".jsonl"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	found, err := allJournals()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, j := range found {
+		if j.id == decoy {
+			t.Fatalf("a directory named %s.jsonl was listed as a journal: %+v", decoy, j)
+		}
+	}
+	if len(found) != 1 || found[0].id != real {
+		t.Fatalf("listing is %+v, want only %s", found, real)
+	}
+}
+
 func TestRecentReadsPastTheFirstChunk(t *testing.T) {
 	// An index bigger than one backward read must still yield the right tail,
 	// including when n reaches across the slice boundary.

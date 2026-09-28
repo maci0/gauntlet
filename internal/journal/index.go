@@ -759,11 +759,21 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 	}
 	var batch []namedJournal
 	for _, f := range files {
-		if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
+		if !strings.HasSuffix(f.Name(), ".jsonl") {
 			continue
 		}
 		id := strings.TrimSuffix(f.Name(), ".jsonl")
 		if !validRunID(id) {
+			continue
+		}
+		// A directory carrying a run id and a .jsonl suffix, which is what a
+		// repository volume holding a stray copy of one looks like, is not a
+		// journal. The question is settled by the stat rather than by the
+		// directory entry type: a readdir reporting no type (some network and
+		// FUSE mounts) hands back ModeIrregular, which reads as "not a
+		// directory", and the listing would then hand every reader a path it
+		// cannot open as a file.
+		if fi, err := f.Info(); err != nil || fi.IsDir() {
 			continue
 		}
 		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
