@@ -362,8 +362,8 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			if tps := a.TokensPerSec(); tps > 0 {
 				rate = fmt.Sprintf(", ~%.0f tok/s", tps)
 			}
-			fmt.Fprintf(out, "  %-20s ok=%d fail=%d timeout=%d%s\n",
-				a.Label, a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
+			fmt.Fprintf(out, "  %s ok=%d fail=%d timeout=%d%s\n",
+				padCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
 		}
 	}
 	if len(t.failures) > 0 {

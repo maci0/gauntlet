@@ -316,7 +316,7 @@ func run(argv []string) int {
 		// ones already created.
 		defer cleanupSnapshots(runs)
 		for _, d := range runs {
-			err := stackPreflight(ctx, d, opts, prior.Dirs[d.dir], resumed, runID,
+			err := stackPreflight(ctx, d, opts, prior.Dir(d.dir), resumed, runID,
 				ownArtifacts, stdin, interactive, stdout)
 			if errors.Is(err, errAborted) {
 				fmt.Fprintln(stdout, "Aborted.")
@@ -511,7 +511,7 @@ func run(argv []string) int {
 	for _, d := range runs {
 		// A reloaded process inherits the same argv, so each directory's loop
 		// budget must be reduced by what it already finished before the swap.
-		carried := prior.Dirs[d.dir]
+		carried := prior.Dir(d.dir)
 		maxLoops := opts.maxLoops
 		if maxLoops > 0 {
 			maxLoops -= carried.Loops
@@ -891,7 +891,7 @@ func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, di
 func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 	out := runs[:0:0]
 	for _, d := range runs {
-		if carried := prior.Dirs[d.dir]; resumed && len(carried.Reviews) > 0 {
+		if carried := prior.Dir(d.dir); resumed && len(carried.Reviews) > 0 {
 			d.reviews = carried.Reviews
 			continue
 		}

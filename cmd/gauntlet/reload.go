@@ -11,7 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/text/unicode/norm"
+
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
@@ -38,6 +41,23 @@ type handoff struct {
 	Reloads int                   `json:"reloads"`
 	Dirs    map[string]dirHandoff `json:"dirs"`
 }
+
+// handoffKey is the name one directory's progress is filed under. A path is a
+// filesystem string and a filesystem may hold any byte outside NUL and the
+// separator, but the handoff is written as JSON, and encoding/json rewrites
+// every byte that is not valid UTF-8 to U+FFFD in both directions. Keyed by
+// the raw path, such a directory therefore comes back under a name that is not
+// the one it was written with, every lookup misses, and the successor repeats
+// the loops it had already finished and refetches the base commit a resumed
+// stack was pinned to. Repairing and composing on both sides puts the same
+// spelling on the way out and the way back in.
+func handoffKey(dir string) string {
+	return norm.NFC.String(normalize.Repair(dir))
+}
+
+// Dir returns what the interrupted process recorded for dir, or the zero
+// handoff when it recorded nothing.
+func (h handoff) Dir(dir string) dirHandoff { return h.Dirs[handoffKey(dir)] }
 
 // dirHandoff is one directory's progress at the moment of the swap.
 type dirHandoff struct {
@@ -180,7 +200,7 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 			dh.StackHead, dh.StackHeadTip = d.r.StackHead()
 			dh.StackPublished = d.r.StackPublished()
 		}
-		h.Dirs[d.dir] = dh
+		h.Dirs[handoffKey(d.dir)] = dh
 	}
 	statePath, err := selfupdate.SaveState(journal.StateDir(), runID, h)
 	if err != nil {

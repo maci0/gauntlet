@@ -172,6 +172,37 @@ func TestHandoffCarriesTheSeed(t *testing.T) {
 	}
 }
 
+// A directory's path is the key its progress is filed under, and a filesystem
+// may hold any byte outside NUL and the separator. JSON rewrites a byte that is
+// not valid UTF-8 to U+FFFD in both directions, so a raw key would come back
+// under a name that is not the one it was written with: every lookup misses,
+// the successor repeats the loops it had finished, and a resumed stack
+// refetches a base it was pinned to. The same applies to a name the filesystem
+// holds in a decomposed spelling, which JSON would carry through unchanged.
+func TestHandoffFindsADirectoryWhoseNameDoesNotSurviveJSON(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	dir := string([]byte{'/', 't', 'm', 'p', 0xff, 0x65, '/'}) + "cafe\xcc\x81"
+	written := handoff{RunID: "odd-dir", Dirs: map[string]dirHandoff{
+		handoffKey(dir): {Loops: 3, Reviews: []string{"go-review"}},
+	}}
+	path, err := selfupdate.SaveState(journal.StateDir(), "odd-dir", written)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_STATE", path)
+
+	var got handoff
+	ok, err := selfupdate.LoadState(&got)
+	if err != nil || !ok {
+		t.Fatalf("LoadState = %v, %v; want the handoff back", ok, err)
+	}
+	carried := got.Dir(dir)
+	if carried.Loops != 3 || len(carried.Reviews) != 1 {
+		t.Fatalf("the successor found %d loops and %d reviews, want the 3 and 1 that were written",
+			carried.Loops, len(carried.Reviews))
+	}
+}
+
 // One seed per run: --seed wins, a resumed run continues its predecessor's,
 // and only a run with neither derives one. Two clock reads here would hand the
 // suggest step and the schedule different seeds, so the number printed on
