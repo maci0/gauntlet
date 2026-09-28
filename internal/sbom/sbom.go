@@ -22,17 +22,19 @@ import (
 
 // Module is one third-party module a binary links, as recorded in its build
 // info. Sum is the go.sum hash of the module zip, empty when the build
-// recorded none.
+// recorded none. License is the SPDX identifier of the module's grant, empty
+// when no license was resolved for it.
 type Module struct {
 	Path    string
 	Version string
 	Sum     string
+	License string
 }
 
 // Document is a CycloneDX 1.5 software bill of materials. Only the fields
 // this inventory can fill truthfully are declared: a release knows the
-// modules, their versions, and their go.sum hashes, and claims nothing
-// about licenses or the files a module contributed.
+// modules, their versions, their go.sum hashes, and the license each one
+// ships, and claims nothing about the files a module contributed.
 type Document struct {
 	BOMFormat    string      `json:"bomFormat"`
 	SpecVersion  string      `json:"specVersion"`
@@ -50,13 +52,28 @@ type Metadata struct {
 
 // Component is one entry of the inventory.
 type Component struct {
-	Type       string     `json:"type"`
-	BOMRef     string     `json:"bom-ref"`
-	Name       string     `json:"name"`
-	Group      string     `json:"group,omitempty"`
-	Version    string     `json:"version"`
-	PURL       string     `json:"purl"`
-	Properties []Property `json:"properties,omitempty"`
+	Type       string          `json:"type"`
+	BOMRef     string          `json:"bom-ref"`
+	Name       string          `json:"name"`
+	Group      string          `json:"group,omitempty"`
+	Version    string          `json:"version"`
+	PURL       string          `json:"purl"`
+	Licenses   []LicenseChoice `json:"licenses,omitempty"`
+	Properties []Property      `json:"properties,omitempty"`
+}
+
+// LicenseChoice is the CycloneDX wrapper around one license entry. The
+// licenses field is a list because a component may be offered under more than
+// one grant, and a single-element list is how CycloneDX 1.5 spells one.
+type LicenseChoice struct {
+	License License `json:"license"`
+}
+
+// License is the SPDX identifier of a module's grant, which is what a
+// scanner resolves a component by. A module whose grant was not resolved
+// carries no license field at all rather than a name this package guessed.
+type License struct {
+	ID string `json:"id"`
 }
 
 // Property carries a value CycloneDX has no field for. The go.sum hash is
@@ -155,6 +172,9 @@ func New(name, modulePath, version string, mods []Module) *Document {
 		if m.Sum != "" {
 			c.Properties = []Property{{Name: sumProperty, Value: m.Sum}}
 		}
+		if m.License != "" {
+			c.Licenses = []LicenseChoice{{License: License{ID: m.License}}}
+		}
 		components = append(components, c)
 	}
 	doc := &Document{
@@ -190,6 +210,9 @@ func serialNumber(d *Document) string {
 	fmt.Fprintf(h, "%s@%s\n", d.Metadata.Component.Name, d.Metadata.Component.Version)
 	for _, c := range d.Components {
 		fmt.Fprintf(h, "%s\t%s\n", c.PURL, d.Metadata.Component.Name)
+		for _, l := range c.Licenses {
+			fmt.Fprintf(h, "\tlicense=%s\n", l.License.ID)
+		}
 		for _, p := range c.Properties {
 			fmt.Fprintf(h, "\t%s=%s\n", p.Name, p.Value)
 		}

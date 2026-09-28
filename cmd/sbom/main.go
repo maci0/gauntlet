@@ -63,7 +63,22 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	doc := sbom.New(name, modulePath, *version, mods)
+	// The license of each module is read out of the module cache the build
+	// that produced these binaries just filled, so the inventory records the
+	// grant that shipped rather than one a consumer would have to rebuild to
+	// find. A module whose grant is missing or unrecognized is named here
+	// instead of being dropped from the document: an inventory that says
+	// nothing about a module's terms is what this closes.
+	licensed, err := sbom.ResolveLicenses(mods)
+	if err != nil {
+		return err
+	}
+	for _, m := range licensed {
+		if m.License == "" {
+			fmt.Fprintf(os.Stderr, "sbom: no license resolved for %s %s\n", m.Path, m.Version)
+		}
+	}
+	doc := sbom.New(name, modulePath, *version, licensed)
 	var buf bytes.Buffer
 	if err := doc.Write(&buf); err != nil {
 		return err
