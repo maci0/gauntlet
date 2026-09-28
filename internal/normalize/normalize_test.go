@@ -6,6 +6,7 @@ package normalize
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -889,5 +890,27 @@ func TestDisplayWriterBoundsThePendingLine(t *testing.T) {
 	}
 	if strings.ContainsRune(got.String(), 0xFFFD) {
 		t.Fatal("the bound split a UTF-8 sequence")
+	}
+}
+
+func TestRedactHome(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "alice")
+	t.Setenv("HOME", home)
+
+	for _, tt := range []struct{ name, in, want string }{
+		{"prefix", home + "/src/gauntlet", "~/src/gauntlet"},
+		{"bare", home, "~"},
+		{"trailing separator", home + "/", "~/"},
+		{"mid string", "fatal: cannot open '" + home + "/x.go'", "fatal: cannot open '~/x.go'"},
+		{"twice", home + "/a " + home + "/b", "~/a ~/b"},
+		{"partial component", home + "backup/x", home + "backup/x"},
+		{"unrelated", "/srv/app.log", "/srv/app.log"},
+		{"empty", "", ""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RedactHome(tt.in); got != tt.want {
+				t.Fatalf("RedactHome(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }

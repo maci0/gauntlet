@@ -26,6 +26,7 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
@@ -440,7 +441,7 @@ func run(argv []string) int {
 			if runner.Droppable(ev.Kind) {
 				continue
 			}
-			jrnl.Write(ev)
+			jrnl.Write(journaledEvent(ev))
 			if ev.Kind == runner.EvLoopEnd {
 				jrnl.Flush()
 			}
@@ -844,13 +845,38 @@ func releaseAll(runs []*dirRun) {
 	}
 }
 
+// journaledEvent is an event as it is written to disk. The journal outlives
+// the run and is the file a backup, a sync, or a pasted "gauntlet runs
+// --json" carries away, so the operator's home directory is shortened in the
+// free-text field: git errors and path errors reach Event.Text with the
+// absolute path of the reviewed tree in them, and that path names the account.
+// The live terminal and the --log file keep the full text.
+func journaledEvent(ev runner.Event) runner.Event {
+	if ev.Text != "" {
+		ev.Text = normalize.RedactHome(ev.Text)
+	}
+	return ev
+}
+
+// journaledArgs is the command line as the index keeps it, for the same
+// reason: an argument naming a directory, a log file, or an agent binary
+// carries the account name, and the index row is what "gauntlet runs --json"
+// hands out.
+func journaledArgs(args []string) []string {
+	out := make([]string, len(args))
+	for i, a := range args {
+		out[i] = normalize.RedactHome(a)
+	}
+	return out
+}
+
 // writeSummary closes the journal with this run's index entry.
 func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, dirs []string,
 	agents []agent.Spec, runs []*dirRun, code, keepRuns int) {
 
 	s := journal.Summary{
 		Version: version, Dirs: dirs, Agents: agent.Labels(agents),
-		Args: os.Args[1:], Start: start, End: time.Now(), ExitCode: &code,
+		Args: journaledArgs(os.Args[1:]), Start: start, End: time.Now(), ExitCode: &code,
 	}
 	if elapsed > 0 {
 		s.Elapsed = elapsed.Seconds()

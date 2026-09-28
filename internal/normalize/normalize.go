@@ -13,6 +13,7 @@ package normalize
 import (
 	"bytes"
 	"io"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -432,6 +433,46 @@ func Truncate(s string, w int) string {
 		return cut + "…"
 	}
 	return s
+}
+
+// RedactHome rewrites the operator's home directory to "~" wherever it appears
+// in s, so text kept for later (a journal line, a command line) carries no OS
+// account name. The path stays the one the operator recognizes and can expand,
+// so nothing is lost but the account.
+//
+// A home of "/", or one this process cannot resolve, is left alone: replacing
+// every separator would shorten nothing and mangle the text. An occurrence is
+// rewritten only where it is a whole path component, so "/home/alice" does not
+// shorten the unrelated "/home/alicia".
+func RedactHome(s string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" || home == string(os.PathSeparator) {
+		return s
+	}
+	home = strings.TrimRight(home, string(os.PathSeparator))
+	if home == "" {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for {
+		i := strings.Index(s, home)
+		if i < 0 {
+			b.WriteString(s)
+			return b.String()
+		}
+		b.WriteString(s[:i])
+		rest := s[i+len(home):]
+		// A partial component is somebody else's path that merely starts with
+		// the same bytes.
+		if rest != "" && rest[0] != os.PathSeparator {
+			b.WriteString(home[:1])
+			s = s[i+1:]
+			continue
+		}
+		b.WriteString("~")
+		s = rest
+	}
 }
 
 // maxPendingBytes caps the partial line a DisplayWriter holds while waiting

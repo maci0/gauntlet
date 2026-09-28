@@ -367,7 +367,12 @@ jq 'select(.ev=="review_end")' ~/.gauntlet/runs/*/*.jsonl   # or use your own to
 Events are one JSON object per line (`run_start`, `loop_start`,
 `review_start`, `review_end`, `merge`, `pull_request`, `commit`, `loop_end`,
 `reload`, `run_end`, plus the runner's own `log` lines, which carry the
-narration in `text`). `review_start` and `review_end` carry
+narration in `text`). The `text` field and the `args` on an index row are
+written with the home directory shortened to `~`, because git errors and path
+errors reach them carrying the absolute path of the reviewed tree, and this
+is the copy that leaves the machine. The `dir` and `path` fields are stored as
+resolved paths: the listing and the history matcher need the path a person
+typed to still resolve. `review_start` and `review_end` carry
 `prompt_sha256`, the SHA-256 of the prompt text that launch was composed
 from, so an output stays attributable to exact words after the prompt file
 has changed or disappeared, and both carry `attempt`, the 1-based try the
