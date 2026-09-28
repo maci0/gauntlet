@@ -27,10 +27,16 @@ import (
 // against the base they are drawn on. Borders are decorative chrome carrying
 // no information, so they alone are exempt.
 var (
-	cText     = adaptive("#4c4f69", "#cdd6f4")
-	cDim      = adaptive("#6a6d82", "#9399b2")
-	cFaint    = adaptive("#6b6d7b", "#84889f")
-	cTrack    = adaptive("#878b99", "#6c7086")
+	cText  = adaptive("#4c4f69", "#cdd6f4")
+	cDim   = adaptive("#6a6d82", "#9399b2")
+	cFaint = adaptive("#6b6d7b", "#84889f")
+	// cTrack draws the unlit remainder of every meter and the chart's
+	// baseline, so it sits between the 3:1 non-text floor and the 4.5:1 text
+	// floor on purpose: a step visible enough to read as a stroke, faint
+	// enough to read as empty. The light tone is not the 3.00:1 the palette
+	// floor lands on exactly, because a stroke with no margin above the floor
+	// is one rounding step from failing it.
+	cTrack    = adaptive("#7f8391", "#6c7086")
 	cBorder   = adaptive("#acb0be", "#45475a")
 	cRed      = adaptive("#d20f39", "#f38ba8")
 	cGreen    = adaptive("#327d22", "#a6e3a1")

@@ -662,9 +662,29 @@ func (m *model) renderFeed(w, h int) string {
 		if l.repeat > 1 {
 			text += fmt.Sprintf(" (x%d)", l.repeat)
 		}
-		rows = append(rows, clip(prefix+lineStyle(l.kind).Render(text), w))
+		rows = append(rows, clip(prefix+feedMark(l.kind)+lineStyle(l.kind).Render(text), w))
 	}
 	return strings.Join(rows, "\n")
+}
+
+// feedMark is the one cell in front of a feed line that says what the line is
+// without relying on its hue.
+//
+// Most kinds carry their own answer in their text: a diff line begins with the
+// sign it was added or removed with, a result line begins RESULT: or PATH:,
+// reasoning is already italic, and progress says what it is doing. An error
+// the agent reported does not: it is the agent's own sentence about something
+// that broke, and nothing in it distinguishes it from the narration around
+// it. Under --no-color, on a monochrome terminal, or to a reader who cannot
+// separate the hues, the one line the feed's signal filter exists to surface
+// is the one line that reads as ordinary output (SC 1.4.1). The mark is
+// drawn in the line's own style so it reads as part of the line rather than
+// as a column of its own, and the help overlay names it.
+func feedMark(k normalize.Kind) string {
+	if k != normalize.Error {
+		return ""
+	}
+	return styleBad.Render("!")
 }
 
 func lineStyle(k normalize.Kind) lipgloss.Style {
@@ -914,13 +934,24 @@ func (m *model) helpLines() []string {
 		qLine = "  q, esc      stop now (a finish is already draining)"
 	}
 	lines = append(lines, qLine)
-	// A run with nothing to finish into does not get the key documented:
-	// ctrl+c would fall through to the hard quit, and s would do nothing.
-	if m.cfg.OnFinish != nil {
-		lines = append(lines,
-			"  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit",
-			"  ctrl+c x2   quit while a finish is draining (stops the run)",
-		)
+	// ctrl+c is bound in every state, so it is documented in every state.
+	// What it does is not the same in each: it asks for the graceful quit
+	// while the run is live, it closes outright while a finish is draining,
+	// and it closes outright when the run had nothing to finish into. The
+	// help used to name the graceful pair and then claim the closing one
+	// needed two presses, which is not what the key does (WCAG 3.3.2: a
+	// control's documented name has to be the control).
+	switch {
+	case m.done:
+		// Already covered by the close line above.
+	case m.finishing:
+		lines = append(lines, "  ctrl+c      quit now (a finish is already draining)")
+	case m.cfg.OnFinish != nil:
+		lines = append(lines, "  s, ctrl+c   finish: no new reviews, then commit, publish or merge, and exit")
+	default:
+		// Nothing to drain into, so ctrl+c is the only key that stops the
+		// run outright. Naming it here is what keeps it from being a secret.
+		lines = append(lines, "  ctrl+c      stop the run now, killing what is running")
 	}
 	lines = append(lines,
 		"  esc         cancel quit confirmation, or reset paused/scrolled feed to live",
@@ -929,6 +960,7 @@ func (m *model) helpLines() []string {
 		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results, errors, and diffs, and back",
 		"  ?, h        toggle this help",
+		styleDim.Render("  Feed mark: ! an error the agent reported. Every other line kind names itself in its own text."),
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
 	)

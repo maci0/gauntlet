@@ -251,6 +251,21 @@ func (p *picker) renderKeys() string {
 		arrowAction = "change"
 	case paneAgents:
 		arrowAction = "pane"
+	case paneReviews:
+		// The tree is not one kind of row. A set header has a fold in both
+		// directions; a review inside a set has only the left arrow, which
+		// folds the set it is in; the suggest row has no arrows at all, and
+		// both step to the neighbouring pane. Naming all of them
+		// "open/close" advertised a fold on a row that cannot make one, and
+		// a key that does nothing is the one a keyboard user cannot tell
+		// from a key that is broken (WCAG 3.3.2).
+		switch p.rowAt(p.cursor[paneReviews]).kind {
+		case rowGroup:
+		case rowReview:
+			arrowAction = arrowFold
+		default:
+			arrowAction = "pane"
+		}
 	}
 	q := "cancel"
 	if p.quitArmed {

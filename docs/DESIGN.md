@@ -716,6 +716,13 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
   styles; magenta is for diff hunk headers, lavender for reasoning, and the
   heat ramp for magnitude.
 - Meters are quantized segments with a visible unlit remainder.
+- A feed line says what it is in its own text wherever its text can: a diff
+  carries the sign it was added or removed with, a result line carries
+  `RESULT:`, reasoning is italic. An error the agent reported is the one
+  kind its text does not identify, so it carries a `!` in the line's own
+  style, named in the help overlay beside the review glyphs. Nothing the
+  feed or the grid says depends on hue alone, which is what `--no-color`
+  and a monochrome terminal leave behind.
 - The throughput chart is braille (2x4 dots per cell) and hugs the right
   edge, with a current-value marker at the live end.
 - Missing data shows as missing (`~`, `n/a`), never as zero or an interpolation.

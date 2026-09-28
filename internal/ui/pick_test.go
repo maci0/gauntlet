@@ -822,10 +822,56 @@ func TestPickFooterKeepsCriticalKeysVisible(t *testing.T) {
 	p := demoPicker()
 	p.w, p.h, p.ready = 104, 30, true
 	footer := lastLine(p.View())
-	for _, want := range []string{":pane", ":toggle", ":open/close", ":filter", ":help"} {
+	// The arrow segment names what the arrows do on the row the cursor is
+	// on. The demo picker opens on the suggest row, which has no fold of its
+	// own, so it reads "pane"; the set header and the review row below are
+	// checked against their own actions.
+	for _, want := range []string{":pane", ":toggle", ":filter", ":help"} {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("a wide terminal should document more than the essentials (%q missing):\n%s", want, footer)
 		}
+	}
+	if strings.Contains(footer, ":open/close") {
+		t.Fatalf("the suggest row advertises a fold it cannot make:\n%s", footer)
+	}
+}
+
+// The tree is not one kind of row, and the arrow key has to say so: a set
+// header folds both ways, a review inside one folds only left, and the
+// suggest row only steps between panes. A key legend that names one action
+// for all three advertises a control that does nothing on two of them, which
+// a keyboard user cannot tell from a broken key.
+func TestPickArrowKeysNameTheActionOfTheRowUnderThem(t *testing.T) {
+	arrow := func(t *testing.T, p *picker) string {
+		t.Helper()
+		p.w, p.h, p.ready = 104, 30, true
+		footer := lastLine(stripANSI(p.View()))
+		_, act, ok := strings.Cut(footer, "←/→:")
+		if !ok {
+			t.Fatalf("the key line names no arrow keys:\n%s", footer)
+		}
+		if end := strings.Index(act, " "); end >= 0 {
+			act = act[:end]
+		}
+		return act
+	}
+	for _, tc := range []struct {
+		name string
+		keys []string
+		want string
+	}{
+		{"suggest row", nil, "pane"},
+		{"set header", []string{"j", "j"}, "open/close"},
+		{"review in a set", []string{"j", "l", "j"}, "fold"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := demoPicker()
+			press(p, tc.keys...)
+			got := arrow(t, p)
+			if !strings.Contains(got, tc.want) {
+				t.Fatalf("arrow keys read %q, want the action %q", got, tc.want)
+			}
+		})
 	}
 }
 

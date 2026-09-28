@@ -804,9 +804,9 @@ func TestDashboardFinishKeyAsksOnce(t *testing.T) {
 	}
 }
 
-// A run with nothing to finish into is not offered the key. ctrl+c would fall
-// through to the hard quit and s would do nothing, so the legend and the help
-// leave both out rather than describing a key that cannot work.
+// A run with nothing to finish into is not offered the key. s would do
+// nothing, so the legend and the help leave it out. ctrl+c still stops the
+// run, so the help names it as the stop it is.
 func TestDashboardHidesFinishWhereThereIsNothingToFinish(t *testing.T) {
 	cfg := demoConfig()
 	cfg.OnFinish = nil
@@ -820,6 +820,54 @@ func TestDashboardHidesFinishWhereThereIsNothingToFinish(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("s")})
 	if m.finishing {
 		t.Fatal("s started a finish that has nowhere to go")
+	}
+}
+
+// The help is a keyboard user's only list of what the keys do, so every entry
+// has to be the key's actual behavior. ctrl+c is bound in every state, and
+// it means three different things across them: the graceful quit while the
+// run is live, a hard stop while a finish is draining, and a hard stop when
+// there was nothing to finish into. Each state has to say so, and none may
+// claim a press count the handler does not require.
+func TestDashboardHelpNamesCtrlCInEveryState(t *testing.T) {
+	helpFor := func(m *model) string {
+		t.Helper()
+		m.w, m.h, m.ready = 100, 30, true
+		return stripANSI(m.renderHelp())
+	}
+	live := newModel(demoConfig())
+	live.finishing = true
+	for _, tc := range []struct {
+		name string
+		cfg  Config
+		arm  func(*model)
+		want string
+	}{
+		{"no finish to ask for", func() Config { c := demoConfig(); c.OnFinish = nil; return c }(),
+			nil, "stop the run now"},
+		{"finish available", demoConfig(), nil, "finish:"},
+		{"finish draining", demoConfig(), func(m *model) { m.finishing = true },
+			"quit now"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel(tc.cfg)
+			if tc.arm != nil {
+				tc.arm(m)
+			}
+			help := helpFor(m)
+			if !strings.Contains(help, "ctrl+c") {
+				t.Fatalf("the help does not name ctrl+c:\n%s", help)
+			}
+			if !strings.Contains(help, tc.want) {
+				t.Fatalf("ctrl+c is documented as %q, want %q:\n%s", tc.want, help, help)
+			}
+		})
+	}
+	// The draining state took one press to close before, and the help called
+	// it two. A second press is the same hard stop, so the old wording asked
+	// for a keystroke that closes the run the reader can no longer watch.
+	if help := helpFor(live); strings.Contains(help, "x2") {
+		t.Fatalf("the help still asks for two presses to quit a draining run:\n%s", help)
 	}
 }
 
@@ -854,6 +902,26 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 	}
 	if got := contrastRatio(t, cTrack.Light, lightBase); got < 3 {
 		t.Errorf("track light %q is %.2f:1 on the light base, want at least 3", cTrack.Light, got)
+	}
+	// Every step of the heat ramp draws a stroke (a meter fill, a chart dot)
+	// and never text, so the non-text floor applies to all of them and not
+	// only to the track the ramp starts on. A ramp step below 3:1 is a
+	// reading that is not there at all. The fractions are the bands' middles,
+	// and each is pinned to the token the ramp names for it, so a reordering
+	// of the ramp that moved a pale step onto a hot reading fails here too.
+	ramp := map[float64]lipgloss.AdaptiveColor{
+		0.10: cTeal, 0.35: cCyan, 0.60: cGreen, 0.80: cYellow, 0.95: cRed,
+	}
+	for frac, want := range ramp {
+		if got := heatColor(frac); got != lipgloss.TerminalColor(want) {
+			t.Errorf("heatColor(%f) is %v, want %v", frac, got, want)
+		}
+		if got := contrastRatio(t, want.Dark, darkBase); got < 3 {
+			t.Errorf("heat %.2f dark %q is %.2f:1 on the dark base, want at least 3", frac, want.Dark, got)
+		}
+		if got := contrastRatio(t, want.Light, lightBase); got < 3 {
+			t.Errorf("heat %.2f light %q is %.2f:1 on the light base, want at least 3", frac, want.Light, got)
+		}
 	}
 }
 
@@ -1801,6 +1869,36 @@ func TestMinimalViewNamesUnmergedBranches(t *testing.T) {
 	got := stripANSI(m.renderMinimal())
 	if !strings.Contains(got, "unmerged:") || !strings.Contains(got, "sec-review") {
 		t.Fatalf("the fallback lost the unmerged branch:\n%s", got)
+	}
+}
+
+// The feed's one line kind that its own text does not identify is an error
+// the agent reported: a diff says the sign it was added or removed with, a
+// result line says RESULT:, reasoning is italic. So the error has to be
+// marked in the line itself, and it has to survive a monochrome terminal,
+// which is what --no-color and NO_COLOR leave behind and what a reader who
+// cannot separate the hues is looking at either way (SC 1.4.1).
+func TestFeedMarksAgentErrorsWithoutColor(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 40, true
+	m.feed = []feedLine{
+		{text: "reading main.go", kind: normalize.Plain},
+		{text: "the build failed on line 12", kind: normalize.Error},
+		{text: "+ added a line", kind: normalize.DiffAdd},
+	}
+	got := stripANSI(m.renderFeed(100, 10))
+	lines := strings.Split(got, "\n")
+	if len(lines) != 3 {
+		t.Fatalf("the feed drew %d rows, want 3:\n%s", len(lines), got)
+	}
+	if strings.HasPrefix(lines[0], "!") || strings.HasPrefix(lines[2], "!") {
+		t.Fatalf("a line that names itself carries the error mark anyway:\n%s", got)
+	}
+	if !strings.HasPrefix(lines[1], "!") {
+		t.Fatalf("an agent error is not marked, so --no-color leaves it as narration:\n%s", got)
+	}
+	if !strings.Contains(stripANSI(m.renderHelp()), "Feed mark:") {
+		t.Fatalf("the feed mark is drawn but not named in the help:\n%s", m.renderHelp())
 	}
 }
 
