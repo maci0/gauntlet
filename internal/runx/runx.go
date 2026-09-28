@@ -163,13 +163,20 @@ func AbsPATHEnv() []string {
 	return out
 }
 
+// executable reports whether path names a regular file with an execute bit,
+// which is the one definition of "runnable" every candidate here answers to.
+func executable(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
+}
+
 // LookPath searches for an executable binary named name across absolute PATH
 // directories, returning its absolute path or "" if not found. If name already
 // contains a path separator or is absolute, it is returned if it is a regular
 // executable file, or "" otherwise.
 func LookPath(name string) string {
 	if filepath.IsAbs(name) {
-		if fi, err := os.Stat(name); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+		if executable(name) {
 			return name
 		}
 		return ""
@@ -179,14 +186,13 @@ func LookPath(name string) string {
 		if err != nil {
 			return ""
 		}
-		if fi, err := os.Stat(abs); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+		if executable(abs) {
 			return abs
 		}
 		return ""
 	}
 	for _, dir := range filepath.SplitList(AbsPATH()) {
-		p := filepath.Join(dir, name)
-		if fi, err := os.Stat(p); err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0 {
+		if p := filepath.Join(dir, name); executable(p) {
 			return p
 		}
 	}
