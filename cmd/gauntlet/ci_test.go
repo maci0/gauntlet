@@ -127,11 +127,26 @@ func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	if publish < 0 {
 		t.Fatal("release.yml has no Publish step")
 	}
-	before, after := text[:publish], text[publish:]
-	if strings.Contains(before, "github.token") {
-		t.Fatal("github.token must not appear before the Publish step")
+	// One read-only step runs before the build and asks the API which versions
+	// are already published; it needs the token to do that. The build steps
+	// between the two must not see it, so the token is granted to the guard
+	// and to Publish, and to nothing in between.
+	guard := strings.Index(text, "name: Refuse a tag that is not a new release")
+	build := strings.Index(text, "name: Build every platform")
+	if guard < 0 || build < 0 {
+		t.Fatal("release.yml must refuse a tag that is not a new release before it builds anything")
 	}
-	if !strings.Contains(after, "GH_TOKEN: ${{ github.token }}") {
+	before, after := text[:guard], text[build:publish]
+	if strings.Contains(before, "github.token") {
+		t.Fatal("github.token must not appear before the step that reads the published versions")
+	}
+	if !strings.Contains(text[guard:build], "GH_TOKEN: ${{ github.token }}") {
+		t.Fatal("the guard step must set GH_TOKEN from github.token; gh reads the published releases with it")
+	}
+	if strings.Contains(after, "github.token") {
+		t.Fatal("github.token must not appear between the build and the Publish step")
+	}
+	if !strings.Contains(text[publish:], "GH_TOKEN: ${{ github.token }}") {
 		t.Fatal("Publish must set GH_TOKEN from github.token")
 	}
 }
@@ -220,6 +235,133 @@ func TestReleasePublicationClassification(t *testing.T) {
 			})
 		}
 	}
+}
+
+// A tag is the whole release process, and two mistakes in one reach the
+// publish step with a valid CHANGELOG section beside them. An older tag than
+// the newest published becomes `releases/latest`, which is what both
+// `gauntlet update` and the README install resolve, so every consumer is
+// handed an older version, and the immutability rule then refuses to put it
+// back. A tag on a commit main does not carry publishes code the next release
+// from main reverts. The guard is what reads both facts.
+func TestReleaseRefusesAStaleOrUnmergedTag(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	_, step, ok := strings.Cut(text, "- name: Refuse a tag that is not a new release\n")
+	if !ok {
+		t.Fatal("release.yml has no step refusing a tag that is not a new release")
+	}
+	_, body, ok := strings.Cut(step, "        run: |\n")
+	if !ok {
+		t.Fatal("the guard step has no shell body")
+	}
+	var guard strings.Builder
+	for line := range strings.SplitSeq(body, "\n") {
+		if line == "" {
+			continue
+		}
+		code, ok := strings.CutPrefix(line, "          ")
+		if !ok {
+			break
+		}
+		guard.WriteString(code + "\n")
+	}
+
+	const (
+		onMain    = "a tag main carries, newer than what is published"
+		stale     = "a tag main carries, older than what is published"
+		offMain   = "a tag newer than what is published, on a commit main lacks"
+		candidate = "a release candidate, which sorts below its final"
+	)
+	cases := []struct {
+		name    string
+		tag     string
+		side    bool
+		wantErr string
+	}{
+		{onMain, "v1.4.0", false, ""},
+		{stale, "v1.2.0", false, "older than the published v1.3.0"},
+		{offMain, "v1.4.0", true, "main does not carry"},
+		{candidate, "v1.4.0-rc.1", false, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir, sha := releaseGuardRepo(t, tc.side)
+			// gh is the only part of the guard that leaves the machine, and
+			// the answer it would give is the whole question: it prints the
+			// published tags the way the real --jq filter does.
+			var script strings.Builder
+			script.WriteString("gh() { printf '%s\\n' \"$PUBLISHED\"; }\n")
+			script.WriteString(guard.String())
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "bash", "-c", script.String())
+			cmd.Dir = dir
+			cmd.Env = append(os.Environ(),
+				"GITHUB_REF_NAME="+tc.tag,
+				"GITHUB_SHA="+sha,
+				"PUBLISHED=v1.3.0\nv1.2.0",
+			)
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("guard refused a publishable tag: err=%v, output=%s", err, out)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(string(out), tc.wantErr) {
+				t.Fatalf("guard must fail with %q: err=%v, output=%s", tc.wantErr, err, out)
+			}
+		})
+	}
+}
+
+// releaseGuardRepo builds what the guard reads: a clone whose origin is a bare
+// repository, a commit main carries, and a tagged commit either on main or on a
+// branch of it. It returns the checkout and the tagged commit, the two things
+// the guard resolves.
+func releaseGuardRepo(t *testing.T, offMain bool) (dir, sha string) {
+	t.Helper()
+	root := t.TempDir()
+	upstream := filepath.Join(root, "upstream.git")
+	run := func(dir string, args ...string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	run(root, "init", "--quiet", "--bare", "--initial-branch=main", upstream)
+	work := filepath.Join(root, "work")
+	run(root, "clone", "--quiet", upstream, work)
+	run(work, "config", "user.email", "release@example.com")
+	run(work, "config", "user.name", "Release Test")
+	run(work, "commit", "--quiet", "--allow-empty", "-m", "on main")
+	run(work, "push", "--quiet", "origin", "main")
+	if offMain {
+		run(work, "checkout", "--quiet", "-b", "side")
+	}
+	run(work, "commit", "--quiet", "--allow-empty", "-m", "tagged")
+	if !offMain {
+		run(work, "push", "--quiet", "origin", "main")
+	}
+	tagged := strings.TrimSpace(runCapture(t, work, "git", "rev-parse", "HEAD"))
+	return work, tagged
+}
+
+func runCapture(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("%s: %v", strings.Join(args, " "), err)
+	}
+	return string(out)
 }
 
 func TestReleaseRejectsEmptyNotes(t *testing.T) {
