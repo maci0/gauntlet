@@ -10,7 +10,7 @@ threats.
 Last reviewed: 2026-09-28 against commit 41faffe. This pass added one
 surface and one check. The release job now signs a build-provenance
 attestation per entry in `dist/checksums.txt`
-(`.github/workflows/release.yml:103-107`), which the workflow can do because
+(`.github/workflows/release.yml:104-107`), which the workflow can do because
 it now holds `id-token: write` and `attestations: write` alongside
 `contents: write`; signing needs the runner's OIDC identity, and the
 statement is a claim about which commit built which bytes, not a control on
@@ -59,7 +59,7 @@ release-time inventory generator the document had never covered:
 `cmd/sbom` reads the modules out of each built binary's own build info and
 writes the CycloneDX document a release ships
 (`cmd/sbom/main.go:47-73`, `internal/sbom/sbom.go:81-129`, run by the
-release target, `Makefile:504`). What it is, and is not, is now stated where
+release target, `Makefile:509`). What it is, and is not, is now stated where
 the publishing boundary is described and in the gaps: an inventory is a claim
 the compiler stamped into a file, so it narrows R2's dependency picture without
 being an integrity control for it, and the writer takes an operator-supplied
@@ -97,15 +97,15 @@ private repository, so the checkout and the scratch root under it are narrowed
 to their owner. The rest change no risk, no entry point, and no gap. The build
 commit re-anchored the Makefile pointers in the same change that moved the
 Makefile, so both anchors were stale on arrival and
-`TestDocsPointAtTheMakefileLineTheyName` was red; they read `Makefile:504` and
-`Makefile:578-603` now.
+`TestDocsPointAtTheMakefileLineTheyName` was red; they read `Makefile:509` and
+`Makefile:583-608` now.
 
 Last reviewed previously: 2026-09-27 against commit 4cdb72c. That pass read
 the eighteen commits since ef6eb5c and changed no risk, no entry point, and no
 gap; it re-anchored citations the build commits moved. Three commits in that
 range changed the Makefile's shape, and the pointers into it were not carried
-along: `make release` sits at `Makefile:504` and `make repro` at
-`Makefile:578-603`, so every reference to the earlier anchors was stale and
+along: `make release` sits at `Makefile:509` and `make repro` at
+`Makefile:583-608`, so every reference to the earlier anchors was stale and
 `TestDocsPointAtTheMakefileLineTheyName` was red on both. That test only
 checked the pointers naming `make release` and `GOVULNCHECK_VERSION`, which is
 why the other five went unnoticed; it now covers the `repro` target and its
@@ -118,7 +118,7 @@ the model. One entry point and one gap were added for a surface the document
 had never covered: `make repro` archives the whole working tree, so anything a
 developer has in their checkout that is not in `.gitignore` is copied under
 `$HOME/.cache/gauntlet/repro` for the length of the build
-(`Makefile:578-603`; the archive's members now come from git's ignore-aware
+(`Makefile:583-608`; the archive's members now come from git's ignore-aware
 listing and tests hold the recipe to it, `cmd/gauntlet/makefile_test.go:868-956`). Two controls that
 landed since the last baseline are now carried: a commit subject an agent
 supplies is dropped for the generated one when it credits a model or an agent
@@ -130,7 +130,7 @@ than only the paths git reported as conflicted (`commitScope`,
 it was not asked about blocks the merge. Citations that moved with those
 commits were re-anchored (`internal/runner/conflict.go`, `subject.go`,
 `internal/agent/notes.go`, `internal/runx/runx.go`), and one pointer was
-corrected: `make release` is at `Makefile:504`, not 413, which had left
+corrected: `make release` is at `Makefile:509`, not 413, which had left
 `TestDocsPointAtTheMakefileLineTheyName` failing.
 
 Last reviewed previously: 2026-09-27 against commit a6e6c7f. That pass
@@ -311,7 +311,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
   the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
   The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:51`,
-  invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-44`). Release and
+  invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-46`). Release and
   checksum downloads enforce `validateAssetURL` across HTTP redirects and cap
   redirects at 10 (`client.CheckRedirect`, `internal/selfupdate/selfupdate.go:145-157`).
   Release checksum verification uses constant-time comparison
@@ -319,7 +319,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   downloaded binary is flushed with `Sync()` before atomic replacement (`selfupdate.go:269`).
   Every release now also ships `dist/sbom.json`, the CycloneDX inventory of the
   modules the built binaries link (`internal/sbom/sbom.go`, written by the
-  release target at `Makefile:504`, uploaded beside the binaries,
+  release target at `Makefile:509`, uploaded beside the binaries,
   `.github/workflows/release.yml:116-139`). It travels this boundary and
   `update` does not read it: the artifact is for a scanner and for whoever
   reads a release page. Nothing authenticates it beyond the `checksums.txt`
@@ -393,8 +393,8 @@ Untrusted inputs with their validation point:
 | `dsh --dump-config` probe | `dshDefaultProvider`, `internal/agent/dsh.go:83-122` | runs only for a `dsh:<model>` pin; child environment isolated with `runx.AbsPATHEnv()` (`dsh.go:89`); bounded to 4 MiB output via `runx.Bound` (`dsh.go:64,84`); own process group, 120s cap, deferred group SIGKILL via `runx.KillGroup` (`dsh.go:85`); provider parsed with a narrow regex (`dshProviderRe`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:379`); provider and model validated against `dshModelRe` (`dsh.go:135-137`); overlay key rejects path separators and traversal (`dsh.go:124-137`) |
 | Interactive launcher / picker keyboard input | `cmd/gauntlet/pick.go`, `internal/ui/pick.go`, `internal/ui/ui.go` | navigation keys jump to bounds (`g`/`G` in `internal/ui/pick.go:364-367`); cursor clamped to valid review rows via `clampReviewCursor` (`internal/ui/pick.go:320,409,412,454-464`); Esc/Ctrl-C during filter editing resets typing and clamps cursor (`internal/ui/pick.go:407-409`); empty filter matches block launch, with the reason returned by `blocked` and checked on Enter (`internal/ui/pick_view.go:114-125`, `internal/ui/pick.go:328-332`); Enter key terminates completed runs (`internal/ui/ui.go:425-429`) |
 | Planted symlinks/FIFOs in the tree | prompt discovery inspects candidates with `os.Lstat` requiring regular files (`prompt/discover.go:244,278`); prompt reads `prompt.go:278-329`, lock creation `runner/lock.go:53-89`, untracked counting `gitx.go:609-708`, reload handoff `reload.go:188-196` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stats, size caps; stat errors propagated on open regular files (`gitx.go:609-629`); `LoadState` verifies regular file with `Lstat` (`reload.go:187-196`) |
-| Developer build surface: `make repro` archives the working tree | `Makefile:578-603`; member list and archive `Makefile:586-587`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:868-956` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
-| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:504`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:91,116-139`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:691-711`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
+| Developer build surface: `make repro` archives the working tree | `Makefile:583-608`; member list and archive `Makefile:591-592`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:868-956` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
+| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:509`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:91,116-139`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:691-711`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
 
 ## Threats per boundary
 
@@ -792,7 +792,7 @@ fails is a warning; the run's own report has already been written
 | History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:39-181`, `internal/journal/index.go:571-614` |
 | Embedded basic-auth credentials in remote URLs | userinfo stripped from git stderr strings before errors are returned, printed, or journaled | `runx.RedactUserinfo`, `internal/gitx/gitx.go:404-412` |
 | Known-vulnerable dependencies shipping to users | govulncheck weekly and on dependency changes in CI | `.github/workflows/vulnscan.yml` |
-| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:578-603`, `cmd/gauntlet/makefile_test.go:868-956`, `.gitignore:10` |
+| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:583-608`, `cmd/gauntlet/makefile_test.go:868-956`, `.gitignore:10` |
 | Silent loss of audit trail | journal as event-bus subscriber, run id + published seed for reproduction; journal failure degrades loudly, not silently | DESIGN.md "Run journal", `journal/` |
 | A wedged peer parking the journal index lock forever | the cross-process index lock is a bounded poll, `LOCK_EX` with `LOCK_NB` retried to a 30s deadline, and the failure names the lock file, so `gauntlet runs`, `gauntlet history`, and the exit-time prune report a held lock instead of waiting on a peer that will never release it. The holder walks the whole journal tree on a rebuild or a prune, so on a long history or a network home the wait is not instant and the bound is not a formality | `lockIndex`, `internal/journal/index.go:55-77`, used at `index.go:88` |
 | Silent loss of a `.git/info/exclude` entry | the append returns its failures, both the write and the close, and the run logs them; a short write counts as a failure, since the next run's substring check would not match a truncated line and would append the same entry again on every run. The exclusion is still best effort in the sense that nothing downstream depends on it, and the run continues | `internal/gitx/worktree.go:73-124`, `internal/runner/runner.go:277-282` |
@@ -815,7 +815,7 @@ technical backstop behind them.
    not by `update`. Making the automatic path check it needs a Sigstore
    verifier inside the client, which is a new dependency against the default
    of no new dependency; otherwise document the GitHub-account trust anchor
-   explicitly next to `make release` (`Makefile:504`,
+   explicitly next to `make release` (`Makefile:509`,
    `.github/workflows/release.yml`).
 2. **R5, bunx fallback fetch-and-execute** for `dsh`
    (`internal/agent/agent.go:611-624`). Auto-detection already ignores it (`Installed`
@@ -856,7 +856,7 @@ technical backstop behind them.
 8. **The developer build surface is not in the runtime model.** `make repro`
    archives the whole working tree, so anything a developer has in their
    checkout that is not ignored lands under `$HOME/.cache/gauntlet/repro` for
-   the length of the build (`Makefile:578-603`). The members are git's
+   the length of the build (`Makefile:583-608`). The members are git's
    ignore-aware listing, which covers the entries
    in `.gitignore`, a derivation, not a guarantee: an untracked
    credentials file, a private key, or a second `.env` under another name is
@@ -879,7 +879,7 @@ technical backstop behind them.
    where the log destination is refused as a symlink or non-regular file and
    opened `O_NOFOLLOW` at 0600 (`cmd/gauntlet/main.go:691-711`). The rest of
    the release target's output is no tighter: `checksums.txt` comes from a
-   shell redirect over `dist` (`Makefile:500-504`), which follows a symlink
+   shell redirect over `dist` (`Makefile:522-528`), which follows a symlink
    too. Exploitability is low, since reaching either needs a compromised
    release workspace, which is the same attacker R2 assumes; it is recorded
    because a reader should not learn two different answers to "can a planted
@@ -1009,7 +1009,7 @@ None of these is demonstrated here; evidence is the cited code paths.
   nothing about it. It carried two controls that landed in those commits but
   were not in the model: the attribution check on an agent-supplied commit
   subject, and the widened conflict-marker scan. It corrected one pointer that
-  had left a test red (`make release` at `Makefile:504`), re-anchored the
+  had left a test red (`make release` at `Makefile:509`), re-anchored the
   citations those commits moved, and closed no risk. Nothing in the numbered
   risk table changed.
 - Earlier baseline: 2026-09-27 against commit 15b8fa9. That pass read the
