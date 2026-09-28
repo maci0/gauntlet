@@ -140,10 +140,14 @@ type picker struct {
 
 	focus pane
 
-	// quitArmed is q pressed once: the composed run is discarded on the second
-	// press, and any other key takes it back. The dashboard arms q for the same
-	// reason, and here it costs a screenful of picking rather than a run.
+	// quitArmed is q or esc pressed once: the composed run is discarded on the
+	// second press of the same key, and any other key takes it back. The
+	// dashboard arms q for the same reason, and here it costs a screenful of
+	// picking rather than a run. quitKey is the key that armed it, so the
+	// status line and the legend can name the press that is being asked for
+	// and the one that takes it back.
 	quitArmed bool
+	quitKey   string
 
 	suggest  bool            // let an agent pick the reviews instead
 	filter   string          // narrows the review tree by name or description
@@ -293,6 +297,10 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return p, nil
 	}
 	if p.typing {
+		// Every key typed is a keypress, and an arm waits out a deliberate
+		// second press of one of the two keys that set it, not a search
+		// whose letters happen to spell one of them.
+		p.disarm()
 		return p.filterKey(msg, key)
 	}
 	switch key {
@@ -303,13 +311,25 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// was picked; a second one leaves. Any other key takes the arm back,
 		// which is what the footer and the status line say is happening.
 		if p.quitArmed {
-			return p, tea.Quit
+			if p.quitKey == "q" {
+				return p, tea.Quit
+			}
+			p.disarm()
+			return p, nil
 		}
-		p.quitArmed = true
+		p.arm("q")
 		return p, nil
 	case "esc":
 		if p.quitArmed {
-			p.quitArmed = false
+			// Only the key that asked confirms it. Esc answering a q's ask by
+			// taking it back is the same courtesy q shows an armed esc, and
+			// it is what keeps the pair from being two spellings of one
+			// destructive key: a press of the other one is a reader changing
+			// their mind, not a second one.
+			if p.quitKey == "esc" {
+				return p, tea.Quit
+			}
+			p.disarm()
 			return p, nil
 		}
 		if p.filter != "" {
@@ -321,7 +341,14 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			p.clampReviewCursor()
 			return p, nil
 		}
-		return p, tea.Quit
+		// Nothing left for esc to go back from, so it asks the way q does
+		// rather than leaving on the first press. Esc is the key a keyboard
+		// user reaches for to back out of whatever they are in, and here the
+		// one thing it can reach is the whole composed run: a press meant to
+		// dismiss something, or a second press of a habit formed on the
+		// dashboard, threw the picking away with no way back (WCAG 3.3.4).
+		p.arm("esc")
+		return p, nil
 	case "?":
 		p.help = true
 		p.helpScroll = 0
@@ -376,8 +403,22 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// A key that is neither of the two the arm waits for takes it back, so an
 	// arm set minutes ago cannot turn the next q into a press the reader never
 	// saw. The two cases above return first, so they are unaffected.
-	p.quitArmed = false
+	p.disarm()
 	return p, nil
+}
+
+// arm asks for a second press before the composed run is thrown away. key is
+// the key that asked, and the only one whose second press answers: pressing
+// the other one takes the arm back rather than confirming it, so a reader who
+// reaches for esc after a q hears the same question and can decline it.
+func (p *picker) arm(key string) {
+	p.quitArmed, p.quitKey = true, key
+}
+
+// disarm takes the ask back. It is the only way quitArmed goes false, so
+// quitKey is never left naming a key that is no longer asking.
+func (p *picker) disarm() {
+	p.quitArmed, p.quitKey = false, ""
 }
 
 // concurrencyKeys reports whether the +/- keys can change anything here. The
@@ -392,7 +433,14 @@ func (p *picker) concurrencyKeys() bool {
 // the q quitting the launcher.
 func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	switch key {
-	case "esc", "ctrl+c":
+	case "ctrl+c":
+		// The universal way out, and the one key the help overlay names as
+		// closing whatever is on screen. It used to clear the filter here
+		// like esc does, so a reader reaching for it to leave instead lost
+		// their search and stayed: a key that is on screen as "close" and
+		// does not close (WCAG 3.3.2). esc is the key that clears.
+		return p, tea.Quit
+	case "esc":
 		p.filter, p.typing = "", false
 		p.clampReviewCursor()
 	case "enter":

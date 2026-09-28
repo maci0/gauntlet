@@ -220,11 +220,13 @@ func (p *picker) hint() string {
 // (a command to run, a key to press), and a line that stops mid-word without
 // saying so turns "gauntlet doctor" into a command that does not exist.
 func (p *picker) renderStatus() string {
-	// An armed q outranks both: until it is answered, the question the
+	// An armed quit outranks both: until it is answered, the question the
 	// reader has is whether the run is about to be thrown away, and this is
-	// the only line that answers it.
+	// the only line that answers it. It names the key that asked, because
+	// the press that confirms and the one that declines differ with it.
 	if p.quitArmed {
-		return clipEllipsis(styleWarn.Render("⚠ q again to discard the run, esc to keep it"), p.w)
+		return clipEllipsis(styleWarn.Render(
+			fmt.Sprintf("⚠ %s again to discard the run, %s to keep it", p.quitKey, otherQuitKey(p.quitKey))), p.w)
 	}
 	if p.typing {
 		return clipEllipsis(styleDim.Render(p.hint()), p.w)
@@ -233,6 +235,15 @@ func (p *picker) renderStatus() string {
 		return clipEllipsis(styleWarn.Render("⚠ "+why), p.w)
 	}
 	return clipEllipsis(styleDim.Render(p.hint()), p.w)
+}
+
+// otherQuitKey is the key that takes an armed quit back: the one of the two
+// that did not ask.
+func otherQuitKey(armed string) string {
+	if armed == "esc" {
+		return "q"
+	}
+	return "esc"
 }
 
 // keyHint is one key and what it does, as the key line shows it.
@@ -276,6 +287,11 @@ func (p *picker) renderKeys() string {
 		{"?", "help"}, {"tab", "pane"}, {"space", "toggle"}, {"←/→", arrowAction},
 		{"/", "filter"},
 	}
+	// Only the key that armed the ask offers to confirm it, so the legend
+	// cannot name two that both discard the run.
+	if p.quitArmed && p.quitKey != "q" {
+		keys[1] = keyHint{p.quitKey, "discard"}
+	}
 	// Concurrency is the one key that reaches from any pane, so it earns its
 	// place in the legend before the pane's own. It has no effect in stack
 	// mode, or on a machine with one cpu, and is dropped then rather than
@@ -284,7 +300,7 @@ func (p *picker) renderKeys() string {
 		keys = append(keys, keyHint{"+/-", "concurrency"})
 	}
 	if p.quitArmed {
-		keys = append(keys, keyHint{"esc", "keep"})
+		keys = append(keys, keyHint{otherQuitKey(p.quitKey), "keep"})
 	}
 	// a fills or empties what the focused pane is showing. The run pane shows
 	// switches rather than a selection, so there is nothing there for it to
@@ -379,7 +395,8 @@ func (p *picker) renderNarrow() string {
 	// this view has no status line either, so the warning goes here.
 	switch {
 	case p.quitArmed:
-		rows = append(rows, styleWarn.Render("⚠ q again to discard, esc to keep"))
+		rows = append(rows, styleWarn.Render(
+			fmt.Sprintf("⚠ %s again to discard, %s to keep", p.quitKey, otherQuitKey(p.quitKey))))
 	case p.blocked() != "":
 		rows = append(rows, styleWarn.Render("⚠ "+p.blocked()))
 	}
@@ -391,7 +408,11 @@ func (p *picker) renderNarrow() string {
 	keys := []string{"⏎ run", "/ filter", "q cancel", "? help"}
 	if p.typing {
 		rows = append(rows, styleInfo.Render("filter: "+p.filter+"▏"))
-		keys = []string{"⏎ keep", "esc clear", "↑↓ move"}
+		// No arrow keys here: this view draws no pane, so the cursor they
+		// move is one nothing on screen points at. A key named here that
+		// cannot be seen to do anything is a key a keyboard user cannot tell
+		// from a broken one (WCAG 3.3.2).
+		keys = []string{"⏎ keep", "esc clear"}
 	} else if p.filter != "" {
 		rows = append(rows, styleInfo.Render("filter: /"+p.filter))
 		keys = []string{"⏎ run", "/ filter", "esc clear", "q cancel", "? help"}
@@ -425,11 +446,11 @@ func (p *picker) renderHelp() string {
 
 // qLeave is how leaving is spelled: one press arms, a second throws the run
 // away, and the way back is stated on the same line.
-const qLeave = "  q            leave without running (press twice; esc keeps it)"
+const qLeave = "  q, esc       leave without running (press the same key twice; the other one keeps it)"
 
 // escLeave is what esc does at each depth, in the order the key meets them: it
 // is the way back, so it has to be said where the way back is being looked for.
-const escLeave = "  esc          cancel a q, clear the filter, or leave once there is nothing to clear"
+const escLeave = "  esc          cancel an armed quit, clear the filter, or ask to leave once there is nothing to clear"
 
 func (p *picker) helpLines() []string {
 	lines := []string{

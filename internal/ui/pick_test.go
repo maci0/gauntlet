@@ -114,6 +114,22 @@ func TestNarrowLauncherKeepsTheKeysOnOneRow(t *testing.T) {
 	}
 }
 
+// The narrow fallback draws no pane, so the arrow keys move a cursor nothing
+// on the screen points at. Naming them there is a key a keyboard user cannot
+// tell from a broken one (WCAG 3.3.2), and the wide legend drops dead keys
+// for the same reason.
+func TestNarrowLauncherDoesNotNameDeadArrowKeys(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h = 40, 10
+	press(p, "/", "s", "e", "c")
+	if got := stripANSI(p.renderNarrow()); strings.Contains(got, "↑↓") {
+		t.Fatalf("the narrow fallback names arrow keys over a pane it does not draw:\n%s", got)
+	}
+	if !strings.Contains(stripANSI(p.renderNarrow()), "esc clear") {
+		t.Fatal("the narrow fallback dropped the key that clears the filter")
+	}
+}
+
 // esc is the way back, so the help has to say what it goes back from: a
 // reader who pressed it once to dismiss something and found the launcher
 // gone has no way to know it also leaves with nothing left to clear.
@@ -691,6 +707,9 @@ func TestPickQuitKeys(t *testing.T) {
 	if p.quitArmed {
 		t.Fatal("esc did not take the arm back")
 	}
+	if p.quitKey != "" {
+		t.Fatalf("a disarmed picker still names the key that asked: %q", p.quitKey)
+	}
 	press(p, "q")
 	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	if cmd == nil {
@@ -698,6 +717,78 @@ func TestPickQuitKeys(t *testing.T) {
 	}
 	if p.launch {
 		t.Fatal("q should leave without launching")
+	}
+}
+
+// esc is the key a keyboard user reaches for to back out of whatever they are
+// in, so with nothing left to go back from it has to ask before it throws the
+// composed run away (WCAG 3.3.4). One press used to leave, and the help's
+// "leave once there is nothing to clear" read as a warning about losing the
+// picking, which is exactly what it was.
+func TestPickEscAsksBeforeLeaving(t *testing.T) {
+	p := demoPicker()
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("the first esc must not leave")
+	}
+	if !p.quitArmed || p.quitKey != "esc" {
+		t.Fatalf("esc did not arm itself: armed=%t key=%q", p.quitArmed, p.quitKey)
+	}
+	status := stripANSI(p.renderStatus())
+	if !strings.Contains(status, "esc again to discard") || !strings.Contains(status, "q to keep it") {
+		t.Fatalf("an armed esc does not say what confirms and what declines it:\n%s", status)
+	}
+	// The legend may not offer two keys that both discard the run: the one
+	// that armed the ask confirms it, the other takes it back.
+	keys := stripANSI(p.renderKeys())
+	if !strings.Contains(keys, "esc:discard") || !strings.Contains(keys, "q:keep") {
+		t.Fatalf("the key line does not match the armed key:\n%s", keys)
+	}
+	// The other key declines rather than confirms, so a reader reaching for
+	// q out of habit is not taken as a second press of the wrong one.
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	if cmd != nil {
+		t.Fatal("q must take an armed esc back, not leave")
+	}
+	if p.quitArmed {
+		t.Fatal("q did not take the esc arm back")
+	}
+	// And a second esc, with the same key that armed it, does leave.
+	press(p, "esc")
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd == nil {
+		t.Fatal("a second esc must leave")
+	}
+	if p.launch {
+		t.Fatal("esc should leave without launching")
+	}
+}
+
+// ctrl+c closes every other screen, so it has to close this one too. From the
+// filter it cleared the search instead, which left a reader who reached for it
+// to leave still in the launcher, their search gone (WCAG 3.3.2).
+func TestPickCtrlCQuitsWhileFiltering(t *testing.T) {
+	p := demoPicker()
+	press(p, "/", "s", "e", "c")
+	if !p.typing {
+		t.Fatal("the picker is not typing, so the test is not testing it")
+	}
+	_, cmd := p.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if cmd == nil {
+		t.Fatal("ctrl+c while filtering must leave the launcher")
+	}
+	if p.launch {
+		t.Fatal("ctrl+c should leave without launching")
+	}
+	// esc is the key that clears a filter, and it still does.
+	p = demoPicker()
+	press(p, "/", "s", "e", "c")
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc clears the filter rather than leaving")
+	}
+	if p.filter != "" || p.typing {
+		t.Fatalf("esc left filter=%q typing=%t", p.filter, p.typing)
 	}
 }
 
@@ -1420,10 +1511,20 @@ func TestPickEscClearsKeptFilterInsteadOfQuitting(t *testing.T) {
 	if !ok || done.filter != "" {
 		t.Fatalf("esc should clear the filter, got filter=%q", done.filter)
 	}
-	// A second esc now that the filter is gone does quit.
+	// A second esc now that the filter is gone asks to leave, and a third
+	// confirms it. One press threw the composed run away with no way back,
+	// and esc is the key a keyboard user reaches for to back out of
+	// whatever they are in (WCAG 3.3.4).
+	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if cmd != nil {
+		t.Fatal("esc on an unfiltered picker must ask before leaving")
+	}
+	if !p.quitArmed {
+		t.Fatal("esc on an unfiltered picker left without asking")
+	}
 	_, cmd = p.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if cmd == nil {
-		t.Fatal("esc on an unfiltered picker must quit")
+		t.Fatal("a second esc, with nothing left to clear, must leave")
 	}
 }
 

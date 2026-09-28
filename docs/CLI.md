@@ -55,10 +55,10 @@ several paths uses the first.
 | `left`/`right`, `h`/`l` | collapse or expand a set; change the job count; from the suggest row, step to the neighbouring pane |
 | `a` | select all or none of what this pane is showing (the filter, if any, bounds it) |
 | `+` / `-` | raise or lower concurrency, from any pane, up to the machine's cpu count |
-| `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it, `ctrl+u` clears it outright and `ctrl+w` drops the last word. While typing, the key legend names those keys instead of run/cancel. |
+| `/` | filter reviews by name or by what they do; `enter` keeps it, `esc` clears it, `ctrl+u` clears it outright and `ctrl+w` drops the last word. While typing, the key legend names those keys instead of run/cancel. `ctrl+c` leaves the launcher from here as it does from everywhere else. |
 | `home` / `end`, `g` / `G` | first / last row in the focused pane |
 | `?` | toggle a help overlay; `q` / `esc` / `ctrl+c` close it. When the terminal is too short for the whole overlay it scrolls: `j` / `k` or the arrow keys page it, `pgup` / `pgdn` jump, and `home` / `end` reach the ends. |
-| `enter` / `q` | run the composed command / leave without running. `q` asks once: a second `q` discards the run, any other key or `esc` keeps it. |
+| `enter` / `q` / `esc` | run the composed command / leave without running. `q` and `esc` both ask first: a second press of the same key discards the run, the other one keeps it, and any other key takes the ask back. `esc` gets there through its own depths first, cancelling an armed quit, then clearing the filter. |
 
 ## Options
 
