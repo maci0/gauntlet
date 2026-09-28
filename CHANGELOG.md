@@ -26,6 +26,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Changed
+
+- A microagent review now gets live token counts from microagent's own session log as well as from the usage line it prints. The bundled transcript reader is toktop v0.21.0, which learned the store: one JSONL record per model response under `~/.microagent/sessions`, carrying that response's counters, the working directory it ran in, and `elapsed_ms`, so the rate is taken over the time the model spent rather than over the gap to the previous response, which covers the tool calls in between. No flag or definition is involved; the store is read wherever session transcripts already are, and `-tags notoktop` still drops the whole path.
+- The same bump brought the reader's newer adapters, so five lanes that reported a rate only under `--stream` now report one from their own session logs too: `gemini` (`~/.gemini/tmp`, the project named by `.project_root`), `kimi` (`~/.kimi-code/sessions`, one directory per project derived from the working directory's hash and confirmed by the cwd the session records), `cursor-agent` (`~/.cursor/projects/<project>/agent-transcripts`), `grok` (`updates.jsonl`'s `turn_completed` record, whose duration is the span its rate is taken over), and `agy` (`transcript.jsonl`, workspace from `history.jsonl` or `cache/last_conversations.json`). `dsh` is read from the one project directory the review's working directory names instead of walking the whole store, which is why the dsh fixture in the usage test had to move under that derived name. The bump also moved `modernc.org/sqlite`, `modernc.org/libc`, and `klauspost/compress` to the versions that release requires.
+
 ## 1.27.0
 
 ### Added

@@ -141,8 +141,13 @@ echo "RESULT: no-changes"`,
 		},
 		{
 			name: "dsh session log", tool: "dsh", transcript: true, wantFinal: 260, wantThinking: 90,
+			// The store holds every project, and the reader walks only the
+			// directory this working directory names: --<path with separators
+			// turned into ->--. A fixture outside that directory is one no dsh
+			// watcher ever reads.
 			script: `
-d="$HOME/.dsh/sessions/--proj--/sess"; mkdir -p "$d"; f="$d/session.jsonl"
+slug=$(printf '%s' "$PWD" | tr '/\:' '-' | sed 's/^-//')
+d="$HOME/.dsh/sessions/--$slug--/sess"; mkdir -p "$d"; f="$d/session.jsonl"
 printf '{"type":"session","version":1,"id":"s","cwd":"%s"}\n' "$PWD" >> "$f"
 printf '{"type":"assistant-message","usage":{"prompt_tokens":1200,"completion_tokens":110,"reasoning_tokens":40}}\n' >> "$f"
 sleep 0.4

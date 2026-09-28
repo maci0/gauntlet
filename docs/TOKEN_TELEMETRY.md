@@ -77,9 +77,10 @@ Gemini-style metadata on each assistant message:
 
 Per message again, and thinking tokens are output tokens, so both are counted.
 
-**gemini** keeps transcripts under `~/.gemini/tmp/<workspace>/chats/` but the
-records checked carried no usage metadata, so it has no adapter. If a newer
-release adds one, it is a `parse` function and a table entry away.
+**gemini** keeps transcripts under `~/.gemini/tmp/<workspace>/chats/`, with
+`usageMetadata` on each assistant message, and the project directory is named
+by `.project_root` beside `chats/`. The bundled reader parses it, so those
+counts land whether or not `--stream` is on.
 
 The watcher handles the three things that make this correct rather than
 approximately right:
@@ -94,11 +95,11 @@ approximately right:
    hold thousands of old sessions), and a file whose mtime has not moved is not
    reopened.
 
-An agent with no transcript adapter (`gemini`, `grok`, `agy`, …) has no
-watcher. Its lane still shows a rate when its counters come from the stream or
-from a database instead; only the transcript source is missing. Adding one is a
-`parse` function plus a table entry, and the tests carry real record shapes as
-fixtures so a format change fails loudly instead of silently returning zero.
+An agent with no source in the bundled reader has no watcher. Its lane still
+shows a rate when its counters come from the stream instead; only the
+transcript source is missing. Adding one is a `parse` function plus a table
+entry, and the tests carry real record shapes as fixtures so a format change
+fails loudly instead of silently returning zero.
 
 ### What the dashboard does with it
 
@@ -128,7 +129,9 @@ makes an agent exit instead of run:
 always carries one `{"type":"usage","usage":{...}}` line per response, next to
 the model's own text. Source 1 reads it as text, and with `--stream` on the
 same line is decoded as an event, so its counters and reasoning share arrive
-live either way.
+live either way. It also keeps a session log per run under
+`~/.microagent/sessions`, one record per response with the model's own time
+beside the counters, which Source 2 reads through toktop.
 
 `--stream` is on by default: agents in the pool that have a machine-readable
 mode are asked for it; the rest are launched exactly as before. `--stream=false`
@@ -163,17 +166,17 @@ from its own `--help`, transcript layouts from its own session files.
 | pi | yes | yes | transcript (`~/.pi/agent/sessions`), and `--mode json` |
 | prime-agent | yes | yes | transcript (`~/.prime/agent/sessions`), and `--mode json` |
 | feynman | yes | yes | transcript (`~/.feynman/sessions`); no json mode |
-| gemini | with `--stream` | with `--stream` | stream only: its transcripts carry no usage |
-| kimi | with `--stream` | if reported | stream only: sessions exist under `~/.kimi-code/sessions` but are keyed by a hashed directory name, so they cannot be attributed to a review |
-| cursor-agent | with `--stream` | if reported | stream only: sessions are opaque SQLite blobs |
-| grok | with `--stream` | yes (`reasoning_delta`) | stream only: its transcript records a context total, not output |
+| gemini | yes | with `--stream` (`usageMetadata` counts thoughts as output) | transcript (`~/.gemini/tmp`, the project named by `.project_root`), and `--stream` |
+| kimi | yes | no | transcript (`~/.kimi-code/sessions`, one directory per project derived from the working directory's hash and confirmed by its recorded cwd), and `--stream` |
+| cursor-agent | yes | if reported | transcript (`~/.cursor/projects/<project>/agent-transcripts`), and `--stream` |
+| grok | yes | yes (`reasoning_delta`) | transcript (`~/.grok/sessions/<encoded cwd>/<id>/updates.jsonl`, the `turn_completed` record, whose duration is the span the rate is taken over), and `--stream` |
 | omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
-| microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, always printed; no transcript and no flag |
+| microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, plus a session log under `~/.microagent/sessions` read through toktop (`elapsed_ms` gives the rate over the model's own time) |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | with `--opencode-db` | with `--opencode-db` | sessions in `~/.local/share/opencode/opencode.db` (XDG_DATA_HOME honored), one row per message with usage in a JSON column; the store holds every project on the machine, so reading it is opt-in |
-| agy | with `--stream` | if reported | stream-json; no transcript store found |
+| agy | yes | counted in output | transcript (`~/.gemini/antigravity-cli/brain/<id>/.../transcript.jsonl`, workspace from `history.jsonl` or `cache/last_conversations.json`), and `--stream`; a step naming no tokens contributes nothing |
 
 Every agent, including the last row, still contributes the always-available
 signal: the output line rate in the activity chart, plus any counter it prints,
