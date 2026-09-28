@@ -2746,6 +2746,39 @@ func TestTokenBudgetStopsTheSchedule(t *testing.T) {
 	}
 }
 
+// One process runs one runner per directory, and --token-budget is a ceiling
+// on what the run spends, not on what one tree spends. The runners share one
+// tally, so the second directory starts nothing once the first has spent it,
+// rather than each getting the whole budget.
+func TestTokenBudgetIsSharedAcrossDirectories(t *testing.T) {
+	set, _ := promptSet(t, "a-review", "b-review")
+	bin := fakeAgent(t, t.TempDir(), "chatty", `echo "Total tokens: 1000"`)
+	var shared Tokens
+	var started []int
+	for _, dir := range []string{testRepo(t), testRepo(t)} {
+		cfg := baseConfig(t, dir, set, []string{"a-review", "b-review"}, bin)
+		cfg.TokenBudget = 1500
+		cfg.RunTokens = &shared
+		started = append(started, countKind(mustRecord(t, cfg), EvReviewStart))
+	}
+	// The first directory spends 2000 of 1500 and stops. Read per directory,
+	// each would have run both of its reviews: four agent launches under a
+	// ceiling that allows two.
+	if started[0] != 2 || started[1] != 0 {
+		t.Fatalf("started %d and %d reviews, want 2 and 0", started[0], started[1])
+	}
+	if got := shared.Total(); got != 2000 {
+		t.Fatalf("run tally = %d tokens, want 2000", got)
+	}
+}
+
+// mustRecord runs cfg and returns the events it published.
+func mustRecord(t *testing.T, cfg Config) []Event {
+	t.Helper()
+	_, events := runRecorded(t, cfg)
+	return events
+}
+
 // A command that would not build is a pure function of the prompt and the
 // spec: building it again on the same agent fails the same way, and the wait
 // before each try only makes the failure slower. The fallback still runs,
