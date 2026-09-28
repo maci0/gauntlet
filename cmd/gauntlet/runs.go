@@ -21,14 +21,17 @@ import (
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl. A run id restores a
 // pruned run, which is a different job from listing and happens instead of it.
-func cmdRuns(out io.Writer, pal palette, limit int, restore string) (code int) {
+func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool) (code int) {
 	if restore != "" {
-		return restoreRun(out, pal, restore)
+		return restoreRun(out, pal, restore, asJSON)
 	}
 	entries, err := journal.Recent(limit)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cannot read run index: %v\n", err)
 		return exitFail
+	}
+	if asJSON {
+		return writeRunsJSON(out, entries)
 	}
 	bw := bufio.NewWriter(out)
 	w := errWriter{out: bw}
@@ -111,9 +114,57 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string) (code int) {
 // counts the rest.
 const listedQuarantined = 5
 
+// runsJSON is what `gauntlet runs --json` prints. The table is for a person:
+// fixed columns, a legend line above them, and a dim note whose width follows
+// the terminal. A script wants the same facts under stable names and nothing
+// else on the stream it parses, so the legend, the column layout, and the
+// humanized durations stay behind, and every count is the number the run
+// recorded. The runs are the index rows as journaled, so a field a future
+// journal adds reaches the consumer without a flag change.
+type runsJSON struct {
+	Home     string            `json:"home"`
+	Journals string            `json:"journals"`
+	Runs     []journal.Summary `json:"runs"`
+	Pruned   []string          `json:"pruned"`
+}
+
+// writeRunsJSON prints the index for a consumer, and prints nothing else: the
+// paths a human is told about on stderr are in the object, so a redirected
+// stdout holds one document and a pipe is never split by a note. An empty
+// listing is an empty array, never a null and never a message on the stream a
+// caller is parsing.
+func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
+	// A failed read is not reported as an empty quarantine: a pruned list that
+	// could not be read would read as a claim that nothing is recoverable.
+	pruned, err := journal.Quarantined()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cannot read the pruned run list: %v\n", err)
+		return exitFail
+	}
+	if pruned == nil {
+		pruned = []string{}
+	}
+	if entries == nil {
+		entries = []journal.Summary{}
+	}
+	doc := runsJSON{
+		Home:     journal.Home(),
+		Journals: filepath.Join(journal.Home(), "runs"),
+		Runs:     entries,
+		Pruned:   pruned,
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(doc); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", err)
+		return exitFail
+	}
+	return exitOK
+}
+
 // restoreRun puts a pruned journal back in the listing and says so plainly:
 // a restore that failed has to read as a failure, not as a listing.
-func restoreRun(out io.Writer, pal palette, runID string) int {
+func restoreRun(out io.Writer, pal palette, runID string, asJSON bool) int {
 	if err := journal.Restore(runID); err != nil {
 		switch {
 		case errors.Is(err, journal.ErrNotPruned),
@@ -125,6 +176,20 @@ func restoreRun(out io.Writer, pal palette, runID string) int {
 			fmt.Fprintf(os.Stderr, "cannot restore run %s: %v\n", runID, err)
 			return exitFail
 		}
+	}
+	if asJSON {
+		// The same one fact a line said, under a name. The hint the human form
+		// appends is already in every consumer's error path, and here it would
+		// be a second string to parse.
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(struct {
+			Restored string `json:"restored"`
+		}{runID}); err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the restore result: %v\n", err)
+			return exitFail
+		}
+		return exitOK
 	}
 	fmt.Fprintf(out, "Restored %s; %s\n", runID,
 		pal.dim("gauntlet show "+runID))

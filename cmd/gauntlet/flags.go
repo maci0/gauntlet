@@ -114,6 +114,7 @@ type options struct {
 	keepRuns   int
 	showRun    string
 	restoreRun string
+	json       bool
 }
 
 // reportUsage writes the message and the help screen to stderr, mirroring how
@@ -404,6 +405,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.IntVar(&o.runsLimit, "limit", defaultRunsLimit, "runs: how many entries to list")
 	fs.StringVar(&o.restoreRun, "restore", "",
 		"runs: put a pruned run back in the listing by run id")
+	fs.BoolVar(&o.json, "json", false,
+		"runs: print the listing as JSON on stdout, and nothing else there")
 
 	return fs, raw
 }
@@ -537,6 +540,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		}
 		if isFlagSet(fs, "restore") && o.command != "runs" {
 			return nil, errors.New("--restore requires 'gauntlet runs'")
+		}
+		// The default run reads every flag and drops the ones it has no use
+		// for, so a stray --json there would start a full review and say
+		// nothing about the output format that was asked for.
+		if isFlagSet(fs, "json") && o.command != "runs" {
+			return nil, errors.New("--json requires 'gauntlet runs'")
 		}
 	}
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
@@ -883,7 +892,7 @@ var subcommandFlags = map[string][]string{
 	"pick":   {"C", "dir", "dirs", "target-dirs", "prompt-dir"},
 	"doctor": {"agent-cmd", "bin"},
 	"update": {"check", "update-repo"},
-	"runs":   {"limit", "restore"},
+	"runs":   {"limit", "restore", "json"},
 	"show":   {},
 	// help is handled in finishFlags before stray-flag checks, so extra
 	// flags are ignored the way they are after --help. The entry exists so

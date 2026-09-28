@@ -12,14 +12,14 @@ installed.
 | `gauntlet pick` | compose a run on screen, then run it |
 | `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, and what the run history holds: journals on disk, whether the index matches them, and pruned runs still recoverable |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
-| `gauntlet runs [--limit N] [--restore RUN-ID]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. |
+| `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit` and `--restore`, and `show`, `version`, and `help` take none of their own. `--log` and
+`--limit`, `--restore`, and `--json`, and `show`, `version`, and `help` take none of their own. `--log` and
 `--no-color` work everywhere, and may precede the subcommand, so
 `gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
 `show` takes its run id anywhere among the flags: `gauntlet show --no-color RUN`
@@ -28,7 +28,9 @@ a usage error (exit 2) rather than parsed and silently dropped, so
 `gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
 the concurrency it was given. (The `-V` flag form of version is the one
 exception: it means "print the version and exit" and wins over scoping, like
-help does.)
+help does.) `--limit`, `--restore`, and `--json` are the three names a bare
+`gauntlet` has no use for, and they say so rather than starting a run that
+ignores them.
 
 `pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
 with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
@@ -175,6 +177,7 @@ so it is the version before the last one and no further back.
 |---|---|---|
 | `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
 | `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. |
+| `--json` | off | Print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (absolute paths), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column), and `pruned` (the ids `--restore` takes, all of them rather than the five the table names). Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}`. Errors, including the exit codes, are unchanged. |
 
 ## Environment variables
 

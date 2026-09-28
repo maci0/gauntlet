@@ -201,7 +201,7 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	want := start.Local().Format("2006-01-02 15:04:05")
@@ -224,7 +224,7 @@ func TestRunsPrintsJournalLocationOnStderr(t *testing.T) {
 		t.Fatal(err)
 	}
 	var table bytes.Buffer
-	code, note := captureStderrFor(t, func() int { return cmdRuns(&table, palette{}, 10, "") })
+	code, note := captureStderrFor(t, func() int { return cmdRuns(&table, palette{}, 10, "", false) })
 	if code != exitOK {
 		t.Fatalf("listing exited %d", code)
 	}
@@ -251,13 +251,13 @@ func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
 				}
 			}
 			var rendered bytes.Buffer
-			if code := cmdRuns(&rendered, palette{}, 10, ""); code != exitOK {
+			if code := cmdRuns(&rendered, palette{}, 10, "", false); code != exitOK {
 				t.Fatalf("listing exited %d", code)
 			}
 			for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
 				sink := &listingFailWriter{remaining: limit}
 				code, diagnostic := captureStderrFor(t, func() int {
-					return cmdRuns(sink, palette{}, 10, "")
+					return cmdRuns(sink, palette{}, 10, "", false)
 				})
 				if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the run listing: "+io.ErrClosedPipe.Error()) {
 					t.Fatalf("limit %d: exit %d, stderr %q", limit, code, diagnostic.String())
@@ -304,7 +304,7 @@ func TestRunsListsMeasuredElapsedWhenTheWallClockJumped(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	out := buf.String()
@@ -333,7 +333,7 @@ func TestRunsListsNAWhenEndPrecedesStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	if !strings.Contains(buf.String(), "n/a") {
@@ -362,7 +362,7 @@ func TestRunsListsAfterDeletedIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing after a deleted index should exit %d, got %d", exitOK, code)
 	}
 	if !strings.Contains(buf.String(), id) {
@@ -504,7 +504,7 @@ func TestRunsRendersMissingStartTimeAsNA(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	if strings.Contains(buf.String(), "0001-01-01") {
@@ -558,7 +558,7 @@ func TestRunsRestoresAPrunedRun(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if code := cmdRuns(&buf, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
 	if !strings.Contains(buf.String(), ids[0]) {
@@ -569,14 +569,14 @@ func TestRunsRestoresAPrunedRun(t *testing.T) {
 	}
 
 	var restored bytes.Buffer
-	if code := cmdRuns(&restored, palette{}, 10, ids[0]); code != exitOK {
+	if code := cmdRuns(&restored, palette{}, 10, ids[0], false); code != exitOK {
 		t.Fatalf("restoring %s should exit %d, got %d", ids[0], exitOK, code)
 	}
 	if !strings.Contains(restored.String(), ids[0]) {
 		t.Fatalf("the restore did not name the run: %q", restored.String())
 	}
 	var after bytes.Buffer
-	if code := cmdRuns(&after, palette{}, 10, ""); code != exitOK {
+	if code := cmdRuns(&after, palette{}, 10, "", false); code != exitOK {
 		t.Fatal("listing after the restore failed")
 	}
 	if !strings.Contains(after.String(), ids[0]) {
@@ -585,15 +585,112 @@ func TestRunsRestoresAPrunedRun(t *testing.T) {
 	// A second restore has nothing to do, and says so as a usage error
 	// rather than exiting 0 over a run that was never moved.
 	code, diagnostic := captureStderrFor(t, func() int {
-		return cmdRuns(io.Discard, palette{}, 10, ids[0])
+		return cmdRuns(io.Discard, palette{}, 10, ids[0], false)
 	})
 	if code != exitUsage || !strings.Contains(diagnostic.String(), "already in the listing") {
 		t.Fatalf("restoring twice: exit %d, stderr %q", code, diagnostic.String())
 	}
 	code, diagnostic = captureStderrFor(t, func() int {
-		return cmdRuns(io.Discard, palette{}, 10, journal.NewRunID(base.Add(9*time.Hour)))
+		return cmdRuns(io.Discard, palette{}, 10, journal.NewRunID(base.Add(9*time.Hour)), false)
 	})
 	if code != exitUsage || !strings.Contains(diagnostic.String(), "not in the quarantine") {
 		t.Fatalf("restoring an unpruned run: exit %d, stderr %q", code, diagnostic.String())
+	}
+}
+
+// `gauntlet runs --json` exists for a script, so the contract is what a parser
+// sees: stdout carries one JSON document and nothing else. The table's legend,
+// its column layout, and the journal path on stderr are for a person, and the
+// path is in the object instead, so a pipe is never split by a note.
+func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	j, err := journal.Open(journal.NewRunID(start), start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(90 * time.Second), Dirs: []string{"/tmp/proj"},
+		Loops: 2, Reviews: 3, OK: 3,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if code != exitOK {
+		t.Fatalf("runs --json exited %d", code)
+	}
+	var doc struct {
+		Home     string            `json:"home"`
+		Journals string            `json:"journals"`
+		Runs     []journal.Summary `json:"runs"`
+		Pruned   []string          `json:"pruned"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if doc.Home != home || doc.Journals != filepath.Join(home, "runs") {
+		t.Errorf("state paths: home %q, journals %q, want %q and %q",
+			doc.Home, doc.Journals, home, filepath.Join(home, "runs"))
+	}
+	if len(doc.Runs) != 1 {
+		t.Fatalf("got %d runs, want 1:\n%s", len(doc.Runs), got)
+	}
+	// Counts are numbers, not the table's humanized columns: a consumer sums
+	// them, and "n/a" would be a string where the field promises a count.
+	if doc.Runs[0].OK != 3 || doc.Runs[0].Reviews != 3 || doc.Runs[0].Loops != 2 {
+		t.Errorf("counts did not survive: %+v", doc.Runs[0])
+	}
+	if doc.Pruned == nil {
+		t.Error("pruned should be an empty array, not null: a consumer reading it gets no list either way")
+	}
+	// The table's own text is what a parser would trip over first.
+	for _, human := range []string{"RUN ", "STARTED", "FAILED counts timeouts", "No runs recorded"} {
+		if strings.Contains(got, human) {
+			t.Errorf("stdout carries the human listing (%q):\n%s", human, got)
+		}
+	}
+}
+
+// An empty history is an empty list, not a sentence: `gauntlet runs --json` is
+// the call a dashboard makes on a machine that has never run a review, and a
+// message on that stream is a parse error there.
+func TestRunsJSONOnAnEmptyHistoryIsAnEmptyList(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if code != exitOK {
+		t.Fatalf("an empty history should exit %d, got %d", exitOK, code)
+	}
+	var doc struct {
+		Runs []journal.Summary `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if doc.Runs == nil || len(doc.Runs) != 0 {
+		t.Fatalf("runs should be [], got %#v", doc.Runs)
+	}
+	if !strings.Contains(got, `"runs": []`) {
+		t.Errorf("an empty list should serialize as an array:\n%s", got)
+	}
+}
+
+// --json belongs to `runs` alone, and says so where every other misplaced flag
+// is caught, instead of being parsed by a command that would drop it.
+func TestJSONIsRefusedOutsideRuns(t *testing.T) {
+	for _, argv := range [][]string{{"doctor", "--json"}, {"--json"}} {
+		_, err := parseFlags(argv)
+		if err == nil {
+			t.Errorf("%v: --json should be refused outside 'gauntlet runs'", argv)
+			continue
+		}
+		if !strings.Contains(err.Error(), "--json") {
+			t.Errorf("%v: the error should name the flag, got %q", argv, err)
+		}
 	}
 }

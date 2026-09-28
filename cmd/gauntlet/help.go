@@ -120,6 +120,7 @@ var helpGroups = []flagGroup{
 	{"History", []flagDoc{
 		{"", "limit", "N", fmt.Sprintf("runs: how many entries to list (default %d)", defaultRunsLimit)},
 		{"", "restore", "RUN-ID", "runs: put a pruned run back in the listing"},
+		{"", "json", "", "runs: print the listing as JSON on stdout, for scripts and dashboards"},
 	}},
 }
 
@@ -128,7 +129,7 @@ var helpCommands = []struct{ Cmd, Help string }{
 	{"gauntlet pick", "compose a run on screen: reviews, agents, concurrency"},
 	{"gauntlet doctor", "report which agent CLIs and helper tools are installed"},
 	{"gauntlet update [--check]", "replace this binary with the latest verified release"},
-	{"gauntlet runs [--limit N]", "list recent runs; rebuilds a missing index from the journals"},
+	{"gauntlet runs [--limit N] [--json]", "list recent runs; rebuilds a missing index from the journals"},
 	{"gauntlet show <run-id>", "replay one run's journal"},
 	{"gauntlet version", "print the version and exit"},
 	{"gauntlet help", "show this help and exit"},
@@ -148,6 +149,7 @@ var helpExamples = []struct{ Cmd, Help string }{
 	{"gauntlet --suggest --yes --tui", "agent-picked reviews, live dashboard"},
 	{"gauntlet --agent-cmd pi='pi -p {prompt}' -a pi", "run an agent gauntlet does not ship"},
 	{"gauntlet runs --restore <run-id>", "put a pruned run back in the listing"},
+	{"gauntlet runs --json | jq '.runs[].run_id'", "the run index, for a script"},
 }
 
 var helpExitCodes = []struct{ Code, Meaning string }{
