@@ -32,6 +32,15 @@ jobs:
     # A stuck agent under test must not hold the runner until GitHub's own
     # six-hour default expires.
     timeout-minutes: 30
+    # This job runs the whole suite, which starts the agent CLIs a contributor
+    # has installed and reads their transcripts, so anything in this
+    # environment is reachable by those processes. No step here calls the API:
+    # checkout persists no credentials, and every target below (check, test,
+    # cover) reaches the module proxy and nothing else. The release job clears
+    # the same two for the same reason, and there the token could write.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

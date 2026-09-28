@@ -136,6 +136,52 @@ func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	}
 }
 
+// The test job is the one job in ci.yml that runs code end to end: the suite
+// starts the agent CLIs a contributor has installed and reads their output, so
+// every process it spawns inherits this environment. No step in the job needs
+// a token (checkout persists none, and check, test, and cover reach the module
+// proxy and nothing else), so clearing both names keeps a credential out of
+// reach of the agents the tests drive. The release job does the same, and
+// there the token can write.
+func TestTestJobClearsTheTokenItsProcessesInherit(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
+	_, rest, ok := strings.Cut(text, "\n  test:\n")
+	if !ok {
+		t.Fatal("ci.yml has no test job")
+	}
+	job, _, _ := strings.Cut(rest, "\n  scripts:\n")
+	for _, want := range []string{`GITHUB_TOKEN: ""`, `GH_TOKEN: ""`} {
+		if !strings.Contains(job, want) {
+			t.Errorf("test job must carry %s; the suite spawns agent CLIs that inherit this environment", want)
+		}
+	}
+}
+
+// A tag is the only review the bytes behind it can get: the release job runs
+// the suite but not the pull-request gates, and `update` and the README install
+// both serve the tag. CONTRIBUTING says to cut it from a commit main carries,
+// so the workflow has to be what makes that true.
+func TestReleaseRefusesATagThatIsNotOnMain(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	if !strings.Contains(text, "fetch-depth: 0") {
+		t.Error("release checkout must fetch the full history; the ancestry check reads main")
+	}
+	if !strings.Contains(text, "git merge-base --is-ancestor HEAD origin/main") {
+		t.Error("release job must refuse a tag whose commit origin/main does not carry")
+	}
+	build := strings.Index(text, "name: Build every platform")
+	check := strings.Index(text, "name: Refuse a tag that is not on main")
+	if check < 0 {
+		t.Fatal("release.yml has no ancestry step")
+	}
+	if check > build {
+		t.Error("check the tag before building; the build is the expensive half")
+	}
+	if !strings.Contains(text, "make release VERSION=") {
+		t.Error("release job must build through make release, which runs check and the suite")
+	}
+}
+
 func TestReleaseKeepsPublishedVersionsImmutable(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	for _, want := range []string{"--draft", "--json isDraft", `if [ "$draft" = false ]`} {

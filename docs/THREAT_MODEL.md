@@ -39,10 +39,30 @@ B1->B2 as prose (`internal/prompt/prompts/`); and `make release` refuses the
 assets at a version no tag names (`release-version`, `Makefile:629-635`).
 Nothing in the numbered risk table gained a row.
 
+The same pass closed a gap between what CONTRIBUTING requires of a release
+and what the release job checks, and narrowed a credential's reach in the
+pull-request suite. The release job now refuses a tag whose commit
+`origin/main` does not carry
+(`.github/workflows/release.yml:81-102`), before it builds anything: a tag is
+the only review the bytes behind it get, since the job runs `make release`
+(the suite, `check`) but not the pull-request gates, and both `update` and the
+README install serve the tag. The check is an ancestry test against a full
+checkout, so an annotated tag is read through to its commit, and it is a
+claim about which commits reached a pull request, not an integrity control:
+it narrows nothing in the numbered risk table. It does not cover a rewritten
+`main`, which the branch protection rules on the host do, and which cannot be
+read from the tree. The pull-request `test` job now clears `GITHUB_TOKEN` and
+`GH_TOKEN` (`.github/workflows/ci.yml:41-43`), the pattern the release job
+already used for its write token: that job is the one place here that runs
+code end to end, starting the agent CLIs the suite finds on `PATH`, so
+anything in its environment is reachable by those processes. No step there
+needs the token, and the workflow grants it `contents: read`, so this removes
+a handle rather than a capability.
+
 Last reviewed previously: 2026-09-28 against commit 41faffe. That pass added one
 surface and one check. The release job now signs a build-provenance
 attestation per entry in `dist/checksums.txt`
-(`.github/workflows/release.yml:104-107`), which the workflow can do because
+(`.github/workflows/release.yml:130-133`), which the workflow can do because
 it now holds `id-token: write` and `attestations: write` alongside
 `contents: write`; signing needs the runner's OIDC identity, and the
 statement is a claim about which commit built which bytes, not a control on
@@ -357,7 +377,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   Every release now also ships `dist/sbom.json`, the CycloneDX inventory of the
   modules the built binaries link (`internal/sbom/sbom.go`, written by the
   release target at `Makefile:514`, uploaded beside the binaries,
-  `.github/workflows/release.yml:116-139`). It travels this boundary and
+  `.github/workflows/release.yml:142-165`). It travels this boundary and
   `update` does not read it: the artifact is for a scanner and for whoever
   reads a release page. Nothing authenticates it beyond the `checksums.txt`
   the binaries travel under, and it is generated from those binaries' own
@@ -366,7 +386,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   dependency surface; it is not a second integrity control.
   The binaries themselves carry one more record the inventory does not: the
   release workflow signs a build-provenance attestation per entry in
-  `dist/checksums.txt` (`.github/workflows/release.yml:104-107`), stating the
+  `dist/checksums.txt` (`.github/workflows/release.yml:130-133`), stating the
   workflow, the tag, and the commit that produced the bytes, verifiable with
   `gh attestation verify`. The claim it makes is about provenance, not
   integrity of transport, and `update` does not check it, so the gap recorded
@@ -447,7 +467,7 @@ Untrusted inputs with their validation point:
 | Interactive launcher / picker keyboard input | `cmd/gauntlet/pick.go`, `internal/ui/pick.go`, `internal/ui/ui.go` | navigation keys jump to bounds (`g`/`G` in `internal/ui/pick.go:364-367`); cursor clamped to valid review rows via `clampReviewCursor` (`internal/ui/pick.go:320,409,412,454-464`); Esc/Ctrl-C during filter editing resets typing and clamps cursor (`internal/ui/pick.go:407-409`); empty filter matches block launch, with the reason returned by `blocked` and checked on Enter (`internal/ui/pick_view.go:114-125`, `internal/ui/pick.go:328-332`); Enter key terminates completed runs (`internal/ui/ui.go:425-429`) |
 | Planted symlinks/FIFOs in the tree | prompt discovery inspects candidates with `os.Lstat` requiring regular files (`prompt/discover.go:244,278`); prompt reads `prompt.go:278-329`, lock creation `runner/lock.go:53-89`, untracked counting `gitx.go:609-708`, reload handoff `reload.go:188-196` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stats, size caps; stat errors propagated on open regular files (`gitx.go:609-629`); `LoadState` verifies regular file with `Lstat` (`reload.go:187-196`) |
 | Developer build surface: `make repro` archives the working tree | `Makefile:588-613`; member list and archive `Makefile:596-597`; the tests holding the recipe to git's ignore rules `cmd/gauntlet/makefile_test.go:868-956` | the target is a developer convenience, not a shipped code path, but the archive is the whole checkout: it is written to `$(HOME)/.cache/gauntlet/repro` and the recipe refuses to run with `HOME` unset rather than writing to `/.cache`; the members are `git ls-files --cached --others --exclude-standard`, so a build output, cache, or local state that `.env`, `.gauntlet/`, and `.gauntlet.lock` already are cannot be copied, a new `.gitignore` entry covers the archive the moment it is written, and a pattern tar would match too broadly no longer decides; the directory is removed on exit by a shell trap. What the list cannot express is a file a developer has not ignored: an untracked credentials file is archived to `$HOME/.cache` for the duration of the build, where it is neither reviewed nor redacted |
-| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:514`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:91,116-139`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:691-711`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
+| Release build surface: `cmd/sbom` writes the shipped dependency inventory | `run`, `cmd/sbom/main.go:30-73`; inventory `internal/sbom/sbom.go:81-129`; run by the release target (`Makefile:514`) and uploaded as `dist/sbom.json` (`.github/workflows/release.yml:117,142-165`) | a release-time tool on this repository, not a path a reviewed repository reaches, and it adds no dependency: the package doc says why (`internal/sbom/sbom.go:4-8`), and the implementation is the standard library plus `debug/buildinfo`, so the artifact that describes the dependency surface does not widen it. Its inputs are the built binary paths from argv, read with `buildinfo.ReadFile`, which follows a symlink and is not size-capped, so a path naming something other than a built binary is either refused or inventoried as whatever build info it carries. `Merge` refuses a module path recorded at two versions, which catches binaries that did not come out of one tree, and `run` refuses a binary whose main module path is not the first one's, so one release cannot be described as two programs (`cmd/sbom/main.go:55-64`). It does not verify that a binary is the one `checksums.txt` covers, nor that a binary is what the build produced: the inventory is a claim the compiler stamped into a file, so it is not an integrity control for R2. The output write is `os.WriteFile(*out, ..., 0o644)` (`main.go:71`): it follows a symlink at the destination and leaves a pre-existing file's mode as it found it, where the runtime `--log` destination is refused when it is a symlink or any non-regular file and is opened `O_NOFOLLOW` at 0600 and then chmod'd (`cmd/gauntlet/main.go:691-711`). Nothing in a release workspace is hostile without a compromised build, which is R2's subject |
 
 ## Threats per boundary
 
