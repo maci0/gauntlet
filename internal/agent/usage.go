@@ -5,7 +5,6 @@ package agent
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 )
 
@@ -107,14 +106,42 @@ func maxMatch(pats []*regexp.Regexp, text string) int {
 					continue
 				}
 			}
-			digits := strings.NewReplacer(",", "", "_", "").Replace(text[m[2]:end])
-			n, err := strconv.Atoi(digits)
-			if err == nil && n > best && n <= maxPlausible {
+			n := parseCount(text[m[2]:end])
+			if n > best && n <= maxPlausible {
 				best = n
 			}
 		}
 	}
 	return best
+}
+
+// parseCount reads the digits a match spans, ignoring the thousands
+// separators some agents print. The count is read in place: a match without a
+// separator allocates nothing, where the replacer this replaced built a
+// replacement trie per match. -1 stands for a span that is not a number, so a
+// miss leaves the caller's best where it was.
+func parseCount(s string) int {
+	n, digits := 0, 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c == ',' || c == '_' {
+			continue
+		}
+		if c < '0' || c > '9' {
+			return -1
+		}
+		// maxPlausible is checked on every step, not at the end, so a long run
+		// of digits cannot overflow the accumulator before it is compared.
+		n = n*10 + int(c-'0')
+		if n > maxPlausible {
+			return maxPlausible + 1 // over the bound: not a measurement
+		}
+		digits++
+	}
+	if digits == 0 {
+		return -1
+	}
+	return n
 }
 
 // Tail is a fixed-size ring that keeps only the last TailBytes of a stream.

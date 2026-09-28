@@ -247,9 +247,13 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		return nil, err
 	}
 	out := map[string]ReviewHistory{}
+	// The directory is asked about once per journal line, and resolving a
+	// spelling costs a syscall per path component, so both sides are resolved
+	// once here instead of per line.
+	same := newDirMatcher(dir)
 	matched := 0
 	for _, run := range runs {
-		if !slices.ContainsFunc(run.Dirs, func(d string) bool { return samePath(d, dir) }) {
+		if !slices.ContainsFunc(run.Dirs, same.is) {
 			continue
 		}
 		if matched++; matched > historyMatches {
@@ -260,7 +264,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			if err := json.Unmarshal(line, &e); err != nil {
 				return
 			}
-			if e.Review == "" || !samePath(e.Dir, dir) {
+			if e.Review == "" || !same.is(e.Dir) {
 				return
 			}
 			ins, del := e.Ins, e.Del
@@ -313,15 +317,36 @@ func History(dir string) (map[string]ReviewHistory, error) {
 	return out, nil
 }
 
-// samePath reports whether a and b name one directory, comparing the resolved
-// paths when the spellings differ. A path that cannot be resolved (a tree that
-// has since been removed, a journal written on another machine) compares as
-// its own text, so a missing directory never matches a present one.
-func samePath(a, b string) bool {
-	if a == b {
+// dirMatcher answers whether a recorded directory is the one a History call
+// asked about. A journal is walked a line at a time and every counted line
+// asks the question, so a spelling is resolved once and remembered: a run's
+// lines name the same few directories over and over, and resolving each one
+// per line spends a syscall per path component for an answer already had.
+//
+// A path that cannot be resolved (a tree that has since been removed, a
+// journal written on another machine) compares as its own text, so a missing
+// directory never matches a present one.
+type dirMatcher struct {
+	want string
+	real string
+	seen map[string]string
+}
+
+func newDirMatcher(dir string) *dirMatcher {
+	return &dirMatcher{want: dir, real: realPath(dir), seen: map[string]string{}}
+}
+
+// is reports whether s names the wanted directory.
+func (m *dirMatcher) is(s string) bool {
+	if s == m.want {
 		return true
 	}
-	return realPath(a) == realPath(b)
+	resolved, ok := m.seen[s]
+	if !ok {
+		resolved = realPath(s)
+		m.seen[s] = resolved
+	}
+	return resolved == m.real
 }
 
 // realPath is filepath.Abs followed by symlink resolution, falling back to the
