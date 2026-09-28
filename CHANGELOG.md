@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.26.0
+
 ### Added
 
 - The help screen names the flags each subcommand reads. A subcommand refuses every flag outside its own, so `gauntlet runs --jobs 4` fails with a usage error naming what `runs` takes; the answer was only available by spending that exit code or by reading `docs/CLI.md`. The screen now carries the same list, generated from the table the refusal reads, so the two cannot name different flags.
