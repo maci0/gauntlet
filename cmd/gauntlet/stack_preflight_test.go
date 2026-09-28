@@ -22,27 +22,7 @@ import (
 // preflight's URL validation and its fetch both work offline.
 func preflightRepo(t *testing.T) string {
 	t.Helper()
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is required")
-	}
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command("git", args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-	}
-	run("init", "-q", "-b", "main")
-	run("config", "user.email", "test@example.invalid")
-	run("config", "user.name", "test")
-	if err := os.WriteFile(filepath.Join(dir, "main.go"),
-		[]byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	run("add", "-A")
-	run("commit", "-qm", "init")
+	dir, run := gitRepo(t, "package main\n\nfunc main() {}\n")
 	bare := filepath.Join(t.TempDir(), "remote.git")
 	if out, err := exec.Command("git", "init", "--bare", "-q", bare).CombinedOutput(); err != nil {
 		t.Fatalf("init bare: %v: %s", err, out)

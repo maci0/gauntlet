@@ -25,13 +25,7 @@ func TestMergeTwiceLandsOnce(t *testing.T) {
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
 
-	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
-		[]byte("package fix\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
-		t.Fatal(err)
-	}
+	commitFix(t, ctx, wt)
 
 	mr := r.Merge(ctx, wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
@@ -67,13 +61,7 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
 
-	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
-		[]byte("package fix\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
-		t.Fatal(err)
-	}
+	commitFix(t, ctx, wt)
 
 	mr := r.MergeInto(ctx, "main-line", wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
@@ -214,13 +202,7 @@ func TestMergeDropsTheCachedSample(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
-	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
-		[]byte("package fix\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
-		t.Fatal(err)
-	}
+	commitFix(t, ctx, wt)
 	if mr := r.Merge(ctx, wt.Branch, "Merge sec-review from run"); !mr.Merged {
 		t.Fatalf("merge failed: %+v", mr)
 	}

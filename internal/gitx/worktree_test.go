@@ -13,6 +13,22 @@ import (
 	"time"
 )
 
+// commitFix writes fix.go into the worktree and commits it, the one review
+// change every finish-path test needs before it has anything to merge, reset,
+// or leave behind. It reports whether the commit had anything to record.
+func commitFix(t *testing.T, ctx context.Context, wt *Worktree) bool {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
+		[]byte("package fix\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := wt.CommitAll(ctx, "sec-review: automated review fixes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return changed
+}
+
 // The finish path runs under retries, hot reloads, and loop after loop, so
 // each step must survive being executed twice: a second pass leaves the same
 // state the first one did. These tests pin that, because the property is what
@@ -31,15 +47,7 @@ func TestCommitAllTwiceCommitsOnce(t *testing.T) {
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
 
-	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
-		[]byte("package fix\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	changed, err := wt.CommitAll(ctx, "sec-review: automated review fixes")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !changed {
+	if !commitFix(t, ctx, wt) {
 		t.Fatal("the first commit must report that something was committed")
 	}
 	one, err := r.Tip(ctx, wt.Branch)
@@ -47,7 +55,7 @@ func TestCommitAllTwiceCommitsOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	changed, err = wt.CommitAll(ctx, "sec-review: automated review fixes")
+	changed, err := wt.CommitAll(ctx, "sec-review: automated review fixes")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -234,13 +242,7 @@ func TestStartBranchRejectsExistingWork(t *testing.T) {
 	if err := wt.StartBranch(ctx, branch, base); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
-		[]byte("package fix\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
-		t.Fatal(err)
-	}
+	commitFix(t, ctx, wt)
 	kept, err := r.Tip(ctx, branch)
 	if err != nil {
 		t.Fatal(err)

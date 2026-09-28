@@ -6,7 +6,6 @@ package main
 import (
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -46,44 +45,18 @@ var allowedInternalImports = map[string][]string{
 // FastSuggest on PickConfig so it does not need that edge for itself. ui
 // importing envx is the motion-off variables read by the one boolean reader,
 // so the single list of values that mean off is the list the dashboard answers
-// by. Nothing
-// in internal/ may import ui. A permission no import uses is a hole left open
-// for the next file, and docs/DESIGN.md would describe a dependency that does
-// not exist, so the map has to name only the edges the tree really has.
+// by. Nothing in internal/ may import ui. A permission no import uses is a
+// hole left open for the next file, and docs/DESIGN.md would describe a
+// dependency that does not exist, so the map has to name only the edges the
+// tree really has.
 func TestInternalImportGraph(t *testing.T) {
 	root := moduleRoot(t)
 	prefix := "github.com/maci0/gauntlet/internal/"
 	seen := map[string]bool{}
 	used := map[string]map[string]bool{}
 	fset := token.NewFileSet()
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			name := d.Name()
-			switch {
-			case path == root:
-				return nil
-			case strings.HasPrefix(name, "."), name == "testdata":
-				return fs.SkipDir
-			default:
-				return nil
-			}
-		}
-		if !strings.HasSuffix(d.Name(), ".go") {
-			return nil
-		}
-		rel, err := filepath.Rel(root, filepath.Dir(path))
-		if err != nil {
-			return err
-		}
-		pkg := filepath.ToSlash(rel)
-		file, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		file = filepath.ToSlash(file)
+	err := walkGoFiles(root, func(rel, path string) error {
+		pkg := filepath.ToSlash(filepath.Dir(rel))
 		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
@@ -105,13 +78,13 @@ func TestInternalImportGraph(t *testing.T) {
 				}
 				short := "internal/" + strings.TrimPrefix(imp, prefix)
 				if short == "internal/ui" {
-					t.Errorf("%s imports ui (%s); a headless run must not pay for the TUI", pkg, file)
+					t.Errorf("%s imports ui (%s); a headless run must not pay for the TUI", pkg, rel)
 					continue
 				}
 				used[pkg][short] = true
 				if !slices.Contains(allow, short) {
 					t.Errorf("%s imports %s (%s); docs/DESIGN.md forbids that edge. Add it to allowedInternalImports only if the direction is intentional",
-						pkg, short, file)
+						pkg, short, rel)
 				}
 			}
 		}

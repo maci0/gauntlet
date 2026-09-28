@@ -102,6 +102,68 @@ func collect(runID string) (out []map[string]any, err error) {
 	return out, err
 }
 
+// closedRun files a run that reached Close, so the index names it, and
+// returns its run id.
+func closedRun(t *testing.T, at time.Time, dir string, args ...string) string {
+	t.Helper()
+	id := NewRunID(at)
+	j, err := Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(Summary{
+		Dirs: []string{dir}, Start: at, End: at, Args: args,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// orphanRun writes the journal a process that died before Close leaves: the
+// file is on disk, flushed, and no index row names it, so a listing has to
+// rebuild the row from the events. It returns the run id.
+func orphanRun(t *testing.T, at time.Time, dir, review string) string {
+	t.Helper()
+	id := NewRunID(at)
+	j, err := Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{
+		"ev": "run_start", "ts": at, "dir": dir, "version": "test",
+	})
+	j.Write(map[string]any{
+		"ev": "review_end", "ts": at.Add(time.Minute), "dir": dir,
+		"review": review, "status": "ok", "loop": 1,
+	})
+	j.Flush()
+	j.CloseQuiet()
+	return id
+}
+
+// heldIndexLock takes the index lock in this process and returns the handle
+// holding it next to a second handle on the same file, so a test can watch
+// what a peer does while the lock is out of its reach. Both are released when
+// the test ends.
+func heldIndexLock(t *testing.T) (holder, other *os.File) {
+	t.Helper()
+	var err error
+	if holder, err = os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { holder.Close() })
+	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatalf("cannot hold the index lock: %v", err)
+	}
+	if other, err = os.OpenFile(indexLockPath(),
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { other.Close() })
+	return holder, other
+}
+
 // A journal that cannot be written must not still look complete: the first
 // write error survives to Close, which is where the run reports it.
 func TestWriteErrorSurvivesToClose(t *testing.T) {
@@ -1408,32 +1470,10 @@ func TestRecentIndexesAJournalNeverClosed(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", home)
 
 	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
-	idA := NewRunID(first)
-	jA, err := Open(idA, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := jA.Close(Summary{
-		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	idA := closedRun(t, first, "/a", "--once")
 
 	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
-	idB := NewRunID(second)
-	jB, err := Open(idB, second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jB.Write(map[string]any{
-		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
-	})
-	jB.Write(map[string]any{
-		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
-		"review": "doc-review", "status": "ok", "loop": 1,
-	})
-	jB.Flush()
-	jB.CloseQuiet()
+	idB := orphanRun(t, second, "/b", "doc-review")
 
 	runs, err := Recent(10)
 	if err != nil {
@@ -1804,48 +1844,13 @@ func TestRecentIndexesTheWholeUnindexedTail(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", home)
 
 	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
-	idA := NewRunID(first)
-	jA, err := Open(idA, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := jA.Close(Summary{
-		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	idA := closedRun(t, first, "/a", "--once")
 
 	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
-	idB := NewRunID(second)
-	jB, err := Open(idB, second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jB.Write(map[string]any{
-		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
-	})
-	jB.Write(map[string]any{
-		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
-		"review": "doc-review", "status": "ok", "loop": 1,
-	})
-	jB.Flush()
-	jB.CloseQuiet()
+	idB := orphanRun(t, second, "/b", "doc-review")
 
 	third := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
-	idC := NewRunID(third)
-	jC, err := Open(idC, third)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jC.Write(map[string]any{
-		"ev": "run_start", "ts": third, "dir": "/c", "version": "test",
-	})
-	jC.Write(map[string]any{
-		"ev": "review_end", "ts": third.Add(time.Minute), "dir": "/c",
-		"review": "sec-review", "status": "ok", "loop": 1,
-	})
-	jC.Flush()
-	jC.CloseQuiet()
+	idC := orphanRun(t, third, "/c", "sec-review")
 
 	runs, err := Recent(10)
 	if err != nil {
@@ -1876,32 +1881,10 @@ func TestRecentIndexesAHoleBehindALaterClose(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", home)
 
 	first := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
-	idA := NewRunID(first)
-	jA, err := Open(idA, first)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := jA.Close(Summary{
-		Dirs: []string{"/a"}, Start: first, End: first, Args: []string{"--once"},
-	}); err != nil {
-		t.Fatal(err)
-	}
+	idA := closedRun(t, first, "/a", "--once")
 
 	second := time.Date(2026, 8, 25, 14, 0, 0, 0, time.UTC)
-	idB := NewRunID(second)
-	jB, err := Open(idB, second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	jB.Write(map[string]any{
-		"ev": "run_start", "ts": second, "dir": "/b", "version": "test",
-	})
-	jB.Write(map[string]any{
-		"ev": "review_end", "ts": second.Add(time.Minute), "dir": "/b",
-		"review": "doc-review", "status": "ok", "loop": 1,
-	})
-	jB.Flush()
-	jB.CloseQuiet()
+	idB := orphanRun(t, second, "/b", "doc-review")
 
 	third := time.Date(2026, 8, 25, 15, 0, 0, 0, time.UTC)
 	idC := NewRunID(third)
@@ -2494,22 +2477,7 @@ func TestIndexRewriteKeepsUnreadableAndOversizedRows(t *testing.T) {
 // test costs no real waiting and the retry count is fixed by that clock.
 func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
-	holder, err := os.OpenFile(indexLockPath(),
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer holder.Close()
-	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatalf("cannot hold the index lock: %v", err)
-	}
-
-	other, err := os.OpenFile(indexLockPath(),
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer other.Close()
+	_, other := heldIndexLock(t)
 
 	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	at := start
@@ -2517,7 +2485,7 @@ func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 	clock := func() time.Time { return at }
 	sleep := func(d time.Duration) { polls++; at = at.Add(d) }
 
-	err = lockIndex(int(other.Fd()), 10*time.Millisecond, clock, sleep)
+	err := lockIndex(int(other.Fd()), 10*time.Millisecond, clock, sleep)
 	if err == nil {
 		t.Fatal("a second acquisition succeeded while the lock was held")
 	}
@@ -2538,22 +2506,7 @@ func TestIndexLockGivesUpOnAHeldLock(t *testing.T) {
 // after the pause takes it.
 func TestIndexLockTakesALockReleasedWhileWaiting(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
-	holder, err := os.OpenFile(indexLockPath(),
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer holder.Close()
-	if err := syscall.Flock(int(holder.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatalf("cannot hold the index lock: %v", err)
-	}
-
-	other, err := os.OpenFile(indexLockPath(),
-		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer other.Close()
+	holder, other := heldIndexLock(t)
 
 	start := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
 	at := start
