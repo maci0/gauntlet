@@ -56,7 +56,15 @@ type Config struct {
 	// launch agents too and are not counted, so the ceiling is on the review
 	// schedule, which is where the multiplier (--jobs, --max-loops, a repeated
 	// review) lives.
+	//
+	// The ceiling is one for the whole run. A process running several
+	// directories builds one Runner per directory, each with its own Stats, so
+	// RunTokens is the tally they share: a budget read from a directory's own
+	// total would be a ceiling per directory, and a three-directory run under
+	// --token-budget would spend up to three times it. nil for a single
+	// directory, where the local total is the whole run.
 	TokenBudget int
+	RunTokens   *Tokens
 
 	// UsageCmd is a command whose stdout is the percentage of the provider's
 	// usage window already spent, and UsageLimit is the percentage at which
@@ -263,7 +271,7 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	r := &Runner{
 		cfg:            cfg,
 		bus:            bus,
-		st:             &Stats{Start: start},
+		st:             &Stats{Start: start, run: cfg.RunTokens},
 		repo:           repo,
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),

@@ -514,6 +514,13 @@ func run(argv []string) int {
 		}
 	}
 
+	// One tally for every directory's runner: --token-budget is a ceiling on
+	// what the run spends, and a per-runner total would make it a ceiling per
+	// directory, so N directories would allow N times the budget. It starts at
+	// zero here because each directory's carried results are seeded into it
+	// below, which is what carries a reload's spending into its successor.
+	var runTokens runner.Tokens
+
 	for _, d := range runs {
 		// A reloaded process inherits the same argv, so each directory's loop
 		// budget must be reduced by what it already finished before the swap.
@@ -537,6 +544,7 @@ func run(argv []string) int {
 			Started:    startedAt, ResumeQueue: carried.Pending,
 			Runtime: opts.runtime, UsageCmd: opts.usageArgv, UsageLimit: opts.usageLimit,
 			TokenBudget: opts.tokenBudget,
+			RunTokens:   &runTokens,
 			Commit:      opts.commit, Push: opts.push,
 			StackedPRs: opts.stackedPRs, PRBase: opts.prBase, PushRemote: opts.pushRemote,
 			// The stacked preflight (dirty consent included) already ran,

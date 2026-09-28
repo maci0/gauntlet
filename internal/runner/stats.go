@@ -63,7 +63,46 @@ type Stats struct {
 	commitRuns  int
 	commitFails int
 
+	// run counts the same tokens as tokens does, for every directory of a
+	// multi-directory run. nil when the run is one directory, in which case
+	// the local running total is the whole run and the shared one would
+	// double it.
+	run *Tokens
+
 	Start time.Time
+}
+
+// Tokens is a run-wide token tally, shared by the runners of a
+// multi-directory run. One process runs one runner per directory, each with
+// its own Stats, so a ceiling read from that Stats alone is a ceiling per
+// directory: a three-directory run under --token-budget 1000000 spends up to
+// three million. The tally is what the ceiling is measured against.
+//
+// Safe for concurrent use: every directory's lanes add to it while every
+// other directory's budget reads it.
+type Tokens struct {
+	mu sync.Mutex
+	n  int
+}
+
+// Add records what one review reported.
+func (t *Tokens) Add(n int) {
+	if t == nil || n <= 0 {
+		return
+	}
+	t.mu.Lock()
+	t.n += n
+	t.mu.Unlock()
+}
+
+// Total is every token every directory of the run has recorded so far.
+func (t *Tokens) Total() int {
+	if t == nil {
+		return 0
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.n
 }
 
 // CommitRuns is how many commit steps ran.
@@ -99,6 +138,7 @@ func (s *Stats) Add(r Result) {
 	s.results = append(s.results, r)
 	s.tokens += r.Tokens
 	s.mu.Unlock()
+	s.run.Add(r.Tokens)
 }
 
 // Seed pre-loads results carried over from an earlier process. A hot reload
@@ -106,13 +146,19 @@ func (s *Stats) Add(r Result) {
 // what happened after the swap.
 func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	carried := 0
 	for _, r := range results {
 		s.tokens += r.Tokens
+		carried += r.Tokens
 	}
 	s.results = append(append([]Result(nil), results...), s.results...)
 	s.commitRuns += commitRuns
 	s.commitFails += commitFails
+	s.mu.Unlock()
+	// Carried tokens go on the shared tally too: the ceiling is a run budget,
+	// and a reload's successor must continue the run it inherited rather than
+	// hand the run a fresh allowance for the part already spent.
+	s.run.Add(carried)
 }
 
 // Results returns a copy of every result so far, in review-name order.
@@ -199,7 +245,14 @@ func (s *Stats) Counts() Counts {
 // process seeded. A token budget reads it before every review, so it reads the
 // running total rather than walking results, and a hot reload continues the
 // same ceiling instead of handing itself a fresh one.
+//
+// A multi-directory run reads the shared tally instead of this Stats: the
+// ceiling is one for the run, and a per-directory total would multiply it by
+// the number of directories.
 func (s *Stats) Tokens() int {
+	if s.run != nil {
+		return s.run.Total()
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tokens
