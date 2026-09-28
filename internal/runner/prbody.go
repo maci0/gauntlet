@@ -142,20 +142,58 @@ func (b prBody) stackNote() string {
 // injected "## " inert, and doing it with a space rather than nothing keeps
 // the words on either side from being welded into one.
 func mdText(s string, limit int) string {
+	return normalize.Truncate(escapeInline(norm.NFC.String(mdFlat(s))), limit)
+}
+
+// mdFlat collapses untrusted text to one sanitized line, without deciding what
+// a Markdown renderer makes of the characters left.
+func mdFlat(s string) string {
 	s = strings.Map(func(r rune) rune {
 		if r == '\n' || r == '\r' {
 			return ' '
 		}
 		return r
 	}, s)
-	s = strings.Join(strings.Fields(normalize.Sanitize(s)), " ")
-	return normalize.Truncate(norm.NFC.String(s), limit)
+	return strings.Join(strings.Fields(normalize.Sanitize(s)), " ")
 }
+
+// escapeInline escapes the inline constructs a Markdown renderer turns into
+// markup without needing a line break first, which is all mdFlat can defuse.
+//
+// Every string rendered in prose here is model output (an agent's per-file
+// note, the subject it wrote) or repository content (a project's review
+// Summary line), and both reach it after a prompt that read the same
+// untrusted sources. A link, an image, or a raw tag is what survives: the
+// reader of a pull request is shown a tracking pixel, a look-alike host, or a
+// <details> block that hides the real diff, and nothing in the file list or
+// the commit history says where the markup came from. Escaping makes such a
+// construct render as the text it is, which is the honest reading of a note
+// that was never markup to begin with.
+func escapeInline(s string) string {
+	return inlineEscaper.Replace(s)
+}
+
+// inlineEscaper escapes Markdown's inline delimiters. "[" and "]" close a
+// link or image label, "<" and ">" an autolink or a raw HTML tag, and "*" a
+// span of emphasis or strong text, which is a quieter version of the same
+// problem: a note that italicizes "reverted" says something the agent never
+// did. Every one of these renders as its own character once escaped, so the
+// reader still sees the note in full.
+var inlineEscaper = strings.NewReplacer(
+	`\`, `\\`,
+	`[`, `\[`,
+	`]`, `\]`,
+	`<`, `&lt;`,
+	`>`, `&gt;`,
+	`*`, `\*`,
+)
 
 // mdCode renders untrusted text as a Markdown code span. A backtick in a
 // repository path would close the span early and let whatever follows be read
 // as markup; it is replaced rather than dropped, so the reader can see a
 // character was there instead of silently getting a path that does not exist.
+// Nothing inside a code span is markup, so the inline escaper is not applied:
+// it would put backslashes into every path holding a bracket or a wildcard.
 func mdCode(s string, limit int) string {
-	return "`" + strings.ReplaceAll(mdText(s, limit), "`", "'") + "`"
+	return "`" + strings.ReplaceAll(normalize.Truncate(norm.NFC.String(mdFlat(s)), limit), "`", "'") + "`"
 }

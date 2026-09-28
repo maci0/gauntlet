@@ -198,13 +198,79 @@ func TestPRBodyNeutralizesHostileOverview(t *testing.T) {
 	}
 }
 
+// An agent's per-file note, and a project review's Summary line, both reach
+// the prose of a pull request after reading the same untrusted repository. A
+// link or an image needs no line break of its own to be markup, so flattening
+// the line is not enough: without the inline escapes, a note renders a
+// tracking pixel and a look-alike host as part of the review summary.
+func TestPRBodyNeutralizesInlineMarkup(t *testing.T) {
+	body := prBody{
+		Title: "fix(index): rescan less",
+		Scope: "[see the tracker](https://tracker.invalid/x) and <https://tracker.invalid/y>",
+		Overview: "![pixel](https://tracker.invalid/p.gif) counted the rebuild; " +
+			"see <details>the log</details>, and *reverted* the old path",
+		Files: []string{"internal/cache/store.go"},
+		Base:  "main", Root: "main", Layer: 1,
+	}.render()
+	// The Summary section is prose that came from the agent or the
+	// repository; the file list below it is paths in code spans, where a
+	// bracket is a bracket. No inline delimiter may survive the prose.
+	summary, _, _ := strings.Cut(body, "\n\n## Changes")
+	if d := unescapedDelimiter(summary); d != "" {
+		t.Fatalf("unescaped %q survived into the summary:\n%s", d, body)
+	}
+	// The text is still there, escaped rather than dropped: a reader who
+	// wants to know what the note said can still see it.
+	if !strings.Contains(body, "tracker.invalid") {
+		t.Fatalf("the note's own text was dropped instead of escaped:\n%s", body)
+	}
+}
+
+// unescapedDelimiter returns the first "[" "]" "<" or ">" a Markdown
+// renderer would still act on, or "" when the text carries none.
+func unescapedDelimiter(s string) string {
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '[', ']', '<', '>':
+			// A backslash before it is the escape, and the escape itself is
+			// only a backslash when an odd number of them precedes it.
+			n := 0
+			for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+				n++
+			}
+			if n%2 == 0 {
+				return string(s[i])
+			}
+		}
+	}
+	return ""
+}
+
+// A path holds brackets and globs routinely, and none of them is markup
+// inside a code span, so escaping them there would put backslashes into every
+// path a reader copies out of the body.
+func TestPRBodyPathsRenderWithoutEscapes(t *testing.T) {
+	body := prBody{
+		Title: "chore: tidy",
+		Files: []string{"src/[id]/*.go", "src/glob<*>.go"},
+		Base:  "main", Root: "main", Layer: 1,
+	}.render()
+	if !strings.Contains(body, "- `src/[id]/*.go`\n") {
+		t.Fatalf("a glob path was rewritten:\n%s", body)
+	}
+	if !strings.Contains(body, "- `src/glob<*>.go`\n") {
+		t.Fatalf("an angle-bracket path was rewritten:\n%s", body)
+	}
+}
+
 // FuzzPRBodyRender drives prBody.render and its formatting helpers (mdText,
 // mdCode, changes, stackNote) with arbitrary untrusted inputs: titles,
 // scopes, overviews, branch names, and raw file lists. It pins the structural
 // and security invariants of the generated PR body: rendering never panics,
 // output size is strictly bounded, internal newlines in fields cannot break out
-// into multi-line injections, file lists are capped at prBodyFileMax, and code
-// spans always have balanced delimiters.
+// into multi-line injections, inline delimiters in prose are escaped, file
+// lists are capped at prBodyFileMax, and code spans always have balanced
+// delimiters.
 func FuzzPRBodyRender(f *testing.F) {
 	seeds := []struct {
 		title     string
@@ -253,6 +319,18 @@ func FuzzPRBodyRender(f *testing.F) {
 			ins:       0,
 			del:       0,
 			haveLines: false,
+		},
+		{
+			title:     "fix: a [](x)",
+			scope:     "<img src=x onerror=alert(1)>",
+			overview:  "![p](https://tracker.invalid/p) *reverted* <b>bold</b>",
+			base:      "main",
+			root:      "main",
+			filesRaw:  "a.go",
+			layer:     1,
+			ins:       1,
+			del:       1,
+			haveLines: true,
 		},
 		{
 			title:     strings.Repeat("x", 4000),
@@ -315,6 +393,12 @@ func FuzzPRBodyRender(f *testing.F) {
 		txt := mdText(title, prBodyTitleMax)
 		if strings.ContainsAny(txt, "\r\n") {
 			t.Fatalf("mdText contains newlines: %q", txt)
+		}
+		// Every inline delimiter a Markdown renderer acts on has to be gone
+		// from prose: a link, an image, an autolink, or a raw tag is what a
+		// note plants when it cannot open a line of its own.
+		if d := unescapedDelimiter(txt); d != "" {
+			t.Fatalf("mdText left %q unescaped: %q", d, txt)
 		}
 
 		code := mdCode(base, prBodyPathMax)

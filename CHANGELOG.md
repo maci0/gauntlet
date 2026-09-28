@@ -44,6 +44,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - The small-terminal fallback keeps the run state and the clock on its first row at every width, giving up the version and the loop number first. The row was cut at the right, which took the state with it (`‖ FEED…`) on exactly the terminals that have least room for it.
 - The small-terminal fallback names `esc live` while the feed is held or scrolled back. It draws no feed, but it does report the state in its header, and nothing on that screen said how to clear it.
 
+### Security
+
+- Inline Markdown in a stacked pull request's body is escaped. The Summary
+  section carries an agent's per-file notes and a review's own `Summary:`
+  line, both read from the reviewed repository, and both reach it after a
+  prompt that read the same untrusted sources. Flattening the text already
+  made an injected heading or code fence inert, but a link, an image, an
+  autolink, or a raw tag needs no line of its own: a note could put a
+  tracking pixel, a look-alike host, or a `<details>` block over the real
+  diff in the body a reviewer reads. `[`, `]`, `<`, `>`, and `*` are now
+  escaped in prose, so such a construct renders as the text it is. Paths in
+  the file list are code spans and are unchanged.
+
 ## 1.25.0
 
 ### Added
