@@ -337,23 +337,9 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		p.focus = (p.focus + paneCount - 1) % paneCount
 	case "right", "l":
-		switch p.focus {
-		case paneReviews:
-			p.expand(true)
-		case paneOptions:
-			p.adjust(+1)
-		default:
-			p.focus = (p.focus + 1) % paneCount
-		}
+		p.arrow(+1)
 	case "left", "h":
-		switch p.focus {
-		case paneReviews:
-			p.expand(false)
-		case paneOptions:
-			p.adjust(-1)
-		default:
-			p.focus = (p.focus + paneCount - 1) % paneCount
-		}
+		p.arrow(-1)
 	case "down", "j":
 		p.move(+1)
 	case "up", "k":
@@ -565,6 +551,36 @@ func (p *picker) pageMove(d int) {
 func (p *picker) rowAt(i int) row {
 	rows := p.rows()
 	return rows[min(max(i, 0), len(rows)-1)]
+}
+
+// arrow is what the left and right keys do, by pane: they fold a set in the
+// reviews tree, change a value in the run pane, and step to the neighbouring
+// pane everywhere else. The suggest row is the one row of the tree with no
+// fold, so there the arrows step panes too, which is what the legend promises
+// while the cursor is on it. Keying them to nothing instead left a key the
+// legend advertised doing nothing on the one row it named it for.
+func (p *picker) arrow(d int) {
+	switch p.focus {
+	case paneReviews:
+		if p.rowAt(p.cursor[paneReviews]).kind == rowSuggest {
+			p.focus = p.sidePane(d)
+			return
+		}
+		p.expand(d > 0)
+	case paneOptions:
+		p.adjust(d)
+	default:
+		p.focus = p.sidePane(d)
+	}
+}
+
+// sidePane is the pane d steps to: one forward for the right key, one back for
+// the left, wrapping at either end.
+func (p *picker) sidePane(d int) pane {
+	if d > 0 {
+		return (p.focus + 1) % paneCount
+	}
+	return (p.focus + paneCount - 1) % paneCount
 }
 
 // expand opens or closes the group the cursor is in. Closing from a member

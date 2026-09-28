@@ -261,7 +261,7 @@ you do:
 | `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |
 | `f` | narrow the feed to results, errors, and diffs, and back |
 | `g` / `G`, `home` / `end` | jump to oldest / newest |
-| `?` | help, and the list of unmerged branches |
+| `?` | help (`q` / `esc` / `ctrl+c` close it), and the list of unmerged branches |
 
 Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
 `⑂` merge conflict, `–` skipped, `␘` interrupted.

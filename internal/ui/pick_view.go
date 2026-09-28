@@ -434,7 +434,7 @@ const escLeave = "  esc          cancel a q, clear the filter, or leave once the
 func (p *picker) helpLines() []string {
 	lines := []string{
 		styleTitle.Render("compose a run"),
-		styleDim.Render("q  esc  ?  close this help"),
+		styleDim.Render("q  esc  ?  ctrl+c  close this help"),
 		"",
 	}
 	lines = append(lines, p.focusedLines()...)
@@ -447,9 +447,10 @@ func (p *picker) helpLines() []string {
 		"  pgup / pgdn  move by page",
 		"  home / end first / last row in this pane; g / G the same, not while filtering",
 		"  space        toggle a review, a set, an agent, or a switch",
-		"  ← / →, h / l open or close a set; change a value",
+		"  ← / →, h / l open or close a set, change a value, or step to the next pane",
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by name or description; enter keeps it, esc clears",
+		"  ctrl+u / ctrl+w   clear the filter, or drop the word before the cursor",
 		"  enter        run the composed command",
 		qLeave,
 		escLeave,

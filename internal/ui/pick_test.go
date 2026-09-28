@@ -875,6 +875,33 @@ func TestPickArrowKeysNameTheActionOfTheRowUnderThem(t *testing.T) {
 	}
 }
 
+// The legend calls the arrows "pane" while the cursor is on the suggest row,
+// the one row of the tree with no fold, so they have to move the pane there:
+// a key the legend names and the key that does nothing look the same on
+// screen.
+func TestPickArrowsLeaveTheSuggestRow(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		key  string
+		want pane
+	}{
+		{"right", "l", paneAgents},
+		{"left", "h", paneOptions},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := demoPicker()
+			if got := p.rowAt(p.cursor[paneReviews]).kind; got != rowSuggest {
+				t.Fatalf("the demo picker opens on row kind %v, want the suggest row", got)
+			}
+			press(p, tc.key)
+			if p.focus != tc.want {
+				t.Fatalf("%s on the suggest row left the focus on pane %d, want %d",
+					tc.key, p.focus, tc.want)
+			}
+		})
+	}
+}
+
 func TestPickHelpAgentSelection(t *testing.T) {
 	for _, tc := range []struct {
 		name     string

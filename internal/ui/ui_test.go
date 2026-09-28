@@ -807,6 +807,35 @@ func TestDashboardFinishKeyAsksOnce(t *testing.T) {
 // A run with nothing to finish into is not offered the key. s would do
 // nothing, so the legend and the help leave it out. ctrl+c still stops the
 // run, so the help names it as the stop it is.
+// ctrl+c closes the overlay rather than stopping the run, so the overlay has
+// to name it among the closing keys: read on its own, the entry below it
+// ("ctrl+c stops the run now") promises a key that only closes the help.
+func TestHelpOverlayNamesCtrlCAsACloseKey(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.help, m.ready = 100, 30, true, true
+	help := stripANSI(m.View())
+	head, _, ok := strings.Cut(help, "close this help")
+	if !ok {
+		t.Fatalf("the overlay does not say how to close it:\n%s", help)
+	}
+	rows := strings.Split(head, "\n")
+	line := strings.TrimSpace(rows[len(rows)-1])
+	if !strings.Contains(line, "ctrl+c") || !strings.HasPrefix(line, "q") {
+		t.Fatalf("the close line does not lead with q and ctrl+c: %q", line)
+	}
+	before, _, _ := strings.Cut(help, "close this help")
+	if strings.Contains(before, "stop the run") {
+		t.Fatalf("the close line is not the first thing the overlay says:\n%s", help)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if m.help {
+		t.Fatal("ctrl+c did not close the help")
+	}
+	if m.quitArmed || m.finishing {
+		t.Fatal("ctrl+c on the overlay changed the run's state")
+	}
+}
+
 func TestDashboardHidesFinishWhereThereIsNothingToFinish(t *testing.T) {
 	cfg := demoConfig()
 	cfg.OnFinish = nil

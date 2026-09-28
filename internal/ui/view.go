@@ -912,12 +912,16 @@ func (m *model) renderHelp() string {
 }
 
 func (m *model) helpLines() []string {
-	// Close keys first: while this overlay is up, q and esc close it, they
-	// do not stop the run. Listing quit first is how a reader kills a run
-	// they opened help to understand.
+	// Close keys first: while this overlay is up, q, esc, ?, and ctrl+c close
+	// it, they do not stop the run. Listing quit first is how a reader kills a
+	// run they opened help to understand, and leaving ctrl+c off the same line
+	// is how a reader reads "ctrl+c stops the run" below, presses it, and
+	// watches the help close instead. The entries after it are the dashboard's
+	// own keys, so the overlay says which screen they describe.
 	lines := []string{
 		styleTitle.Render("gauntlet dashboard"),
-		styleDim.Render("q  esc  ?  close this help"),
+		styleDim.Render("q  esc  ?  ctrl+c  close this help"),
+		styleDim.Render("  The keys below are what they do with the dashboard showing."),
 		"",
 	}
 	if len(m.conflicts) > 0 {
