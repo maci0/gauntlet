@@ -1044,6 +1044,22 @@ func exitsWith(err error, code int) bool {
 	return ok && ee.ExitCode() == code
 }
 
+// nothingStaged reads the index and reports whether it holds no change.
+// diff --cached --quiet exits 1 when something is staged and 0 when nothing
+// is; any other outcome means the answer was not read off healthy plumbing,
+// which is an error rather than an answer. Both callers commit on the
+// result, so they must agree on which reading means what.
+func (r *Repo) nothingStaged(ctx context.Context) (bool, error) {
+	_, err := r.run(ctx, gitNormal, "diff", "--cached", "--quiet")
+	switch {
+	case err == nil:
+		return true, nil
+	case exitsWith(err, 1):
+		return false, nil
+	}
+	return false, fmt.Errorf("git diff --cached --quiet: %w", err)
+}
+
 // CheckIgnore returns the subset of paths git ignores in this tree. Without
 // git, or outside a repository, nothing counts as ignored: prompt discovery
 // then treats every candidate as legitimate instead of failing the run.

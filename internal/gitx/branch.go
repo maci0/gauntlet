@@ -108,7 +108,11 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	}
 	// A squash stages; it never commits. Nothing staged means the branch held
 	// nothing this tree does not already have.
-	if _, clean := r.run(ctx, gitNormal, "diff", "--cached", "--quiet"); clean == nil {
+	clean, cErr := r.nothingStaged(ctx)
+	if cErr != nil {
+		return MergeResult{Detail: cErr.Error()}
+	}
+	if clean {
 		return MergeResult{Merged: true}
 	}
 	out, err = r.run(ctx, gitNormal,
@@ -428,11 +432,14 @@ func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix stri
 // holding real work and reports the failure. It takes wtMu like DeleteBranch:
 // a rename walks the registered worktrees to follow a checked-out branch.
 func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
+	if r == nil || !Available() {
+		return errGitUnavailable
+	}
 	if from == to {
 		return nil
 	}
-	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", to); err != nil {
-		return fmt.Errorf("invalid stack branch %q: %w", to, err)
+	if err := r.ValidateBranchName(ctx, to); err != nil {
+		return err
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()

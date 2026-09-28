@@ -87,12 +87,16 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	// refuses a symlink too: following one would read an arbitrary file's
 	// contents into the substring check below. A missing file is the normal
 	// first-run case, and so is a refused symlink, so the error is dropped
-	// and the text is read as empty either way.
+	// and the text is read as empty either way. The read is capped: an
+	// exclude file belongs in a repository that does not ship one, and an
+	// oversized one is not read whole to look for two short strings.
 	var text string
-	if f, _, err := openRegular(path); err == nil {
-		body, _ := io.ReadAll(f)
+	if f, fi, err := openRegular(path); err == nil {
+		if fi.Size() <= maxExcludeBytes {
+			body, _ := io.ReadAll(io.LimitReader(f, maxExcludeBytes))
+			text = string(body)
+		}
 		_ = f.Close()
-		text = string(body)
 	}
 	var missing []string
 	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
@@ -198,10 +202,7 @@ func (r *Repo) worktreeDir(name string) string {
 // checkBranchName rejects a name git would not accept as a ref before it
 // reaches a command line, the shared check behind every branch a stack names.
 func (r *Repo) checkBranchName(ctx context.Context, branch string) error {
-	if _, err := r.run(ctx, gitQuick, "check-ref-format", "--branch", branch); err != nil {
-		return fmt.Errorf("invalid stack branch %q: %w", branch, err)
-	}
-	return nil
+	return r.ValidateBranchName(ctx, branch)
 }
 
 // AddWorktree creates a checkout of base on a fresh branch. The name identifies
@@ -481,12 +482,12 @@ func (w *Worktree) CommitAll(ctx context.Context, message string) (bool, error) 
 	// diff --cached --quiet exits 1 when something is staged. Any other
 	// outcome means the answer was not read off healthy plumbing: committing
 	// then would decide on broken state rather than on what is staged.
-	_, derr := sub.run(ctx, gitNormal, "diff", "--cached", "--quiet")
-	switch {
-	case derr == nil:
+	clean, err := sub.nothingStaged(ctx)
+	if err != nil {
+		return false, err
+	}
+	if clean {
 		return false, nil
-	case !exitsWith(derr, 1):
-		return false, fmt.Errorf("git diff --cached --quiet: %w", derr)
 	}
 	if _, err := sub.run(ctx, gitNormal,
 		"commit", "--no-verify", "--quiet", "-m", message); err != nil {
@@ -547,6 +548,12 @@ func (w *Worktree) CommitScope(ctx context.Context) ([]string, error) {
 // file into memory to search it for seven characters is a bad trade. Such a
 // file counts as unresolved: an unread answer is not a clean one.
 const maxScanBytes = 8 << 20
+
+// maxExcludeBytes bounds .git/info/exclude when it is read to check for the
+// two entries this run needs. The file is normally empty or a handful of
+// lines, and a repository that ships a huge one is not read whole to search
+// it for two short strings.
+const maxExcludeBytes = 1 << 20
 
 // readScanFile reads a file for the marker scan, refusing anything past
 // maxScanBytes by size rather than by reading it first.
@@ -666,9 +673,15 @@ func (w *Worktree) Remove(ctx context.Context) error {
 	if dir == "" {
 		return nil
 	}
+	// Cleared only once the directory is gone: on a failure the handle is
+	// the caller's only record of where the checkout is, and a retry that
+	// found Dir empty would report success over a directory still on disk.
+	if err := w.repo.removeWorktreeDir(ctx, dir); err != nil {
+		return err
+	}
 	w.Dir = ""
 	w.sub = nil
-	return w.repo.removeWorktreeDir(ctx, dir)
+	return nil
 }
 
 // DeleteBranch force-removes a review branch. It is only ever called once the

@@ -653,8 +653,10 @@ func listTree(root string) ([]string, *gitx.Repo) {
 	defer cancel()
 	repo := gitx.Open(root)
 	// Cap at scanMaxFiles so a million-file listing is not kept as one
-	// string that the first hundred thousand paths would pin.
-	if paths, err := repo.ListFilesAtMost(ctx, scanMaxFiles); err == nil && len(paths) > 0 {
+	// string that the first hundred thousand paths would pin. An empty
+	// listing is an answer (a tree with no files in it), not a failure to
+	// answer, and the walk below cannot tell the two apart.
+	if paths, err := repo.ListFilesAtMost(ctx, scanMaxFiles); err == nil {
 		return paths, repo
 	}
 	var out []string

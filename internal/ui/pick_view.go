@@ -384,10 +384,11 @@ func fitSegments(segs []string, gap string, w int) string {
 // the pane for the same reason the dashboard's fallback does: a wrapped
 // fallback is a taller broken screen, not a smaller one.
 func (p *picker) renderNarrow() string {
+	command := styleValue.Render("gauntlet " + strings.Join(p.argv(), " "))
 	rows := []string{
 		wordmark() + styleDim.Render("  compose a run"),
 		styleDim.Render("terminal too small for the launcher"),
-		styleValue.Render("gauntlet " + strings.Join(p.argv(), " ")),
+		command,
 	}
 	// Enter is dead while the run is blocked, and the reason is the only
 	// thing here that says so: the wide view carries it on the status line,
@@ -431,7 +432,7 @@ func (p *picker) renderNarrow() string {
 			rows = []string{keys}
 		} else {
 			rows = append(rows[:max(p.h-2, 0):len(rows)-1],
-				rows[2], keys)
+				command, keys)
 		}
 	}
 	for i, r := range rows {

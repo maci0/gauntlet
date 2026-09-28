@@ -481,14 +481,23 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 			p.filter += string(msg.Runes)
 		}
 	}
-	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
+	// The row set changes with the filter, so every key re-bounds the cursor,
+	// not only the ones that close it. Where it lands is a pane decision:
+	// home and end go to the ends of the list as-is.
+	p.clampCursorRange()
 	return p, nil
+}
+
+// clampCursorRange restores the reviews cursor to the last row when the list
+// it indexes has shrunk under it.
+func (p *picker) clampCursorRange() {
+	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
 }
 
 // clampReviewCursor restores the reviews cursor into range and onto the first
 // review row if it was stranded off the list or on a non-review row.
 func (p *picker) clampReviewCursor() {
-	p.cursor[paneReviews] = min(p.cursor[paneReviews], max(len(p.rows())-1, 0))
+	p.clampCursorRange()
 	if r := p.rowAt(p.cursor[paneReviews]); r.kind != rowReview {
 		for i, cand := range p.rows() {
 			if cand.kind == rowReview {

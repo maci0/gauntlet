@@ -1538,10 +1538,21 @@ func (r *Runner) sample(ctx context.Context) (gitx.Stats, bool) {
 // delta converts two cumulative samples into this review's contribution.
 // Removing lines a previous review added shows as negative insertions, which
 // is this review deleting them (and the reverse for restorations).
+//
+// Both samples are diffs against the same baseline, so a removal of a
+// previously added line moves Ins down and Del up by the same count: those
+// two readings are one event. Additions and restorations are independent
+// (adding lines and restoring deleted ones both raise Ins), so those add;
+// a drop in Ins is not independent of a rise in Del, and Del already
+// counts it.
 func delta(before, after gitx.Stats) (ins, del int) {
 	dIns := after.Ins - before.Ins
 	dDel := after.Del - before.Del
-	return max(dIns, 0) + max(-dDel, 0), max(dDel, 0) + max(-dIns, 0)
+	ins = max(dIns, 0) + max(-dDel, 0)
+	if dDel > 0 {
+		return ins, dDel
+	}
+	return ins, max(-dIns, 0)
 }
 
 func linesNote(res Result) string {
