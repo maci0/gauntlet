@@ -58,7 +58,13 @@ type procResult struct {
 	Subject string
 	// FileNotes are the per-file "what was done" lines the agent printed.
 	FileNotes []agent.FileNote
-	Err       error // launch failure only
+	// Note is the agent's last non-empty output line, redacted and cut to one
+	// line. It is the only statement of why a run stopped where it did: an
+	// agent reports a spent quota, a rejected key, or an unknown model on that
+	// line and nowhere else. The caller uses it to explain a failure and to
+	// decide whether running the same launch again could differ.
+	Note string
+	Err  error // launch failure only
 }
 
 // procOpts configures one agent launch.
@@ -347,6 +353,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	final := tail.Bytes()
 	res.Subject = agent.ParseSubject(final)
 	res.FileNotes = agent.ParseFileNotes(final)
+	res.Note = lastNote(final)
 	finalUsage := agent.ParseUsage(final)
 	tailMu.Unlock()
 	usageMu.Lock()
@@ -535,11 +542,26 @@ func captureProc(ctx context.Context, argv []string, dir string, timeout time.Du
 // nowhere else. Redacted and cut to one line like every other piece of child
 // output that reaches an error string.
 func withNote(msg, out string) string {
-	lines := strings.Split(out, "\n")
-	for _, line := range slices.Backward(lines) {
-		if line := strings.TrimSpace(line); line != "" {
-			return msg + ": " + runx.FirstLine(line)
-		}
+	if line := lastNote([]byte(out)); line != "" {
+		return msg + ": " + line
 	}
 	return msg
+}
+
+// lastNote is the last non-empty line of a child's output, made safe to show
+// and to store as one line. The tail of a run holds the whole session and only
+// its end carries a reason, so this is the line a failure is explained by.
+// Display runs first because raw echo mode stores the line it echoes: without
+// it the note a caller reads back out of the tail is the one place untrusted
+// bytes reach a log or a screen without having been cleaned. runx.FirstLine
+// then cuts at the newline and redacts anything shaped like a credential in a
+// URL.
+func lastNote(out []byte) string {
+	lines := strings.Split(string(out), "\n")
+	for _, line := range slices.Backward(lines) {
+		if line := normalize.Truncate(normalize.Display(line), streamLineCols); strings.TrimSpace(line) != "" {
+			return runx.FirstLine(line)
+		}
+	}
+	return ""
 }
