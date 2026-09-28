@@ -29,6 +29,9 @@ the journaled event stream in `internal/runner/contract_test.go`.
 ### Fixed
 
 - `make check-scripts` read the local uv version with `uv version`, which reports the version pyproject.toml declares (`0.0.0`) rather than uv's own. The drift note compared that placeholder against `UV_VERSION` and fired on every run, so the one signal meant to separate a resolver difference from a clean tree was itself always red. It reads `uv --version` now.
+- The dashboard's `REVIEWS` and `FEED` panel titles drop whole readings on a narrow terminal and mark what went, instead of being cut mid-word. A title reading `3 lin…` named a distance the screen never states.
+- The small-terminal fallback keeps the run state and the clock on its first row at every width, giving up the version and the loop number first. The row was cut at the right, which took the state with it (`‖ FEED…`) on exactly the terminals that have least room for it.
+- The small-terminal fallback names `esc live` while the feed is held or scrolled back. It draws no feed, but it does report the state in its header, and nothing on that screen said how to clear it.
 
 ## 1.25.0
 

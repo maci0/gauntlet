@@ -225,6 +225,10 @@ var (
 	moreAgentsRe  = regexp.MustCompile(`\+(\d+) more agents`)
 )
 
+// titleRoom is the row width a panel title is asserted against when the test
+// is about what the title says rather than how it fits.
+const titleRoom = 200
+
 // A grid that cannot hold every review says how many it dropped; a fitting
 // grid stays clean.
 func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
@@ -384,13 +388,13 @@ func TestInterruptedReviewsReachTheTally(t *testing.T) {
 	m := newModel(demoConfig())
 	m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "sec-review",
 		Agent: "claude", Status: runner.StatusInterrupted, Time: base})
-	if got := stripANSI(m.gridTitle()); !strings.Contains(got, "interrupted 1") {
+	if got := stripANSI(m.gridTitle(titleRoom)); !strings.Contains(got, "interrupted 1") {
 		t.Fatalf("tally %q omits the interrupted count", got)
 	}
 	if m.lanes["claude"].failed != 0 {
 		t.Fatalf("interrupted review incremented lane failures: %d", m.lanes["claude"].failed)
 	}
-	if got := stripANSI(newModel(demoConfig()).gridTitle()); strings.Contains(got, "interrupted") {
+	if got := stripANSI(newModel(demoConfig()).gridTitle(titleRoom)); strings.Contains(got, "interrupted") {
 		t.Fatalf("an empty tally still advertises interruptions: %q", got)
 	}
 }
@@ -399,12 +403,12 @@ func TestInterruptedReviewsReachTheTally(t *testing.T) {
 // how far.
 func TestFeedTitleMarksScrolledBack(t *testing.T) {
 	m := newModel(demoConfig())
-	if got := stripANSI(m.feedTitle()); got != "FEED" {
+	if got := stripANSI(m.feedTitle(titleRoom)); got != "FEED" {
 		t.Fatalf("live-edge title %q, want plain FEED", got)
 	}
 	m.feed = make([]feedLine, 40)
 	m.scroll = 12
-	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "12 lines back") {
+	if got := stripANSI(m.feedTitle(titleRoom)); !strings.Contains(got, "12 lines back") {
 		t.Fatalf("scrolled-back title %q, want the distance from the live edge", got)
 	}
 }
@@ -414,13 +418,13 @@ func TestFeedTitleMarksScrolledBack(t *testing.T) {
 // was kept, and ? still lists the names.
 func TestFeedTitleMarksUnmergedBranches(t *testing.T) {
 	m := newModel(demoConfig())
-	if got := stripANSI(m.feedTitle()); strings.Contains(got, "unmerged") {
+	if got := stripANSI(m.feedTitle(titleRoom)); strings.Contains(got, "unmerged") {
 		t.Fatalf("a clean run advertised unmerged branches: %q", got)
 	}
 	for _, ev := range demoEvents() {
 		m.apply(ev)
 	}
-	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "1 unmerged") {
+	if got := stripANSI(m.feedTitle(titleRoom)); !strings.Contains(got, "1 unmerged") {
 		t.Fatalf("feed title %q, want the unmerged count", got)
 	}
 }
@@ -1565,8 +1569,8 @@ func TestFeedFilterLabelNamesWhatItKeeps(t *testing.T) {
 			t.Fatalf("the filter label %q does not name %s", label, want)
 		}
 	}
-	if !strings.Contains(stripANSI(m.feedTitle()), label) {
-		t.Fatalf("the FEED title does not carry the label:\n%s", stripANSI(m.feedTitle()))
+	if !strings.Contains(stripANSI(m.feedTitle(titleRoom)), label) {
+		t.Fatalf("the FEED title does not carry the label:\n%s", stripANSI(m.feedTitle(titleRoom)))
 	}
 	if !strings.Contains(stripANSI(strings.Join(m.helpLines(), "\n")), label) {
 		t.Fatalf("the help does not carry the label:\n%s", m.helpLines())
@@ -1692,8 +1696,72 @@ func TestFooterShowsEscLiveWhenPausedAtLiveEdge(t *testing.T) {
 func TestFeedTitleMarksPaused(t *testing.T) {
 	m := newModel(demoConfig())
 	m.paused = true
-	if got := stripANSI(m.feedTitle()); !strings.Contains(got, "paused") {
+	if got := stripANSI(m.feedTitle(titleRoom)); !strings.Contains(got, "paused") {
 		t.Fatalf("feed title %q, want paused indicator", got)
+	}
+}
+
+// A pane too narrow for the whole title drops a whole reading and marks the
+// cut: "3 lin…" names a distance the screen never states.
+func TestNarrowPaneDropsWholeTitleSegments(t *testing.T) {
+	m := newModel(demoConfig())
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	m.paused = true
+	m.filter = feedSignal
+	m.feed = make([]feedLine, 40)
+	m.scroll = 3
+	got := stripANSI(m.feedTitle(30))
+	if !strings.Contains(got, "paused") || !strings.HasSuffix(got, "…") {
+		t.Fatalf("narrow feed title %q, want whole segments and a marked cut", got)
+	}
+	if strings.Contains(got, "lin") {
+		t.Fatalf("narrow feed title %q keeps half a reading", got)
+	}
+	if wide := stripANSI(m.feedTitle(titleRoom)); !strings.Contains(wide, "3 lines back") {
+		t.Fatalf("a roomy pane dropped a reading it had space for: %q", wide)
+	}
+}
+
+// The fallback's first row is read for the run state, so the state and the
+// clock are what survive a narrow terminal: the version and the loop number go
+// first, and the row is never cut at the state.
+func TestMinimalHeaderKeepsTheRunState(t *testing.T) {
+	for _, w := range []int{20, 30, 40, 49} {
+		m := newModel(demoConfig())
+		m.w, m.h, m.ready = w, 10, true
+		for _, ev := range demoEvents() {
+			m.apply(ev)
+		}
+		m.now = m.cfg.Started.Add(90 * time.Second)
+		row := stripANSI(strings.Split(m.renderMinimal(), "\n")[0])
+		if !strings.Contains(row, "RUNNING") {
+			t.Fatalf("w=%d: header %q lost the run state", w, row)
+		}
+		if lipgloss.Width(m.minimalHeader("● RUNNING", styleOK)) > w {
+			t.Fatalf("w=%d: header row does not fit the pane", w)
+		}
+	}
+}
+
+// The fallback names the way back to a live feed even though it draws none: the
+// state label above it says the feed is held, and a state nothing on the
+// screen clears is a dead end.
+func TestMinimalViewNamesTheWayBackToLive(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 40, 10, true
+	m.paused = true
+	keys := lastLine(stripANSI(m.renderMinimal()))
+	if !strings.Contains(keys, "esc live") {
+		t.Fatalf("fallback keys %q, want esc live while the feed is held", keys)
+	}
+	if !strings.Contains(stripANSI(m.renderMinimal()), "FEED PAUSED") {
+		t.Fatal("the fallback stopped reporting the state it now clears")
+	}
+	m.paused, m.scroll = false, 0
+	if got := lastLine(stripANSI(m.renderMinimal())); strings.Contains(got, "live") {
+		t.Fatalf("keys %q advertise a way back from a feed that is live", got)
 	}
 }
 

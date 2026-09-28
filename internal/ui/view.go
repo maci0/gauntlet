@@ -49,8 +49,8 @@ func (m *model) View() string {
 		m.renderHeader(),
 		panel(m.activityTitle(), chart(m.activity, inner, actH), inner, actH),
 		panel("AGENTS", m.renderLanes(inner, laneH), inner, laneH),
-		panel(m.gridTitle(), m.renderGrid(inner, gridH), inner, gridH),
-		panel(m.feedTitle(), m.renderFeed(inner, feedH), inner, feedH),
+		panel(m.gridTitle(inner), m.renderGrid(inner, gridH), inner, gridH),
+		panel(m.feedTitle(inner), m.renderFeed(inner, feedH), inner, feedH),
 	)
 
 	// The frame is exactly h rows: the footer owns the last one, and content
@@ -451,20 +451,43 @@ func failStyle(n int) lipgloss.Style {
 	return styleDim
 }
 
-func (m *model) gridTitle() string {
+func (m *model) gridTitle(w int) string {
 	c := m.counts
-	title := fmt.Sprintf("REVIEWS  %s %s  %s %s  %s %s  %s %s  %s %s",
-		styleOK.Render("pass"), styleValue.Render(fmt.Sprint(c["ok"])),
-		styleBad.Render("fail"), styleValue.Render(fmt.Sprint(c["fail"])),
-		styleWarn.Render("timeout"), styleValue.Render(fmt.Sprint(c["timeout"])),
-		lipgloss.NewStyle().Foreground(cPeach).Render("conflict"), styleValue.Render(fmt.Sprint(c["conflict"])),
-		styleDim.Render("skip"), styleValue.Render(fmt.Sprint(c["skipped"])))
+	segs := []string{"REVIEWS",
+		styleOK.Render("pass") + " " + styleValue.Render(fmt.Sprint(c["ok"])),
+		styleBad.Render("fail") + " " + styleValue.Render(fmt.Sprint(c["fail"])),
+		styleWarn.Render("timeout") + " " + styleValue.Render(fmt.Sprint(c["timeout"])),
+		lipgloss.NewStyle().Foreground(cPeach).Render("conflict") + " " + styleValue.Render(fmt.Sprint(c["conflict"])),
+		styleDim.Render("skip") + " " + styleValue.Render(fmt.Sprint(c["skipped"])),
+	}
 	// Interrupted cells carry the ␘ glyph; once any exist, the tally says how
 	// many, the way the summary's own conditional rows do.
 	if n := c["interrupted"]; n > 0 {
-		title += "  " + styleWarn.Render("interrupted") + " " + styleValue.Render(fmt.Sprint(n))
+		segs = append(segs, styleWarn.Render("interrupted")+" "+styleValue.Render(fmt.Sprint(n)))
 	}
-	return title
+	return fitTitle(segs, w)
+}
+
+// fitTitle lays a panel title's segments on one row, dropping whole ones from
+// the right and marking what went. A title cut mid-word ("3 lin…") names a
+// reading that does not exist, and the panels a narrow terminal squeezes are
+// the ones carrying the most state, so the least important segment goes before
+// any word is broken. The first segment always stays: it is the panel's name.
+func fitTitle(segs []string, w int) string {
+	out := segs[0]
+	dw := lipgloss.Width(out)
+	for _, s := range segs[1:] {
+		sw := lipgloss.Width(s)
+		if dw+2+sw > w {
+			if dw+3 <= w {
+				out += "  " + styleFaint.Render("…")
+			}
+			return out
+		}
+		out += "  " + s
+		dw += 2 + sw
+	}
+	return out
 }
 
 // renderGrid draws every scheduled review as one cell: glyph plus short name,
@@ -553,22 +576,23 @@ func (m *model) visibleFeed() []feedLine {
 
 // feedTitle keeps the reader oriented while scrolled back or narrowed:
 // nothing else on screen distinguishes reading history from pausing at the
-// live edge, or a quiet feed from a filtered one.
-func (m *model) feedTitle() string {
-	title := "FEED"
+// live edge, or a quiet feed from a filtered one. w is the row the title has to
+// fit in, so a narrow pane drops a whole reading rather than cutting one.
+func (m *model) feedTitle(w int) string {
+	segs := []string{"FEED"}
 	if m.paused {
-		title += "  " + styleWarn.Render("paused")
+		segs = append(segs, styleWarn.Render("paused"))
 	}
 	if l := m.filter.label(); l != "" {
-		title += "  " + styleInfo.Render(l)
+		segs = append(segs, styleInfo.Render(l))
 	}
 	if n := len(m.conflicts); n > 0 {
-		title += "  " + styleWarn.Render(fmt.Sprintf("%d unmerged", n))
+		segs = append(segs, styleWarn.Render(fmt.Sprintf("%d unmerged", n)))
 	}
 	if m.scroll > 0 {
-		title += "  " + styleDim.Render(fmt.Sprintf("%d lines back", m.scroll))
+		segs = append(segs, styleDim.Render(fmt.Sprintf("%d lines back", m.scroll)))
 	}
-	return title
+	return fitTitle(segs, w)
 }
 
 func (m *model) renderFeed(w, h int) string {
@@ -761,10 +785,7 @@ func (m *model) renderMinimal() string {
 		hintW += segW
 	}
 	rows := []string{
-		fmt.Sprintf("gauntlet %s  loop %d  %s  %s",
-			m.cfg.Version, m.loop,
-			styleDim.Render(humanize.Duration(m.now.Sub(m.cfg.Started))),
-			stateStyle.Render(stateTxt)),
+		m.minimalHeader(stateTxt, stateStyle),
 		tally.String(),
 	}
 	if len(m.conflicts) > 0 {
@@ -793,6 +814,30 @@ func (m *model) renderMinimal() string {
 		rows[i] = clipEllipsis(r, m.w)
 	}
 	return strings.Join(rows, "\n")
+}
+
+// minimalHeader is the fallback's first row, laid from the left inward: the
+// run state and the clock are what the fallback exists to report, so they are
+// the last pieces standing at any width and the version and the loop number
+// are what a narrow terminal gives up first. A row cut at the right instead
+// took the state with it ("‖ FEED…"), which is the one reading the reader
+// came for.
+func (m *model) minimalHeader(stateTxt string, stateStyle lipgloss.Style) string {
+	tail := []string{
+		styleDim.Render(humanize.Duration(m.now.Sub(m.cfg.Started))),
+		stateStyle.Render(stateTxt),
+	}
+	lead := []string{
+		styleDim.Render("gauntlet " + m.cfg.Version),
+		styleDim.Render(fmt.Sprintf("loop %d", m.loop)),
+	}
+	for i := 0; i <= len(lead); i++ {
+		row := strings.Join(append(append([]string{}, lead[i:]...), tail...), "  ")
+		if i == len(lead) || lipgloss.Width(row) <= m.w {
+			return row
+		}
+	}
+	return strings.Join(tail, "  ")
 }
 
 func (m *model) renderHelp() string {
@@ -875,9 +920,13 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	}
 	if scrollable {
 		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
-		if m.paused || m.scroll > 0 {
-			keys = append(keys, struct{ k, d string }{"esc", "live"})
-		}
+	}
+	// A paused or scrolled feed is named in the header, which the fallback
+	// draws too, so the way back to live is named there as well: a state the
+	// screen reports and nothing on it can clear is a dead end the reader has
+	// to guess out of.
+	if m.paused || m.scroll > 0 {
+		keys = append(keys, struct{ k, d string }{"esc", "live"})
 	}
 	if !m.done && !m.finishing && m.cfg.OnFinish != nil {
 		keys = append(keys, struct{ k, d string }{"s", "finish"})
