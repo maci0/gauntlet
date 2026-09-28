@@ -39,7 +39,3 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 // so tests can substitute a reader that outlives the agent, which is the
 // race the join in runReview is there to close.
 var openTranscript = newTranscriptReader
-
-// openTranscript's since bounds what counts: anything written before it
-// belongs to whatever ran earlier. The implementation is chosen at build
-// time; see usage_toktop.go and usage_off.go.

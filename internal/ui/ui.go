@@ -274,13 +274,13 @@ func newModel(cfg Config) *model {
 
 // New builds a dashboard fed by one subscription to the run's event bus.
 func New(cfg Config, events <-chan runner.Event) *Dashboard {
-	return newDashboard(cfg, events,
+	return newDashboard(events,
 		tea.NewProgram(newModel(cfg), tea.WithAltScreen()))
 }
 
 // newDashboard is New with the program supplied, so the message ordering
 // between the bus and the end-of-run marker is testable without a terminal.
-func newDashboard(cfg Config, events <-chan runner.Event, prog program) *Dashboard {
+func newDashboard(events <-chan runner.Event, prog program) *Dashboard {
 	d := &Dashboard{
 		prog:      prog,
 		events:    events,

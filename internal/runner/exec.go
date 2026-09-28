@@ -518,9 +518,6 @@ func captureProc(ctx context.Context, argv []string, dir string, timeout time.Du
 		Raw:     true,
 		Sink: func(l normalize.Line) {
 			mu.Lock()
-			// Tail is a fixed ring in memory: it drops the oldest bytes
-			// rather than failing, and returns an error only to satisfy
-			// io.Writer.
 			_, _ = tail.WriteString(l.Text)
 			_, _ = tail.WriteString("\n")
 			mu.Unlock()

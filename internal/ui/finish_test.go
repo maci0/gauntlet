@@ -60,7 +60,7 @@ func (r *recorder) seen() []tea.Msg {
 func TestFinishFollowsQueuedEvents(t *testing.T) {
 	events := make(chan runner.Event, 8)
 	prog := &recorder{}
-	d := newDashboard(Config{}, events, prog)
+	d := newDashboard(events, prog)
 
 	queued := []runner.Event{
 		{Kind: runner.EvReviewEnd, Review: "a"},
@@ -94,7 +94,7 @@ func TestFinishFollowsQueuedEvents(t *testing.T) {
 func TestFinishReturnsAfterTheBusCloses(t *testing.T) {
 	events := make(chan runner.Event)
 	prog := &recorder{}
-	d := newDashboard(Config{}, events, prog)
+	d := newDashboard(events, prog)
 	close(events)
 
 	done := make(chan struct{})
@@ -121,7 +121,7 @@ func TestFinishReturnsAfterTheBusCloses(t *testing.T) {
 func TestReleaseJoinsTheForwarderWithoutRun(t *testing.T) {
 	events := make(chan runner.Event, 1)
 	prog := newParked()
-	d := newDashboard(Config{}, events, prog)
+	d := newDashboard(events, prog)
 
 	// Queued while the forwarder is still finding its feet, so it reaches Send.
 	events <- runner.Event{Kind: runner.EvLog, Text: "runner is starting"}

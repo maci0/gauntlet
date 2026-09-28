@@ -1333,10 +1333,6 @@ const maxBackoffDoublings = 32
 // working tree is restored to the snapshot taken before the first attempt,
 // including the user's own uncommitted files. Either way the failed attempt's
 // half-applied fixes cannot leak into what the retry sees, commits, or merges.
-//
-// ponytail: the backoff is per review, not per agent. Reviews rate-limited by
-// one provider each wait on their own; a shared per-agent gate is the upgrade
-// if that turns out to matter.
 func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 

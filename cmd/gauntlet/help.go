@@ -187,8 +187,8 @@ var helpEnvVars = []helpEnvVar{
 
 // printUsage renders the help screen.
 func printUsage(out io.Writer, pal palette, width int) {
-	if width < 60 {
-		width = 60
+	if width < minTerminalWidth {
+		width = minTerminalWidth
 	}
 	head := func(s string) { fmt.Fprintf(out, "\n%s\n", pal.bold(strings.ToUpper(s))) }
 

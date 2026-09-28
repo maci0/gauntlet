@@ -1156,7 +1156,7 @@ func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	name, ok := strings.CutPrefix(err.Error(), prefix)
 	// A one-letter miss is one substitution from every short flag; guessing
 	// `-1` for `-Z` is noise.
-	if !ok || name == "" || utf8.RuneCountInString(name) < 2 {
+	if !ok || utf8.RuneCountInString(name) < 2 {
 		return errors.New(msg)
 	}
 	var names []string
