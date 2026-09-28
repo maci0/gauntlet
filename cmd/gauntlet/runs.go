@@ -95,7 +95,13 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 	// named where the user reads the listing: a dropped run is recoverable
 	// only by someone who knows it is still on disk. The bound keeps a
 	// large quarantine from printing two hundred ids.
-	if held, err := journal.Quarantined(); err == nil && len(held) > 0 {
+	if held, err := journal.Quarantined(); err != nil {
+		// The JSON form reports this, so the table does too: a pruned list that
+		// could not be read would otherwise read as a claim that nothing is
+		// recoverable.
+		fmt.Fprintf(os.Stderr, "cannot read the pruned run list: %v\n", err)
+		return exitFail
+	} else if len(held) > 0 {
 		shown := held
 		more := ""
 		if len(shown) > listedQuarantined {

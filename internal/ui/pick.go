@@ -598,7 +598,7 @@ func (p *picker) adjust(d int) {
 	}
 	switch o.kind {
 	case optCount:
-		o.n = max(1, o.n+d)
+		o.n = min(max(1, o.n+d), max(p.cfg.CPUs, 1))
 	case optCycle:
 		if n := len(o.values); n > 0 {
 			o.idx = ((o.idx+d)%n + n) % n
@@ -639,7 +639,10 @@ func (p *picker) toggle() {
 		}
 		switch o.kind {
 		case optCount:
-			if p.cfg.CPUs > 1 && o.n >= p.cfg.CPUs {
+			// The same ceiling space applies to this row: past the machine's
+			// cpus the meter is full and the extra lane has nothing to run on,
+			// so space cycles back to one lane. The `+` key stops here too.
+			if o.n >= max(p.cfg.CPUs, 1) {
 				o.n = 1
 			} else {
 				p.adjust(+1)

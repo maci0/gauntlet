@@ -2746,6 +2746,44 @@ func TestTokenBudgetStopsTheSchedule(t *testing.T) {
 	}
 }
 
+// The budget stops what starts next, not what already ran: the reviews before
+// it committed, so the loop's commit and merge steps still run and their work
+// still lands.
+func TestTokenBudgetStillCommitsAndMerges(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "branch", "main-line")
+	gitRun(t, repo, "checkout", "-q", "-b", "work")
+	set, _ := promptSet(t, "a-review", "b-review", "c-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo "Total tokens: 1000"
+echo "// touched" >> main.go
+git add -A
+git -c user.name=t -c user.email=t@e commit -qm "review work" >/dev/null 2>&1
+echo "RESULT: changed=1"`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review", "c-review"}, bin)
+	cfg.Commit, cfg.MergeInto = true, "main-line"
+	cfg.TokenBudget = 1500
+	_, got := runRecorded(t, cfg)
+
+	if n := countKind(got, EvReviewStart); n != 2 {
+		t.Fatalf("started %d reviews, want the 2 the budget allowed", n)
+	}
+	if !strings.Contains(gitOut(t, repo, "log", "--oneline", "main-line"), "review work") {
+		t.Fatalf("the merge step did not run after the budget tripped:\n%s",
+			gitOut(t, repo, "log", "--oneline", "--all"))
+	}
+	var merged bool
+	for _, ev := range got {
+		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
+			merged = true
+		}
+	}
+	if !merged {
+		t.Fatal("the merge was not reported on the bus")
+	}
+}
+
 // A command that would not build is a pure function of the prompt and the
 // spec: building it again on the same agent fails the same way, and the wait
 // before each try only makes the failure slower. The fallback still runs,
