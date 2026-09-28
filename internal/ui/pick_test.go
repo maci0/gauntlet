@@ -223,6 +223,49 @@ func TestPickComposesTheCommandItShows(t *testing.T) {
 	}
 }
 
+// The job count is drawn against the machine's cpus and the summary reads
+// "N of M cpus", so no key that raises it may pass M. The arrow keys used to
+// come through adjust() unbounded, and the row is what composes --jobs, so
+// holding right set the run to a lane count the machine cannot give.
+func TestConcurrencyStopsAtTheMachineCPUs(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		act  func(p *picker)
+	}{
+		{"plus key", func(p *picker) { press(p, "+", "+", "+", "+", "+", "+", "+") }},
+		{"right arrow on the options row", func(p *picker) {
+			p.focus = paneOptions
+			press(p, "l", "l", "l", "l", "l", "l", "l")
+		}},
+		{"space on the options row", func(p *picker) {
+			p.focus = paneOptions
+			for range 7 {
+				p.toggle()
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p := demoPicker()
+			c.act(p)
+			if got := p.concurrency().n; got != p.cfg.CPUs {
+				t.Errorf("concurrency is %d after raising it, want the %d cpus", got, p.cfg.CPUs)
+			}
+		})
+	}
+
+	// A machine reporting one cpu is one lane: the legend drops the +/-
+	// keys there, and the row has to agree rather than compose "-j 2 of 1".
+	p := demoPicker()
+	p.cfg.CPUs = 1
+	press(p, "+", "+", "l", "l", " ")
+	if got := p.concurrency().n; got != 1 {
+		t.Errorf("concurrency is %d on a one-cpu machine, want 1", got)
+	}
+	if got := strings.Join(p.argv(), " "); strings.Contains(got, "-j") {
+		t.Errorf("a one-cpu machine composed %q, want no -j at all", got)
+	}
+}
+
 // FastSuggest is passed in rather than imported from the runner, so a caller
 // that does not name one must not grow a --suggest-agent gauntlet of its own.
 func TestPickerOmitsFileSignalSuggesterWhenUnset(t *testing.T) {

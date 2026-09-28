@@ -148,29 +148,58 @@ def main() -> None:
     )
     shutil.move(root / "gauntlet", binary)
 
-    scores: list[tuple[float, float]] = []
+    scores: list[tuple[int, int, int, list[str]]] = []
     for directory, picked in sorted(agent_picks().items()):
         if not pathlib.Path(directory).is_dir():
             continue
         proposed = fast_picks(binary, directory)
-        shared = len(picked & proposed)
-        recall = shared / len(picked)
-        precision = shared / max(1, len(proposed))
-        scores.append((recall, precision))
+        scores.append(
+            (len(picked), len(proposed), len(picked & proposed), sorted(picked - proposed))
+        )
         if args.detail:
+            picked_n, proposed_n, shared, missed = scores[-1]
             print(
                 f"{pathlib.Path(directory).name:<16} "
-                f"agent={len(picked):>3} fast={len(proposed):>3} "
-                f"recall={recall:.2f} precision={precision:.2f}"
+                f"agent={picked_n:>3} fast={proposed_n:>3} "
+                f"recall={shared / picked_n:.2f} "
+                f"precision={shared / max(1, proposed_n):.2f}"
             )
-            print(f"   missed: {sorted(picked - proposed)}")
+            print(f"   missed: {missed}")
     if not scores:
         msg = "no --suggest runs recorded yet: nothing to calibrate against"
         raise SystemExit(msg)
-    recall = sum(r for r, _ in scores) / len(scores)
-    precision = sum(p for _, p in scores) / len(scores)
-    f1 = 2 * recall * precision / max(1e-9, recall + precision)
-    print(f"{len(scores)} directories: recall={recall:.2f} precision={precision:.2f} f1={f1:.2f}")
+
+    # The headline numbers are the pooled counts, not the mean of the
+    # per-directory ratios. A directory the agent picked three reviews in and
+    # one it picked thirty in are both one directory, so the unweighted mean
+    # lets the small one move the score as much as the large one and reports a
+    # number no pick actually contributed to. Pooling is also what the two
+    # names mean: recall is how much of everything the agent picked came
+    # back, precision how much of everything proposed was shared.
+    picked_total = sum(p for p, _, _, _ in scores)
+    shared_total = sum(s for _, _, s, _ in scores)
+    proposed_total = sum(f for _, f, _, _ in scores)
+    recall = shared_total / picked_total
+    per_dir = [(s / p, s / f) for p, f, s, _ in scores if f > 0]
+    if proposed_total:
+        precision = shared_total / proposed_total
+        f1 = 2 * recall * precision / (recall + precision) if recall + precision else 0.0
+        macro = (
+            sum(r for r, _ in per_dir) / len(per_dir),
+            sum(p for _, p in per_dir) / len(per_dir),
+        )
+        print(
+            f"{len(scores)} directories: recall={recall:.2f} "
+            f"precision={precision:.2f} f1={f1:.2f}  (pooled over every pick; "
+            f"per-directory means recall={macro[0]:.2f} precision={macro[1]:.2f})"
+        )
+    else:
+        # Nothing was proposed anywhere, so no proposal was shared: precision
+        # and f1 are undefined rather than zero.
+        print(
+            f"{len(scores)} directories: recall={recall:.2f} "
+            f"precision=n/a f1=n/a  (nothing proposed in any directory)"
+        )
 
 
 if __name__ == "__main__":

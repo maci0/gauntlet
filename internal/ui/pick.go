@@ -375,14 +375,15 @@ func (p *picker) key(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		p.typing, p.focus = true, paneReviews
 	case "+", "=":
 		if !p.stacked() {
-			// The same ceiling space applies to this row: past the machine's
-			// cpus the meter is full and the extra lane has nothing to run on,
-			// so + stops where the pane's own toggle stops.
-			p.concurrency().n = min(p.concurrency().n+1, max(p.cfg.CPUs, 1))
+			// The same ceiling every other key gives this row: past the
+			// machine's cpus the meter is full and the extra lane has
+			// nothing to run on, so + stops where the pane's own toggle
+			// stops.
+			p.stepConcurrency(+1)
 		}
 	case "-", "_":
 		if !p.stacked() {
-			p.concurrency().n = max(1, p.concurrency().n-1)
+			p.stepConcurrency(-1)
 		}
 	}
 	// A key that is neither of the two the arm waits for takes it back, so an
@@ -591,6 +592,16 @@ func (p *picker) expand(open bool) {
 	}
 }
 
+// stepConcurrency moves the job count by d and holds it inside 1..the
+// machine's cpu count. The run pane draws the count against those cpus and
+// the summary reads "N of M cpus", so M is the ceiling: past it a lane has
+// nothing to run on, and the row is what composes --jobs. Every key that
+// moves the count comes through here, so none of them can step past M.
+func (p *picker) stepConcurrency(d int) {
+	o := p.concurrency()
+	o.n = min(max(1, o.n+d), max(p.cfg.CPUs, 1))
+}
+
 func (p *picker) adjust(d int) {
 	o := &p.opts[p.cursor[paneOptions]]
 	if p.optionDisabled(o) {
@@ -598,7 +609,7 @@ func (p *picker) adjust(d int) {
 	}
 	switch o.kind {
 	case optCount:
-		o.n = max(1, o.n+d)
+		p.stepConcurrency(d)
 	case optCycle:
 		if n := len(o.values); n > 0 {
 			o.idx = ((o.idx+d)%n + n) % n
@@ -639,10 +650,12 @@ func (p *picker) toggle() {
 		}
 		switch o.kind {
 		case optCount:
-			if p.cfg.CPUs > 1 && o.n >= p.cfg.CPUs {
+			// Space wraps rather than stops: at the ceiling it returns to
+			// one lane, so the key is a two-position dial.
+			if o.n >= max(p.cfg.CPUs, 1) {
 				o.n = 1
 			} else {
-				p.adjust(+1)
+				p.stepConcurrency(+1)
 			}
 		case optToggle:
 			o.on = !o.on
