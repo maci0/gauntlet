@@ -296,6 +296,40 @@ func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
 	}
 }
 
+// A require nobody imports is still downloaded, still hashed, and still in
+// the module graph, and -mod=readonly stops a build from noticing. `make
+// check` asks the module graph itself, with -diff so the check cannot become
+// the edit it is checking for.
+func TestMakefileCheckVerifiesModuleManifests(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, "check: tidy\n") {
+		t.Fatal("make check must run the tidy target, or an untidy go.mod ships without a build noticing")
+	}
+	if !strings.Contains(text, "$(GO) mod tidy -diff") {
+		t.Fatal("make tidy must ask for the diff rather than applying it, so a check never rewrites go.mod or go.sum")
+	}
+	if strings.Contains(text, "$(GO) mod tidy\n") {
+		t.Fatal("a bare 'go mod tidy' would rewrite the manifests from whatever target ran it")
+	}
+}
+
+// The dry run has to name the command, not just declare the target: a
+// prerequisite that no rule defines makes `make check` fail, not pass, so
+// this is about the recipe being reachable at all.
+func TestMakefileTidyIsReachableFromCheck(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", "check", "GO=go", "GOFMT=gofmt", "GOFILES=.")
+	cmd.Dir = moduleRoot(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make check dry run: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "mod tidy -diff") {
+		t.Fatalf("make check does not reach go mod tidy -diff:\n%s", out)
+	}
+}
+
 // make ci is the one local command that covers the pull-request Go job.
 func TestMakefileHasCITarget(t *testing.T) {
 	text := makefileText(t)

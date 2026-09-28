@@ -6,6 +6,12 @@ on:
 
 permissions:
   contents: write
+  # The attestation step signs with the runner's OIDC identity, which only
+  # exists when id-token is granted, and uploads the signed statement to the
+  # attestations API. Neither is the publish token, and neither is wanted by
+  # any other step here.
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -83,6 +89,22 @@ jobs:
           make smoke VERSION="${GITHUB_REF_NAME#v}"
           (cd dist && sha256sum -c checksums.txt)
           test -s dist/sbom.json
+
+      # A checksum says which bytes this release shipped; it says nothing
+      # about who built them. The provenance attestation is the signed record
+      # of the workflow, the tag, and the source commit that produced each
+      # binary, so a consumer can check both with `gh attestation verify
+      # gauntlet_<platform> --repo maci0/gauntlet` instead of trusting the
+      # release page. Every binary named in checksums.txt is attested, and
+      # checksums.txt itself is not: it is the list, not an artifact.
+      #
+      # The step writes an attestation, not a release: the action reads the
+      # token it needs from the workflow context, so the publish token stays
+      # confined to the step below.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/checksums.txt
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.json is the CycloneDX

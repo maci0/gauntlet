@@ -83,9 +83,12 @@ It is minutes rather than seconds. A pull request also runs `make cover`,
 on purpose; run those when the change touches the release path or removes
 tested code.
 
-`make check` is gofmt, `go fix`, and vet across all three tag configurations
-CI tests (default `sqlite`, bare, and `notoktop`). It mirrors ci.yml's first
-step exactly: if `make check` is green locally, that step is green there. The
+`make check` is `go mod tidy -diff`, gofmt, `go fix`, and vet across all three tag
+configurations CI tests (default `sqlite`, bare, and `notoktop`). It mirrors
+ci.yml's first step exactly: if `make check` is green locally, that step is
+green there. A `tidy` diff means go.mod or go.sum no longer says what the
+module graph resolves to, so a require is missing, stale, or a leftover:
+run `go mod tidy` and commit the result. The
 pull request template
 ([.github/pull_request_template.md](.github/pull_request_template.md))
 restates this list as a checklist.
@@ -185,7 +188,8 @@ git push origin "v$ver"
 
 [release.yml](.github/workflows/release.yml) runs the race suite, builds
 every platform, smoke-tests the host binary against every line of
-`checksums.txt`, and publishes through a draft, so a failed upload is never
+`checksums.txt`, signs a build-provenance attestation for each of them, and
+publishes through a draft, so a failed upload is never
 visible to consumers. A tag with no matching CHANGELOG section fails before
 anything is built. Cut the tag from a commit `main` already carries: the
 workflow does not re-run the pull-request checks, and a tag is what

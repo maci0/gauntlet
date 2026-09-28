@@ -377,6 +377,34 @@ func TestReadmeInstallVerifiesReleaseChecksum(t *testing.T) {
 	}
 }
 
+// A checksum says which bytes shipped, not which workflow built them. The
+// attestation is the signed record of the second, and it only exists if the
+// release job asks for one: the permissions that sign it, the pinned action,
+// and the checksums it covers.
+func TestReleaseAttestsBuildProvenance(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	for _, want := range []string{
+		"id-token: write",
+		"attestations: write",
+		"actions/attest-build-provenance@",
+		"subject-checksums: dist/checksums.txt",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("release job must %q; without it a release ships no signed record of what built it", want)
+		}
+	}
+	attest := strings.Index(text, "actions/attest-build-provenance@")
+	if attest < 0 {
+		t.Fatal("release job has no provenance attestation step")
+	}
+	if publish := strings.Index(text, "name: Publish"); attest > publish {
+		t.Error("attest the artifacts before publishing them; an attestation written after the release exists describes nothing a consumer downloaded")
+	}
+	if smoke := strings.Index(text, "name: Smoke-test what would be published"); attest < smoke {
+		t.Error("attest what the smoke test verified, not a build that has not been checked")
+	}
+}
+
 func TestReleaseSmokeTestsSbom(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	if !strings.Contains(text, "test -s dist/sbom.json") {

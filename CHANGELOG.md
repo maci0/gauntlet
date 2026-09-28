@@ -26,6 +26,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- Every release signs a build-provenance attestation for each binary it ships, one statement per entry in `dist/checksums.txt`. A checksum says which bytes shipped; the attestation also says which workflow and commit built them, and a consumer can check it with `gh attestation verify gauntlet_<platform> --repo maci0/gauntlet` instead of trusting the release page. `gauntlet update` does not read it, so an automatic update still installs what the release serves; the threat model records that as it stands.
+- `make tidy`: fails unless `go.mod` and `go.sum` are what `go mod tidy` writes, reporting the diff rather than applying it. A module that stopped being imported is still downloaded and still hashed on every build, and `-mod=readonly` stops a build from noticing. `make check` runs it, so it is CI's first step too.
+
 ### Fixed
 
 - `make check-scripts` read the local uv version with `uv version`, which reports the version pyproject.toml declares (`0.0.0`) rather than uv's own. The drift note compared that placeholder against `UV_VERSION` and fired on every run, so the one signal meant to separate a resolver difference from a clean tree was itself always red. It reads `uv --version` now.

@@ -159,6 +159,14 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   info already inside each binary, so the artifact describing the dependency
   surface adds nothing to it. The serial number is derived from the contents
   rather than drawn at random, so a rebuild produces the same document.
+- Every release also publishes a build-provenance attestation per binary
+  (`actions/attest-build-provenance`, pinned by commit SHA, over the entries
+  in `checksums.txt`), so a consumer can check with `gh attestation verify`
+  which workflow and commit built what they downloaded. `gauntlet update`
+  does not read it, which is R2 in `docs/THREAT_MODEL.md`.
+- `go mod tidy -diff` runs as part of `make check`: a module left behind by
+  a replacement is still downloaded and still hashed on every build, and
+  nothing else notices one.
 - A scheduled `govulncheck` job, plus one on every `go.mod`/`go.sum` change,
   reports vulnerabilities reachable from this code; dependabot owns version
   bumps, the scan owns advisories. Dependabot groups minor and patch bumps

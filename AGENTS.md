@@ -7,7 +7,8 @@ but drops the sqlite driver.
 
 ## Build and test
 
-- `make check`: checks formatting without rewriting; `go fix -diff` and vet
+- `make check`: fails unless `go mod tidy -diff` is empty, then checks
+  formatting without rewriting; `go fix -diff` and vet
   under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
   apply reported Go fixes under the same three tag sets before committing.
 - `make ci`: `make check` across all three tag sets, then `make test` for

@@ -235,6 +235,29 @@ vet: | test-tmpdir
 vet: ## run go vet
 	$(GO) vet $(GOTAGS) ./...
 
+# go.mod carries the supply chain and go.sum the hashes, and nothing else
+# reads either: -mod=readonly stops a build from rewriting them, and the
+# pinned-module tests in cmd/gauntlet read what is there. A module that
+# stopped being imported, or a require line a replacement left behind, is
+# still downloaded and still hashed on every build until somebody notices.
+# `go mod tidy -diff` reports that as a diff instead of applying it, so the
+# check cannot become the change it is checking for. tidy takes no build
+# tags: it resolves every configuration at once, so this one command covers
+# the sqlite, bare, and notoktop builds alike.
+#
+# -e is not passed. A tidy that cannot complete must fail rather than report
+# the partial graph it did compute.
+.PHONY: tidy
+tidy: | test-tmpdir
+tidy: ## fail unless go.mod and go.sum are exactly what go mod tidy writes
+	@out="$$(GOFLAGS=-mod=mod $(GO) mod tidy -diff)"; \
+		if [ -n "$$out" ]; then \
+			echo "tidy: go.mod or go.sum differs from the module graph's own answer:" >&2; \
+			echo "$$out" >&2; \
+			echo "tidy: run 'go mod tidy' and commit the result, or drop the require it no longer needs" >&2; \
+			exit 1; \
+		fi
+
 # Release artifacts, and only those: `make build`, `make test`, and `make
 # check` run on whatever toolchain a contributor has, which is right. A tagged
 # release is a different question, since the compiler version is recorded in
@@ -267,8 +290,9 @@ fmt: ## rewrite all Go files with gofmt
 # compiles each of them so a break under one of them fails here and not
 # after push. The bare pass is the third configuration: neither tag defined.
 .PHONY: check
+check: tidy
 check: | toolchain-min
-check: ## verify formatting, toolchain fixes, and vet (CI parity)
+check: ## verify the module manifests, formatting, toolchain fixes, and vet (CI parity)
 	@test -x "$(GOFMT)" || { echo "gofmt not found at $(GOFMT); install Go or set GOFMT to this toolchain's gofmt" >&2; exit 1; }
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }; \
 		unformatted=$$("$(GOFMT)" -s -l $(GOFILES)) || exit 1; \
