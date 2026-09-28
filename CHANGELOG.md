@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.28.0
+
 ### Changed
 
 - A microagent review now gets live token counts from microagent's own session log as well as from the usage line it prints. The bundled transcript reader is toktop v0.21.0, which learned the store: one JSONL record per model response under `~/.microagent/sessions`, carrying that response's counters, the working directory it ran in, and `elapsed_ms`, so the rate is taken over the time the model spent rather than over the gap to the previous response, which covers the tool calls in between. No flag or definition is involved; the store is read wherever session transcripts already are, and `-tags notoktop` still drops the whole path.
