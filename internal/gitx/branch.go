@@ -87,6 +87,13 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	if r == nil || !Available() {
 		return MergeResult{Detail: "git is not available"}
 	}
+	// The merge lands a review's lines in the tree Sample measures, so the
+	// cached sample describes a tree that no longer exists. Dropping it here
+	// rather than at the call sites: every path below, including the aborts
+	// that put the tree back, leaves the previous sample describing something
+	// else, and a caller that forgot Invalidate would attribute the merged
+	// review's lines to whichever review sampled next.
+	r.Invalidate()
 	out, err := r.run(ctx, gitSlow, "merge", "--squash", "--no-verify", "--", branch)
 	if err != nil {
 		// A conflicted merge narrates on stdout and leaves unmerged entries in
@@ -260,6 +267,9 @@ func (r *Repo) PullRebase(ctx context.Context) error {
 	if r == nil || !Available() {
 		return errGitUnavailable
 	}
+	// A rebase rewrites the working tree, so a sample taken before it
+	// measures a tree this call replaces.
+	r.Invalidate()
 	if out, err := r.run(ctx, gitPush, "pull", "--rebase"); err != nil {
 		r.abortRebase(ctx)
 		return withDetail(fmt.Errorf("git pull --rebase: %w", err), out)
