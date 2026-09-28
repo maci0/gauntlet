@@ -1355,6 +1355,62 @@ func TestComposePathsNeutralizeHostileEntries(t *testing.T) {
 	}
 }
 
+// The scope block is bounded twice: an entry longer than PathEntryMax is not a
+// path, and the block names at most pathsNoteMax entries. The cap counts the
+// entries that survive, not the positions the flag listed, so a file list whose
+// head is mostly unusable still names a full block rather than a narrow one.
+func TestPathsNamedIsCappedOnSurvivors(t *testing.T) {
+	atMax := strings.Repeat("d", PathEntryMax)
+	if got := PathsNamed([]string{atMax}); len(got) != 1 || got[0] != atMax {
+		t.Fatalf("an entry of exactly PathEntryMax runes must be named, got %v", got)
+	}
+	if got := PathsNamed([]string{strings.Repeat("d", PathEntryMax+1)}); len(got) != 0 {
+		t.Fatalf("an entry one rune past PathEntryMax must be dropped, got %v", got)
+	}
+
+	many := make([]string, 0, pathsNoteMax*2)
+	for i := range pathsNoteMax * 2 {
+		many = append(many, fmt.Sprintf("dir%02d/file.go", i))
+	}
+	got := PathsNamed(many)
+	if len(got) != pathsNoteMax {
+		t.Fatalf("PathsNamed named %d entries, want the cap of %d", len(got), pathsNoteMax)
+	}
+	if want := many[:pathsNoteMax]; !slices.Equal(got, want) {
+		t.Fatalf("the block must name the first %d entries in order, got %q", pathsNoteMax, got)
+	}
+
+	// Unusable entries ahead of the legal ones do not consume the cap.
+	tooLong := strings.Repeat("d", PathEntryMax+10)
+	mixed := make([]string, 0, len(many)+pathsNoteMax)
+	for range pathsNoteMax + 5 {
+		mixed = append(mixed, tooLong, "")
+	}
+	mixed = append(mixed, many...)
+	got = PathsNamed(mixed)
+	if len(got) != pathsNoteMax {
+		t.Fatalf("the cap counted rejected entries: %d named, want %d", len(got), pathsNoteMax)
+	}
+	if want := many[:pathsNoteMax]; !slices.Equal(got, want) {
+		t.Fatalf("rejected entries must not shift the block, got %q", got)
+	}
+
+	// Nothing survives, and the block says so rather than reading as an empty
+	// scope, which would be a whole-tree one.
+	none := PathsNamed([]string{"", tooLong, " "})
+	if len(none) != 0 {
+		t.Fatalf("unusable entries survived as names: %q", none)
+	}
+	note := pathsNote([]string{"", tooLong, " "})
+	if !strings.Contains(note, "none of the 3 entries") ||
+		!strings.Contains(note, "could be written as a path") {
+		t.Fatalf("the empty-scope block must name the count it refused:\n%s", note)
+	}
+	if strings.Contains(note, "ONLY these paths") {
+		t.Fatalf("a block naming nothing must not read as a whole-tree scope:\n%s", note)
+	}
+}
+
 // A review found in a reviewed tree is untrusted input, so the signal line is
 // parsed strictly: known kinds only, a restricted charset, bounded counts.
 func TestSignalsAreParsedStrictly(t *testing.T) {

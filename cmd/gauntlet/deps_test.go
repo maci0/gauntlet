@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"go/parser"
 	"go/token"
 	"io/fs"
@@ -15,7 +16,28 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
+
+// goCmdTimeout bounds every `go` subprocess the dependency tests run. Two of
+// them reach the network (`go mod download`, and the `go list` that asks for a
+// module's directory), and on a machine that cannot answer one waits out its
+// own retry schedule rather than failing: the package then sits in a wedged
+// state until the whole binary is killed, and the failure it eventually
+// reports is a timeout rather than the thing that broke. A slow toolchain on a
+// cold cache is not slow enough to need minutes, so the bound is far above a
+// healthy run and far below a hang.
+const goCmdTimeout = 5 * time.Minute
+
+// goCmd starts one `go` command in dir under a deadline, so a toolchain that
+// stops answering fails the test that asked for it instead of stalling every
+// test queued behind it.
+func goCmd(t *testing.T, dir string, args ...string) *exec.Cmd {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), goCmdTimeout)
+	t.Cleanup(cancel)
+	return exec.CommandContext(ctx, "go", args...)
+}
 
 // Direct modules in go.mod are the supply-chain surface this repository
 // chose. An unused one still downloads, still hashes, and still sits in the
@@ -225,7 +247,7 @@ func shippedModules(t *testing.T, root string) []string {
 // empty string.
 func linkedModules(t *testing.T, root, tags, goos, goarch string) []string {
 	t.Helper()
-	cmd := exec.Command("go", "list", "-tags="+tags, "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./...")
+	cmd := goCmd(t, root, "list", "-tags="+tags, "-deps", "-f", "{{if .Module}}{{.Module.Path}}{{end}}", "./...")
 	cmd.Dir = root
 	// GOOS/GOARCH are the target, not the host: the release is cross-compiled
 	// with CGO_ENABLED=0, and `go list` resolves the imports that build sees.
@@ -588,7 +610,7 @@ func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
 	if len(missing) == 0 {
 		return dirs
 	}
-	cmd := exec.Command("go", append([]string{"mod", "download"}, missing...)...)
+	cmd := goCmd(t, root, append([]string{"mod", "download"}, missing...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod download %s: %v\n%s", strings.Join(missing, " "), err, out)
@@ -599,7 +621,7 @@ func moduleDirs(t *testing.T, root string, reqs []moduleReq) map[string]string {
 
 func listModuleDirs(t *testing.T, root string, paths []string) map[string]string {
 	t.Helper()
-	cmd := exec.Command("go", append([]string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}, paths...)...)
+	cmd := goCmd(t, root, append([]string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}, paths...)...)
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
