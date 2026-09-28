@@ -73,6 +73,8 @@ func TestParseSpecsEffort(t *testing.T) {
 			Tool: "opencode", Model: "anthropic/claude-sonnet-5", Effort: "medium"},
 		// The last @ separates: a Vertex-style version pin stays in the model.
 		"claude:sonnet@20240620@xhigh": {Tool: "claude", Model: "sonnet@20240620", Effort: "xhigh"},
+		"microagent:deepseek/deepseek-v4-flash@low": {
+			Tool: "microagent", Model: "deepseek/deepseek-v4-flash", Effort: "low"},
 	}
 	for in, want := range cases {
 		got, err := ParseSpecs(in)
@@ -590,6 +592,30 @@ func TestBuildCmdNoContinueForFreshOnlyAgents(t *testing.T) {
 	}
 }
 
+// microagent takes no approval flag, has no prompt-mode resume, and prints
+// its own machine-readable usage line, so --stream and --continue add nothing
+// to its argv.
+func TestBuildCmdMicroagent(t *testing.T) {
+	argv, err := BuildCmd(
+		Spec{Tool: "microagent", Model: "deepseek/deepseek-v4-flash", Effort: "low"}, "P",
+		BuildOpts{Stream: true, Continue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "microagent --model deepseek/deepseek-v4-flash --reasoning-effort low -p P"
+	if strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	argv, err = BuildCmd(Spec{Tool: "microagent"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "microagent -p P"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+}
+
 func TestBuildCmdBinaryOverride(t *testing.T) {
 	argv, err := BuildCmd(Spec{Tool: "claude"}, "P", BuildOpts{Binary: "/opt/claude"})
 	if err != nil {
@@ -740,6 +766,10 @@ func TestParseUsage(t *testing.T) {
 		{"camel case", `"outputTokens": 7_000`, 7000, -1},
 		{"codex summary", "tokens used: 12,345", -1, 12345},
 		{"session total json", `{"total_tokens":555}`, -1, 555},
+		// microagent's own contract: one cumulative usage line per response.
+		{"microagent usage line",
+			`{"type":"usage","usage":{"prompt_tokens":910,"completion_tokens":18,"reasoning_tokens":0,"total_tokens":928}}`,
+			18, 928},
 		{"line form output", "\nOutput tokens: 42\n", 42, -1},
 		{"line form total", "\nTotal tokens: 77\n", -1, 77},
 		{"sentence punctuation", "tokens used: 12,345.", -1, 12345},

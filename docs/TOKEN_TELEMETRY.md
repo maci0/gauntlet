@@ -124,6 +124,12 @@ makes an agent exit instead of run:
 | grok | `--output-format streaming-messages-json` |
 | clanker | `--stream` |
 
+`microagent` is absent from that table because it needs no flag: its stdout
+always carries one `{"type":"usage","usage":{...}}` line per response, next to
+the model's own text. Source 1 reads it as text, and with `--stream` on the
+same line is decoded as an event, so its counters and reasoning share arrive
+live either way.
+
 `--stream` is on by default: agents in the pool that have a machine-readable
 mode are asked for it; the rest are launched exactly as before. `--stream=false`
 keeps the prose launch. The stream gives three things text mode hides:
@@ -164,6 +170,7 @@ from its own `--help`, transcript layouts from its own session files.
 | omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
+| microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, always printed; no transcript and no flag |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | with `--opencode-db` | with `--opencode-db` | sessions in `~/.local/share/opencode/opencode.db` (XDG_DATA_HOME honored), one row per message with usage in a JSON column; the store holds every project on the machine, so reading it is opt-in |
 | agy | with `--stream` | if reported | stream-json; no transcript store found |

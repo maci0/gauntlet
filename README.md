@@ -125,9 +125,9 @@ for hot reload. Git 2.24 or newer: branch and revision arguments are separated
 with `--end-of-options`, which older git rejects outright.
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
-`cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, plus the pi family
-(`pi`, `prime-agent`, `feynman`, `omp`), which ships as editable definitions
-rather than code. At least one must be on `PATH`.
+`cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, `microagent`,
+plus the pi family (`pi`, `prime-agent`, `feynman`, `omp`), which ships as
+editable definitions rather than code. At least one must be on `PATH`.
 
 Any other agent can be added without a new binary: `--agent-cmd` for one run,
 `~/.gauntlet/agents.json` to keep it. `gauntlet doctor` lists every agent it

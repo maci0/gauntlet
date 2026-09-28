@@ -345,7 +345,9 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   -y`, `opencode run --auto`, `crush run` (the CLI auto-approves that
   session), `kimi -p` (prompt mode auto-approves). `dsh` and `clanker` take
   permissions from their own config; `cursor-agent` is invoked `--print -f`
-  with no extra bypass flag in argv. Custom agents (`--agent-cmd`,
+  with no extra bypass flag in argv. `microagent` has no approval system at
+  all: it runs its six tools directly, so there is no flag to add and nothing
+  to bypass. Custom agents (`--agent-cmd`,
   `~/.gauntlet/agents.json`, the pi family in `custom.go`) use operator-defined
   argv: gauntlet does not add a bypass flag. With `--commit` (also implied by
   `--push`), one launch per loop receives commit instructions; the runner

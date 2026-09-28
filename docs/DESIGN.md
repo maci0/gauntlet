@@ -427,7 +427,7 @@ The remaining cost is N cold starts (one per lane) rather than zero. Fewer
 lanes means more cache reuse at the expense of wall-clock time. `--jobs 1`
 is the degenerate case: one lane, maximum reuse, zero parallelism.
 
-This is not Claude-specific. Every supported agent embeds the working
+This is not Claude-specific. Every supported agent but one embeds the working
 directory in its system prompt, so worktree mode defeats API-level caching
 universally:
 
@@ -443,6 +443,7 @@ universally:
 | OpenCode | Anthropic-style `cache_control` when using Claude | Project context from CWD | Full miss per worktree |
 | dsh | Undocumented (DeepSeek API) | YAML config and profile from CWD | Likely same |
 | agy, crush, clanker | Undocumented | Likely embed CWD | Likely same |
+| microagent | Inherits the provider's caching (OpenAI-compatible) | None: the system prompt is a fixed string, and the tools take the process CWD | No miss per worktree: no request it sends names the working tree |
 
 Gauntlet does not call any API directly, so it cannot place cache-control
 breakpoints or send warmup requests. What it controls is launch ordering and

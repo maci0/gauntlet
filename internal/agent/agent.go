@@ -55,7 +55,7 @@ func Labels(specs []Spec) []string {
 // Valid lists every supported agent CLI.
 var Valid = []string{
 	"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent",
-	"kimi", "opencode", "crush", "clanker", "dsh",
+	"kimi", "opencode", "crush", "clanker", "dsh", "microagent",
 }
 
 // noModel agents pick their model from their own config, not the command line.
@@ -143,8 +143,9 @@ func takesModel(tool string) bool {
 // makes the agent exit instead of run, so CLIs that could not be checked on a
 // real installation have no entry and refuse @effort at parse time.
 var effortFlags = map[string]string{
-	"claude":   "--effort",  // low, medium, high, xhigh, max
-	"opencode": "--variant", // provider-specific: high, max, minimal, ...
+	"claude":     "--effort",           // low, medium, high, xhigh, max
+	"opencode":   "--variant",          // provider-specific: high, max, minimal, ...
+	"microagent": "--reasoning-effort", // minimal, low, medium, high, none
 }
 
 // takesEffort reports whether the agent accepts a reasoning effort on the
@@ -641,6 +642,20 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = []string{"kimi"}
 		if spec.Model != "" {
 			cmd = append(cmd, "-m", spec.Model)
+		}
+		cmd = append(cmd, "-p", prompt)
+	case "microagent":
+		// No approval flag and no resume: the binary has neither, and every
+		// tool it calls is already non-interactive. It prints one JSON usage
+		// line per response on stdout by itself, so there is no stream flag to
+		// inject either; -p keeps a prompt that starts with "-" from being
+		// read as a flag.
+		cmd = []string{"microagent"}
+		if spec.Model != "" {
+			cmd = append(cmd, "--model", spec.Model)
+		}
+		if spec.Effort != "" {
+			cmd = append(cmd, effortFlags["microagent"], spec.Effort)
 		}
 		cmd = append(cmd, "-p", prompt)
 	default:
