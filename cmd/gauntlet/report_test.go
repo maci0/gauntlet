@@ -20,6 +20,35 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
+// TestReporterStampsUntimedLinesFromItsClock pins the one line the reporter
+// timestamps itself: a log event published before the bus could stamp it. The
+// stamp comes from the injected clock, the run's own, so a transcript of a
+// replayed run reads the same clock end to end.
+func TestReporterStampsUntimedLinesFromItsClock(t *testing.T) {
+	stamp := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	var out bytes.Buffer
+	r := &reporter{out: &out, now: func() time.Time { return stamp }}
+	r.handle(runner.Event{Kind: runner.EvLog, Text: "untimed"})
+	if got, want := out.String(), "["+humanize.Clock(stamp)+"] untimed\n"; got != want {
+		t.Fatalf("untimed line = %q, want %q", got, want)
+	}
+
+	// A timed event keeps its own stamp, and a reporter with no clock still
+	// falls back to wall time rather than the zero instant.
+	out.Reset()
+	r.handle(runner.Event{Kind: runner.EvLog, Text: "timed",
+		Time: stamp.Add(time.Minute)})
+	if got, want := out.String(), "["+humanize.Clock(stamp.Add(time.Minute))+"] timed\n"; got != want {
+		t.Fatalf("timed line = %q, want %q", got, want)
+	}
+	out.Reset()
+	plain := &reporter{out: &out}
+	plain.handle(runner.Event{Kind: runner.EvLog, Text: "wall"})
+	if got := out.String(); !strings.HasPrefix(got, "[") || !strings.Contains(got, "wall") {
+		t.Fatalf("an unconfigured reporter printed %q", got)
+	}
+}
+
 // TestReporterRendersEveryEventKind pins what a headless run prints per event
 // kind: logs get their timestamp, output its lane prefix and repeat marker,
 // only conflicting merges are announced, and a loop end carries its tally.

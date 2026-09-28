@@ -250,7 +250,11 @@ the unit of safe parallelism is **the directory**, not the agent.
   when `--jobs` interleaves lanes. The line-sample debounce reads the same
   clock through `gitx.Repo.Now`, wired from the bus, because it decides
   whether a sample is a fresh walk or a cached value and therefore which
-  review a diff is attributed to. Results are reported in review-name
+  review a diff is attributed to. The clock reaches the display side the
+  same way (`ui.Config.Now`, `reporter.now`, both handed `bus.Clock()`), so
+  the dashboard's first reading, its end-of-run stamp, and a log line the
+  bus could not stamp are the run's clock and not a second wall clock
+  beside it. Results are reported in review-name
   order, not lane completion order, so a replayed seed prints the same
   report. Every git invocation runs with `LC_ALL=C`, because git translates
   its own output and that output reaches the journal and the error a failed

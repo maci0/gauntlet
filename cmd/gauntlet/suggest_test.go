@@ -60,7 +60,7 @@ func TestSelectReviewsRunsTheSuggestStep(t *testing.T) {
 	d, opts := suggestFixture(t, `echo "thinking"; echo "RELEVANT: sec-review: has auth code"`)
 	var out bytes.Buffer
 
-	err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{})
+	err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestSuggestAddsWhatWasNamed(t *testing.T) {
 	var out bytes.Buffer
 
 	if err := planReviews(context.Background(), []*dirRun{d}, opts,
-		[]agent.Spec{{Tool: "claude"}}, &out, palette{}); err != nil {
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now); err != nil {
 		t.Fatal(err)
 	}
 	got := d.reviews
@@ -110,7 +110,7 @@ func TestSelectReviewsRefusesAnAgentWithNoSuggestions(t *testing.T) {
 	var out bytes.Buffer
 
 	err := planReviews(context.Background(), []*dirRun{d}, opts,
-		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now)
 	if !errors.Is(err, errAgentFailed) {
 		t.Fatalf("an agent that picks nothing must fail the triage step, got %v", err)
 	}
@@ -124,7 +124,7 @@ func TestSelectReviewsFiltersSuggestedReviewsThroughExclude(t *testing.T) {
 	var out bytes.Buffer
 
 	err := planReviews(context.Background(), []*dirRun{d}, opts,
-		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestSuggestPreviewHidesWhatExcludeRemoves(t *testing.T) {
 	var out bytes.Buffer
 
 	if err := planReviews(context.Background(), []*dirRun{d}, opts,
-		[]agent.Spec{{Tool: "claude"}}, &out, palette{}); err != nil {
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now); err != nil {
 		t.Fatal(err)
 	}
 	// The schedule is the control: it has always applied the exclusion, so a
@@ -201,7 +201,7 @@ esac`
 
 	var out bytes.Buffer
 	err := planReviews(context.Background(), []*dirRun{first, second}, opts,
-		[]agent.Spec{{Tool: "claude"}}, &out, palette{})
+		[]agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +242,7 @@ func TestSuggestDryRunAndListDoNotAskForConfirmation(t *testing.T) {
 				opts.list = true
 			}
 			var out bytes.Buffer
-			err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{})
+			err := planReviews(context.Background(), []*dirRun{d}, opts, []agent.Spec{{Tool: "claude"}}, &out, palette{}, time.Now)
 			if err != nil {
 				t.Fatalf("mode %s failed with: %v", mode, err)
 			}

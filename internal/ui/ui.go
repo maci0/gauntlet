@@ -47,9 +47,25 @@ type Config struct {
 	Budget     time.Duration
 	Started    time.Time
 
+	// Now is the dashboard's clock: the model's first reading and the
+	// end-of-run stamp come from it, while the redraw ticks carry their own
+	// instant. Nil means time.Now. It is the same handle the runner and the
+	// journal get, so one run reads one clock and a replay of a seeded run
+	// draws the same frames.
+	Now func() time.Time
+
 	// OnFinish is the graceful quit: stop starting reviews, let the ones
 	// running land their work, then end the run. Nil disables the key.
 	OnFinish func()
+}
+
+// now is the configured clock, or wall time, so every read in this package
+// goes through one call site.
+func (c Config) now() func() time.Time {
+	if c.Now != nil {
+		return c.Now
+	}
+	return time.Now
 }
 
 // tickEvery drives the redraw. Ten frames a second is enough to feel alive
@@ -241,7 +257,7 @@ func newModel(cfg Config) *model {
 	// a defaulted run start: three reads would put the run's first elapsed
 	// figure and its first activity sample each a few microseconds off the
 	// start they are measured from, for no gain.
-	now := time.Now()
+	now := cfg.now()()
 	m := &model{
 		cfg: cfg, hues: newHueMap(),
 		reviews: map[string]*reviewState{},
@@ -411,7 +427,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case doneMsg:
 		if !m.done {
-			m.now = time.Now()
+			m.now = m.cfg.now()()
 			m.sampleActivity()
 			m.done = true
 		}

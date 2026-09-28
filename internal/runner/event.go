@@ -146,6 +146,16 @@ func (b *Bus) now() time.Time {
 	return time.Now()
 }
 
+// Clock returns the bus's clock as a handle, so a consumer outside this
+// package (the dashboard, the reporter) reads the same one the runner does
+// rather than its own wall clock. Wall time when none was injected.
+func (b *Bus) Clock() func() time.Time {
+	if b != nil && b.Now != nil {
+		return b.Now
+	}
+	return time.Now
+}
+
 // Subscribe returns a channel receiving every future event. It is safe to call
 // while a run is publishing; the returned channel is closed by Close. On a
 // closed bus it returns an already-closed channel, so a late subscriber drains

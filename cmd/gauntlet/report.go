@@ -138,14 +138,26 @@ type reporter struct {
 	pal      palette
 	multiDir bool
 	quiet    bool
+	// now stamps a line whose event carried no timestamp of its own. Nil
+	// means time.Now; the run's own clock is passed in so a line written
+	// outside the event stream reads the same clock the events do.
+	now func() time.Time
 }
 
 func (r *reporter) logf(at time.Time, format string, args ...any) {
 	if at.IsZero() {
-		at = time.Now()
+		at = r.clock()()
 	}
 	fmt.Fprintf(r.out, "[%s] %s\n", humanize.Clock(at),
 		normalize.Sanitize(fmt.Sprintf(format, args...)))
+}
+
+// clock is the reporter's clock: the injected one, or wall time.
+func (r *reporter) clock() func() time.Time {
+	if r.now != nil {
+		return r.now
+	}
+	return time.Now
 }
 
 // Consume drains the bus until it closes.

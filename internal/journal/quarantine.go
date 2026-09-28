@@ -291,7 +291,16 @@ func Restore(runID string) error {
 func removeEmptyDirs(touched map[string]struct{}) error {
 	root := prunedDir()
 	emptied, removedRoot := false, false
+	// A sorted walk, not a map range: several shards can fail to remove at
+	// once, and the error the caller sees would otherwise be whichever one the
+	// map happened to reach first, which differs between two runs of the same
+	// prune over the same tree.
+	dirs := make([]string, 0, len(touched))
 	for dir := range touched {
+		dirs = append(dirs, dir)
+	}
+	slices.Sort(dirs)
+	for _, dir := range dirs {
 		switch err := os.Remove(dir); {
 		case err == nil:
 			emptied = true

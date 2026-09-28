@@ -55,6 +55,35 @@ func demoEvents() []runner.Event {
 	}
 }
 
+// TestDashboardReadsTheInjectedClock pins the one wall-clock read the
+// dashboard used to make for itself: the model's first reading and the
+// end-of-run stamp. Both now come from Config.Now, which is the run's clock,
+// so two runs of the same seed under the same clock draw the same frames.
+func TestDashboardReadsTheInjectedClock(t *testing.T) {
+	stamp := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
+	now := func() time.Time { return stamp }
+	cfg := demoConfig()
+	cfg.Started = stamp.Add(-time.Minute)
+	cfg.Now = now
+
+	m := newModel(cfg)
+	if !m.now.Equal(stamp) {
+		t.Fatalf("model clock %v, want the injected %v", m.now, stamp)
+	}
+	if !m.lastSample.Equal(stamp) {
+		t.Fatalf("activity baseline %v, want the injected %v", m.lastSample, stamp)
+	}
+	m.w, m.h, m.ready = 120, 40, true
+	m.Update(doneMsg{})
+	if !m.now.Equal(stamp) {
+		t.Fatalf("completion stamped %v, want the injected %v", m.now, stamp)
+	}
+	// A config with no clock still reads wall time rather than the zero instant.
+	if got := newModel(demoConfig()).now; got.IsZero() {
+		t.Fatal("an unconfigured dashboard started on the zero instant")
+	}
+}
+
 func TestCompletedDashboardFreezesClock(t *testing.T) {
 	cfg := demoConfig()
 	cfg.Started = time.Now().Add(-10 * time.Minute)

@@ -170,8 +170,13 @@ var (
 // half-hour wait after another before the first review starts. Their output
 // is collected and printed in directory order, and one confirmation covers
 // the lot.
+//
+// now stamps the suggest step's log lines. It is a parameter rather than a
+// wall-clock read inside the closure so a caller replaying a run drives the
+// whole transcript from one handle; production passes time.Now, because
+// these lines are live progress and a frozen stamp would be a lie.
 func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []agent.Spec,
-	out io.Writer, pal palette) error {
+	out io.Writer, pal palette, now func() time.Time) error {
 
 	suggesting := opts.suggest
 	pools := make([][]string, len(runs))
@@ -225,7 +230,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		if len(runs) > 1 {
 			where = " [" + filepath.Base(dir) + "]"
 		}
-		fmt.Fprintf(out, "[%s]%s %s\n", humanize.Clock(time.Now()), where,
+		fmt.Fprintf(out, "[%s]%s %s\n", humanize.Clock(now()), where,
 			fmt.Sprintf(format, a...))
 	}
 
@@ -237,6 +242,10 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 				// from the fetched base snapshot, never the dirty checkout.
 				Dir: d.scanDir(), Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,
 				Bin: opts.bin, Timeout: opts.suggestTimeout, Seed: opts.seed,
+				// The same clock the log lines are stamped from, so a
+				// caller with no run seed derives the shuffle from the
+				// clock it is already printing.
+				Now: now,
 				Log: func(f string, a ...any) { logf(d.dir, f, a...) },
 			})
 			results[i] = suggestion{picked: picked, spec: spec, err: err}

@@ -16,6 +16,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"syscall"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -154,7 +155,15 @@ func pruneLocked(keep int) (int, error) {
 	// retained run or a running one still writes into is left where it is
 	// rather than named for deletion.
 	emptied := false
+	// Sorted, not a map range: every failure here is noted in the order it is
+	// reached, so the notes a prune prints would otherwise come out in
+	// whatever order the map iterated.
+	dirs := make([]string, 0, len(touched))
 	for dir := range touched {
+		dirs = append(dirs, dir)
+	}
+	slices.Sort(dirs)
+	for _, dir := range dirs {
 		switch err := os.Remove(dir); {
 		case err == nil:
 			emptied = true

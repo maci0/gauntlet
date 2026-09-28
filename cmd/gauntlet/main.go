@@ -371,7 +371,8 @@ func run(argv []string) int {
 		return cmdShowPrompt(stdout, runs[0].set, opts)
 	}
 
-	if err := planReviews(ctx, needPlanning(runs, prior, resumed), opts, agents, stdout, pal); err != nil {
+	if err := planReviews(ctx, needPlanning(runs, prior, resumed), opts, agents, stdout, pal,
+		time.Now); err != nil {
 		if errors.Is(err, errAborted) {
 			return exitOK
 		}
@@ -461,6 +462,10 @@ func run(argv []string) int {
 			Timeout:    opts.timeout,
 			Budget:     opts.runtime,
 			Started:    startedAt,
+			// The run's clock, not a second wall clock: the dashboard's
+			// first reading and its end-of-run stamp measure elapsed against
+			// the same instant the runner does.
+			Now: bus.Clock(),
 			// `s` on the dashboard is the same request SIGQUIT makes.
 			OnFinish: func() { graceful.request(nil) },
 		}, bus.Subscribe(4096))
@@ -470,7 +475,7 @@ func run(argv []string) int {
 		// returns first would strand it with the bus subscription.
 		defer dash.Release()
 	} else {
-		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet}
+		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet, now: bus.Clock()}
 		consumers.Go(func() {
 			rep.Consume(reportEvents)
 		})
@@ -497,7 +502,7 @@ func run(argv []string) int {
 		// With --log it still has somewhere to write: the file. Without one,
 		// its subscription is drained, or the bus blocks when its buffer fills.
 		if logWriter != nil {
-			fileRep := &reporter{out: logWriter, pal: palette{}, multiDir: len(runs) > 1, quiet: opts.quiet}
+			fileRep := &reporter{out: logWriter, pal: palette{}, multiDir: len(runs) > 1, quiet: opts.quiet, now: bus.Clock()}
 			consumers.Go(func() {
 				fileRep.Consume(reportEvents)
 			})

@@ -306,7 +306,7 @@ func TestInterruptedSuggestReturnsContextCanceled(t *testing.T) {
 	cancel()
 	d := &dirRun{dir: t.TempDir(), set: promptPair(t)}
 	opts := &options{suggest: true}
-	err := planReviews(ctx, []*dirRun{d}, opts, nil, io.Discard, palette{})
+	err := planReviews(ctx, []*dirRun{d}, opts, nil, io.Discard, palette{}, time.Now)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}

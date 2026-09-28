@@ -63,6 +63,47 @@ func TestSuggestTriesTheNextAgentAfterAFailure(t *testing.T) {
 	}
 }
 
+// TestSuggestZeroSeedDerivesFromTheInjectedClock pins the one nondeterminism
+// the triage step had left: a caller with no run seed used to read the wall
+// clock here, beside every other clock in the run. Two calls under one
+// injected Now must ask the agents in the same order.
+func TestSuggestZeroSeedDerivesFromTheInjectedClock(t *testing.T) {
+	set, _ := promptSet(t, "sec-review")
+	binDir := t.TempDir()
+	agents := []agent.Spec{{Tool: "claude"}, {Tool: "codex"}, {Tool: "kimi"}}
+	bin := map[string]string{
+		"claude": fakeAgent(t, binDir, "claude", `echo boom >&2; exit 7`),
+		"codex":  fakeAgent(t, binDir, "codex", `echo "RELEVANT: sec-review: handles secrets"`),
+		"kimi":   fakeAgent(t, binDir, "kimi", `echo "RELEVANT: sec-review: handles secrets"`),
+	}
+	stamp := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
+	firstAsked := func() string {
+		t.Helper()
+		var asked strings.Builder
+		cfg := SuggestConfig{
+			Dir: t.TempDir(), Set: set, Pool: []string{"sec-review"},
+			Agents: agents, Bin: bin, Timeout: 30 * time.Second,
+			Now: func() time.Time { return stamp },
+			Log: func(f string, a ...any) { fmt.Fprintf(&asked, f, a...) },
+		}
+		if _, _, err := Suggest(context.Background(), cfg); err != nil {
+			t.Fatal(err)
+		}
+		// The first "Asking" line names the agent the shuffle put first.
+		line := asked.String()
+		_, after, ok := strings.Cut(line, "Asking ")
+		if !ok {
+			t.Fatalf("no agent was asked:\n%s", line)
+		}
+		rest := after
+		return rest[:strings.Index(rest, " ")]
+	}
+	if a, b := firstAsked(), firstAsked(); a != b {
+		t.Fatalf("two calls under one clock asked %q then %q", a, b)
+	}
+}
+
 // TestSuggestRefusesAnEmptyPoolBeforeLaunchingAnything pins the guard that
 // keeps a fully filtered catalog from becoming a launch: with nothing left to
 // pick, triage must fail before any agent is asked.
