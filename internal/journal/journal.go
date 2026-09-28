@@ -259,6 +259,13 @@ func Open(runID string, now time.Time) (*Journal, error) {
 			return nil, err
 		}
 	}
+	// A shared lock for the life of the handle says this stream is still being
+	// written: Prune probes the journals it is about to quarantine with an
+	// exclusive lock and leaves the ones it cannot take alone, so a second
+	// gauntlet sharing the state tree cannot have a run moved out from under
+	// it mid-run. A filesystem with no flock takes no lock, and the journal is
+	// written exactly as it was before this lock existed.
+	lockWriter(f)
 	if created {
 		// The journal is the source of truth the index is rebuilt from, so a
 		// machine that lost power must not lose the file that carries it. A

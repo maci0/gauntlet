@@ -644,6 +644,14 @@ Design points:
   recoverable until the same number of newer runs has replaced it;
   `gauntlet runs --restore` moves one back. A quarantine bound by nothing would
   be a second unbounded history beside the one the bound exists to cap.
+- A journal a run still has open is never moved, whatever the keep window says
+  or whatever order its id gives it: the writer holds a shared `flock` on the
+  stream it appends to and the prune takes an exclusive one, which fails while
+  the run is writing. Two gauntlet runs on the same state tree overlap easily,
+  and the second one's prune would otherwise move the first one's live event
+  stream into `pruned/`, leaving the row its `Close` appends naming a file the
+  listing no longer holds. The skipped run keeps its index row in the same
+  pass, so it still lists when it finishes.
 - `Inspect` reads the tree for `gauntlet doctor`: journals on disk, index
   rows, runs the two copies tell apart, and pruned runs. A restore is checked
   against that rather than against the exit code of the run that wrote it.

@@ -460,6 +460,11 @@ moves it back and rewrites its index row, after which `gauntlet show` replays
 it. N runs later the quarantine drops it, so a long absence is a real loss:
 nothing copies an evicted run anywhere.
 
+A journal a run still has open is never pruned, so two gauntlet runs sharing
+one `GAUNTLET_HOME` cannot move a running one's event stream out from under it.
+A long run started before another one keeps its place in the listing until it
+closes, however far past N it is by the order the keep window reads.
+
 ### Backup and restore
 
 Choose the backup schedule from how much run history and custom agent

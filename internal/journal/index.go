@@ -76,6 +76,23 @@ func lockIndex(fd int, wait time.Duration, now func() time.Time, sleep func(time
 	}
 }
 
+// lockWriter marks an open journal as still being written, for as long as the
+// handle lives: the kernel drops the lock when the file closes, so nothing has
+// to release it.
+//
+// It is a shared lock, because two handles on one stream are two writers of the
+// same run, not two runs: a hot reload's successor appends to the journal its
+// predecessor closed. Prune asks the other half of the question with
+// journalIdle, which needs an exclusive lock, so one writer never blocks
+// another and a prune still sees every one of them.
+//
+// A filesystem that does not implement flock takes no lock. Prune then moves
+// whatever the keep window names, which is what it did before the lock existed,
+// so the journal is never lost to a lock this kernel cannot hold.
+func lockWriter(f *os.File) {
+	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+}
+
 // withIndexLock serializes index mutations across processes. writeIndex
 // replaces index.jsonl by rename, so the lock lives in a sibling file: a
 // flock on the index itself would be left on the old inode after the swap.

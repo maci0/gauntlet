@@ -16,7 +16,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"syscall"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -33,9 +32,15 @@ import (
 // has no configured bound never deletes history by accident.
 //
 // The walk orders by run id, which embeds a UTC start time, so a run in
-// progress sorts above every run it can evict. A run whose clock sits behind
-// the run that started after it is the one case this mis-orders, and that is
-// the ordering walkJournals already trusts to mean "latest".
+// progress usually sorts above every run it can evict. A journal that is still
+// open is never evicted whatever its id says, and keeps its index row with it:
+// the run holding it open is another gauntlet on the same state tree that
+// began earlier and is still working. Moving that journal would file a live
+// event stream under pruned/ and leave the row its Close appends naming a file
+// that is no longer in the listing, which is a finished run that never lists
+// and a Status that reports a disagreement. A run whose clock sits behind the
+// run that started after it is the one case the ordering mis-orders, and that
+// is the ordering walkJournals already trusts to mean "latest".
 func Prune(keep int) (int, error) {
 	if keep <= 0 {
 		return 0, nil
@@ -47,6 +52,23 @@ func Prune(keep int) (int, error) {
 		return err
 	})
 	return removed, err
+}
+
+// journalIdle reports whether a journal can be moved out of the listing now,
+// which is the same question as whether anyone still has it open for writing.
+// A writer holds a shared lock on the stream it appends to, so an exclusive
+// lock that cannot be taken names a run in progress.
+//
+// A journal that cannot be opened at all is reported idle: a file the prune
+// cannot read is one the rename is about to move, and a read failure here is
+// not a reason to leave a run the keep window named.
+func journalIdle(path string) bool {
+	f, err := os.OpenFile(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return true
+	}
+	defer f.Close()
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil
 }
 
 // pruneLocked does the work under the index lock, so a concurrent Close cannot
@@ -64,6 +86,18 @@ func pruneLocked(keep int) (int, error) {
 	stale := all[keep:]
 	keepIDs := make(map[string]struct{}, keep)
 	for _, j := range all[:keep] {
+		keepIDs[j.id] = struct{}{}
+	}
+	// A run another gauntlet still has open is not stale, whatever the keep
+	// window says, and it is decided here rather than at the move: the index
+	// below is written from keepIDs, so a run that keeps its journal has to
+	// keep its row in the same pass.
+	movable := make([]namedJournal, 0, len(stale))
+	for _, j := range stale {
+		if journalIdle(j.path) {
+			movable = append(movable, j)
+			continue
+		}
 		keepIDs[j.id] = struct{}{}
 	}
 
@@ -101,7 +135,7 @@ func pruneLocked(keep int) (int, error) {
 		}
 	}
 	touched := make(map[string]struct{}, 4)
-	for _, j := range slices.Backward(stale) {
+	for _, j := range movable {
 		// The journal is renamed into pruned/ rather than unlinked, so a
 		// keep the user got wrong is a move and not a loss. A journal that
 		// is already gone is the outcome the rename wanted, so it is not
@@ -144,10 +178,11 @@ func pruneLocked(keep int) (int, error) {
 	if firstErr != nil {
 		return 0, firstErr
 	}
-	// Every selected run is out of runs/ on the way out of here: a journal
-	// that was already gone is the outcome the rename wanted, and one whose
-	// rename failed is an error the caller already gets.
-	return len(stale), nil
+	// Every movable run is out of runs/ on the way out of here: a journal that
+	// was already gone is the outcome the rename wanted, and one whose rename
+	// failed is an error the caller already gets. A run left behind for still
+	// being written is not a removal and is not counted as one.
+	return len(movable), nil
 }
 
 // readAllIndex parses the whole index, oldest first, skipping the lines it

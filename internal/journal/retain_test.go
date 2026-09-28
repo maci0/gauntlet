@@ -144,6 +144,52 @@ func TestPruneLeavesTheRunInProgress(t *testing.T) {
 	}
 }
 
+// A run another gauntlet still has open is not stale whatever its id says. A
+// run that began before the one that is pruning still has its journal open
+// whenever it is long, so the keep window must not move it: the move would file
+// a live event stream under pruned/, and the row its Close appends would name a
+// file the listing no longer holds.
+func TestPruneLeavesAnOlderRunInProgress(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	// One run in progress, opened before the run that follows it.
+	older, err := Open("20260825T090000Z-00aa", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	older.Write(map[string]string{"ev": "run_start"})
+	older.Flush()
+	record(t, "20260825T100000Z-00bb", base.Add(time.Hour))
+
+	removed, err := Prune(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Errorf("Prune(1) removed %d runs, want none while a run is still open", removed)
+	}
+	if _, err := os.Stat(journalPath("20260825T090000Z-00aa")); err != nil {
+		t.Errorf("the run in progress lost its journal: %v", err)
+	}
+	if held, err := Quarantined(); err != nil || len(held) != 0 {
+		t.Errorf("quarantine is %v (err %v), want empty", held, err)
+	}
+	// Its row survives the same pass, so the run still lists when it finishes.
+	if err := older.Close(Summary{Version: "test", Start: base, End: base}); err != nil {
+		t.Fatalf("the run in progress could not finish its journal: %v", err)
+	}
+	rows, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("listing has %d runs, want both: %v", len(rows), rows)
+	}
+	if st, err := Inspect(); err != nil || !st.Consistent() {
+		t.Errorf("state tree after the run finished is %+v (err %v), want consistent", st, err)
+	}
+}
+
 func readIndexFile(t *testing.T) map[string]bool {
 	t.Helper()
 	rows, err := readAllIndex()
