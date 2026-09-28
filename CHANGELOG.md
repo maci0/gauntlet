@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.27.0
+
 ### Added
 
 - `microagent` is a supported agent, invoked `microagent [--model ID] [--reasoning-effort LEVEL] -p PROMPT`. It needs no approval flag, has no prompt-mode resume, and asks for no stream flag: its stdout already carries one `{"type":"usage","usage":{...}}` line per response beside the model's own text. Gauntlet reads that line either way, as the stdout counter any agent may print and, under `--stream`, as a JSON event, so a microagent lane shows live tokens and the reasoning share with no flag added to its argv. `microagent:model@effort` parses like any other spec, with `--reasoning-effort` taking the levels the binary documents (`minimal`, `low`, `medium`, `high`, `none`). No `~/.gauntlet/agents.json` entry is needed; one that defines `microagent` is now refused at startup as a built-in redefinition, as it already was for every compiled-in name, so delete that entry.
