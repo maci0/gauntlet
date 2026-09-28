@@ -283,7 +283,7 @@ func newRunsColumns(entries []journal.Summary) runsColumns {
 		}
 		started := "n/a"
 		if !e.Start.IsZero() {
-			started = e.Start.Local().Format("2006-01-02 15:04:05")
+			started = startCell(e.Start, time.Local)
 		}
 		for i, cell := range []string{
 			e.RunID, started, dur,
@@ -320,6 +320,19 @@ func (cs runsColumns) row(i int, pal palette) string {
 // padded out to the width of the column below it.
 func trimRunsGap(cells []string) string {
 	return strings.TrimRight(strings.Join(cells, runsGap), " ")
+}
+
+// startCell renders a run's start for the listing: local wall clock with the
+// zone offset, the same fields humanize.Clock carries for a log line.
+//
+// The offset is not decoration here either. Local wall clock names one instant
+// per day unambiguously, so on each fall-back the listing prints two runs an
+// hour apart under the same STARTED: in Europe/Warsaw on 2026-10-25 a run at
+// 00:30 UTC and one at 01:30 UTC are both 02:30:00 locally, and the listing
+// could not say which ran first. A run start is an instant, and the id beside
+// it names the zone the offset came from.
+func startCell(t time.Time, loc *time.Location) string {
+	return t.In(loc).Format("2006-01-02 15:04:05-0700")
 }
 
 // showTime renders a journal timestamp as local wall clock and its offset.

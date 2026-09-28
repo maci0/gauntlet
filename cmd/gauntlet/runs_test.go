@@ -205,9 +205,41 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	if code := cmdRuns(&buf, palette{}, 10, "", false); code != exitOK {
 		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
 	}
-	want := start.Local().Format("2006-01-02 15:04:05")
+	// Spelled out rather than rendered by startCell, so the assertion pins
+	// the layout instead of agreeing with whatever it prints.
+	want := start.In(time.Local).Format("2006-01-02 15:04:05-0700")
 	if !strings.Contains(buf.String(), want) {
 		t.Fatalf("STARTED should be ISO local %q, got:\n%s", want, buf.String())
+	}
+}
+
+// A fall-back prints one local wall clock twice, an hour apart. STARTED has to
+// say which is which, or the listing cannot order two runs that started inside
+// the repeated hour: Europe/Warsaw repeats 02:00-03:00 local on 2026-10-25,
+// so 00:30 UTC and 01:30 UTC are both 02:30:00 there.
+func TestRunsStartDistinguishesTheRepeatedDSTHour(t *testing.T) {
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skipf("no zone database for Europe/Warsaw: %v", err)
+	}
+	first := time.Date(2026, 10, 25, 0, 30, 0, 0, time.UTC)
+	second := time.Date(2026, 10, 25, 1, 30, 0, 0, time.UTC)
+	// The premise: both land in the hour the zone repeats, an hour apart.
+	if first.In(warsaw).Hour() != 2 || second.In(warsaw).Hour() != 2 {
+		t.Fatalf("2026-10-25 is not a Warsaw fall-back: %s and %s",
+			first.In(warsaw), second.In(warsaw))
+	}
+	if first.Sub(second) != -time.Hour {
+		t.Fatalf("the two instants are not an hour apart: %s", second.Sub(first))
+	}
+	a, b := startCell(first, warsaw), startCell(second, warsaw)
+	if a == b {
+		t.Fatalf("two runs an hour apart render the same STARTED: %q", a)
+	}
+	for _, want := range []string{"2026-10-25 02:30:00+0200", "2026-10-25 02:30:00+0100"} {
+		if a != want && b != want {
+			t.Fatalf("STARTED %q/%q does not carry both offsets of the repeated hour", a, b)
+		}
 	}
 }
 

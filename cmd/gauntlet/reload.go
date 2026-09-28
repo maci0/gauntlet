@@ -31,6 +31,11 @@ type handoff struct {
 	// jump when the wall clock steps (NTP, a manual set) during the exec.
 	// Omitempty keeps an old handoff that lacks the field readable: resume
 	// then falls back to the wall-clock difference from StartedAt.
+	//
+	// A time.Duration, so this is nanoseconds, the opposite unit from the
+	// `elapsed_s` of a journal row and an event, which is JSON seconds. The
+	// name is what keeps the two apart: a handoff is written and read by this
+	// binary alone, and nothing outside it is in the contract.
 	Elapsed time.Duration `json:"elapsed,omitempty"`
 	// Seed is the run's effective RNG seed, the one the journal prints with
 	// the summary. A successor keeps it, so the reviews it still has to run
