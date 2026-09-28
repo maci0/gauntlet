@@ -48,11 +48,13 @@ func TestStripReportSections(t *testing.T) {
 		"- keep this",
 	}, "\n")
 	got := stripReportSections(in)
-	if strings.Contains(got, "severity") {
-		t.Fatalf("report template survived: %q", got)
-	}
-	if !strings.Contains(got, "keep this") || !strings.Contains(got, "Important:") {
-		t.Fatalf("Important block was lost: %q", got)
+	// The whole result, not two substrings: a strip that dropped the
+	// bullet lines but left the "For each finding include:" header in place
+	// satisfied the old check, and the header is what tells the model to
+	// report at all.
+	want := "Your goal is to find bugs.\nImportant:\n- keep this"
+	if got != want {
+		t.Fatalf("stripReportSections =\n%q\nwant\n%q", got, want)
 	}
 }
 

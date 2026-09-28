@@ -2041,14 +2041,34 @@ func isolateDshPatches(t *testing.T) string {
 	return dir
 }
 
-func TestIsolateDshPatchesUsesUserCacheDir(t *testing.T) {
-	dir := isolateDshPatches(t)
-	cache, err := os.UserCacheDir()
+// The isolated cache is where writeDshPatch must land: a temp tree, one
+// level under the user cache dir, so a run leaves its overlays out of the
+// reviewed repository. The key is memoized, so a second write of the same
+// overlay is served from memory.
+func TestWriteDshPatchLandsUnderTheIsolatedCache(t *testing.T) {
+	cache := isolateDshPatches(t)
+
+	path, err := writeDshPatch("prov-model", "- id: agent-default-model\n")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dir != cache {
-		t.Fatalf("isolateDshPatches = %q, want UserCacheDir %q", dir, cache)
+	if want := filepath.Join(cache, "gauntlet", "dsh", "prov-model.yml"); path != want {
+		t.Fatalf("writeDshPatch = %q, want %q", path, want)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "- id: agent-default-model\n" {
+		t.Fatalf("overlay body = %q", body)
+	}
+
+	again, err := writeDshPatch("prov-model", "- id: agent-default-model\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again != path {
+		t.Fatalf("second writeDshPatch = %q, want the memoized %q", again, path)
 	}
 }
 

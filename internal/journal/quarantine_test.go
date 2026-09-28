@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -89,8 +90,13 @@ func TestQuarantineIsBoundedByKeep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(held) > 1 {
-		t.Errorf("quarantine holds %d runs (%v), want at most the keep of 1", len(held), held)
+	// The exact set, not a ceiling: six prunes against a keep of 1, and a
+	// trim that unlinked everything (or a Prune that quarantined nothing)
+	// satisfied `len(held) > 1`. The survivor is the newest evicted run,
+	// which is the order listQuarantined promises.
+	want := []string{"20260825T090005-0006"}
+	if !slices.Equal(held, want) {
+		t.Errorf("quarantine holds %v, want %v", held, want)
 	}
 }
 

@@ -153,16 +153,31 @@ func TestGuard(t *testing.T) {
 	}
 	_ = cmd.Wait()
 
-	// Cancel with zero or negative PID must not signal process group 0
-	dummy := exec.Command("sleep", "5")
-	Guard(dummy, wait)
-	dummy.Process = &os.Process{Pid: 0}
-	if err := dummy.Cancel(); err != nil {
-		t.Fatalf("Cancel with pid 0 = %v", err)
+	// A zero or negative PID must not reach syscall.Kill: the group id is
+	// negated before the call, so -0 and --1 name the caller's own process
+	// group and would kill this test binary. The only way to see that is to
+	// leave a real child running and check it afterwards, since Cancel
+	// returns nil either way.
+	victim := exec.Command("sleep", "30")
+	victim.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := victim.Start(); err != nil {
+		t.Fatal(err)
 	}
-	dummy.Process = &os.Process{Pid: -1}
-	if err := dummy.Cancel(); err != nil {
-		t.Fatalf("Cancel with pid -1 = %v", err)
+	t.Cleanup(func() {
+		_ = victim.Process.Kill()
+		_ = victim.Wait()
+	})
+
+	for _, pid := range []int{0, -1} {
+		dummy := exec.Command("sleep", "5")
+		Guard(dummy, wait)
+		dummy.Process = &os.Process{Pid: pid}
+		if err := dummy.Cancel(); err != nil {
+			t.Fatalf("Cancel with pid %d = %v", pid, err)
+		}
+		if err := victim.Process.Signal(syscall.Signal(0)); err != nil {
+			t.Fatalf("Cancel with pid %d signalled the caller's process group: %v", pid, err)
+		}
 	}
 }
 
@@ -332,6 +347,25 @@ func TestKillGroup(t *testing.T) {
 	KillGroup(&exec.Cmd{}, syscall.SIGKILL)
 	KillGroup(&exec.Cmd{Process: &os.Process{Pid: 0}}, syscall.SIGKILL)
 	KillGroup(&exec.Cmd{Process: &os.Process{Pid: -1}}, syscall.SIGKILL)
+
+	// Same contract as the Cancel case above, observed the only way it can
+	// be: a live child in its own group must survive a call that names a
+	// caller-scoped pid.
+	victim := exec.Command("sleep", "30")
+	victim.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := victim.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = victim.Process.Kill()
+		_ = victim.Wait()
+	}()
+	for _, pid := range []int{0, -1} {
+		KillGroup(&exec.Cmd{Process: &os.Process{Pid: pid}}, syscall.SIGKILL)
+		if err := victim.Process.Signal(syscall.Signal(0)); err != nil {
+			t.Fatalf("KillGroup with pid %d signalled the caller's process group: %v", pid, err)
+		}
+	}
 
 	cmd := exec.Command("sleep", "30")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

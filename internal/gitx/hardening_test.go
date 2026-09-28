@@ -587,6 +587,12 @@ func TestBranchOperationsSeparateOptionsWithDashes(t *testing.T) {
 	if err := r.reclaimEmptyBranch(ctx, "--abort", tip); err != nil {
 		t.Fatalf("reclaimEmptyBranch failed: %v", err)
 	}
+	// The same check again, now that reclaimEmptyBranch has run: it is the
+	// one call that reaches `git branch -D -- --abort`, and nothing after it
+	// used to assert that no ref took the option-shaped name.
+	if out := gitOut(t, r.Dir, "for-each-ref", "--format=%(refname)", "refs/heads/"); strings.Contains(out, "--abort") {
+		t.Fatalf("reclaimEmptyBranch created a branch for the option-shaped name: %s", out)
+	}
 
 	// A file named HEAD in the repository must not cause git log or diff to fail
 	// with "ambiguous argument 'HEAD': both revision and filename".

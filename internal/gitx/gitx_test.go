@@ -292,6 +292,9 @@ func TestSampleNegativeElapsedBypassesCache(t *testing.T) {
 	if !ok {
 		t.Fatal("sample failed")
 	}
+	if st.Ins != 0 {
+		t.Fatalf("sample of an empty tree = %+v, want no insertions", st)
+	}
 	r.mu.Lock()
 	r.lastAt = time.Now().Add(time.Hour) // clock stepped backwards into the past
 	r.mu.Unlock()
@@ -301,8 +304,8 @@ func TestSampleNegativeElapsedBypassesCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	st2, ok2 := r.Sample(ctx, nil)
-	if !ok2 || st2.Ins == st.Ins {
-		t.Fatalf("negative elapsed should bypass cache and measure fresh, got %+v", st2)
+	if !ok2 || st2.Ins != 1 {
+		t.Fatalf("negative elapsed should bypass cache and remeasure the one new file, got %+v", st2)
 	}
 }
 

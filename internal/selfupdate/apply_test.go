@@ -245,12 +245,16 @@ func TestSweepStaleTempsRemovesOnlyAbandonedDownloads(t *testing.T) {
 	old := write(".gauntlet-update-old")
 	fresh := write(".gauntlet-update-new")
 	other := write("gauntlet")
-	past := time.Now().Add(-48 * time.Hour)
+	// The age is expressed in StaleTempAge and the sweep reads a clock handed
+	// to it, so the verdict cannot move when the constant moves or when the
+	// walk to the temp dir takes longer than the margin a fixed 48h left.
+	clock := time.Now()
+	past := clock.Add(-2 * gauntlethome.StaleTempAge)
 	if err := os.Chtimes(old, past, past); err != nil {
 		t.Fatal(err)
 	}
 
-	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge, nil)
+	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge, func() time.Time { return clock })
 
 	for _, p := range []string{fresh, other} {
 		if _, err := os.Stat(p); err != nil {

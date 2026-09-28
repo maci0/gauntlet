@@ -249,7 +249,7 @@ func TestHiddenReviewsAreAnnouncedNotSilent(t *testing.T) {
 	if !strings.Contains(frame, "r000") {
 		t.Fatal("the marker replaced every visible cell")
 	}
-	if fit := stripANSI(staticFrame(demoConfig(), demoEvents(), 120, 40)); strings.Contains(fit, "more\n") {
+	if fit := stripANSI(staticFrame(demoConfig(), demoEvents(), 120, 40)); moreReviewsRe.MatchString(fit) {
 		t.Fatalf("a fitting grid grew a marker: %s", fit)
 	}
 }
@@ -1097,6 +1097,13 @@ func wcagLuminance(t *testing.T, hex string) float64 {
 func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 	now := time.Now()
 	last := now.Add(-time.Second) // reasoning is actively growing
+
+	// The two standard names are read from the ambient environment, and the
+	// "the glyph does turn" cases below only hold when neither is exported.
+	// Clearing them keeps a shell or a CI job that sets one from failing
+	// this test for reasons that have nothing to do with the code.
+	t.Setenv("NO_MOTION", "")
+	t.Setenv("REDUCED_MOTION", "")
 
 	t.Setenv("GAUNTLET_NO_ANIMATION", "1")
 	frozen := thinkGlyph(now, last)

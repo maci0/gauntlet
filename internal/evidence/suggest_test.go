@@ -391,6 +391,7 @@ func TestFastSuggestMatchesMarkIgnoringNonASCIICase(t *testing.T) {
 // what it receives, prompt.Signals normalizes what the author declared), so
 // the same word spelled in two forms still matches.
 func TestFastSuggestMatchesSignalsAcrossNormalizationForms(t *testing.T) {
+	suggestHome(t)
 	dir := t.TempDir()
 	nfd := "cafe\u0301-notes.md" // decomposed é, as a Mac filesystem spells it
 	if norm.NFC.String(nfd) == nfd {

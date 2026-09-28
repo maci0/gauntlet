@@ -75,6 +75,9 @@ func TestDoctorCustomAgentCounting(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Register writes into a process-global table, so the definition would
+	// outlive this test and show up in every later doctor and agent run.
+	t.Cleanup(func() { agent.Unregister("custombot") })
 
 	var buf strings.Builder
 	code := doctor(&buf, palette{}, nil, 80)

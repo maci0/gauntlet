@@ -94,6 +94,11 @@ func TestDirWithoutUsableHomeDegrades(t *testing.T) {
 }
 
 func TestDirUnresolvableGauntletHomeDegrades(t *testing.T) {
+	// Emptying the referenced variable is what makes the expansion miss: a
+	// name that happens to be exported in the ambient environment would
+	// otherwise resolve to a usable root, and the test would fail for a
+	// reason that has nothing to do with the code.
+	t.Setenv("GAUNTLET_NONEXISTENT_DIR_VAR", "")
 	t.Setenv("GAUNTLET_HOME", "$GAUNTLET_NONEXISTENT_DIR_VAR/state")
 	got, ok := Dir()
 	if ok {
