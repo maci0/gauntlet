@@ -441,13 +441,18 @@ func configureAgents(o *options, fs *flag.FlagSet, agentCmds listFlag) error {
 		if err != nil {
 			return fmt.Errorf("--agent-cmd %s: %w", c, err)
 		}
-		if prev, dup := cmdDefs[name]; dup && prev != c {
+		if prev, dup := cmdDefs[strings.ToLower(name)]; dup && prev != c {
 			return fmt.Errorf("--agent-cmd given twice for %s: %s and %s", name, prev, c)
 		}
-		cmdDefs[name] = c
+		cmdDefs[strings.ToLower(name)] = c
 		defs = append(defs, namedDef{raw: c, def: def, name: name})
 	}
 	for _, d := range defs {
+		// Whatever the file and the shipped definitions already say about this
+		// name, the command line says something else and that is what runs.
+		// A built-in tool is not a definition and is not in the registry, so
+		// this removes nothing there and Register still refuses to rename it.
+		agent.Unregister(d.name)
 		if err := agent.Register(d.name, d.def); err != nil {
 			return fmt.Errorf("--agent-cmd %s: %w", d.raw, err)
 		}

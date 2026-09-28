@@ -127,6 +127,16 @@ func (c Custom) validate(name string) error {
 	if c.Note != "" && strings.TrimSpace(c.Note) == "" {
 		return fmt.Errorf("custom agent %q: note cannot be whitespace only", name)
 	}
+	// A note is printed after the agent's name in a doctor row and on the
+	// launcher's own line, so the characters namePrintable refuses break a row
+	// here too: a newline starts one the reader did not ask for, an escape
+	// sequence colors text the run did not style (and does so under
+	// --no-color, which suppresses only this program's own styling), and a
+	// bidi override reverses the rest of the line. Refused rather than
+	// stripped, the way a name is.
+	if c.Note != "" && (!utf8.ValidString(c.Note) || strings.ContainsFunc(c.Note, hiddenRune)) {
+		return fmt.Errorf("custom agent %q: note cannot hold control or formatting characters", name)
+	}
 	return nil
 }
 
