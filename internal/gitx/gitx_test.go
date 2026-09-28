@@ -1498,3 +1498,32 @@ func TestRealPath(t *testing.T) {
 		t.Fatalf("RealPath(missing %q) = %q, want %q", missing, got, missing)
 	}
 }
+
+func TestParseShortstatRefusesAnImpossibleCount(t *testing.T) {
+	cases := []struct{ name, out string }{
+		{"empty", ""},
+		{"no files changed", " 0 files changed"},
+		{"ordinary", " 3 files changed, 12 insertions(+), 4 deletions(-)"},
+		{"singular", " 1 file changed, 1 insertion(+), 1 deletion(-)"},
+		// Atoi hands back the clamped maximum beside its range error, and a
+		// clamped maximum is added to the untracked files' counts before the
+		// journal is written, so it has to be refused here instead.
+		{"past the int range", " 1 file changed, 99999999999999999999 insertions(+), 2 deletions(-)"},
+		{"past the plausible range", " 1 file changed, 9999999999999 insertions(+), 2 deletions(-)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			st := parseShortstat([]byte(tc.out))
+			if st.Ins < 0 || st.Del < 0 {
+				t.Fatalf("parseShortstat(%q) = %+v, want no negative count", tc.out, st)
+			}
+		})
+	}
+
+	if st := parseShortstat([]byte(" 3 files changed, 12 insertions(+), 4 deletions(-)")); st.Ins != 12 || st.Del != 4 {
+		t.Fatalf("ordinary shortstat = %+v, want 12 insertions and 4 deletions", st)
+	}
+	if st := parseShortstat([]byte(" 1 file changed, 99999999999999999999 insertions(+), 2 deletions(-)")); st.Ins != 0 || st.Del != 2 {
+		t.Fatalf("out-of-range shortstat = %+v, want 0 insertions and 2 deletions", st)
+	}
+}

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -489,14 +490,34 @@ var (
 	nlByte  = []byte{'\n'}
 )
 
+// maxPlausibleCount bounds a line count read out of git output. A diff of
+// this many lines does not exist; the bound is what keeps a misparse a
+// misparse. See parseCount.
+const maxPlausibleCount = 1 << 40
+
+// parseCount reads one line count out of git's output. A count that does not
+// fit, or that clears maxPlausibleCount, is no count at all: the caller adds
+// these to one another and writes the sum to the journal, and strconv.Atoi
+// hands back the clamped maximum next to its range error rather than zero, so
+// a 20-digit figure would arrive as 2^63-1, wrap negative the moment the
+// untracked files' own counts are added to it, and be reported as a review
+// that deleted nine quintillion lines.
+func parseCount(b []byte) int {
+	n, err := strconv.ParseUint(string(b), 10, 64)
+	if err != nil || n > maxPlausibleCount || n > uint64(math.MaxInt) {
+		return 0
+	}
+	return int(n)
+}
+
 // parseShortstat reads the counts out of a `git diff --shortstat` output.
 func parseShortstat(out []byte) Stats {
 	var st Stats
 	if m := insRe.FindSubmatch(out); m != nil {
-		st.Ins, _ = strconv.Atoi(string(m[1]))
+		st.Ins = parseCount(m[1])
 	}
 	if m := delRe.FindSubmatch(out); m != nil {
-		st.Del, _ = strconv.Atoi(string(m[1]))
+		st.Del = parseCount(m[1])
 	}
 	return st
 }
