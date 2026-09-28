@@ -338,19 +338,57 @@ func TestShowExitCodes(t *testing.T) {
 
 var ansiEscapeRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
-// The FAILED column must line up with its header with color on: pad first,
-// color second, because escapes inside a width verb count as width.
-func TestRunsFailedCellStaysAlignedUnderColor(t *testing.T) {
-	strip := func(s string) string {
-		return ansiEscapeRe.ReplaceAllString(s, "")
+// The columns must line up with the header whatever the cells hold: a run id
+// is a stamp plus the pid in hex, so it is 17 characters on one machine and 24
+// on the next, and a fixed width lined the header up on the first and shoved
+// every column after RUN sideways on the second. The FAILED column has to
+// survive color as well: escapes inside a width verb count as width.
+func TestRunsColumnsLineUp(t *testing.T) {
+	strip := func(s string) string { return ansiEscapeRe.ReplaceAllString(s, "") }
+	entries := []journal.Summary{
+		{RunID: "20260102T030405Z-1f4", Dirs: []string{"/src/a"}},
+		{
+			RunID: "20260102T030406Z-1f400", Dirs: []string{"/src/b"},
+			Tokens: 1_234_567_890, Ins: 1234567, Del: 7654321, LinesMeasured: true,
+			Failed: 12, Skipped: 3, Conflicts: 1, Other: 1,
+		},
 	}
-	plain := failedCell(palette{}, 3)
-	colored := failedCell(palette{on: true}, 3)
-	if plain != fmt.Sprintf("%6d", 3) {
-		t.Errorf("plain cell %q is not right-aligned in 6 columns", plain)
+	cols := newRunsColumns(entries)
+	lines := append([]string{strip(cols.header())}, strip(cols.row(0, palette{on: true})), strip(cols.row(1, palette{on: true})))
+	for i, line := range lines {
+		if line != strings.TrimRight(line, " ") {
+			t.Errorf("line %d has trailing padding: %q", i, line)
+		}
 	}
-	if got := strip(colored); got != plain {
-		t.Errorf("colored cell %q renders as %q, want %q", colored, got, plain)
+	// Every cell of a row sits inside its own column's span, which is what a
+	// fixed width broke: the long run id pushed the whole row two columns right.
+	span := func(line string, at, width int) string {
+		if at+width > len(line) {
+			return strings.TrimRight(line[at:], " ")
+		}
+		return strings.TrimRight(line[at:at+width], " ")
+	}
+	for row := range entries {
+		at := 0
+		for c, col := range cols {
+			if got, want := span(lines[0], at, col.width()), col.headField(col.width()); got != strings.TrimRight(want, " ") {
+				t.Errorf("header %d (%s) renders as %q, want %q", c, col.head, got, want)
+			}
+			want := strip(col.field(row, col.width(), palette{}))
+			if got := span(lines[row+1], at, col.width()); got != strings.TrimRight(want, " ") {
+				t.Errorf("row %d column %d (%s) renders as %q, want %q:\n%s\n%s",
+					row, c, col.head, got, want, lines[0], lines[row+1])
+			}
+			at += col.width() + len(runsGap)
+		}
+	}
+	// Color is added outside the padding, so stripping it gives the plain cell.
+	col := cols[5]
+	if col.head != "FAILED" {
+		t.Fatalf("column 5 is %q, want FAILED", col.head)
+	}
+	if got, want := strip(col.field(1, col.width(), palette{on: true})), col.field(1, col.width(), palette{}); got != want {
+		t.Errorf("colored FAILED cell renders as %q, want %q", got, want)
 	}
 }
 

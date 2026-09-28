@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,43 +49,15 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 		w.printf("No runs recorded yet under %s\n", journal.Home())
 		return exitOK
 	}
-	w.printf("%-22s  %-19s  %8s  %5s  %5s  %6s  %9s  %11s  %s\n",
-		"RUN", "STARTED", "DURATION", "LOOPS", "OK", "FAILED", "TOKENS", "LINES", "DIRS")
+	cols := newRunsColumns(entries)
+	w.println(cols.header())
 	// The column's name overstates what it counts; say so once, right where
 	// it first appears, or a run that only skipped reviews reads as broken.
 	// It has to name every bucket, including the one that catches a terminal
 	// status a newer journal wrote and this build cannot read.
-	w.printf("%s\n", pal.dim("   FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
-	for _, e := range entries {
-		dur := "n/a"
-		if d, ok := e.Duration(); ok {
-			dur = humanize.Duration(d)
-		}
-		dirs := make([]string, 0, len(e.Dirs))
-		for _, d := range e.Dirs {
-			dirs = append(dirs, filepath.Base(d))
-		}
-		bad := e.Failed + e.Skipped + e.Conflicts + e.Other
-		failed := failedCell(pal, bad)
-		// A run that reported no tokens says so, rather than showing zero.
-		tokens := "n/a"
-		if e.Tokens > 0 {
-			tokens = humanize.Count(e.Tokens)
-		}
-		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
-		if !e.LinesMeasured {
-			// Git was missing, or concurrent reviews made attribution
-			// impossible. An unmeasured run is not a run that changed
-			// nothing, and +0/-0 says it was.
-			lines = "n/a"
-		}
-		started := "n/a"
-		if !e.Start.IsZero() {
-			started = e.Start.Local().Format("2006-01-02 15:04:05")
-		}
-		w.printf("%-22s  %-19s  %8s  %5d  %5d  %s  %9s  %11s  %s\n",
-			e.RunID, started, dur,
-			e.Loops, e.OK, failed, tokens, lines, strings.Join(dirs, ","))
+	w.println(pal.dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
+	for i := range entries {
+		w.println(cols.row(i, pal))
 	}
 	// Where the journals live is a fact about this machine, not a row of the
 	// table, so it goes to stderr. The legend above stays on stdout: it heads
@@ -196,15 +169,129 @@ func restoreRun(out io.Writer, pal palette, runID string, asJSON bool) int {
 	return exitOK
 }
 
-// failedCell renders one FAILED cell. The column is padded first and colored
-// second: escape codes inside a %6s verb are counted as width, which shoves
-// every later column off its header.
-func failedCell(pal palette, bad int) string {
-	s := fmt.Sprintf("%6d", bad)
-	if bad > 0 {
-		return pal.red(s)
+// runsColumn is one column of the listing. A number is right-aligned and a
+// name is not, and every column is as wide as its widest cell rather than a
+// width picked when the flag was written: a run id is a stamp plus the pid in
+// hex, so it is 17 characters on a machine that has not reused pid 1M yet and
+// 24 on one that has, and a fixed width that lined up the header on the first
+// shoved every column after RUN sideways on the second.
+type runsColumn struct {
+	head  string
+	right bool
+	cells []string
+}
+
+// width is what the column prints at: the widest of its header and its cells.
+func (c runsColumn) width() int {
+	w := len(c.head)
+	for _, cell := range c.cells {
+		if len(cell) > w {
+			w = len(cell)
+		}
 	}
-	return s
+	return w
+}
+
+// field pads one cell to the column. The FAILED column is colored, so it pads
+// the number before the escape codes go on: fmt counts a color escape as
+// width, and a padded colored cell shoves every later column off its header.
+func (c runsColumn) field(row int, width int, pal palette) string {
+	cell := c.cells[row]
+	if c.right {
+		cell = fmt.Sprintf("%*s", width, cell)
+	} else {
+		cell = fmt.Sprintf("%-*s", width, cell)
+	}
+	if c.head == "FAILED" && strings.TrimSpace(cell) != "0" {
+		return pal.red(cell)
+	}
+	return cell
+}
+
+func (c runsColumn) headField(width int) string {
+	if c.right {
+		return fmt.Sprintf("%*s", width, c.head)
+	}
+	return fmt.Sprintf("%-*s", width, c.head)
+}
+
+// runsColumns is the whole table, columns in print order.
+type runsColumns []runsColumn
+
+// newRunsColumns lays the runs out into cells, one slice per column.
+func newRunsColumns(entries []journal.Summary) runsColumns {
+	cols := runsColumns{
+		{head: "RUN"},
+		{head: "STARTED"},
+		{head: "DURATION", right: true},
+		{head: "LOOPS", right: true},
+		{head: "OK", right: true},
+		{head: "FAILED", right: true},
+		{head: "TOKENS", right: true},
+		{head: "LINES", right: true},
+		{head: "DIRS"},
+	}
+	for _, e := range entries {
+		dur := "n/a"
+		if d, ok := e.Duration(); ok {
+			dur = humanize.Duration(d)
+		}
+		dirs := make([]string, 0, len(e.Dirs))
+		for _, d := range e.Dirs {
+			dirs = append(dirs, filepath.Base(d))
+		}
+		bad := e.Failed + e.Skipped + e.Conflicts + e.Other
+		// A run that reported no tokens says so, rather than showing zero.
+		tokens := "n/a"
+		if e.Tokens > 0 {
+			tokens = humanize.Count(e.Tokens)
+		}
+		lines := fmt.Sprintf("+%d/-%d", e.Ins, e.Del)
+		if !e.LinesMeasured {
+			// Git was missing, or concurrent reviews made attribution
+			// impossible. An unmeasured run is not a run that changed
+			// nothing, and +0/-0 says it was.
+			lines = "n/a"
+		}
+		started := "n/a"
+		if !e.Start.IsZero() {
+			started = e.Start.Local().Format("2006-01-02 15:04:05")
+		}
+		for i, cell := range []string{
+			e.RunID, started, dur,
+			strconv.Itoa(e.Loops), strconv.Itoa(e.OK), strconv.Itoa(bad),
+			tokens, lines, strings.Join(dirs, ","),
+		} {
+			cols[i].cells = append(cols[i].cells, cell)
+		}
+	}
+	return cols
+}
+
+// runsGap is the space between two columns: two, so the eye separates values
+// it might otherwise read as one.
+const runsGap = "  "
+
+func (cs runsColumns) header() string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.headField(c.width()))
+	}
+	return trimRunsGap(out)
+}
+
+func (cs runsColumns) row(i int, pal palette) string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, c.field(i, c.width(), pal))
+	}
+	return trimRunsGap(out)
+}
+
+// trimRunsGap drops the padding the last column carries, so a line is not
+// padded out to the width of the column below it.
+func trimRunsGap(cells []string) string {
+	return strings.TrimRight(strings.Join(cells, runsGap), " ")
 }
 
 // showTime renders a journal timestamp as local wall clock and its offset.

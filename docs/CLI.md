@@ -147,7 +147,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--hot-reload` | on | When this binary is replaced during a run (by `gauntlet update`, `make install`, or a rebuild), finish the reviews in flight and hand the rest of the loop to the new binary instead of exiting. |
+| `--hot-reload` | on | When this binary is replaced during a run (by `gauntlet update`, `make install`, or a rebuild), finish the reviews in flight and hand the rest of the loop to the new binary instead of exiting. `--hot-reload=false` watches for nothing, so the run finishes on the binary it started with whatever replaces it on disk. |
 | `--auto-update` | off | During a run, check for a new release shortly after start and every six hours, install it, and hand over at the next safe point like a hot reload. A failed check is reported and the run goes on. |
 | `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from, as `owner/repo`. A URL or extra path segment is a usage error. |
 | `--check` | off | Report the latest release without installing. |

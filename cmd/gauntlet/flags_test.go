@@ -60,7 +60,7 @@ func TestUsageRendersEverySection(t *testing.T) {
 	printUsage(&b, palette{}, 100)
 	got := b.String()
 	for _, want := range []string{
-		"USAGE", "REVIEWS", "AGENTS", "EXECUTION", "MODES", "OUTPUT",
+		"USAGE", "SUBCOMMAND FLAGS", "REVIEWS", "AGENTS", "EXECUTION", "MODES", "OUTPUT",
 		"UPDATES", "HISTORY", "EXAMPLES", "EXIT CODES", "ENVIRONMENT",
 		"gauntlet doctor", "--jobs", "GAUNTLET_HOME", "FORCE_COLOR", "gauntlet version",
 		"rebuilds a missing index",
@@ -87,6 +87,27 @@ func TestUsageNarrowTerminal(t *testing.T) {
 	printUsage(&b, palette{}, 20) // clamped to a sane minimum, never panics
 	if !strings.Contains(b.String(), "USAGE") {
 		t.Fatal("narrow help lost its sections")
+	}
+}
+
+// The screen has to answer "what does this subcommand take?" from the binary
+// itself: a subcommand refuses every other flag, so a reader who has to reach
+// for a refusal to find out spends an exit code to learn the flag list.
+func TestUsageNamesEachSubcommandFlags(t *testing.T) {
+	var b strings.Builder
+	printUsage(&b, palette{}, 100)
+	got := b.String()
+	for name, flags := range subcommandFlags {
+		if name == "help" {
+			continue
+		}
+		spelled := spellFlags(flags)
+		if spelled == "" {
+			spelled = "none"
+		}
+		if !strings.Contains(got, "  "+name+" ") || !strings.Contains(got, spelled) {
+			t.Errorf("the help screen does not say that %s takes %s", name, spelled)
+		}
 	}
 }
 

@@ -77,7 +77,7 @@ var helpGroups = []flagGroup{
 		{"j", "jobs", "N", "parallel lanes per directory; above 1, each runs in its own worktree and is merged back"},
 		{"t", "timeout", "DUR", fmt.Sprintf("per-review timeout: 90s, 30m, 1h, 2d (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
-		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true)"},
+		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true; --resolve-conflicts=false to disable)"},
 		{"", "stacked-prs", "", "isolated worktree; each changed review opens a PR on the previous one; -n starts a new stack from the last tip"},
 		{"", "pr-base", "BRANCH", "remote base fetched for --stacked-prs (default: current branch name)"},
 		{"", "push-remote", "REMOTE", "remote receiving stacked PR branches (default: origin)"},
@@ -113,7 +113,7 @@ var helpGroups = []flagGroup{
 		{"", "no-color", "", "disable color"},
 	}},
 	{"Updates", []flagDoc{
-		{"", "hot-reload", "", "reload when this binary is replaced (default true)"},
+		{"", "hot-reload", "", "reload when this binary is replaced (default true; --hot-reload=false to disable)"},
 		{"", "auto-update", "", "install new releases during the run"},
 		{"", "update-repo", "REPO", "GitHub repo to fetch releases from (default " + selfupdate.DefaultRepo + ")"},
 		{"", "check", "", "update: report the latest release without installing"},
@@ -208,6 +208,31 @@ func printUsage(out io.Writer, pal palette, width int) {
 	for _, c := range helpCommands {
 		fmt.Fprintf(out, "  %-*s  %s\n", col, c.Cmd, pal.dim(c.Help))
 	}
+
+	// A subcommand reads its own flags and refuses the rest, so the screen
+	// says which are its own. The list is the one rejectStrayFlags checks, so
+	// the screen and the refusal cannot name different flags.
+	head("subcommand flags")
+	subCol := 0
+	takes := make(map[string][]string, len(commandNames))
+	for _, name := range commandNames {
+		if name == "help" {
+			continue
+		}
+		takes[name] = subcommandFlags[name]
+		subCol = max(subCol, len(name))
+	}
+	for _, name := range commandNames {
+		if name == "help" {
+			continue
+		}
+		own := spellFlags(takes[name])
+		if own == "" {
+			own = "none"
+		}
+		fmt.Fprintf(out, "  %-*s  %s\n", subCol, name, pal.dim(own))
+	}
+	fmt.Fprintf(out, "  %s\n", pal.dim("--log and --no-color work with every command, and may precede it"))
 
 	// One column width across every group, so the help text lines up down the
 	// whole screen rather than jumping per section.

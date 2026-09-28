@@ -933,15 +933,12 @@ func rejectStrayFlags(o *options, fs *flag.FlagSet, showVersion bool) error {
 	if stray == "" {
 		return nil
 	}
-	takes := make([]string, 0, len(allowed))
-	for _, n := range allowed {
-		takes = append(takes, spellFlag(n))
-	}
-	if len(takes) == 0 {
-		takes = append(takes, "no flags of its own")
+	takes := spellFlags(allowed)
+	if takes == "" {
+		takes = "no flags of its own"
 	}
 	return fmt.Errorf("%s does not apply to 'gauntlet %s', which takes %s",
-		spellFlag(stray), o.command, strings.Join(takes, ", "))
+		spellFlag(stray), o.command, takes)
 }
 
 // trimFlag trims a string flag's value in place and refuses an explicitly
@@ -1148,6 +1145,51 @@ func spellFlag(name string) string {
 		return "-" + name
 	}
 	return "--" + name
+}
+
+// spellFlags names a set of flags the same way, each under its own long form
+// where it has one, so a reader is never handed `-C` and left guessing that
+// `--dir` is the other spelling. It is the list the help screen's subcommand
+// section and the stray-flag refusal both print.
+func spellFlags(names []string) string {
+	// A shorthand and the long name it is registered beside are one flag, so
+	// the pair is written as `-C/--dir` and the long name is not repeated.
+	paired := map[string]bool{}
+	for _, n := range names {
+		for _, g := range helpGroups {
+			for _, f := range g.Flags {
+				if f.Short == n && slices.Contains(names, f.Long) {
+					paired[f.Long] = true
+				}
+			}
+		}
+	}
+	spelled := make([]string, 0, len(names))
+	for _, n := range names {
+		if paired[n] {
+			continue
+		}
+		spelled = append(spelled, spellFlag(n)+longForm(n))
+	}
+	return strings.Join(spelled, ", ")
+}
+
+// longForm is the "/--dir" beside a shorthand, empty for a flag registered
+// under its long name only. The pairs are the help table's, which a test holds
+// against the registered flags, so neither this nor the screen can fall behind
+// the parser.
+func longForm(short string) string {
+	if utf8.RuneCountInString(short) != 1 {
+		return ""
+	}
+	for _, g := range helpGroups {
+		for _, f := range g.Flags {
+			if f.Short == short {
+				return "/--" + f.Long
+			}
+		}
+	}
+	return ""
 }
 
 // enhanceFlagError rewrites the flag package's own failure messages. The
