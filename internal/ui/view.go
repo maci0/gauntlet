@@ -623,7 +623,11 @@ func (m *model) feedTitle(w int) string {
 		segs = append(segs, styleInfo.Render(l))
 	}
 	if n := len(m.conflicts); n > 0 {
-		segs = append(segs, styleWarn.Render(fmt.Sprintf("%d unmerged", n)))
+		// The count alone leaves the reader to guess where the branch names
+		// are, and a kept branch is work only they can do. The pointer is in
+		// the same segment as the count so a narrow pane that has to drop it
+		// drops the whole reading rather than half of it.
+		segs = append(segs, styleWarn.Render(fmt.Sprintf("%d unmerged, ? lists them", n)))
 	}
 	if m.scroll > 0 {
 		segs = append(segs, styleDim.Render(fmt.Sprintf("%d lines back", m.scroll)))

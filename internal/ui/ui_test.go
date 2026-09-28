@@ -443,7 +443,8 @@ func TestFeedTitleMarksScrolledBack(t *testing.T) {
 
 // Unmerged branches used to live only in the help overlay. The feed title
 // carries the count so a reader who never presses ? still sees that work
-// was kept, and ? still lists the names.
+// was kept, and it names the key that lists them, so a branch left for a
+// human to merge is findable from the screen that reports it.
 func TestFeedTitleMarksUnmergedBranches(t *testing.T) {
 	m := newModel(demoConfig())
 	if got := stripANSI(m.feedTitle(titleRoom)); strings.Contains(got, "unmerged") {
@@ -452,8 +453,18 @@ func TestFeedTitleMarksUnmergedBranches(t *testing.T) {
 	for _, ev := range demoEvents() {
 		m.apply(ev)
 	}
-	if got := stripANSI(m.feedTitle(titleRoom)); !strings.Contains(got, "1 unmerged") {
+	got := stripANSI(m.feedTitle(titleRoom))
+	if !strings.Contains(got, "1 unmerged") {
 		t.Fatalf("feed title %q, want the unmerged count", got)
+	}
+	if !strings.Contains(got, "? lists them") {
+		t.Fatalf("feed title %q, want the key that lists the branch names", got)
+	}
+	// The pointer rides in the same segment as the count, so a title too
+	// narrow for it drops the whole reading rather than half of one.
+	if narrow := stripANSI(m.feedTitle(20)); strings.Contains(narrow, "lists them") &&
+		!strings.Contains(narrow, "unmerged") {
+		t.Fatalf("a narrow feed title kept the pointer and lost the count: %q", narrow)
 	}
 }
 

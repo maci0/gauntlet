@@ -129,7 +129,7 @@ func (p *picker) renderHeader() string {
 
 func (p *picker) renderCommand() string {
 	cmd := "gauntlet " + strings.Join(p.argv(), " ")
-	return clip(styleDim.Render("$ ")+styleValue.Render(cmd), p.w)
+	return clipEllipsis(styleDim.Render("$ ")+styleValue.Render(cmd), p.w)
 }
 
 // blocked reports why the composed run would not start, or "" when it would.
@@ -197,6 +197,13 @@ func (p *picker) hint() string {
 		case rowSuggest:
 			return "an agent reads the repo and proposes the reviews, before any run"
 		case rowGroup:
+			// A filter opens every set and keeps it open, so the arrows the
+			// hint otherwise names have nothing left to close. Saying they
+			// fold here is a promise the tree cannot keep: left on a header
+			// only moves the cursor.
+			if p.filter != "" {
+				return "a filter holds every set open; space takes the whole set"
+			}
 			return "space takes the whole set, →/← open and close it"
 		default:
 			if d := strings.TrimSpace(r.review.Desc); d != "" {
@@ -208,21 +215,24 @@ func (p *picker) hint() string {
 }
 
 // renderStatus is the line under the command: what is blocking a launch if
-// anything is, otherwise what the cursor is on.
+// anything is, otherwise what the cursor is on. Every branch clips with the
+// marker rather than a bare cut: the sentences that land here name the fix
+// (a command to run, a key to press), and a line that stops mid-word without
+// saying so turns "gauntlet doctor" into a command that does not exist.
 func (p *picker) renderStatus() string {
 	// An armed q outranks both: until it is answered, the question the
 	// reader has is whether the run is about to be thrown away, and this is
 	// the only line that answers it.
 	if p.quitArmed {
-		return clip(styleWarn.Render("⚠ q again to discard the run, esc to keep it"), p.w)
+		return clipEllipsis(styleWarn.Render("⚠ q again to discard the run, esc to keep it"), p.w)
 	}
 	if p.typing {
-		return clip(styleDim.Render(p.hint()), p.w)
+		return clipEllipsis(styleDim.Render(p.hint()), p.w)
 	}
 	if why := p.blocked(); why != "" {
-		return clip(styleWarn.Render("⚠ "+why), p.w)
+		return clipEllipsis(styleWarn.Render("⚠ "+why), p.w)
 	}
-	return clip(styleDim.Render(p.hint()), p.w)
+	return clipEllipsis(styleDim.Render(p.hint()), p.w)
 }
 
 // keyHint is one key and what it does, as the key line shows it.
@@ -658,9 +668,12 @@ func (p *picker) agentPanel(w, h int) string {
 	if len(p.cfg.Agents) == 0 {
 		// The pane still takes focus when it has nothing to list, so it must
 		// carry the cursor bar like any other pane: a screen with no ❯ leaves
-		// the keyboard nowhere to be.
-		body := styleBad.Render("none installed") +
-			styleDim.Render(" (see: gauntlet doctor)")
+		// the keyboard nowhere to be. The row says what is missing and stops
+		// there: a panel is padded to its width, not wrapped, so a second
+		// clause naming the fix is cut mid-word ("gauntlet doc") with nothing
+		// to mark the cut. The full sentence is on the status line, and in
+		// the help and the narrow fallback, all of which have room for it.
+		body := styleBad.Render("none installed")
 		if p.focus == paneAgents {
 			body = styleInfo.Render("❯ ") + body
 		} else {

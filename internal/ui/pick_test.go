@@ -690,6 +690,76 @@ func TestPickEmptyAgentsPaneKeepsFocusVisible(t *testing.T) {
 	}
 }
 
+// A panel is padded to its width, not wrapped, so a sentence longer than the
+// pane is cut with nothing to mark the cut. The empty agents pane therefore
+// says only what is missing, and the sentence naming the fix lives on the
+// lines that have room for it: the status line and the narrow fallback at a
+// width that holds it, and the help at every width, since the help wraps.
+func TestPickEmptyAgentsPaneIsNotCutMidWord(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Agents = nil
+	for _, w := range []int{50, 62, 80, 100} {
+		p.w, p.h = w, 30
+		panel := stripANSI(p.agentPanel(rightColumnWidth(w), p.paneHeight(paneAgents)))
+		if !strings.Contains(panel, "none installed") {
+			t.Fatalf("at %d columns the empty agents pane lost its message:\n%s", w, panel)
+		}
+		if strings.Contains(panel, "doc") {
+			t.Fatalf("at %d columns the pane carries a clause it cannot fit:\n%s", w, panel)
+		}
+		// The status line is one row and the sentence naming the fix is
+		// longer than a narrow terminal: what it must not do is stop
+		// mid-word unmarked, which reads as a command that does not exist.
+		status := stripANSI(p.renderStatus())
+		if !strings.HasSuffix(status, "…") && !strings.Contains(status, "gauntlet doctor") {
+			t.Fatalf("at %d columns the status line was cut without a marker:\n%s", w, status)
+		}
+		if !strings.Contains(stripANSI(strings.Join(p.helpLines(), "\n")), "gauntlet doctor") {
+			t.Fatalf("at %d columns the help lost the fix", w)
+		}
+	}
+	p.w, p.h = 100, 30
+	if !strings.Contains(stripANSI(p.renderStatus()), "gauntlet doctor") {
+		t.Fatalf("a wide status line lost the fix:\n%s", stripANSI(p.renderStatus()))
+	}
+	if !strings.Contains(stripANSI(p.renderNarrow()), "gauntlet doctor") {
+		t.Fatalf("a wide narrow-fallback lost the fix:\n%s", stripANSI(p.renderNarrow()))
+	}
+}
+
+// rightColumnWidth is the width the launcher's right column gets at a given
+// terminal width, so a test measures the pane at the size it is really drawn.
+func rightColumnWidth(w int) int {
+	capW := w - 28
+	if w-36 >= 34 {
+		capW = w - 36
+	}
+	return w - clampi(w*3/5, min(34, capW), capW) - 1
+}
+
+// A filter holds every set open, so the arrows the hint otherwise names have
+// nothing left to close: left on a header only moves the cursor. The hint
+// must not promise a fold the tree cannot make.
+func TestPickGroupHintUnderAFilter(t *testing.T) {
+	p := demoPicker()
+	press(p, "j", "j") // onto the quick group header
+	if got := stripANSI(p.hint()); !strings.Contains(got, "open and close it") {
+		t.Fatalf("an unfiltered set header hint %q, want the fold keys", got)
+	}
+	press(p, "/", "u", "x", "enter")
+	p.focus, p.cursor[paneReviews] = paneReviews, 1
+	if r := p.rowAt(p.cursor[paneReviews]); r.kind != rowGroup {
+		t.Fatalf("row %d is not a set header", p.cursor[paneReviews])
+	}
+	got := stripANSI(p.hint())
+	if strings.Contains(got, "open and close it") {
+		t.Fatalf("a filtered set header still advertises the fold keys: %q", got)
+	}
+	if !strings.Contains(got, "space takes the whole set") {
+		t.Fatalf("filtered set header hint %q, want the action that works", got)
+	}
+}
+
 // A narrow terminal clips the key list from its right end, so the keys that
 // strand a keyboard user who cannot find them must come first: how to run,
 // leave, and move between rows are visible even at the launcher's own
