@@ -1,6 +1,12 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Package ui renders the live gauntlet dashboard, and the pick launcher.
+//
+// It follows the instrument rules the project borrowed from TMOG: the screen
+// is a cockpit, not a report. Live data is the brightest thing on it, chrome
+// and grids stay dim, one hue means one agent everywhere, meters show their
+// unlit remainder, and nothing is interpolated or faked when data is missing.
 package ui
 
 import (

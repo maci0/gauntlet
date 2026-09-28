@@ -124,6 +124,21 @@ func TestDirFileGauntletHomeDegrades(t *testing.T) {
 	}
 }
 
+func TestStateDirSitsUnderTheRoot(t *testing.T) {
+	custom := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", custom)
+	if got, want := StateDir(), filepath.Join(custom, "state"); got != want {
+		t.Fatalf("StateDir = %q, want %q", got, want)
+	}
+
+	// A degraded root must still name one path, so a caller that cannot get a
+	// usable root writes its handoff somewhere rather than not at all.
+	t.Setenv("GAUNTLET_HOME", "$GAUNTLET_NONEXISTENT_DIR_VAR/state")
+	if got, want := StateDir(), filepath.Join(".gauntlet", "state"); got != want {
+		t.Fatalf("degraded StateDir = %q, want %q", got, want)
+	}
+}
+
 func TestExpandPath(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

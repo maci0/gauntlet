@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
-	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
@@ -209,7 +209,7 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 		}
 		h.Dirs[handoffKey(d.dir)] = dh
 	}
-	statePath, err := selfupdate.SaveState(journal.StateDir(), runID, h)
+	statePath, err := selfupdate.SaveState(gauntlethome.StateDir(), runID, h)
 	if err != nil {
 		// Without the handoff the successor would start a fresh run: a new
 		// run id, every loop restarted, and this process's journal already

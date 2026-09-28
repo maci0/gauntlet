@@ -62,9 +62,6 @@ func Home() string {
 	return root
 }
 
-// StateDir holds hot-reload handoff files.
-func StateDir() string { return filepath.Join(Home(), "state") }
-
 // NewRunID returns a sortable id for one run: the UTC start instant, so ids
 // order by age, then the pid that minted it. The order is read back with
 // runIDOrder, not with a text compare: the stamp is fixed width and orders

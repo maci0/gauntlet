@@ -47,6 +47,15 @@ func Dir() (string, bool) {
 	return filepath.Join(home, ".gauntlet"), true
 }
 
+// StateDir is the state root's "state" subdirectory, where the hot-reload
+// handoff files live. The layout of the tree belongs here beside the resolver
+// of its root, so a caller writing a handoff does not reach through the
+// journal for a path the journal does not own.
+func StateDir() string {
+	root, _ := Dir()
+	return filepath.Join(root, "state")
+}
+
 // absolute resolves p against the working directory. If the working directory
 // cannot be determined, p passes through unchanged rather than failing a path
 // that may well be fine.

@@ -43,7 +43,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
-| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
+| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
@@ -79,8 +79,10 @@ uses it for unknown commands and flags too. `journal` imports `humanize`, so
 the one reader of the persisted `elapsed_s` field is the one that renders it,
 and the run listing, the headless reporter, and the dashboard cannot disagree
 about what a run's duration is.
-`agent`, `journal`, and `selfupdate` import `gauntlethome`: the first two for
-the one resolver of the state root, the last for the durable-write helpers
+`agent`, `journal`, `selfupdate`, and `cmd/gauntlet` import `gauntlethome`: the
+first two for the one resolver of the state root, the CLI for the same resolver
+and the `state/` subdirectory it hands a reload off through, the last for the
+durable-write helpers
 that keep an atomic replace, a stale-temp sweep, or the reload handoff from
 tearing, the same durable directory flush the journal's own rename-based
 writes need. `selfupdate` hands a run off through a file in that root and

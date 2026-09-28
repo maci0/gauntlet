@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/runner"
 )
@@ -228,7 +229,7 @@ func TestFailedReloadRemovesHandoffState(t *testing.T) {
 		runID, time.Now(), 0, nil, handoff{}, 7, []string{"--once"}, io.Discard); code != exitFail {
 		t.Fatalf("a failed exec should exit %d, got %d", exitFail, code)
 	}
-	if _, err := os.Stat(filepath.Join(journal.StateDir(), runID+".json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(gauntlethome.StateDir(), runID+".json")); !os.IsNotExist(err) {
 		t.Fatalf("handoff state survived a failed reload: %v", err)
 	}
 }

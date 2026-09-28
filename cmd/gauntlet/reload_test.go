@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
@@ -73,7 +73,7 @@ func TestResumeOriginClamped(t *testing.T) {
 }
 
 func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
-	// StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
+	// gauntlethome.StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
 	// it under a regular file, so MkdirAll fails with ENOTDIR.
 	file := filepath.Join(t.TempDir(), "blocker")
 	if err := os.WriteFile(file, []byte("not a directory"), 0o644); err != nil {
@@ -146,7 +146,7 @@ func captureStderrFor(t *testing.T, f func() int) (int, *bytes.Buffer) {
 // number unable to replay the reviews the successor still had to run.
 func TestHandoffCarriesTheSeed(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
-	path, err := selfupdate.SaveState(journal.StateDir(), "seeded-run",
+	path, err := selfupdate.SaveState(gauntlethome.StateDir(), "seeded-run",
 		handoff{RunID: "seeded-run", Seed: 4242, Dirs: map[string]dirHandoff{}})
 	if err != nil {
 		t.Fatal(err)
@@ -191,7 +191,7 @@ func TestHandoffFindsADirectoryWhoseNameDoesNotSurviveJSON(t *testing.T) {
 	written := handoff{RunID: "odd-dir", Dirs: map[string]dirHandoff{
 		handoffKey(dir): {Loops: 3, Reviews: []string{"go-review"}},
 	}}
-	path, err := selfupdate.SaveState(journal.StateDir(), "odd-dir", written)
+	path, err := selfupdate.SaveState(gauntlethome.StateDir(), "odd-dir", written)
 	if err != nil {
 		t.Fatal(err)
 	}
