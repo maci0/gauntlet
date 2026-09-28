@@ -758,6 +758,49 @@ func (r *Repo) PruneWorktrees(ctx context.Context) {
 	_, _ = r.run(ctx, gitNormal, "worktree", "prune")
 }
 
+// SweepWorktreeRoot removes the checkout directories an interrupted run left
+// under the worktree root. PruneWorktrees only drops git's bookkeeping for
+// checkouts whose directory is already gone, and CleanWorktreeRoot's os.Remove
+// refuses a non-empty root, so a single SIGKILL, OOM, or power cut would
+// otherwise pin every checkout that run left -- each a full copy of the tree --
+// for every run after it.
+//
+// The root is this package's own scratch, and the caller must hold the run lock
+// on this directory: a second run in the same clone takes that lock before it
+// cuts a checkout, so nothing under the root is in use here. Call it at
+// startup only. DeleteBranchesMatching also prunes, mid-run, while the lanes
+// are live, and sweeping there would delete the checkouts in flight.
+func (r *Repo) SweepWorktreeRoot(ctx context.Context) {
+	if r == nil || !Available() {
+		return
+	}
+	r.wtMu.Lock()
+	defer r.wtMu.Unlock()
+	// The same proof AddWorktree makes: a planted `.gauntlet` or `worktrees`
+	// symlink would otherwise make ReadDir list, and the loop below delete,
+	// whatever it points at.
+	if err := r.ensureWorktreeRoot(); err != nil {
+		return
+	}
+	root := r.worktreeRootDir()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return // no root yet, or unreadable: nothing of ours to sweep
+	}
+	for _, e := range entries {
+		// IsDir is false for a symlink, whatever it points at, so a link
+		// planted in the reviewed tree is left alone rather than followed.
+		if !e.IsDir() {
+			continue
+		}
+		_ = r.removeWorktreeDir(ctx, filepath.Join(root, e.Name()))
+	}
+	// The root itself goes with its last entry. Failing means something is
+	// still in it, which is the same signal CleanWorktreeRoot acts on.
+	_ = os.Remove(root)
+	_ = os.Remove(filepath.Dir(root))
+}
+
 // CleanWorktreeRoot removes the per-review checkout directory when nothing is
 // left in it, so a finished run leaves no trace in the reviewed tree.
 // os.Remove on a non-empty directory fails, which is the intended guard.

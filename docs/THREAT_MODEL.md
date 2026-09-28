@@ -608,6 +608,12 @@ privilege transition:
   leftover checkout directories and pruned metadata are purged on preparation
   and removal, and worktree operations on removed checkouts safely error or
   no-op (`removeWorktreeDir` and `Worktree.Remove` in `internal/gitx/worktree.go:249-273,544-557`).
+  The startup sweep is the one path that deletes every entry under that root,
+  so it makes the same `ensureWorktreeRoot` proof and skips any entry that is
+  not a real directory, leaving a planted link unfollowed
+  (`SweepWorktreeRoot` in `internal/gitx/worktree.go`). It runs only where the
+  run lock for that directory is already held, which is what keeps another run
+  in the same clone from having a checkout there.
 - **Sequential in-place with `--commit`/`--push`:** a failed review's retry
   restores a snapshot of the user's checkout taken before the attempt
   (`Snapshot`/`Restore` in `internal/gitx/snapshot.go`), the same rewind

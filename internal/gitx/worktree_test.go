@@ -722,6 +722,129 @@ func TestCleanWorktreeRoot(t *testing.T) {
 	}
 }
 
+// A killed run leaves its checkouts on disk, and CleanWorktreeRoot cannot
+// remove them: os.Remove fails on a non-empty root, so one interrupted run
+// would pin every checkout it left, each a full copy of the tree, for every
+// run after it. The startup sweep is what reclaims them.
+func TestSweepWorktreeRootReclaimsKilledRun(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Two checkouts from two loops, as a --jobs run cut before it was killed
+	// would leave them, plus their branches still registered with git.
+	for _, name := range []string{"run-l1-lane-0", "run-l2-lane-0"} {
+		if _, err := r.AddWorktree(ctx, name, "tag", base); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dirs, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dirs) != 2 {
+		t.Fatalf("test setup: want 2 checkouts under %s, got %d", root, len(dirs))
+	}
+
+	// CleanWorktreeRoot cannot: the root is not empty. This is the state a
+	// killed run leaves, and the reason the sweep exists.
+	r.CleanWorktreeRoot()
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("CleanWorktreeRoot removed a root holding checkouts: %v", err)
+	}
+
+	r.SweepWorktreeRoot(ctx)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		entries, _ := os.ReadDir(root)
+		t.Fatalf("SweepWorktreeRoot left %d entries under %s: %v", len(entries), root, err)
+	}
+	if _, err := os.Stat(filepath.Dir(root)); !os.IsNotExist(err) {
+		t.Fatalf("SweepWorktreeRoot left the %s parent behind: %v", filepath.Dir(root), err)
+	}
+	// The branches the checkouts were on are swept separately, by
+	// DeleteBranchesMatching; the sweep only owns the disk.
+	if out, err := r.run(ctx, gitNormal, "worktree", "list"); err != nil {
+		t.Fatal(err)
+	} else if strings.Contains(string(out), worktreeRoot) {
+		t.Fatalf("git still lists a checkout under %s: %s", worktreeRoot, out)
+	}
+}
+
+// The root is inside the reviewed tree, so a symlink planted there by that
+// tree must not be followed: sweeping it would delete whatever it points at.
+func TestSweepWorktreeRootLeavesSymlink(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	canary := filepath.Join(target, "canary.txt")
+	if err := os.WriteFile(canary, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, filepath.Join(root, "planted")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	r.SweepWorktreeRoot(ctx)
+	if _, err := os.Stat(canary); err != nil {
+		t.Fatalf("SweepWorktreeRoot followed a symlink out of the root and deleted %s: %v", canary, err)
+	}
+}
+
+// The threat model claims a symlinked scratch root is refused. The sweep is
+// the one path that lists and deletes everything under that root, so it has to
+// make the same proof: a planted `.gauntlet/worktrees` link must not turn a
+// sweep into a recursive delete of whatever it points at.
+func TestSweepWorktreeRootRefusesSymlinkedRoot(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	if err := os.MkdirAll(filepath.Dir(root), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	target := t.TempDir()
+	canary := filepath.Join(target, "canary.txt")
+	if err := os.WriteFile(canary, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// A directory of checkouts the planted root would otherwise expose.
+	victim := filepath.Join(target, "checkout")
+	if err := os.MkdirAll(victim, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, root); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	r.SweepWorktreeRoot(ctx)
+	if _, err := os.Stat(canary); err != nil {
+		t.Fatalf("SweepWorktreeRoot followed a symlinked root and deleted %s: %v", canary, err)
+	}
+	if _, err := os.Stat(victim); err != nil {
+		t.Fatalf("SweepWorktreeRoot followed a symlinked root and deleted %s: %v", victim, err)
+	}
+}
+
+// A missing root is the normal first run: the sweep must not create one.
+func TestSweepWorktreeRootMissingRoot(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	r.SweepWorktreeRoot(ctx)
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("SweepWorktreeRoot created the missing root %s: %v", root, err)
+	}
+	if _, err := os.Stat(filepath.Dir(root)); !os.IsNotExist(err) {
+		t.Fatalf("SweepWorktreeRoot created the missing parent %s: %v", filepath.Dir(root), err)
+	}
+}
+
 // A checkout is a second copy of the reviewed repository, and the reviewed
 // repository may be private. The machine may have more than one local account,
 // so every directory holding one is left readable by its owner only.

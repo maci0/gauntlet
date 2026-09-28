@@ -314,6 +314,10 @@ Rules the runner enforces:
    own outcome in the summary and the journal, never silently dropped.
 5. **Cleanup on the way out**: lane worktrees removed, merged review branches
    deleted, `git worktree prune` run. Unmerged branches survive on purpose.
+   A run also sweeps the worktree root at startup, while it holds the run
+   lock for that directory: the lane checkouts are full copies of the tree,
+   and a run killed before this step skipped its own, which
+   `CleanWorktreeRoot`'s `os.Remove` then refuses to clear.
 6. Per-review line stats come from the review's own commit, so they stay
    exact under parallelism (unlike a shared-tree diff, which cannot be
    attributed).
