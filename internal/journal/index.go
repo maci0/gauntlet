@@ -643,8 +643,8 @@ type namedJournal struct {
 }
 
 // walkJournals visits every run journal under runs/, shards then ids, both
-// newest first. Run ids embed a UTC timestamp, so a lexical max is the
-// latest start. visit returning false stops the walk.
+// newest first. Run ids embed a UTC start, so runIDOrder is the latest start.
+// visit returning false stops the walk.
 func walkJournals(visit func(namedJournal) bool) error {
 	root := runsDir()
 	days, err := os.ReadDir(root)
@@ -668,6 +668,10 @@ func walkJournals(visit func(namedJournal) bool) error {
 	return nil
 }
 
+// journalsInDir returns one shard's journals, newest first. The order comes
+// from runIDOrder rather than from the directory listing's byte order: two
+// runs minted in the same second carry pids of different hex widths, and
+// ReadDir files the wider one below the narrower one.
 func journalsInDir(dir string) []namedJournal {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -684,7 +688,9 @@ func journalsInDir(dir string) []namedJournal {
 		}
 		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
 	}
-	slices.Reverse(batch)
+	slices.SortFunc(batch, func(a, b namedJournal) int {
+		return runIDOrder(b.id, a.id)
+	})
 	return batch
 }
 

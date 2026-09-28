@@ -51,6 +51,49 @@ func TestRunIDKeepsTheWholeProcessID(t *testing.T) {
 	}
 }
 
+// The listing, the prune window, and the quarantine window are all ordered by
+// run id, and the id's tail is the pid in unpadded hex. Two runs minted in the
+// same second therefore carry tails of different widths, and a text compare
+// files the wider one below the narrower one: pid 500 ("1f4") is a prefix of
+// pid 128000 ("1f400"), so the later process sorts as the older run. The
+// comparison has to read the tail as the number it is.
+func TestRunIDOrderReadsThePIDAsANumber(t *testing.T) {
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	early, late := runIDFor(now, 0x1f4), runIDFor(now, 0x1f400)
+	if early >= late {
+		t.Fatalf("the text order of %q and %q no longer shows the collision", early, late)
+	}
+	if runIDOrder(early, late) >= 0 {
+		t.Errorf("pid 500 (%q) does not order before pid 128000 (%q) of the same second", early, late)
+	}
+	if runIDOrder(late, early) <= 0 {
+		t.Errorf("pid 128000 (%q) does not order after pid 500 (%q) of the same second", late, early)
+	}
+	// A later second still wins over a larger pid in an earlier one.
+	next := runIDFor(now.Add(time.Second), 1)
+	if runIDOrder(next, late) <= 0 {
+		t.Errorf("the later second %q does not order after the same-second pid %q", next, late)
+	}
+	// A hand-named journal carries no stamp and orders as the text it is, so a
+	// tree that mixes named and generated files still has a total order.
+	named := "hand-named-run"
+	if runIDOrder(named, early) <= 0 {
+		t.Errorf("%q does not order after the named journal %q", named, early)
+	}
+	if c := runIDOrder(early, early); c != 0 {
+		t.Errorf("an id is not equal to itself: %d", c)
+	}
+}
+
+// A journal whose name is not hex in the tail must not be read as a pid, or a
+// restore window would unlink a real run to keep a fixture.
+func TestRunIDOrderKeepsUnparsableTailsAsText(t *testing.T) {
+	a := runIDFor(time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC), 0x1f4)
+	if got := runIDOrder(a, a+"-zz"); got >= 0 {
+		t.Errorf("%q does not order before %q, whose tail is not a pid", a, a+"-zz")
+	}
+}
+
 // collect replays runID's journal through Events and returns what it visited,
 // for tests that assert on whole streams.
 func collect(runID string) (out []map[string]any, err error) {

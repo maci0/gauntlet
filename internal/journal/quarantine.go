@@ -148,7 +148,7 @@ func listQuarantined() ([]quarantined, error) {
 		}
 	}
 	slices.SortFunc(out, func(a, b quarantined) int {
-		return strings.Compare(b.id, a.id)
+		return runIDOrder(b.id, a.id)
 	})
 	return out, nil
 }

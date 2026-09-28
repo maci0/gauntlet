@@ -1312,6 +1312,30 @@ func TestLaneNamesTheRetry(t *testing.T) {
 	}
 }
 
+// A lane's elapsed column and its timeout meter are read against the model's
+// own clock, and the timeout they mirror is a monotonic timer in the process
+// that launched the agent. An event's timestamp comes off the journal and has
+// no monotonic reading, so a review that started before a wall-clock step
+// shows a rewound clock and an empty meter while the agent is still running.
+func TestLaneElapsedRunsOnTheModelClock(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	m.now = m.cfg.Started.Add(90 * time.Second)
+	// A stamp an hour behind the model: a clock stepped back, or a review
+	// replayed from a journal written on another machine.
+	ev := runner.Event{Kind: runner.EvReviewStart, Review: "sec-review",
+		Agent: "claude", Time: m.now.Add(-time.Hour)}
+	m.apply(ev)
+	l := m.lane("claude")
+	if !l.start.Equal(m.now) {
+		t.Fatalf("lane start is %v, want the model clock %v", l.start, m.now)
+	}
+	got := stripANSI(m.View())
+	if !strings.Contains(got, "1m30s") {
+		t.Fatalf("the lane does not show the 90 seconds since the model clock:\n%s", got)
+	}
+}
+
 // The help overlay owns the screen while it is up: a key acting on the hidden
 // dashboard would change state nobody can see, so it answers only its closing
 // keys and every other key is inert until the view is back.

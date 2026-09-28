@@ -570,7 +570,14 @@ func (m *model) apply(ev runner.Event) {
 		r := m.review(ev.Review)
 		r.status, r.agentLbl, r.start = statusRunning, ev.Agent, ev.Time
 		if l := m.lane(m.laneKey(ev)); l != nil {
-			l.review, l.start, l.attempt = ev.Review, ev.Time, ev.Attempt
+			// The lane's clock, not the event's. The elapsed column and the
+			// timeout meter are m.now minus this, and the timeout they mirror
+			// is a monotonic timer in the process that launched the agent: a
+			// wall-clock stamp taken from the journal has no monotonic
+			// reading, so an NTP step during a review empties the meter and
+			// rewinds the elapsed column on a run the timer has not touched.
+			// The tick that last refreshed m.now bounds the error at tickEvery.
+			l.review, l.start, l.attempt = ev.Review, m.now, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
 			l.lastAt, l.lastThinkAt = ev.Time, time.Time{}
 			m.liveRate = m.aggregateRate()

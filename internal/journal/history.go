@@ -165,10 +165,10 @@ func locateRun(runID string) (string, bool, error) {
 // else (a custom name, a truncated stamp, an invalid calendar date or leap day)
 // returns "" so locateRun scans.
 func shardFromRunID(id string) string {
-	if len(id) < 16 || id[8] != 'T' || id[15] != 'Z' {
+	if len(id) < runIDStampLen || id[8] != 'T' || id[runIDStampLen-1] != 'Z' {
 		return ""
 	}
-	t, err := time.Parse("20060102T150405Z", id[:16])
+	t, err := time.Parse(runIDStampLayout, id[:runIDStampLen])
 	if err != nil {
 		return ""
 	}

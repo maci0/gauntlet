@@ -28,12 +28,15 @@ package journal
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -58,7 +61,10 @@ func Home() string {
 func StateDir() string { return filepath.Join(Home(), "state") }
 
 // NewRunID returns a sortable id for one run: the UTC start instant, so ids
-// order by age, then the pid that minted it.
+// order by age, then the pid that minted it. The order is read back with
+// runIDOrder, not with a text compare: the stamp is fixed width and orders
+// itself, but the pid is hex of a variable width, so two runs minted in the
+// same second do not sort by pid as text.
 //
 // The whole pid, not a prefix of it, because the id is the key the index
 // dedupes on and the journal file is opened by: two runs whose ids match share
@@ -76,6 +82,69 @@ var ErrInvalidRunID = errors.New("invalid run id")
 // guarantee can be tested against pids no live pair could be.
 func runIDFor(now time.Time, pid int) string {
 	return fmt.Sprintf("%s-%x", now.UTC().Format("20060102T150405Z"), pid)
+}
+
+// runIDStamp is the layout runIDFor writes the instant in, and the length of
+// that instant's field.
+const (
+	runIDStampLayout = "20060102T150405Z"
+	runIDStampLen    = 16
+)
+
+// runIDOrder compares two run ids oldest first, which is the order the listing,
+// the prune window, and the quarantine window all read them in.
+//
+// A generated id is a fixed-width UTC stamp, a dash, and the pid in hex. The
+// stamp orders across seconds on its own, because it is the same width every
+// time and digits compare as digits. The pid does not: %x drops leading zeros,
+// so "1f4" (500) is a prefix of "1f400" (128000) and sorts below it as text,
+// and an order read off the text files the newer of two same-second runs as
+// the older one. Which pid is later is a number, so the tail is compared as
+// one.
+//
+// An id that is not in the generated form (a hand-named journal, a fixture) is
+// not reordered against a generated one, because the two have no common shape
+// to order by and the text compare the directory walk was already giving them
+// is as good an answer as any.
+func runIDOrder(a, b string) int {
+	sa, ta, oka := splitRunID(a)
+	sb, tb, okb := splitRunID(b)
+	if !oka || !okb {
+		return strings.Compare(a, b)
+	}
+	if sa != sb {
+		return strings.Compare(sa, sb)
+	}
+	pa, oka := hexPID(ta)
+	pb, okb := hexPID(tb)
+	if oka && okb && pa != pb {
+		return cmp.Compare(pa, pb)
+	}
+	return strings.Compare(ta, tb)
+}
+
+// splitRunID returns the instant a generated id carries and the pid after it.
+// false says the id is not in the generated form, so it orders as text.
+func splitRunID(id string) (stamp, tail string, ok bool) {
+	if len(id) > runIDStampLen+1 && id[runIDStampLen] == '-' {
+		if t, err := time.Parse(runIDStampLayout, id[:runIDStampLen]); err == nil && t.UTC().Format(runIDStampLayout) == id[:runIDStampLen] {
+			return id[:runIDStampLen], id[runIDStampLen+1:], true
+		}
+	}
+	return "", "", false
+}
+
+// hexPID reads a run id's tail as the pid it is written from. false for a tail
+// that is not hex, which then orders as text.
+func hexPID(tail string) (uint64, bool) {
+	if tail == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(tail, 16, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
 }
 
 // Summary is the one-line record of a finished run, appended to index.jsonl.

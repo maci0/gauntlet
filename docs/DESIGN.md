@@ -633,7 +633,12 @@ Design points:
 - Date sharding keeps one directory listing small; the flat index makes "what
   did I run last week" a tail rather than a tree walk. A generated run id
   encodes that date, so looking one up is a stat of one file, not a probe of
-  every shard. The journals are the source of truth: a missing or empty index
+  every shard. The listing, the keep bound, and the quarantine all order runs
+  by that id, and the order is not the text order: the fixed-width instant
+  leads, and the process id after it is compared as the number it is, because
+  the id writes it in unpadded hex (`1f4` for 500, `1f400` for 128000) and two
+  runs started in the same second would otherwise order by pid width. The
+  journals are the source of truth: a missing or empty index
   is rebuilt from them, and a stale one has every newer unindexed journal
   appended, so a crash that flushed the event stream still lists, and two
   such crashes in a row do not hide the older one. A crash behind a later
