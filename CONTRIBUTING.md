@@ -34,9 +34,12 @@ The suite is ~30s once the build cache is warm. The first run on a fresh
 clone compiles every package under the race detector and takes minutes.
 
 The first run downloads Go modules; after that the loop is offline.
-`make` passes `-mod=readonly` on every target except `make vuln`, so a drift
-from go.sum fails the command instead of rewriting the lockfile. Change
-modules with `go get` / `go mod tidy`, not as a side effect of the build.
+`make` passes `-mod=readonly` on every target except two. `make vuln` clears
+it, because govulncheck is not a build input, and `make tidy` sets
+`-mod=mod`, because computing the answer is its job. So a drift from go.sum
+fails the command instead of rewriting the lockfile, and the one target that
+may rewrite it only reports the diff. Change modules with `go get` /
+`go mod tidy`, not as a side effect of the build.
 `gofmt` is the one from `$(go env GOROOT)`, not whatever happens to be first on
 `PATH`.
 

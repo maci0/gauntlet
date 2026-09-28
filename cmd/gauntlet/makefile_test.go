@@ -1006,6 +1006,23 @@ func TestMakefileReproExcludesScratchAndCaches(t *testing.T) {
 	}
 }
 
+// The maintainer scripts run under uv, and `uv sync` in a checkout with a
+// pyproject.toml writes a .venv into the repository root. It is host state:
+// pyvenv.cfg records the absolute interpreter path, so the two copies make repro
+// builds from would not even hold the same bytes, and `make release` refuses a
+// tree carrying an untracked path, so a developer who synced once could not cut
+// a tag. Nothing builds through it, but it lands in the checkout all the same.
+func TestPythonVirtualenvIsIgnoredAndOutOfTheReproArchive(t *testing.T) {
+	if !slices.Contains(gitignoreEntries(t), ".venv") {
+		t.Error(".gitignore must list .venv/; `uv sync` writes one into the repository root and nothing else keeps it out of the tree")
+	}
+	// The listing excludes it because .gitignore does, so prove the rule is
+	// the one that decides, with a path the directory has.
+	if !gitIgnores(t, ".venv/pyvenv.cfg") {
+		t.Error(".gitignore no longer ignores .venv: make repro would archive the host's interpreter path into both tree copies")
+	}
+}
+
 // The archive is the whole working tree, copied to two directories under
 // $HOME, so anything a build or a run of this tool leaves in the checkout is
 // an input to one copy and not the other. Every .gitignore entry is such a

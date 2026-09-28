@@ -13,6 +13,12 @@ export GOFLAGS="-mod=readonly"
 export GOWORK=off
 export GOTOOLCHAIN=local
 export CGO_ENABLED=0
+# The baseline the shots are built from, named here as the Makefile names it:
+# both are the go defaults, so pinning them only closes the ambient `go env`
+# file, where a GOAMD64=v3 set once would otherwise compile the same source
+# into a different binary than the one the README's picture stands for.
+export GOAMD64=v1
+export GOARM64=v8.0
 # The PNGs are checked in, so they must not follow the host the maintainer
 # happens to be on. LC_ALL fixes collation, TZ fixes any date the renderer
 # prints. The Makefile pins the same two for everything it runs.
@@ -30,6 +36,10 @@ done
 work="$root/.scratch/shots"
 rm -rf "$work"
 mkdir -p "$work"
+# `go test` needs a work directory of its own, and the system temp dir is a
+# tmpfs on the machines that run this. Same path the Makefile hands its tests.
+export TMPDIR="${TMPDIR:-$HOME/.cache/gauntlet/test}"
+mkdir -p "$TMPDIR"
 
 # Linux boxes usually have `chromium` on PATH; macOS typically has Chromium
 # or Google Chrome as an .app. Either rasterizes the SVG.
