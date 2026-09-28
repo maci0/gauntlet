@@ -131,12 +131,12 @@ func SyncDir(dir string) error {
 // never finished; the age keeps a concurrent writer's in-flight file safe.
 const StaleTempAge = 24 * time.Hour
 
-// WriteFileAtomic writes data to a temp file in dir named by pattern, syncs
+// WriteFileAtomic writes data to a temp file in dir named by prefix, syncs
 // it, and renames it over path. The temp file is removed if anything fails
 // and the rename never happens, so a reader sees either the previous file or
 // the whole new one, never a truncated one.
-func WriteFileAtomic(dir, pattern, path string, data []byte) error {
-	tmp, err := os.CreateTemp(dir, pattern)
+func WriteFileAtomic(dir, prefix, path string, data []byte) error {
+	tmp, err := NewTempFile(dir, prefix, nil)
 	if err != nil {
 		return err
 	}
@@ -155,6 +155,19 @@ func WriteFileAtomic(dir, pattern, path string, data []byte) error {
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+// NewTempFile creates a temp file in dir whose name starts with prefix, after
+// removing the leftovers there older than StaleTempAge that start with the same
+// prefix. The sweep and the new file take one prefix because a caller that
+// spells both has to keep them equal: a file created under a prefix the sweep
+// does not look for is a leftover nothing will ever remove.
+//
+// now is the clock the cutoff is measured against, nil meaning time.Now, as in
+// SweepStaleTemps.
+func NewTempFile(dir, prefix string, now func() time.Time) (*os.File, error) {
+	SweepStaleTemps(dir, prefix, StaleTempAge, now)
+	return os.CreateTemp(dir, prefix+"*")
 }
 
 // SweepStaleTemps removes regular files in dir matching prefix whose modification

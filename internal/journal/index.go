@@ -843,8 +843,7 @@ func commitIndex(write func(io.Writer) error) error {
 	if err := os.MkdirAll(Home(), 0o700); err != nil {
 		return err
 	}
-	gauntlethome.SweepStaleTemps(Home(), ".index.jsonl-", gauntlethome.StaleTempAge, nil)
-	tmp, err := os.CreateTemp(Home(), ".index.jsonl-*")
+	tmp, err := gauntlethome.NewTempFile(Home(), ".index.jsonl-", nil)
 	if err != nil {
 		return err
 	}

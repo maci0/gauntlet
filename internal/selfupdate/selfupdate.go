@@ -248,10 +248,10 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	}
 
 	dir := filepath.Dir(self)
-	// A kill, an OOM, or a power cut skips every defer, so without the sweep
-	// each interrupted download leaves up to maxAssetBytes beside the binary.
-	gauntlethome.SweepStaleTemps(dir, ".gauntlet-update-", gauntlethome.StaleTempAge, nil)
-	tmp, err := os.CreateTemp(dir, ".gauntlet-update-*")
+	// NewTempFile sweeps first: a kill, an OOM, or a power cut skips every
+	// defer, so without it each interrupted download leaves up to
+	// maxAssetBytes beside the binary.
+	tmp, err := gauntlethome.NewTempFile(dir, ".gauntlet-update-", nil)
 	if err != nil {
 		return "", fmt.Errorf("cannot write next to %s: %w", self, err)
 	}
@@ -318,9 +318,10 @@ func keepPrevious(self string) error {
 		return fmt.Errorf("cannot read %s: %w", self, err)
 	}
 	defer in.Close()
-	// The sweep in applyTo covers this prefix, so a copy interrupted by a kill
-	// or a power cut is removed by the next update rather than accumulating.
-	tmp, err := os.CreateTemp(filepath.Dir(self), ".gauntlet-update-*")
+	// The sweep in NewTempFile covers this prefix, so a copy interrupted by a
+	// kill or a power cut is removed by the next update rather than
+	// accumulating.
+	tmp, err := gauntlethome.NewTempFile(filepath.Dir(self), ".gauntlet-update-", nil)
 	if err != nil {
 		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
 	}

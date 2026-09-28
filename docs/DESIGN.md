@@ -42,7 +42,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
-| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way |
+| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`), shared by the journal and agent definitions, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |

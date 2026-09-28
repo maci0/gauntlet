@@ -147,7 +147,7 @@ func SaveState(dir, runID string, v any) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := gauntlethome.WriteFileAtomic(dir, "."+runID+".json-*", path, data); err != nil {
+	if err := gauntlethome.WriteFileAtomic(dir, "."+runID+".json-", path, data); err != nil {
 		return "", err
 	}
 	// The exec follows immediately, so a power cut in this window has to
