@@ -516,7 +516,11 @@ gauntlet --auto-update    # check periodically during a long run
 ```
 
 The download is verified against the release's `checksums.txt` before it
-replaces anything; a mismatch leaves the running binary untouched.
+replaces anything; a mismatch leaves the running binary untouched. The binary
+an update replaces is kept beside it as `<binary>.previous`, so a release that
+installs and then misbehaves is rolled back by renaming that copy back, with
+no build and no second download. A run in flight hands over to the restored
+binary at its next safe point, like any other hot reload.
 
 Hot reload is on by default (`--hot-reload=false` disables it). When the
 executable on disk changes, by `gauntlet update`, `make install`, or a fresh

@@ -156,6 +156,19 @@ keeps until they update, and a fix (a security one included) ships as a new
 patch release rather than as a second release on an old one. Older tags stay
 downloadable: the journal a run left is read with the version that wrote it.
 
+An update keeps the binary it replaced beside the new one, as
+`<binary>.previous`, so an install that succeeds and then misbehaves is
+rolled back by renaming that copy back over it:
+
+```sh
+mv "$(command -v gauntlet)" "$(command -v gauntlet).broken"
+mv "$(command -v gauntlet).previous" "$(command -v gauntlet)"
+```
+
+A run in flight hands over to the restored binary at its next safe point, the
+same way it hands over to a new one. The copy is replaced by the next update,
+so it is the version before the last one and no further back.
+
 **History**
 
 | Flag | Default | Purpose |

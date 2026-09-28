@@ -391,6 +391,11 @@ vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs
 .PHONY: install
 install: build ## install into ~/.local/bin
 	install -d "$(HOME)/.local/bin"
+	@# The binary being replaced is kept, under the same name `gauntlet
+	@# update` gives its copy, so a locally built install can be rolled back
+	@# the same way a released one is.
+	@[ ! -f "$(HOME)/.local/bin/$(BINARY)" ] || \
+		cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"
 	install -m 0755 $(BINARY) "$(HOME)/.local/bin/$(BINARY)"
 	@case ":$$PATH:" in *:"$(HOME)/.local/bin":*) ;; *) \
 		echo "note: $(HOME)/.local/bin is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac

@@ -164,6 +164,71 @@ func TestApplyReplacesTargetOnMatch(t *testing.T) {
 	}
 }
 
+// The rename that installs a release is the one step an update cannot undo, so
+// the binary it replaces is kept beside it: a release that installs and then
+// misbehaves is rolled back by renaming that copy back over the new one.
+func TestApplyKeepsTheReplacedBinaryForRollback(t *testing.T) {
+	payload := []byte("#!/bin/sh\necho new\n")
+	h := sha256.Sum256(payload)
+	_, rel := releaseServer(t, payload, hex.EncodeToString(h[:]))
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "gauntlet")
+	old := []byte("#!/bin/sh\necho old\n")
+	if err := os.WriteFile(target, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := applyTo(context.Background(), rel, target); err != nil {
+		t.Fatal(err)
+	}
+	prev := target + PreviousSuffix
+	kept, err := os.ReadFile(prev)
+	if err != nil {
+		t.Fatalf("the replaced binary was not kept: %v", err)
+	}
+	if string(kept) != string(old) {
+		t.Fatalf("kept %q, want the binary that was replaced", kept)
+	}
+	fi, err := os.Stat(prev)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm()&0o111 == 0 {
+		t.Fatalf("the kept binary is not executable: %v", fi.Mode())
+	}
+	// The documented rollback is a rename, so it has to work: putting the
+	// copy back restores the old binary byte for byte.
+	if err := os.Rename(prev, target); err != nil {
+		t.Fatal(err)
+	}
+	back, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(back) != string(old) {
+		t.Fatalf("rollback restored %q, want the previous binary", back)
+	}
+}
+
+// A release that never verified replaced nothing, so there is nothing to roll
+// back to and the copy is not made.
+func TestApplyLeavesNoRollbackCopyAfterAFailedVerification(t *testing.T) {
+	payload := []byte("#!/bin/sh\necho new\n")
+	_, rel := releaseServer(t, payload, strings.Repeat("0", 64))
+
+	target := filepath.Join(t.TempDir(), "gauntlet")
+	if err := os.WriteFile(target, []byte("old binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := applyTo(context.Background(), rel, target); err == nil {
+		t.Fatal("want a checksum mismatch")
+	}
+	if _, err := os.Stat(target + PreviousSuffix); !os.IsNotExist(err) {
+		t.Fatalf("a failed verification must not leave %s (stat err=%v)", PreviousSuffix, err)
+	}
+}
+
 // An update killed mid-download (SIGKILL, OOM, power cut) skips every defer
 // and leaves its partial download beside the binary. The next update sweeps
 // what is old enough to be certainly abandoned and touches nothing else.

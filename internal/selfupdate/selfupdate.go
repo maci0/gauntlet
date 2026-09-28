@@ -203,7 +203,9 @@ func (r *Release) NewerThan(current string) bool {
 //
 // The new binary is written next to the current one (same filesystem, so the
 // rename is atomic) and only renamed after its checksum matches. A failed
-// verification leaves the running binary untouched.
+// verification leaves the running binary untouched. The binary being replaced
+// is kept beside it under PreviousSuffix, so an install that succeeds and then
+// misbehaves can be rolled back by renaming that copy back.
 func Apply(ctx context.Context, rel *Release) (string, error) {
 	self, err := os.Executable()
 	if err != nil {
@@ -275,10 +277,72 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	if err := os.Chmod(tmpName, 0o755); err != nil {
 		return "", err
 	}
+	if err := keepPrevious(self); err != nil {
+		return "", err
+	}
 	if err := os.Rename(tmpName, self); err != nil {
 		return "", fmt.Errorf("cannot replace %s: %w", self, err)
 	}
 	return self, nil
+}
+
+// PreviousSuffix names the copy of the binary an update replaced, beside it in
+// the same directory. Renaming the new binary over the old one is the point of
+// an update, and it is also the one step here that cannot be undone, so the
+// replaced binary is kept: a release that installs and then misbehaves is
+// rolled back by renaming the copy back, without a build or a download.
+const PreviousSuffix = ".previous"
+
+// keepPrevious copies self to self+PreviousSuffix, atomically, before the
+// rename that would destroy it.
+//
+// A copy that cannot be written aborts the update rather than proceeding: an
+// install with no way back is a worse outcome than an install that did not
+// happen, and the copy is cheap next to the download that precedes it.
+func keepPrevious(self string) error {
+	prev := self + PreviousSuffix
+	fi, err := os.Stat(self)
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %w", self, err)
+	}
+	in, err := os.Open(self)
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %w", self, err)
+	}
+	defer in.Close()
+	// The sweep in applyTo covers this prefix, so a copy interrupted by a kill
+	// or a power cut is removed by the next update rather than accumulating.
+	tmp, err := os.CreateTemp(filepath.Dir(self), ".gauntlet-update-*")
+	if err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpName) // no-op once the rename succeeded
+	}()
+	if _, err := io.Copy(tmp, in); err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	if err := os.Chmod(tmpName, fi.Mode().Perm()); err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	if err := os.Rename(tmpName, prev); err != nil {
+		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
+	}
+	// The copy is only a rollback path once its name is in the directory: a
+	// power cut between the rename and that record leaves a file the next
+	// boot cannot find.
+	if err := gauntlethome.SyncDir(filepath.Dir(self)); err != nil {
+		return fmt.Errorf("cannot record %s: %w", prev, err)
+	}
+	return nil
 }
 
 // validateAssetURL ensures the URL points to an authorized GitHub release

@@ -52,6 +52,9 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, "is not on PATH") {
 		t.Fatal("make install must say when ~/.local/bin is not on PATH")
 	}
+	if !strings.Contains(text, `cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"`) {
+		t.Fatal(`make install must keep the binary it replaces as $(BINARY).previous, the name gauntlet update keeps its copy under, so a locally built install can be rolled back the same way`)
+	}
 }
 
 // The compiler is the one build input nothing in the build normalizes: a Go

@@ -490,7 +490,12 @@ Two separate mechanisms that compose:
 background during a long run) fetches the latest release for this `GOOS/GOARCH`,
 verifies its SHA-256 against the release's `checksums.txt`, writes it next to
 the current binary, and renames it into place atomically. A failed
-verification leaves the running binary untouched. Nothing is executed from
+verification leaves the running binary untouched. The binary the rename
+replaces is copied to `<binary>.previous` first, atomically and with its mode
+and directory entry made durable, so the one step an update cannot undo has a
+way back: renaming that copy over the new binary restores the version before
+it. A copy that cannot be written aborts the update instead. Nothing is
+executed from
 the download before verification. Every release also ships `sbom.json`, a
 CycloneDX inventory produced by `cmd/sbom` over each built binary's own build
 info: anyone auditing a release can read which module versions and hashes
