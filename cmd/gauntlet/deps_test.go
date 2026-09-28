@@ -418,6 +418,118 @@ func TestScriptsJobChecksAreReproducedLocally(t *testing.T) {
 	}
 }
 
+// lintOwner names the tool that has an opinion about a file extension, and so
+// the path a file of that extension must sit under to be analyzed at all.
+var lintOwner = map[string][]string{
+	".py":   {"ruff", "mypy"},
+	".sh":   {"shellcheck"},
+	".yml":  {"yamllint"},
+	".yaml": {"yamllint"},
+}
+
+// Agreement on the commands is not coverage of the tree. The shellcheck
+// command names one file, so a second script beside it is analyzed by nothing,
+// and nothing turns red when it arrives. Every tracked file a tool can judge
+// has to sit under a path that tool is given, which is the same invariant the
+// direct-module tests hold for import sites.
+func TestAnalysisScopesCoverEveryLintedFile(t *testing.T) {
+	root := moduleRoot(t)
+	scopes := analysisScopes(readRepoFile(t, filepath.Join(root, "Makefile")))
+
+	for _, tool := range []string{"ruff", "mypy", "shellcheck", "yamllint"} {
+		if len(scopes[tool]) == 0 {
+			t.Errorf("check-scripts never points %s at a path, so nothing of the language it owns is analyzed", tool)
+		}
+	}
+
+	var covered int
+	for _, file := range trackedFiles(t, root) {
+		owners, ok := lintOwner[strings.ToLower(filepath.Ext(file))]
+		if !ok {
+			continue
+		}
+		for _, tool := range owners {
+			if underScope(file, scopes[tool]) {
+				covered++
+				break
+			}
+			t.Errorf("%s: no %s path in check-scripts covers it; add it, or move it under one of %v", file, tool, scopes[tool])
+		}
+	}
+	if covered == 0 {
+		t.Fatal("no tracked file carries an extension an analysis tool owns, so the comparison is over nothing")
+	}
+}
+
+// underScope reports whether a repository-relative file is one of the paths a
+// tool was given, or sits under one of them.
+func underScope(file string, paths []string) bool {
+	for _, path := range paths {
+		if file == path || strings.HasPrefix(file, path+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// analysisScopes maps each analysis tool in the check-scripts recipe to the
+// paths it is pointed at, read as the last non-flag field of the command: the
+// tool's own flags, its version pin, and the subcommand that selects the check
+// all come before the path. The preflight lines that print what CI would run
+// open with `echo` and are not commands, so they contribute nothing.
+func analysisScopes(makefile string) map[string][]string {
+	scopes := map[string][]string{}
+	for line := range strings.SplitSeq(makefileRecipe(makefile, "check-scripts"), "\n") {
+		fields := strings.Fields(strings.TrimSpace(line))
+		tool, path := "", ""
+		for i, f := range fields {
+			switch {
+			case f == "shellcheck":
+				tool = "shellcheck"
+			case strings.HasPrefix(f, "ruff@"):
+				tool = "ruff"
+			case strings.HasPrefix(f, "mypy@"):
+				tool = "mypy"
+			case strings.HasPrefix(f, "yamllint@"):
+				tool = "yamllint"
+			case tool == "", strings.HasPrefix(f, "-"), i != len(fields)-1:
+				continue
+			default:
+				path = f
+			}
+		}
+		if tool == "" || path == "" || slices.Contains(scopes[tool], path) {
+			continue
+		}
+		scopes[tool] = append(scopes[tool], path)
+	}
+	for tool := range scopes {
+		slices.Sort(scopes[tool])
+	}
+	return scopes
+}
+
+// trackedFiles lists the files git has, which is the set the tree ships: a
+// scratch directory or a build output is not analyzed because it is not part
+// of it.
+func trackedFiles(t *testing.T, root string) []string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = root
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("git ls-files: %v", err)
+	}
+	files := strings.Fields(string(out))
+	if len(files) == 0 {
+		t.Fatalf("git ls-files in %s returned nothing", root)
+	}
+	return files
+}
+
 // analysisCommand returns the analysis command a workflow line runs, however
 // the step wraps it: a run step carries the `- run:` key, and a step with a
 // name puts the name on the previous line. A comment, and the `echo` that
