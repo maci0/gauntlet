@@ -257,9 +257,9 @@ reviews in that lane reuse the agent's prompt cache (see below).
 
 ```
 baseline commit
-   ├── git worktree add  lane-0   .gauntlet/worktrees/…
-   ├── git worktree add  lane-1   .gauntlet/worktrees/…
-   └── git worktree add  lane-2   .gauntlet/worktrees/…
+   ├── git worktree add  lane-0   .gauntlet/worktrees/<run>-l<loop>-lane-0
+   ├── git worktree add  lane-1   .gauntlet/worktrees/<run>-l<loop>-lane-1
+   └── git worktree add  lane-2   .gauntlet/worktrees/<run>-l<loop>-lane-2
          N agents run concurrently, each in a stable checkout
          scheduled review i runs in lane i%N
    ↓
@@ -357,8 +357,10 @@ The invariants are:
    layer, leaving the preceding successful layer as the next base.
 5. A published branch name derives from the review position, the review name,
    (after the first `--max-loops` pass) the pass number, and a topic slug taken
-   from the layer's commit subject. Only the provisional `-wip-` branch a
-   layer starts on carries a fragment of the base object id.
+   from the layer's commit subject. The provisional `-wip-` branch a layer
+   starts on carries a fragment of the base object id, and a published name
+   that is already taken locally or on the remote gets the same fragment
+   appended, so a rename never lands on a branch that is not its own.
    Existing branches and PRs are checked before an agent starts, which makes
    hot reload and repeated invocation convergent. A `gh pr create` that fails
    after GitHub accepted it is recovered by that same head/base lookup, so a
@@ -384,7 +386,8 @@ which sits after the cached system prefix and does not invalidate it.
 
 **Parallel mode (`--jobs N`) mitigates it with persistent lanes.** Instead of
 creating a throwaway worktree per review, parallel mode creates N stable lane
-worktrees at loop start (`lane-0/`, `lane-1/`, ...) and splits the loop's
+worktrees at loop start (branch slug `lane-0`, `lane-1`, ..., checked out under
+`.gauntlet/worktrees/<run-id>-l<loop>-lane-<N>`) and splits the loop's
 schedule across them. Within a lane, reviews run sequentially in the same directory, so
 reviews 2..M in lane K all hit the cache that review 1 warmed. Across lanes,
 the N worktrees still have N distinct paths, so each lane pays one cold start.
@@ -443,7 +446,7 @@ runner never adds to it and never makes the user wait to see state.
 - **Output is streamed, never buffered whole.** Each lane reads into a fixed
   ring (64 KiB tail for token parsing) and pushes normalized lines onward.
   Nothing accumulates per-review output in memory.
-- **The TUI redraws on change**, capped at 10 fps, and renders only the rows
+- **The TUI redraws on a fixed tick**, 10 fps, and renders only the rows
   that fit. Braille charts precompute their style cache per frame.
 - Startup does no network I/O. Update checks are explicit or run in the
   background, never on the critical path to the first review.
@@ -548,7 +551,8 @@ When a replacement is detected, the swap proceeds like this:
    reviews in flight run to completion, including their commit, publication,
    and merge work.
 2. Each directory's unfinished queue, results, loop count, and commit tallies
-   are written to `~/.gauntlet/state/<run-id>.json`.
+   are written to `state/<run-id>.json` under the state root, which is
+   `~/.gauntlet` unless `GAUNTLET_HOME` says otherwise.
 3. The journal is flushed and closed **without** an index row, and the
    directory locks are released.
 4. `execve` replaces the process with the new binary, same pid and terminal,
