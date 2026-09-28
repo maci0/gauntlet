@@ -52,7 +52,7 @@ Review the following:
 5. API boundaries and public surfaces
 (network APIs belong to api-review; published library surfaces to sdk-review. Here own what one in-tree package exports to another.)
 - Internal implementation details exported or exposed publicly
-- Missing barrel files, index modules, or explicit public API definitions
+- Missing an explicit public API definition, or missing re-export and manifest entries where the language's packaging model uses them (package manifests, `__init__`, bundler entry points); Go's capitalization boundary needs no index file
 - Inconsistent export patterns across modules
 - Public APIs that are too wide (exposing too much)
 - Public APIs that are too narrow (forcing consumers to reach into internals)

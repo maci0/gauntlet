@@ -34,7 +34,7 @@ Review the following:
 - API surfaces with no fuzz testing at all
 - Endpoints that accept complex or nested input structures without fuzzing
 - Parsers (JSON, XML, YAML, CSV, protobuf, custom formats) without fuzz targets
-- Round-trip harnesses that only exercise synthetic or zero-filled inputs; real-world samples (captured payloads, production excerpts, known-bad corpus entries) needed to cover the shapes parsers actually encounter
+- Round-trip harnesses that only exercise synthetic or zero-filled inputs; real-world samples already committed in the tree or published in a public spec or fixture repository are what cover the shapes parsers actually encounter. Never paste captured production traffic, customer data, or credentials into a seed corpus
 - Deserialization entry points not covered by fuzz tests
 - Authentication and authorization flows not fuzzed
 - File upload handlers without format fuzzing
@@ -110,6 +110,7 @@ Review the following:
 Instructions:
 - Fix order: high-risk parsers of untrusted input with no fuzz target > existing harnesses missing sanitizers or assertions > surfaces with partial coverage missing important input vectors > infrastructure and CI integration.
 - In auto-fix mode: add at most 1-2 small ecosystem-native fuzz targets colocated with existing tests, for the highest-risk untrusted-input parser found. CI integration, corpus management, OSS-Fuzz onboarding, and dashboards are infra work: out of scope for a fix pass. Do not rewrite unit or integration tests (test-review), add input-validation/sanitization as a security fix (sec-review), investigate race conditions or lock ordering (concurrency-review), or add a simulation harness or injected clock/RNG (dst-review).
+- Run every target you add once over its own seed corpus and through the owning package's ordinary test run before reporting it, and leave both green: a new harness that was never executed is a red build, not a fix.
 - If available, use: `cargo-fuzz`/libFuzzer (Rust/C/C++), `afl-fuzz`/`honggfuzz` (AFL++/Honggfuzz), `go test -fuzz` (Go), Atheris (Python library, not a binary), Jazzer (JVM library, not a binary). Prefer extending an existing harness over inventing one. Never install tools.
 - Inventory all API surfaces before assessing coverage.
 - Treat any API surface accepting untrusted input without fuzz testing as a finding.

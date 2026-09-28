@@ -123,9 +123,6 @@ Findings where documentation contradicts the code.
 ## Outdated Documentation
 Findings where comments or docs describe old behavior.
 
-## Low-Value or Redundant Comments
-Comments that should likely be deleted.
-
 ## Missing Documentation
 Places where documentation is necessary for understanding.
 
@@ -134,9 +131,6 @@ Terminology, formatting, or style inconsistencies.
 
 ## Quick Wins
 Small, low-risk changes with high documentation payoff.
-
-## Deletions
-Comments or documentation that should be removed.
 
 ## Improvement Plan
 - Ordered by priority:

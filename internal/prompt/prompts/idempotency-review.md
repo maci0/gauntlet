@@ -26,7 +26,7 @@ Review the following:
 
 3. Message and event consumers
 - At-least-once delivery treated as exactly-once: no dedup on message id, no consumed-message ledger
-- Acknowledgement before the work is durable, or work committed before the ack with no recovery path
+- Acknowledgement before the work is durable, or work committed before the ack with no recovery path (dr-review owns the durability of the write itself: fsync, flush, replication. Here own what a redelivery or restart does to the second execution)
 - Reprocessing after redelivery producing duplicate downstream effects
 - Event handlers not safe to replay when a consumer is reset to an earlier offset
 - Ordering assumed where the transport redelivers out of order

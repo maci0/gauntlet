@@ -57,7 +57,7 @@ Instructions:
 - Fix order: wrong or cross-user/cross-tenant data served > stampedes that can take the backend down > unbounded growth > staleness beyond business tolerance > coherence and policy cleanups.
 - Inventory the caches first (grep for cache clients, memoizers, and long-lived maps), then review each against its write paths; invalidation bugs live at the writes, not the reads.
 - For each cache, state its consistency requirement in one line (how stale is acceptable) and judge against that, not against perfect freshness.
-- In auto-fix mode make narrow, verifiable fixes: add the missing invalidation call at one write site, add a missing key dimension, set a TTL where none exists, bound one unbounded map with the codebase's existing cache utility, guard one recompute with the existing singleflight mechanism. Do not introduce a new cache layer or library, and do not change consistency semantics of a working cache in one pass.
+- In auto-fix mode make narrow, verifiable fixes: add the missing invalidation call at one write site, add a missing key dimension, set a TTL only where the staleness tolerance is stated somewhere in the repo, bound one unbounded map with the codebase's existing cache utility, guard one recompute with the existing singleflight mechanism. Do not introduce a new cache layer or library, and do not change consistency semantics of a working cache in one pass.
 - Do not propose adding caches for speed (perf-review) or tuning HTTP cache headers (webperf-review); name the owner instead.
 - Prefer fewer high-value findings; call out caches that are correct, bounded, and coherently invalidated so future passes leave them alone.
 

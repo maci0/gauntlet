@@ -81,7 +81,7 @@ Review the following:
 - Overuse of mocks where real implementations would be simple
 
 9. Assertion quality
-- Single assertion per test when multiple related checks belong together
+- Related assertions split across near-identical tests, or one test asserting several unrelated behaviors
 - Missing assertion messages that make failures hard to diagnose
 - Assertions that compare serialized strings instead of structured data
 - Missing type or schema assertions on complex return values

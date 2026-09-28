@@ -88,7 +88,7 @@ Review the following:
 - Unclear parameter descriptions
 - Missing documentation of side effects
 - No OpenAPI, GraphQL schema, or protobuf definitions
-- Missing changelog or migration guides
+- Missing migration guides for a changed endpoint (release-review owns the changelog)
 
 10. Performance and efficiency
 (webperf-review owns Cache-Control and compression for browser-delivered pages and assets; here own cache/revalidation as an API contract on JSON/RPC responses, plus payload shape.)
@@ -102,7 +102,7 @@ Review the following:
 
 Instructions:
 - Fix order: broken contracts (behavior differs from docs/spec) > missing input validation on public endpoints > inconsistent patterns across endpoints > missing documentation and design improvements.
-- In auto-fix mode align one endpoint with an existing sibling (status code, error envelope, validation) or add a missing field check. Do not introduce API versioning, pagination, or a new error format in one pass.
+- In auto-fix mode align one endpoint with an existing sibling (status code, error envelope for a new error case, validation) or add a missing field check, and only where the response shape existing clients read is unchanged: never rename, remove, or re-type a documented response field. Do not introduce API versioning, pagination, or a new error format in one pass.
 - If available, use: `spectral` (OpenAPI/AsyncAPI lint), `oasdiff` (OpenAPI breaking-change diff), `buf` (protobuf lint and breaking-change checks). Never install tools.
 - Walk each public endpoint from the handler (or schema) to the response the client sees.
 - Verify that documented behavior matches implemented behavior.

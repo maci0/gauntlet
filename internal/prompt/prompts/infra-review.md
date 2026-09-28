@@ -104,14 +104,9 @@ Review the following:
 - Build dependencies fetched from the internet on every build instead of cached or vendored (note only; build-review owns cache and hermeticity)
 - Missing separation between build and runtime dependencies
 
-10. Local development and onboarding
-- Missing or broken docker-compose or local development setup
-- Undocumented prerequisites or system dependencies
-- Setup scripts that do not work across platforms
-- Missing make targets, task runners, or documented commands for common workflows
-- No way to run the full stack locally
-- Excessive setup time for new contributors
-- Missing contribution guidelines or development workflow documentation (note only; doc-review owns the prose)
+10. Local services
+- Missing or broken docker-compose or local development services
+- dx-review owns the runnable contributor path: bootstrap on a clean machine, undeclared prerequisites, the edit-test loop, task-runner discovery, and onboarding documentation (doc-review owns the prose). Here own the compose and CI wiring a contributor's local stack is built from.
 
 Instructions:
 - Fix order: secrets in pipeline config or container images > insecure defaults (running as root, exposed ports, missing network policies) > reproducibility and pinning > operational friction and documentation. Team ownership and RTO/RPO targets are organizational: out of scope for a fix pass.

@@ -103,7 +103,7 @@ Review the following:
 
 Instructions:
 - Fix order: silent failures (errors discarded causing data loss or incorrect behavior) > missing resource cleanup on error paths > missing timeouts on external calls > error context and message quality. Hardening and consistency last.
-- In auto-fix mode stop swallowing a traced error, add cleanup on an existing error path, or add a timeout on an existing external call. Do not introduce a circuit-breaker library, dead-letter queue, or bulkhead framework in one pass.
+- In auto-fix mode stop swallowing a traced error, add cleanup on an existing error path, or add a timeout on an existing external call, taking the duration from a config knob, an env default, or a sibling call site in the repo; where none of those exists, report the missing timeout with a proposed value rather than editing one. Do not introduce a circuit-breaker library, dead-letter queue, or bulkhead framework in one pass.
 - Do not change documented feature behavior to match a guessed contract (functionality-review owns intended-vs-actual). Here own how failures are signaled, cleaned up, retried, and isolated.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review).
 - LLM-specific 429/Retry-After, midstream streaming recovery, and alternate-model fallback belong to llm-review; here own the generic timeout/retry on the HTTP call (a simple retry loop, not a circuit-breaker library). If an injectable clock already exists, use it for new timeouts; do not add a clock abstraction (dst-review). Performance bottlenecks and latency optimization on error or retry paths belong to perf-review.
