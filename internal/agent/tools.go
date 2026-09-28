@@ -24,8 +24,8 @@ var CoreTools = []struct{ Name, Purpose string }{
 var ReviewsWithoutTools = []string{
 	"agentrules-review", "cache-review", "design-review", "dr-review",
 	"dst-review", "dx-review", "functionality-review", "numerics-review",
-	"prompt-review", "skills-review", "specs-review", "threat-review",
-	"time-review", "uislop-review", "unicode-review",
+	"perfectionism-review", "prompt-review", "skills-review", "specs-review",
+	"threat-review", "time-review", "uislop-review", "unicode-review",
 }
 
 // RecommendedTools are worth installing on any machine: language-agnostic and

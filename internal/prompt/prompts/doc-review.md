@@ -15,7 +15,7 @@ Review the following:
 - Configuration or usage instructions that do not match the implementation
 
 2. Outdated documentation
-- Comments referencing old behavior, temporary hacks, or TODOs that are obsolete
+- Comments referencing old behavior, temporary hacks, or TODOs that are obsolete (the work is done and the comment remains). A TODO whose hole is still reachable belongs to perfectionism-review
 - Documentation that refers to files, modules, or APIs that no longer exist
 - Comments describing previous implementations rather than current behavior
 

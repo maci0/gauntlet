@@ -18,7 +18,7 @@ Review the following:
 - Comment density wildly above the file's norm
 - Section-banner comments dividing a short function into narrated steps
 - Conversational or first-person comments ("Let's grab the config", "we now handle X", "Note: this is important"), and emoji in comments or log output
-- Placeholder narration shipped as code ("In a real implementation you would...", "TODO: implement actual logic" above a stub that pretends to work)
+- Placeholder narration shipped as code ("In a real implementation you would...", "TODO: implement actual logic" above a stub that pretends to work). The reachable stub itself belongs to perfectionism-review; here own the narration
 
 2. Verbose and over-structured code
 - The same long access chain (`a.b.c.d`) repeated instead of a local

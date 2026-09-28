@@ -26,7 +26,8 @@ var Sets = map[string][]string{
 		"code-review", "sec-review", "error-review", "functionality-review",
 		"test-review", "perf-review", "deps-review", "doc-review",
 		"arch-review", "design-review", "specs-review", "concurrency-review",
-		"minimalism-review", "slop-review", "lint-review", "compat-review",
+		"minimalism-review", "slop-review", "perfectionism-review",
+		"lint-review", "compat-review",
 		"time-review", "numerics-review", "resource-review",
 	},
 	"security": {

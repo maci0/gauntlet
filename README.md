@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <em>Run your codebase through the gauntlet: 53 specialized review prompts,
+  <em>Run your codebase through the gauntlet: 54 specialized review prompts,
   dispatched to whichever AI coding agents you have installed, applying fixes
   directly to the working tree.</em>
 </p>
@@ -23,7 +23,7 @@
   <img src="assets/dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="900">
 </p>
 
-One static binary loops 53 review prompts over your repository, hands each one
+One static binary loops 54 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
 - **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
@@ -178,6 +178,7 @@ Every review is one prompt file. Run all of them, a named set (`-r quick`,
 | `numerics-review` | money in floats, truncating casts, negative modulo |
 | `o11y-review` | logs, metrics, traces, alerts, and whether they connect |
 | `perf-review` | algorithms, memory, I/O, startup: measured, not guessed |
+| `perfectionism-review` | the missing half, the last case, the known shortcut |
 | `pkg-review` | deb, rpm, Flatpak, wheels, images: what actually ships |
 | `privacy-review` | personal data collected, shared, retained, deleted |
 | `prompt-review` | whether these prompts work as instructions to an agent |
