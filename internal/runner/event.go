@@ -120,6 +120,13 @@ type Bus struct {
 	subs   []chan Event
 	closed bool
 
+	// inflight counts the Publish calls that have read the subscriber list and
+	// are delivering to it. A delivery to a stalled subscriber blocks, and it
+	// must not block anything else: Close waits on this counter instead of on
+	// the subscriber lock, and a subscriber list that is being read is never
+	// mutated under a reader.
+	inflight sync.WaitGroup
+
 	// Now is the run's clock. It stamps events that arrive without a
 	// timestamp of their own, and the runner reads it for start time,
 	// elapsed, the runtime budget, and a clock-derived seed. Injectable
@@ -164,16 +171,26 @@ func Droppable(k Kind) bool { return k == EvOutput || k == EvUsage }
 // Publish delivers an event to every subscriber. Droppable kinds are skipped
 // for a subscriber whose buffer is full; every other kind blocks until
 // delivered. After Close it does nothing.
+//
+// The subscriber list is read under the lock and the deliveries happen outside
+// it, because a delivery to a subscriber that stopped draining blocks, and
+// holding the lock across it would park every Subscribe and Close behind that
+// one subscriber. Close waits for the deliveries already under way before it
+// closes the channels, which is why the snapshot is safe.
 func (b *Bus) Publish(e Event) {
 	if e.Time.IsZero() {
 		e.Time = b.now()
 	}
 	b.mu.RLock()
-	defer b.mu.RUnlock()
 	if b.closed {
+		b.mu.RUnlock()
 		return
 	}
-	for _, ch := range b.subs {
+	subs := b.subs
+	b.inflight.Add(1)
+	b.mu.RUnlock()
+	defer b.inflight.Done()
+	for _, ch := range subs {
 		if Droppable(e.Kind) {
 			select {
 			case ch <- e:
@@ -185,8 +202,9 @@ func (b *Bus) Publish(e Event) {
 	}
 }
 
-// Close closes every subscriber channel. Later Publish calls are dropped, and
-// Close itself is idempotent.
+// Close closes every subscriber channel, after the deliveries already in
+// flight have finished, so no send lands on a closed channel. Later Publish
+// calls are dropped, and Close itself is idempotent.
 func (b *Bus) Close() {
 	b.mu.Lock()
 	if b.closed {
@@ -197,6 +215,7 @@ func (b *Bus) Close() {
 	subs := b.subs
 	b.subs = nil
 	b.mu.Unlock()
+	b.inflight.Wait()
 	for _, ch := range subs {
 		close(ch)
 	}

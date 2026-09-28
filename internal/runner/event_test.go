@@ -154,3 +154,37 @@ func TestBusConcurrentClose(t *testing.T) {
 	// Publishing after Close must be dropped and never panic.
 	bus.Publish(Event{Kind: EvLog, Text: "after close"})
 }
+
+// A subscriber that stops draining blocks the delivery to it, and that
+// delivery must not hold the bus lock: a new subscriber still gets in, and
+// Close returns once the stalled subscriber has been read from.
+func TestAStalledSubscriberDoesNotLockTheBus(t *testing.T) {
+	bus := NewBus()
+	stalled := bus.Subscribe(0)
+
+	// review_end is not droppable, so this delivery waits for the reader.
+	published := make(chan struct{})
+	go func() {
+		bus.Publish(Event{Kind: EvReviewEnd, Review: "test"})
+		close(published)
+	}()
+
+	sub := make(chan struct{})
+	go func() { bus.Subscribe(1); close(sub) }()
+	select {
+	case <-sub:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Subscribe blocked behind an in-flight delivery")
+	}
+	select {
+	case <-published:
+		t.Fatal("delivery to an unread subscriber did not block")
+	default:
+	}
+
+	if _, ok := <-stalled; !ok {
+		t.Fatal("review_end never reached the stalled subscriber")
+	}
+	<-published
+	bus.Close()
+}
