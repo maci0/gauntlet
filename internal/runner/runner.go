@@ -1220,7 +1220,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		res.Status = StatusFail
 		res.Detail = pr.Err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
@@ -1228,8 +1228,9 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)
 		res.Status = StatusFail
+		res.Detail = withNote(fmt.Sprintf("%s exited %d", spec.Label(), pr.ExitCode), pr.Note)
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
@@ -1378,11 +1379,25 @@ const maxBackoffDoublings = 32
 // working tree is restored to the snapshot taken before the first attempt,
 // including the user's own uncommitted files. Either way the failed attempt's
 // half-applied fixes cannot leak into what the retry sees, commits, or merges.
-func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.Worktree,
+//
+// note is the agent's own last line, and it can end the same-agent attempts
+// before they start: a spent quota or a rejected key is a statement about the
+// account, and the same command spends its whole budget to hear it again. The
+// fallback to another agent still runs, because another CLI may hold another
+// account, and the operator's --usage-limit is the one that stops a run whose
+// agents share one window.
+func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 
 	if ctx.Err() != nil || r.budgetExhausted() != "" {
 		return Result{}, false
+	}
+	if attempt < r.cfg.Retries && terminalAgentFailure(note) {
+		// Say it rather than skip silently: an operator reading the log has to
+		// be able to tell a decision from a bug.
+		r.log("Not retrying %s with %s: it stopped for a reason another attempt cannot clear (%s)",
+			review, failed.Label(), note)
+		attempt = r.cfg.Retries
 	}
 	if attempt < r.cfg.Retries {
 		delay := r.backoff(review, attempt)
@@ -1420,7 +1435,7 @@ func (r *Runner) retry(ctx context.Context, review string, loopNo int, wt *gitx.
 // (a prompt over one CLI's argument limit is under another's).
 func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loopNo int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
-	return r.retry(ctx, review, loopNo, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
+	return r.retry(ctx, review, "", loopNo, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
 }
 
 // resetForRetry rewinds the checkout to what the first attempt saw before the

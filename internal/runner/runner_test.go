@@ -1197,7 +1197,7 @@ func TestRetryStopsAtRuntimeBudget(t *testing.T) {
 				bus: bus,
 				st:  &Stats{Start: start},
 			}
-			if _, retried := r.retry(context.Background(), "sec-review", 1, nil,
+			if _, retried := r.retry(context.Background(), "sec-review", "", 1, nil,
 				nil, r.cfg.Agents[0], 1, 0); retried {
 				t.Fatal("retried after the runtime budget expired")
 			}
