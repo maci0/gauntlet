@@ -2816,6 +2816,7 @@ echo "RESULT: changed=1"`)
 		t.Fatal("the merge was not reported on the bus")
 	}
 }
+
 // A command that would not build is a pure function of the prompt and the
 // spec: building it again on the same agent fails the same way, and the wait
 // before each try only makes the failure slower. The fallback still runs,

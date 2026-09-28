@@ -217,10 +217,11 @@ publishes through a draft, so a failed upload is never
 visible to consumers. A tag with no matching CHANGELOG section fails before
 anything is built. Cut the tag from a commit `main` already carries: the
 workflow does not re-run the pull-request checks, and a tag is what
-`gauntlet update` serves. It enforces that rule itself, refusing a tag whose
-commit `origin/main` does not carry before it builds anything, so a release
-cannot ship source no pull request ever saw. Land the branch first, then tag
-`main`.
+`gauntlet update` serves. It refuses a tag older than the newest published
+release, and one whose commit `origin/main` does not carry, both before the build:
+`releases/latest` is what every consumer resolves, so a stale tag published
+there is a downgrade delivered to everyone and the immutability rule then
+blocks putting it right. Land the branch first, then tag `main`.
 
 The post-build half of that is `make smoke VERSION=<version>`, the target both
 the release job and the pull-request `dist` job run: it starts the host binary

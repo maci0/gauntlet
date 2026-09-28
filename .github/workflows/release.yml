@@ -44,8 +44,9 @@ jobs:
           # Publishing talks to the API through gh and GH_TOKEN; nothing here
           # needs git credentials, and this job's token can create releases.
           persist-credentials: false
-          # The ancestry check below reads main, so the whole history comes
-          # with the checkout instead of the tag's single commit.
+          # The ancestry check below reads main's history, which a clone of
+          # one tag does not carry: fetch-depth 0 brings every branch, so
+          # refs/remotes/origin/main is there to compare against.
           fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -75,6 +76,42 @@ jobs:
             END { exit !content }
           ' dist/notes.md; then
             echo "missing or empty CHANGELOG.md section for $version; add release notes before tagging" >&2
+            exit 1
+          fi
+
+      # A tag is the entire release process, so two mistakes in one are worth
+      # stopping before anything is built or uploaded. The first is a tag
+      # older than what is already published: `releases/latest` is what both
+      # `gauntlet update` and the README install resolve, so publishing one
+      # hands every consumer an older version, and the immutable-release rule
+      # below then refuses to put it back. The second is a tag on a commit
+      # main does not carry: it publishes code the next release cut from main
+      # silently reverts. A released heading and a tag correspond one to one,
+      # so either mistake reaches this step with a CHANGELOG section to
+      # extract, and the section alone cannot tell them apart.
+      - name: Refuse a tag that is not a new release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu -o pipefail
+          version="${GITHUB_REF_NAME#v}"
+          base="${version%%+*}"
+          # sort -V orders a prerelease below its final (1.26.0-rc.1 before
+          # 1.26.0), so a release candidate is publishable and a stale
+          # candidate is not, which is the same order a consumer's updater
+          # resolves releases/latest in.
+          latest="$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
+            | sed 's/^v//; s/+.*//' | sort -V | tail -1)"
+          # An empty latest (the first release) leaves the empty line first and
+          # the tag last, so only a tag below an existing release fails.
+          newest="$(printf '%s\n%s\n' "$latest" "$base" | sort -V | tail -1)"
+          if [ "$newest" != "$base" ]; then
+            echo "tag $GITHUB_REF_NAME is older than the published v$latest; a release only ever moves forward" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "tag $GITHUB_REF_NAME is on a commit main does not carry;" \
+              "the next release from main would revert it" >&2
             exit 1
           fi
 
