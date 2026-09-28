@@ -32,6 +32,14 @@ jobs:
   scan:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    # `make vuln` fetches govulncheck from the module proxy and runs it, so
+    # this is the job that executes the most third-party code in the
+    # repository. It talks to the advisory database and the proxy, never to
+    # the API, so neither token name is in its environment. The test and
+    # release jobs clear both for the same reason.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

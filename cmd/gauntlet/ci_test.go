@@ -136,25 +136,70 @@ func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	}
 }
 
-// The test job is the one job in ci.yml that runs code end to end: the suite
-// starts the agent CLIs a contributor has installed and reads their output, so
-// every process it spawns inherits this environment. No step in the job needs
-// a token (checkout persists none, and check, test, and cover reach the module
-// proxy and nothing else), so clearing both names keeps a credential out of
-// reach of the agents the tests drive. The release job does the same, and
-// there the token can write.
-func TestTestJobClearsTheTokenItsProcessesInherit(t *testing.T) {
-	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
-	_, rest, ok := strings.Cut(text, "\n  test:\n")
-	if !ok {
-		t.Fatal("ci.yml has no test job")
+// Every job in every workflow runs code that inherits its environment: the
+// test suite spawns the agent CLIs a contributor has installed, the scripts
+// job resolves and executes four tools from PyPI, vulnscan runs govulncheck
+// from the module proxy, and the dist jobs build and run what they built. No
+// step outside the release job's Publish needs a token (checkout persists
+// none, and everything else reaches the module proxy, PyPI, or the advisory
+// database), so every job clears both names and the write-capable token stays
+// confined to the step that publishes. A job added later is covered by this
+// reading every file rather than by remembering to extend a list.
+func TestEveryJobClearsTheTokenItsProcessesInherit(t *testing.T) {
+	root := moduleRoot(t)
+	dir := filepath.Join(root, ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
 	}
-	job, _, _ := strings.Cut(rest, "\n  scripts:\n")
-	for _, want := range []string{`GITHUB_TOKEN: ""`, `GH_TOKEN: ""`} {
-		if !strings.Contains(job, want) {
-			t.Errorf("test job must carry %s; the suite spawns agent CLIs that inherit this environment", want)
+	var jobs int
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".yml") {
+			continue
+		}
+		name := ent.Name()
+		for job, block := range workflowJobs(readRepoFile(t, filepath.Join(dir, name))) {
+			jobs++
+			for _, want := range []string{`GITHUB_TOKEN: ""`, `GH_TOKEN: ""`} {
+				if !strings.Contains(block, want) {
+					t.Errorf("%s: job %s must carry %s; every step in it runs code that inherits this environment", name, job, want)
+				}
+			}
 		}
 	}
+	if jobs == 0 {
+		t.Fatal("no workflow jobs to check")
+	}
+}
+
+var jobName = regexp.MustCompile(`^[a-z][a-z0-9_-]*:$`)
+
+// workflowJobs maps each job name in a workflow to its block. A job key sits
+// at exactly two spaces of indent and nothing else, which is what keeps a
+// shell keyword inside a `run: |` body from reading as one.
+func workflowJobs(text string) map[string]string {
+	lines := strings.Split(text, "\n")
+	jobs := map[string]string{}
+	inJobs, name := false, ""
+	for _, line := range lines {
+		switch {
+		case line == "jobs:":
+			inJobs = true
+		case !inJobs:
+			continue
+		case line == "" || line[0] != ' ':
+			// The next top-level key ends the section.
+			if line != "" {
+				inJobs = false
+			}
+		case jobName.MatchString(strings.TrimPrefix(line, "  ")) && !strings.HasPrefix(line, "   "):
+			name = strings.TrimSuffix(strings.TrimPrefix(line, "  "), ":")
+			jobs[name] = ""
+		case name != "":
+			jobs[name] += line + "\n"
+		}
+	}
+	return jobs
 }
 
 // A tag is the only review the bytes behind it can get: the release job runs

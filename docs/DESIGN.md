@@ -174,8 +174,11 @@ Supply-chain posture, and what any new dependency inherits as obligations:
 - A scheduled `govulncheck` job, plus one on every `go.mod`/`go.sum` change,
   reports vulnerabilities reachable from this code; dependabot owns version
   bumps, the scan owns advisories. Dependabot groups minor and patch bumps
-  into one pull request and leaves a major version in its own, so the pass
-  below is never riding along with a routine bump.
+  into one pull request and leaves a major version in its own, for the
+  modules and for the actions alike, so neither pass is ever riding along
+  with a routine bump. The tool versions the workflows name inside a `run:`
+  step are not dependabot's to track, and each is pinned in the Makefile and
+  in the workflow that runs it, with a test holding the two equal.
 - Licenses of every linked module are MIT or BSD-3-Clause, compatible with
   this repo's AGPL-3.0-or-later. `TestLinkedModuleLicenses` reads the
   LICENSE file of every module a shipped build links, transitive ones

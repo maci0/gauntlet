@@ -51,13 +51,17 @@ checkout, so an annotated tag is read through to its commit, and it is a
 claim about which commits reached a pull request, not an integrity control:
 it narrows nothing in the numbered risk table. It does not cover a rewritten
 `main`, which the branch protection rules on the host do, and which cannot be
-read from the tree. The pull-request `test` job now clears `GITHUB_TOKEN` and
-`GH_TOKEN` (`.github/workflows/ci.yml:41-43`), the pattern the release job
-already used for its write token: that job is the one place here that runs
-code end to end, starting the agent CLIs the suite finds on `PATH`, so
-anything in its environment is reachable by those processes. No step there
-needs the token, and the workflow grants it `contents: read`, so this removes
-a handle rather than a capability.
+read from the tree. Every job in every workflow clears `GITHUB_TOKEN` and
+`GH_TOKEN` (`.github/workflows/ci.yml:41-43` for the pull-request `test` job,
+and `vulnscan.yml:40-42` for the scanner), the pattern the release job
+already used for its write token. The rule is the same everywhere because the
+exposure is: each of those jobs runs code that inherits its environment, and
+the widest of them is the `test` job, which starts the agent CLIs the suite
+finds on `PATH`, followed by the jobs that resolve and execute tools from PyPI
+and the module proxy. No step outside the release job's Publish needs the
+token, the workflows grant it `contents: read`, and the release token can
+write only inside the step that publishes, so this removes a handle rather
+than a capability.
 
 Last reviewed previously: 2026-09-28 against commit 41faffe. That pass added one
 surface and one check. The release job now signs a build-provenance
@@ -368,7 +372,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
   the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
   The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:51`,
-  invoked by `make vuln` (`.github/workflows/vulnscan.yml:33-46`). Release and
+  invoked by `make vuln` (`.github/workflows/vulnscan.yml:32-54`). Release and
   checksum downloads enforce `validateAssetURL` across HTTP redirects and cap
   redirects at 10 (`client.CheckRedirect`, `internal/selfupdate/selfupdate.go:145-157`).
   Release checksum verification uses constant-time comparison

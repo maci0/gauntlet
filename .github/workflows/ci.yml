@@ -71,6 +71,14 @@ jobs:
   scripts:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    # Same rule the test job follows: a step that runs code must not inherit
+    # a credential. uvx resolves and executes four tools from PyPI here, and
+    # none of them calls the API, so both names are cleared. The job's own
+    # permission is contents: read either way, and this is about not handing
+    # it to a downloaded binary at all.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -126,6 +134,13 @@ jobs:
     # every platform is compiled from cold on both sides; the previous bound
     # left too little room for that on a loaded runner.
     timeout-minutes: 30
+    # Nothing in this job needs the API: checkout persists no credentials and
+    # every target below (artifacts, smoke, repro) runs this tree's own code
+    # against the module proxy. The test job and the release job clear both
+    # names for the same reason, and there the token could write.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -166,7 +181,16 @@ jobs:
   # reproducible release quietly stops being one.
   repro-macos:
     runs-on: macos-15
-    timeout-minutes: 20
+    # The same work the dist job's bound was widened for: eight cold
+    # cross-compiles, two per platform, none of them sharing a build cache.
+    # A timeout that fires half way through reports a failure nobody can
+    # reproduce, since the source and the runner are both unchanged.
+    timeout-minutes: 30
+    # `make repro` builds and compares this tree's own code and reaches the
+    # module proxy and nothing else, so neither token name is in reach of it.
+    env:
+      GITHUB_TOKEN: ""
+      GH_TOKEN: ""
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
