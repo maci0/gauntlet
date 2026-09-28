@@ -118,8 +118,9 @@ type quarantined struct {
 	path string
 }
 
-// listQuarantined walks pruned/ newest first, by the same run id ordering
-// listJournals uses, so a restore names runs in the order they happened.
+// listQuarantined walks pruned/ newest first, by the same run id ordering and
+// the same one-entry-per-id rule listJournals uses, so a restore names runs in
+// the order they happened.
 //
 // pruned/ itself is walked as well as its shards: a journal whose run id names
 // no shard, which a hand-named run or a rearranged tree produces, is filed at
@@ -154,10 +155,38 @@ func listQuarantined() ([]quarantined, error) {
 		}
 		out = append(out, batch...)
 	}
-	slices.SortFunc(out, func(a, b quarantined) int {
-		return runIDOrder(b.id, a.id)
+	// os.ReadDir is sorted by name and the sort below is stable, so copies of
+	// one id that the preference cannot separate keep the order they were read
+	// in and the choice is the same on every machine.
+	slices.SortStableFunc(out, func(a, b quarantined) int {
+		if c := runIDOrder(b.id, a.id); c != 0 {
+			return c
+		}
+		return quarantinePreference(a) - quarantinePreference(b)
 	})
-	return out, nil
+	// An id is held once however many files carry it, the rule allJournals
+	// applies to runs/ and for the same reason: the keep window trims by
+	// position, so a second copy spends a slot and can push a real quarantined
+	// run out, and a user is told about a run they can restore once.
+	deduped := out[:0]
+	for i, q := range out {
+		if i > 0 && q.id == out[i-1].id {
+			continue
+		}
+		deduped = append(deduped, q)
+	}
+	return deduped, nil
+}
+
+// quarantinePreference ranks the copies of one run id: the one in the shard
+// its id names, which is where quarantine and Restore file a run, ahead of a
+// stray filed beside it. The twin of journalPreference.
+func quarantinePreference(q quarantined) int {
+	if shard := shardFromRunID(q.id); shard != "" &&
+		filepath.Base(filepath.Dir(q.path)) == shard {
+		return 0
+	}
+	return 1
 }
 
 // quarantinedInDir returns the quarantined journals one directory holds.
@@ -237,6 +266,14 @@ func Restore(runID string) error {
 		if err := gauntlethome.SyncDir(filepath.Dir(src)); err != nil {
 			return err
 		}
+		// The move is what empties the shard it came out of, so the directory
+		// goes with it, the way the prune's own move does. Left behind, one
+		// empty directory per restore is the unbounded growth the quarantine
+		// bound exists to stop, and no later trim can remove it: trimQuarantine
+		// only unlinks files and the shard no longer holds any.
+		if err := removeEmptyDirs(map[string]struct{}{filepath.Dir(src): {}}); err != nil {
+			return err
+		}
 		// A row left over from before the prune would be reconstructed from
 		// the journal on the next listing anyway, but writing it here makes
 		// the restore visible to a reader that has the index cached.
@@ -252,19 +289,23 @@ func Restore(runID string) error {
 // syncs the parent of each one that goes, since a directory stays until its
 // parent records the removal.
 func removeEmptyDirs(touched map[string]struct{}) error {
-	emptied := false
+	root := prunedDir()
+	emptied, removedRoot := false, false
 	for dir := range touched {
 		switch err := os.Remove(dir); {
 		case err == nil:
 			emptied = true
+			removedRoot = removedRoot || dir == root
 		case errors.Is(err, fs.ErrNotExist):
 		case errors.Is(err, syscall.ENOTEMPTY), errors.Is(err, syscall.EEXIST):
 		default:
 			return err
 		}
 	}
-	if !emptied {
+	if !emptied || removedRoot {
+		// pruned/ itself is the tree the bound applies to, so there is no
+		// parent here to sync its removal, and quarantine recreates it.
 		return nil
 	}
-	return gauntlethome.SyncDir(prunedDir())
+	return gauntlethome.SyncDir(root)
 }

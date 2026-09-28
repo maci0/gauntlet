@@ -298,6 +298,82 @@ func TestRestoreListsARunFiledWithoutAShard(t *testing.T) {
 	}
 }
 
+// A run id filed twice in pruned/ is one run, the rule the listing already
+// applies to runs/. A quarantine that counted the copies separately spends two
+// slots of the keep on one run, prints it twice, and can push a real
+// quarantined run out of the bound.
+func TestQuarantineCountsARunIDOnce(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	for i, id := range []string{"20260825T090000Z-0001", "20260825T100000Z-0002"} {
+		record(t, id, base.Add(time.Duration(i)*time.Hour))
+		if err := quarantine(id, journalPath(id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The older run's journal a second time, in a shard its id does not name:
+	// a quarantine tree rearranged by hand.
+	stray := filepath.Join(prunedDir(), "2026-08-26", "20260825T090000Z-0001.jsonl")
+	if err := os.MkdirAll(filepath.Dir(stray), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(quarantinePath("20260825T090000Z-0001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	held, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 2 || held[0] != "20260825T100000Z-0002" || held[1] != "20260825T090000Z-0001" {
+		t.Fatalf("quarantine is %v, want each run once, newest first", held)
+	}
+	st, err := Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Pruned != 2 {
+		t.Errorf("Inspect counts %d pruned runs, want 2", st.Pruned)
+	}
+	// A keep of two covers both runs. Counting the stray copy would spend a
+	// slot on the duplicate and unlink the older run to stay inside it.
+	if err := trimQuarantine(2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(quarantinePath("20260825T090000Z-0001")); err != nil {
+		t.Errorf("the older run was pushed out by its own duplicate: %v", err)
+	}
+}
+
+// A restore is the other move that empties a directory, so the shard it took
+// the journal out of goes with it, the way the prune's own move does. No later
+// trim can: that one only unlinks files, and the emptied shard holds none.
+func TestRestoreRemovesTheShardItEmptied(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	record(t, "20260825T090000Z-0001", time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC))
+	if err := quarantine("20260825T090000Z-0001", journalPath("20260825T090000Z-0001")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore("20260825T090000Z-0001"); err != nil {
+		t.Fatalf("Restore: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(prunedDir(), "2026-08-25")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the emptied quarantine shard is still there: %v", err)
+	}
+	// The run is back in the listing, which is the half that matters.
+	rows, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RunID != "20260825T090000Z-0001" {
+		t.Fatalf("listing after the restore is %v, want the restored run", rows)
+	}
+}
+
 // Inspect is what a restore is checked against, so it counts a row whose
 // journal is gone, not just a journal the index never learned of.
 func TestInspectCountsBothDisagreements(t *testing.T) {

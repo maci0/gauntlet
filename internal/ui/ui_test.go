@@ -1978,3 +1978,28 @@ func TestDashboardNamesTheWaitForTheFirstFrame(t *testing.T) {
 		t.Fatalf("the first frame says nothing: %q", got)
 	}
 }
+
+// The narrowed feed keeps the failures and drops the narration, so a line the
+// classifier reads as plain narration is a failure the reader cannot see. The
+// commit and merge steps carry their verdict mid-line, past the prefix arms.
+func TestLogKindKeepsFailuresThatDoNotStartTheLine(t *testing.T) {
+	for _, c := range []struct {
+		text string
+		want normalize.Kind
+	}{
+		{"commit+push step FAILED to launch (codex): no such binary", normalize.Error},
+		{"commit step FAILED (claude), exit 1", normalize.Error},
+		{"Not merging into main: 2 uncommitted path(s) would be left behind", normalize.Error},
+		{"Not merging into main: this tree is on a detached HEAD", normalize.Error},
+		{"FAILED: code-review (codex) after 30m, exit 1", normalize.Error},
+		{"Push after the commit step failed: rejected", normalize.Error},
+		{"MERGE CONFLICT: review/x does not merge into main (add/add)", normalize.Error},
+		{"Cannot merge review/x into main: refusing unrelated histories", normalize.Error},
+		{"Running commit step with codex", normalize.Plain},
+		{"code-review step done (codex)", normalize.Plain},
+	} {
+		if got := logKind(c.text); got != c.want {
+			t.Errorf("logKind(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}

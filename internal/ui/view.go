@@ -210,10 +210,14 @@ func logKind(text string) normalize.Kind {
 		strings.HasPrefix(text, "TIMEOUT"),
 		strings.HasPrefix(text, "STACK STOPPED"),
 		strings.HasPrefix(text, "Cannot "),
+		strings.HasPrefix(text, "Not merging"),
 		strings.HasPrefix(text, "Interrupted"),
 		strings.HasPrefix(text, "Warning:"),
 		strings.HasPrefix(text, "Conflict step"),
 		strings.HasPrefix(text, "To land it"),
+		// The commit step carries its verdict mid-line ("commit+push step
+		// FAILED (codex), exit 1"), so the prefix arms above never see it.
+		strings.Contains(text, "FAILED"),
 		strings.Contains(text, " failed"):
 		return normalize.Error
 	}
