@@ -765,6 +765,32 @@ func openRegular(path string) (*os.File, os.FileInfo, error) {
 	return f, fi, nil
 }
 
+// openAppendNoFollow opens path for appending, creating it at perm if it does
+// not exist, and refusing a symlink at the final path component. os.OpenFile
+// has no O_NOFOLLOW, and a component the reviewed repository picks can be a
+// link: without the flag the append lands in whatever the link points at.
+func openAppendNoFollow(path string, perm os.FileMode) (*os.File, error) {
+	fd, err := syscall.Open(path,
+		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_APPEND|syscall.O_NOFOLLOW|syscall.O_CLOEXEC,
+		uint32(perm))
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), path)
+	// A hardlink is a real regular file and a legitimate way to share one
+	// exclude between worktrees, so only a non-regular descriptor is refused.
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, errors.New("not a regular file")
+	}
+	return f, nil
+}
+
 // pruneLineCounts drops entries that are not in this sample's untracked
 // set. Reviews commit or delete files they created; without this those
 // paths occupy the cap forever and later untracked files are never cached.

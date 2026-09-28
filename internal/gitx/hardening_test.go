@@ -730,6 +730,97 @@ func TestExcludeOwnArtifactsRefusesASymlinkedInfoDir(t *testing.T) {
 	}
 }
 
+// The exclude file is as plantable as the directory above it, and the reviewed
+// tree picks gitDir. A link at the final component must not redirect the
+// append, and must not feed an outside file's contents into the substring
+// check that decides what is missing.
+func TestExcludeOwnArtifactsRefusesASymlinkedExcludeFile(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	outside := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(outside, []byte("original\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(r.Dir, ".git", "info", "exclude")
+	// git init leaves a real exclude behind, and Symlink over an existing
+	// path fails, so the test would not reach the code it is here to pin.
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("cannot plant a symlink at %s: %v", link, err)
+	}
+
+	r.ExcludeOwnArtifacts(ctx)
+
+	body, err := os.ReadFile(outside)
+	if err != nil {
+		t.Fatalf("reading the planted target: %v", err)
+	}
+	if string(body) != "original\n" {
+		t.Fatalf("ExcludeOwnArtifacts appended through a symlinked exclude: %q", body)
+	}
+	// The refused read must not count as "already excluded" either: the real
+	// file was never read, so a later honest run still finds both entries
+	// missing and appends them.
+	if _, _, err := openRegular(link); err == nil {
+		t.Fatalf("openRegular followed the symlink at %s", link)
+	}
+}
+
+// openRegular is the reader ExcludeOwnArtifacts now uses, and its refusal is
+// what keeps a planted link from being read at all.
+func TestOpenRegularRefusesASymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("secret\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	if f, _, err := openRegular(link); err == nil {
+		f.Close()
+		t.Fatalf("openRegular followed the symlink at %s", link)
+	}
+}
+
+// openAppendNoFollow is the writer's other half: a link at the final
+// component must be refused even when the parent directory is a real one.
+func TestOpenAppendNoFollowRefusesASymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	f, err := openAppendNoFollow(link, 0o644)
+	if err == nil {
+		f.Close()
+		t.Fatalf("openAppendNoFollow followed the symlink at %s", link)
+	}
+	if body, err := os.ReadFile(target); err != nil || len(body) != 0 {
+		t.Fatalf("the planted target was written: %q (%v)", body, err)
+	}
+	// The same path as a real file still works, or the exclude append is
+	// broken for every run.
+	f, err = openAppendNoFollow(filepath.Join(dir, "plain"), 0o600)
+	if err != nil {
+		t.Fatalf("openAppendNoFollow on a fresh path: %v", err)
+	}
+	if _, err := f.WriteString("x\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A review runs with its permissions bypassed and can write .git/config
 // itself. The per-repo overlay that blanks filter/merge/diff drivers is
 // derived from that file, so an overlay computed once and never rechecked

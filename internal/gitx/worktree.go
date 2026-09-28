@@ -83,8 +83,17 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 		gitDir = filepath.Join(r.Dir, gitDir)
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
-	body, _ := os.ReadFile(path)
-	text := string(body)
+	// The exclude file itself is as plantable as its directory, so the read
+	// refuses a symlink too: following one would read an arbitrary file's
+	// contents into the substring check below. A missing file is the normal
+	// first-run case, and so is a refused symlink, so the error is dropped
+	// and the text is read as empty either way.
+	var text string
+	if f, _, err := openRegular(path); err == nil {
+		body, _ := io.ReadAll(f)
+		_ = f.Close()
+		text = string(body)
+	}
 	var missing []string
 	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
 		if !strings.Contains(text, entry) {
@@ -97,15 +106,17 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	// MkdirAll and OpenFile both follow a symlink at any component, and the
+	// MkdirAll and the open both follow a symlink at any component, and the
 	// reviewed tree picks gitDir: `.git` can be a symlink or a gitfile whose
-	// path lands elsewhere, and `.git/info` can be planted outright. Appending
-	// through either writes a line the operator did not ask for, into a file
-	// outside the repository. Re-check on the descriptor's own directory.
+	// path lands elsewhere, `.git/info` can be planted outright, and
+	// `exclude` itself can be a link to any file on the machine. Appending
+	// through any of them writes a line the operator did not ask for, into a
+	// file outside the repository. The directory is re-checked, and the open
+	// carries O_NOFOLLOW so the last component cannot be the link either.
 	if !realDir(filepath.Dir(path)) {
 		return fmt.Errorf("git exclude directory %s is not a real directory", filepath.Dir(path))
 	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	f, err := openAppendNoFollow(path, 0o644)
 	if err != nil {
 		return err
 	}
