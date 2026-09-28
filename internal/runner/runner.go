@@ -477,7 +477,11 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 		r.log("%d untracked file(s) stay put and are not reviewed: %s",
 			n, humanize.List(safePaths(changes.Untracked), 3))
 	}
-	r.repo.PruneWorktrees(ctx)
+	// The run lock on this directory is held, so nothing under the worktree
+	// root belongs to a live run: whatever is in it is scratch a previous
+	// process was killed before it could remove, and each entry is a full
+	// copy of the tree.
+	r.repo.SweepWorktreeRoot(ctx)
 	return nil
 }
 

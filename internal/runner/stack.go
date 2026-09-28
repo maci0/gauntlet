@@ -184,7 +184,10 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	if err := repo.CanPushBranch(ctx, cfg.PushRemote, baseTip, probe); err != nil {
 		return nil, fmt.Errorf("cannot push stack branches to %s: %w", cfg.PushRemote, err)
 	}
-	repo.PruneWorktrees(ctx)
+	// The run lock is held for this directory by the time a stack is prepared,
+	// so the worktree root holds nothing a live run is using: whatever is left
+	// in it is scratch a killed process never removed.
+	repo.SweepWorktreeRoot(ctx)
 	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh, ReadRemote: readRemote}, nil
 }
 
