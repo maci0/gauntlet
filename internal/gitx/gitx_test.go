@@ -211,15 +211,21 @@ func TestCountLines(t *testing.T) {
 		}
 	}
 
-	// A symlink must not be followed: O_NOFOLLOW refuses it at open time.
-	target := write("target.txt", "line\n")
-	link := filepath.Join(dir, "link.txt")
-	if err := os.Symlink(target, link); err != nil {
-		t.Skipf("symlinks unavailable: %v", err)
-	}
-	if got := (&Repo{Dir: dir}).countLinesCached(link); got != 0 {
-		t.Errorf("a symlink counted %d lines; it must be refused outright", got)
-	}
+	// A symlink must not be followed: O_NOFOLLOW refuses it at open time. Its
+	// own subtest, so a link that cannot be planted cannot be read as a pass.
+	t.Run("symlink is refused", func(t *testing.T) {
+		target := filepath.Join(dir, "target.txt")
+		if err := os.WriteFile(target, []byte("line\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(dir, "link.txt")
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatalf("cannot plant a symlink at %s: %v", link, err)
+		}
+		if got := (&Repo{Dir: dir}).countLinesCached(link); got != 0 {
+			t.Errorf("a symlink counted %d lines; it must be refused outright", got)
+		}
+	})
 }
 
 // newRepo makes a git repository with one commit and opens a handle on it.
@@ -1486,10 +1492,11 @@ func TestRealPath(t *testing.T) {
 	}
 
 	link := filepath.Join(dir, "link_to_file")
-	if err := os.Symlink(target, link); err == nil {
-		if got := RealPath(link); got != canonical {
-			t.Fatalf("RealPath(symlink %q) = %q, want %q", link, got, canonical)
-		}
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatalf("cannot plant a symlink at %s: %v", link, err)
+	}
+	if got := RealPath(link); got != canonical {
+		t.Fatalf("RealPath(symlink %q) = %q, want %q", link, got, canonical)
 	}
 
 	// Non-existent path returns absolute path
@@ -1500,22 +1507,30 @@ func TestRealPath(t *testing.T) {
 }
 
 func TestParseShortstatRefusesAnImpossibleCount(t *testing.T) {
-	cases := []struct{ name, out string }{
-		{"empty", ""},
-		{"no files changed", " 0 files changed"},
-		{"ordinary", " 3 files changed, 12 insertions(+), 4 deletions(-)"},
-		{"singular", " 1 file changed, 1 insertion(+), 1 deletion(-)"},
+	cases := []struct {
+		name    string
+		out     string
+		wantIns int
+		wantDel int
+	}{
+		{name: "empty", out: ""},
+		{name: "no files changed", out: " 0 files changed"},
+		{name: "ordinary", out: " 3 files changed, 12 insertions(+), 4 deletions(-)", wantIns: 12, wantDel: 4},
+		{name: "singular", out: " 1 file changed, 1 insertion(+), 1 deletion(-)", wantIns: 1, wantDel: 1},
 		// Atoi hands back the clamped maximum beside its range error, and a
 		// clamped maximum is added to the untracked files' counts before the
 		// journal is written, so it has to be refused here instead.
-		{"past the int range", " 1 file changed, 99999999999999999999 insertions(+), 2 deletions(-)"},
-		{"past the plausible range", " 1 file changed, 9999999999999 insertions(+), 2 deletions(-)"},
+		{name: "past the int range", out: " 1 file changed, 99999999999999999999 insertions(+), 2 deletions(-)", wantDel: 2},
+		{name: "past the plausible range", out: " 1 file changed, 9999999999999 insertions(+), 2 deletions(-)", wantDel: 2},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			st := parseShortstat([]byte(tc.out))
 			if st.Ins < 0 || st.Del < 0 {
 				t.Fatalf("parseShortstat(%q) = %+v, want no negative count", tc.out, st)
+			}
+			if st.Ins != tc.wantIns || st.Del != tc.wantDel {
+				t.Fatalf("parseShortstat(%q) = %+v, want %d insertions and %d deletions", tc.out, st, tc.wantIns, tc.wantDel)
 			}
 		})
 	}

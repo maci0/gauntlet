@@ -828,12 +828,16 @@ func TestActivityTitleClearsContrastFloors(t *testing.T) {
 			t.Fatalf("rate %f: activityTitle missing ACTIVITY header: %q", rate, title)
 		}
 	}
-	// Verify that a low positive rate (which falls into the cold end where heatColor is cTrack)
-	// gets floored to cTeal to preserve the 4.5:1 text contrast floor.
-	cur := 0.5
-	h := heatColor(clamp01(cur / 50))
-	if h != cTrack {
-		t.Fatalf("precondition failed: heatColor(%f) should have returned cTrack, got %v", cur/50, h)
+	// A low positive rate sits where heatColor returns the unlit track tone,
+	// so the title has to floor it to the first readable step of the ramp.
+	// 0.5 lines/s is 0.01 of the full scale, inside the track band.
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
+	if h := heatColor(clamp01(0.5 / activityRateFull)); h != cTrack {
+		t.Fatalf("precondition failed: the cold end of the ramp is %v, want the track tone", h)
 	}
 	if got := contrastRatio(t, cTeal.Dark, darkBase); got < 4.5 {
 		t.Errorf("cTeal dark is %.2f:1 on dark base, want >= 4.5", got)
@@ -841,6 +845,27 @@ func TestActivityTitleClearsContrastFloors(t *testing.T) {
 	if got := contrastRatio(t, cTeal.Light, lightBase); got < 4.5 {
 		t.Errorf("cTeal light is %.2f:1 on light base, want >= 4.5", got)
 	}
+	m.activity = []float64{0.5}
+	title := m.activityTitle()
+	if !strings.Contains(title, styledTitle(cTeal, "0.5")) {
+		t.Fatalf("a low positive rate is not floored to the first readable ramp step:\n%q", title)
+	}
+	// A rate of zero is not a measurement, so it must not wear the ramp at
+	// all: the dim value marker and the floored one have to look different.
+	m.activity = []float64{0}
+	zero := m.activityTitle()
+	if !strings.Contains(zero, styledTitle(cDim, "0")) {
+		t.Fatalf("a rate of zero is not drawn as an absent measurement:\n%q", zero)
+	}
+	if strings.Contains(zero, styledTitle(cTeal, "0")) {
+		t.Fatalf("a rate of zero rode the heat ramp:\n%q", zero)
+	}
+}
+
+// styledTitle is the value marker activityTitle paints, so the assertion
+// names the color rather than the escape sequence lipgloss chooses for it.
+func styledTitle(fg lipgloss.TerminalColor, value string) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(fg).Render("◆ " + value)
 }
 
 // The wordmark is the path-arrow teal, one hue: the README logos are a
@@ -1089,8 +1114,9 @@ func TestLaneCountersDropWholeColumnsWhenNarrow(t *testing.T) {
 	l.review, l.start = "perf-review", m.now.Add(-90*time.Second)
 	l.done, l.failed, l.tokens, l.thinkTokens = 33, 11, 4567890, 9876543
 	l.tokenRate, l.liveThinking, l.lastThinkAt = 12345, 1234567, m.now
-	for _, w := range []int{56, 60, 74, 90, 116, 140} {
-		row := stripANSI(firstLine(m.renderLanes(w, 8)))
+	for _, w := range []int{40, 48, 56, 60, 74, 90, 116, 140} {
+		lanes := m.renderLanes(w, 8)
+		row := stripANSI(firstLine(lanes))
 		if strings.Contains(row, "…") {
 			t.Fatalf("a %d column lane cut a value: %s", w, row)
 		}
@@ -1099,8 +1125,20 @@ func TestLaneCountersDropWholeColumnsWhenNarrow(t *testing.T) {
 				t.Fatalf("a %d column lane drew a half-label %q: %s", w, label, row)
 			}
 		}
-		if lipgloss.Width(stripANSI(m.renderLanes(w, 8))) > 0 && w < 56 {
-			t.Fatalf("a %d column lane overflows", w)
+		// A counter that lost its label is the failure this test is named
+		// for: a bare "33" is a number the reader takes for a measurement
+		// when it is a half of "33 done". Counting is all-or-nothing.
+		for count, label := range map[string]string{"33": " done", "11": " fail"} {
+			if strings.Contains(row, count) && !strings.Contains(row, count+label) {
+				t.Fatalf("a %d column lane drew %q without %q: %s", w, count, label, row)
+			}
+		}
+		// Every row the pane draws has to fit the pane it was asked for: a
+		// row wider than w is what makes the frame wrap a line per agent.
+		for i, line := range strings.Split(lanes, "\n") {
+			if got := lipgloss.Width(stripANSI(line)); got > w {
+				t.Fatalf("lane row %d of a %d column pane is %d wide: %q", i, w, got, line)
+			}
 		}
 	}
 	// The widest pane still shows every column, and the narrowest still shows
@@ -1161,22 +1199,76 @@ func TestMinimalViewAdvertisesOnlyKeysItCanShow(t *testing.T) {
 	}
 }
 
+// stripANSI removes what a terminal consumes rather than shows. Everything
+// here reads a rendered frame back as text, so a sequence this misses leaks
+// escape bytes into an assertion message and a sequence it over-reads eats
+// real content. An OSC is the case that differs: its payload is text and it
+// ends at BEL or ST, not at the next letter.
 func stripANSI(s string) string {
 	var b strings.Builder
-	inEsc := false
-	for _, r := range s {
-		switch {
-		case r == 0x1b:
-			inEsc = true
-		case inEsc:
-			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
-				inEsc = false
-			}
-		default:
-			b.WriteRune(r)
+	rs := []rune(s)
+	i := 0
+	for i < len(rs) {
+		if rs[i] != 0x1b {
+			b.WriteRune(rs[i])
+			i++
+			continue
 		}
+		if i+1 < len(rs) && rs[i+1] == ']' {
+			i += 2
+			for i < len(rs) && rs[i] != 0x07 {
+				if rs[i] == 0x1b && i+1 < len(rs) && rs[i+1] == '\\' {
+					i += 2
+					break
+				}
+				i++
+			}
+			if i < len(rs) && rs[i] == 0x07 {
+				i++ // the BEL that ended it
+			}
+			continue
+		}
+		if i+1 < len(rs) && rs[i+1] == '[' {
+			// A CSI: parameters, then a final ASCII letter.
+			i += 2
+			for i < len(rs) && !isASCIILetter(rs[i]) {
+				i++
+			}
+			if i < len(rs) {
+				i++
+			}
+			continue
+		}
+		// Any other escape is two characters, ESC and one more. Scanning to
+		// the next letter would eat the text after it: ESC ( B is a
+		// charset selection, not a run of letters to skip.
+		i += 2
 	}
 	return b.String()
+}
+
+func isASCIILetter(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+}
+
+func TestStripANSIRemovesSequencesAndKeepsTheRest(t *testing.T) {
+	for _, tc := range []struct {
+		name, in, want string
+	}{
+		{name: "plain", in: "plain text", want: "plain text"},
+		{name: "sgr", in: "\x1b[31mred\x1b[0m text", want: "red text"},
+		{name: "csi", in: "\x1b[2Jcleared", want: "cleared"},
+		{name: "two character escape", in: "\x1b(ball", want: "ball"},
+		{name: "osc with bel", in: "\x1b]0;window title\x07kept", want: "kept"},
+		{name: "osc with st", in: "\x1b]0;window title\x1b\\kept", want: "kept"},
+		{name: "trailing esc", in: "text\x1b[", want: "text"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := stripANSI(tc.in); got != tc.want {
+				t.Fatalf("stripANSI(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
 }
 
 // The feed filter narrows what is on screen without losing what was collected:
@@ -1263,7 +1355,10 @@ func TestHelpOverlayLeadsWithHowToClose(t *testing.T) {
 	if closeAt < 0 {
 		t.Fatalf("help does not say how to close it:\n%s", got)
 	}
-	if quitAt >= 0 && quitAt < closeAt {
+	if quitAt < 0 {
+		t.Fatalf("help does not say what stops the run:\n%s", got)
+	}
+	if quitAt < closeAt {
 		t.Fatalf("help lists quit before close:\n%s", got)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})

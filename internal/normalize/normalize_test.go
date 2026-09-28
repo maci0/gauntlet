@@ -6,6 +6,7 @@ package normalize
 import (
 	"bytes"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,14 @@ func texts(lines []Line) []string {
 	out := make([]string, 0, len(lines))
 	for _, l := range lines {
 		out = append(out, l.Text)
+	}
+	return out
+}
+
+func kinds(lines []Line) []Kind {
+	out := make([]Kind, 0, len(lines))
+	for _, l := range lines {
+		out = append(out, l.Kind)
 	}
 	return out
 }
@@ -109,12 +118,9 @@ func TestRateLimitSummarizes(t *testing.T) {
 	}
 	out = append(out, n.Flush()...)
 	// Two lines pass the window, the rest are summarized in one note.
-	if len(out) != 3 {
-		t.Fatalf("want 2 lines plus a summary, got %q", texts(out))
-	}
-	last := out[len(out)-1].Text
-	if !strings.Contains(last, "8 lines suppressed") {
-		t.Fatalf("want a suppression note, got %q", last)
+	want := "x|xx|… 8 lines suppressed (rate limit)"
+	if got := strings.Join(texts(out), "|"); got != want {
+		t.Fatalf("got %q, want %q", got, want)
 	}
 }
 
@@ -246,8 +252,9 @@ func TestTruncatesVeryLongLines(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatal("line dropped")
 	}
-	if len([]rune(got[0].Text)) != 11 { // 10 plus the ellipsis
-		t.Fatalf("got %d runes: %q", len([]rune(got[0].Text)), got[0].Text)
+	// Ten a's and the ellipsis that marks the cut.
+	if want := strings.Repeat("a", 10) + "…"; got[0].Text != want {
+		t.Fatalf("got %q, want %q", got[0].Text, want)
 	}
 }
 
@@ -306,8 +313,11 @@ func TestRepeatedSessionHeaderCollapses(t *testing.T) {
 		"> build · ox-alpha-free",
 		"doing work",
 		"> build · ox-alpha-free")
-	if len(got) != 3 {
-		t.Fatalf("want header, work, header: %q", texts(got))
+	// The second header collapses into the first (same verb), the third prints
+	// again because plain work cleared the verb.
+	want := "> build · ox-alpha-free|doing work|> build · ox-alpha-free"
+	if joined := strings.Join(texts(got), "|"); joined != want {
+		t.Fatalf("got %q, want %q", joined, want)
 	}
 }
 
@@ -358,13 +368,9 @@ func TestProseIsNotMistakenForADiff(t *testing.T) {
 		"- checked the config loader",
 		"-v enables verbose output",
 		"+1 to that approach")
-	if len(got) != 3 {
-		t.Fatalf("want three lines, got %q", texts(got))
-	}
-	for _, l := range got {
-		if l.Kind == DiffAdd || l.Kind == DiffDel {
-			t.Errorf("%q was read as a diff line (%v)", l.Text, l.Kind)
-		}
+	want := []Kind{Plain, Plain, Plain}
+	if !slices.Equal(kinds(got), want) {
+		t.Fatalf("got kinds %v for %q, want %v", kinds(got), texts(got), want)
 	}
 }
 
@@ -382,53 +388,51 @@ func TestDiffModeEndsAtProse(t *testing.T) {
 		got = append(got, n.Push(l)...)
 	}
 	got = append(got, n.Flush()...)
-	last := got[len(got)-1]
-	if last.Kind == DiffDel {
-		t.Fatalf("diff mode leaked into prose: %q", last.Text)
+	// The hunk marker enters diff mode; the prose line after the diff leaves it,
+	// so the bullet that follows is prose again.
+	want := []Kind{DiffMeta, DiffDel, DiffAdd, Plain, Plain}
+	if !slices.Equal(kinds(got), want) {
+		t.Fatalf("got kinds %v for %q, want %v", kinds(got), texts(got), want)
 	}
 }
 
+// Display strips what drives a terminal, and the visible text is what every
+// caller depends on, so each case pins the exact output: a Display that
+// returned nothing for a string holding a control byte would satisfy "no control
+// rune survives" while destroying the line.
 func TestDisplayStripsTerminalDrivingBytes(t *testing.T) {
-	cases := map[string]string{
-		"plain text":          "RESULT: changed=3",
-		"csi colors":          "\x1b[32mok\x1b[0m",
-		"cursor moves":        "\x1b[2K\x1b[1G\x1b[31;1mx",
-		"osc title":           "\x1b]0;pwned\x07after",
-		"osc st":              "\x1b]8;;http://x\x1b\\link",
-		"controls":            "a\x00\x01\x07b",
-		"bidi override":       "user\u202Eevil",
-		"zero widths":         "hidden\u200binvisible\uFEFF!",
-		"tab":                 "a\tb",
-		"unterminated":        "\x1b[31mno reset",
-		"lone esc":            "before\x1bafter",
-		"c1 controls":         "a\x9bb",
-		"carriage return":     "left\rright",
-		"line separator":      "line\u2028split",
-		"paragraph separator": "para\u2029split",
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain text", "RESULT: changed=3", "RESULT: changed=3"},
+		{"csi colors", "\x1b[32mok\x1b[0m", "ok"},
+		{"cursor moves", "\x1b[2K\x1b[1G\x1b[31;1mx", "x"},
+		{"osc title", "\x1b]0;pwned\x07after", "after"},
+		{"osc st", "\x1b]8;;http://x\x1b\\link", "link"},
+		{"controls", "a\x00\x01\x07b", "ab"},
+		{"bidi override", "user\u202Eevil", "userevil"},
+		{"zero widths", "hidden\u200binvisible\uFEFF!", "hiddeninvisible!"},
+		// A tab becomes one space here, not the four a Normalizer line keeps.
+		{"tab", "a\tb", "a b"},
+		// A complete sequence whose terminator never arrives still loses the
+		// whole thing: the ESC byte can never reach the terminal.
+		{"unterminated", "\x1b[31mno reset", "no reset"},
+		{"lone esc", "before\x1bafter", "beforeafter"},
+		// A raw 0x9b byte is not valid UTF-8, so it is repaired to U+FFFD
+		// rather than stripped as C1.
+		{"c1 controls", "a\x9bb", "a\uFFFDb"},
+		// Display does not split on carriage return the way clean() does: both
+		// segments are visible text.
+		{"carriage return", "left\rright", "leftright"},
+		{"line separator", "line\u2028split", "linesplit"},
+		{"paragraph separator", "para\u2029split", "parasplit"},
 	}
-	for name, in := range cases {
-		t.Run(name, func(t *testing.T) {
-			got := Display(in)
-			for _, r := range got {
-				if r == 0x1b || (unicode.IsControl(r) && r != ' ') || unicode.Is(unicode.Cf, r) ||
-					unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
-					t.Fatalf("Display(%q) = %q still carries terminal-driving %q", in, got, r)
-				}
-			}
-			if name == "plain text" && got != in {
-				t.Fatalf("plain text changed: got %q", got)
-			}
-			if name == "csi colors" && got != "ok" {
-				t.Fatalf("got %q, want \"ok\"", got)
-			}
-			if name == "bidi override" && got != "userevil" {
-				t.Fatalf("got %q, want \"userevil\"", got)
-			}
-			if name == "line separator" && got != "linesplit" {
-				t.Fatalf("got %q, want \"linesplit\"", got)
-			}
-			if name == "paragraph separator" && got != "parasplit" {
-				t.Fatalf("got %q, want \"parasplit\"", got)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := Display(c.in); got != c.want {
+				t.Fatalf("Display(%q) = %q, want %q", c.in, got, c.want)
 			}
 		})
 	}

@@ -184,23 +184,31 @@ func TestUnknownEnvelopeContributesNothingRatherThanGarbage(t *testing.T) {
 	if !ok {
 		t.Fatal("valid JSON was rejected")
 	}
-	if usageFound(ev.Usage) {
-		t.Fatalf("invented usage: %+v", ev.Usage)
-	}
 	if ev.Text != "" || ev.Thinking != "" || usageFound(ev.Usage) {
 		t.Fatalf("invented content: %+v", ev)
 	}
 }
 
 func TestDeeplyNestedPayloadDoesNotRunAway(t *testing.T) {
-	// A tool result can nest arbitrarily; the walk must stop and stay quiet.
-	line := `{"type":"tool_result","content":` + strings.Repeat(`{"a":`, 40) + `"deep"` + strings.Repeat(`}`, 40) + `}`
-	ev, ok := Parse([]byte(line))
+	// Tool result payloads nest arbitrarily; the walk must stop and stay quiet.
+	// "text" is a recognized key at every level, so maxDepth is the only thing
+	// keeping the payload out of the visible text: the same shape a few levels
+	// down does report it.
+	shallow := `{"text":` + strings.Repeat(`{"text":`, 2) + `"deep"` + strings.Repeat(`}`, 2) + `}`
+	ev, ok := Parse([]byte(shallow))
 	if !ok {
 		t.Fatal("valid JSON was rejected")
 	}
-	if strings.Contains(ev.Text, "deep") {
-		t.Fatal("walked past the depth limit")
+	if ev.Text != "deep" {
+		t.Fatalf("text within the depth limit = %q, want %q", ev.Text, "deep")
+	}
+	line := strings.Repeat(`{"text":`, 40) + `"deep"` + strings.Repeat(`}`, 40)
+	ev, ok = Parse([]byte(line))
+	if !ok {
+		t.Fatal("valid JSON was rejected")
+	}
+	if ev.Text != "" {
+		t.Fatalf("walked past the depth limit: text = %q, want empty", ev.Text)
 	}
 }
 
@@ -266,7 +274,7 @@ func TestAbsurdCountersReportNothing(t *testing.T) {
 	// conversion does with one differs by platform. It must read as absent.
 	for _, line := range []string{
 		`{"usage":{"output_tokens":1e30}}`,
-		`{"usage":{"input_tokens":-5}}`,
+		`{"usage":{"output_tokens":-5}}`,
 		`{"usage":{"total_tokens":9223372036854775807}}`,
 		// JSON numbers decode as float64; a fractional counter must not
 		// truncate to an integer count (1.9 would have become 1).
@@ -391,13 +399,15 @@ func TestTextKeepsTheOrderTheAgentWroteIt(t *testing.T) {
 // building past its own bound without changing that answer. Trailing bytes
 // are the case that really is not one document.
 func TestDecoderAcceptsDepthAndRejectsTrailingBytes(t *testing.T) {
-	deep := `{"tool":` + strings.Repeat("[", 300) + strings.Repeat("]", 300) + `,"text":"visible"}`
+	// The buried record is a recognized text key the walk would report if it
+	// went past maxDepth, so this checks the limit rather than only the length.
+	deep := `{"tool":` + strings.Repeat("[", 300) + `{"text":"buried"}` + strings.Repeat("]", 300) + `,"text":"visible"}`
 	ev, ok := Parse([]byte(deep))
 	if !ok {
 		t.Fatal("a deeply nested payload stopped the line from reading as JSON")
 	}
 	if ev.Text != "visible" {
-		t.Fatalf("text beside the deep payload was lost: %q", ev.Text)
+		t.Fatalf("text = %q, want %q: either the deep payload leaked or the text beside it was lost", ev.Text, "visible")
 	}
 	for _, line := range []string{`{"text":"x"} trailing`, `{"text":"x"}{"text":"y"}`} {
 		if _, ok := Parse([]byte(line)); ok {
@@ -406,8 +416,8 @@ func TestDecoderAcceptsDepthAndRejectsTrailingBytes(t *testing.T) {
 	}
 }
 
-// A closer is not a JSON value. skipValue is what decodeValue calls past
-// decodeDepth, so a `}` where a value belongs has to fail, not walk until
+// A closer is not a JSON value. skipValue is what extractValue calls past
+// maxDepth, so a `}` where a value belongs has to fail, not walk until
 // EOF hoping a matching opener appears. encoding/json reports that closer
 // itself; skipValue's own nesting count refuses one that arrives as a token.
 func TestSkipValueRejectsACloser(t *testing.T) {

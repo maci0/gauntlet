@@ -660,13 +660,15 @@ func TestMergeIntoRefusesOptionShapedTarget(t *testing.T) {
 			t.Fatalf("MergeInto(%q) Detail = %q; want the check-ref-format refusal", target, mr.Detail)
 		}
 	}
-	// The refusal happens before any worktree is created.
+	// The refusal happens before any worktree is created. A root that was never
+	// made is the expected state; any other read error says the check cannot run.
 	entries, err := os.ReadDir(filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot)))
-	if err == nil {
-		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), "merge-") {
-				t.Fatalf("MergeInto created %q for an option-shaped target", e.Name())
-			}
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("reading the worktree root: %v", err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "merge-") {
+			t.Fatalf("MergeInto created %q for an option-shaped target", e.Name())
 		}
 	}
 }
@@ -686,7 +688,7 @@ func TestExcludeOwnArtifactsRefusesASymlinkedInfoDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(outside, info); err != nil {
-		t.Skipf("cannot plant a symlink: %v", err)
+		t.Fatalf("cannot plant a symlink at %s: %v", info, err)
 	}
 
 	r.ExcludeOwnArtifacts(ctx)

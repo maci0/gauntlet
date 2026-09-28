@@ -327,10 +327,18 @@ func (m *model) renderLanes(w, h int) string {
 		// the room the prefix left; the lane takes the smaller, never a
 		// negative one.
 		statCol := min(statsW, max(statW, 0))
-		row := prefix + pad(statLine, statCol)
-		if !dropped {
-			if sparkW := statW - statCol; sparkW > 4 {
-				row += "  " + chart(l.lines, sparkW, 1)
+		// laneStats only guarantees that a whole segment fits the room statW
+		// claims. A prefix wider than the pane leaves less than that, and the
+		// clip below would then cut the first segment mid-word, turning "3
+		// done" into a bare count that reads as a measurement. Drop the
+		// counters instead of showing a partial one.
+		row := prefix
+		if lipgloss.Width(statLine) <= statW {
+			row += pad(statLine, statCol)
+			if !dropped {
+				if sparkW := statW - statCol; sparkW > 4 {
+					row += "  " + chart(l.lines, sparkW, 1)
+				}
 			}
 		}
 		rows = append(rows, clip(row, w))

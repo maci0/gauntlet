@@ -683,8 +683,15 @@ func TestCleanWorktreeRoot(t *testing.T) {
 	r := newRepo(t)
 	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
 
-	// CleanWorktreeRoot when worktreeRoot does not exist is a safe no-op
+	// CleanWorktreeRoot when worktreeRoot does not exist is a safe no-op: the
+	// call must not create the root or the .gauntlet parent it would remove.
 	r.CleanWorktreeRoot()
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("CleanWorktreeRoot created the missing root %s: %v", root, err)
+	}
+	if _, err := os.Stat(filepath.Dir(root)); !os.IsNotExist(err) {
+		t.Fatalf("CleanWorktreeRoot created the missing parent %s: %v", filepath.Dir(root), err)
+	}
 
 	// When worktreeRoot is empty, CleanWorktreeRoot removes it and its parent .gauntlet
 	if err := os.MkdirAll(root, 0o755); err != nil {
