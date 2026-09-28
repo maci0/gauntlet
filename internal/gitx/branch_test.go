@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMergeTwiceLandsOnce(t *testing.T) {
@@ -186,6 +187,51 @@ func TestMergeAbortsEvenWhenContextCancelled(t *testing.T) {
 	}
 	if _, err := r.run(context.Background(), gitNormal, "diff", "--quiet"); err != nil {
 		t.Fatalf("unstaged changes left behind after canceled merge: %v", err)
+	}
+}
+
+// A merge lands a review's lines in the tree Sample measures, so the sample
+// cached before it describes a tree that is gone. The clock is frozen so the
+// debounce alone would keep serving it, which is how the next review would
+// come to own the merged review's lines.
+func TestMergeDropsTheCachedSample(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC)
+	r.Now = func() time.Time { return now }
+
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, ok := r.Sample(ctx, nil)
+	if !ok {
+		t.Fatal("sample failed")
+	}
+
+	wt, err := r.AddWorktree(ctx, "lines-review", "run-merge-cache", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+	if err := os.WriteFile(filepath.Join(wt.Dir, "fix.go"),
+		[]byte("package fix\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wt.CommitAll(ctx, "sec-review: automated review fixes"); err != nil {
+		t.Fatal(err)
+	}
+	if mr := r.Merge(ctx, wt.Branch, "Merge sec-review from run"); !mr.Merged {
+		t.Fatalf("merge failed: %+v", mr)
+	}
+
+	after, ok := r.Sample(ctx, nil)
+	if !ok {
+		t.Fatal("sample failed after the merge")
+	}
+	if after.Ins <= before.Ins {
+		t.Fatalf("the sample after a merge must measure the merged tree, got %+v want > %+v",
+			after, before)
 	}
 }
 
