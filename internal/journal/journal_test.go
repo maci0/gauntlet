@@ -2751,3 +2751,79 @@ func copyTree(t *testing.T, src, dst string) {
 		copyTree(t, filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
 	}
 }
+
+// FuzzRunIDPath covers the run-id boundary: a run id arrives from the command
+// line and is joined into a path under the state tree, so validRunID is the
+// only thing between a typed argument and a file the tool opens. The pair
+// assertions are the point: an id validRunID accepts must derive a path that
+// stays under the root and ends in the id itself, and an id it refuses must
+// not be usable to name a file. shardFromRunID is in the same chain, since a
+// shard is the other path segment the id contributes.
+func FuzzRunIDPath(f *testing.F) {
+	for _, seed := range []string{
+		NewRunID(time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)),
+		"20240229T120000Z-1",
+		"20260230T131500Z-1",
+		"20260825T131500Z-",
+		"broken-run",
+		"",
+		".",
+		"..",
+		"../escape",
+		"a/b",
+		`a\b`,
+		"with\x00nul",
+		"~root",
+		strings.Repeat("a", maxRunIDLen),
+		strings.Repeat("a", maxRunIDLen+1),
+		strings.Repeat("../", 40),
+		"/etc/passwd",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, id string) {
+		t.Setenv("GAUNTLET_HOME", t.TempDir())
+		root := Home()
+		if !filepath.IsAbs(root) {
+			t.Fatalf("GAUNTLET_HOME did not resolve to an absolute root: %q", root)
+		}
+
+		shard := shardFromRunID(id)
+		if shard != "" {
+			// A shard is a date directory. Anything else is a path segment
+			// the id invented, and locateRun would probe it as one.
+			if _, err := time.Parse("2006-01-02", shard); err != nil {
+				t.Fatalf("shardFromRunID(%q) = %q, which is not a date", id, shard)
+			}
+			if strings.ContainsAny(shard, `/\`) {
+				t.Fatalf("shardFromRunID(%q) = %q, which is not one segment", id, shard)
+			}
+		}
+
+		valid := validRunID(id)
+		for _, path := range []string{quarantinePath(id), journalPath(id)} {
+			if !valid {
+				continue
+			}
+			rel, err := filepath.Rel(root, path)
+			if err != nil {
+				t.Fatalf("path %q for id %q is not relative to %q: %v", path, id, root, err)
+			}
+			if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+				t.Fatalf("valid id %q escaped %q as %q", id, root, path)
+			}
+			if want := id + ".jsonl"; filepath.Base(path) != want {
+				t.Fatalf("path for id %q ends in %q, want %q", id, filepath.Base(path), want)
+			}
+		}
+
+		// Restore is the one caller that moves a file by a path derived from
+		// the id, so a refused id must be refused there too rather than
+		// naming a source to rename.
+		if !valid {
+			if err := Restore(id); !errors.Is(err, ErrInvalidRunID) {
+				t.Fatalf("Restore(%q) = %v, want ErrInvalidRunID", id, err)
+			}
+		}
+	})
+}

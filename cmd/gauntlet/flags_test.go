@@ -1200,3 +1200,90 @@ func TestVersionWinsOverScopingWithZeroLimit(t *testing.T) {
 		t.Fatalf("command = %q, want version", o.command)
 	}
 }
+
+// FuzzPeelArgs covers the two argv shapers run before the flag package sees
+// anything: peelSubcommand lifts the subcommand out of argv, and peelShowRun
+// lifts the run id out of `show`. Both move words around, so the invariant is
+// that no word is invented and none is lost: a subcommand is a word argv
+// already held, and a run id is a non-flag word, and the bytes handed back are
+// the bytes that came in. A shaper that dropped a value would hand the flag
+// package an argv the operator never typed.
+func FuzzPeelArgs(f *testing.F) {
+	for _, seed := range []string{
+		"show 20260825T000000Z-abcd --no-color",
+		"--no-color show RUN",
+		"-j3 show RUN",
+		"runs --limit 5",
+		"show",
+		"show --",
+		"--",
+		"-h",
+		"",
+		"pick -C dir",
+		"show -—help RUN",
+		"show --log=x RUN",
+		"x",
+		"-",
+		"show -- -j3",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, line string) {
+		argv := strings.Fields(line)
+		// Both shapers resplit attached values before they look for a word,
+		// so the words they are answerable for are the expanded ones. Fuzz
+		// ExpandAttachedValues already pins the expansion itself.
+		dummy, _ := buildFlagSet(&options{})
+		argv = expandAttachedValues(dummy, argv)
+
+		// peelSubcommand: the command is one of the words, never a new one,
+		// and the words left over are a permutation of the words minus it.
+		// Comparison is over a sorted copy because the shaper reorders by
+		// moving the command to the end of the remainder.
+		cmd, rest := peelSubcommand(slices.Clone(argv))
+		if cmd == "" {
+			if !slices.Equal(rest, argv) {
+				t.Fatalf("peelSubcommand(%q) = %q with no command, want argv unchanged", argv, rest)
+			}
+			return
+		}
+		if !slices.Contains(argv, cmd) {
+			t.Fatalf("peelSubcommand(%q) invented %q", argv, cmd)
+		}
+		before, after := slices.Clone(argv), slices.Clone(rest)
+		slices.Sort(before)
+		slices.Sort(after)
+		after = append(after, cmd)
+		slices.Sort(after)
+		if !slices.Equal(before, after) {
+			t.Fatalf("peelSubcommand(%q) = %q, %q: the words do not account for each other", argv, cmd, rest)
+		}
+
+		// peelShowRun: a run id is a bare word and never a flag. It has to
+		// come from argv, or a `show` with no id would still find one.
+		fs, _ := buildFlagSet(&options{})
+		id, rest := peelShowRun(fs, slices.Clone(argv))
+		if id == "" {
+			if len(rest) != len(argv) {
+				t.Fatalf("peelShowRun(%q) = %q with no run id, want argv unchanged", argv, rest)
+			}
+			return
+		}
+		if strings.HasPrefix(id, "-") {
+			t.Fatalf("peelShowRun(%q) took the flag %q as a run id", argv, id)
+		}
+		if !slices.Contains(argv, id) {
+			t.Fatalf("peelShowRun(%q) invented the run id %q", argv, id)
+		}
+		// The shaper resplits while it scans, so the words it accounts for
+		// are the ones it was handed, which is what the caller passed on.
+		showBefore, showAfter := slices.Clone(argv), slices.Clone(rest)
+		slices.Sort(showBefore)
+		slices.Sort(showAfter)
+		showAfter = append(showAfter, id)
+		slices.Sort(showAfter)
+		if !slices.Equal(showBefore, showAfter) {
+			t.Fatalf("peelShowRun(%q) = %q, %q: the words do not account for each other", argv, id, rest)
+		}
+	})
+}
