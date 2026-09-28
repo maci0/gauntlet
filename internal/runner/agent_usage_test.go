@@ -155,6 +155,20 @@ printf '{"type":"assistant-message","usage":{"prompt_tokens":1200,"completion_to
 echo "RESULT: no-changes"`,
 		},
 		{
+			// One record per model response, this response's own counters and
+			// the model time beside them, which is what the rate is taken
+			// over. The store is machine-wide, so the record's cwd is the
+			// attribution.
+			name: "microagent session log", transcript: true, tool: "microagent",
+			wantFinal: 260, wantThinking: 90,
+			script: `
+d="$HOME/.microagent/sessions"; mkdir -p "$d"; f="$d/1.jsonl"
+printf '{"ts":1,"cwd":"%s","model":"m","elapsed_ms":900,"usage":{"prompt_tokens":1200,"completion_tokens":110,"reasoning_tokens":40,"total_tokens":1310}}\n' "$PWD" >> "$f"
+sleep 0.4
+printf '{"ts":2,"cwd":"%s","model":"m","elapsed_ms":700,"usage":{"prompt_tokens":1200,"completion_tokens":150,"reasoning_tokens":50,"total_tokens":1350}}\n' "$PWD" >> "$f"
+echo "RESULT: no-changes"`,
+		},
+		{
 			name: "clanker token log", transcript: true, tool: "clanker", wantFinal: 2000,
 			script: `
 mkdir -p state
