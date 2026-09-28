@@ -32,8 +32,6 @@ Review the following:
 (slop-review owns unused parameters, always-true guards, and commented-out blocks; minimalism-review owns project-wide unused-symbol deletion. Here only unused imports and obviously dead locals in a file you already have open. Unused tests: flag, never delete.)
 - Unused imports and dead locals in a file already open
 - Code paths that appear unreachable in that same file
-- Over-engineered abstractions that provide little value
-- Wrappers/helpers that do not meaningfully simplify anything
 
 4. Opportunities to reduce lines of code
 (slop-review owns local verbose constructs and wrappers; minimalism-review owns project-wide necessity proofs. Here only simplify logic in a function you already have open because it is hard to follow.)

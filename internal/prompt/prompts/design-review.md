@@ -60,10 +60,10 @@ Review the following:
 - Extension points that do not match how the system actually needs to grow
 
 6. Consistency, state, and lifecycle design
-(concurrency-review owns the race; error-review owns failure isolation. Here own whether the consistency and recovery model matches the requirements.)
+(concurrency-review owns the race; error-review owns failure isolation; cache-review owns whether a cache can serve wrong data. Here own whether the consistency and recovery model matches the requirements.)
 - Consistency model (strong, eventual, none) and whether it matches requirements
 - Source-of-truth clarity for each piece of state
-- Caching and derived-data strategy: invalidation, staleness, coherence
+- Derived data with no stated recompute trigger: a field, total, or index materialized from another, with nothing naming what makes it stale (cache-review owns the invalidation mechanics of a cache that exists)
 - Lifecycle and ownership of resources, connections, and long-lived state
 - Failure and recovery design at the system level (what happens when a component is down)
 - Control flow driven by reacting to each external event instead of the program running at its own pace and batching. External-event-driven control flow is harder to bound and to keep safe. (perf-review owns missing batching at a call site)

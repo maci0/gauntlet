@@ -99,7 +99,7 @@ Instructions:
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - When proposing a design-level performance change, sketch the four resources (network, disk, memory, CPU) times bandwidth and latency, and name which one the change buys. Sketches beat profiles in the design phase, which is when the 1000x wins are available.
 - Prioritize hot paths and frequently executed code over cold paths.
-- Consider the expected scale and usage patterns of the application.
+- Size every scale claim against a number the repo states (documented request volume, CI timeouts, record counts in fixtures or migrations). Where the repo states none, say the threshold is unstated rather than inventing one.
 - Distinguish between issues that matter now and issues that will matter at scale.
 - Do not recommend premature optimization where clarity would be sacrificed.
 - Be specific about the expected impact of each finding.

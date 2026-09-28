@@ -184,5 +184,5 @@ Important:
 - Prefer the simplest fix that prevents the failure. Do not over-engineer error handling.
 - Consider that some errors are expected and should be handled differently from unexpected ones.
 - A visible error is always better than a silent failure.
-- Do not recommend try/catch on every line. Focus on boundaries, I/O, and critical operations.
+- Put error handling at boundaries, I/O, and critical operations.
 - Call out when error handling is already thorough and well-designed in specific areas.
