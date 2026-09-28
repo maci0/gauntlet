@@ -33,6 +33,13 @@ but drops the sqlite driver.
   in the Makefile. The floor is CI's number: a machine with agent CLIs
   installed reads about two points high. Raise it when CI reports higher,
   never lower it to make a change fit.
+- `make dist`, `make repro`, and `make release` are the release path, and
+  `make ci` and `make verify` deliberately leave them out: they cross-compile
+  every platform, and `repro` builds it twice from two trees. They gate on the
+  exact Go release the artifacts record (`make toolchain`), not the language
+  minimum `make check` accepts, and `make release` refuses a dirty tree
+  (`make clean-tree`). Run them when a change touches the dist, artifacts, or
+  repro recipes.
 - Tests must not write into a tmpfs or into a gitignored path inside this
   repo: the prompt discovery tests would then see their own fixtures as
   ignored. `TMPDIR` is set by the Makefile for that reason, and an exported
@@ -89,7 +96,9 @@ the finished block to paste back, so no cell is transcribed by hand.
   worktree from the previous tip). Those are the only modes, and every one
   keeps the invariant: no flag lets two agents share a tree. The per-review
   and lane checkouts live under `.gauntlet/worktrees` in the reviewed
-  repository, gitignored, so a run in this tree writes there and nowhere else.
+  repository, gitignored, and they are the only checkouts a run cuts. The
+  other paths it writes are `.gauntlet.lock` at the reviewed tree's root and
+  the journal under `GAUNTLET_HOME` (`~/.gauntlet/runs` by default).
 - **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
   unlit meter shows its remainder, and no series is smoothed or interpolated.
   See `docs/DESIGN.md`.
