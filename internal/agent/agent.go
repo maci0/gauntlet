@@ -180,47 +180,12 @@ func IsOptIn(tool string) bool {
 // Empty slots and "." mean cwd, and relative slots mean $CWD/<slot>: after a
 // cd into the review target, either one would pick up a planted executable
 // with the same name as an agent.
+//
+// runx.AbsPATH is the one implementation of that rule, including what an empty
+// PATH falls back to, so an agent and the git it drives are resolved the same
+// way.
 func pathNoCWD() string {
-	raw := os.Getenv("PATH")
-	if raw == "" {
-		raw = defaultPath()
-	}
-	return runx.CleanPATH(raw)
-}
-
-// defaultPathDirs are the absolute directories a process with no PATH falls
-// back to. The list names both claimed platforms' prefixes rather than one of
-// them: the Linux default alone (/usr/local/bin:/usr/bin:/bin) finds no
-// Homebrew install on Apple Silicon, where the prefix is /opt/homebrew/bin,
-// so doctor would report no agent on a fully stocked Mac.
-var defaultPathDirs = []string{
-	"/opt/homebrew/bin", // Homebrew, Apple Silicon
-	"/usr/local/bin",    // Homebrew, Intel; also the Linux default
-	"/usr/bin",
-	"/bin",
-	"/opt/homebrew/sbin", // agent CLIs that install their helpers here
-	"/usr/local/sbin",
-	"/usr/sbin",
-	"/sbin",
-}
-
-// defaultPath is the substitute for an empty PATH. launchd, systemd, and
-// `env -i` all hand a program none, and looking up nothing then reports every
-// agent missing on a machine where all of them are installed. $HOME/.local/bin
-// leads because that is where this project's own install target and the README
-// put the binary. Directories that do not exist are dropped, so the result
-// names only real absolute paths and a chdir cannot change what it means.
-func defaultPath() string {
-	dirs := make([]string, 0, len(defaultPathDirs)+1)
-	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".local", "bin"))
-	}
-	for _, dir := range defaultPathDirs {
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			dirs = append(dirs, dir)
-		}
-	}
-	return strings.Join(dirs, string(os.PathListSeparator))
+	return runx.AbsPATH()
 }
 
 // The cache is keyed by the PATH it was filled from. A memo that outlives its

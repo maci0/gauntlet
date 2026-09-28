@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 func TestParseRemote(t *testing.T) {
@@ -396,11 +398,6 @@ func TestValidateURLRejectsUserinfo(t *testing.T) {
 }
 
 func TestAvailable(t *testing.T) {
-	t.Setenv("PATH", "")
-	if Available() {
-		t.Fatal("Available() = true with empty PATH")
-	}
-
 	dir := t.TempDir()
 	ghBin := filepath.Join(dir, "gh")
 	if err := os.WriteFile(ghBin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -412,7 +409,10 @@ func TestAvailable(t *testing.T) {
 		t.Fatal("Available() = false with mock gh in PATH")
 	}
 
-	// Containment: relative or empty PATH components must not pick up a planted executable in cwd.
+	// Containment: relative or empty PATH components must not pick up a planted
+	// executable in cwd. An empty PATH is not the same claim: it falls back to
+	// the fixed absolute prefixes, so gh resolves on a box that launchd or
+	// systemd started, and the question is which file it resolved to.
 	cwd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -425,13 +425,12 @@ func TestAvailable(t *testing.T) {
 	if err := os.WriteFile("gh", []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", "")
-	if Available() {
-		t.Fatal("Available() found planted gh in cwd with empty PATH")
-	}
-	t.Setenv("PATH", ":/nonexistent")
-	if Available() {
-		t.Fatal("Available() found planted gh in cwd via empty PATH component")
+	planted := filepath.Join(plantedDir, "gh")
+	for _, path := range []string{"", ":/nonexistent", ".", dir + string(os.PathListSeparator) + "."} {
+		t.Setenv("PATH", path)
+		if got := runx.LookPath("gh"); got == planted {
+			t.Fatalf("PATH %q resolved the planted gh in cwd", path)
+		}
 	}
 }
 

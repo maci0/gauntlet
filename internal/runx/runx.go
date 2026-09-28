@@ -138,9 +138,57 @@ func CleanPATH(raw string) string {
 	return strings.Join(keep, string(os.PathListSeparator))
 }
 
-// AbsPATH returns the current environment's PATH filtered to absolute directories only.
+// defaultPathDirs are the absolute directories a process with no PATH falls
+// back to. The list names both claimed platforms' prefixes rather than one of
+// them: the Linux default alone (/usr/local/bin:/usr/bin:/bin) finds no
+// Homebrew install on Apple Silicon, where the prefix is /opt/homebrew/bin,
+// so a lookup would report nothing on a fully stocked Mac.
+var defaultPathDirs = []string{
+	"/opt/homebrew/bin", // Homebrew, Apple Silicon
+	"/usr/local/bin",    // Homebrew, Intel; also the Linux default
+	"/usr/bin",
+	"/bin",
+	"/opt/homebrew/sbin", // tools that install their helpers here
+	"/usr/local/sbin",
+	"/usr/sbin",
+	"/sbin",
+}
+
+// defaultPath is the substitute for an empty PATH. launchd, systemd, and
+// `env -i` all hand a program none, and searching nothing then reports every
+// agent, and git itself, missing on a machine where all of them are
+// installed. $HOME/.local/bin leads because that is where this project's own
+// install target and the README put the binary. Directories that do not exist
+// are dropped, so the result names only real absolute paths and a chdir cannot
+// change what it means.
+func defaultPath() string {
+	dirs := make([]string, 0, len(defaultPathDirs)+1)
+	if home, err := os.UserHomeDir(); err == nil {
+		dirs = append(dirs, filepath.Join(home, ".local", "bin"))
+	}
+	for _, dir := range defaultPathDirs {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			dirs = append(dirs, dir)
+		}
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
+}
+
+// AbsPATH returns the environment's PATH filtered to absolute directories
+// only, or the system prefixes when PATH is unset or empty.
+//
+// The fallback lives here rather than in one caller because PATH is resolved
+// for every executable this process launches, and the rule has to be the same
+// for all of them: with PATH empty and the fallback applied to agents alone,
+// a box that launchd started finds the agent CLI and then fails every run with
+// "git is not available", which reads as a broken install rather than a
+// missing variable.
 func AbsPATH() string {
-	return CleanPATH(os.Getenv("PATH"))
+	raw := os.Getenv("PATH")
+	if raw == "" {
+		raw = defaultPath()
+	}
+	return CleanPATH(raw)
 }
 
 // AbsPATHEnv returns the current process environment with PATH replaced by AbsPATH.

@@ -443,6 +443,12 @@ runner never adds to it and never makes the user wait to see state.
 - **PATH resolution is memoized** per process. The original ran `shutil.which`
   repeatedly; `doctor` alone did hundreds of stat calls serially. Here the
   inventory probes every candidate binary in parallel with a bounded pool.
+  One function states the rule every executable is resolved under
+  (`runx.AbsPATH`): relative and cwd-relative entries are dropped, and a
+  process handed no `PATH` at all (launchd, systemd, `env -i`) searches
+  `$HOME/.local/bin` and the fixed system prefixes instead. Agents, git, `gh`,
+  and the usage probe go through it, so a box that finds its agent CLI also
+  finds the git that drives it.
 - **Git stats are sampled, not polled per review.** One `git diff --shortstat`
   and one `ls-files -o` per sample, run together, shared by all lanes behind a
   mutex, with a minimum interval between samples. The file-signal scan stops

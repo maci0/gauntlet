@@ -190,6 +190,43 @@ func TestAbsPATH(t *testing.T) {
 	}
 }
 
+func TestAbsPATHFallsBackWhenUnset(t *testing.T) {
+	home := t.TempDir()
+	bin := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	got := AbsPATH()
+	if !strings.HasPrefix(got, bin+string(os.PathListSeparator)) {
+		t.Fatalf("AbsPATH with an empty PATH = %q, want it to lead with the $HOME fallback %q", got, bin)
+	}
+	// The fallback is a PATH like any other, so it holds only real absolute
+	// directories: a relative or empty segment would resolve in the tree a
+	// review chdirs into.
+	for _, dir := range filepath.SplitList(got) {
+		if dir == "" || !filepath.IsAbs(dir) {
+			t.Fatalf("fallback carries the non-absolute segment %q", dir)
+		}
+	}
+}
+
+func TestLookPathFindsGitWithoutPATH(t *testing.T) {
+	// git is what every run needs first, and with no PATH to search it was
+	// the one executable the empty-PATH fallback did not reach: a box that
+	// launchd or systemd started found its agent CLI and then failed with
+	// "git is not available".
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	t.Setenv("PATH", "")
+	if got := LookPath("git"); got == "" {
+		t.Fatal("LookPath(git) with an empty PATH = \"\", want the system prefix to be searched")
+	}
+}
+
 func TestAbsPATHEnv(t *testing.T) {
 	t.Setenv("PATH", ":/usr/bin::./local:/bin:")
 	env := AbsPATHEnv()
