@@ -232,6 +232,11 @@ type Runner struct {
 	// usageProbeFailed keeps a broken usage probe from narrating once per
 	// review. The first failure is worth a line; the rest are the same line.
 	usageProbeFailed atomic.Bool
+	// budgetStop is set when a run budget stopped the loop from starting
+	// another review. Like finish it ends the run once the loop's commit and
+	// merge steps have run, which is what a review that ran to completion owes
+	// the tree.
+	budgetStop atomic.Bool
 }
 
 // New prepares a runner. It opens the repository (if any) and validates the
@@ -396,6 +401,9 @@ func (r *Runner) Run(ctx context.Context) {
 
 		if r.finish.Load() {
 			return // the graceful quit's last loop is done
+		}
+		if r.budgetStop.Load() {
+			return // the budget stopped the last loop, after its commit and merge
 		}
 		if r.cfg.MaxLoops > 0 && loops >= r.cfg.MaxLoops {
 			return
@@ -685,8 +693,13 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 			break
 		}
 		if why := r.budgetExhausted(); why != "" {
+			// What this loop already ran still commits and merges below, the
+			// same as the graceful quit: the budget stops what starts next, not
+			// what has already run.
 			r.log("%s budget exhausted, finishing up", why)
-			return false
+			r.budgetStop.Store(true)
+			r.dropPending()
+			break
 		}
 		review, ok := r.takeNext()
 		if !ok {
@@ -772,9 +785,16 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	}
 
 	if len(r.Pending()) > 0 && !r.finish.Load() {
-		return false
+		if why := r.budgetExhausted(); why == "" {
+			return false
+		} else {
+			// The lanes stopped because a budget ran out, not because they
+			// were interrupted: what they ran still commits and merges.
+			r.log("%s budget exhausted, finishing up", why)
+			r.budgetStop.Store(true)
+		}
 	}
-	if r.finish.Load() {
+	if r.finish.Load() || r.budgetStop.Load() {
 		r.dropPending()
 	}
 	if r.cfg.Commit || r.cfg.Push {
