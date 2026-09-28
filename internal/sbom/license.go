@@ -6,13 +6,17 @@ package sbom
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // licenseFileNames are the names a module ships its grant under, in the order
@@ -24,6 +28,20 @@ var licenseFileNames = []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "LICENCE
 // is there so a wedged toolchain fails the inventory instead of hanging the
 // release.
 const goListTimeout = 2 * time.Minute
+
+// goListWait bounds how long Wait may sit on output pipes a grandchild of the
+// toolchain still holds, and goListMaxBytes caps what `go list` may print. One
+// line per module path and directory, so a graph with thousands of modules
+// stays far below the cap; a module path the toolchain echoes back arbitrarily
+// long is a corrupt graph, and the inventory says so rather than building a
+// map out of it. licenseFileMax is the same bound on a grant read whole: a
+// LICENSE is a few tens of kilobytes, and a module shipping something else is
+// not carrying a license this can classify.
+const (
+	goListWait     = 10 * time.Second
+	goListMaxBytes = 8 << 20
+	licenseFileMax = 1 << 20
+)
 
 // ResolveLicenses returns mods with License set to the SPDX identifier of
 // each module's grant, read from the LICENSE file in the module directory the
@@ -88,18 +106,33 @@ func moduleRoot() (string, error) {
 // a path spelled out here would be a guess about a layout the tool defines.
 // A module in the graph that was never downloaded reports no directory, and
 // the caller leaves its license empty.
+//
+// The child gets the same treatment every other subprocess in this tree gets,
+// through runx: its own process group so the deadline kill takes any
+// grandchild with it, a WaitDelay so a grandchild holding the output pipe
+// cannot park this call past the kill, and a cap so a listing the toolchain
+// would keep extending costs a reported failure instead of memory.
 func moduleDirs(root string, paths []string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), goListTimeout)
 	defer cancel()
 	args := append([]string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}, paths...)
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = root
-	out, err := cmd.Output()
-	if err != nil {
+	cmd.Env = runx.AbsPATHEnv()
+	cmd.Stdin = nil
+	out, errOut := runx.Bound(cmd, goListMaxBytes, goListWait)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
+	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
+		if detail := strings.TrimSpace(errOut.String()); detail != "" {
+			return nil, fmt.Errorf("go list -m: %w: %s", err, runx.FirstLine(detail))
+		}
 		return nil, fmt.Errorf("go list -m: %w", err)
 	}
+	if out.Hit {
+		return nil, fmt.Errorf("go list -m: output exceeded %d bytes", goListMaxBytes)
+	}
 	dirs := make(map[string]string, len(paths))
-	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out.String()), "\n") {
 		path, dir, ok := strings.Cut(strings.TrimSpace(line), "\t")
 		if !ok {
 			return nil, fmt.Errorf("go list -m: unexpected line %q", line)
@@ -113,9 +146,19 @@ func moduleDirs(root string, paths []string) (map[string]string, error) {
 // shipped one at all. A missing file is the answer "no grant recorded", not a
 // failure to read: the module may carry its terms in a README instead, and
 // there is nothing this package can call a license from that.
+//
+// The read is capped because the answer is a substring match against a short
+// table: a file past the cap cannot classify any better than its first
+// licenseFileMax bytes, so reading the rest buys nothing and lets whatever the
+// module ships decide how much memory the inventory uses.
 func readLicenseFile(dir string) (string, bool) {
 	for _, name := range licenseFileNames {
-		b, err := os.ReadFile(filepath.Join(dir, name))
+		f, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			continue
+		}
+		b, err := io.ReadAll(io.LimitReader(f, licenseFileMax))
+		f.Close()
 		if err == nil {
 			return string(b), true
 		}

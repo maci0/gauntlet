@@ -57,7 +57,7 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 `humanize`; `evidence` imports `fuzzy`, `gitx`, `journal`, and `prompt`, so the
 file-signal suggester reaches the tree, the run history, and the catalog
 without any of them reaching back;
-`gitx`, `ghx`, and `agent` import `runx` for the shared child
+`gitx`, `ghx`, `agent`, and `sbom` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, the `envx` boolean reader, which the motion-off variables go

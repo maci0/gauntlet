@@ -133,3 +133,39 @@ func TestResolveLicensesReadsTheGrantFile(t *testing.T) {
 		t.Error("a module with no grant file reported one")
 	}
 }
+
+// A grant past the read cap still classifies: the identifiers live in the first
+// few hundred bytes, so the cap bounds memory without bounding the answer. The
+// test pins both halves, because a cap that silently returned nothing would
+// look exactly like a module that ships no license at all.
+func TestResolveLicensesReadsAnOversizedGrantUpToTheCap(t *testing.T) {
+	dir := t.TempDir()
+	big := strings.Repeat("padding to push this past the cap\n", licenseFileMax/32)
+	if err := os.WriteFile(dir+"/LICENSE", []byte(big+"MIT License\n\nPermission is hereby granted, free of charge,\nto deal in the Software without restriction.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if fi, err := os.Stat(dir + "/LICENSE"); err != nil || fi.Size() <= licenseFileMax {
+		t.Fatalf("fixture is %v bytes, want more than the %d-byte cap", fi.Size(), licenseFileMax)
+	}
+	body, ok := readLicenseFile(dir)
+	if !ok {
+		t.Fatal("an oversized grant reported no license file")
+	}
+	if len(body) != licenseFileMax {
+		t.Errorf("read %d bytes, want the read capped at %d", len(body), licenseFileMax)
+	}
+	if id := spdxID(body); id != "" {
+		t.Errorf("spdxID = %q, want no identifier: the text is past the cap", id)
+	}
+
+	// The same cap with the grant at the head of the file, which is the shape
+	// every real license has.
+	head := t.TempDir()
+	if err := os.WriteFile(head+"/LICENSE", []byte("MIT License\n\nPermission is hereby granted, free of charge,\nto deal in the Software without restriction.\n"+big), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body, ok = readLicenseFile(head)
+	if !ok || spdxID(body) != "MIT" {
+		t.Errorf("readLicenseFile/spdxID on a padded grant = %q, %v; want MIT", body[:min(len(body), 80)], ok)
+	}
+}
