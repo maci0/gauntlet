@@ -352,8 +352,10 @@ Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):
 ~/.gauntlet/
   runs/2026-08-25/20260825T131500Z-a91f.jsonl   the full event stream
   index.jsonl                                    one summary line per run
+  pruned/2026-08-25/                             journals the keep bound moved out
   .index.lock                                    serializes index rebuilds and Close
   state/                                         hot-reload handoff files
+  agents.json                                    custom agent definitions, not written by the CLI
 ```
 
 ```sh
@@ -499,23 +501,41 @@ mkdir /path/to/empty-restore
 tar -C /path/to/empty-restore -xzf /path/on/other-storage/gauntlet-state.tgz
 GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --limit 10
 GAUNTLET_HOME=/path/to/empty-restore gauntlet show <run-id>
-GAUNTLET_HOME=/path/to/empty-restore gauntlet doctor
+GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --json
 ```
 
 The first command proves the derived index can be rebuilt; the second proves a
-journal can be read end to end. The third is the one that answers "is what
-survived complete": `Run history` counts the journals the restore produced, so
-it can be compared against the journal count on the machine the copy came from.
-Only after all three succeed should the restored directory replace the lost
+journal can be read end to end. The third answers "is what survived complete",
+on its `history` object:
+
+```json
+"history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12 }
+```
+
+`journals` is the irreplaceable count, the event streams the index is derived
+from; `rows` is what the index answered with; `disagreed` is the runs the two
+copies tell apart, which a listing repairs and which is therefore 0 on a tree
+that survived whole and non-zero on one that lost journals. Compare the numbers
+against the machine the copy came from: the same journals, the same pruned runs,
+no disagreement. A tree that cannot be read exits non-zero rather than printing
+zeros, so a failed read is never read as an empty history. `gauntlet doctor`
+prints the same counts on its `Run history` line, but its exit code is about the
+agent inventory: it exits 1 on a fresh machine with no agent CLI installed, and
+that says nothing about the restore.
+
+Only after those three succeed should the restored directory replace the lost
 `GAUNTLET_HOME`. The tree half of the drill runs in the suite:
 `TestRestoredTreeListsWhatSurvived` (`internal/journal/journal_test.go`) writes
 runs, prunes one, copies `runs/`, `pruned/`, and `agents.json` into an empty
 `GAUNTLET_HOME` with no derived index beside them, and then lists, inspects, and
 restores from the copy. It proves the archive holds everything the history
-needs; the commands above prove an archive taken by your job does too. Run the
-commands after changing the archive job or upgrading across versions, and
-periodically with the largest archive, because a backup that has only been
-written has not been proven restorable.
+needs; the commands above prove an archive taken by your job does too.
+`TestRunsJSONCountsARestoredTreeWithoutItsIndex` (`cmd/gauntlet/runs_test.go`)
+is the same tree one level up: the same journals and quarantine with no derived
+index, read through `gauntlet runs --json`, where the counts above are what a
+script checks. Run the commands after changing the archive job or upgrading
+across versions, and periodically with the largest archive, because a backup
+that has only been written has not been proven restorable.
 
 ## Updating and hot reload
 

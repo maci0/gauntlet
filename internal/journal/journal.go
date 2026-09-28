@@ -8,8 +8,13 @@
 //	~/.gauntlet/
 //	  runs/2026-08-25/<run-id>.jsonl   one file per run: the full event stream
 //	  index.jsonl                      one summary line per finished run
+//	  pruned/2026-08-25/<run-id>.jsonl journals Prune moved out of the listing
 //	  .index.lock                      serializes index rebuilds and Close
 //	  state/<run-id>.json              hot-reload handoff, deleted after pickup
+//
+// agents.json sits in the same root and is the one file there this package
+// never writes: it holds the user's custom agent definitions, so it is theirs
+// to back up (see the backup and restore section of docs/RUNS.md).
 //
 // Date sharding keeps any single directory listing small, and the flat index
 // makes "what did I run last week" a tail, not a tree walk. The journals are

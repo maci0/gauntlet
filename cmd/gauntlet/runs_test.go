@@ -681,6 +681,70 @@ func TestRunsJSONOnAnEmptyHistoryIsAnEmptyList(t *testing.T) {
 	}
 }
 
+// The document answers "is what survived complete", which is the question a
+// restore asks: a copied state root arrives with its journals and its
+// quarantine and no derived index, and the counts have to come from the tree.
+func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	for i, id := range []string{
+		"20260102T150405Z-1", "20260102T160405Z-2",
+	} {
+		at := start.Add(time.Duration(i) * time.Hour)
+		j, err := journal.Open(id, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Close(journal.Summary{
+			Start: at, End: at.Add(time.Minute), Dirs: []string{"/tmp/proj"},
+			Loops: 1, Reviews: 1, OK: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One run past the bound, so the archive carries a quarantined journal as
+	// well as a listed one.
+	if _, err := journal.Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	// The index is derived, and the documented archive leaves it behind.
+	if err := os.Remove(filepath.Join(home, "index.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if code != exitOK {
+		t.Fatalf("runs --json exited %d on a restored tree", code)
+	}
+	var doc struct {
+		Runs    []journal.Summary `json:"runs"`
+		History struct {
+			Journals  int `json:"journals"`
+			Rows      int `json:"rows"`
+			Disagreed int `json:"disagreed"`
+			Pruned    int `json:"pruned"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if len(doc.Runs) != 1 {
+		t.Fatalf("the restored tree lists %d runs, want the one inside the bound:\n%s", len(doc.Runs), got)
+	}
+	h := doc.History
+	// The row the listing rebuilt from the journal counts, and the two copies
+	// agree: nothing is missing, so a restore is not reported as a hole.
+	if h.Journals != 1 || h.Rows != 1 || h.Disagreed != 0 {
+		t.Errorf("history = %+v, want one journal, one row, no disagreement", h)
+	}
+	if h.Pruned != 1 {
+		t.Errorf("history reports %d quarantined runs, want 1:\n%s", h.Pruned, got)
+	}
+}
+
 // --json belongs to `runs` alone, and says so where every other misplaced flag
 // is caught, instead of being parsed by a command that would drop it.
 func TestJSONIsRefusedOutsideRuns(t *testing.T) {
