@@ -131,6 +131,35 @@ func TestCountsAdd(t *testing.T) {
 	}
 }
 
+// A status this build does not name reaches it through a reload handoff
+// written by a newer binary. It has to land in a bucket: the journal row the
+// run closes must add up (journal.Summary counts Reviews against its own
+// buckets), and the reporter's total has to match the dashboard's, which
+// tallies by raw status string and never loses one.
+func TestCountsTallyUnrecognizedStatus(t *testing.T) {
+	st := &Stats{}
+	st.Add(Result{Review: "future", Status: Status("deferred")})
+	st.Seed([]Result{{Review: "seeded-future", Status: Status("deferred")}}, 0, 0)
+	c := st.Counts()
+	if c.Other != 2 {
+		t.Fatalf("Other = %d, want 2: %+v", c.Other, c)
+	}
+	if c.Total() != 2 {
+		t.Fatalf("Total = %d, want 2: %+v", c.Total(), c)
+	}
+	// Not a failure: this build cannot tell what the newer one meant by it.
+	if c.Failures() != 0 || len(st.Failures()) != 0 {
+		t.Fatalf("an unrecognized status must not fail the run: %+v", c)
+	}
+	var attributed int
+	for _, a := range st.ByAgent() {
+		attributed += a.Counts.Other
+	}
+	if attributed != 2 {
+		t.Fatalf("per-agent breakdown attributes %d unrecognized results, want 2", attributed)
+	}
+}
+
 func TestByAgentGroupsAndSorts(t *testing.T) {
 	st := &Stats{}
 	st.Add(Result{Status: StatusOK, Tokens: 50, Elapsed: 10 * time.Second,

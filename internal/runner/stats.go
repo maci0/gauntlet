@@ -133,6 +133,14 @@ func (s *Stats) Results() []Result {
 // Counts tallies results by status.
 type Counts struct {
 	OK, Fail, Timeout, Skipped, Interrupted, Conflict int
+	// Other counts results whose status this build does not recognize. A
+	// hot reload continues the same run from a handoff the predecessor
+	// wrote, so a status a newer build named reaches an older one, and a
+	// status no switch case claims has to land in a bucket: dropped, it
+	// makes the journal's row count reviews its own buckets do not add up
+	// to, and the reporter's total disagree with the dashboard's. journal
+	// carries the same bucket for the same reason.
+	Other int
 }
 
 func (c *Counts) tally(s Status) {
@@ -149,6 +157,8 @@ func (c *Counts) tally(s Status) {
 		c.Interrupted++
 	case StatusConflict:
 		c.Conflict++
+	default:
+		c.Other++
 	}
 }
 
@@ -160,11 +170,12 @@ func (c *Counts) Add(o Counts) {
 	c.Skipped += o.Skipped
 	c.Interrupted += o.Interrupted
 	c.Conflict += o.Conflict
+	c.Other += o.Other
 }
 
 // Total is every recorded result.
 func (c Counts) Total() int {
-	return c.OK + c.Fail + c.Timeout + c.Skipped + c.Interrupted + c.Conflict
+	return c.OK + c.Fail + c.Timeout + c.Skipped + c.Interrupted + c.Conflict + c.Other
 }
 
 // Failures counts results that make the run exit nonzero.
@@ -266,6 +277,10 @@ func (s *Stats) ByAgent() []AgentSummary {
 // Sorted like Results, and stable for the same reason: a review that failed
 // in two loops contributes two rows, each carrying its own branch, exit
 // code, and lines, and an unstable sort would print them in either order.
+//
+// A status this build does not recognize is not listed here either: it is
+// counted in Other, and claiming a failure it may not be would make the exit
+// code a guess.
 func (s *Stats) Failures() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()

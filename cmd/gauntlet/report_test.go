@@ -168,6 +168,27 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 	}
 }
 
+// A status this build does not name still ran, so the summary counts it and
+// says so, and does not list it as a failure it cannot diagnose.
+func TestSummaryCountsUnrecognizedOutcomes(t *testing.T) {
+	d := &dirRun{dir: "/repo/a", loops: 1, stats: &runner.Stats{}}
+	d.stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
+		Status: runner.StatusOK})
+	d.stats.Seed([]runner.Result{{Review: "b-review", Agent: agent.Spec{Tool: "claude"},
+		Status: runner.Status("deferred")}}, 0, 0)
+	var out bytes.Buffer
+	summary(&out, palette{}, []*dirRun{d}, time.Second)
+	got := out.String()
+	for _, want := range []string{"Total reviews run: 2", "Unrecognized outcomes: 1"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("summary is missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "Failed reviews") {
+		t.Errorf("an unrecognized status was reported as a failure:\n%s", got)
+	}
+}
+
 // colorEnabled honors NO_COLOR (set at all), TERM=dumb, and terminal
 // detection, with CLICOLOR_FORCE / FORCE_COLOR turning color back on for a
 // pipe. The precedence is the contract: an explicit opt-out beats an opt-in.

@@ -144,6 +144,9 @@ func pruneLocked(keep int) (int, error) {
 	if firstErr != nil {
 		return 0, firstErr
 	}
+	// Every selected run is out of runs/ on the way out of here: a journal
+	// that was already gone is the outcome the rename wanted, and one whose
+	// rename failed is an error the caller already gets.
 	return len(stale), nil
 }
 

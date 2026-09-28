@@ -399,6 +399,34 @@ func TestInterruptedReviewsReachTheTally(t *testing.T) {
 	}
 }
 
+// A status this build does not name reaches the dashboard through a run
+// continued across a hot reload. The tally is keyed by the raw string, so the
+// review is counted, and every cell that renders has to show it: a row that
+// drops it reports a run shorter than the one that happened.
+func TestUnrecognizedStatusReachesTheTally(t *testing.T) {
+	base := time.Date(2026, 8, 25, 0, 0, 0, 0, time.UTC)
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 60, 20, true
+	m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "sec-review",
+		Agent: "claude", Status: runner.Status("deferred"), Time: base})
+	if got := stripANSI(m.gridTitle(titleRoom)); !strings.Contains(got, "other 1") {
+		t.Fatalf("tally %q omits the unrecognized outcome", got)
+	}
+	if got := stripANSI(m.renderMinimal()); !strings.Contains(got, "other 1") {
+		t.Fatalf("minimal tally %q omits the unrecognized outcome", got)
+	}
+	// A review_end with no status is publication metadata recovered without
+	// an agent, not an outcome, so it stays out of the tally.
+	m.apply(runner.Event{Kind: runner.EvReviewEnd, Review: "metadata-only",
+		Agent: "claude", Time: base})
+	if got := stripANSI(m.gridTitle(titleRoom)); !strings.Contains(got, "other 1") || strings.Contains(got, "other 2") {
+		t.Fatalf("tally %q counts an empty status as an outcome", got)
+	}
+	if got := stripANSI(newModel(demoConfig()).gridTitle(titleRoom)); strings.Contains(got, "other") {
+		t.Fatalf("an empty tally still advertises other outcomes: %q", got)
+	}
+}
+
 // Scrolling back from the live edge is invisible otherwise: the title says
 // how far.
 func TestFeedTitleMarksScrolledBack(t *testing.T) {

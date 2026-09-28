@@ -20,6 +20,7 @@ import (
 	"github.com/maci0/gauntlet/internal/envx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 func (m *model) View() string {
@@ -459,6 +460,28 @@ func failStyle(n int) lipgloss.Style {
 	return styleDim
 }
 
+// otherCount is how many reviews ended in a status this build does not name.
+// The tally is keyed by the raw status string, so a status a newer binary
+// invented (a run continued across a hot reload) sits in a key nothing reads
+// and the row reads as a clean sweep of fewer reviews than ran. The empty
+// status is not one of them: a review_end with none is publication metadata
+// recovered without launching an agent, which is no outcome to count.
+func (m *model) otherCount() int {
+	n := 0
+	for status, c := range m.counts {
+		if c <= 0 || status == "" {
+			continue
+		}
+		switch runner.Status(status) {
+		case runner.StatusOK, runner.StatusFail, runner.StatusTimeout,
+			runner.StatusSkipped, runner.StatusInterrupted, runner.StatusConflict:
+		default:
+			n += c
+		}
+	}
+	return n
+}
+
 func (m *model) gridTitle(w int) string {
 	c := m.counts
 	segs := []string{"REVIEWS",
@@ -472,6 +495,11 @@ func (m *model) gridTitle(w int) string {
 	// many, the way the summary's own conditional rows do.
 	if n := c["interrupted"]; n > 0 {
 		segs = append(segs, styleWarn.Render("interrupted")+" "+styleValue.Render(fmt.Sprint(n)))
+	}
+	// Likewise an outcome the tally cannot name: a row that hid a review
+	// would report a run shorter than the one that happened.
+	if n := m.otherCount(); n > 0 {
+		segs = append(segs, styleDim.Render("other")+" "+styleValue.Render(fmt.Sprint(n)))
 	}
 	return fitTitle(segs, w)
 }
@@ -770,6 +798,9 @@ func (m *model) renderMinimal() string {
 		if n := c[s]; n > 0 {
 			tally.WriteString(fmt.Sprintf("  %s %d", s, n))
 		}
+	}
+	if n := m.otherCount(); n > 0 {
+		tally.WriteString(fmt.Sprintf("  other %d", n))
 	}
 	stateTxt, stateStyle := m.stateLabel()
 	// The keys degrade the way the launcher's footer does: whole segments

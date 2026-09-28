@@ -318,6 +318,7 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		{"  Skipped", t.counts.Skipped},
 		{"  Interrupted", t.counts.Interrupted},
 		{"  Merge conflicts", t.counts.Conflict},
+		{"  Unrecognized outcomes", t.counts.Other},
 	} {
 		if row.n > 0 {
 			fmt.Fprintf(out, "%s: %d\n", row.label, row.n)
