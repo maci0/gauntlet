@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -2629,5 +2630,139 @@ func TestOpenIndexForAppendReportsTheCreate(t *testing.T) {
 	rows := indexRows(t)
 	if len(rows) != 2 {
 		t.Fatalf("index rows = %d, want 2: %+v", len(rows), rows)
+	}
+}
+
+// A backup that has only been written has not been proven restorable. The
+// archive docs/RUNS.md tells an operator to take is runs/ and pruned/ and
+// nothing derived, unpacked into an empty directory and read through
+// GAUNTLET_HOME. This is that drill, in the tree: a state tree restored from
+// the archive alone lists its runs, rebuilds the index, agrees with itself, and
+// still holds what the retention bound had put aside. It is also what pins
+// "the journals are the source of truth" to something a restore can rely on.
+func TestRestoredTreeListsWhatSurvived(t *testing.T) {
+	live := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", live)
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	ids := []string{runIDFor(base, 1), runIDFor(base.Add(time.Hour), 2)}
+	for i, id := range ids {
+		j, err := Open(id, base.Add(time.Duration(i)*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		j.Write(map[string]any{
+			"ev": "run_start", "ts": base.Add(time.Duration(i) * time.Hour),
+			"dir": "/repo", "version": "test", "agents": []string{"claude"},
+		})
+		j.Write(map[string]any{
+			"ev": "review_end", "ts": base.Add(time.Duration(i)*time.Hour + time.Minute),
+			"dir": "/repo", "review": "sec-review", "status": "ok", "loop": 1,
+		})
+		if err := j.Close(Summary{
+			Version: "test", Dirs: []string{"/repo"}, Agents: []string{"claude"},
+			Start: base.Add(time.Duration(i) * time.Hour),
+			End:   base.Add(time.Duration(i)*time.Hour + time.Minute),
+			Loops: 1, Reviews: 1, OK: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// One run past the bound, so the archive has to carry a pruned journal as
+	// well as a listed one: the quarantine is state too.
+	if _, err := Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	quarantined, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(quarantined) != 1 {
+		t.Fatalf("quarantine after Prune(1) = %v, want one run", quarantined)
+	}
+
+	restored := t.TempDir()
+	for _, dir := range []string{"runs", "pruned"} {
+		if _, err := os.Stat(filepath.Join(live, dir)); err != nil {
+			continue
+		}
+		copyTree(t, filepath.Join(live, dir), filepath.Join(restored, dir))
+	}
+	if err := os.WriteFile(filepath.Join(live, "agents.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	copyTree(t, filepath.Join(live, "agents.json"), filepath.Join(restored, "agents.json"))
+	// Nothing derived came along: no index.jsonl, no lock, no handoff. That is
+	// the archive as documented, and the restore has to stand on the journals.
+	t.Setenv("GAUNTLET_HOME", restored)
+	if _, err := os.Stat(indexPath()); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("restored tree came with a derived index: %v", err)
+	}
+
+	rows, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("restored tree lists %d runs, want the one inside the bound: %+v", len(rows), rows)
+	}
+	if rows[0].RunID != ids[1] || rows[0].OK != 1 || rows[0].Version != "test" {
+		t.Fatalf("restored row is not the run that was archived: %+v", rows[0])
+	}
+	if _, err := os.Stat(indexPath()); err != nil {
+		t.Fatalf("the listing should have rebuilt the index: %v", err)
+	}
+	st, err := Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Consistent() || st.Journals != 1 || st.Pruned != 1 {
+		t.Fatalf("restored tree does not agree with itself: %+v", st)
+	}
+	held, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 || held[0] != quarantined[0] {
+		t.Fatalf("the archive lost the quarantined run: %v, want %v", held, quarantined)
+	}
+	if err := Restore(held[0]); err != nil {
+		t.Fatalf("the restored tree cannot restore what it archived: %v", err)
+	}
+	rows, err = Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("restored tree lists %d runs, want both: %+v", len(rows), rows)
+	}
+}
+
+// copyTree copies a file or a directory tree, which is what a restore from an
+// archive does to the state tree.
+func copyTree(t *testing.T, src, dst string) {
+	t.Helper()
+	fi, err := os.Stat(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fi.IsDir() {
+		data, err := os.ReadFile(src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, data, fi.Mode().Perm()); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	if err := os.MkdirAll(dst, fi.Mode().Perm()); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		copyTree(t, filepath.Join(src, e.Name()), filepath.Join(dst, e.Name()))
 	}
 }

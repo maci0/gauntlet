@@ -502,10 +502,15 @@ journal can be read end to end. The third is the one that answers "is what
 survived complete": `Run history` counts the journals the restore produced, so
 it can be compared against the journal count on the machine the copy came from.
 Only after all three succeed should the restored directory replace the lost
-`GAUNTLET_HOME`. Run this drill after changing the
-archive job or upgrading across versions, and periodically with the largest
-archive, because a backup that has only been written has not been proven
-restorable.
+`GAUNTLET_HOME`. The tree half of the drill runs in the suite:
+`TestRestoredTreeListsWhatSurvived` (`internal/journal/journal_test.go`) writes
+runs, prunes one, copies `runs/`, `pruned/`, and `agents.json` into an empty
+`GAUNTLET_HOME` with no derived index beside them, and then lists, inspects, and
+restores from the copy. It proves the archive holds everything the history
+needs; the commands above prove an archive taken by your job does too. Run the
+commands after changing the archive job or upgrading across versions, and
+periodically with the largest archive, because a backup that has only been
+written has not been proven restorable.
 
 ## Updating and hot reload
 

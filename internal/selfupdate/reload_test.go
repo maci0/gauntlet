@@ -459,13 +459,13 @@ func TestDropHandoffRemovesAndToleratesAMissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dropHandoff(path); err != nil {
+	if err := DropState(path); err != nil {
 		t.Fatalf("dropping a handoff: %v", err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("the handoff survived its own drop: %v", err)
 	}
-	if err := dropHandoff(path); err != nil {
+	if err := DropState(path); err != nil {
 		t.Fatalf("dropping a handoff that is already gone must succeed, got: %v", err)
 	}
 }

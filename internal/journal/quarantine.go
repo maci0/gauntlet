@@ -70,6 +70,11 @@ func quarantine(runID, path string) error {
 // trimQuarantine deletes the quarantines a keep no longer covers, oldest
 // first, so the directory is bounded by the same number the listing is. The
 // caller holds the index lock.
+//
+// Each unlink is followed by a sync of the directory that held the file, so an
+// evicted run stays evicted: a removal the filesystem has not recorded comes
+// back after a power cut, and a run the bound was supposed to drop reappearing
+// in the quarantine is a bound that does not hold.
 func trimQuarantine(keep int) error {
 	held, err := listQuarantined()
 	if err != nil {
@@ -83,7 +88,11 @@ func trimQuarantine(keep int) error {
 		if err := os.Remove(q.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
-		touched[filepath.Dir(q.path)] = struct{}{}
+		dir := filepath.Dir(q.path)
+		touched[dir] = struct{}{}
+		if err := gauntlethome.SyncDir(dir); err != nil {
+			return err
+		}
 	}
 	return removeEmptyDirs(touched)
 }

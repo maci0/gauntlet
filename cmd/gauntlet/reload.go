@@ -221,9 +221,15 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 	fmt.Fprintf(out, "Reloading into the new binary at %s\n", path)
 	if err := selfupdate.Reexec(path, statePath, argv); err != nil {
 		// The exec failed, so no successor will pick the handoff up; leaving
-		// it would strand one file in the state dir per failed reload.
+		// it would strand one file in the state dir per failed reload. The
+		// drop is durable for the same reason the successor's is: a handoff
+		// the filesystem never recorded as gone comes back after a power cut
+		// and resumes a run that has already finished.
 		if statePath != "" {
-			os.Remove(statePath)
+			if derr := selfupdate.DropState(statePath); derr != nil {
+				fmt.Fprintf(os.Stderr, "Reload failed: %v; the handoff at %s could not be dropped: %v\n", err, statePath, derr)
+				return exitFail
+			}
 		}
 		fmt.Fprintf(os.Stderr, "Reload failed: %v\n", err)
 		return exitFail

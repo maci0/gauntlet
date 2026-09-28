@@ -199,7 +199,7 @@ func LoadState(v any) (ok bool, err error) {
 	_ = f.Close()
 	// Read once, then drop it: a stale handoff must not resurrect old counters
 	// on the next manual start.
-	dropErr := dropHandoff(path)
+	dropErr := DropState(path)
 	if readErr != nil {
 		return false, fmt.Errorf("reload handoff %s: %w", path, readErr)
 	}
@@ -215,7 +215,9 @@ func LoadState(v any) (ok bool, err error) {
 	return true, nil
 }
 
-// dropHandoff removes a consumed handoff and makes the removal durable.
+// DropState removes a handoff and makes the removal durable. It is how a
+// consumed handoff is dropped, and how a failed reload drops the one it wrote
+// for a successor that will never start.
 //
 // The unlink is synced, not merely issued, and its failure is reported rather
 // than swallowed: a removal the filesystem has not recorded comes back after a
@@ -223,7 +225,7 @@ func LoadState(v any) (ok bool, err error) {
 // under the counters it carried, so a successor would report reviews the
 // finished run had already done. A file another process dropped first is the
 // outcome the unlink wanted, so it is not a failure.
-func dropHandoff(path string) error {
+func DropState(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("reload handoff %s: cannot drop it: %w", path, err)
 	}

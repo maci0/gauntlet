@@ -283,6 +283,14 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	if err := os.Rename(tmpName, self); err != nil {
 		return "", fmt.Errorf("cannot replace %s: %w", self, err)
 	}
+	// The install is not finished until the directory records the rename.
+	// The new binary's bytes are synced and the rollback copy's name is
+	// recorded before this point, so a power cut between the rename and the
+	// record leaves the replaced binary in place, under a name an update has
+	// already reported replacing.
+	if err := gauntlethome.SyncDir(dir); err != nil {
+		return "", fmt.Errorf("cannot record %s: %w", self, err)
+	}
 	return self, nil
 }
 
