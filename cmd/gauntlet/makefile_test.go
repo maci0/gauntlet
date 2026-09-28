@@ -287,8 +287,13 @@ func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
 			}
 			var analysis []string
 			for line := range strings.SplitSeq(string(out), "\n") {
-				if strings.HasPrefix(line, "go fix ") || strings.HasPrefix(line, "go vet ") {
-					analysis = append(analysis, line)
+				// The go fix legs carry the shell guard that names the command
+				// to apply the rewrites, so the recorded command is the line up
+				// to it, with the recipe's silencing @ stripped.
+				cmd, _, _ := strings.Cut(strings.TrimPrefix(line, "@"), " ||")
+				cmd = strings.TrimSpace(cmd)
+				if strings.HasPrefix(cmd, "go fix ") || strings.HasPrefix(cmd, "go vet ") {
+					analysis = append(analysis, cmd)
 				}
 			}
 			want := "go fix -diff -tags sqlite ./...\ngo fix -diff ./...\ngo fix -diff -tags notoktop ./...\ngo vet -tags sqlite ./...\ngo vet ./...\ngo vet -tags notoktop ./..."

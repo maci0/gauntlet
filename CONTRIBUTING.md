@@ -96,6 +96,19 @@ pull request template
 ([.github/pull_request_template.md](.github/pull_request_template.md))
 restates this list as a checklist.
 
+`make check` reports what to do with each finding, and each one has a target
+that fixes it rather than a command to work out:
+
+```sh
+make fmt     # gofmt -s -w over every package directory, for "needs gofmt:"
+```
+
+`go fix` is reported the same way: the diff it prints names the exact
+invocation without `-diff` that applies it, under the tag set the diff came
+from (`go fix -tags sqlite ./...`, `go fix ./...`, and
+`go fix -tags notoktop ./...` for the three legs). Apply it, then run
+`make check` again.
+
 CI additionally runs the full suite under each tag configuration, then
 `make dist` and `make repro`. Reproduce the other two matrix legs locally
 with `make test TAGS=notoktop` and `make test TAGS=` when your change

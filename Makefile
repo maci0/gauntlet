@@ -297,14 +297,33 @@ check: ## verify the module manifests, formatting, toolchain fixes, and vet (CI 
 	@test -n "$(GOFILES)" || { echo "go list returned no packages" >&2; exit 1; }; \
 		unformatted=$$("$(GOFMT)" -s -l $(GOFILES)) || exit 1; \
 		if [ -n "$$unformatted" ]; then \
-			echo "needs gofmt:"; echo "$$unformatted"; exit 1; \
+			echo "needs gofmt:"; echo "$$unformatted"; \
+			echo "check: rewrite them with 'make fmt', then run this again" >&2; \
+			exit 1; \
 		fi
 # The three documented build modes are checked: sqlite+toktop, notoktop, and
 # no tags at all (transcripts without database readers). CI tests all three; the
 # analysis step must see the same set or a mode only it compiles goes unvetted.
-	$(GO) fix -diff -tags sqlite ./...
-	$(GO) fix -diff ./...
-	$(GO) fix -diff -tags notoktop ./...
+#
+# `go fix -diff` prints a unified diff and exits nonzero, which reaches the
+# contributor as a red step carrying no command: applying it is the same
+# invocation without -diff, under the tag set the diff came from. Each leg says
+# so rather than leaving the fix to be guessed at.
+	@$(GO) fix -diff -tags sqlite ./... || { \
+		echo "check: '$(GO) fix -diff -tags sqlite ./...' reports rewrites; apply them with:" >&2; \
+		echo "check:   $(GO) fix -tags sqlite ./..." >&2; \
+		echo "check: then run this again" >&2; exit 1; \
+	}
+	@$(GO) fix -diff ./... || { \
+		echo "check: '$(GO) fix -diff ./...' reports rewrites; apply them with:" >&2; \
+		echo "check:   $(GO) fix ./..." >&2; \
+		echo "check: then run this again" >&2; exit 1; \
+	}
+	@$(GO) fix -diff -tags notoktop ./... || { \
+		echo "check: '$(GO) fix -diff -tags notoktop ./...' reports rewrites; apply them with:" >&2; \
+		echo "check:   $(GO) fix -tags notoktop ./..." >&2; \
+		echo "check: then run this again" >&2; exit 1; \
+	}
 	$(GO) vet -tags sqlite ./...
 	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
