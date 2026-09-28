@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/evidence"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
@@ -49,11 +50,11 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		logf = func(string, ...any) {}
 	}
 
-	// The suggester that is not an agent: file signals, no launch, no tokens.
-	if cfg.Only != nil && cfg.Only.Tool == FastSuggestAgent {
+	// The suggester that is not an agent: internal/evidence, no launch, no tokens.
+	if cfg.Only != nil && cfg.Only.Tool == evidence.AgentName {
 		spec := *cfg.Only
 		logf("Reading %s for review signals (no agent)", filepath.Base(cfg.Dir))
-		picked, historyErr := fastSuggest(cfg.Dir, cfg.Pool, cfg.Set)
+		picked, historyErr := evidence.Reviews(cfg.Dir, cfg.Pool, cfg.Set)
 		if historyErr != nil {
 			logf("Cannot read this directory's run history, so every review counts "+
 				"as untried here: %v", historyErr)

@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package runner
+package evidence
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
-// The suggester that is not an agent.
+// Package evidence is the suggester that is not an agent.
 //
 // `--suggest-agent gauntlet` answers the same question the triage step asks,
 // from what is on disk: which files exist, how many of them, what they say
@@ -37,9 +37,9 @@ import (
 // in a Go repository is not a frontend, and a directory nobody has touched in
 // a quarter is not where the next review should look.
 
-// FastSuggestAgent is the value --suggest-agent takes to use this instead of
+// AgentName is the value --suggest-agent takes to use this instead of
 // launching an agent.
-const FastSuggestAgent = "gauntlet"
+const AgentName = "gauntlet"
 
 // Scan limits. A repository with a million files is not worth a better answer
 // than the first hundred thousand paths already give, and the content peek
@@ -451,7 +451,7 @@ type scored struct {
 	reasons []string
 }
 
-// fastSuggest reads the tree and returns the reviews its files justify, best
+// Reviews reads the tree and returns the reviews its files justify, best
 // evidence first, restricted to the pool. Reviews whose evidence does not
 // reach minScore are left out: proposing everything would be the same as
 // proposing nothing.
@@ -462,7 +462,7 @@ type scored struct {
 // that have already finished here without changing a line several times
 // over. The file evidence stands on its own, so the picks are still worth
 // having; the caller says why the weighting is missing.
-func fastSuggest(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, error) {
+func Reviews(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, error) {
 	s := scan(dir, declaredMarks(pool, set))
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {

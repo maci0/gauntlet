@@ -19,6 +19,7 @@ import (
 var allowedInternalImports = map[string][]string{
 	"internal/agent":        {"internal/fuzzy", "internal/gauntlethome", "internal/normalize", "internal/runx"},
 	"internal/envx":         {},
+	"internal/evidence":     {"internal/fuzzy", "internal/gitx", "internal/journal", "internal/prompt"},
 	"internal/fuzzy":        {},
 	"internal/gauntlethome": {},
 	"internal/ghx":          {"internal/runx"},
@@ -28,8 +29,8 @@ var allowedInternalImports = map[string][]string{
 	"internal/normalize":    {},
 	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize"},
 	"internal/runner": {
-		"internal/agent", "internal/fuzzy", "internal/ghx", "internal/gitx", "internal/humanize",
-		"internal/journal", "internal/normalize", "internal/prompt", "internal/runx", "internal/streamjson",
+		"internal/agent", "internal/evidence", "internal/ghx", "internal/gitx", "internal/humanize",
+		"internal/normalize", "internal/prompt", "internal/runx", "internal/streamjson",
 	},
 	"internal/runx":       {},
 	"internal/selfupdate": {"internal/gauntlethome"},
@@ -45,7 +46,11 @@ var allowedInternalImports = map[string][]string{
 // FastSuggest on PickConfig so it does not need that edge for itself. ui
 // importing envx is the motion-off variables read by the one boolean reader,
 // so the single list of values that mean off is the list the dashboard answers
-// by. Nothing in internal/ may import ui. A permission no import uses is a
+// by. runner importing evidence is the triage step calling the suggester that
+// is not an agent; that edge is the only reason the file-signal suggester is
+// its own package rather than a second mode inside the scheduler, and it is
+// the one place the runner's public Suggest reaches past its own files.
+// Nothing in internal/ may import ui. A permission no import uses is a
 // hole left open for the next file, and docs/DESIGN.md would describe a
 // dependency that does not exist, so the map has to name only the edges the
 // tree really has.

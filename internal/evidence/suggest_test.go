@@ -1,9 +1,10 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package runner
+package evidence
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,6 +20,16 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
+// discover is a thin test helper around prompt.Discover.
+func discover(t *testing.T, dir string) prompt.Set {
+	t.Helper()
+	set, _, err := prompt.Discover(context.Background(), dir, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
+}
+
 // suggestHome points the journal at an empty tree, so a test judges the files
 // in front of it and never the machine's own run history.
 func suggestHome(t *testing.T) {
@@ -26,14 +37,14 @@ func suggestHome(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 }
 
-// fastPicks is fastSuggest for the cases that are not about its error: the
+// reviews is Reviews for the cases that are not about its error: the
 // history read is expected to succeed, so an error fails the test rather than
 // passing unnoticed.
-func fastPicks(t *testing.T, dir string, pool []string, set prompt.Set) []prompt.Suggestion {
+func reviews(t *testing.T, dir string, pool []string, set prompt.Set) []prompt.Suggestion {
 	t.Helper()
-	picked, err := fastSuggest(dir, pool, set)
+	picked, err := Reviews(dir, pool, set)
 	if err != nil {
-		t.Fatalf("fastSuggest(%s): %v", dir, err)
+		t.Fatalf("Reviews(%s): %v", dir, err)
 	}
 	return picked
 }
@@ -95,7 +106,7 @@ func TestFastSuggestFollowsTheFiles(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			got := map[string]bool{}
-			for _, s := range fastPicks(t, tree(t, c.files...), pool, prompt.Set{}) {
+			for _, s := range reviews(t, tree(t, c.files...), pool, prompt.Set{}) {
 				got[s.Name] = true
 				if s.Reason == "" {
 					t.Fatalf("%s was proposed with no evidence", s.Name)
@@ -120,13 +131,13 @@ func TestFastSuggestFollowsTheFiles(t *testing.T) {
 func TestFastSuggestStaysInThePool(t *testing.T) {
 	dir := tree(t, "main.go", "Dockerfile")
 	var names []string
-	for _, s := range fastPicks(t, dir, []string{"code-review"}, prompt.Set{}) {
+	for _, s := range reviews(t, dir, []string{"code-review"}, prompt.Set{}) {
 		if s.Name != "code-review" {
 			t.Fatalf("%s is outside the pool", s.Name)
 		}
 		names = append(names, s.Name)
 	}
-	// The loop above also passes when fastSuggest returns nothing at all, so
+	// The loop above also passes when Reviews returns nothing at all, so
 	// the pool check needs a positive control: this tree is a Go program, and
 	// code-review is in the pool.
 	if len(names) != 1 {
@@ -138,7 +149,7 @@ func TestFastSuggestStaysInThePool(t *testing.T) {
 // rather than falling back to everything.
 func TestFastSuggestProposesNothingForAnEmptyTree(t *testing.T) {
 	suggestHome(t)
-	if got := fastPicks(t, t.TempDir(), []string{"code-review", "sec-review"}, prompt.Set{}); len(got) != 0 {
+	if got := reviews(t, t.TempDir(), []string{"code-review", "sec-review"}, prompt.Set{}); len(got) != 0 {
 		t.Fatalf("an empty tree produced %v", got)
 	}
 }
@@ -148,7 +159,7 @@ func TestFastSuggestProposesNothingForAnEmptyTree(t *testing.T) {
 func TestFastSuggestIgnoresVendoredTrees(t *testing.T) {
 	dir := tree(t, "node_modules/react/index.tsx", "vendor/lib/thing.c", "README.md")
 	var names []string
-	for _, s := range fastPicks(t, dir, []string{"ux-review", "resource-review", "doc-review"}, prompt.Set{}) {
+	for _, s := range reviews(t, dir, []string{"ux-review", "resource-review", "doc-review"}, prompt.Set{}) {
 		names = append(names, s.Name)
 	}
 	if strings.Contains(strings.Join(names, ","), "ux-review") ||
@@ -173,7 +184,7 @@ func TestFastSuggestWeighsHowMuchOfATreeAThingIs(t *testing.T) {
 	pool := []string{"code-review", "ux-review", "a11y-review", "webperf-review"}
 
 	var names []string
-	for _, s := range fastPicks(t, tree(t, files...), pool, prompt.Set{}) {
+	for _, s := range reviews(t, tree(t, files...), pool, prompt.Set{}) {
 		names = append(names, s.Name)
 		if strings.HasPrefix(s.Name, "ux") || strings.HasPrefix(s.Name, "a11y") ||
 			strings.HasPrefix(s.Name, "webperf") {
@@ -193,7 +204,7 @@ func TestFastSuggestReadsWhatIsMissing(t *testing.T) {
 	pool := []string{"test-review", "doc-review", "build-review", "code-review"}
 	dir := tree(t, "main.go", "internal/app/app.go")
 	got := map[string]string{}
-	for _, s := range fastPicks(t, dir, pool, prompt.Set{}) {
+	for _, s := range reviews(t, dir, pool, prompt.Set{}) {
 		got[s.Name] = s.Reason
 	}
 	for _, want := range []string{"test-review", "doc-review", "build-review"} {
@@ -220,7 +231,7 @@ func TestFastSuggestReadsInsideFiles(t *testing.T) {
 		"svc/queue.py\x00def retry(): ...\n# idempotency key\n",
 	)
 	got := map[string]bool{}
-	for _, s := range fastPicks(t, dir, pool, prompt.Set{}) {
+	for _, s := range reviews(t, dir, pool, prompt.Set{}) {
 		got[s.Name] = true
 	}
 	for _, want := range []string{
@@ -242,13 +253,10 @@ func TestFastSuggestHonorsSignalsAPromptDeclares(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "zig-idiomatic-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := discover(t, promptDir)
 
 	var reason string
-	for _, s := range fastPicks(t, dir, []string{"zig-idiomatic-review"}, set) {
+	for _, s := range reviews(t, dir, []string{"zig-idiomatic-review"}, set) {
 		if s.Name == "zig-idiomatic-review" {
 			reason = s.Reason
 		}
@@ -275,13 +283,10 @@ func TestFastSuggestFindsASubstringAReviewDeclares(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "comptime-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := discover(t, promptDir)
 
 	var reason string
-	for _, s := range fastPicks(t, dir, []string{"comptime-review"}, set) {
+	for _, s := range reviews(t, dir, []string{"comptime-review"}, set) {
 		if s.Name == "comptime-review" {
 			reason = s.Reason
 		}
@@ -304,11 +309,8 @@ func TestFastSuggestIgnoresASubstringTheTreeLacks(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "comptime-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, s := range fastPicks(t, dir, []string{"comptime-review"}, set) {
+	set := discover(t, promptDir)
+	for _, s := range reviews(t, dir, []string{"comptime-review"}, set) {
 		if s.Name == "comptime-review" && strings.Contains(s.Reason, "mark:comptime") {
 			t.Fatalf("claimed a mark the tree does not carry: %q", s.Reason)
 		}
@@ -349,13 +351,10 @@ func TestFastSuggestMatchesMarkAcrossNormalizationForms(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := discover(t, promptDir)
 
 	var reason string
-	for _, s := range fastPicks(t, dir, []string{"cafe-review"}, set) {
+	for _, s := range reviews(t, dir, []string{"cafe-review"}, set) {
 		if s.Name == "cafe-review" {
 			reason = s.Reason
 		}
@@ -375,12 +374,9 @@ func TestFastSuggestMatchesMarkIgnoringNonASCIICase(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := discover(t, promptDir)
 	var reason string
-	for _, s := range fastPicks(t, dir, []string{"cafe-review"}, set) {
+	for _, s := range reviews(t, dir, []string{"cafe-review"}, set) {
 		if s.Name == "cafe-review" {
 			reason = s.Reason
 		}
@@ -408,13 +404,10 @@ func TestFastSuggestMatchesSignalsAcrossNormalizationForms(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(promptDir, "cafe-review.md"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	set, _, err := Discover(t, promptDir)
-	if err != nil {
-		t.Fatal(err)
-	}
+	set := discover(t, promptDir)
 
 	var reason string
-	for _, s := range fastPicks(t, dir, []string{"cafe-review"}, set) {
+	for _, s := range reviews(t, dir, []string{"cafe-review"}, set) {
 		if s.Name == "cafe-review" {
 			reason = s.Reason
 		}
@@ -437,7 +430,7 @@ func TestFastSuggestLearnsFromPastRunsInThisDirectory(t *testing.T) {
 	writeHistory(t, home, dir, "test-review", 4, 4)
 
 	var order []string
-	for _, s := range fastPicks(t, dir, []string{"sec-review", "test-review", "code-review"}, prompt.Set{}) {
+	for _, s := range reviews(t, dir, []string{"sec-review", "test-review", "code-review"}, prompt.Set{}) {
 		order = append(order, s.Name)
 	}
 	if len(order) == 0 || order[0] != "test-review" {
@@ -549,7 +542,7 @@ func TestFastSuggestReportsAJournalItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	picked, err := fastSuggest(dir, []string{"code-review"}, prompt.Set{})
+	picked, err := Reviews(dir, []string{"code-review"}, prompt.Set{})
 	if err == nil {
 		t.Fatal("an unreadable journal was swallowed")
 	}

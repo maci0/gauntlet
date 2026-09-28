@@ -19,12 +19,12 @@ import (
 	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/evidence"
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
-	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"golang.org/x/term"
 )
@@ -604,9 +604,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if isFlagSet(fs, "suggest-agent") && strings.TrimSpace(suggestAgent) == "" {
 		return nil, errors.New("--suggest-agent is empty")
 	}
-	if suggestAgent == runner.FastSuggestAgent {
+	if suggestAgent == evidence.AgentName {
 		// Not an agent: gauntlet itself, reading the tree for signals.
-		o.suggestAgent = &agent.Spec{Tool: runner.FastSuggestAgent}
+		o.suggestAgent = &agent.Spec{Tool: evidence.AgentName}
 	} else if suggestAgent != "" {
 		specs, err := agent.ParseSpecs(suggestAgent)
 		if err != nil {
@@ -879,7 +879,7 @@ func (o *options) needsAgents() bool {
 	if o.list && !o.suggest {
 		return false
 	}
-	if o.list && o.suggestAgent != nil && o.suggestAgent.Tool == runner.FastSuggestAgent {
+	if o.list && o.suggestAgent != nil && o.suggestAgent.Tool == evidence.AgentName {
 		return false
 	}
 	return true

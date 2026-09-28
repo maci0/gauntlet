@@ -16,9 +16,9 @@ import (
 	"golang.org/x/term"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/evidence"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/prompt"
-	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/ui"
 )
 
@@ -57,7 +57,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		PromptDir:   opts.promptDir,
 		Groups:      pickGroups(set),
 		Reserved:    append(prompt.SetNames(), prompt.Suggest),
-		FastSuggest: runner.FastSuggestAgent,
+		FastSuggest: evidence.AgentName,
 		Agents:      agent.Labels(agent.Installed()),
 		Branch:      branch,
 		Merge:       targets,

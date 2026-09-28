@@ -177,7 +177,7 @@ past runs, read from the journal:
 uv run scripts/suggest-calibrate.py --detail
 ```
 
-Run it before and after touching `internal/runner/suggest_fast.go`; read
+Run it before and after touching `internal/evidence/suggest.go`; read
 the numbers as movement between runs rather than as a grade, because the
 agent's pick is a reference and not ground truth.
 

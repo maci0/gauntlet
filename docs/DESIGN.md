@@ -36,6 +36,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
 | `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
+| `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
 | `internal/normalize` | agent output noise reduction and line classification |
 | `internal/gitx` | hardened git invocation, worktree line stats |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
@@ -52,14 +53,17 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`fuzzy`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`,
-`humanize`, and `journal`; `gitx`, `ghx`, and `agent` import `runx` for the shared child
+`evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, and
+`humanize`; `evidence` imports `fuzzy`, `gitx`, `journal`, and `prompt`, so the
+file-signal suggester reaches the tree, the run history, and the catalog
+without any of them reaching back;
+`gitx`, `ghx`, and `agent` import `runx` for the shared child
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, the `envx` boolean reader, which the motion-off variables go
 through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold behind
 the picker's filter, and nothing else. The picker takes the file-signal suggester name from `PickConfig`
-rather than importing `runner` for it. `cmd/gauntlet` and `ui` import `envx`,
+rather than importing `evidence` for it. `cmd/gauntlet` and `ui` import `envx`,
 the one reader of the boolean environment variables, so the one list of
 values that mean off, which `docs/CLI.md` states once for all five variables,
 is written once: the plain reporter and the dashboard ask the same package
@@ -97,7 +101,7 @@ library cannot, and each was kept small on purpose.
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `cmd/gauntlet`, and text truncation in `internal/agent` and `internal/normalize` |
-| `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
+| `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 
 No direct module is imported outside the column above, and no module is

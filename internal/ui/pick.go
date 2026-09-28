@@ -49,7 +49,8 @@ type PickConfig struct {
 	Reserved []string
 	// FastSuggest is the --suggest-agent value that picks reviews from file
 	// signals instead of asking a model. Empty omits that choice. Passed in
-	// rather than looked up here: the picker does not import the runner.
+	// rather than looked up here: the picker imports neither internal/evidence
+	// nor internal/runner.
 	FastSuggest string
 }
 
