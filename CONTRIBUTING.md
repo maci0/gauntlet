@@ -203,9 +203,16 @@ path by hand before tagging.
 
 The other half is `make artifacts VERSION=<version>`, which writes
 `dist/checksums.txt` and `dist/sbom.json` from the binaries `dist` built and
-verifies the checksums against them. `make release` is `check test dist
-artifacts`; the pull-request `dist` job runs `make artifacts` too, so a change
-that broke the inventory or the checksums fails there rather than at a tag.
+verifies the checksums against them. `make release VERSION=<version>` is
+`clean-tree release-version check test dist artifacts`; the pull-request `dist`
+job runs `make artifacts` too, so a change that broke the inventory or the
+checksums fails there rather than at a tag.
+
+`VERSION` is required, not inherited: `make build` and the other local targets
+default it to `dev`, and a release built on that default would be complete and
+self-consistent at the wrong version, with assets named `gauntlet_dev_*` and a
+`make smoke` that passes against the same placeholder. `make release` refuses
+it before the suite runs.
 
 ## Rolling back a bad release
 

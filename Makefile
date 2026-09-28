@@ -507,7 +507,7 @@ clean-tree: ## fail unless the working tree has no uncommitted or untracked chan
 # library alone: the artifact that describes the dependency surface must not
 # add to it.
 .PHONY: release
-release: | clean-tree check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
+release: | clean-tree release-version check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
 	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
 
 # The two files that sit beside the binaries rather than being them, split out
@@ -606,3 +606,25 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 			cmp "$(REPRO_DIR)/a/$(BINARY)" "$(REPRO_DIR)/b/$(BINARY)" || exit 1; \
 		done; \
 		echo "repro: identical bytes from different paths, locales, and timezones"
+
+# A release is cut from a tag, and the tag is the one thing that names the
+# version: the workflow derives it from GITHUB_REF_NAME and hands it to both
+# `release` and `smoke`. `VERSION` still defaults to `dev` so a contributor's
+# `make build` needs no version, and a `make release` that inherited that
+# default would build a complete, self-consistent, wrong release: assets named
+# gauntlet_dev_darwin_arm64, a binary reporting `gauntlet dev`, and a
+# `make smoke VERSION=dev` that passes, because it compares the stamp against
+# the same placeholder it was handed. The pull-request dist job is not
+# affected: it builds `VERSION=ci`, which is a version like any other and ships
+# nothing.
+#
+# Last in the file, and order-only where `release` names it, so the refusal
+# comes before the suite and the four cross-compiles rather than after them,
+# and so inserting it moves no line that docs/THREAT_MODEL.md points at.
+.PHONY: release-version
+release-version:
+	@case "$(VERSION)" in \
+		""|dev) \
+			echo "release-version: VERSION='$(VERSION)' is the local default; a release is built from a tag: 'make release VERSION=x.y.z'" >&2; \
+			exit 1;; \
+	esac

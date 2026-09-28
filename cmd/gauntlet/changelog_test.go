@@ -32,8 +32,15 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 		prevVer   *changelogVersion
 		sawFirst  bool
 	)
-	for i, line := range strings.Split(text, "\n") {
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
 		n := i + 1
+		// The release workflow dumps this section verbatim as the GitHub
+		// notes, where a heading glued to the bullet above it is not a
+		// heading. A 1.25.0 entry ended that way and shipped.
+		if i > 0 && strings.HasPrefix(line, "#") && lines[i-1] != "" {
+			t.Errorf("CHANGELOG.md:%d: %q follows a line of text; put a blank line above every heading", n, line)
+		}
 		switch {
 		case strings.HasPrefix(line, "### "):
 			if section == "" {

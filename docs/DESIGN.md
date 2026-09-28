@@ -525,6 +525,12 @@ flag in the bytes, so a release built from a modified tree would be
 indistinguishable from the tag and would ship source no reviewer read. The
 tagged release workflow writes its extracted notes under `dist/`, which is
 gitignored, so the check does not trip on the job's own scratch file.
+The version is claimed the same way: the tag names it, the workflow hands it
+to `make release` as `VERSION`, and `make release` refuses the `dev` default a
+local build uses, because a release built on that default would be complete
+and self-consistent at a version no tag names (assets `gauntlet_dev_*`, a
+binary reporting `gauntlet dev`, and a `make smoke` that compares the stamp
+against the same placeholder).
 
 **Hot reload** watches the running executable's inode, size, and mtime every
 five seconds and requires two immediately consecutive identical readings

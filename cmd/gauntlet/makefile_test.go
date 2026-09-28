@@ -658,6 +658,48 @@ func TestSmokePassesAndFailsOnWhatTheBinaryReports(t *testing.T) {
 	}
 }
 
+// A release built from the default VERSION is a release nobody tagged: the
+// assets are named gauntlet_dev_*, the binary reports `gauntlet dev`, and
+// `make smoke VERSION=dev` passes because it compares the stamp against the
+// same placeholder it was handed. The refusal belongs to the target the
+// release workflow runs, before the suite and the cross-compiles.
+func TestReleaseRefusesTheDefaultVersion(t *testing.T) {
+	if !strings.Contains(makefileText(t), "release: | clean-tree release-version ") {
+		t.Error("make release must run release-version; a release is cut from a tag, and the tag is what names the version")
+	}
+	for _, tc := range []struct {
+		version string
+		wantErr bool
+	}{
+		{version: "", wantErr: true},
+		{version: "dev", wantErr: true},
+		{version: "1.26.0"},
+		{version: "1.26.0-rc.1"},
+		{version: "ci"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "release-version", "VERSION="+tc.version)
+			cmd.Dir = moduleRoot(t)
+			cmd.Env = cleanMakeEnv()
+			out, err := cmd.CombinedOutput()
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("make release-version VERSION=%q succeeded; it ships unversioned assets:\n%s", tc.version, out)
+				}
+				if !strings.Contains(string(out), "release-version:") {
+					t.Fatalf("the refusal must name the check that failed:\n%s", out)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("make release-version VERSION=%q: %v\n%s", tc.version, err, out)
+			}
+		})
+	}
+}
+
 // make host-artifact must print a path dist actually built, or the smoke
 // tests that consume it fail on a file that was never produced.
 func TestHostArtifactNamesABinaryDistBuilds(t *testing.T) {
@@ -830,8 +872,8 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 // that `make ci` rejects.
 func TestReleaseRunsCheck(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "\nrelease: | clean-tree check test dist artifacts ##") {
-		t.Fatal("make release must run check as well as the tests, dist, the artifacts beside the binaries, and the clean-tree check")
+	if !strings.Contains(text, "\nrelease: | clean-tree release-version check test dist artifacts ##") {
+		t.Fatal("make release must run check as well as the tests, dist, the artifacts beside the binaries, the version check, and the clean-tree check")
 	}
 }
 
@@ -843,7 +885,7 @@ func TestReleaseRunsCheck(t *testing.T) {
 // where a source tarball has no notion of clean.
 func TestReleaseRefusesADirtyTree(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "\nrelease: | clean-tree check test dist artifacts ##") {
+	if !strings.Contains(text, "\nrelease: | clean-tree release-version check test dist artifacts ##") {
 		t.Fatal("make release must depend on clean-tree first, so a modified tree cannot reach a release asset")
 	}
 	recipe := makefileRecipe(text, "clean-tree")
