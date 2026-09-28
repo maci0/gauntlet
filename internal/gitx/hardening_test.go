@@ -300,6 +300,7 @@ func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
 		"merge.evil.driver=touch pwned",
 		"diff.evil.textconv=cat",
 		"core.editor=vim",
+		"credential.helper=!touch pwned",
 		"user.email=test@example.invalid",
 		"remote.origin.url=https://github.com/o/r.git",
 		"url.https://evil.insteadOf=https://github.com/",
@@ -312,6 +313,7 @@ func TestDisableLocalDriversBlanksExecutableKeys(t *testing.T) {
 		"-c", "merge.evil.driver=",
 		"-c", "diff.evil.textconv=",
 		"-c", "core.editor=",
+		"-c", "credential.helper=",
 	}
 	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
 		t.Fatalf("disableLocalDrivers =\n%q\nwant\n%q", got, want)
@@ -394,11 +396,66 @@ func FuzzDisableLocalDrivers(f *testing.F) {
 	})
 }
 
+// A credential helper whose value starts with "!" is a shell command git runs
+// itself the first time it needs a credential, so a reviewed repository that
+// plants one in .git/config would execute code in this process at the next
+// push. The overlay blanks the list and puts the operator's own helpers back
+// behind the reset, so `gh auth setup-git` and the macOS keychain still
+// authenticate the run's pushes.
+func TestPlantedCredentialHelperIsBlanked(t *testing.T) {
+	r := newRepo(t)
+	gitIn(t, r.Dir, "config", "credential.helper", "!touch "+filepath.Join(t.TempDir(), "pwned"))
+	r = Open(r.Dir)
+
+	overlay := r.extraSafeConfig()
+	reset := slices.Index(overlay, "credential.helper=")
+	if reset < 0 {
+		t.Fatalf("overlay left the planted credential.helper in place: %q", overlay)
+	}
+	for _, v := range overlay {
+		if strings.Contains(v, "touch ") || strings.Contains(v, "pwned") {
+			t.Fatalf("overlay carries the planted helper: %q", v)
+		}
+	}
+	for i := reset + 1; i < len(overlay); i++ {
+		if overlay[i] == "-c" {
+			i++
+			continue
+		}
+		if !strings.HasPrefix(overlay[i], "credential.helper=") {
+			t.Fatalf("%q follows the credential.helper reset, so it is not part of the helper chain", overlay[i])
+		}
+	}
+}
+
+// Without a helper in the local config there is nothing to reset, and a reset
+// would drop the operator's own chain for nothing.
+func TestNoLocalCredentialHelperMeansNoReset(t *testing.T) {
+	r := newRepo(t)
+	r = Open(r.Dir)
+	if got := r.operatorCredentialHelpers("core.editor=vim\nuser.name=x\n"); got != nil {
+		t.Fatalf("operatorCredentialHelpers reset a helper list nobody set: %q", got)
+	}
+}
+
+func TestCredentialHelperValuesKeepsOrderAndFoldsCase(t *testing.T) {
+	listing := "user.name=x\ncredential.helper=osxkeychain\nCredential.Helper=cache\n"
+	got := credentialHelperValues(listing)
+	want := []string{"-c", "credential.helper=osxkeychain", "-c", "credential.helper=cache"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("credentialHelperValues = %q, want %q", got, want)
+	}
+}
+
 func driverKey(key string) bool {
 	switch {
 	case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
-		key == "core.gitproxy", key == "interactive.difffilter",
-		key == "core.editor", key == "sequence.editor", key == "core.askpass":
+		strings.EqualFold(key, "credential.helper"),
+		strings.EqualFold(key, "core.gitproxy"),
+		strings.EqualFold(key, "interactive.difffilter"),
+		strings.EqualFold(key, "core.editor"),
+		strings.EqualFold(key, "sequence.editor"),
+		strings.EqualFold(key, "core.askpass"):
 		return true
 	case strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
 		return true

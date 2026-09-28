@@ -297,8 +297,68 @@ func (r *Repo) buildExtraSafe() []string {
 		staticArgv("config", "--local", "--list")...)
 	if err == nil {
 		extra = append(extra, disableLocalDrivers(string(list))...)
+		// Last, so the operator's own helpers follow the reset the local
+		// listing asked for: git reads credential.helper as a list, and the
+		// empty value resets it, so anything appended after is what survives.
+		extra = append(extra, r.operatorCredentialHelpers(string(list))...)
 	}
 	return extra
+}
+
+// operatorCredentialHelpers resets git's credential helper list when the local
+// config named one, and puts the operator's own system and global helpers back
+// behind the reset.
+//
+// A helper whose value begins with "!" is a shell command git runs itself, so
+// a reviewed repository carrying `credential.helper = !curl … | sh` in its
+// .git/config gets code execution the first time a run pushes over https: the
+// same class of planted driver as a smudge filter, and this overlay blanks
+// those. An empty credential.helper is what resets the list, and it is also
+// what would silently drop `gh auth setup-git` and the macOS keychain along
+// with the planted entry, so the system and global helpers are read back and
+// re-asserted after it. They are the operator's own configuration, not the
+// reviewed tree's, and they travel as exec arguments rather than through a
+// shell. A local config with no helper in it is left alone.
+func (r *Repo) operatorCredentialHelpers(localListing string) []string {
+	if !configHas(localListing, "credential.helper") {
+		return nil
+	}
+	out := []string{"-c", "credential.helper="}
+	for _, scope := range []string{"--system", "--global"} {
+		list, err := r.execGit(context.Background(), nil, gitQuick,
+			staticArgv("config", scope, "--list")...)
+		if err != nil {
+			continue // no file at that scope, or git refused to read it
+		}
+		out = append(out, credentialHelperValues(string(list))...)
+	}
+	return out
+}
+
+// credentialHelperValues picks the helper assignments out of one config
+// listing, in the order git reads them, so the reset can be followed by the
+// operator's own chain.
+func credentialHelperValues(listing string) []string {
+	var out []string
+	for line := range strings.SplitSeq(listing, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok || !strings.EqualFold(key, "credential.helper") {
+			continue
+		}
+		out = append(out, "-c", "credential.helper="+value)
+	}
+	return out
+}
+
+// configHas reports whether a `git config --list` listing carries key. The
+// comparison folds case because git's own section and variable names do.
+func configHas(listing, key string) bool {
+	for line := range strings.SplitSeq(listing, "\n") {
+		if k, _, ok := strings.Cut(strings.TrimSpace(line), "="); ok && strings.EqualFold(k, key) {
+			return true
+		}
+	}
+	return false
 }
 
 // localConfigPath is the file `git config --local` reads, which is what the
@@ -329,7 +389,10 @@ func staticArgv(args ...string) []string {
 // would exec from .gitattributes or during a checkout/merge/diff. attr.tree
 // already stops attributes from selecting them on git 2.40+; this is the
 // fallback for older git, and covers a driver that config would invoke
-// without an attribute (core.editor, gitProxy).
+// without an attribute (core.editor, gitProxy). credential.helper is here for
+// the same reason: its "!" form is a shell command git runs on the next
+// https push. operatorCredentialHelpers is what puts the operator's own
+// helpers back behind the blank.
 func disableLocalDrivers(listing string) []string {
 	var extra []string
 	for line := range strings.SplitSeq(listing, "\n") {
@@ -339,8 +402,12 @@ func disableLocalDrivers(listing string) []string {
 		}
 		switch {
 		case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
-			key == "core.gitproxy", key == "interactive.difffilter",
-			key == "core.editor", key == "sequence.editor", key == "core.askpass":
+			strings.EqualFold(key, "credential.helper"),
+			strings.EqualFold(key, "core.gitproxy"),
+			strings.EqualFold(key, "interactive.difffilter"),
+			strings.EqualFold(key, "core.editor"),
+			strings.EqualFold(key, "sequence.editor"),
+			strings.EqualFold(key, "core.askpass"):
 			extra = append(extra, "-c", key+"=")
 		case strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
 			extra = append(extra, "-c", key+"=false")

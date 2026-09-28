@@ -46,6 +46,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Security
 
+- A credential helper planted in a reviewed repository's `.git/config` no
+  longer runs. `credential.helper = !command` is a shell command git executes
+  the first time it needs a credential, so a repository unpacked with such a
+  line in its config, or a review whose agent wrote one, had arbitrary code
+  run in this process at the next push. The per-repository overlay now blanks
+  the key alongside the filter, merge, diff, editor, and askpass drivers it
+  already neutralized, and re-asserts the operator's own system and global
+  helpers behind the reset: an empty helper resets git's helper list, so a
+  bare reset would have dropped `gh auth setup-git` and the macOS keychain
+  along with the planted entry and stopped the run's own pushes from
+  authenticating. A repository that names no helper is left alone.
 - Inline Markdown in a stacked pull request's body is escaped. The Summary
   section carries an agent's per-file notes and a review's own `Summary:`
   line, both read from the reviewed repository, and both reach it after a
