@@ -5,6 +5,7 @@ package journal
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -146,6 +147,154 @@ func TestQuarantineIgnoresUnvalidatedRunIDs(t *testing.T) {
 	}
 	if _, err := os.Stat(quarantinePath("20260825T090000Z-0001")); err != nil {
 		t.Errorf("the real quarantined run was evicted: %v", err)
+	}
+}
+
+// The run id is the key the index dedupes on and the file is opened by, so a
+// second file carrying one id is the same run. Listed twice, it spends a slot
+// of the keep window and prints the same run out of order.
+func TestListingCountsARunIDOnce(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	record(t, "20260825T090000Z-0001", base)
+	record(t, "20260825T100000Z-0002", base.Add(time.Hour))
+	// The first run's journal a second time, in a later shard: a tree
+	// rearranged by hand, or a backup restored beside itself.
+	stray := filepath.Join(runsDir(), "2026-08-26", "20260825T090000Z-0001.jsonl")
+	if err := os.MkdirAll(filepath.Dir(stray), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(journalPath("20260825T090000Z-0001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	rows, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("listing has %d runs, want 2: %v", len(rows), rows)
+	}
+	// The copy in the shard its id names is the one listed, and the runs are
+	// ordered by the start their ids carry, not by the shard they sit in.
+	if rows[0].RunID != "20260825T100000Z-0002" || rows[1].RunID != "20260825T090000Z-0001" {
+		t.Fatalf("listing is %s then %s, want the newer run first", rows[0].RunID, rows[1].RunID)
+	}
+	if rows[1].Path != journalPath("20260825T090000Z-0001") {
+		t.Errorf("the listed copy is %s, want the one in the shard the id names", rows[1].Path)
+	}
+	st, err := Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Journals != 2 || st.Rows != 2 || st.Disagreed != 0 {
+		t.Errorf("Inspect reports %+v, want two runs in agreement", st)
+	}
+}
+
+// A restore must not put a second copy of a run under a run id already in the
+// listing, which is what a journal sitting in a shard its id does not name
+// would otherwise produce: the derived path is free, and the rename lands
+// beside the file that is already there.
+func TestRestoreRejectsARunFiledUnderAnotherShard(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	const id = "20260825T090000Z-0001"
+	record(t, id, base)
+	// A copy of the same run, filed where the id does not name.
+	listed := filepath.Join(runsDir(), "2026-08-27", id+".jsonl")
+	if err := os.MkdirAll(filepath.Dir(listed), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(journalPath(id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(listed, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// And a quarantined copy of it, which is what a restore is asked for.
+	if err := quarantine(id, listed); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Restore(id); !errors.Is(err, ErrAlreadyListed) {
+		t.Fatalf("restoring a run listed under another shard: %v, want ErrAlreadyListed", err)
+	}
+	if _, err := os.Stat(journalPath(id)); err != nil {
+		t.Errorf("the listed run lost its journal: %v", err)
+	}
+}
+
+// A run id that names no shard is filed at the top of runs/ and of pruned/.
+// A quarantine walk that reads only the shards cannot see it, so it survives
+// every keep (the unbounded history Prune exists to stop) and a user told
+// what a prune left behind is not told about a run that is still restorable.
+func TestQuarantineSeesARunFiledWithoutAShard(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	// An id in no generated form, so the quarantine files it at the top of
+	// pruned/. It reads as the older of the two, an id with no start to
+	// compare falling back to its text.
+	record(t, "0handrun", base)
+	if err := quarantine("0handrun", journalPath("0handrun")); err != nil {
+		t.Fatal(err)
+	}
+
+	held, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 || held[0] != "0handrun" {
+		t.Fatalf("quarantine is %v, want the hand-named run", held)
+	}
+	st, err := Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Pruned != 1 {
+		t.Errorf("Inspect counts %d pruned runs, want 1", st.Pruned)
+	}
+	// A keep of one covers it, and a second quarantined run pushes it out.
+	record(t, "20260825T100000Z-0001", base.Add(time.Hour))
+	if err := quarantine("20260825T100000Z-0001", journalPath("20260825T100000Z-0001")); err != nil {
+		t.Fatal(err)
+	}
+	if err := trimQuarantine(1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(quarantinePath("0handrun")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the hand-named quarantine was not bounded by the keep: %v", err)
+	}
+}
+
+// A restore has to leave the run where the listing looks for it. One whose id
+// names no shard is filed at the top of runs/, which the shard walk skipped, so
+// a restore that had worked on paper put the run where nothing could read it
+// back.
+func TestRestoreListsARunFiledWithoutAShard(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	record(t, "handrun", base)
+	if err := quarantine("handrun", journalPath("handrun")); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore("handrun"); err != nil {
+		t.Fatalf("Restore(handrun): %v", err)
+	}
+	rows, err := Recent(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RunID != "handrun" {
+		t.Fatalf("listing after the restore is %v, want the restored run", rows)
+	}
+	if !readIndexFile(t)["handrun"] {
+		t.Error("the restored run has no index row")
 	}
 }
 

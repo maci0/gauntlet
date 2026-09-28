@@ -642,40 +642,103 @@ type namedJournal struct {
 	id, path string
 }
 
-// walkJournals visits every run journal under runs/, shards then ids, both
-// newest first. Run ids embed a UTC start, so runIDOrder is the latest start.
+// walkJournals visits every run journal under runs/, newest first by run id.
 // visit returning false stops the walk.
 func walkJournals(visit func(namedJournal) bool) error {
-	root := runsDir()
-	days, err := os.ReadDir(root)
+	all, err := allJournals()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
 		return err
 	}
-	slices.Reverse(days)
-	for _, d := range days {
-		if !d.IsDir() {
-			continue
-		}
-		for _, j := range journalsInDir(filepath.Join(root, d.Name())) {
-			if !visit(j) {
-				return nil
-			}
+	for _, j := range all {
+		if !visit(j) {
+			return nil
 		}
 	}
 	return nil
 }
 
+// allJournals is every run journal under runs/, newest first, one entry per
+// run id.
+//
+// The order is by run id across the whole tree rather than by shard directory.
+// A run id carries the UTC start its shard is named for, so a journal filed
+// where the id does not say (a hand-named run, a tree rearranged by hand, a
+// backup restored beside itself) would otherwise be listed at the position of
+// the directory it happens to sit in, and `gauntlet runs` would print runs out
+// of order with no way to say which is the newer one.
+//
+// An id is listed once however many files carry it. The run id is the key the
+// index dedupes on and the file is opened by, so a second copy is one run: the
+// listing, the keep window, and Inspect all count it once instead of spending
+// a slot on a duplicate and printing the same run twice.
+func allJournals() ([]namedJournal, error) {
+	root := runsDir()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var out []namedJournal
+	// runs/ itself, then each shard under it: a journal filed at the top of
+	// the tree, which a hand-named run id produces, is read once here rather
+	// than once per entry.
+	top, err := journalsInDir(root)
+	if err != nil {
+		return nil, err
+	}
+	out = top
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		batch, err := journalsInDir(filepath.Join(root, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, batch...)
+	}
+	// os.ReadDir is sorted by name and the sort below is stable, so copies of
+	// one id that the preference cannot separate keep the order they were
+	// read in and the choice is the same on every machine.
+	slices.SortStableFunc(out, func(a, b namedJournal) int {
+		if c := runIDOrder(b.id, a.id); c != 0 {
+			return c
+		}
+		return journalPreference(a) - journalPreference(b)
+	})
+	deduped := out[:0]
+	for i, j := range out {
+		if i > 0 && j.id == out[i-1].id {
+			continue
+		}
+		deduped = append(deduped, j)
+	}
+	return deduped, nil
+}
+
+// journalPreference ranks the copies of one run id: the one in the shard its
+// id names, which is where Open and Restore file a run, ahead of a stray filed
+// beside it.
+func journalPreference(j namedJournal) int {
+	if shard := shardFromRunID(j.id); shard != "" &&
+		filepath.Base(filepath.Dir(j.path)) == shard {
+		return 0
+	}
+	return 1
+}
+
 // journalsInDir returns one shard's journals, newest first. The order comes
 // from runIDOrder rather than from the directory listing's byte order: two
 // runs minted in the same second carry pids of different hex widths, and
-// ReadDir files the wider one below the narrower one.
-func journalsInDir(dir string) []namedJournal {
+// ReadDir files the wider one below the narrower one. A read error is the
+// caller's to report: a shard that cannot be listed is a finding, and a walk
+// that swallowed it would report a tree that is merely short.
+func journalsInDir(dir string) ([]namedJournal, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 	var batch []namedJournal
 	for _, f := range files {
@@ -691,7 +754,7 @@ func journalsInDir(dir string) []namedJournal {
 	slices.SortFunc(batch, func(a, b namedJournal) int {
 		return runIDOrder(b.id, a.id)
 	})
-	return batch
+	return batch, nil
 }
 
 // newestJournal is the latest run file under runs/.
@@ -710,12 +773,11 @@ func listJournals() ([]namedJournal, error) {
 // listJournalsN returns the newest n journals, newest first. n <= 0 means
 // every journal, the walk recoverIndexTail uses.
 func listJournalsN(n int) ([]namedJournal, error) {
-	var out []namedJournal
-	err := walkJournals(func(j namedJournal) bool {
-		out = append(out, j)
-		return n <= 0 || len(out) < n
-	})
-	return out, err
+	all, err := allJournals()
+	if err != nil || n <= 0 || len(all) <= n {
+		return all, err
+	}
+	return all[:n], nil
 }
 
 // rebuildIndex rewrites index.jsonl from every run journal, oldest first, so

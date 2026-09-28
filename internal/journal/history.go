@@ -121,7 +121,9 @@ func findRun(runID string) (string, error) {
 // `gauntlet show` and History cost the age of the install, not the one file
 // they want. Ids that were not generated that way (tests, a hand-named file)
 // still scan, newest shard first, which is also the fallback when the dated
-// path is missing (a tree that was rearranged).
+// path is missing (a tree that was rearranged). A journal sitting directly
+// under runs/, which is where a restore puts one whose id names no shard, is
+// found on that same direct path.
 //
 // The id is validated first: `gauntlet show` hands it over straight from the
 // command line, and an unvalidated join would let "../" climb out of the runs
@@ -131,8 +133,12 @@ func locateRun(runID string) (string, bool, error) {
 		return "", false, nil
 	}
 	root := filepath.Join(Home(), "runs")
+	var direct []string
 	if shard := shardFromRunID(runID); shard != "" {
-		p := filepath.Join(root, shard, runID+".jsonl")
+		direct = append(direct, filepath.Join(root, shard, runID+".jsonl"))
+	}
+	direct = append(direct, filepath.Join(root, runID+".jsonl"))
+	for _, p := range direct {
 		if _, err := os.Stat(p); err == nil {
 			return p, true, nil
 		}

@@ -634,7 +634,12 @@ Design points:
   did I run last week" a tail rather than a tree walk. A generated run id
   encodes that date, so looking one up is a stat of one file, not a probe of
   every shard. The listing, the keep bound, and the quarantine all order runs
-  by that id, and the order is not the text order: the fixed-width instant
+  by that id, across the whole tree rather than by the shard a journal happens
+  to sit in, and one id is one run: the same journal filed a second time is
+  listed once, the copy in the shard the id names winning, so a duplicate
+  cannot spend a slot of the keep window or print a run twice. A run id in no
+  generated form is listed and pruned like any other, wherever it is filed.
+  The order is not the text order: the fixed-width instant
   leads, and the process id after it is compared as the number it is, because
   the id writes it in unpadded hex (`1f4` for 500, `1f400` for 128000) and two
   runs started in the same second would otherwise order by pid width. The

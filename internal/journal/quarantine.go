@@ -35,7 +35,15 @@ func quarantinePath(runID string) string {
 }
 
 // journalPath is where a run's journal lives while it is in the listing.
+//
+// A run id names the shard it is filed under, but Open falls back to the run's
+// own start date for an id that names none, so the derived path is not where
+// such a run sits. The tree is asked instead, and the derived path is what a
+// run that is not written yet gets.
 func journalPath(runID string) string {
+	if p, ok, err := locateRun(runID); err == nil && ok {
+		return p
+	}
 	return filepath.Join(runsDir(), shardFromRunID(runID), runID+".jsonl")
 }
 
@@ -103,53 +111,72 @@ type quarantined struct {
 
 // listQuarantined walks pruned/ newest first, by the same run id ordering
 // listJournals uses, so a restore names runs in the order they happened.
+//
+// pruned/ itself is walked as well as its shards: a journal whose run id names
+// no shard, which a hand-named run or a rearranged tree produces, is filed at
+// the top of the directory, and a quarantine that could not see it would leave
+// it there past every keep, which is the unbounded history Prune exists to
+// stop, and would tell a user after a prune that a run they can still restore
+// is not quarantined.
 func listQuarantined() ([]quarantined, error) {
 	root := prunedDir()
-	if _, err := os.Stat(root); err != nil {
+	entries, err := os.ReadDir(root)
+	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
 	}
-	shards, err := os.ReadDir(root)
+	var out []quarantined
+	// pruned/ itself, then each shard under it, so a journal filed at the top
+	// is read once rather than once per entry.
+	top, err := quarantinedInDir(root)
 	if err != nil {
 		return nil, err
 	}
-	var out []quarantined
-	for _, sh := range shards {
-		if !sh.IsDir() {
+	out = top
+	for _, e := range entries {
+		if !e.IsDir() {
 			continue
 		}
-		files, err := os.ReadDir(filepath.Join(root, sh.Name()))
+		batch, err := quarantinedInDir(filepath.Join(root, e.Name()))
 		if err != nil {
 			return nil, err
 		}
-		for _, f := range files {
-			if f.IsDir() {
-				continue
-			}
-			name := f.Name()
-			if !strings.HasSuffix(name, ".jsonl") {
-				continue
-			}
-			id := strings.TrimSuffix(name, ".jsonl")
-			// The same validRunID the runs/ walk applies, and for the same
-			// reason: trimQuarantine unlinks whatever falls outside the
-			// keep window, so a name this package would not open must not
-			// count toward that window either. An unvalidated stem here
-			// would take a keep slot and push a real quarantined run out.
-			if !validRunID(id) {
-				continue
-			}
-			out = append(out, quarantined{
-				id:   id,
-				path: filepath.Join(root, sh.Name(), name),
-			})
-		}
+		out = append(out, batch...)
 	}
 	slices.SortFunc(out, func(a, b quarantined) int {
 		return runIDOrder(b.id, a.id)
 	})
+	return out, nil
+}
+
+// quarantinedInDir returns the quarantined journals one directory holds.
+func quarantinedInDir(dir string) ([]quarantined, error) {
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var out []quarantined
+	for _, f := range files {
+		if f.IsDir() {
+			continue
+		}
+		name := f.Name()
+		if !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".jsonl")
+		// The same validRunID the runs/ walk applies, and for the same
+		// reason: trimQuarantine unlinks whatever falls outside the keep
+		// window, so a name this package would not open must not count
+		// toward that window either. An unvalidated stem here would take a
+		// keep slot and push a real quarantined run out.
+		if !validRunID(id) {
+			continue
+		}
+		out = append(out, quarantined{id: id, path: filepath.Join(dir, name)})
+	}
 	return out, nil
 }
 
@@ -171,12 +198,15 @@ func Restore(runID string) error {
 	return withIndexLock(func() error {
 		// The listing is checked first: a run already in it is the more
 		// useful thing to say than a miss in the quarantine, and the two
-		// orderings disagree exactly when a run was restored twice.
-		dst := journalPath(runID)
-		if _, err := os.Stat(dst); err == nil {
-			return fmt.Errorf("%w: %s", ErrAlreadyListed, runID)
-		} else if !errors.Is(err, fs.ErrNotExist) {
+		// orderings disagree exactly when a run was restored twice. The
+		// lookup is the same one Open follows rather than a stat of the
+		// derived path, so a run whose journal sits in a shard its id does
+		// not name is still found: restoring it would put a second file
+		// under the same run id, and the listing would show the run twice.
+		if _, listed, err := locateRun(runID); err != nil {
 			return err
+		} else if listed {
+			return fmt.Errorf("%w: %s", ErrAlreadyListed, runID)
 		}
 		src := quarantinePath(runID)
 		if _, err := os.Stat(src); err != nil {
@@ -185,6 +215,7 @@ func Restore(runID string) error {
 			}
 			return err
 		}
+		dst := journalPath(runID)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
 			return err
 		}
