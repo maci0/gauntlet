@@ -426,14 +426,10 @@ func Truncate(s string, w int) string {
 	if w <= 1 || len(s) <= w {
 		return s
 	}
-	n := 0
-	g := uniseg.NewGraphemes(s)
-	for g.Next() {
-		n += utf8.RuneCountInString(g.Str())
-		if n > w {
-			start, _ := g.Positions()
-			return s[:start] + "…"
-		}
+	// The mark reports a cut, so it appears only when Clip took one: a string
+	// longer in bytes than w but within w code points comes back whole.
+	if cut := Clip(s, w); len(cut) < len(s) {
+		return cut + "…"
 	}
 	return s
 }
