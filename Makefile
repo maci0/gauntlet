@@ -245,12 +245,17 @@ vet: ## run go vet
 # tags: it resolves every configuration at once, so this one command covers
 # the sqlite, bare, and notoktop builds alike.
 #
-# -e is not passed. A tidy that cannot complete must fail rather than report
-# the partial graph it did compute.
+# -e is not passed, and the substitution's status is checked instead. A tidy
+# that cannot complete writes no diff, so the only thing that can catch it is
+# the exit code: without that, `make check` would read an unresolvable module
+# graph as a clean tree.
 .PHONY: tidy
 tidy: | test-tmpdir
 tidy: ## fail unless go.mod and go.sum are exactly what go mod tidy writes
-	@out="$$(GOFLAGS=-mod=mod $(GO) mod tidy -diff)"; \
+	@out="$$(GOFLAGS=-mod=mod $(GO) mod tidy -diff)" || { \
+		echo "tidy: 'go mod tidy -diff' failed, so the module graph was never resolved" >&2; \
+		exit 1; \
+	}; \
 		if [ -n "$$out" ]; then \
 			echo "tidy: go.mod or go.sum differs from the module graph's own answer:" >&2; \
 			echo "$$out" >&2; \
@@ -542,6 +547,9 @@ release: | clean-tree release-version check test dist artifacts ## build every p
 # A file that verifies its own checksums can still be empty, so the recipe ends
 # by refusing to report success for a missing or empty one: `test -s` over
 # dist/sbom.json was otherwise a check CI ran and no make target reproduced.
+# The verification and the test are each wrapped so their failure is the
+# recipe's own: a command substitution or a `||` chain whose status the next
+# `;` discards reports success over a checksum that never matched.
 .PHONY: artifacts
 artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built binaries
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
@@ -550,7 +558,11 @@ artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built bi
 		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
 	$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*
-	@cd $(DIST) && (sha256sum -c checksums.txt 2>/dev/null || shasum -a 256 -c checksums.txt) >/dev/null; \
+	@cd $(DIST) || exit 1; \
+	{ sha256sum -c checksums.txt 2>/dev/null || shasum -a 256 -c checksums.txt; } >/dev/null || { \
+		echo "artifacts: $(DIST)/checksums.txt does not match the binaries it names" >&2; \
+		exit 1; \
+	}; \
 	for f in checksums.txt sbom.json; do \
 		[ -s "$$f" ] || { echo "artifacts: $(DIST)/$$f is missing or empty" >&2; exit 1; }; \
 	done; \

@@ -109,6 +109,12 @@ func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
 // A successor whose handoff cannot be parsed must exit rather than start a
 // fresh run: repeating finished reviews under a new id is worse than stopping.
 func TestRunAbortsOnUnreadableHandoff(t *testing.T) {
+	// The state root is isolated alongside the handoff itself: without it the
+	// run reads the operator's own ~/.gauntlet/agents.json, and a duplicate
+	// agent name in that file answers with a usage error before the handoff
+	// is ever parsed, which is a verdict about the machine rather than about
+	// the code under test.
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	path := filepath.Join(t.TempDir(), "run.json")
 	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)

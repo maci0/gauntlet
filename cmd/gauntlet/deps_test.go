@@ -391,6 +391,68 @@ func TestScriptsChecksMatchCI(t *testing.T) {
 	}
 }
 
+// The other direction. A check added to the scripts job and not to
+// check-scripts runs in CI and nowhere else, so the local gate a contributor
+// runs before pushing never sees it and a failure arrives on the pull request.
+// Every analysis command in the job must appear in the recipe, pins read back
+// as the Makefile's own references.
+func TestScriptsJobChecksAreReproducedLocally(t *testing.T) {
+	root := moduleRoot(t)
+	makefile := readRepoFile(t, filepath.Join(root, "Makefile"))
+	ci := readRepoFile(t, filepath.Join(root, ".github", "workflows", "ci.yml"))
+	recipe := makefileRecipe(makefile, "check-scripts")
+
+	steps := 0
+	for line := range strings.SplitSeq(ci, "\n") {
+		cmd, ok := analysisCommand(line)
+		if !ok {
+			continue
+		}
+		steps++
+		if local := unresolveMakeVars(cmd, makefile); !strings.Contains(recipe, local) {
+			t.Errorf("ci.yml runs %q, which make check-scripts does not: the local gate misses a check CI enforces", cmd)
+		}
+	}
+	if steps == 0 {
+		t.Fatal("ci.yml runs no analysis commands, so the comparison is over nothing")
+	}
+}
+
+// analysisCommand returns the analysis command a workflow line runs, however
+// the step wraps it: a run step carries the `- run:` key, and a step with a
+// name puts the name on the previous line. A comment, and the `echo` that
+// prints which tool version a runner image carries, run no check.
+func analysisCommand(line string) (string, bool) {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "#") {
+		return "", false
+	}
+	for _, tool := range []string{"uvx ", "shellcheck "} {
+		i := strings.Index(trimmed, tool)
+		if i < 0 {
+			continue
+		}
+		cmd := trimmed[i:]
+		if strings.HasPrefix(trimmed[:i], "echo ") {
+			continue
+		}
+		return cmd, true
+	}
+	return "", false
+}
+
+// unresolveMakeVars replaces a resolved pin in a CI command with the Makefile
+// reference the recipe is written with, so the two are compared as written
+// rather than as spelled by three different files.
+func unresolveMakeVars(cmd, makefile string) string {
+	for _, name := range []string{"RUFF_VERSION", "MYPY_VERSION", "RICH_VERSION", "YAMLLINT_VERSION"} {
+		if v := makefilePin(makefile, name); v != "" {
+			cmd = strings.ReplaceAll(cmd, v, "$("+name+")")
+		}
+	}
+	return cmd
+}
+
 // checkScriptsCommands returns the analysis commands of the check-scripts
 // recipe with $(NAME)_VERSION references resolved to the values the Makefile
 // sets. Commands that are not analysis (the preflight probes, which only

@@ -58,6 +58,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - The dashboard's `REVIEWS` and `FEED` panel titles drop whole readings on a narrow terminal and mark what went, instead of being cut mid-word. A title reading `3 lin…` named a distance the screen never states.
 - The small-terminal fallback keeps the run state and the clock on its first row at every width, giving up the version and the loop number first. The row was cut at the right, which took the state with it (`‖ FEED…`) on exactly the terminals that have least room for it.
 - The small-terminal fallback names `esc live` while the feed is held or scrolled back. It draws no feed, but it does report the state in its header, and nothing on that screen said how to clear it.
+- Two checks reported success over work that had failed. `make tidy` read `go mod tidy -diff` into a command substitution, whose exit status the following `if` discarded, so a tidy that could not resolve the module graph wrote no diff and passed; a fetch error or an inconsistent graph read as a clean tree. `make artifacts` verified `dist/checksums.txt` in a `||` chain that a later `for` and `echo` overrode, so a checksum that matched nothing still printed the success line. Both take the failing status as the recipe's own now.
 
 ### Security
 

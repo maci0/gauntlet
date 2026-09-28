@@ -1,8 +1,11 @@
 # Contributing
 
-The short version: `make ci` must pass before you push. That is `make check`
-and `make test`. CI runs both on every pull request, plus the other build-tag
-configurations and a cross-compilation pass.
+The short version: `make verify` must pass before you push. That is `make check`,
+`make check-scripts`, and the suite under all three build-tag configurations,
+which is everything CI runs on a pull request except the coverage, dist, and
+reproducibility legs. `make ci` is the Go-only edit-test loop, and it does not
+run the scripts lint, so a Python or shell change can be green there and red in
+the `scripts` job.
 
 ## Prerequisites
 
@@ -22,6 +25,11 @@ configurations and a cross-compilation pass.
   Command Line Tools on macOS. The test targets enable cgo (`CGO_ENABLED=1`)
   automatically and preflight that a C compiler is present on `PATH`.
   `make build` disables cgo and does not require a C compiler.
+- `uvx` (shipped with [uv](https://docs.astral.sh/uv/getting-started/installation/))
+  and shellcheck on `PATH`, for `make check-scripts` and therefore for
+  `make verify`. Nothing in the Go half of the tree needs either. macOS ships
+  no shellcheck: install it with `brew install shellcheck`. `check-scripts`
+  preflights both and names what to install.
 
 ## Build and test
 
