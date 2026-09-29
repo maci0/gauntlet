@@ -90,6 +90,7 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 		{"release.yml", "Refuse a tag that is not on main", 132},
 		{"release.yml", "actions/attest-build-provenance@", 168},
 		{"release.yml", "dist/sbom.json", 195},
+		{"release.yml", "set -eu -o pipefail", 64},
 		{"ci.yml", "GITHUB_TOKEN", 48},
 		{"vulnscan.yml", "schedule:", 10},
 		{"vulnscan.yml", "GITHUB_TOKEN", 44},

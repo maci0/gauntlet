@@ -832,6 +832,8 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
 		{name: "make release", want: ".PHONY: release"},
 		{name: "make repro", want: ".PHONY: repro"},
+		{name: "make dist platform check", want: "GOAMD64=$(GOAMD64)"},
+		{name: "make doctor", want: ".PHONY: doctor"},
 		{name: "member list and archive", want: "git ls-files -z --cached --others --exclude-standard"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
