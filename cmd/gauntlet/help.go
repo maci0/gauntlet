@@ -236,7 +236,12 @@ func printUsage(out io.Writer, pal palette, width int) {
 		}
 		fmt.Fprintf(out, "  %-*s  %s\n", subCol, name, pal.dim(own))
 	}
-	fmt.Fprintf(out, "  %s\n", pal.dim("--log and --no-color work with every command, and may precede it"))
+	// One sentence carries the rule both ways: the globals may lead, and a
+	// subcommand's own flags follow it. Wrapped like the rest, so it stays
+	// readable on a narrow terminal.
+	fmt.Fprintf(out, "  %s\n", pal.dim(wrapIndent(
+		"--log and --no-color work with every command, and may precede it; "+
+			"every other flag belongs after the subcommand it is for", width, 2)))
 
 	// One column width across every group, so the help text lines up down the
 	// whole screen rather than jumping per section.

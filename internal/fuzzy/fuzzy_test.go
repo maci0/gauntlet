@@ -39,6 +39,33 @@ func TestClosest(t *testing.T) {
 	}
 }
 
+// A caller whose names are short needs a ceiling of its own: the shared one
+// reaches three edits, which on a four-letter name is a guess rather than a
+// correction.
+func TestClosestWithin(t *testing.T) {
+	candidates := []string{"log", "bin", "limit", "no-color", "help"}
+	tests := []struct {
+		want, got string
+		max       int
+	}{
+		{"limt", "limit", Limit},
+		{"limt", "limit", 1},
+		{"limt", "", 0}, // a ceiling below the nearest match accepts nothing
+		{"bn", "bin", 1},
+		{"bn", "", 0},
+		{"nope", "", 0},
+		{"", "", Limit},
+	}
+	for _, tt := range tests {
+		if got := ClosestWithin(tt.want, candidates, tt.max); got != tt.got {
+			t.Errorf("ClosestWithin(%q, %d) = %q, want %q", tt.want, tt.max, got, tt.got)
+		}
+	}
+	if got := ClosestWithin("limt", candidates, -1); got != "" {
+		t.Errorf("a negative ceiling returned %q, want empty", got)
+	}
+}
+
 func TestClosestNonASCII(t *testing.T) {
 	candidates := []string{"codex🚀", "sécurity-review", "日本語-review"}
 	tests := []struct {
@@ -225,8 +252,8 @@ func FuzzClosest(f *testing.F) {
 				t.Fatalf("Closest(%q) returned %q which is not in candidates", want, got)
 			}
 			d := editDistance(norm.NFC.String(want), norm.NFC.String(got))
-			if d > distance {
-				t.Fatalf("Closest(%q) = %q has distance %d > limit %d", want, got, d, distance)
+			if d > Limit {
+				t.Fatalf("Closest(%q) = %q has distance %d > limit %d", want, got, d, Limit)
 			}
 		}
 

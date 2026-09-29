@@ -32,6 +32,13 @@ help does.) `--limit`, `--restore`, and `--json` are the three names a bare
 `gauntlet` has no use for, and they say so rather than starting a run that
 ignores them.
 
+A subcommand is only read as one when it is the first word, so the flags above
+are the flags that may lead: `gauntlet --json runs` leaves `runs` as a stray
+argument and says so, rather than starting the default run. A flag name the
+command does not take is reported with a "did you mean" drawn from the flags
+that command does take, so a typo on a subcommand is never pointed at a flag
+the next invocation would refuse.
+
 `pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
 with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
 proposes the reviews, and the run pane names which agent does it), the agents

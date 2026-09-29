@@ -1000,10 +1000,14 @@ func TestHelpSubcommand(t *testing.T) {
 	}
 }
 
-func TestShowRejectsFlagWhereRunIdBelongs(t *testing.T) {
+// `show` peels its run id off either side of the flags, so the question of
+// whether one was given is asked after they parse. A flag left without its
+// value is then reported by the flag package, the same as anywhere else,
+// rather than by a missing id that may not be what the user forgot.
+func TestShowReportsADanglingValueFlagLikeAnywhereElse(t *testing.T) {
 	_, err := parseFlags([]string{"show", "--limit"})
-	if err == nil || !strings.Contains(err.Error(), "needs a run id") {
-		t.Fatalf("--limit after show should read as a missing run id, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "--limit") {
+		t.Fatalf("a dangling --limit should name the flag, got %v", err)
 	}
 }
 

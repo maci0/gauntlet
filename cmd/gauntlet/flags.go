@@ -272,15 +272,15 @@ func parseFlags(argv []string) (*options, error) {
 
 	fs, raw := buildFlagSet(o)
 	if o.command == "show" {
+		// A run id never starts with '-', so flags are peeled off either side
+		// of it (`show --no-color RUN` and `show RUN --no-color` mean the same
+		// thing). Whether an id was given is decided in finishFlags, after the
+		// flags parse: a miss on one of them is what a user who mistyped
+		// `--limt` needs to read, and reporting the missing id instead sends
+		// them looking in the wrong place.
 		id, rest := peelShowRun(fs, argv)
 		o.showRun = id
 		argv = rest
-		// A run id never starts with '-', so a leftover leading dash after
-		// help/version is a forgotten id, not a run named "--limit". Flags
-		// that precede a real id (`show --no-color RUN`) are kept in rest.
-		if id == "" && !argsNamed(argv, "h", "help") && !argsNamed(argv, "V", "version") {
-			return nil, reportUsage(o, errors.New("show needs a run id (see: gauntlet runs)"))
-		}
 	}
 
 	// Report unknown flags ourselves so a close miss can carry a "did you
@@ -293,7 +293,7 @@ func parseFlags(argv []string) (*options, error) {
 			printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout) && !o.noColor}, o.width)
 			return nil, errHelp
 		}
-		return nil, reportUsage(o, enhanceFlagError(err, fs))
+		return nil, reportUsage(o, enhanceFlagError(err, o, fs))
 	}
 	opts, err := finishFlags(o, fs, raw)
 	if err != nil {
@@ -567,7 +567,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 
 	if fs.NArg() > 0 {
-		return nil, fmt.Errorf("unexpected argument: %q (see: gauntlet help)", fs.Arg(0))
+		return nil, misplacedArgument(fs.Arg(0))
 	}
 	if showVersion {
 		o.command = "version"
@@ -596,6 +596,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
 		return nil, err
+	}
+	// Last, so every flag still has its own say: an unknown one has already
+	// been reported by Parse, and one that belongs to another subcommand by
+	// the checks above. What is left is the flagless request itself.
+	if o.command == "show" && o.showRun == "" {
+		return nil, errors.New("show needs a run id (see: gauntlet runs)")
 	}
 	if o.command == "version" {
 		if err := validateLog(o, fs); err != nil {
@@ -1170,25 +1176,6 @@ func peelShowRun(fs *flag.FlagSet, argv []string) (id string, rest []string) {
 	return id, rest
 }
 
-// argsNamed reports whether argv names one of the flags before `--`.
-func argsNamed(argv []string, names ...string) bool {
-	want := make(map[string]bool, len(names)*2)
-	for _, n := range names {
-		want["-"+n] = true
-		want["--"+n] = true
-	}
-	for _, a := range argv {
-		if a == "--" {
-			return false
-		}
-		name, _, _ := strings.Cut(a, "=")
-		if want[name] {
-			return true
-		}
-	}
-	return false
-}
-
 func unknownCommand(name string) error {
 	hint := ""
 	if c := fuzzy.Closest(name, commandNames); c != "" {
@@ -1262,7 +1249,11 @@ func longForm(short string) string {
 // next to messages that write the same flag as `--timeout`. A close miss keeps
 // the package's wording, with the spelling fixed, and gains the suggestion
 // the unknown-command error has.
-func enhanceFlagError(err error, fs *flag.FlagSet) error {
+//
+// The suggestion comes from the flags the command actually reads. Sending a
+// `gauntlet runs` typo at --jobs, which rejectStrayFlags then refuses, spends
+// two invocations to learn the one thing the first message could have said.
+func enhanceFlagError(err error, o *options, fs *flag.FlagSet) error {
 	msg := flagSpelling.ReplaceAllStringFunc(err.Error(), func(m string) string {
 		g := flagSpelling.FindStringSubmatch(m)
 		return g[1] + spellFlag(g[2])
@@ -1274,11 +1265,50 @@ func enhanceFlagError(err error, fs *flag.FlagSet) error {
 	if !ok || utf8.RuneCountInString(name) < 2 {
 		return errors.New(msg)
 	}
-	var names []string
-	fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
-	c := fuzzy.Closest(name, names)
+	c := fuzzy.ClosestWithin(name, readableFlags(o, fs), typoDistance(name))
 	if c == "" {
 		return errors.New(msg)
 	}
 	return fmt.Errorf("%s (did you mean %s?)", msg, spellFlag(c))
+}
+
+// typoDistance is how far a flag name may sit from a candidate and still read
+// as a typo of it: half the name, never less than one edit and never more than
+// the fuzzy package's shared ceiling. A flag name is short, so the ceiling on
+// its own would turn "limt" into "--log".
+func typoDistance(name string) int {
+	return min(max(utf8.RuneCountInString(name)/2, 1), fuzzy.Limit)
+}
+
+// misplacedArgument explains a stray word left where a subcommand should have
+// been read. A subcommand is only one when it is the first word, so a flag
+// that is not global ends the search and `gauntlet --json runs` arrives here
+// with "runs" as a leftover. Naming the leftover alone points the reader at
+// the wrong end of the line, so the order is what the message says.
+func misplacedArgument(word string) error {
+	if !slices.Contains(commandNames, word) {
+		return fmt.Errorf("unexpected argument: %q (see: gauntlet help)", word)
+	}
+	return fmt.Errorf("unexpected argument: %q (a subcommand's own flags go after "+
+		"it: gauntlet %s ...) (see: gauntlet help)", word, word)
+}
+
+// readableFlags lists the flags a "did you mean" may point at: every one for
+// the default run, and for a subcommand the ones it reads itself plus the
+// globals it honors anywhere. It is the same list the screen and
+// rejectStrayFlags name, so a hint never points outside it.
+func readableFlags(o *options, fs *flag.FlagSet) []string {
+	allowed, known := subcommandFlags[o.command]
+	if !known {
+		var names []string
+		fs.VisitAll(func(f *flag.Flag) { names = append(names, f.Name) })
+		return names
+	}
+	names := slices.Clone(globalFlags)
+	for _, n := range allowed {
+		if fs.Lookup(n) != nil {
+			names = append(names, n)
+		}
+	}
+	return names
 }

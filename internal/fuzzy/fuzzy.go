@@ -83,13 +83,20 @@ func Comparator() func(a, b string) int {
 // Normalization to NFC first keeps a decomposed spelling of the same name
 // from looking like several edits' worth of typos.
 func Closest(want string, candidates []string) string {
+	return ClosestWithin(want, candidates, Limit)
+}
+
+// ClosestWithin is Closest with the caller's own edit-distance ceiling, for a
+// name short enough that the shared limit would be noise: three edits turn
+// "limt" into "log", which reads as a guess rather than a correction.
+func ClosestWithin(want string, candidates []string, max int) string {
 	wantNorm := NFC(want)
-	if wantNorm == "" {
+	if wantNorm == "" || max < 0 {
 		return ""
 	}
 	var wantArr [32]rune
 	wantRunes := foldRunesInto(wantNorm, wantArr[:0])
-	best, bestD := "", distance+1
+	best, bestD := "", max+1
 	var prevArr, curArr [32]int
 	prev, cur := prevArr[:], curArr[:]
 	var candArr [32]rune
@@ -161,8 +168,10 @@ func foldRunesInto(s string, dst []rune) []rune {
 	return dst
 }
 
-// distance is how far a typo may stray and still earn a hint.
-const distance = 3
+// Limit is how far a typo may stray and still earn a hint. A caller whose
+// names are short enough for that to be noise sets its own ceiling through
+// ClosestWithin.
+const Limit = 3
 
 func editDistanceFolded(ar, br []rune, prev, cur []int) (int, []int, []int) {
 	if len(br) > len(ar) {

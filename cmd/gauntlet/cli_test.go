@@ -102,6 +102,103 @@ func TestParseErrorReportedOnce(t *testing.T) {
 	}
 }
 
+// A "did you mean" a user acts on has to be a flag the command would then
+// accept, and close enough to the miss to read as a typo of it. A hint at
+// another subcommand's flag costs a second invocation to learn what the first
+// message already knew.
+func TestFlagSuggestionsStayInsideTheCommand(t *testing.T) {
+	for _, tt := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"runs", "--limt"}, "--limit"},
+		{[]string{"runs", "--restor"}, "--restore"},
+		{[]string{"doctor", "--bin2"}, "--bin"},
+		{[]string{"update", "--chek"}, "--check"},
+		{[]string{"--keep-run", "5"}, "--keep-runs"},
+		{[]string{"--stacked-pr"}, "--stacked-prs"},
+		// --limit is a `runs` flag, so `doctor` and `runs --nope` have no
+		// near miss of their own to offer and get none.
+		{[]string{"doctor", "--limt"}, ""},
+		{[]string{"runs", "--nope"}, ""},
+		{[]string{"show", "--limt"}, ""},
+	} {
+		got, _ := captureParseStderr(t, tt.argv)
+		msg, _, _ := strings.Cut(got, "\n")
+		if tt.want == "" {
+			if strings.Contains(msg, "did you mean") {
+				t.Errorf("%v: no near miss, but the message hints anyway: %q", tt.argv, msg)
+			}
+			continue
+		}
+		if want := "did you mean " + tt.want + "?)"; !strings.Contains(msg, want) {
+			t.Errorf("%v: message %q does not carry %q", tt.argv, msg, want)
+		}
+	}
+}
+
+// `show` peels its run id off either side of the flags, so the question of
+// whether one was given is only answerable after they parse. Deciding it
+// first would answer a mistyped flag with "needs a run id".
+func TestShowReportsTheFlagBeforeTheMissingRunID(t *testing.T) {
+	for _, tt := range []struct {
+		argv []string
+		want string
+	}{
+		{[]string{"show", "--limt"}, "flag provided but not defined: --limt"},
+		{[]string{"show", "--nope"}, "flag provided but not defined: --nope"},
+		{[]string{"show", "--limit", "3"}, "--limit requires 'gauntlet runs'"},
+		{[]string{"show", "--jobs", "2"}, "does not apply to 'gauntlet show'"},
+		{[]string{"show"}, "show needs a run id"},
+		{[]string{"show", "--no-color"}, "show needs a run id"},
+	} {
+		got, reported := captureParseStderr(t, tt.argv)
+		if !reported {
+			t.Errorf("%v: error not marked as already reported", tt.argv)
+			continue
+		}
+		if msg, _, _ := strings.Cut(got, "\n"); !strings.Contains(msg, tt.want) {
+			t.Errorf("%v: message %q does not carry %q", tt.argv, msg, tt.want)
+		}
+	}
+}
+
+// A subcommand is only one when it is the first word. The leftovers the
+// default run then sees are almost always that word, and naming it as a stray
+// argument points at the wrong end of the line.
+func TestStraySubcommandSaysWhereItBelongs(t *testing.T) {
+	for _, argv := range [][]string{{"--json", "runs"}, {"--limit", "3", "update"}, {"--json", "doctor"}} {
+		got, reported := captureParseStderr(t, argv)
+		if !reported {
+			t.Errorf("%v: error not marked as already reported", argv)
+			continue
+		}
+		msg, _, _ := strings.Cut(got, "\n")
+		if !strings.Contains(msg, "flags go after") {
+			t.Errorf("%v: message %q does not name the order", argv, msg)
+		}
+	}
+	// A word that is not a subcommand keeps the plain refusal: the order is
+	// not what is wrong with it.
+	got, _ := captureParseStderr(t, []string{"--json", "bogus"})
+	if msg, _, _ := strings.Cut(got, "\n"); !strings.Contains(msg, `unexpected argument: "bogus"`) ||
+		strings.Contains(msg, "flags go after") {
+		t.Errorf("message for a non-subcommand word is %q", msg)
+	}
+}
+
+// A run id may be requested by a flag, and a subcommand that takes no run id
+// has to say so, so the two forms cannot disagree.
+func TestShowStillExitsZeroForHelpAndVersion(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	for _, argv := range [][]string{{"show", "--help"}, {"show", "-V"}, {"show", "--version"}} {
+		out, perr := parseFlags(argv)
+		if !errors.Is(perr, errHelp) && out == nil {
+			t.Errorf("%v: parseFlags returned %v, want help or a version run", argv, perr)
+		}
+	}
+}
+
 // captureParseStderr swaps os.Stderr for a pipe, runs parseFlags, and returns
 // what was written plus whether the error came back marked as reported.
 func captureParseStderr(t *testing.T, argv []string) (string, bool) {
