@@ -2268,14 +2268,80 @@ func TestBareDshModelReportsAFailedProbe(t *testing.T) {
 	}
 }
 
+// A launcher reads its own config, so the memo is keyed by it: a bare
+// dsh:model under one --bin must not be pinned to the provider another
+// launcher on the same PATH names.
+func TestDshProbeIsPerLauncher(t *testing.T) {
+	probed := map[string]int{}
+	probeDshConfig(t, func(base []string) (string, error) {
+		probed[strings.Join(base, " ")]++
+		if base[0] == "elsewhere-dsh" {
+			return "", errors.New("no agent-default-model provider")
+		}
+		return "prov-from-" + base[0], nil
+	})
+
+	for range 3 {
+		p, err := dshDefaultProvider([]string{"dsh"})
+		if err != nil || p != "prov-from-dsh" {
+			t.Fatalf("first launcher probed as %q, %v", p, err)
+		}
+	}
+	if probed["dsh"] != 1 {
+		t.Errorf("one launcher was probed %d times, want 1", probed["dsh"])
+	}
+
+	if _, err := dshDefaultProvider([]string{"elsewhere-dsh"}); err == nil {
+		t.Fatal("a second launcher's failure was answered from the first's memo")
+	}
+	if probed["elsewhere-dsh"] != 1 {
+		t.Errorf("the second launcher was probed %d times, want 1", probed["elsewhere-dsh"])
+	}
+
+	// The failing launcher must not have displaced the working one.
+	p, err := dshDefaultProvider([]string{"dsh"})
+	if err != nil || p != "prov-from-dsh" {
+		t.Fatalf("the memo lost the first launcher: %q, %v", p, err)
+	}
+}
+
+// --bin replaces cmd[0] after the build, so the probe has to run it too:
+// reading the provider off a different dsh pins a model against a config the
+// review never loads.
+func TestDshProbeRunsBinOverride(t *testing.T) {
+	isolateDshPatches(t)
+	probeDshConfig(t, func(base []string) (string, error) {
+		if base[0] != "/opt/dsh/bin/dsh" {
+			return "", errors.New("probed " + base[0] + ", want the --bin override")
+		}
+		return "prov-a", nil
+	})
+
+	cmd, err := BuildCmd(Spec{Tool: "dsh", Model: "chat"}, "PROMPT",
+		BuildOpts{Binary: "/opt/dsh/bin/dsh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cmd[0] != "/opt/dsh/bin/dsh" {
+		t.Fatalf("argv starts with %q, want the override", cmd[0])
+	}
+	if p, err := dshDefaultProvider([]string{"/opt/dsh/bin/dsh"}); err != nil || p != "prov-a" {
+		t.Fatalf("the memo does not answer for the override: %q, %v", p, err)
+	}
+}
+
 func probeDshConfig(t *testing.T, dump func(base []string) (string, error)) {
 	t.Helper()
 	savedDump := dumpDshConfig
 	dumpDshConfig = dump
-	dshProbe = &dshProviderProbe{}
+	dshProbes.Lock()
+	dshProbes.byBase = map[string]dshProviderProbe{}
+	dshProbes.Unlock()
 	t.Cleanup(func() {
 		dumpDshConfig = savedDump
-		dshProbe = &dshProviderProbe{}
+		dshProbes.Lock()
+		dshProbes.byBase = map[string]dshProviderProbe{}
+		dshProbes.Unlock()
 	})
 }
 
@@ -2484,6 +2550,57 @@ func TestWriteDshPatchCleansStaleTemps(t *testing.T) {
 
 	if _, err := os.Stat(stale); !os.IsNotExist(err) {
 		t.Errorf("stale dsh temp file %s still exists", stale)
+	}
+}
+
+// The overlay directory is shared by every run and nothing ever removed a
+// file from it, so a run that kept trying models grew it for good. An overlay
+// past the age goes, and a fresh one stays.
+func TestWriteDshPatchSweepsOldOverlays(t *testing.T) {
+	cache := isolateDshPatches(t)
+	dir := filepath.Join(cache, "gauntlet", "dsh")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	aged := time.Now().Add(-2 * dshPatchAge)
+	old := filepath.Join(dir, "abandoned@model.yml")
+	if err := os.WriteFile(old, []byte("old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(old, aged, aged); err != nil {
+		t.Fatal(err)
+	}
+
+	path, err := writeDshPatch("current@model", "body\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("overlay older than %s still exists: %s", dshPatchAge, old)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the overlay just written was swept: %v", err)
+	}
+}
+
+// The memo is a stat saved, so it is dropped whole past the cap rather than
+// trimmed: no entry is worth a policy.
+func TestDshPatchMapIsBounded(t *testing.T) {
+	isolateDshPatches(t)
+	// Past the cap by two: the drop happens on the write that would cross
+	// it, and one more write has to fit inside the cap too.
+	for i := range dshPatchMapMax + 2 {
+		key := "prov" + strconv.Itoa(i) + "@model"
+		if _, err := writeDshPatch(key, "body\n"); err != nil {
+			t.Fatal(err)
+		}
+		dshPatchMu.Lock()
+		n := len(dshPatches)
+		dshPatchMu.Unlock()
+		if n > dshPatchMapMax {
+			t.Fatalf("the table holds %d entries after %d writes, over the cap of %d",
+				n, i+1, dshPatchMapMax)
+		}
 	}
 }
 

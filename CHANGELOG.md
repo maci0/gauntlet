@@ -37,6 +37,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `unicode-review` were named in the prompts and missing from the tool
   catalog, so both reviews were reported as having no helper tools and the
   prompt never learned whether the tool was installed.
+- The generated dsh model overlay under the user cache dir is now swept and its in-process table bounded. Nothing removed either: the directory gained a file per provider/model pair for the life of the install, shared by every run, and the table kept one entry per pair a long run pinned. An overlay past 90 days is rewritten identically the next run that wants it, and the table is dropped whole past 256 entries, since a miss costs a stat.
+
+### Fixed
+
+- A bare `dsh:<model>` pin now reads the provider from the launcher that runs the review. `--bin` replaces the executable after the command is composed, but the provider probe ran whatever `dsh` was on PATH, so the model was pinned against a config the review never loaded; the probe runs the override now.
+- The provider probe is memoized per launcher argv rather than once per process. A `--bin` override, the launcher on PATH, and the `bunx` fallback each read their own config, and one memo answered all three, so a failure probing one launcher was reported as the reason the others could not resolve, and a provider read from one pinned the model of another.
 
 ## 1.29.0
 

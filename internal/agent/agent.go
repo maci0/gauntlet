@@ -603,6 +603,11 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 				bunx = "bunx"
 			}
 			base = []string{bunx, "@deepseek-ai/dsh"}
+		} else if opts.Binary != "" {
+			// The override replaces cmd[0] after this returns, so the probe
+			// has to run it too: reading the provider off whatever dsh is on
+			// PATH pins a model against a config the review never loads.
+			base[0] = opts.Binary
 		}
 		cmd = append(append([]string{}, base...), "--profile", "headless")
 		if spec.Model != "" {

@@ -30,6 +30,23 @@ var (
 	dshPatches = map[string]string{}
 )
 
+// dshPatchMapMax bounds the memo. Entries cost nothing to rebuild (a stat and
+// at worst a rewrite of an identical file), and the key space is every
+// provider/model pair a run pins, which a long --max-loops run over a
+// suggested model list can keep enlarging. Past the cap the table is dropped
+// whole rather than trimmed by a policy: an entry only saves a stat, so there
+// is nothing a recency rule would buy.
+const dshPatchMapMax = 256
+
+// dshPatchAge bounds what the overlay directory keeps. It lives in the user
+// cache dir, shared by every run and every version, and each distinct
+// provider/model pair adds a file that nothing ever removes, so an install
+// that keeps trying models would otherwise grow it without end. An overlay
+// past this age is rewritten identically the next run that wants it, so the
+// age costs a write and nothing else: a dsh child reads its --patch at
+// startup, long before an overlay written this old is swept.
+const dshPatchAge = 90 * 24 * time.Hour
+
 var dshProviderRe = regexp.MustCompile(`^\s+provider:\s*['"]?([\w.-]+)['"]?\s*$`)
 
 // parseDshProvider reads the provider of the agent-default-model entry from a
@@ -63,14 +80,28 @@ const dshProbeTimeout = 120 * time.Second
 // is tens of kilobytes; an unbounded read must not exhaust RAM.
 const dshDumpMaxBytes = 4 << 20
 
-// dshProbe memoizes one provider probe per process. A var so a caller that
-// needs the probe run again replaces the whole memo rather than reaching into
-// fields the probe owns.
-var dshProbe = &dshProviderProbe{}
+// dshProbes memoizes one provider probe per launcher argv. A var so a caller
+// that needs the probes run again replaces the whole memo rather than
+// reaching into fields a probe owns.
+//
+// The launcher is part of the key, because it decides which config is dumped:
+// a `--bin` override, the launcher on PATH, and the bunx fallback that fetches
+// the package each read their own, and a bare dsh:model pinned to the provider
+// of one of them launches the other. A single process runs more than one of
+// those (an explicit --bin alongside the fallback, an agent definition that
+// overrides the binary and one that does not), so the key is the whole argv.
+//
+// The probe runs under the lock: it costs a subprocess and a possible network
+// fetch, and two callers reaching it at once would pay it twice for one
+// answer.
+var dshProbes = struct {
+	sync.Mutex
+	byBase map[string]dshProviderProbe
+}{byBase: map[string]dshProviderProbe{}}
 
-// dshProviderProbe is one memoized probe: a result and its error, taken once.
+// dshProviderProbe is one memoized probe: a result and its error, taken once
+// for one launcher argv.
 type dshProviderProbe struct {
-	once     sync.Once
 	provider string
 	err      error
 }
@@ -107,18 +138,25 @@ var dumpDshConfig = func(base []string) (string, error) {
 }
 
 // dshDefaultProvider probes the headless profile's configured provider once
-// per process. A failed probe keeps its error, not just an empty result, so
-// the caller can say why a bare dsh:model could not be resolved.
+// per launcher argv. A failed probe keeps its error, not just an empty result,
+// so the caller can say why a bare dsh:model could not be resolved. The failure
+// is kept per launcher too: one launcher missing from PATH says nothing about
+// the bunx fallback that stands in for it.
 //
 // The probe runs in its own process group and the deadline kill takes down the
 // whole group: Output reads through a pipe, and a grandchild that outlived the
 // killed child would hold that pipe open and hang this call forever. KillGroup
 // is deferred so grandchildren are reaped on normal exit as well.
 func dshDefaultProvider(base []string) (string, error) {
-	dshProbe.once.Do(func() {
-		dshProbe.provider, dshProbe.err = dumpDshConfig(base)
-	})
-	return dshProbe.provider, dshProbe.err
+	key := strings.Join(base, "\x00")
+	dshProbes.Lock()
+	defer dshProbes.Unlock()
+	p, ok := dshProbes.byBase[key]
+	if !ok {
+		p.provider, p.err = dumpDshConfig(base)
+		dshProbes.byBase[key] = p
+	}
+	return p.provider, p.err
 }
 
 // dshPatchKey names one overlay file. Every spelling two distinct
@@ -189,9 +227,16 @@ func writeDshPatch(key, body string) (string, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
+	// The sweep covers the directory and not just the overlays in it, so a
+	// rename that never completed does not leave its temporary behind
+	// forever. It runs per write, and a write is one per pair per process.
+	gauntlethome.SweepStaleTemps(dir, "", dshPatchAge, nil)
 	path := filepath.Join(dir, key+".yml")
 	if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-", path, []byte(body)); err != nil {
 		return "", err
+	}
+	if len(dshPatches) >= dshPatchMapMax {
+		clear(dshPatches)
 	}
 	dshPatches[key] = path
 	return path, nil
