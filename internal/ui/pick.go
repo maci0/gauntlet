@@ -1012,6 +1012,25 @@ func (p *picker) optionDisabled(o *option) bool {
 	return false
 }
 
+// inertNote is why a run-pane row is drawn dim, in the words the row carries.
+// Faintness is a difference in luminance, not in reading: a row whose state
+// lives in being dimmer is a state a reader at low vision, on a monochrome
+// terminal, or through a screen reader has to guess at (SC 1.4.1), and the
+// hint line only names it once the cursor arrives. Every other reading in the
+// launcher is part of its label and is cut with a marker rather than
+// vanishing, so this one is too. Empty for a row that applies.
+func (p *picker) inertNote(o *option) string {
+	switch {
+	case p.optionInert(o):
+		return " (stacked)"
+	case o.flag == "--suggest-agent" && !p.suggest:
+		return " (suggest off)"
+	case o.flag == "--merge-into" && !p.committing():
+		return " (commit off)"
+	}
+	return ""
+}
+
 // committing reports whether the composed run produces commits at all, which
 // is what a merge target needs to mean anything.
 func (p *picker) committing() bool {

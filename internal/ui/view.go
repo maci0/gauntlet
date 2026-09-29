@@ -381,6 +381,14 @@ func laneStats(m *model, l *laneState, hue lipgloss.AdaptiveColor, w int) (strin
 	if l.tokenRate > 0 {
 		segs = append(segs, styled(hue, fmtRate(l.tokenRate)+"/s"))
 	}
+	// The sparkline drawn past these counters is the lane's output rate as a
+	// shape. The figure here is the same reading in text, so the trace is not
+	// the only way to take it (SC 1.1.1). It sits below the token rate because
+	// it is the one of the two the counters can be read without, and above
+	// the reasoning share, which is a share of a total rather than a rate.
+	if l.lineRate > 0 {
+		segs = append(segs, styleDim.Render(fmtRate(l.lineRate)+" lines/s"))
+	}
 	// Reasoning: the share of output the model spent before writing anything,
 	// and a marker while it is still spending it. It is drawn subordinate to
 	// the counters, so it is the first one a narrow pane gives up.
@@ -822,7 +830,17 @@ func (m *model) footerReadings() []string {
 	}
 	if m.cfg.Budget > 0 {
 		frac := m.now.Sub(m.cfg.Started).Seconds() / m.cfg.Budget.Seconds()
-		segs = append(segs, meter(frac, 10, heatColor(frac))+styleDim.Render(" budget"))
+		// The bar says how much of the budget is gone, the figure says how
+		// much, in the unit a reader plans against. A bar is a shape and a
+		// hue, which is a reading only some of them can take (SC 1.1.1), and
+		// past the ceiling the bar has nothing left to say: the run says so
+		// in words instead. The figure is clamped with the bar, so a clock
+		// that stepped back does not print a negative the bar does not show.
+		pct := styleValue.Render(fmt.Sprintf("%d%%", int(max(frac, 0)*100)))
+		if frac >= 1 {
+			pct = styleWarn.Render(fmt.Sprintf("%d%% over", int(frac*100)))
+		}
+		segs = append(segs, meter(frac, 10, heatColor(frac))+styleDim.Render(" budget ")+pct)
 	}
 	return segs
 }
@@ -992,6 +1010,14 @@ func (m *model) helpLines() []string {
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
 	)
+	// The grid is the run's roster, and a cell is one column wide: a review
+	// whose name is longer than that is drawn with a cut, and the feed trims
+	// the same name to sixteen columns on every line. The overlay is the one
+	// place on this screen with the width for the whole name, it is reachable
+	// by keyboard from wherever the reader is, and it says the outcome in
+	// words beside the glyph, so neither the name nor the status is carried by
+	// a cell the reader has to measure.
+	lines = append(lines, m.reviewLines()...)
 	// The unmerged branches go at the end of the page, not the top: the
 	// overlay has a fixed height, and a list of run data in front of the key
 	// bindings pushes the keys the page exists to document below the fold once
@@ -1006,6 +1032,25 @@ func (m *model) helpLines() []string {
 				"  and %d older one(s); every conflict is in the run summary and the journal",
 				m.conflictsDropped)))
 		}
+	}
+	return lines
+}
+
+// reviewLines is the run's roster as the help overlay spells it out: every
+// scheduled review under its full name, with the glyph the grid draws and the
+// status it stands for. The grid cell is one column, so a name longer than
+// that only exists on screen cut, and this page is where it is whole.
+func (m *model) reviewLines() []string {
+	names := m.sortedOrder()
+	if len(names) == 0 {
+		return nil
+	}
+	lines := []string{"", styleTitle.Render("Reviews")}
+	for _, name := range names {
+		r := m.reviews[name]
+		glyph, col := statusGlyph(r.status)
+		lines = append(lines, "  "+styled(col, glyph)+" "+reviewShort(name)+
+			"  "+styleDim.Render(string(r.status)))
 	}
 	return lines
 }

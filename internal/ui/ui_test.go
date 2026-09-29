@@ -1107,6 +1107,43 @@ func TestBudgetMeterUsesHeatNotReasoning(t *testing.T) {
 	}
 }
 
+// A bar of blocks is a shape and a hue, which is a reading only some readers
+// can take, so every meter on the dashboard names its figure in text beside
+// it. The budget is the one that had none: its row read "budget" and a length,
+// and a reader who cannot see either has no figure at all (SC 1.1.1). A run
+// past its ceiling says so in words, because the bar has nothing left to say.
+func TestMetersCarryTheirFigureInText(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.cfg.Budget = time.Hour
+	m.now = m.cfg.Started.Add(30 * time.Minute)
+	if footer := stripANSI(lastLine(m.View())); !strings.Contains(footer, "budget 50%") {
+		t.Errorf("the budget row has no figure:\n%s", footer)
+	}
+	m.now = m.cfg.Started.Add(90 * time.Minute)
+	if footer := stripANSI(lastLine(m.View())); !strings.Contains(footer, "budget 150% over") {
+		t.Errorf("a run past its budget does not say so:\n%s", footer)
+	}
+}
+
+// The lane's sparkline is its output rate as a shape. The counters carry the
+// same reading as a figure, so the trace is not the only way to take it
+// (SC 1.1.1), and a lane that has printed nothing shows neither.
+func TestLaneCountersNameTheOutputRate(t *testing.T) {
+	m := newModel(demoConfig())
+	l := m.lane("claude")
+	l.lineRate = 3.5
+	stats, _ := laneStats(m, l, cBlue, 52)
+	if !strings.Contains(stripANSI(stats), "3.5 lines/s") {
+		t.Errorf("the lane counters do not name the output rate:\n%s", stripANSI(stats))
+	}
+	l.lineRate = 0
+	stats, _ = laneStats(m, l, cBlue, 52)
+	if strings.Contains(stripANSI(stats), "lines/s") {
+		t.Errorf("an idle lane reports an output rate it did not measure:\n%s", stripANSI(stats))
+	}
+}
+
 func contrastRatio(t *testing.T, fg, bg string) float64 {
 	t.Helper()
 	a, b := wcagLuminance(t, fg), wcagLuminance(t, bg)
@@ -2318,6 +2355,37 @@ func TestLogKindKeepsFailuresThatDoNotStartTheLine(t *testing.T) {
 	} {
 		if got := logKind(c.text); got != c.want {
 			t.Errorf("logKind(%q) = %v, want %v", c.text, got, c.want)
+		}
+	}
+}
+
+// A grid cell is one column wide, so a review whose name is longer than that
+// is drawn cut, and the feed trims the same name to sixteen columns on every
+// line: on the dashboard, a name like this exists only as an ellipsis. The
+// help overlay is the one place with the width for it, it is reachable by
+// keyboard from anywhere, and it says the outcome in words beside the glyph
+// rather than leaving the status to a shape.
+func TestHelpNamesEveryReviewWhole(t *testing.T) {
+	cfg := demoConfig()
+	cfg.Reviews = append(cfg.Reviews, "concurrency-lane-isolation-review")
+	m := newModel(cfg)
+	m.w, m.h, m.ready = 120, 40, true
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	if grid := stripANSI(m.renderGrid(116, 4)); strings.Contains(grid, "concurrency-lane-isolation-review") {
+		t.Fatalf("precondition failed: the grid held a name its cell cannot fit:\n%s", grid)
+	}
+	m.help = true
+	help := stripANSI(m.View())
+	if !strings.Contains(help, "concurrency-lane-isolation") {
+		t.Errorf("the help overlay cut a review name the grid could not hold:\n%s", help)
+	}
+	// The status is a word as well as a glyph, so it survives a screen reader
+	// and a terminal that draws the glyph as a box.
+	for _, want := range []string{"sec  ok", "doc  timeout", "perf  pending"} {
+		if !strings.Contains(help, want) {
+			t.Errorf("the roster does not carry %q in text:\n%s", want, help)
 		}
 	}
 }

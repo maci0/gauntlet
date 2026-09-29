@@ -126,6 +126,12 @@ type laneState struct {
 	tokens  int       // finished reviews only
 	lines   []float64 // output lines per second, newest last
 	pending float64
+	// lineRate is the last sampled output rate, the figure the lane's
+	// sparkline draws. A sparkline is a shape, so the number beside it is
+	// what says the same thing in text (SC 1.1.1); it stays zero for a lane
+	// that has printed nothing since the last sample, and a lane with no
+	// samples yet shows neither.
+	lineRate float64
 
 	// liveTokens is what the running review has reported so far, and
 	// tokenRate is the measured throughput. Both are zero for agents that
@@ -574,7 +580,8 @@ func (m *model) sampleActivity() {
 	m.activity = appendRing(m.activity, m.pendingRate/elapsed, activitySamples)
 	m.pendingRate = 0
 	for _, l := range m.lanes {
-		l.lines = appendRing(l.lines, l.pending/elapsed, laneSamples)
+		l.lineRate = l.pending / elapsed
+		l.lines = appendRing(l.lines, l.lineRate, laneSamples)
 		l.pending = 0
 	}
 }

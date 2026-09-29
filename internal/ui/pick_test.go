@@ -1965,16 +1965,20 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 		t.Errorf("a title that fits was cut: %q", whole)
 	}
 
-	// The same for a run-pane row: a pane wide enough for the longest label and
-	// a short value holds it whole, and a narrower one keeps the label and
-	// marks the value.
+	// The same for a run-pane row: a pane wide enough for the longest label
+	// and a short value holds it whole, and a narrower one keeps the label and
+	// marks the value. The longest label is the suggest agent's, which is why
+	// it carries a reason: a row drawn dim for a state it never names is a
+	// state only the faintness says (SC 1.4.1), so the words are part of the
+	// label and the pane has to budget for them.
 	p := demoPicker()
 	for _, c := range []struct {
 		w    int
-		want string
+		want []string
 	}{
-		{36, "suggest agent  from the pool"},
-		{28, "…"},
+		{56, []string{"suggest agent (suggest off)", "from the pool"}},
+		{36, []string{"…"}},
+		{28, []string{"…"}},
 	} {
 		rows := strings.Split(stripANSI(p.runPanel(c.w, p.paneHeight(paneOptions))), "\n")
 		var row string
@@ -1983,8 +1987,10 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 				row = r
 			}
 		}
-		if !strings.Contains(row, c.want) {
-			t.Errorf("a %d column run pane did not carry %q:\n%s", c.w, c.want, row)
+		for _, want := range c.want {
+			if !strings.Contains(row, want) {
+				t.Errorf("a %d column run pane did not carry %q:\n%s", c.w, want, row)
+			}
 		}
 	}
 }
@@ -2068,6 +2074,49 @@ func TestNarrowLauncherMarksDroppedKeys(t *testing.T) {
 		if !strings.HasSuffix(keys, "? help") && !strings.HasSuffix(keys, "…") &&
 			lipgloss.Width(kept)+3 <= w {
 			t.Errorf("at %d columns dropped keys are not marked: %q", w, keys)
+		}
+	}
+}
+
+// A run-pane row that cannot apply is drawn dim, and dim is a difference in
+// luminance rather than a reading: a state carried by faintness alone is one a
+// reader at low vision, on a monochrome terminal, or through a screen reader
+// cannot take, and the status line only names it once the cursor is on the row
+// (SC 1.4.1). So the row names it itself, in the words it is drawn with.
+func TestRunRowsNameWhyTheyCannotApply(t *testing.T) {
+	row := func(p *picker, label string) string {
+		for r := range strings.SplitSeq(stripANSI(p.runPanel(60, p.paneHeight(paneOptions))), "\n") {
+			if strings.Contains(r, label) {
+				return r
+			}
+		}
+		return ""
+	}
+	p := demoPicker()
+	for _, want := range []struct{ label, note string }{
+		{"suggest agent", "(suggest off)"},
+		{"merge into", "(commit off)"},
+	} {
+		if got := row(p, want.label); !strings.Contains(got, want.note) {
+			t.Errorf("a %s row does not say why it is dim: %q, want %q", want.label, got, want.note)
+		}
+	}
+	// A row that applies is left alone: a note on every row is a note on none.
+	if got := row(p, "yolo"); strings.Contains(got, "(") {
+		t.Errorf("a row that applies carries a reason it does not have: %q", got)
+	}
+	// Stacked mode owns the job count and the git rows, and says so on each.
+	stacked := 4
+	for i, o := range demoPicker().opts {
+		if o.flag == "--stacked-prs" {
+			stacked = i
+		}
+	}
+	p.focus, p.cursor[paneOptions] = paneOptions, stacked
+	p.toggle()
+	for _, label := range []string{"concurrency", "commit", "push", "merge into"} {
+		if got := row(p, label); !strings.Contains(got, "(stacked)") {
+			t.Errorf("a %s row in stacked mode does not say stacked owns it: %q", label, got)
 		}
 	}
 }

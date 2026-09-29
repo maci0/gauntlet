@@ -824,6 +824,7 @@ func (p *picker) runPanel(w, h int) string {
 		cur := p.focus == paneOptions && i == p.cursor[paneOptions]
 		var left, right string
 		inert := p.optionInert(&o)
+		note := p.inertNote(&o)
 		switch o.kind {
 		case optCount:
 			left = "  " + o.label
@@ -836,7 +837,7 @@ func (p *picker) runPanel(w, h int) string {
 				right = value
 			}
 			if inert {
-				left = styleFaint.Render("  " + o.label)
+				left = styleFaint.Render("  " + o.label + note)
 				right = styleFaint.Render(fmt.Sprint(o.n) + fmt.Sprintf("/%d cpu", p.cfg.CPUs))
 			}
 		case optCycle:
@@ -851,7 +852,7 @@ func (p *picker) runPanel(w, h int) string {
 			left = "  " + o.label
 			switch {
 			case !applies:
-				left = styleFaint.Render("  " + o.label)
+				left = styleFaint.Render("  " + o.label + note)
 				right = styleFaint.Render(value)
 			case o.idx == 0:
 				right = styleDim.Render(value)
@@ -865,7 +866,7 @@ func (p *picker) runPanel(w, h int) string {
 				if o.on {
 					mark = "[x] "
 				}
-				left = styleFaint.Render(mark + o.label)
+				left = styleFaint.Render(mark + o.label + note)
 			}
 		}
 		if right != "" {
