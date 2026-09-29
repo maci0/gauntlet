@@ -50,6 +50,10 @@ func TestDocumentIsCycloneDX(t *testing.T) {
 	if got.Metadata.Component.PURL != "pkg:golang/github.com/maci0/gauntlet@1.2.3" {
 		t.Errorf("subject purl is %q, want the package URL of the main module", got.Metadata.Component.PURL)
 	}
+	if len(got.Metadata.Component.Licenses) != 1 ||
+		got.Metadata.Component.Licenses[0].License.ID != subjectLicense {
+		t.Errorf("subject licenses are %+v, want the release's own %s grant", got.Metadata.Component.Licenses, subjectLicense)
+	}
 	if len(got.Components) != 3 {
 		t.Fatalf("document has %d components, want 3", len(got.Components))
 	}

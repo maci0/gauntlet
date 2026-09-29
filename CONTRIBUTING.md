@@ -256,7 +256,8 @@ git push origin "v$ver"
 
 [release.yml](.github/workflows/release.yml) runs the race suite, builds
 every platform, smoke-tests the host binary against every line of
-`checksums.txt`, signs a build-provenance attestation for each of them, and
+`checksums.txt`, signs a build-provenance attestation for each of them,
+uploads the inventory, the checksum list, and the license text, and
 publishes through a draft, so a failed upload is never
 visible to consumers. A tag with no matching CHANGELOG section fails before
 anything is built. Cut the tag from a commit `main` already carries: the

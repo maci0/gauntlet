@@ -89,7 +89,7 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 	}{
 		{"release.yml", "git merge-base --is-ancestor HEAD origin/main", 107},
 		{"release.yml", "actions/attest-build-provenance@", 161},
-		{"release.yml", "dist/sbom.json", 188},
+		{"release.yml", "dist/sbom.json", 191},
 		{"release.yml", "set -eu -o pipefail", 64},
 		{"ci.yml", "GITHUB_TOKEN", 48},
 		{"vulnscan.yml", "schedule:", 10},

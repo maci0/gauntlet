@@ -165,7 +165,10 @@ jobs:
 
       # checksums.txt must ship with the binaries: `gauntlet update` refuses to
       # install an asset it cannot verify against it. sbom.json is the CycloneDX
-      # inventory of what shipped, read back out of each built binary.
+      # inventory of what shipped, read back out of each built binary. LICENSE
+      # is the text of the grant the binaries are offered under: the AGPL asks
+      # a distributed work to carry its license, and a consumer who installs
+      # the binary alone has nowhere else to read it.
       #
       # Create a draft so a failed upload is never visible to consumers. A
       # retry may repair that draft, but an already-published version is
@@ -185,12 +188,12 @@ jobs:
             exit 1
           elif [ "$draft" = true ]; then
             gh release upload "$GITHUB_REF_NAME" --clobber \
-              dist/gauntlet_* dist/checksums.txt dist/sbom.json
+              dist/gauntlet_* dist/checksums.txt dist/sbom.json dist/LICENSE
             gh release edit "$GITHUB_REF_NAME" --notes-file dist/notes.md \
               --prerelease="$prerelease" --draft=false
           else
             gh release create "$GITHUB_REF_NAME" --draft --notes-file dist/notes.md \
               --prerelease="$prerelease" \
-              dist/gauntlet_* dist/checksums.txt dist/sbom.json
+              dist/gauntlet_* dist/checksums.txt dist/sbom.json dist/LICENSE
             gh release edit "$GITHUB_REF_NAME" --prerelease="$prerelease" --draft=false
           fi

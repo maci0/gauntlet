@@ -121,6 +121,32 @@ func TestReleaseConcurrencyIsPerTag(t *testing.T) {
 	}
 }
 
+// Everything `make artifacts` writes into dist/ has to be uploaded, or the
+// file it built for a release never reaches one. checksums.txt is what
+// `gauntlet update` verifies an asset against, sbom.json is the inventory of
+// what shipped, and LICENSE is the text of the grant the binaries are offered
+// under, which a consumer who installs the binary alone has nowhere else to
+// read. The two upload sites (a draft being repaired, a first publish) have to
+// carry the same set, so the list is read out of both.
+func TestReleaseUploadsEveryArtifact(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	var uploads int
+	for line := range strings.SplitSeq(text, "\n") {
+		if !strings.HasPrefix(strings.TrimSpace(line), "dist/gauntlet_*") {
+			continue
+		}
+		uploads++
+		for _, want := range []string{"dist/checksums.txt", "dist/sbom.json", "dist/LICENSE"} {
+			if !strings.Contains(line, want) {
+				t.Errorf("release upload is missing %s: %s", want, strings.TrimSpace(line))
+			}
+		}
+	}
+	if uploads != 2 {
+		t.Errorf("release.yml has %d upload lines, want 2 (repairing a draft, and the first publish)", uploads)
+	}
+}
+
 func TestReleaseWriteTokenIsPublishOnly(t *testing.T) {
 	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
 	if !strings.Contains(text, "GITHUB_TOKEN: \"\"") || !strings.Contains(text, "GH_TOKEN: \"\"") {

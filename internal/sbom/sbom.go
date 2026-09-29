@@ -91,6 +91,12 @@ const (
 
 	// sumProperty names the go.sum hash of a module's zip.
 	sumProperty = "go:go.sum"
+
+	// subjectLicense is the grant the CLI itself ships under, the same one
+	// every file in this repository carries in its SPDX header. The subject
+	// component is the one a consumer reads the terms of the artifact they
+	// installed from, so it carries them like every component below it.
+	subjectLicense = "AGPL-3.0-or-later"
 )
 
 // FromBinary reads the modules a built binary links, together with the main
@@ -147,7 +153,9 @@ func Merge(perBinary [][]Module) ([]Module, error) {
 
 // New builds the document for a release: the CLI at the given version, and
 // the given modules. modulePath is the main module the binaries were built
-// from, so the subject carries the same package URL the components do. The
+// from, so the subject carries the same package URL the components do, and
+// the grant this repository ships under, which cmd/sbom fails a run over for
+// the modules and would have nothing to say about for the subject. The
 // serial number is derived from the contents, not drawn at random, so two
 // runs over the same binaries write the same bytes and a rebuilt release
 // produces a comparable inventory.
@@ -158,6 +166,9 @@ func New(name, modulePath, version string, mods []Module) *Document {
 		Name:    name,
 		Version: version,
 		PURL:    purlOf(modulePath, version),
+		Licenses: []LicenseChoice{
+			{License: License{ID: subjectLicense}},
+		},
 	}
 	components := make([]Component, 0, len(mods))
 	for _, m := range mods {

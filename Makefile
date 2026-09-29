@@ -3,6 +3,13 @@ CMD     := ./cmd/gauntlet
 DIST    := dist
 VERSION ?= dev
 
+# Where `make install` puts the binary. The default is the per-user directory
+# the README install and the runner's fallback PATH already assume, so the
+# documented install is unchanged; a system install overrides it on the
+# command line (`make install BINDIR=/usr/local/bin`), which writes wherever
+# the caller can write rather than into a directory this Makefile picked.
+BINDIR ?= $(HOME)/.local/bin
+
 GO      ?= go
 GOFMT   ?= $(shell $(GO) env GOROOT)/bin/gofmt
 LDFLAGS := -s -w -X main.version=$(VERSION)
@@ -458,16 +465,16 @@ vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs
 	GOFLAGS= $(GO) run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) $(GOTAGS) ./...
 
 .PHONY: install
-install: build ## install into ~/.local/bin
-	install -d "$(HOME)/.local/bin"
+install: build ## install into $(BINDIR) (BINDIR defaults to $(HOME)/.local/bin)
+	install -d "$(BINDIR)"
 	@# The binary being replaced is kept, under the same name `gauntlet
 	@# update` gives its copy, so a locally built install can be rolled back
 	@# the same way a released one is, unless it is the same binary: a second
 	@# `make install` of an unchanged build would leave nothing to roll back to.
-	@if [ -f "$(HOME)/.local/bin/$(BINARY)" ] && ! cmp -s "$(BINARY)" "$(HOME)/.local/bin/$(BINARY)"; then cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"; fi
-	install -m 0755 $(BINARY) "$(HOME)/.local/bin/$(BINARY)"
-	@case ":$$PATH:" in *:"$(HOME)/.local/bin":*) ;; *) \
-		echo "note: $(HOME)/.local/bin is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
+	@if [ -f "$(BINDIR)/$(BINARY)" ] && ! cmp -s "$(BINARY)" "$(BINDIR)/$(BINARY)"; then cp -p "$(BINDIR)/$(BINARY)" "$(BINDIR)/$(BINARY).previous"; fi
+	install -m 0755 $(BINARY) "$(BINDIR)/$(BINARY)"
+	@case ":$$PATH:" in *:"$(BINDIR)":*) ;; *) \
+		echo "note: $(BINDIR) is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
 
 .PHONY: clean
 clean: ## remove build artifacts
@@ -498,7 +505,7 @@ clean: ## remove build artifacts
 dist: | toolchain
 dist: ## build every release platform into dist/
 	@mkdir -p $(DIST)
-	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json
+	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json $(DIST)/LICENSE
 	@set -e; pids=; for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
@@ -590,11 +597,11 @@ clean-tree: ## fail unless the working tree has no uncommitted or untracked chan
 # library alone: the artifact that describes the dependency surface must not
 # add to it.
 .PHONY: release
-release: | clean-tree release-version check test dist artifacts ## build every platform and write dist/checksums.txt and dist/sbom.json
-	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt and sbom.json)"
+release: | clean-tree release-version check test dist artifacts ## build every platform and write dist/checksums.txt, dist/sbom.json and dist/LICENSE
+	@echo "release artifacts in $(DIST)/ (upload every binary plus checksums.txt, sbom.json and LICENSE)"
 
-# The two files that sit beside the binaries rather than being them, split out
-# of `release` so the dist job runs them on every push. Before this they were
+# The files that sit beside the binaries rather than being them, split out of
+# `release` so the dist job runs them on every push. Before this they were
 # written only by a tagged release, so a change that broke the inventory, or a
 # checksums.txt whose entries no longer matched what it names, reached a tag
 # before anything noticed; `dist` and `smoke` in CI exercise the binaries alone.
@@ -604,8 +611,17 @@ release: | clean-tree release-version check test dist artifacts ## build every p
 # The verification and the test are each wrapped so their failure is the
 # recipe's own: a command substitution or a `||` chain whose status the next
 # `;` discards reports success over a checksum that never matched.
+#
+# LICENSE is the third, copied out of the tree rather than built: a binary
+# released under the AGPL travels with the text of the grant it is offered
+# under, and a consumer who downloads one over a link has no other way to read
+# the terms without the repository beside it. It is not in checksums.txt, which
+# names the binaries `gauntlet update` downloads, and the release attestations
+# cover the binaries too, so it is a document beside the release rather than an
+# artifact of it.
 .PHONY: artifacts
-artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built binaries
+artifacts: dist ## write dist/checksums.txt, dist/sbom.json and dist/LICENSE from the built binaries
+	@install -m 0644 LICENSE $(DIST)/LICENSE
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
 		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
@@ -617,10 +633,10 @@ artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built bi
 		echo "artifacts: $(DIST)/checksums.txt does not match the binaries it names" >&2; \
 		exit 1; \
 	}; \
-	for f in checksums.txt sbom.json; do \
+	for f in checksums.txt sbom.json LICENSE; do \
 		[ -s "$$f" ] || { echo "artifacts: $(DIST)/$$f is missing or empty" >&2; exit 1; }; \
 	done; \
-	echo "artifacts: checksums.txt and sbom.json in $(DIST)/"
+	echo "artifacts: checksums.txt, sbom.json and LICENSE in $(DIST)/"
 
 # The same source must produce the same bytes wherever it is built: -trimpath
 # strips build paths, nothing in a Go binary embeds a timestamp, and

@@ -104,7 +104,8 @@ there; on macOS, add it.
 Or build and install from source:
 
 ```sh
-make install
+make install                     # into ~/.local/bin
+make install BINDIR=/usr/local/bin   # or wherever the machine keeps binaries
 ```
 
 Check or update the installation:

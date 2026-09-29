@@ -46,13 +46,16 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	if !strings.Contains(text, `mkdir -p "$(TMPDIR)"`) {
 		t.Fatal(`mkdir TMPDIR must quote the path: HOME can contain spaces`)
 	}
-	if !strings.Contains(text, `install -d "$(HOME)/.local/bin"`) {
+	if !strings.Contains(text, "BINDIR ?= $(HOME)/.local/bin") {
+		t.Fatal("BINDIR must default to the per-user directory the README install uses, so the documented install is unchanged")
+	}
+	if !strings.Contains(text, `install -d "$(BINDIR)"`) {
 		t.Fatal(`make install must quote destination path: HOME can contain spaces`)
 	}
 	if !strings.Contains(text, "is not on PATH") {
-		t.Fatal("make install must say when ~/.local/bin is not on PATH")
+		t.Fatal("make install must say when the destination is not on PATH")
 	}
-	if !strings.Contains(text, `cp -p "$(HOME)/.local/bin/$(BINARY)" "$(HOME)/.local/bin/$(BINARY).previous"`) {
+	if !strings.Contains(text, `cp -p "$(BINDIR)/$(BINARY)" "$(BINDIR)/$(BINARY).previous"`) {
 		t.Fatal(`make install must keep the binary it replaces as $(BINARY).previous, the name gauntlet update keeps its copy under, so a locally built install can be rolled back the same way`)
 	}
 }
@@ -1000,11 +1003,14 @@ func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	if !strings.Contains(recipe, "sha256sum -c checksums.txt") {
 		t.Fatal("make artifacts must verify the checksums it just wrote against the binaries they name")
 	}
-	if !strings.Contains(recipe, `for f in checksums.txt sbom.json; do`) ||
+	if !strings.Contains(recipe, `for f in checksums.txt sbom.json LICENSE; do`) ||
 		!strings.Contains(recipe, `[ -s "$$f" ]`) {
-		t.Fatal("make artifacts must refuse to report success for a missing or empty checksums.txt or sbom.json; CI checks that with `test -s`, and no make target reproduced it")
+		t.Fatal("make artifacts must refuse to report success for a missing or empty checksums.txt, sbom.json or LICENSE; CI checks the first with `test -s`, and no make target reproduced it")
 	}
-	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json") {
+	if !strings.Contains(recipe, "install -m 0644 LICENSE $(DIST)/LICENSE") {
+		t.Fatal("make artifacts must copy LICENSE into dist, so a release ships the grant its binaries are offered under")
+	}
+	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json $(DIST)/LICENSE") {
 		t.Fatal("make dist must remove a previous sbom.json, so a stale inventory cannot ship with new binaries")
 	}
 }
@@ -1219,10 +1225,13 @@ func TestMakefileReproIsolatesBuildCachesAndWorktrees(t *testing.T) {
 	}
 }
 
-// A release ships six files: the four binaries plus the checksums.txt and
-// sbom.json beside them. Both are built from the binaries, `gauntlet update`
-// reads the first, and a scanner reads the second, so a reproducibility check
-// that compares only the binaries leaves two published artifacts unverified.
+// A release ships six files out of the build: the four binaries plus the
+// checksums.txt and sbom.json beside them. Both are built from the binaries,
+// `gauntlet update` reads the first, and a scanner reads the second, so a
+// reproducibility check that compares only the binaries leaves two published
+// artifacts unverified. The license text a release also uploads is copied out
+// of the tree by `artifacts` rather than built, so two copies of that source
+// have nothing to disagree about.
 // sbom.json is the one with a determinism claim of its own: its serial number
 // is hashed from what it describes, and its licenses are resolved out of the
 // module cache the build filled. The copies have to build under the release
