@@ -678,10 +678,14 @@ echo 'RESULT: changed=1'`)
 func TestStackedPRsCommitFailureStopsTheStack(t *testing.T) {
 	repo, _ := stackRepo(t)
 	_, statePath := fakeGH(t)
-	// Signing is demanded but the signer does not exist, so every commit in
+	// Signing is demanded in the operator's global config (untouched by
+	// local-repo blanking) but the signer does not exist, so every commit in
 	// this clone (the stack worktree included) fails deterministically.
-	gitOut(t, repo, "config", "commit.gpgsign", "true")
-	gitOut(t, repo, "config", "gpg.program", filepath.Join(t.TempDir(), "no-such-gpg"))
+	globalCfg := filepath.Join(t.TempDir(), "global.gitconfig")
+	if err := os.WriteFile(globalCfg, []byte("[commit]\n\tgpgsign = true\n[gpg]\n\tprogram = "+filepath.Join(t.TempDir(), "no-such-gpg")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", globalCfg)
 	marker := filepath.Join(t.TempDir(), "reviews")
 	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
 echo x >> "`+marker+`"
