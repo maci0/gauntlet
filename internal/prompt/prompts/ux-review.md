@@ -41,7 +41,7 @@ Review the following:
 
 4. Forms and input
 (a11y-review owns labels, error association, fieldset/legend, and programmatic error tying. Here own usability: complexity, step-splitting, input types, autofill, lost state.)
-- Form labels whose wording does not say what the field is for; missing labels and placeholder-as-label belong to a11y-review
+- Wording of a field's visible text that does not say what the field is for ("Email" on a field asking for a username), readable without a screen reader
 - Missing inline validation or validation only on submit
 - Error messages that do not explain what went wrong or how to fix it
 - Required fields not clearly marked

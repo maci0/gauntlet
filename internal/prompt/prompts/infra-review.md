@@ -115,10 +115,9 @@ Instructions:
 - If available, use: `hadolint` (Dockerfiles), `shellcheck` (shell scripts), `actionlint` (GitHub Actions), `tflint` (Terraform), `checkov`/`conftest` (policy checks), `ansible-lint` (Ansible), `kubeconform` (Kubernetes manifests). Never install tools.
 - Inspect actual pipeline files, Dockerfiles, IaC definitions, and deployment scripts.
 - Verify that documented procedures match what the code and configuration actually do.
-- Consider the operational burden of the current setup.
+- Name the operational cost of a step: what a contributor or operator has to install, cache, wait for, or remember to do by hand. Flag it only where the repository shows the cost (an unpinned tool, a step needing a local credential, a README telling the reader to run something by hand).
 - Do not recommend complex orchestration for simple projects.
-- Focus on reliability, security, and developer experience in that order.
-- Consider what happens when things fail, not just the happy path.
+- Follow the failure path of each step, not just the happy one: a deploy stage with no `if: always()` cleanup, a rollback step that runs before the deploy, or a health check that passes on a process that cannot serve.
 - Distinguish between:
   - broken infrastructure (deployments fail, security holes, data loss risk)
   - fragile infrastructure (works but breaks easily or unpredictably)
@@ -192,7 +191,6 @@ Important:
 - Base findings on actual configuration files, scripts, and pipeline definitions.
 - If you are not sure whether a configuration is intentional, skip it.
 - Prefer simple, reliable solutions over sophisticated ones.
-- Consider the team size and operational maturity when making recommendations.
 - Do not recommend Kubernetes for a project that runs on a single server.
 - A working manual process is better than a broken automated one.
 - Call out when infrastructure is already well-configured and should not be changed.
