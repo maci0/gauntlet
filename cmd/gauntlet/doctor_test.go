@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
@@ -407,5 +409,53 @@ func TestDoctorReportsAJournalCutMidLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "1 journal ends mid-line") {
 		t.Fatalf("doctor should report the journal that lost its last events:\n%s", out)
+	}
+}
+
+// A git older than the floor every call in internal/gitx makes rejects
+// --end-of-options, so a run fails on an error that names neither git nor a
+// version. Doctor reports the version it found, and the floor it is measured
+// against, so the answer arrives before a review does.
+func TestDoctorReportsTheGitVersion(t *testing.T) {
+	if agent.Resolve("git") == "" {
+		t.Skip("no git on PATH")
+	}
+	var buf bytes.Buffer
+	doctor(&buf, palette{}, nil, 200)
+	out := buf.String()
+	if !strings.Contains(out, "git version") {
+		t.Fatalf("doctor did not report the git version:\n%s", out)
+	}
+	line := gitx.Version(context.Background())
+	if line == "" {
+		t.Fatal("git resolved but `git --version` produced no line")
+	}
+	if !strings.Contains(out, line) {
+		t.Fatalf("doctor reported no line for git %q:\n%s", line, out)
+	}
+	if below, known := gitx.BelowFloor(line); !known {
+		t.Fatalf("git %q carries no comparable version", line)
+	} else if below {
+		t.Fatalf("the git on this machine (%s) is older than the floor doctor reports", line)
+	}
+}
+
+// The floor is stated in the README and compared in code; nothing in the type
+// system ties the two together, so a raised constant leaves the docs claiming
+// a version this package no longer needs, or the reverse.
+func TestReadmeGitFloorMatchesTheConstant(t *testing.T) {
+	readme := readRepoFile(t, filepath.Join(moduleRoot(t), "README.md"))
+	stated := ""
+	for line := range strings.SplitSeq(readme, "\n") {
+		if _, rest, ok := strings.Cut(line, "Git "); ok {
+			stated = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(rest), ":"))
+			break
+		}
+	}
+	if stated == "" {
+		t.Fatal("README.md states no git version floor for the reader")
+	}
+	if !strings.HasPrefix(stated, gitx.MinVersion) {
+		t.Fatalf("README states git %q; the code requires %s", stated, gitx.MinVersion)
 	}
 }

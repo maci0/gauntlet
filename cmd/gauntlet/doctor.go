@@ -4,15 +4,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 )
@@ -136,6 +139,25 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		}
 		label := strings.ReplaceAll(c.Name, "|", " or ")
 		w.printf("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
+	}
+	// git's floor is a documented requirement, and an older one fails every
+	// review with "unknown option: --end-of-options" rather than anything that
+	// names the cause. Report the version beside the tool that has one, only
+	// when git resolved: a missing git is already the line above.
+	if have("git") {
+		if line := gitx.Version(context.Background()); line != "" {
+			below, known := gitx.BelowFloor(line)
+			switch {
+			case known && below:
+				w.printf("  %s %-24s %s\n", pal.red("✗"), "git version",
+					pal.red(line+" is older than "+gitx.MinVersion+", which every review needs"))
+			case known:
+				w.printf("  %s %-24s %s\n", pal.green("✓"), "git version", pal.dim(line))
+			default:
+				w.printf("  %s %-24s %s\n", pal.yellow("✗"), "git version",
+					pal.yellow("no version in "+strconv.Quote(line)))
+			}
+		}
 	}
 
 	w.println()
