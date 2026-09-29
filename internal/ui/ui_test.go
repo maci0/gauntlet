@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -2137,7 +2138,10 @@ func TestNarrowPaneDropsWholeTitleSegments(t *testing.T) {
 // clock are what survive a narrow terminal: the version and the loop number go
 // first, and the row is never cut at the state.
 func TestMinimalHeaderKeepsTheRunState(t *testing.T) {
-	for _, w := range []int{20, 30, 40, 49} {
+	// The narrow widths are the ones this was wrong at: the row held the clock
+	// and the state, did not fit, and was cut at the right, so the one reading
+	// the fallback exists for arrived as "\u25cf RU\u2026". The clock goes first.
+	for _, w := range []int{10, 12, 14, 20, 30, 40, 49} {
 		m := newModel(demoConfig())
 		m.w, m.h, m.ready = w, 10, true
 		for _, ev := range demoEvents() {
@@ -2145,7 +2149,7 @@ func TestMinimalHeaderKeepsTheRunState(t *testing.T) {
 		}
 		m.now = m.cfg.Started.Add(90 * time.Second)
 		row := stripANSI(strings.Split(m.renderMinimal(), "\n")[0])
-		if !strings.Contains(row, "RUNNING") {
+		if !strings.Contains(row, "\u25cf RUNNING") {
 			t.Fatalf("w=%d: header %q lost the run state", w, row)
 		}
 		if lipgloss.Width(m.minimalHeader("● RUNNING", styleOK)) > w {
@@ -2217,6 +2221,7 @@ func TestHelpOverlayNamesEveryKeyItBinds(t *testing.T) {
 
 // A pane too narrow for the whole key row loses whole keys rather than half a
 // name: a legend ending in "j/k scrol" advertises a key that does not exist.
+// What it lost is marked, so a row that kept two of four reads as two.
 func TestHelpLegendDropsWholeSegmentsNotHalfNames(t *testing.T) {
 	for _, w := range []int{20, 30, 45, 60, 80, 200} {
 		legend := stripANSI(helpLegend(w))
@@ -2226,13 +2231,24 @@ func TestHelpLegendDropsWholeSegmentsNotHalfNames(t *testing.T) {
 		if !strings.HasPrefix(legend, "q/esc close") {
 			t.Errorf("at %d columns the closing keys are not the first thing kept: %q", w, legend)
 		}
+		segs := slices.Collect(strings.SplitSeq(legend, "  "))
 		// Whatever survives is a whole key name, so no segment ends mid-word.
-		for seg := range strings.SplitSeq(legend, "  ") {
+		dropped := 0
+		for _, seg := range segs {
 			switch seg {
 			case "q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end":
+			case "…":
+				dropped++
+				if dropped > 1 {
+					t.Errorf("at %d columns the legend marks the cut twice: %q", w, legend)
+				}
 			default:
 				t.Errorf("at %d columns the legend carries a cut segment %q: %q", w, seg, legend)
 			}
+		}
+		if len(segs)-dropped != len(helpLegendKeys) && dropped != 1 &&
+			lipgloss.Width(strings.Join(segs[:len(segs)-dropped], "  "))+3 <= w {
+			t.Errorf("at %d columns keys were dropped and there was room to say so: %q", w, legend)
 		}
 	}
 }

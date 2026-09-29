@@ -915,13 +915,20 @@ func (m *model) minimalHeader(stateTxt string, stateStyle lipgloss.Style) string
 		styleDim.Render("gauntlet " + m.cfg.Version),
 		styleDim.Render(fmt.Sprintf("loop %d", m.loop)),
 	}
-	for i := 0; i <= len(lead); i++ {
+	for i := range lead {
 		row := strings.Join(append(append([]string{}, lead[i:]...), tail...), "  ")
-		if i == len(lead) || lipgloss.Width(row) <= m.w {
+		if lipgloss.Width(row) <= m.w {
 			return row
 		}
 	}
-	return strings.Join(tail, "  ")
+	if row := strings.Join(tail, "  "); lipgloss.Width(row) <= m.w {
+		return row
+	}
+	// The clock and the state together are wider than the pane. The state is
+	// the reading the fallback exists for, so the clock is what goes: a row
+	// cut at the right took it with the tally ("● RU…") and left the reader
+	// with the one thing they came for spelled out to nothing.
+	return clipEllipsis(tail[1], m.w)
 }
 
 func (m *model) renderHelp() string {
@@ -1092,6 +1099,10 @@ func helpRows(lines []string, w int) []string {
 	return strings.Split(lipgloss.NewStyle().Width(max(w, 1)).Render(strings.Join(lines, "\n")), "\n")
 }
 
+// helpLegendKeys are the segments of the overlay's own key row, in the order
+// they survive a narrowing pane.
+var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end"}
+
 // helpLegend is the overlay's own key row, as whole segments a narrow pane
 // drops from the right. The first survives always: a reader with no way to
 // close the overlay is stuck in it.
@@ -1102,10 +1113,9 @@ func helpRows(lines []string, w int) []string {
 // pages down: a key that works, is unmentioned, and reads as broken is the one
 // a keyboard user cannot tell from a missing one (WCAG 3.3.2). Fitting whole
 // segments fixes both: what does not fit is a key that was never claimed, not
-// half of one that was.
+// half of one that was, and fitSegments marks what it dropped.
 func helpLegend(w int) string {
-	segs := []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end"}
-	return styleDim.Render(fitSegments(segs, "  ", w))
+	return styleDim.Render(fitSegments(helpLegendKeys, "  ", w))
 }
 
 // renderHelpPage draws the overlay from its scroll position over a wrapped

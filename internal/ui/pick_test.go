@@ -2010,3 +2010,64 @@ func TestRightColumnFillsTheFrame(t *testing.T) {
 		}
 	}
 }
+
+// A pane title that cannot hold every reading drops whole ones and says what
+// went, the way the dashboard's panel titles do. Cutting it instead could end
+// at "none picked: auto-d" and take the count of hidden rows with it: an agent
+// missing from the list with nothing to say so reads as one that is not
+// installed.
+func TestPaneTitlesDropWholeReadings(t *testing.T) {
+	p := demoPicker()
+	// One agent row and one option row: both panes hold fewer rows than they
+	// have, so both titles carry a hidden count.
+	for _, w := range []int{24, 30, 50} {
+		agents := firstLine(p.agentPanel(w, 1))
+		run := firstLine(p.runPanel(w, 1))
+		if got := stripANSI(agents); !strings.Contains(got, "+1 more") {
+			t.Errorf("at %d columns the agents title does not say it is hiding one: %q", w, got)
+		}
+		if got := stripANSI(run); !strings.Contains(got, "+8 more") {
+			t.Errorf("at %d columns the run title does not say it is hiding options: %q", w, got)
+		}
+		// Whatever the width, a title is never a word the cut happened to land
+		// on: it either fits whole or ends in the marker.
+		for _, title := range []string{stripANSI(agents), stripANSI(run)} {
+			if cut := strings.Index(title, "…"); cut >= 0 && cut < len(title)-len("…") {
+				t.Errorf("at %d columns a title was cut mid-word: %q", w, title)
+			}
+			if got := lipgloss.Width(title); got > w+panelBorderColumns {
+				t.Errorf("at %d columns the title is %d wide: %q", w, got, title)
+			}
+		}
+	}
+	// Wide enough for everything, the readings are all there.
+	if got := stripANSI(firstLine(p.agentPanel(50, 5))); !strings.Contains(got, "none picked: auto-detect") {
+		t.Errorf("a pane holding every agent does not say what is picked: %q", got)
+	}
+}
+
+// The fallback's key row drops whole keys, and marks that it did: a row ending
+// at "q cancel" reads as the whole set, and "? help" is the one key that says
+// how to learn the rest of the screen.
+func TestNarrowLauncherMarksDroppedKeys(t *testing.T) {
+	for _, w := range []int{20, 26, 30, 40} {
+		p := demoPicker()
+		p.w, p.h, p.ready = w, 8, true
+		keys := stripANSI(fitSegments([]string{"⏎ run", "/ filter", "q cancel", "? help"}, "  ", w))
+		if !strings.HasPrefix(keys, "⏎ run") {
+			t.Errorf("at %d columns the first key was dropped: %q", w, keys)
+		}
+		for seg := range strings.SplitSeq(keys, "  ") {
+			switch seg {
+			case "⏎ run", "/ filter", "q cancel", "? help", "…":
+			default:
+				t.Errorf("at %d columns a key name was cut: %q", w, seg)
+			}
+		}
+		kept := strings.TrimSuffix(keys, "  …")
+		if !strings.HasSuffix(keys, "? help") && !strings.HasSuffix(keys, "…") &&
+			lipgloss.Width(kept)+3 <= w {
+			t.Errorf("at %d columns dropped keys are not marked: %q", w, keys)
+		}
+	}
+}

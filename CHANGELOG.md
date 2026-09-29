@@ -43,6 +43,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
   different reviews on a later day, and a replayed run did not reproduce the
   original's picks. The window is an absolute cutoff now, and the seed the
   journal prints replays the suggest step along with the schedule.
+- The launcher's pane titles now drop whole readings and mark the cut, the way the dashboard's panel titles already did. A title the frame was too narrow for was cut wherever the width ran out, so a pane holding fewer rows than it had read "AGENTS  none picked: auto-d", and could lose the "+3 more" that says it is holding rows back: a review or an agent missing from the list then read as one that does not exist. The same now holds for a key row that had to leave keys off, in the help overlay and in the small-terminal fallback: what did not fit is marked, so a row carrying two of four keys reads as two.
+- The small-terminal fallback kept the run state at every width. Its first row held the clock and the state together and was cut at the right when they did not both fit, which left a ten-column terminal showing "● RU…" where the one reading the fallback exists for had been. The clock goes first now, as the version and the loop number already did.
 
 ### Changed
 

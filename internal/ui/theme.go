@@ -185,7 +185,8 @@ func styled(c lipgloss.TerminalColor, s string) string {
 // lipgloss Width() is deliberately avoided for the body: its wrapping
 // mishandles densely styled cells like braille charts.
 func panel(title, content string, innerW, innerH int) string {
-	return clipEllipsis(styleTitle.Render(title), innerW+4) + "\n" + panelStyle.Render(padBlock(content, innerW, innerH))
+	return clipEllipsis(styleTitle.Render(title), innerW+panelBorderColumns) +
+		"\n" + panelStyle.Render(padBlock(content, innerW, innerH))
 }
 
 // padBlock forces content to exactly innerW columns and innerH rows.

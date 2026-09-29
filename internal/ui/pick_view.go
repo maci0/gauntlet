@@ -393,17 +393,40 @@ func joinKeys(keys []keyHint, gap, fold string, w int, tight bool) (string, bool
 	return full, true
 }
 
+// paneTitle lays a launcher pane's title from its readings, the way the
+// dashboard's panel titles are laid: whole readings drop from the right, and
+// what did not fit is marked. panel clips a title to the frame, and a clip
+// lands wherever the width runs out, so a title carrying "+3 more" could end
+// at "AGENTS  none picked: auto-d" and take the count of hidden rows with it.
+// inner is the pane's content width; the title is held to the row it is drawn
+// on, which is that width plus the frame.
+func paneTitle(segs []string, inner int) string {
+	return fitTitle(segs, inner+panelBorderColumns)
+}
+
+// panelBorderColumns is what panel's frame costs a title row: the border and
+// its padding on both sides. panel measures its titles against the same number,
+// so the two cannot drift.
+const panelBorderColumns = 4
+
 // fitSegments lays already-formatted segments on one row, dropping whole ones
 // from the right rather than cutting the last one: a key line ending in
 // "/ fi" names a key that does not exist. It is the small-terminal fallback's
 // version of joinKeys, which does the same over the styled legend.
 func fitSegments(segs []string, gap string, w int) string {
-	out := segs[0]
+	out, dropped := segs[0], false
 	for _, s := range segs[1:] {
 		if lipgloss.Width(out)+lipgloss.Width(gap)+lipgloss.Width(s) > w {
+			dropped = true
 			break
 		}
 		out += gap + s
+	}
+	// What did not fit is marked, the way fitRight and fitTitle mark theirs. A
+	// key row that silently ends at "? help" reads as the whole set of keys, and
+	// help is the one segment a narrow pane is likeliest to lose.
+	if dropped && lipgloss.Width(out)+lipgloss.Width(gap)+1 <= w {
+		out += gap + "…"
 	}
 	return out
 }
@@ -715,24 +738,30 @@ func (p *picker) reviewPanel(w, h int) string {
 	if p.filterMissed(rows) {
 		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
 	}
-	title := fmt.Sprintf("REVIEWS  %d of %d", p.chosen(), len(p.knownReviews))
-	if p.chosen() == 0 {
-		title = fmt.Sprintf("REVIEWS  all %d", len(p.knownReviews))
+	// The title is laid as segments, so a pane too narrow for them all drops
+	// whole readings instead of being cut mid-word, and what it dropped is
+	// marked. A cut title could end at "none picked: auto-d", and it could
+	// lose the "+N more" that says the pane is holding rows back: a review or
+	// an agent missing from the list then reads as one that does not exist.
+	// The dashboard's panel titles are fitted this way already.
+	segs := []string{"REVIEWS"}
+	if hidden := len(rows) - (to - from); hidden > 0 {
+		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
+	}
+	switch n := p.chosen(); {
+	case p.suggest && n > 0:
+		segs = append(segs, styleInfo.Render(fmt.Sprintf("agent-picked, plus %d also scheduled", n)))
+	case p.suggest:
+		segs = append(segs, styleInfo.Render("chosen by an agent at run time"))
+	case n == 0:
+		segs = append(segs, fmt.Sprintf("all %d", len(p.knownReviews)))
+	default:
+		segs = append(segs, fmt.Sprintf("%d of %d", n, len(p.knownReviews)))
 	}
 	if p.filter != "" {
-		title += styleInfo.Render("   /" + p.filter)
+		segs = append(segs, styleInfo.Render("/"+p.filter))
 	}
-	if p.suggest {
-		title = "REVIEWS  " + styleInfo.Render("chosen by an agent at run time")
-		if n := p.chosen(); n > 0 {
-			title = fmt.Sprintf("REVIEWS  %s", styleInfo.Render(
-				fmt.Sprintf("agent-picked, plus %d also scheduled", n)))
-		}
-	}
-	if hidden := len(rows) - (to - from); hidden > 0 {
-		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
-	}
-	return panel(title, strings.Join(lines, "\n"), inner, h)
+	return panel(paneTitle(segs, inner), strings.Join(lines, "\n"), inner, h)
 }
 
 func (p *picker) agentPanel(w, h int) string {
@@ -761,7 +790,10 @@ func (p *picker) agentPanel(w, h int) string {
 		lines = append(lines, pickLine(cur, inner,
 			checkbox(p.agents[i])+" "+styled(p.hues.get(label), label), ""))
 	}
-	title := "AGENTS"
+	segs := []string{"AGENTS"}
+	if hidden := len(p.cfg.Agents) - (to - from); hidden > 0 {
+		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
+	}
 	checked := 0
 	for _, on := range p.agents {
 		if on {
@@ -770,16 +802,13 @@ func (p *picker) agentPanel(w, h int) string {
 	}
 	switch {
 	case checked == 0:
-		title += styleDim.Render("  none picked: auto-detect")
+		segs = append(segs, styleDim.Render("none picked: auto-detect"))
 	case checked == len(p.cfg.Agents):
-		title += styleDim.Render("  all picked")
+		segs = append(segs, styleDim.Render("all picked"))
 	default:
-		title += styleDim.Render(fmt.Sprintf("  %d of %d picked", checked, len(p.cfg.Agents)))
+		segs = append(segs, styleDim.Render(fmt.Sprintf("%d of %d picked", checked, len(p.cfg.Agents))))
 	}
-	if hidden := len(p.cfg.Agents) - (to - from); hidden > 0 {
-		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
-	}
-	return panel(title, strings.Join(lines, "\n"), inner, h)
+	return panel(paneTitle(segs, inner), strings.Join(lines, "\n"), inner, h)
 }
 
 func (p *picker) runPanel(w, h int) string {
@@ -853,11 +882,11 @@ func (p *picker) runPanel(w, h int) string {
 		}
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}
-	title := "RUN"
+	segs := []string{"RUN"}
 	if hidden := len(p.opts) - (to - from); hidden > 0 {
-		title += styleDim.Render(fmt.Sprintf("   +%d more", hidden))
+		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
 	}
-	return panel(title, strings.Join(lines, "\n"), inner, h)
+	return panel(paneTitle(segs, inner), strings.Join(lines, "\n"), inner, h)
 }
 
 // reviewLabel is a review's name as the pane shows it: the -review suffix is
