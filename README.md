@@ -137,8 +137,9 @@ knows, defined ones included. See
 ## The reviews
 
 Every review is one prompt file. Run all of them, a named set (`-r quick`,
-`-r security`, `-r backend`, `-r frontend`, `-r shipping`, `-r agents`,
-`-r gitops`), or any list you like. `gauntlet --list` prints this table with what is scheduled.
+`-r standard`, `-r security`, `-r backend`, `-r frontend`, `-r shipping`,
+`-r agents`, `-r gitops`, plus the discovered `all` and `project`), or any
+list you like. `gauntlet --list` prints this table with what is scheduled.
 
 <!-- BEGIN REVIEWS: generated from internal/prompt/prompts, checked by TestReadmeGridMatchesBundled -->
 | Review | Finds |

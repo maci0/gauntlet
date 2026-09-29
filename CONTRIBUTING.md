@@ -103,9 +103,9 @@ make verify           # check, check-scripts, and the suite under all three tag 
 ```
 
 It is minutes rather than seconds. A pull request also runs `make cover`,
-`make dist`, `make artifacts`, and `make repro`, which `make verify` leaves out
-on purpose; run those when the change touches the release path or removes
-tested code.
+`make artifacts` (which builds `make dist` first), `make smoke`, and
+`make repro`, which `make verify` leaves out on purpose; run those when the
+change touches the release path or removes tested code.
 
 `make check` is `go mod tidy -diff`, gofmt, `go fix`, and vet across all three tag
 configurations CI tests (default `sqlite`, bare, and `notoktop`). It mirrors

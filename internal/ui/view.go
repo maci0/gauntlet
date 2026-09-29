@@ -433,7 +433,7 @@ const (
 // no prefers-reduced-motion, so the accommodation is GAUNTLET_NO_ANIMATION,
 // NO_MOTION, or REDUCED_MOTION: anything but empty, "0", "false", "no", or "off"
 // freezes the dashboard's one animated glyph, whose cycling otherwise starts
-// on its own and outlives five seconds of reasoning (WCAG 2.2.2: such motion
+// on its own and outlives three seconds of reasoning (WCAG 2.2.2: such motion
 // must be stoppable).
 //
 // The values that mean off come from envx, the same reader the color-force

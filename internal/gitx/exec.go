@@ -295,7 +295,7 @@ func isDiffHelper(key string) bool {
 // an attribute file, because signing needs nothing from the working tree: a
 // repo carrying `gpg.program = !curl … | sh` beside `commit.gpgSign = true`
 // ran that shell on the first commit a review made, in the lane worktrees at
-// worktree.go:508 and trailers.go:91, before any agent was consulted. The
+// worktree.go:540 and trailers.go:90, before any agent was consulted. The
 // blanking is local to the reviewed config, so an operator who signs their own
 // commits through their global gpg.program still does.
 func isSignProgram(key string) bool {

@@ -36,11 +36,10 @@ const maxPlausibleCount = 1 << 40
 
 // parseCount reads one line count out of git's output. A count that does not
 // fit, or that clears maxPlausibleCount, is no count at all: the caller adds
-// these to one another and writes the sum to the journal, and strconv.Atoi
-// hands back the clamped maximum next to its range error rather than zero, so
-// a 20-digit figure would arrive as 2^63-1, wrap negative the moment the
-// untracked files' own counts are added to it, and be reported as a review
-// that deleted nine quintillion lines.
+// these to one another and writes the sum to the journal, so one 20-digit
+// figure that parsed as a huge positive count would be reported as a review
+// that deleted nine quintillion lines. Zero is the miss: it is the value a
+// misparse and an absent count already read as.
 func parseCount(b []byte) int {
 	n, err := strconv.ParseUint(string(b), 10, 64)
 	if err != nil || n > maxPlausibleCount || n > uint64(math.MaxInt) {

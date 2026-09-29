@@ -38,12 +38,12 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
 | `internal/normalize` | agent output noise reduction and line classification, and in `display.go` the sanitize, home redaction, and clipping every untrusted string shown to a reader goes through |
-| `internal/gitx` | the repo handle and its baseline (`gitx.go`), hardened git invocation and the safe config overlay (`exec.go`), worktree line stats (`stats.go`), status and diff porcelain parsing (`status.go`), and the tree listing (`list.go`); worktrees, branches, and snapshots in `worktree.go`, `branch.go`, and `snapshot.go` |
+| `internal/gitx` | the repo handle and its baseline (`gitx.go`), hardened git invocation and the safe config overlay (`exec.go`), worktree line stats (`stats.go`), status and diff porcelain parsing (`status.go`), the tree listing (`list.go`), and the commit-trailer cleanup (`trailers.go`); worktrees, branches, and snapshots in `worktree.go`, `branch.go`, and `snapshot.go` |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
-| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus the durable-write helpers (`SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
+| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus `ExpandPath` for the `~` and `$VAR` forms of a configured root, and the durable-write helpers (`WriteFileAtomic`, `SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
@@ -444,9 +444,10 @@ The remaining cost is N cold starts (one per lane) rather than zero. Fewer
 lanes means more cache reuse at the expense of wall-clock time. `--jobs 1`
 is the degenerate case: one lane, maximum reuse, zero parallelism.
 
-This is not Claude-specific. Every supported agent but one embeds the working
+This is not Claude-specific. Every built-in agent but one embeds the working
 directory in its system prompt, so worktree mode defeats API-level caching
-universally:
+universally. A user-defined agent (`--agent-cmd`, `agents.json`) is whatever
+CLI it wraps, so it inherits that CLI's row:
 
 | Agent | Provider caching | CWD in system prompt | Worktree impact |
 |---|---|---|---|
