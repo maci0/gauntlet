@@ -153,6 +153,22 @@ func TestStaticFrameHasEveryInstrument(t *testing.T) {
 	}
 }
 
+// The lane meter shows how far through the review timeout a lane is, and the
+// same timeout is what the grid's timeout glyph and the tally count. The limit
+// itself has to be stated in text somewhere, or a lane a third full is a
+// reading nobody can place (SC 1.1.1). A run with no timeout draws no meter
+// and names no limit.
+func TestLanesTitleStatesTheTimeout(t *testing.T) {
+	cfg := demoConfig()
+	if got := stripANSI(newModel(cfg).lanesTitle(100)); !strings.Contains(got, "timeout 30m") {
+		t.Fatalf("the lanes panel does not state the limit its meters are drawn against: %q", got)
+	}
+	cfg.Timeout = 0
+	if got := stripANSI(newModel(cfg).lanesTitle(100)); strings.Contains(got, "timeout") {
+		t.Fatalf("a run with no timeout names a limit nothing is measured against: %q", got)
+	}
+}
+
 func TestStaticFrameFitsItsPane(t *testing.T) {
 	const w, h = 100, 30
 	frame := staticFrame(demoConfig(), demoEvents(), w, h)

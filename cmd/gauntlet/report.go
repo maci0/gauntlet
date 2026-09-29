@@ -226,7 +226,18 @@ func (r *reporter) paint(k normalize.Kind, text string) string {
 		// Errors are red everywhere else this program renders them (the
 		// dashboard's feed, doctor's failures, the summary's tally); yellow
 		// here would read as a warning, one degree softer than what it is.
-		return r.pal.red(text)
+		//
+		// The ! is the dashboard's feedMark, and it is here for the same
+		// reason. Every other line kind names itself in its own text: a diff
+		// carries the sign it was added or removed with, a result line begins
+		// RESULT: or PATH:, reasoning is italic, progress says what it is
+		// doing. An error is the agent's own sentence about something that
+		// broke, so under --no-color, on a monochrome terminal, or to a reader
+		// who cannot separate the hues, the one line kind a narrowed feed
+		// exists to surface read as ordinary narration (SC 1.4.1). This is the
+		// path a screen reader and a monochrome terminal actually read, so the
+		// mark cannot live only on the dashboard.
+		return r.pal.red("!" + text)
 	default:
 		return text
 	}

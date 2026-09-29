@@ -816,9 +816,17 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
   it appears, in the feed and in a lane's share counter alike. An error the
   agent reported is the one
   kind its text does not identify, so it carries a `!` in the line's own
-  style, named in the help overlay beside the review glyphs. Nothing the
+  style, named in the help overlay beside the review glyphs. The plain
+  reporter carries the same mark, because it is the path `--tui` exists to
+  avoid: a screen reader, a monochrome terminal, and a copied transcript all
+  read it. Nothing the
   feed or the grid says depends on hue alone, which is what `--no-color`
   and a monochrome terminal leave behind.
+- A meter has a number to place it against. The footer prints the share of
+  the budget a run has spent beside the bar, and the agents panel names the
+  review timeout its lane meters are drawn against (a run with no timeout
+  draws no meter and names no limit). A bar whose ceiling is nowhere on the
+  screen is a shape, not a reading.
 - The throughput chart is braille (2x4 dots per cell) and hugs the right
   edge, with a current-value marker at the live end.
 - Missing data shows as missing (`~`, `n/a`), never as zero or an interpolation.

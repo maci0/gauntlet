@@ -49,6 +49,41 @@ func TestReporterStampsUntimedLinesFromItsClock(t *testing.T) {
 	}
 }
 
+// The plain reporter's one line kind that its own text does not identify is an
+// error the agent reported: a diff carries the sign, a result line says
+// RESULT:, reasoning is italic, progress says what it is doing. So the error
+// has to be marked in the line itself, and it has to survive a monochrome
+// terminal, which is what --no-color and NO_COLOR leave behind and what a
+// reader who cannot separate the hues is looking at either way (SC 1.4.1).
+// This path is the one a screen reader and a pipe read, so the dashboard's
+// mark cannot be the only place it exists.
+func TestReporterMarksAgentErrorsWithoutColor(t *testing.T) {
+	var out bytes.Buffer
+	r := &reporter{out: &out}
+	for _, ev := range []runner.Event{
+		{Kind: runner.EvOutput, Review: "sec-review", Text: "reading main.go", LineKind: normalize.Plain},
+		{Kind: runner.EvOutput, Review: "sec-review", Text: "the build failed on line 12", LineKind: normalize.Error},
+		{Kind: runner.EvOutput, Review: "sec-review", Text: "+ added a line", LineKind: normalize.DiffAdd},
+	} {
+		r.handle(ev)
+	}
+	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("the reporter drew %d rows, want 3:\n%s", len(lines), out.String())
+	}
+	if strings.Contains(lines[0], "!") || strings.Contains(lines[2], "!") {
+		t.Fatalf("a line that names itself carries the error mark anyway:\n%s", out.String())
+	}
+	if !strings.Contains(lines[1], "│ !the build failed on line 12") {
+		t.Fatalf("an agent error is not marked, so --no-color leaves it as narration:\n%s", out.String())
+	}
+	// The mark rides in the line's own style, so with color on it is one red
+	// run rather than a colored glyph in front of uncolored text.
+	if got := (&reporter{pal: palette{on: true}}).paint(normalize.Error, "boom"); got != "\x1b[31m!boom\x1b[0m" {
+		t.Fatalf("the marked error line is %q, want the mark inside the line's own style", got)
+	}
+}
+
 // TestReporterRendersEveryEventKind pins what a headless run prints per event
 // kind: logs get their timestamp, output its lane prefix and repeat marker,
 // only conflicting merges are announced, and a loop end carries its tally.

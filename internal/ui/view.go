@@ -58,7 +58,7 @@ func (m *model) View() string {
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		m.renderHeader(),
 		panel(m.activityTitle(), chart(m.activity, inner, actH), inner, actH),
-		panel("AGENTS", m.renderLanes(inner, laneH), inner, laneH),
+		panel(m.lanesTitle(inner), m.renderLanes(inner, laneH), inner, laneH),
 		panel(m.gridTitle(inner), m.renderGrid(inner, gridH), inner, gridH),
 		panel(m.feedTitle(inner), m.renderFeed(inner, feedH), inner, feedH),
 	)
@@ -264,6 +264,24 @@ func (m *model) activityTitle() string {
 	}
 	return "ACTIVITY " + styleDim.Render("agent lines/s") + "  " +
 		lipgloss.NewStyle().Bold(true).Foreground(fg).Render("◆ "+value)
+}
+
+// lanesTitle names the limit the lane meters are drawn against.
+//
+// A meter's unlit remainder says a lane has most of its budget left, and the
+// elapsed column beside it says how long it has been running, but the limit
+// itself is stated nowhere else: the same timeout is what produces the timeout
+// glyph in the grid and the timeout count in the tally, so a review that looks
+// a third full is a reading only the reader can place against a number they
+// cannot see (SC 1.1.1). A run with no timeout draws no meter, so it gets no
+// segment either, and a panel that names a limit nothing is measured against
+// is a claim the screen cannot back.
+func (m *model) lanesTitle(w int) string {
+	segs := []string{"AGENTS"}
+	if m.cfg.Timeout > 0 {
+		segs = append(segs, styleDim.Render("timeout "+humanize.Duration(m.cfg.Timeout)))
+	}
+	return fitTitle(segs, w)
 }
 
 // renderLanes draws one row per agent: what it is doing, how long it has been
