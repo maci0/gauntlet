@@ -98,6 +98,51 @@ func TestFirstLineStripsUserinfo(t *testing.T) {
 	}
 }
 
+func TestRedactSecrets(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"", ""},
+		{"fatal: not a git repository", "fatal: not a git repository"},
+		{
+			"Error: invalid request: Incorrect API key provided: sk-ant-api03-AbCdEf0123456789",
+			"Error: invalid request: Incorrect API key provided: " + Redacted,
+		},
+		{
+			"ANTHROPIC_API_KEY=sk-ant-api03-AbCdEf0123456789",
+			"ANTHROPIC_API_KEY=" + Redacted,
+		},
+		{
+			`{"client_secret": "abcd1234efgh5678"}`,
+			`{"client_secret": "` + Redacted + `"}`,
+		},
+		{"gh auth login --with-token <<< ghp_0123456789abcdefABCDEF", "gh auth login --with-token <<< " + Redacted},
+		{"github_pat_11ABCDEFG0abcdefghijkl_0123456789abcdefghijklmnopqrstuvwxyz0123456789", Redacted},
+		{"AKIAIOSFODNN7EXAMPLE", Redacted},
+		// Too short to be a credential, or named by a flag rather than a
+		// secret-bearing variable: redacting these would cost the note its
+		// meaning and leak nothing.
+		{"--token-budget=1000000", "--token-budget=1000000"},
+		{"--max-tokens=4096", "--max-tokens=4096"},
+		{"GITHUB_TOKEN=<redacted>", "GITHUB_TOKEN=" + Redacted},
+		{"token=x", "token=x"},
+	}
+	for _, c := range cases {
+		if got := RedactSecrets(c.in); got != c.want {
+			t.Errorf("RedactSecrets(%q) = %q, want %q", c.in, got, c.want)
+		}
+		if got := RedactSecrets(c.want); got != c.want {
+			t.Errorf("RedactSecrets is not idempotent on %q: got %q", c.want, got)
+		}
+	}
+}
+
+func TestFirstLineRedactsCredentialsAndStopsAtTheNewline(t *testing.T) {
+	in := "authentication failed: ANTHROPIC_API_KEY=sk-ant-api03-AbCdEf0123456789\nmore\n"
+	want := "authentication failed: ANTHROPIC_API_KEY=" + Redacted
+	if got := FirstLine(in); got != want {
+		t.Fatalf("FirstLine = %q, want %q", got, want)
+	}
+}
+
 func TestCleanPATH(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"", ""},

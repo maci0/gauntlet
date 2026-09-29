@@ -125,11 +125,61 @@ func RedactUserinfo(s string) string {
 	return userinfoRe.ReplaceAllString(s, "$1")
 }
 
-// FirstLine is the first line of s with userinfo stripped, for error text
-// that must not carry a credential or a second line of noise.
+var (
+	// secretAssignRe is a NAME=value or "NAME": "value" pair whose name says
+	// the value is a credential. The value is a run of characters a shell or a
+	// JSON body would carry one in, so an export line, an env dump, and a
+	// config error all match.
+	secretAssignRe = regexp.MustCompile(
+		`(?i)\b([A-Z0-9_]*(?:API_?KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIALS?)[A-Z0-9_]*)"?` +
+			`\s*[:=]\s*"?([^\s",;']+)("?)`)
+	// secretPrefixRe is a credential recognized by its own fixed prefix, with
+	// no name to key off. The prefixes are the published formats of the tokens
+	// a coding agent holds; each is long and the character after it is
+	// specific enough that ordinary prose and identifiers do not match.
+	secretPrefixRe = regexp.MustCompile(
+		`\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}` +
+			`|glpat-[A-Za-z0-9_-]{16,}|xox[bp]-[A-Za-z0-9-]{16,}|AKIA[0-9A-Z]{16})\b`)
+)
+
+// secretValueMin is the shortest value RedactSecrets replaces. A shorter
+// one is a flag, a placeholder, or a path fragment rather than a credential,
+// and redacting those would cost the note its meaning for nothing.
+const secretValueMin = 8
+
+// Redacted is what a credential is replaced with. It carries no shape any
+// pattern here matches, so redaction is idempotent.
+const Redacted = "[redacted]"
+
+// RedactSecrets replaces credentials in s: a value assigned to a name that says
+// it is one, and a token recognized by the fixed prefix its issuer gives it.
+//
+// It is for text that came out of a child process. Every launch gauntlet makes
+// runs an agent or a helper with the operator's credentials in its
+// environment, and a rejected key is reported by printing it: the line then
+// reaches an error string, a report, and the run journal, all of which outlive
+// the run and are read by people who are not the operator. RedactUserinfo
+// covers the one shape git prints, and cannot see this one.
+func RedactSecrets(s string) string {
+	s = secretAssignRe.ReplaceAllStringFunc(s, func(m string) string {
+		g := secretAssignRe.FindStringSubmatchIndex(m)
+		if g == nil || g[5]-g[4] < secretValueMin {
+			return m
+		}
+		// Everything but the value is kept (the colon, the equals, the
+		// quotes): this rewrites a credential out of the line, not the line's
+		// shape.
+		return m[:g[4]] + Redacted + m[g[6]:g[7]]
+	})
+	return secretPrefixRe.ReplaceAllString(s, Redacted)
+}
+
+// FirstLine is the first line of s with credentials stripped, for error text
+// that must not carry a secret or a second line of noise. Every piece of child
+// output that becomes an error string passes through it.
 func FirstLine(s string) string {
 	line, _, _ := strings.Cut(s, "\n")
-	return RedactUserinfo(line)
+	return RedactSecrets(RedactUserinfo(line))
 }
 
 // CleanPATH filters a PATH string to absolute directories only, dropping empty

@@ -630,8 +630,8 @@ func withNote(msg, out string) string {
 // Display runs first because raw echo mode stores the line it echoes: without
 // it the note a caller reads back out of the tail is the one place untrusted
 // bytes reach a log or a screen without having been cleaned. runx.FirstLine
-// then cuts at the newline and redacts anything shaped like a credential in a
-// URL.
+// then cuts at the newline and strips credentials: the shape git prints, and
+// the key an agent's provider rejected by naming it.
 //
 // It walks the newline boundaries from the end rather than splitting: the tail
 // is the whole session, and splitting it builds a string per line to read one
