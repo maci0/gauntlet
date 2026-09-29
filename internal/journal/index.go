@@ -225,7 +225,7 @@ func openIndexForAppend() (*os.File, bool, error) {
 	if !errors.Is(err, os.ErrExist) {
 		return nil, false, err
 	}
-	f, err = os.OpenFile(indexPath(), os.O_WRONLY|os.O_APPEND, 0o600)
+	f, err = openNoFollow(indexPath(), os.O_WRONLY|os.O_APPEND)
 	if err != nil {
 		return nil, false, err
 	}

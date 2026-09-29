@@ -210,8 +210,15 @@ func (r *Repo) worktreeRootDir() string {
 }
 
 // worktreeDir is the checkout named by its leaf under worktreeRootDir.
+//
+// The leaf is slugged here rather than trusted from the caller, so a name
+// carrying "..", a separator, or a leading dash cannot place a checkout
+// outside the scratch root or hand it to git as an option. Every caller in
+// this package passes an already-slugged fragment, so the slug is a no-op for
+// all of them; it is here because the guarantee belongs to the one function
+// that turns a name into a path, not to each caller's discipline.
 func (r *Repo) worktreeDir(name string) string {
-	return filepath.Join(r.worktreeRootDir(), name)
+	return filepath.Join(r.worktreeRootDir(), BranchSlug(name))
 }
 
 // checkBranchName rejects a name git would not accept as a ref before it
