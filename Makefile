@@ -654,9 +654,9 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 # affected: it builds `VERSION=ci`, which is a version like any other and ships
 # nothing.
 #
-# Last in the file, and order-only where `release` names it, so the refusal
-# comes before the suite and the four cross-compiles rather than after them,
-# and so inserting it moves no line that docs/THREAT_MODEL.md points at.
+# Order-only where `release` names it, so the refusal comes before the suite
+# and the four cross-compiles rather than after them, and so it sits below
+# every line docs/THREAT_MODEL.md points at.
 .PHONY: release-version
 release-version:
 	@case "$(VERSION)" in \
@@ -664,3 +664,79 @@ release-version:
 			echo "release-version: VERSION='$(VERSION)' is the local default; a release is built from a tag: 'make release VERSION=x.y.z'" >&2; \
 			exit 1;; \
 	esac
+
+# The first command a contributor runs on a new machine has to answer the whole
+# "what is missing" question, and today no single one does: the Go minimum is
+# caught by toolchain-min, the C compiler by test-cgo, and uvx and shellcheck
+# by check-scripts, which `make verify` reaches only after `make check` has run.
+# A machine missing two of them learns about the second one by installing the
+# first and running the loop again, which is an afternoon per missing tool.
+#
+# Every check below reports the tool, what to install, and which targets need
+# it, and the failure is counted rather than raised at the first gap: a
+# contributor who is told one missing thing at a time re-runs this once per
+# tool, which is the loop this target exists to remove. The exit status is 1
+# when anything is missing, so a script can gate on it, and the checks that
+# passed are still printed, because a target that works is worth saying so.
+#
+# The Go comparison, the Go version to name, and the shellcheck pin are the
+# ones toolchain-min and check-scripts already use, so the three cannot report
+# three different answers about one machine.
+.PHONY: doctor
+doctor: ## report every missing prerequisite in one run, with what to install
+	@missing=0; \
+	ok() { printf '  ok      %s\n' "$$1"; }; \
+	bad() { printf '  MISSING %s\n            install: %s\n            needed by: %s\n' "$$1" "$$2" "$$3" >&2; missing=$$((missing + 1)); }; \
+	min=$$(awk '$$1 == "go" { print $$2; exit }' go.mod 2>/dev/null); \
+	if [ -z "$$min" ]; then \
+		echo "doctor: no go.mod in $$(pwd), so there is no Go minimum to check against" >&2; \
+		exit 1; \
+	fi; \
+	if ! command -v "$(GO)" >/dev/null 2>&1; then \
+		bad "Go $$min or newer" "install $$min or newer from https://go.dev/dl/" "build, run, install, and every check and test target"; \
+	else \
+		have=$$($(GO) env GOVERSION); have=$${have#go}; have=$${have%%-*}; \
+		if awk -v have="$$have" -v want="$$min" 'BEGIN { \
+			split(have, h, "."); split(want, w, "."); \
+			for (i = 1; i <= 3; i++) { \
+				if (h[i] + 0 > w[i] + 0) { exit 0 } \
+				if (h[i] + 0 < w[i] + 0) { exit 1 } \
+			} \
+			exit 0 \
+		}'; then \
+			ok "go $$have (go.mod asks for $$min or newer)"; \
+		else \
+			bad "Go $$min or newer" "install $$min or newer from https://go.dev/dl/ , or pass GOTOOLCHAIN=auto to let go fetch it" "build, run, install, and every check and test target"; \
+		fi; \
+	fi; \
+	cc=cc; command -v "$(GO)" >/dev/null 2>&1 && cc=$$($(GO) env CC); \
+	if command -v "$$cc" >/dev/null 2>&1; then \
+		ok "C compiler $$cc (the race detector needs cgo)"; \
+	else \
+		bad "a C compiler ($$cc)" "install GCC or Clang; on macOS: xcode-select --install" "test, test-pkg, cover, ci, verify"; \
+	fi; \
+	if command -v git >/dev/null 2>&1; then \
+		ok "git $$(git --version 2>/dev/null | awk '{print $$3}')"; \
+	else \
+		bad "git" "install git" "every target: the worktrees a run cuts live under .gauntlet/worktrees in the reviewed repository"; \
+	fi; \
+	if command -v uvx >/dev/null 2>&1; then \
+		ok "uvx (uv $$(uv --version 2>/dev/null | awk '{print $$2}'), CI pins $(UV_VERSION))"; \
+	else \
+		bad "uvx" "install uv $(UV_VERSION): https://docs.astral.sh/uv/getting-started/installation/" "check-scripts, fmt-scripts, verify"; \
+	fi; \
+	if command -v shellcheck >/dev/null 2>&1; then \
+		ok "shellcheck $$(shellcheck --version 2>/dev/null | awk '/^version:/ {print $$2}') (pin $(SHELLCHECK_VERSION))"; \
+	else \
+		bad "shellcheck" "macOS: brew install shellcheck; Linux: your package manager ships it as shellcheck" "check-scripts, verify"; \
+	fi; \
+	if mkdir -p "$(TMPDIR)" 2>/dev/null; then \
+		ok "test scratch directory $(TMPDIR)"; \
+	else \
+		bad "a writable disk-backed test scratch directory" "set TMPDIR on the make command line; tests must not use a tmpfs or an ignored path inside this repository" "test, test-pkg, cover, ci, verify"; \
+	fi; \
+	if [ "$$missing" -gt 0 ]; then \
+		echo "doctor: $$missing prerequisite(s) missing; the targets above still work without them" >&2; \
+		exit 1; \
+	fi; \
+	echo "doctor: every prerequisite is present. Start with 'make build', then 'make test-pkg PKG=./internal/<package>'."

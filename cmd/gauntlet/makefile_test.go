@@ -1321,3 +1321,63 @@ func makefileDefault(makefile, name string) string {
 	}
 	return m[1]
 }
+
+// A new machine finds out what it is missing one target at a time otherwise:
+// the Go minimum belongs to toolchain-min, the C compiler to test-cgo, and
+// uvx and shellcheck to check-scripts, which `make verify` reaches only after
+// `make check` has run. make doctor answers the whole question in one run, and
+// it reports every gap before it fails, since a contributor told one missing
+// tool at a time re-runs it once per tool, which is the loop it exists to end.
+func TestMakefileDoctorPreflightsEveryPrerequisite(t *testing.T) {
+	text := makefileText(t)
+	recipe := makefileRecipe(text, "doctor")
+	if recipe == "" {
+		t.Fatal("Makefile must declare a doctor target: one run that names every missing prerequisite")
+	}
+	// Each prerequisite its own target already preflights, so `make doctor`
+	// is a fold-in of the existing checks rather than a second, driftable
+	// opinion about what this repository needs.
+	for _, want := range []string{
+		`awk '$$1 == "go" { print $$2; exit }' go.mod`, // the Go minimum, as toolchain-min reads it
+		`command -v "$(GO)"`,                           // go on PATH
+		`cc=$$($(GO) env CC)`,                          // the C compiler, as test-cgo reads it
+		`command -v "$$cc"`,                            //
+		"command -v git",                               //
+		"command -v uvx",                               // as check-scripts reads it
+		"command -v shellcheck",                        // as check-scripts reads it
+		`mkdir -p "$(TMPDIR)"`,                         // the test scratch directory test-tmpdir creates
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make doctor must check %q", want)
+		}
+	}
+	// Counting the gaps rather than exiting at the first one is the whole
+	// point: a recipe that stops at the first miss sends the reader round the
+	// loop once per missing tool.
+	if !strings.Contains(recipe, "missing=$$((missing + 1))") {
+		t.Error("make doctor must count a missing prerequisite and report every one before it fails")
+	}
+	if !strings.Contains(recipe, `if [ "$$missing" -gt 0 ]; then`) {
+		t.Error("make doctor must exit nonzero only after reporting every missing prerequisite")
+	}
+	// A gap is only actionable if it says what to install and which targets
+	// need it.
+	if !strings.Contains(recipe, "install: %s") || !strings.Contains(recipe, "needed by: %s") {
+		t.Error("make doctor must name what to install and which targets need each missing prerequisite")
+	}
+	// The pins it prints are the ones CI installs, read from this Makefile
+	// rather than typed again where they are reported.
+	for _, want := range []string{"$(UV_VERSION)", "$(SHELLCHECK_VERSION)"} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make doctor must report the CI pin %q rather than a value of its own", want)
+		}
+	}
+	// A target nobody is told about is the one nobody runs.
+	if doc := readRepoFile(t, filepath.Join(moduleRoot(t), "CONTRIBUTING.md")); !strings.Contains(doc, "make doctor") {
+		t.Error("CONTRIBUTING.md must tell a contributor to run `make doctor` before the edit-test loop")
+	}
+}
+
+// makefileRecipe, which deps_test.go owns, reads the lines of one target
+// without its rule line; the doctor test above is its second caller, which is
+// what keeps that helper from drifting to one caller's shape.

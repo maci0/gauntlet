@@ -9,6 +9,19 @@ the `scripts` job.
 
 ## Prerequisites
 
+On a new machine, start here:
+
+```sh
+make doctor            # every prerequisite below, checked in one run
+```
+
+It reports each missing tool, what to install it with, and which targets need
+it, and it reports all of them before it fails, so one run answers the whole
+question instead of one tool per loop. It exits 0 when nothing is missing. The
+individual checks it folds in also fire on their own, which is why an older Go
+fails `make build` and `make test` directly, and why `make check-scripts` names
+`uvx` and shellcheck itself.
+
 - Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
   toolchain builds, tests, and formats the tree. `make build`, `make check`,
   and the test targets preflight that minimum and say what to install when
