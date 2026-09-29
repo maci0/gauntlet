@@ -252,6 +252,7 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 	return resume
 }
 
+// runReviewExcluding launches review, skipping the agents in exclude.
 // firstAttempt is the 1-based attempt number this call begins at, and attempt
 // counts the retries already made on this agent. They differ once a failed
 // agent is set aside: the next attempt is the next one in the run's sequence,

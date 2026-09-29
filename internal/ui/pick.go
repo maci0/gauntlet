@@ -994,11 +994,7 @@ func (p *picker) optionInert(o *option) bool {
 	if o.kind == optCount {
 		return true
 	}
-	switch o.flag {
-	case "--commit", "--push", "--merge-into":
-		return true
-	}
-	return false
+	return slices.Contains([]string{"--commit", "--push", "--merge-into"}, o.flag)
 }
 
 // optionDisabled reports an option that is currently inactive: stacked-mode

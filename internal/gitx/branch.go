@@ -29,8 +29,8 @@ func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 }
 
 // Branches lists local branch names, excluding gauntlet's own review
-// branches — a run's lane scratch space under gauntlet/ and stacked-PR layers
-// under review/ — since neither is ever a merge target.
+// branches (a run's lane scratch space under gauntlet/ and stacked-PR layers
+// under review/), since neither is ever a merge target.
 func (r *Repo) Branches(ctx context.Context) []string {
 	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
 	if err != nil {

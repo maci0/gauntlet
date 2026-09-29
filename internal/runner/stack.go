@@ -461,7 +461,7 @@ const (
 // A published layer's name carries a topic taken from a commit subject that
 // does not exist yet when this runs, so the name cannot be recomputed. What
 // can be is its deterministic prefix: candidates are every local and remote
-// branch under it, and the commit graph — not the name — decides which one is
+// branch under it, and the commit graph, not the name, decides which one is
 // this stack's layer. The layer is by construction a one-commit child of the
 // previous layer's tip, which descends from the pinned base commit; a stale
 // same-prefixed branch from an older stack hangs off some other parent and is
@@ -586,7 +586,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 
 // stackFinalBranch picks the published name of a committed layer: the
 // deterministic prefix plus a topic cut from the commit subject. A name
-// already taken by an unrelated branch — locally or on the remote — gets the
+// already taken by an unrelated branch (locally or on the remote) gets the
 // stack's short base tip appended at the end, where nobody reads it; if even
 // that is taken, "" says to keep the provisional name, which is unique by
 // construction.
@@ -630,8 +630,8 @@ func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, bod
 // list still orients a reader, while one naming the wrong files misleads
 // them. The overview is built only from notes whose paths the commit touched,
 // for the same reason: a note for an untouched path describes the wrong diff,
-// or was planted. A recovered layer has no notes — its agent ran in a process
-// that is gone — and renders without an overview.
+// or was planted. A recovered layer has no notes (its agent ran in a process
+// that is gone) and renders without an overview.
 func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, base string,
 	layer int, notes []agent.FileNote) prBody {
 	b := prBody{Title: title, Base: base, Root: r.stackBase, Layer: layer}

@@ -152,6 +152,11 @@ func (p *picker) blocked() string {
 	return ""
 }
 
+// noAgentsMsg is the one answer to "nothing here can be launched". The block
+// reason and the status hint both owe it, and one literal keeps them from
+// drifting into two different sentences.
+const noAgentsMsg = "no agent CLI is installed: install one (see: gauntlet doctor)"
+
 // blockReason is the part of blocked that is not the reader's own filter: the
 // machine cannot run the run, whatever the filter says. It is its own
 // predicate so a status line can outrank the filter hint with it while the
@@ -165,7 +170,7 @@ func (p *picker) blockReason() string {
 	// an empty agent pool: every run auto-detects its agents, so nothing here
 	// can launch at all.
 	if len(p.cfg.Agents) == 0 {
-		return "no agent CLI is installed: install one (see: gauntlet doctor)"
+		return noAgentsMsg
 	}
 	if p.cfg.Dirty && p.concurrency().n > 1 && !p.stacked() {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
@@ -210,7 +215,7 @@ func (p *picker) hint() string {
 		return o.help
 	case paneAgents:
 		if len(p.cfg.Agents) == 0 {
-			return "no agent CLI is installed: install one (see: gauntlet doctor)"
+			return noAgentsMsg
 		}
 		return "the pool reviews are drawn from; none picked means auto-detect"
 	default:
@@ -451,12 +456,11 @@ func (p *picker) renderNarrow() string {
 	// thing here that says so: the wide view carries it on the status line,
 	// but this view has no status line to carry it. An armed q replaces it:
 	// this view has no status line either, so the warning goes here.
-	switch {
-	case p.quitArmed:
+	if p.quitArmed {
 		rows = append(rows, styleWarn.Render(
 			fmt.Sprintf("⚠ %s again to discard, %s to keep", p.quitKey, otherQuitKey(p.quitKey))))
-	case p.blocked() != "":
-		rows = append(rows, styleWarn.Render("⚠ "+p.blocked()))
+	} else if why := p.blocked(); why != "" {
+		rows = append(rows, styleWarn.Render("⚠ "+why))
 	}
 	// The filter key is named here, and not dropped with the panes: without the
 	// panels the composed command is the whole screen, and / is the only key

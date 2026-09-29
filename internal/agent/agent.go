@@ -103,7 +103,6 @@ var streamFlags = map[string][]string{
 	"clanker": {"--stream"},
 }
 
-// isValid reports whether name is a supported agent CLI, built in or defined.
 // foldName is the one spelling an agent name is keyed on, at every site that
 // stores one or looks one up. The order is the point: normalizing first and
 // folding second is what the peer key spaces in this tree do (a review's
@@ -119,6 +118,7 @@ func foldName(s string) string {
 	return strings.ToLower(fuzzy.NFC(strings.TrimSpace(s)))
 }
 
+// isValid reports whether name is a supported agent CLI, built in or defined.
 func isValid(name string) bool {
 	if isBuiltinTool(name) {
 		return true
@@ -279,19 +279,24 @@ func ResolveMany(names []string) map[string]string {
 	return out
 }
 
+// found returns the absolute path of an executable candidate, or "" if it is
+// not one. The Abs error is dropped: a path that cannot be made absolute is
+// one this process will not launch either.
+func found(p string) string {
+	if err := executable(p); err != nil {
+		return ""
+	}
+	abs, _ := filepath.Abs(p)
+	return abs
+}
+
 // lookIn is exec.LookPath restricted to an explicit PATH.
 func lookIn(name, path string) string {
 	if strings.ContainsRune(name, os.PathSeparator) {
-		if err := executable(name); err == nil {
-			abs, _ := filepath.Abs(name)
-			return abs
-		}
-		return ""
+		return found(name)
 	}
 	for _, dir := range filepath.SplitList(path) {
-		p := filepath.Join(dir, name)
-		if err := executable(p); err == nil {
-			abs, _ := filepath.Abs(p)
+		if abs := found(filepath.Join(dir, name)); abs != "" {
 			return abs
 		}
 	}
@@ -360,10 +365,10 @@ var mixedKeywords = map[string]bool{"mixed": true, "random": true, "all": true}
 
 var dshModelRe = regexp.MustCompile(`^[A-Za-z0-9._/:-]+$`)
 
-// effortRe bounds what an @effort may look like. Values are not enumerated —
+// effortRe bounds what an @effort may look like. Values are not enumerated,
 // levels are provider-specific (opencode's "minimal" is not in Anthropic's
 // set), so like a model id the value travels verbatim and the CLI rejects
-// what it does not serve — but the charset is pinned because the value lands
+// what it does not serve, but the charset is pinned because the value lands
 // on an argv: no separators, no whitespace, nothing flag-shaped.
 var effortRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 

@@ -135,7 +135,7 @@ func commitScope(ctx context.Context, wt *gitx.Worktree, paths []string) []strin
 // path forges instruction lines. So a path is named only when it is free of
 // control and formatting characters, and one that is not is left out of the
 // list entirely: the marker scan still checks it, so it holds the resolution
-// open and the branch stays with a human — the same outcome a file the agent
+// open and the branch stays with a human, the same outcome a file the agent
 // could not resolve gets.
 func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []string, wt *gitx.Worktree, note func(string, ...any)) bool {
 	if len(paths) > prompt.ConflictFileMax {

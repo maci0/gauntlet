@@ -66,7 +66,7 @@ func parseShortstat(out []byte) Stats {
 // must not make every sample re-read gigabytes.
 const untrackedLineCap = 8 << 20
 
-// countReadBytes is the size of one read chunk.
+// countReadBytes is the size of one read chunk over an untracked file.
 const countReadBytes = 1 << 20
 
 // binarySniffBytes is how much of a file's head is checked for a NUL. git's
@@ -161,6 +161,28 @@ func (r *Repo) Invalidate() {
 	r.mu.Unlock()
 }
 
+// errNotRegular is a descriptor that stat says is not a regular file, which a
+// no-follow open still admits when the target itself is a FIFO or a device.
+var errNotRegular = errors.New("not a regular file")
+
+// openRegularFD adopts fd and returns it only if it is a regular file. Both
+// hardened openers below share it: they differ in their flags, not in what
+// they accept afterwards. The descriptor is closed on every error path, so a
+// caller never has to.
+func openRegularFD(fd int, path string) (*os.File, os.FileInfo, error) {
+	f := os.NewFile(uintptr(fd), path)
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, errNotRegular
+	}
+	return f, fi, nil
+}
+
 // openRegular opens path read-only, refusing symlinks at open time. A planted
 // symlink (to a FIFO, device, or out-of-tree file) must not be followed, and
 // opening a writer-less FIFO would block forever. O_NONBLOCK is cleared once
@@ -171,15 +193,9 @@ func openRegular(path string) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	f := os.NewFile(uintptr(fd), path)
-	fi, err := f.Stat()
+	f, fi, err := openRegularFD(fd, path)
 	if err != nil {
-		f.Close()
 		return nil, nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		f.Close()
-		return nil, nil, errors.New("not a regular file")
 	}
 	// O_NONBLOCK was only to refuse a planted FIFO; the line count reads
 	// through this descriptor and must not get EAGAIN. There is nothing to
@@ -199,17 +215,11 @@ func openAppendNoFollow(path string, perm os.FileMode) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	f := os.NewFile(uintptr(fd), path)
 	// A hardlink is a real regular file and a legitimate way to share one
 	// exclude between worktrees, so only a non-regular descriptor is refused.
-	fi, err := f.Stat()
+	f, _, err := openRegularFD(fd, path)
 	if err != nil {
-		f.Close()
 		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		f.Close()
-		return nil, errors.New("not a regular file")
 	}
 	return f, nil
 }
