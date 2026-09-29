@@ -339,7 +339,7 @@ func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
 				t.Fatalf("listing exited %d", code)
 			}
 			for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
-				sink := &listingFailWriter{remaining: limit}
+				sink := &failWriter{remaining: limit}
 				code, diagnostic := captureStderrFor(t, func() int {
 					return cmdRuns(sink, report.Palette{}, 10, "", false)
 				})
@@ -354,12 +354,14 @@ func TestRunsFailsWhenOutputCannotBeWritten(t *testing.T) {
 	}
 }
 
-type listingFailWriter struct {
+// failWriter takes at most remaining bytes and then fails with a closed pipe,
+// so a test can drive the write-error path and still read what was accepted.
+type failWriter struct {
 	bytes.Buffer
 	remaining int
 }
 
-func (w *listingFailWriter) Write(p []byte) (int, error) {
+func (w *failWriter) Write(p []byte) (int, error) {
 	n := min(len(p), w.remaining)
 	w.Buffer.Write(p[:n])
 	w.remaining -= n

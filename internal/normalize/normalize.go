@@ -283,11 +283,10 @@ func stripControl(s string) string {
 	return b.String()
 }
 
+// needsStripControl is isControl plus the tab, which stripControl rewrites
+// rather than drops: a line carrying only tabs still has to be rebuilt.
 func needsStripControl(r rune) bool {
-	if r < 0x80 {
-		return r < ' ' || r == 0x7f
-	}
-	return isControl(r)
+	return r == '\t' || isControl(r)
 }
 
 func isControl(r rune) bool {

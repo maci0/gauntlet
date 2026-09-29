@@ -145,7 +145,7 @@ func TestShowPromptFailsWhenOutputCannotBeWritten(t *testing.T) {
 		t.Fatalf("printing prompt exited %d", code)
 	}
 	for _, limit := range []int{0, rendered.Len() / 2, rendered.Len() - 1} {
-		sink := &listingFailWriter{remaining: limit}
+		sink := &failWriter{remaining: limit}
 		code, diagnostic := captureStderrFor(t, func() int {
 			return cmdShowPrompt(sink, set, opts)
 		})
@@ -319,7 +319,7 @@ func TestListReviewsReportsOutputFailure(t *testing.T) {
 	if err := report.ListReviews(&rendered, report.Palette{}, set, set.Names, 100); err != nil {
 		t.Fatalf("listing exited %v", err)
 	}
-	sink := &listingFailWriter{remaining: rendered.Len() / 2}
+	sink := &failWriter{remaining: rendered.Len() / 2}
 	if err := report.ListReviews(sink, report.Palette{}, set, set.Names, 100); err == nil {
 		t.Fatal("expected error on failed write")
 	}
@@ -332,7 +332,7 @@ func TestDryRunReportsOutputFailure(t *testing.T) {
 	if err := dryRun(&rendered, report.Palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err != nil {
 		t.Fatalf("dry run exited %v", err)
 	}
-	sink := &listingFailWriter{remaining: rendered.Len() / 2}
+	sink := &failWriter{remaining: rendered.Len() / 2}
 	if err := dryRun(sink, report.Palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err == nil {
 		t.Fatal("expected error on failed write")
 	}

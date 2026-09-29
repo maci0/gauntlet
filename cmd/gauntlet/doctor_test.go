@@ -236,28 +236,13 @@ func TestDoctorProbeLeavesNoFile(t *testing.T) {
 }
 
 func TestDoctorReportsOutputFailure(t *testing.T) {
-	sink := &doctorFailWriter{remaining: 0}
+	sink := &failWriter{remaining: 0}
 	code, diagnostic := captureStderrFor(t, func() int {
 		return doctor(sink, report.Palette{}, nil, 80)
 	})
 	if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write doctor report: "+io.ErrClosedPipe.Error()) {
 		t.Fatalf("exit %d, stderr %q", code, diagnostic.String())
 	}
-}
-
-type doctorFailWriter struct {
-	bytes.Buffer
-	remaining int
-}
-
-func (w *doctorFailWriter) Write(p []byte) (int, error) {
-	n := min(len(p), w.remaining)
-	w.Buffer.Write(p[:n])
-	w.remaining -= n
-	if n < len(p) {
-		return n, io.ErrClosedPipe
-	}
-	return n, nil
 }
 
 // Which of the documented variables this process saw is otherwise knowable
