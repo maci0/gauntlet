@@ -210,10 +210,10 @@ func pathNoCWD() string {
 	return runx.AbsPATH()
 }
 
-// The cache is keyed by the PATH it was filled from. A memo that outlives its
-// input answers for a machine that no longer exists: a process that changes
-// PATH (a test harness, a wrapper that adds a directory before launching)
-// would keep being told an agent is missing because it was missing before.
+// The cache is keyed by the PATH it was filled from, and every entry is looked
+// up on that same PATH: a memo that outlives its input answers for a machine
+// that no longer exists, and one filled from a PATH other than its key answers
+// for one that never was.
 var (
 	resolveMu    sync.RWMutex
 	resolvePath  string
@@ -254,7 +254,7 @@ func Resolve(name string) string {
 	if got, ok := resolveLookup(name, path); ok {
 		return got
 	}
-	found := runx.LookPath(name)
+	found := runx.LookPathIn(path, name)
 	resolveStore(name, path, found)
 	return found
 }

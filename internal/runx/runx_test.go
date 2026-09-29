@@ -369,6 +369,31 @@ func TestLookPathRejectsWhatItCannotRun(t *testing.T) {
 	}
 }
 
+// A caller that memoizes an answer under the PATH it read has to look the name
+// up on that PATH: LookPathIn is the only entry point that resolves against the
+// string it is handed rather than against whatever the environment says now.
+func TestLookPathInUsesTheGivenPATH(t *testing.T) {
+	given := t.TempDir()
+	other := t.TempDir()
+	for _, dir := range []string{given, other} {
+		bin := filepath.Join(dir, "mytool")
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", other)
+	want := filepath.Join(given, "mytool")
+	if got := LookPathIn(given, "mytool"); got != want {
+		t.Fatalf("LookPathIn(%q, mytool) = %q, want %q", given, got, want)
+	}
+	if got := LookPathIn(given, "nonexistent"); got != "" {
+		t.Fatalf("LookPathIn over an empty directory = %q, want empty", got)
+	}
+	if got := LookPath("mytool"); got != filepath.Join(other, "mytool") {
+		t.Fatalf("LookPath reads PATH=other: = %q, want %q", got, filepath.Join(other, "mytool"))
+	}
+}
+
 func TestShQuote(t *testing.T) {
 	cases := []struct {
 		in   string

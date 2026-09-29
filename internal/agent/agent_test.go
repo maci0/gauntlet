@@ -452,6 +452,37 @@ func TestResolveIgnoresRelativePathSegments(t *testing.T) {
 	}
 }
 
+// The memo answers per PATH, and every entry in it is an answer for the PATH
+// the memo is currently keyed on. An entry looked up against the ambient PATH
+// while a different one supplied the key would file one machine's answer under
+// another's, and returning to the first PATH would hand back a path that does
+// not exist on it.
+func TestResolveMemoAnswersPerPATH(t *testing.T) {
+	dirs := []string{t.TempDir(), t.TempDir()}
+	stubs := make([]string, len(dirs))
+	for i, dir := range dirs {
+		stubs[i] = filepath.Join(dir, "memo-agent")
+		if err := os.WriteFile(stubs[i], []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i, dir := range dirs {
+		t.Setenv("PATH", dir)
+		if got := Resolve("memo-agent"); got != stubs[i] {
+			t.Fatalf("Resolve = %q with PATH %d, want %q", got, i, stubs[i])
+		}
+		if got, ok := resolveLookup("memo-agent", runx.AbsPATH()); !ok || got != stubs[i] {
+			t.Fatalf("memo holds %q (present %v), want the answer for PATH %d (%q)", got, ok, i, stubs[i])
+		}
+	}
+	// Returning to the first PATH has to give that PATH's answer back rather
+	// than the one the second PATH produced.
+	t.Setenv("PATH", dirs[0])
+	if got := Resolve("memo-agent"); got != stubs[0] {
+		t.Fatalf("Resolve = %q after returning to PATH 0, want %q", got, stubs[0])
+	}
+}
+
 func TestParseSubject(t *testing.T) {
 	cases := []struct{ name, in, want string }{
 		{"a plain subject", "PATH: x\nSUBJECT: fix: guard the nil map write\nRESULT: changed=1",

@@ -275,11 +275,22 @@ func executable(path string) bool {
 	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
 }
 
-// LookPath searches for an executable binary named name across absolute PATH
-// directories, returning its absolute path or "" if not found. If name already
-// contains a path separator or is absolute, it is returned if it is a regular
-// executable file, or "" otherwise.
+// LookPath searches for an executable binary named name across the absolute
+// directories of the current PATH, returning its absolute path or "" if not
+// found.
 func LookPath(name string) string {
+	return LookPathIn(AbsPATH(), name)
+}
+
+// LookPathIn is LookPath over an explicit PATH, for a caller that memoizes the
+// answer under the PATH it read. Looking the name up against the ambient PATH
+// instead leaves the key and the value taken from two different reads of a
+// mutable input: a PATH that changed in between files an answer computed for
+// one machine under the key of another.
+//
+// If name already contains a path separator or is absolute, it is returned if it
+// is a regular executable file, or "" otherwise.
+func LookPathIn(path, name string) string {
 	if filepath.IsAbs(name) {
 		if executable(name) {
 			return name
@@ -296,7 +307,7 @@ func LookPath(name string) string {
 		}
 		return ""
 	}
-	for _, dir := range filepath.SplitList(AbsPATH()) {
+	for _, dir := range filepath.SplitList(path) {
 		if p := filepath.Join(dir, name); executable(p) {
 			return p
 		}

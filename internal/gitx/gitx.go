@@ -31,7 +31,8 @@ func RealPath(p string) string {
 
 // gitPath resolves git once per PATH. The memo is keyed by the PATH it was
 // built from for the same reason the agent resolver's is: a cache that
-// outlives its input answers for a machine that no longer exists.
+// outlives its input answers for a machine that no longer exists, and a cache
+// filled from a PATH other than its key answers for one that never was.
 var (
 	gitMu       sync.Mutex
 	gitPathSeen string
@@ -40,13 +41,13 @@ var (
 )
 
 func gitPath() string {
-	path := os.Getenv("PATH")
+	path := runx.AbsPATH()
 	gitMu.Lock()
 	defer gitMu.Unlock()
 	if gitPathOnce && gitPathSeen == path {
 		return gitPathFor
 	}
-	gitPathSeen, gitPathFor, gitPathOnce = path, runx.LookPath("git"), true
+	gitPathSeen, gitPathFor, gitPathOnce = path, runx.LookPathIn(path, "git"), true
 	return gitPathFor
 }
 
