@@ -2602,3 +2602,28 @@ func TestFeedTitleNamesTheWayBackFromAScrollback(t *testing.T) {
 		t.Fatalf("the feed title reports a scrollback with no way back: %q", title)
 	}
 }
+
+// TestBrailleSuffixMatchesLitSubRows pins the chart's five-entry pattern table
+// against the per-cell bit OR it replaced, over every cell row, chart height,
+// and quarter step of level a cell can hold. The table is what lets a chart
+// skip the four-sub-row loop, so it has to light exactly the same cells.
+func TestBrailleSuffixMatchesLitSubRows(t *testing.T) {
+	for h := 1; h <= 4; h++ {
+		for cy := range h {
+			for step := 0; step <= h*4*4; step++ {
+				level := float64(step) / 4
+				var want int
+				for sr := range 4 {
+					if float64(h*4-(cy*4+sr)) <= level {
+						want |= int(brailleBits[sr][0]) | int(brailleBits[sr][1])
+					}
+				}
+				lit := 4 - clampi(int(math.Ceil(float64(h*4-cy*4)-level)), 0, 4)
+				if got := brailleSuffix[lit]; got != want {
+					t.Fatalf("h=%d cell row=%d level=%v: pattern %#x, want %#x",
+						h, cy, level, got, want)
+				}
+			}
+		}
+	}
+}

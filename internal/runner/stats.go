@@ -68,8 +68,12 @@ const MaxDetailResults = maxDetailResults
 // review lanes Add results while the commit step records its runs, and a
 // reader may tally at any point in between.
 type Stats struct {
-	mu      sync.Mutex
-	results []Result
+	mu sync.Mutex
+	// results is a ring, not a window: resultsStart is where the live rows
+	// begin, and the rows before it are dropped ones awaiting reclamation.
+	// detail is the only reader of the live range.
+	results      []Result
+	resultsStart int
 
 	// The aggregates below are the running sums of the results, maintained as
 	// each one arrives so the readers below cost the same on loop 2 and on
@@ -204,16 +208,28 @@ func (s *Stats) fold(r Result) {
 	}
 }
 
-// keepDetail appends to the capped detail slice, dropping the oldest result
+// detail is the results still held, oldest first. The caller holds s.mu.
+func (s *Stats) detail() []Result { return s.results[s.resultsStart:] }
+
+// detailReclaim is how many dropped rows have to pile up at the front of the
+// ring before they are moved out of the way. Reclaiming on every drop would
+// shift maxDetailResults wide Results per Add, under the mutex every lane
+// contends for; waiting for a fraction of the cap makes the cost amortized
+// constant, at the price of a buffer up to 1.5x the cap.
+const detailReclaim = maxDetailResults / 2
+
+// keepDetail appends to the capped detail ring, dropping the oldest result
 // once it is full. The caller holds s.mu.
 func (s *Stats) keepDetail(r Result) {
-	if len(s.results) < maxDetailResults {
-		s.results = append(s.results, r)
-		return
+	if s.resultsStart > 0 && len(s.results)-s.resultsStart >= detailReclaim {
+		s.results = append(s.results[:0], s.results[s.resultsStart:]...)
+		s.resultsStart = 0
 	}
-	copy(s.results, s.results[1:])
-	s.results[len(s.results)-1] = r
-	s.detailDropped++
+	s.results = append(s.results, r)
+	if n := len(s.results) - s.resultsStart; n > maxDetailResults {
+		s.resultsStart += n - maxDetailResults
+		s.detailDropped += n - maxDetailResults
+	}
 }
 
 // Add records one result.
@@ -244,6 +260,7 @@ func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	} else {
 		kept = append(kept, results...)
 	}
+	s.resultsStart = 0
 	s.results = append(kept, s.results...)
 	if len(s.results) > maxDetailResults {
 		s.results = append([]Result(nil), s.results[len(s.results)-maxDetailResults:]...)
@@ -283,7 +300,7 @@ func (s *Stats) DetailDropped() int {
 func (s *Stats) Results() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := append([]Result(nil), s.results...)
+	out := append([]Result(nil), s.detail()...)
 	byName := fuzzy.Comparator()
 	slices.SortStableFunc(out, func(a, b Result) int { return byName(a.Review, b.Review) })
 	return out
@@ -437,7 +454,7 @@ func (s *Stats) Failures() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var out []Result
-	for _, r := range s.results {
+	for _, r := range s.detail() {
 		if r.Status.Failed() {
 			out = append(out, r)
 		}

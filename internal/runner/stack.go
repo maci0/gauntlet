@@ -421,10 +421,17 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		r.failStackLayer(res, loopNo, review, branch, parent, fmt.Errorf("push: %w", err))
 		return "", "", false
 	}
-	prURL, err := r.ensurePullRequest(ctx, branch, parent, body)
+	prURL, err := r.gh.Find(ctx, branch, parent)
 	if err != nil {
 		r.failStackLayer(res, loopNo, review, branch, parent, err)
 		return "", "", false
+	}
+	if prURL == "" {
+		prURL, err = r.gh.Create(ctx, branch, parent, body.Title, body.render())
+		if err != nil {
+			r.failStackLayer(res, loopNo, review, branch, parent, err)
+			return "", "", false
+		}
 	}
 	res.URL = prURL
 	r.st.Add(*res)
@@ -581,7 +588,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	}
 	if prURL == "" {
 		body := r.stackBody(ctx, review, title, r.cfg.Dir, parentTip, branchTip, parent, layer, nil)
-		prURL, err = r.ensurePullRequest(ctx, branch, parent, body)
+		prURL, err = r.gh.Create(ctx, branch, parent, body.Title, body.render())
 		if err != nil {
 			return parent, parentTip, false, err
 		}
@@ -634,13 +641,6 @@ func (r *Runner) stackNameTaken(ctx context.Context, name string) bool {
 	}
 	_, found, err := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, name)
 	return err != nil || found
-}
-
-func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, body prBody) (string, error) {
-	if prURL, err := r.gh.Find(ctx, branch, base); err != nil || prURL != "" {
-		return prURL, err
-	}
-	return r.gh.Create(ctx, branch, base, body.Title, body.render())
 }
 
 // stackBody assembles what a layer's PR says about itself: an overview of

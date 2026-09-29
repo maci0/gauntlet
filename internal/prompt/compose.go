@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -19,7 +20,16 @@ import (
 //go:embed rules/*
 var rules embed.FS
 
+// ruleCache holds the rule files already read. They are embedded at build
+// time, so their bytes are the same for the life of the process, and Compose
+// reads several of them once per attempt: without this a run composing one
+// prompt per review re-read and re-copied the same immutable text every time.
+var ruleCache sync.Map
+
 func rule(name string) string {
+	if cached, ok := ruleCache.Load(name); ok {
+		return cached.(string)
+	}
 	b, err := rules.ReadFile("rules/" + name)
 	if err != nil {
 		// Embedded at build time: a missing rule file is a broken binary, and
@@ -27,7 +37,9 @@ func rule(name string) string {
 		// crashing.
 		panic("gauntlet: missing embedded rule " + name + ": " + err.Error())
 	}
-	return string(b)
+	text := string(b)
+	ruleCache.Store(name, text)
+	return text
 }
 
 // Markers fence the review body so it cannot blend into the rules that follow.

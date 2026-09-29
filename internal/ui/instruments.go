@@ -22,10 +22,19 @@ var brailleBits = [4][2]byte{
 	{0x40, 0x80},
 }
 
-// brailleSlots is how many dot patterns one cell can carry: the eight bits a
-// braille glyph is built from, so 0x2800+pattern always lands inside one
-// block.
-const brailleSlots = 256
+// brailleSuffix is the glyph pattern for a cell whose last n sub-rows are lit,
+// for n from 0 to 4. The level fills a cell from its top down, so the lit
+// sub-rows are always the topmost ones and that count is the whole of what a
+// cell's pattern depends on: five patterns, not the 256 a bitwise index over
+// all eight dots would allow.
+var brailleSuffix = func() (t [5]int) {
+	for n := 1; n < len(t); n++ {
+		for sr := 4 - n; sr < 4; sr++ {
+			t[n] |= int(brailleBits[sr][0]) | int(brailleBits[sr][1])
+		}
+	}
+	return t
+}()
 
 // dot is one rendered chart cell: the color it was drawn in and the glyph that
 // color produces. A cell holding an empty color is the one thing that means
@@ -49,29 +58,28 @@ func chart(vals []float64, w, h int) string {
 	cols, peak := tailCols(vals, w)
 	dotH := h * 4
 
-	// A braille cell is eight dots, so pattern indexes 256 slots and the
-	// rendered glyph for one is fixed once the color is known. The table is a
-	// local array rather than a map: chart runs once per lane plus once for the
-	// activity strip on every frame, and a map keyed by the formatted color
-	// allocated and hashed a string for each of its cells.
-	var cache [brailleSlots]dot
+	// A braille cell is eight dots, so a rendered glyph for one is fixed once
+	// the color is known. The table is a local array rather than a map: chart
+	// runs once per lane plus once for the activity strip on every frame, and
+	// a map keyed by the formatted color would allocate and hash a string for
+	// each of its cells.
+	var cache [len(brailleSuffix)]dot
 	rows := make([]strings.Builder, h)
 	for cy := range h {
 		for cx := range w {
 			frac := clamp01(cols[cx] / peak)
-			pattern := 0
 			level := frac * float64(dotH)
-			for sr := range 4 {
-				if float64(dotH-(cy*4+sr)) <= level {
-					pattern |= int(brailleBits[sr][0]) | int(brailleBits[sr][1])
-				}
-			}
+			// Sub-row sr lights when dotH-(cy*4+sr) <= level, that is when
+			// sr >= dotH-cy*4-level, so the lit run is the sub-rows from
+			// that bound to the cell's last.
+			lit := 4 - clampi(int(math.Ceil(float64(dotH-cy*4)-level)), 0, 4)
+			pattern := brailleSuffix[lit]
 			var col lipgloss.TerminalColor
 			switch {
 			case pattern == 0 && cy == h-1:
 				// Unlit baseline grid: dim, several times fainter than data,
 				// but still a readable stroke (3:1), not near-invisible.
-				pattern = int(brailleBits[3][0]) | int(brailleBits[3][1])
+				pattern, lit = brailleSuffix[1], 1
 				col = cTrack
 			case pattern == 0:
 				rows[cy].WriteByte(' ')
@@ -79,7 +87,7 @@ func chart(vals []float64, w, h int) string {
 			default:
 				col = heatColor(frac)
 			}
-			d := &cache[pattern]
+			d := &cache[lit]
 			if d.col != col {
 				// One pattern can be drawn in two colors: data at the heat
 				// ramp, or the unlit baseline stroke. The color is stored beside
