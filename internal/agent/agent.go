@@ -104,6 +104,21 @@ var streamFlags = map[string][]string{
 }
 
 // isValid reports whether name is a supported agent CLI, built in or defined.
+// foldName is the one spelling an agent name is keyed on, at every site that
+// stores one or looks one up. The order is the point: normalizing first and
+// folding second is what the peer key spaces in this tree do (a review's
+// Signals: line, a suggested path, the pick filter), and folding first is not
+// the same function. ToLower of the decomposed capital I a macOS filesystem
+// hands out is "i" plus a combining dot that no composition takes back, so a
+// name folded before it is normalized gets a key the composed spelling of the
+// same name never produces, and one agent becomes two. Simple case folding
+// (EqualFold) does not close the gap either: its orbit leaves U+0130 out, so
+// a definition registered "İşık" stayed unfindable under the "işık" every
+// lookup folded to.
+func foldName(s string) string {
+	return strings.ToLower(fuzzy.NFC(strings.TrimSpace(s)))
+}
+
 func isValid(name string) bool {
 	if isBuiltinTool(name) {
 		return true
@@ -395,7 +410,7 @@ func parseEntry(entry string, add func(Spec)) error {
 	// stored composed, and without this the two never meet. The Spec is the
 	// name everything downstream keys on, so an unnormalized one turns one
 	// agent into two pool entries and a --bin override into a miss.
-	tool = fuzzy.NFC(strings.ToLower(strings.TrimSpace(tool)))
+	tool = foldName(tool)
 	model = strings.TrimSpace(model)
 	effort = strings.TrimSpace(effort)
 	if mixedKeywords[tool] {
@@ -700,7 +715,7 @@ func ParseBin(s string) (string, string, error) {
 	}
 	// The map the runner reads is keyed by the name ParseSpecs produces, so
 	// the override is stored in that spelling and not the one typed here.
-	tool = fuzzy.NFC(strings.ToLower(tool))
+	tool = foldName(tool)
 	if !isValid(tool) {
 		return "", "", fmt.Errorf("unknown agent: %q%s (valid: %s)", tool, didYouMean(tool),
 			strings.Join(AllNames(), ", "))

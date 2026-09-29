@@ -388,15 +388,17 @@ func CustomDef(name string) (Custom, bool) {
 	return custom[key], true
 }
 
-// lookupCustom finds the stored key for a name, matching case-insensitively.
-// The caller holds customMu. A name differing from an existing one only by
-// case is refused at Register, so at most one key can match.
+// lookupCustom finds the stored key for a name, matching it through foldName
+// so a definition is found by the same spelling every other agent-name lookup
+// produces. The caller holds customMu. A name differing from an existing one
+// only by case is refused at Register, so at most one key can match.
 func lookupCustom(name string) (string, bool) {
 	if _, ok := custom[name]; ok {
 		return name, true
 	}
+	key := foldName(name)
 	for k := range custom {
-		if strings.EqualFold(k, name) {
+		if foldName(k) == key {
 			return k, true
 		}
 	}

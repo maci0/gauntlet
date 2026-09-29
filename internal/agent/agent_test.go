@@ -33,6 +33,38 @@ func TestParseSpecs(t *testing.T) {
 	}
 }
 
+// The name is normalized before the case fold, so the decomposed spelling a
+// macOS terminal hands over and the composed one a definition file carries
+// name the same agent. Folding first splits them: ToLower of the decomposed
+// capital I is "i" plus a combining dot that no composition takes back, so the
+// folded key of one spelling is not the folded key of the other and the
+// second one is reported as an unknown agent.
+func TestParseSpecsNormalizesBeforeFolding(t *testing.T) {
+	const name = "İşık"
+	// The decomposed spelling of that name, as a macOS filesystem and terminal
+	// hand it over: the capital I and its dot as two code points.
+	const nfd = "I\u0307şık"
+	// The key the folded name lands on: the decomposed capital I lowercases to
+	// a bare "i", the cedilla and the dotless i have no uppercase.
+	const want = "işık"
+	if err := Register(name, Custom{Argv: []string{"isik", "-p", "{prompt}"}}); err != nil {
+		t.Fatal(err)
+	}
+	defer Unregister(name)
+	for _, spelling := range []string{name, nfd} {
+		got, err := ParseSpecs(spelling)
+		if err != nil {
+			t.Fatalf("ParseSpecs(%q) = %v", spelling, err)
+		}
+		if len(got) != 1 || got[0].Tool != want {
+			t.Fatalf("ParseSpecs(%q) = %v", spelling, got)
+		}
+		if _, ok := CustomDef(got[0].Tool); !ok {
+			t.Fatalf("ParseSpecs(%q) named %q, which the definition is not registered under", spelling, got[0].Tool)
+		}
+	}
+}
+
 func TestLabels(t *testing.T) {
 	got := Labels([]Spec{
 		{Tool: "claude"},
