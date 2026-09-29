@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package main
+package report
 
 import (
 	"bytes"
@@ -20,20 +20,20 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
-// TestReporterStampsUntimedLinesFromItsClock pins the one line the reporter
+// TestReporterStampsUntimedLinesFromItsClock pins the one line the Reporter
 // timestamps itself: a log event published before the bus could stamp it. The
 // stamp comes from the injected clock, the run's own, so a transcript of a
 // replayed run reads the same clock end to end.
 func TestReporterStampsUntimedLinesFromItsClock(t *testing.T) {
 	stamp := time.Date(2026, 8, 25, 12, 0, 0, 0, time.UTC)
 	var out bytes.Buffer
-	r := &reporter{out: &out, now: func() time.Time { return stamp }}
+	r := &Reporter{Out: &out, Now: func() time.Time { return stamp }}
 	r.handle(runner.Event{Kind: runner.EvLog, Text: "untimed"})
 	if got, want := out.String(), "["+humanize.Clock(stamp)+"] untimed\n"; got != want {
 		t.Fatalf("untimed line = %q, want %q", got, want)
 	}
 
-	// A timed event keeps its own stamp, and a reporter with no clock still
+	// A timed event keeps its own stamp, and a Reporter with no clock still
 	// falls back to wall time rather than the zero instant.
 	out.Reset()
 	r.handle(runner.Event{Kind: runner.EvLog, Text: "timed",
@@ -42,14 +42,14 @@ func TestReporterStampsUntimedLinesFromItsClock(t *testing.T) {
 		t.Fatalf("timed line = %q, want %q", got, want)
 	}
 	out.Reset()
-	plain := &reporter{out: &out}
+	plain := &Reporter{Out: &out}
 	plain.handle(runner.Event{Kind: runner.EvLog, Text: "wall"})
 	if got := out.String(); !strings.HasPrefix(got, "[") || !strings.Contains(got, "wall") {
-		t.Fatalf("an unconfigured reporter printed %q", got)
+		t.Fatalf("an unconfigured Reporter printed %q", got)
 	}
 }
 
-// The plain reporter's one line kind that its own text does not identify is an
+// The plain Reporter's one line kind that its own text does not identify is an
 // error the agent reported: a diff carries the sign, a result line says
 // RESULT:, reasoning is italic, progress says what it is doing. So the error
 // has to be marked in the line itself, and it has to survive a monochrome
@@ -59,7 +59,7 @@ func TestReporterStampsUntimedLinesFromItsClock(t *testing.T) {
 // mark cannot be the only place it exists.
 func TestReporterMarksAgentErrorsWithoutColor(t *testing.T) {
 	var out bytes.Buffer
-	r := &reporter{out: &out}
+	r := &Reporter{Out: &out}
 	for _, ev := range []runner.Event{
 		{Kind: runner.EvOutput, Review: "sec-review", Text: "reading main.go", LineKind: normalize.Plain},
 		{Kind: runner.EvOutput, Review: "sec-review", Text: "the build failed on line 12", LineKind: normalize.Error},
@@ -69,7 +69,7 @@ func TestReporterMarksAgentErrorsWithoutColor(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
 	if len(lines) != 3 {
-		t.Fatalf("the reporter drew %d rows, want 3:\n%s", len(lines), out.String())
+		t.Fatalf("the Reporter drew %d rows, want 3:\n%s", len(lines), out.String())
 	}
 	if strings.Contains(lines[0], "!") || strings.Contains(lines[2], "!") {
 		t.Fatalf("a line that names itself carries the error mark anyway:\n%s", out.String())
@@ -79,7 +79,7 @@ func TestReporterMarksAgentErrorsWithoutColor(t *testing.T) {
 	}
 	// The mark rides in the line's own style, so with color on it is one red
 	// run rather than a colored glyph in front of uncolored text.
-	if got := (&reporter{pal: palette{on: true}}).paint(normalize.Error, "boom"); got != "\x1b[31m!boom\x1b[0m" {
+	if got := (&Reporter{Pal: Palette{On: true}}).paint(normalize.Error, "boom"); got != "\x1b[31m!boom\x1b[0m" {
 		t.Fatalf("the marked error line is %q, want the mark inside the line's own style", got)
 	}
 }
@@ -101,7 +101,7 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 		{Kind: runner.EvLoopEnd, Loop: 1, Elapsed: 92, Ins: &ins, Del: &del},
 	}
 	var out bytes.Buffer
-	r := &reporter{out: &out, multiDir: true}
+	r := &Reporter{Out: &out, MultiDir: true}
 	for _, ev := range events {
 		r.handle(ev)
 	}
@@ -122,7 +122,7 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 	}
 
 	out.Reset()
-	quiet := &reporter{out: &out, quiet: true}
+	quiet := &Reporter{Out: &out, Quiet: true}
 	quiet.handle(runner.Event{Kind: runner.EvOutput, Review: "sec-review", Text: "chatter"})
 	if out.Len() != 0 {
 		t.Fatalf("quiet mode still printed agent output:\n%s", out.String())
@@ -141,7 +141,7 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 
 func TestReporterConsumeDrainsUntilClosed(t *testing.T) {
 	var out bytes.Buffer
-	r := &reporter{out: &out}
+	r := &Reporter{Out: &out}
 	ch := make(chan runner.Event, 3)
 	ch <- runner.Event{Kind: runner.EvLog, Text: "first"}
 	ch <- runner.Event{Kind: runner.EvLog, Text: "second"}
@@ -163,7 +163,7 @@ func TestReporterConsumeDrainsUntilClosed(t *testing.T) {
 func TestReporterLogsTheEventTime(t *testing.T) {
 	stamp := time.Date(2026, 11, 1, 1, 30, 0, 0, time.FixedZone("EST", -5*3600))
 	var out bytes.Buffer
-	r := &reporter{out: &out}
+	r := &Reporter{Out: &out}
 	r.handle(runner.Event{Kind: runner.EvLog, Text: "hello", Time: stamp})
 	want := "[" + humanize.Clock(stamp) + "]"
 	if !strings.Contains(out.String(), want) {
@@ -175,18 +175,18 @@ func TestReporterLogsTheEventTime(t *testing.T) {
 // parse: fixed sections, totals merged over directories, the token rate and
 // reasoning floor, and a failure list that says why each review failed.
 func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
-	d1 := &dirRun{dir: "/repo/a", loops: 1, stats: &runner.Stats{}}
-	d1.stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
+	d1 := Dir{Loops: 1, Stats: &runner.Stats{}}
+	d1.Stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
 		Status: runner.StatusOK, Tokens: 100, Thinking: 25, Elapsed: 4 * time.Second,
 		Ins: 5, Del: 2, HaveLines: true, Branch: "gauntlet/stack/a", Base: "main",
 		URL: "https://github.com/owner/repo/pull/1"})
-	d2 := &dirRun{dir: "/repo/b", loops: 2, stats: &runner.Stats{}}
-	d2.stats.Add(runner.Result{Review: "z-review", Agent: agent.Spec{Tool: "codex"},
+	d2 := Dir{Loops: 2, Stats: &runner.Stats{}}
+	d2.Stats.Add(runner.Result{Review: "z-review", Agent: agent.Spec{Tool: "codex"},
 		Status: runner.StatusFail, ExitCode: 7, Tokens: 300, Elapsed: 2 * time.Second})
-	d2.stats.Seed(nil, 2, 1) // two commit steps ran, one failed
+	d2.Stats.Seed(nil, 2, 1) // two commit steps ran, one failed
 
 	var out bytes.Buffer
-	summary(&out, palette{}, []*dirRun{d1, d2}, time.Minute)
+	Summary(&out, Palette{}, []Dir{d1, d2}, time.Minute)
 	got := out.String()
 	for _, want := range []string{
 		"Directories: 2",
@@ -207,7 +207,7 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 		"- z-review (codex): exit 7",
 	} {
 		if !strings.Contains(got, want) {
-			t.Errorf("summary is missing %q:\n%s", want, got)
+			t.Errorf("Summary is missing %q:\n%s", want, got)
 		}
 	}
 	for _, absent := range []string{"Skipped", "Interrupted", "Merge conflicts"} {
@@ -215,11 +215,11 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 			t.Errorf("an all-zero tally still advertises %q:\n%s", absent, got)
 		}
 	}
-	d3 := &dirRun{dir: "/repo/c", loops: 1, stats: &runner.Stats{}}
-	d3.stats.Add(runner.Result{Review: "ghost-review", Agent: agent.Spec{Tool: "claude"},
+	d3 := Dir{Loops: 1, Stats: &runner.Stats{}}
+	d3.Stats.Add(runner.Result{Review: "ghost-review", Agent: agent.Spec{Tool: "claude"},
 		Status: runner.StatusSkipped, ExitCode: -1, Detail: "unknown name"})
 	out.Reset()
-	summary(&out, palette{}, []*dirRun{d3}, time.Second)
+	Summary(&out, Palette{}, []Dir{d3}, time.Second)
 	if !strings.Contains(out.String(), "- ghost-review (claude): skipped: unknown name") {
 		t.Errorf("skipped review did not use Detail:\n%s", out.String())
 	}
@@ -233,20 +233,20 @@ func TestSummaryAggregatesAcrossDirectories(t *testing.T) {
 	}
 }
 
-// A status this build does not name still ran, so the summary counts it and
+// A status this build does not name still ran, so the Summary counts it and
 // says so, and does not list it as a failure it cannot diagnose.
 func TestSummaryCountsUnrecognizedOutcomes(t *testing.T) {
-	d := &dirRun{dir: "/repo/a", loops: 1, stats: &runner.Stats{}}
-	d.stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
+	d := Dir{Loops: 1, Stats: &runner.Stats{}}
+	d.Stats.Add(runner.Result{Review: "a-review", Agent: agent.Spec{Tool: "claude"},
 		Status: runner.StatusOK})
-	d.stats.Seed([]runner.Result{{Review: "b-review", Agent: agent.Spec{Tool: "claude"},
+	d.Stats.Seed([]runner.Result{{Review: "b-review", Agent: agent.Spec{Tool: "claude"},
 		Status: runner.Status("deferred")}}, 0, 0)
 	var out bytes.Buffer
-	summary(&out, palette{}, []*dirRun{d}, time.Second)
+	Summary(&out, Palette{}, []Dir{d}, time.Second)
 	got := out.String()
 	for _, want := range []string{"Total reviews run: 2", "Unrecognized outcomes: 1"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("summary is missing %q:\n%s", want, got)
+			t.Errorf("Summary is missing %q:\n%s", want, got)
 		}
 	}
 	if strings.Contains(got, "Failed reviews") {
@@ -254,7 +254,7 @@ func TestSummaryCountsUnrecognizedOutcomes(t *testing.T) {
 	}
 }
 
-// colorEnabled honors NO_COLOR (set at all), TERM=dumb, and terminal
+// ColorEnabled honors NO_COLOR (set at all), TERM=dumb, and terminal
 // detection, with CLICOLOR_FORCE / FORCE_COLOR turning color back on for a
 // pipe. The precedence is the contract: an explicit opt-out beats an opt-in.
 func TestColorEnabledPrecedence(t *testing.T) {
@@ -312,8 +312,8 @@ func TestColorEnabledPrecedence(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if got := colorEnabled(f); got != c.want {
-				t.Errorf("colorEnabled with %v = %v, want %v", c.env, got, c.want)
+			if got := ColorEnabled(f); got != c.want {
+				t.Errorf("ColorEnabled with %v = %v, want %v", c.env, got, c.want)
 			}
 		})
 	}
@@ -343,14 +343,14 @@ func TestListingColumnsLineUpForWideNames(t *testing.T) {
 		at := map[int]bool{}
 		for line := range strings.SplitSeq(text, "\n") {
 			if before, _, ok := strings.Cut(line, marker); ok {
-				at[cells(before)] = true
+				at[Cells(before)] = true
 			}
 		}
 		return at
 	}
 
 	var list bytes.Buffer
-	listReviews(&list, palette{}, set, set.Names, 100)
+	ListReviews(&list, Palette{}, set, set.Names, 100)
 	// The legend names [project] too and is not a row of the table.
 	rows := ""
 	for line := range strings.SplitSeq(list.String(), "\n") {
@@ -362,13 +362,6 @@ func TestListingColumnsLineUpForWideNames(t *testing.T) {
 		t.Errorf("--list starts its origin column at %v, want one column:\n%s", keysOf(got), rows)
 	}
 
-	d := &dirRun{dir: dir, set: set, reviews: set.Names}
-	var dry bytes.Buffer
-	dryRun(&dry, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute})
-	if got := starts(dry.String(), "[project]"); len(got) != 1 {
-		t.Errorf("--dry-run starts its origin column at %v, want one column:\n%s",
-			keysOf(got), dry.String())
-	}
 }
 
 func keysOf(m map[int]bool) []int {
@@ -394,7 +387,7 @@ func TestListReviewsMarksWeightsAndLegend(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	listReviews(&out, palette{}, set,
+	ListReviews(&out, Palette{}, set,
 		[]string{"doc-review", "sec-review", "sec-review"}, 100)
 	got := out.String()
 	for _, want := range []string{
@@ -418,33 +411,33 @@ func TestListReviewsMarksWeightsAndLegend(t *testing.T) {
 }
 
 func TestPaletteColors(t *testing.T) {
-	off := palette{on: false}
-	if off.think("text") != "text" || off.bold("text") != "text" || off.dim("text") != "text" ||
-		off.red("text") != "text" || off.green("text") != "text" || off.yellow("text") != "text" || off.blue("text") != "text" {
-		t.Error("palette with color off should return plain text")
+	off := Palette{On: false}
+	if off.Think("text") != "text" || off.Bold("text") != "text" || off.Dim("text") != "text" ||
+		off.Red("text") != "text" || off.Green("text") != "text" || off.Yellow("text") != "text" || off.Blue("text") != "text" {
+		t.Error("Palette with color off should return plain text")
 	}
 
-	on := palette{on: true}
-	if on.think("text") != "\x1b[2;3mtext\x1b[0m" {
-		t.Errorf("on.think = %q", on.think("text"))
+	on := Palette{On: true}
+	if on.Think("text") != "\x1b[2;3mtext\x1b[0m" {
+		t.Errorf("on.think = %q", on.Think("text"))
 	}
-	if on.bold("text") != "\x1b[1mtext\x1b[0m" {
-		t.Errorf("on.bold = %q", on.bold("text"))
+	if on.Bold("text") != "\x1b[1mtext\x1b[0m" {
+		t.Errorf("on.bold = %q", on.Bold("text"))
 	}
-	if on.dim("text") != "\x1b[2mtext\x1b[0m" {
-		t.Errorf("on.dim = %q", on.dim("text"))
+	if on.Dim("text") != "\x1b[2mtext\x1b[0m" {
+		t.Errorf("on.dim = %q", on.Dim("text"))
 	}
-	if on.red("text") != "\x1b[31mtext\x1b[0m" {
-		t.Errorf("on.red = %q", on.red("text"))
+	if on.Red("text") != "\x1b[31mtext\x1b[0m" {
+		t.Errorf("on.red = %q", on.Red("text"))
 	}
-	if on.green("text") != "\x1b[32mtext\x1b[0m" {
-		t.Errorf("on.green = %q", on.green("text"))
+	if on.Green("text") != "\x1b[32mtext\x1b[0m" {
+		t.Errorf("on.green = %q", on.Green("text"))
 	}
-	if on.yellow("text") != "\x1b[33mtext\x1b[0m" {
-		t.Errorf("on.yellow = %q", on.yellow("text"))
+	if on.Yellow("text") != "\x1b[33mtext\x1b[0m" {
+		t.Errorf("on.yellow = %q", on.Yellow("text"))
 	}
-	if on.blue("text") != "\x1b[34mtext\x1b[0m" {
-		t.Errorf("on.blue = %q", on.blue("text"))
+	if on.Blue("text") != "\x1b[34mtext\x1b[0m" {
+		t.Errorf("on.blue = %q", on.Blue("text"))
 	}
 }
 
@@ -473,8 +466,8 @@ func TestFailureDetailNamesEveryFailingStatus(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			if got := failureDetail(c.result); got != c.want {
-				t.Fatalf("failureDetail(%+v) = %q, want %q", c.result, got, c.want)
+			if got := FailureDetail(c.result); got != c.want {
+				t.Fatalf("FailureDetail(%+v) = %q, want %q", c.result, got, c.want)
 			}
 		})
 	}

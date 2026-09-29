@@ -23,6 +23,7 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
@@ -82,13 +83,13 @@ func toolsFor(review string) prompt.Tools {
 // dryRun prints the planned schedule. It starts no review, but --suggest has
 // already run by the time the mode is reached, so a dry run can still cost
 // tokens.
-func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opts *options) error {
-	w := errWriter{out: out}
+func dryRun(out io.Writer, pal report.Palette, runs []*dirRun, agents []agent.Spec, opts *options) error {
+	w := report.ErrWriter{Out: out}
 	for _, d := range runs {
 		if len(runs) > 1 {
-			w.printf("\n%s\n", pal.bold(d.dir))
+			w.Printf("\n%s\n", pal.Bold(d.dir))
 		}
-		w.println(pal.bold("Dry run") + pal.dim(": planned schedule for one loop"))
+		w.Println(pal.Bold("Dry run") + pal.Dim(": planned schedule for one loop"))
 		names := append([]string(nil), d.reviews...)
 		capped := opts.maxReviews > 0 && opts.maxReviews < len(d.reviews)
 		if opts.stackedPRs {
@@ -102,7 +103,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 		}
 		col := 0
 		for _, n := range names {
-			col = max(col, cells(n))
+			col = max(col, report.Cells(n))
 		}
 		for _, n := range names {
 			rev, _ := d.set.Get(n)
@@ -110,19 +111,19 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 			if rev.IsProject() {
 				origin = " [project]"
 			}
-			w.printf("  %s%s\n", padCells(n, col+1), origin)
+			w.Printf("  %s%s\n", report.PadCells(n, col+1), origin)
 		}
-		w.println()
+		w.Println()
 		repeats := len(d.reviews) - len(uniq(d.reviews))
 		extra := ""
 		if repeats > 0 {
 			extra = fmt.Sprintf(" (%d extra from repeats)", repeats)
 		}
 		if capped {
-			w.printf("Reviews per loop: %d of %d%s, capped by --max-reviews\n",
+			w.Printf("Reviews per loop: %d of %d%s, capped by --max-reviews\n",
 				opts.maxReviews, len(d.reviews), extra)
 		} else {
-			w.printf("Reviews per loop: %d%s\n", len(d.reviews), extra)
+			w.Printf("Reviews per loop: %d%s\n", len(d.reviews), extra)
 		}
 	}
 	mode := "sequential, in place"
@@ -138,24 +139,24 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 	if opts.yolo {
 		yolo = "  |  YOLO"
 	}
-	w.printf("Agents: %s  |  timeout: %s  |  mode: %s%s\n",
+	w.Printf("Agents: %s  |  timeout: %s  |  mode: %s%s\n",
 		strings.Join(agent.Labels(agents), ", "), humanize.Duration(opts.timeout), mode, yolo)
 	limit := "infinite"
 	if opts.maxLoops > 0 {
 		limit = fmt.Sprint(opts.maxLoops)
 	}
-	w.printf("Loop limit: %s\n", limit)
+	w.Printf("Loop limit: %s\n", limit)
 	if opts.runtime > 0 {
-		w.printf("Runtime budget: %s\n", humanize.Duration(opts.runtime))
+		w.Printf("Runtime budget: %s\n", humanize.Duration(opts.runtime))
 	}
 	if opts.commit || opts.push {
 		action := "commit"
 		if opts.push {
 			action = "commit+push"
 		}
-		w.printf("After each review: %s step (agent writes the message, no AI attribution)\n", action)
+		w.Printf("After each review: %s step (agent writes the message, no AI attribution)\n", action)
 	}
-	return w.err
+	return w.Err
 }
 
 var (
@@ -177,7 +178,7 @@ var (
 // same one the runner measures against, because these lines are live progress
 // and a frozen stamp would be a lie.
 func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []agent.Spec,
-	out io.Writer, pal palette, now func() time.Time) error {
+	out io.Writer, pal report.Palette, now func() time.Time) error {
 
 	suggesting := opts.suggest
 	pools := make([][]string, len(runs))
@@ -271,14 +272,14 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			r.spec.Label(), len(r.picked), len(pools[i]), where)
 		col := 0
 		for _, p := range r.picked {
-			col = max(col, cells(p.Name))
+			col = max(col, report.Cells(p.Name))
 		}
 		for _, p := range r.picked {
 			reason := p.Reason
 			if reason == "" {
 				reason = "(no reason given)"
 			}
-			fmt.Fprintf(out, "  %s %s\n", padCells(p.Name, col+1), pal.dim(reason))
+			fmt.Fprintf(out, "  %s %s\n", report.PadCells(p.Name, col+1), pal.Dim(reason))
 		}
 		total += len(r.picked)
 		// The same exclusions the schedule below applies, and the error is
@@ -291,7 +292,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		r.named = named
 		results[i] = r
 		if len(r.named) > 0 {
-			fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
+			fmt.Fprintf(out, "  %s\n", pal.Dim(fmt.Sprintf(
 				"and %s, named on the command line", weighted(r.named))))
 			total += len(r.named)
 		}

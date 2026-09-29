@@ -20,6 +20,7 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/report"
 )
 
 // Doctor assembles its review catalog from agent.ReviewTools and
@@ -83,7 +84,7 @@ func TestDoctorCustomAgentCounting(t *testing.T) {
 	t.Cleanup(func() { agent.Unregister("custombot") })
 
 	var buf strings.Builder
-	code := doctor(&buf, palette{}, nil, 80)
+	code := doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "✓ custombot") {
 		t.Fatalf("doctor should show custombot as installed (code %d):\n%s", code, out)
@@ -100,7 +101,7 @@ func TestDoctorDshViaBunxExitsOneWhenNoAutoDetectableAgent(t *testing.T) {
 	t.Setenv("PATH", dir)
 
 	var buf strings.Builder
-	code := doctor(&buf, palette{}, nil, 80)
+	code := doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "✓ dsh") || !strings.Contains(out, "via bunx") {
 		t.Fatalf("doctor should show dsh via bunx:\n%s", out)
@@ -123,7 +124,7 @@ func TestDoctorNamesTheStateRootAndItsSource(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "State: "+state) || !strings.Contains(out, "from GAUNTLET_HOME") {
 		t.Fatalf("doctor should name the GAUNTLET_HOME state root and its source:\n%s", out)
@@ -133,7 +134,7 @@ func TestDoctorNamesTheStateRootAndItsSource(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	buf.Reset()
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out = buf.String()
 	want := "State: " + filepath.Join(home, ".gauntlet")
 	if !strings.Contains(out, want) || !strings.Contains(out, "from $HOME") {
@@ -149,7 +150,7 @@ func TestDoctorNamesTheStateRootWithoutAUsableAgent(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	var buf strings.Builder
-	if code := doctor(&buf, palette{}, nil, 80); code != exitFail {
+	if code := doctor(&buf, report.Palette{}, nil, 80); code != exitFail {
 		t.Fatalf("doctor exit code = %d, want %d (exitFail)", code, exitFail)
 	}
 	if out := buf.String(); !strings.Contains(out, "State: "+state) {
@@ -174,7 +175,7 @@ func TestDoctorReportsAnUnusableStateRoot(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	var buf strings.Builder
-	code := doctor(&buf, palette{}, nil, 80)
+	code := doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "State root unusable") || !strings.Contains(out, "is not writable") {
 		t.Fatalf("doctor should report a state root that cannot be written:\n%s", out)
@@ -192,7 +193,7 @@ func TestDoctorLeavesAMissingStateRootAlone(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	if out := buf.String(); strings.Contains(out, "State root unusable") {
 		t.Fatalf("doctor should accept a state root the first run will create:\n%s", out)
 	}
@@ -237,7 +238,7 @@ func TestDoctorProbeLeavesNoFile(t *testing.T) {
 func TestDoctorReportsOutputFailure(t *testing.T) {
 	sink := &doctorFailWriter{remaining: 0}
 	code, diagnostic := captureStderrFor(t, func() int {
-		return doctor(sink, palette{}, nil, 80)
+		return doctor(sink, report.Palette{}, nil, 80)
 	})
 	if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write doctor report: "+io.ErrClosedPipe.Error()) {
 		t.Fatalf("exit %d, stderr %q", code, diagnostic.String())
@@ -270,7 +271,7 @@ func TestDoctorReportsTheEnvironmentItSaw(t *testing.T) {
 	t.Setenv("GH_TOKEN", "ghp_do_not_print_this")
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 200)
+	doctor(&buf, report.Palette{}, nil, 200)
 	out := buf.String()
 	if !strings.Contains(out, "GIT_SSH_COMMAND=ssh -i /tmp/id_test") {
 		t.Fatalf("doctor should report the value of a non-secret variable it saw:\n%s", out)
@@ -289,7 +290,7 @@ func TestDoctorReportsTheEnvironmentItSaw(t *testing.T) {
 		t.Fatal(err)
 	}
 	buf.Reset()
-	doctor(&buf, palette{}, nil, 200)
+	doctor(&buf, report.Palette{}, nil, 200)
 	out = buf.String()
 	if !strings.Contains(out, "NO_COLOR=(empty)") {
 		t.Fatalf("doctor should tell a variable set to empty from one unset:\n%s", out)
@@ -324,7 +325,7 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 	record(base)
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	if out := buf.String(); !strings.Contains(out, "Run history: 2 journals, index agrees") {
 		t.Fatalf("doctor should report two agreeing journals:\n%s", out)
 	}
@@ -343,7 +344,7 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	buf.Reset()
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	if out := buf.String(); !strings.Contains(out, "Run history: 1 journal, 1 not matched by the index") {
 		t.Fatalf("doctor should report the journal the index does not name:\n%s", out)
 	}
@@ -360,7 +361,7 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	buf.Reset()
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "Run history: 2 journals, index agrees") {
 		t.Fatalf("doctor should report a healthy tree after the restore:\n%s", out)
@@ -440,7 +441,7 @@ func TestDoctorReportsAJournalCutMidLine(t *testing.T) {
 	f.Close()
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "Run history: 1 journal, index agrees") {
 		t.Fatalf("doctor should still report the run it can list:\n%s", out)
@@ -469,7 +470,7 @@ func TestDoctorReportsUnlandedReviewBranches(t *testing.T) {
 	t.Chdir(dir)
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "Unlanded reviews: 2 branches") {
 		t.Fatalf("doctor did not report the branches a merge left behind:\n%s", out)
@@ -494,7 +495,7 @@ func TestDoctorReportsUnlandedReviewBranches(t *testing.T) {
 	run("branch", "-D", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane0-03", "security"))
 	run("branch", "-D", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane1-07", "performance"))
 	buf.Reset()
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	if out := buf.String(); strings.Contains(out, "Unlanded reviews") {
 		t.Fatalf("doctor reported unlanded reviews in a repository that has none:\n%s", out)
 	}
@@ -509,7 +510,7 @@ func TestDoctorReportsTheGitVersion(t *testing.T) {
 		t.Skip("no git on PATH")
 	}
 	var buf bytes.Buffer
-	doctor(&buf, palette{}, nil, 200)
+	doctor(&buf, report.Palette{}, nil, 200)
 	out := buf.String()
 	if !strings.Contains(out, "git version") {
 		t.Fatalf("doctor did not report the git version:\n%s", out)
@@ -558,20 +559,20 @@ func TestReviewNameColumnMeasuresTerminalCells(t *testing.T) {
 	const cjk = "日本語-review" // 3 double-width + 1 space + 7 narrow
 	names := []string{"sec-review", cjk}
 
-	col := reviewNameColumn(names)
-	if got, want := col, cells(cjk)+1; got != want {
-		t.Errorf("reviewNameColumn = %d, want %d (the widest name in cells, plus one)", got, want)
+	col := report.ReviewNameColumn(names)
+	if got, want := col, report.Cells(cjk)+1; got != want {
+		t.Errorf("report.ReviewNameColumn = %d, want %d (the widest name in report.Cells, plus one)", got, want)
 	}
 	if runeCount := utf8.RuneCountInString(cjk) + 1; col <= runeCount {
-		t.Errorf("reviewNameColumn = %d, no wider than the %d a rune count yields; the double-width "+
-			"glyphs in %q each need two cells", col, runeCount, cjk)
+		t.Errorf("report.ReviewNameColumn = %d, no wider than the %d a rune count yields; the double-width "+
+			"glyphs in %q each need two report.Cells", col, runeCount, cjk)
 	}
 	// Every name has to land in the same column, which is what the padding is
 	// for. A name that draws wider than the budget would push the columns
 	// after it along.
 	for _, n := range names {
-		if got := cells(padCells(n, col)); got != col {
-			t.Errorf("padded %q occupies %d cells, want %d", n, got, col)
+		if got := report.Cells(report.PadCells(n, col)); got != col {
+			t.Errorf("padded %q occupies %d report.Cells, want %d", n, got, col)
 		}
 	}
 }

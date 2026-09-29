@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
@@ -275,7 +276,7 @@ func TestDryRunReportsTheMaxReviewsCap(t *testing.T) {
 	render := func(opts *options) string {
 		t.Helper()
 		var out bytes.Buffer
-		dryRun(&out, palette{}, []*dirRun{d}, nil, opts)
+		dryRun(&out, report.Palette{}, []*dirRun{d}, nil, opts)
 		return out.String()
 	}
 
@@ -306,7 +307,7 @@ func TestInterruptedSuggestReturnsContextCanceled(t *testing.T) {
 	cancel()
 	d := &dirRun{dir: t.TempDir(), set: promptPair(t)}
 	opts := &options{suggest: true}
-	err := planReviews(ctx, []*dirRun{d}, opts, nil, io.Discard, palette{}, time.Now)
+	err := planReviews(ctx, []*dirRun{d}, opts, nil, io.Discard, report.Palette{}, time.Now)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -315,11 +316,11 @@ func TestInterruptedSuggestReturnsContextCanceled(t *testing.T) {
 func TestListReviewsReportsOutputFailure(t *testing.T) {
 	set := promptPair(t)
 	var rendered bytes.Buffer
-	if err := listReviews(&rendered, palette{}, set, set.Names, 100); err != nil {
+	if err := report.ListReviews(&rendered, report.Palette{}, set, set.Names, 100); err != nil {
 		t.Fatalf("listing exited %v", err)
 	}
 	sink := &listingFailWriter{remaining: rendered.Len() / 2}
-	if err := listReviews(sink, palette{}, set, set.Names, 100); err == nil {
+	if err := report.ListReviews(sink, report.Palette{}, set, set.Names, 100); err == nil {
 		t.Fatal("expected error on failed write")
 	}
 }
@@ -328,11 +329,11 @@ func TestDryRunReportsOutputFailure(t *testing.T) {
 	set := promptPair(t)
 	d := &dirRun{dir: t.TempDir(), set: set, reviews: set.Names}
 	var rendered bytes.Buffer
-	if err := dryRun(&rendered, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err != nil {
+	if err := dryRun(&rendered, report.Palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err != nil {
 		t.Fatalf("dry run exited %v", err)
 	}
 	sink := &listingFailWriter{remaining: rendered.Len() / 2}
-	if err := dryRun(sink, palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err == nil {
+	if err := dryRun(sink, report.Palette{}, []*dirRun{d}, nil, &options{timeout: time.Minute}); err == nil {
 		t.Fatal("expected error on failed write")
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
@@ -179,10 +180,10 @@ var helpEnvVars = []helpEnvVar{
 	{"GAUNTLET_NO_ANIMATION", "stop the dashboard moving (reduced motion): the reasoning glyph holds one frame and the screen stops redrawing ten times a second; read first, so set to 0 or false it outranks the two below", false},
 	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
 	{"REDUCED_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
-	{envNoColor, "disable color, however it is set", false},
-	{envCLIColorForce, "keep color when the output is piped", false},
-	{envForceColor, "same as CLICOLOR_FORCE", false},
-	{envTerm, "\"dumb\" in any case disables color, even with the two above", false},
+	{report.EnvNoColor, "disable color, however it is set", false},
+	{report.EnvCLIColorForce, "keep color when the output is piped", false},
+	{report.EnvForceColor, "same as CLICOLOR_FORCE", false},
+	{report.EnvTerm, "\"dumb\" in any case disables color, even with the two above", false},
 	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads", true},
 	{"GH_TOKEN", "same as GITHUB_TOKEN; wins when both carry a token, an empty one is ignored", true},
 	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it", false},
@@ -193,16 +194,16 @@ var helpEnvVars = []helpEnvVar{
 const exitCodeIndent = 2 + 4 + 1
 
 // printUsage renders the help screen.
-func printUsage(out io.Writer, pal palette, width int) {
+func printUsage(out io.Writer, pal report.Palette, width int) {
 	if width < minTerminalWidth {
 		width = minTerminalWidth
 	}
-	head := func(s string) { fmt.Fprintf(out, "\n%s\n", pal.bold(strings.ToUpper(s))) }
+	head := func(s string) { fmt.Fprintf(out, "\n%s\n", pal.Bold(strings.ToUpper(s))) }
 
 	fmt.Fprintf(out, "%s %s\n%s\n",
-		pal.bold("gauntlet"), pal.dim(version),
-		pal.dim("Run your codebase through 54 specialized review prompts, dispatched to"))
-	fmt.Fprintln(out, pal.dim("the AI coding agents you have installed. Fixes land in the working tree."))
+		pal.Bold("gauntlet"), pal.Dim(version),
+		pal.Dim("Run your codebase through 54 specialized review prompts, dispatched to"))
+	fmt.Fprintln(out, pal.Dim("the AI coding agents you have installed. Fixes land in the working tree."))
 
 	head("usage")
 	col := 0
@@ -210,7 +211,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 		col = max(col, len(c.Cmd))
 	}
 	for _, c := range helpCommands {
-		fmt.Fprintf(out, "  %-*s  %s\n", col, c.Cmd, pal.dim(c.Help))
+		fmt.Fprintf(out, "  %-*s  %s\n", col, c.Cmd, pal.Dim(c.Help))
 	}
 
 	// A subcommand reads its own flags and refuses the rest, so the screen
@@ -234,12 +235,12 @@ func printUsage(out io.Writer, pal palette, width int) {
 		if own == "" {
 			own = "none"
 		}
-		fmt.Fprintf(out, "  %-*s  %s\n", subCol, name, pal.dim(own))
+		fmt.Fprintf(out, "  %-*s  %s\n", subCol, name, pal.Dim(own))
 	}
 	// One sentence carries the rule both ways: the globals may lead, and a
 	// subcommand's own flags follow it. Wrapped like the rest, so it stays
 	// readable on a narrow terminal.
-	fmt.Fprintf(out, "  %s\n", pal.dim(wrapIndent(
+	fmt.Fprintf(out, "  %s\n", pal.Dim(report.WrapIndent(
 		"--log and --no-color work with every command, and may precede it; "+
 			"every other flag belongs after the subcommand it is for", width, 2)))
 
@@ -256,7 +257,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 		head(g.Title)
 		for _, f := range g.Flags {
 			fmt.Fprintf(out, "  %-*s  %s\n", flagCol, f.left(),
-				pal.dim(wrapIndent(f.Help, width, indent)))
+				pal.Dim(report.WrapIndent(f.Help, width, indent)))
 		}
 	}
 
@@ -266,13 +267,13 @@ func printUsage(out io.Writer, pal palette, width int) {
 		col = max(col, len(e.Cmd))
 	}
 	for _, e := range helpExamples {
-		fmt.Fprintf(out, "  %-*s  %s\n", col, e.Cmd, pal.dim(e.Help))
+		fmt.Fprintf(out, "  %-*s  %s\n", col, e.Cmd, pal.Dim(e.Help))
 	}
 
 	head("exit codes")
 	for _, c := range helpExitCodes {
 		fmt.Fprintf(out, "  %-4s %s\n", c.Code,
-			pal.dim(wrapIndent(c.Meaning, width, exitCodeIndent)))
+			pal.Dim(report.WrapIndent(c.Meaning, width, exitCodeIndent)))
 	}
 
 	head("environment")
@@ -283,7 +284,7 @@ func printUsage(out io.Writer, pal palette, width int) {
 	envIndent := envCol + 4
 	for _, e := range helpEnvVars {
 		fmt.Fprintf(out, "  %-*s  %s\n", envCol, e.Name,
-			pal.dim(wrapIndent(e.Help, width, envIndent)))
+			pal.Dim(report.WrapIndent(e.Help, width, envIndent)))
 	}
 	fmt.Fprintln(out)
 }

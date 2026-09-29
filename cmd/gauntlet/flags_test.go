@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
@@ -58,7 +59,7 @@ func TestHelpMatchesTheRealFlags(t *testing.T) {
 
 func TestUsageRendersEverySection(t *testing.T) {
 	var b strings.Builder
-	printUsage(&b, palette{}, 100)
+	printUsage(&b, report.Palette{}, 100)
 	got := b.String()
 	for _, want := range []string{
 		"USAGE", "SUBCOMMAND FLAGS", "REVIEWS", "AGENTS", "EXECUTION", "MODES", "OUTPUT",
@@ -85,7 +86,7 @@ func TestUsageRendersEverySection(t *testing.T) {
 
 func TestUsageNarrowTerminal(t *testing.T) {
 	var b strings.Builder
-	printUsage(&b, palette{}, 20) // clamped to a sane minimum, never panics
+	printUsage(&b, report.Palette{}, 20) // clamped to a sane minimum, never panics
 	if !strings.Contains(b.String(), "USAGE") {
 		t.Fatal("narrow help lost its sections")
 	}
@@ -96,7 +97,7 @@ func TestUsageNarrowTerminal(t *testing.T) {
 // for a refusal to find out spends an exit code to learn the flag list.
 func TestUsageNamesEachSubcommandFlags(t *testing.T) {
 	var b strings.Builder
-	printUsage(&b, palette{}, 100)
+	printUsage(&b, report.Palette{}, 100)
 	got := b.String()
 	for name, flags := range subcommandFlags {
 		if name == "help" {

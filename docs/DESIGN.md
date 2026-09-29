@@ -32,7 +32,7 @@ also publish its changes as a linear, unmerged PR stack.
 
 | Package | Responsibility |
 |---|---|
-| `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), the per-run preflight steps, and the plain reporter |
+| `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), and the per-run preflight steps |
 | `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
 | `internal/agent` | agent specs, the installed-tool inventory doctor and auto-detection read through `runx`'s resolver, command construction, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
@@ -46,6 +46,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus `ExpandPath` for the `~` and `$VAR` forms of a configured root, and the durable-write helpers (`WriteFileAtomic`, `SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
 | `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
 | `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
+| `internal/report` | the plain (non-TUI) reporter, the counterpart to `internal/ui`: the `Reporter` that turns the event bus into lines on stdout, the end-of-run `Summary`, the `--list` and `--dry-run` column kit (`Cells`, `PadCells`, `TrimCells`, `WrapIndent`, `ReviewNameColumn`), the `Palette` and the `ColorEnabled` decision behind it, and the writers the plain run serializes its output through. It takes a run's contribution as a `Dir` value rather than the CLI's own per-directory record, so it depends on `internal/runner` for the event and result types and on nothing else about a run |
 | `internal/selfupdate` | release check, verified download, atomic replace, re-exec |
 | `internal/sbom` | the CycloneDX inventory of a release, read out of the built binaries' build info |
 | `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
@@ -113,7 +114,7 @@ library cannot, and each was kept small on purpose.
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
-| `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `cmd/gauntlet`, and text truncation in `internal/agent` and `internal/normalize` |
+| `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `internal/report`, and text truncation in `internal/agent` and `internal/normalize` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 

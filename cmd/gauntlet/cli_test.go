@@ -20,6 +20,7 @@ import (
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/journal"
 
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/rivo/uniseg"
 )
@@ -266,17 +267,17 @@ func TestTrimCellsStaysInsideItsColumnBudget(t *testing.T) {
 		strings.Repeat("日本語のテキスト ", 20),    // two columns each
 		strings.Repeat("aé日 ", 20),         // mixed
 	} {
-		limit := cells(s)
+		limit := report.Cells(s)
 		for w := 0; w < limit+4; w++ {
-			got := trimCells(s, w)
+			got := report.TrimCells(s, w)
 			if !utf8.ValidString(got) {
-				t.Fatalf("trimCells(%d) split a rune: %q", w, got)
+				t.Fatalf("report.TrimCells(%d) split a rune: %q", w, got)
 			}
-			if cells(got) > w {
-				t.Fatalf("trimCells(%d) returned %d columns: %q", w, cells(got), got)
+			if report.Cells(got) > w {
+				t.Fatalf("report.TrimCells(%d) returned %d columns: %q", w, report.Cells(got), got)
 			}
 		}
-		if got := trimCells(s, limit); got != s {
+		if got := report.TrimCells(s, limit); got != s {
 			t.Errorf("input already inside the budget must pass through unchanged")
 		}
 	}
@@ -286,11 +287,11 @@ func TestTrimCellsStaysInsideItsColumnBudget(t *testing.T) {
 // column in one place regardless of what the first one holds.
 func TestPadCellsFillsToColumns(t *testing.T) {
 	for _, s := range []string{"abc", "héllo", "日本語", "aé日"} {
-		if got := cells(padCells(s, 12)); got != 12 {
-			t.Errorf("padCells(%q, 12) occupies %d columns, want 12", s, got)
+		if got := report.Cells(report.PadCells(s, 12)); got != 12 {
+			t.Errorf("report.PadCells(%q, 12) occupies %d columns, want 12", s, got)
 		}
 	}
-	if got := padCells("日本語", 2); got != "日本語" {
+	if got := report.PadCells("日本語", 2); got != "日本語" {
 		t.Errorf("a value wider than the column must not be cut by padding: %q", got)
 	}
 }
@@ -516,7 +517,7 @@ func TestRunsColumnsLineUp(t *testing.T) {
 		},
 	}
 	cols := newRunsColumns(entries)
-	lines := append([]string{strip(cols.header())}, strip(cols.row(0, palette{on: true})), strip(cols.row(1, palette{on: true})))
+	lines := append([]string{strip(cols.header())}, strip(cols.row(0, report.Palette{On: true})), strip(cols.row(1, report.Palette{On: true})))
 	for i, line := range lines {
 		if line != strings.TrimRight(line, " ") {
 			t.Errorf("line %d has trailing padding: %q", i, line)
@@ -536,7 +537,7 @@ func TestRunsColumnsLineUp(t *testing.T) {
 			if got, want := span(lines[0], at, col.width()), col.headField(col.width()); got != strings.TrimRight(want, " ") {
 				t.Errorf("header %d (%s) renders as %q, want %q", c, col.head, got, want)
 			}
-			want := strip(col.field(row, col.width(), palette{}))
+			want := strip(col.field(row, col.width(), report.Palette{}))
 			if got := span(lines[row+1], at, col.width()); got != strings.TrimRight(want, " ") {
 				t.Errorf("row %d column %d (%s) renders as %q, want %q:\n%s\n%s",
 					row, c, col.head, got, want, lines[0], lines[row+1])
@@ -549,7 +550,7 @@ func TestRunsColumnsLineUp(t *testing.T) {
 	if col.head != "FAILED" {
 		t.Fatalf("column 5 is %q, want FAILED", col.head)
 	}
-	if got, want := strip(col.field(1, col.width(), palette{on: true})), col.field(1, col.width(), palette{}); got != want {
+	if got, want := strip(col.field(1, col.width(), report.Palette{On: true})), col.field(1, col.width(), report.Palette{}); got != want {
 		t.Errorf("colored FAILED cell renders as %q, want %q", got, want)
 	}
 }
@@ -568,7 +569,7 @@ func TestRunsColumnsLineUpOnWideDirectoryNames(t *testing.T) {
 	cols := newRunsColumns(entries)
 	lines := []string{cols.header()}
 	for row := range entries {
-		lines = append(lines, cols.row(row, palette{}))
+		lines = append(lines, cols.row(row, report.Palette{}))
 	}
 	for i, line := range lines {
 		if !utf8.ValidString(line) {
@@ -593,7 +594,7 @@ func TestRunsColumnsLineUpOnWideDirectoryNames(t *testing.T) {
 				}
 				continue
 			}
-			if want := strings.TrimRight(col.field(i-1, col.width(), palette{}), " "); got != want {
+			if want := strings.TrimRight(col.field(i-1, col.width(), report.Palette{}), " "); got != want {
 				t.Errorf("row %d column %d (%s) renders as %q, want %q:\n%s", i-1, c, col.head, got, want, line)
 			}
 		}
@@ -657,7 +658,7 @@ func TestDoctorBrokenOverridesExitLikeAnEmptyBox(t *testing.T) {
 		overrides[a] = bin
 	}
 	var out strings.Builder
-	if code := doctor(&out, palette{}, overrides, 100); code != 1 {
+	if code := doctor(&out, report.Palette{}, overrides, 100); code != 1 {
 		t.Errorf("only broken --bin overrides should exit 1, got %d:\n%s", code, out.String())
 	}
 }

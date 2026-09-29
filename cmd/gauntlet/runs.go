@@ -18,11 +18,12 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
+	"github.com/maci0/gauntlet/internal/report"
 )
 
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl. A run id restores a
 // pruned run, which is a different job from listing and happens instead of it.
-func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool) (code int) {
+func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSON bool) (code int) {
 	if restore != "" {
 		return restoreRun(out, pal, restore, asJSON)
 	}
@@ -35,28 +36,28 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 		return writeRunsJSON(out, entries)
 	}
 	bw := bufio.NewWriter(out)
-	w := errWriter{out: bw}
+	w := report.ErrWriter{Out: bw}
 	defer func() {
-		if err := bw.Flush(); w.err == nil && err != nil {
-			w.err = err
+		if err := bw.Flush(); w.Err == nil && err != nil {
+			w.Err = err
 		}
-		if w.err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", w.err)
+		if w.Err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", w.Err)
 			code = exitFail
 		}
 	}()
 	if len(entries) == 0 {
-		w.printf("No runs recorded yet under %s\n", journal.Home())
+		w.Printf("No runs recorded yet under %s\n", journal.Home())
 	} else {
 		cols := newRunsColumns(entries)
-		w.println(cols.header())
+		w.Println(cols.header())
 		// The column's name overstates what it counts; say so once, right where
 		// it first appears, or a run that only skipped reviews reads as broken.
 		// It has to name every bucket, including the one that catches a terminal
 		// status a newer journal wrote and this build cannot read.
-		w.println(pal.dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
+		w.Println(pal.Dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
 		for i := range entries {
-			w.println(cols.row(i, pal))
+			w.Println(cols.row(i, pal))
 		}
 	}
 	// Where the journals live is a fact about this machine, not a row of the
@@ -86,7 +87,7 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 				len(shown)-listedQuarantined, filepath.Join(journal.Home(), "pruned"))
 			shown = shown[:listedQuarantined]
 		}
-		w.printf("%s\n", pal.dim(fmt.Sprintf(
+		w.Printf("%s\n", pal.Dim(fmt.Sprintf(
 			"Pruned, still recoverable (gauntlet runs --restore ID): %s%s",
 			strings.Join(shown, " "), more)))
 	}
@@ -218,7 +219,7 @@ func redactSummaryPaths(entries []journal.Summary) []journal.Summary {
 
 // restoreRun puts a pruned journal back in the listing and says so plainly:
 // a restore that failed has to read as a failure, not as a listing.
-func restoreRun(out io.Writer, pal palette, runID string, asJSON bool) int {
+func restoreRun(out io.Writer, pal report.Palette, runID string, asJSON bool) int {
 	if err := journal.Restore(runID); err != nil {
 		switch {
 		case errors.Is(err, journal.ErrNotPruned),
@@ -246,7 +247,7 @@ func restoreRun(out io.Writer, pal palette, runID string, asJSON bool) int {
 		return exitOK
 	}
 	fmt.Fprintf(out, "Restored %s; %s\n", runID,
-		pal.dim("gauntlet show "+runID))
+		pal.Dim("gauntlet show "+runID))
 	return exitOK
 }
 
@@ -274,9 +275,9 @@ type runsColumn struct {
 // used to take. Every other column here is ASCII, so the two differ only on
 // the two that are not.
 func (c *runsColumn) measure() {
-	c.w = cells(c.head)
+	c.w = report.Cells(c.head)
 	for _, cell := range c.cells {
-		c.w = max(c.w, cells(cell))
+		c.w = max(c.w, report.Cells(cell))
 	}
 }
 
@@ -286,24 +287,24 @@ func (c runsColumn) width() int { return c.w }
 // field pads one cell to the column. The FAILED column is colored, so it pads
 // the number before the escape codes go on: fmt counts a color escape as
 // width, and a padded colored cell shoves every later column off its header.
-func (c runsColumn) field(row int, width int, pal palette) string {
+func (c runsColumn) field(row int, width int, pal report.Palette) string {
 	cell := c.cells[row]
 	if c.right {
-		cell = padCellsLeft(cell, width)
+		cell = report.PadCellsLeft(cell, width)
 	} else {
-		cell = padCells(cell, width)
+		cell = report.PadCells(cell, width)
 	}
 	if c.head == "FAILED" && strings.TrimSpace(cell) != "0" {
-		return pal.red(cell)
+		return pal.Red(cell)
 	}
 	return cell
 }
 
 func (c runsColumn) headField(width int) string {
 	if c.right {
-		return padCellsLeft(c.head, width)
+		return report.PadCellsLeft(c.head, width)
 	}
-	return padCells(c.head, width)
+	return report.PadCells(c.head, width)
 }
 
 // runsColumns is the whole table, columns in print order.
@@ -374,7 +375,7 @@ func (cs runsColumns) header() string {
 	return trimRunsGap(out)
 }
 
-func (cs runsColumns) row(i int, pal palette) string {
+func (cs runsColumns) row(i int, pal report.Palette) string {
 	out := make([]string, 0, len(cs))
 	for j := range cs {
 		out = append(out, cs[j].field(i, cs[j].w, pal))

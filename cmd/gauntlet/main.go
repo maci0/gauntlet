@@ -29,6 +29,7 @@ import (
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"github.com/maci0/gauntlet/internal/ui"
@@ -94,6 +95,17 @@ type dirRun struct {
 	snapshot *gitx.Worktree
 }
 
+// reportDirs is the shape the end-of-run summary reads: what each directory
+// contributed, and nothing about how the run holds its state. The summary is
+// presentation, so it takes a value and not the run's own record.
+func reportDirs(runs []*dirRun) []report.Dir {
+	dirs := make([]report.Dir, 0, len(runs))
+	for _, d := range runs {
+		dirs = append(dirs, report.Dir{Stats: d.stats, Loops: d.loops})
+	}
+	return dirs
+}
+
 // scanDir is where this directory's prompts and suggestion signals are read.
 // A stacked run reads the snapshot of the fetched remote base, so uncommitted
 // or local-only files cannot steer a run that publishes remote-based work.
@@ -124,7 +136,7 @@ func run(argv []string) int {
 	// second file would then be free to interleave inside the first one's
 	// line.
 	out := io.Writer(os.Stdout)
-	pal := palette{on: colorEnabled(os.Stdout) && !opts.noColor}
+	pal := report.Palette{On: report.ColorEnabled(os.Stdout) && !opts.noColor}
 
 	// The launcher and the dashboard draw through lipgloss, which sees
 	// NO_COLOR but not this flag; hand the request over before either draws.
@@ -152,10 +164,10 @@ func run(argv []string) int {
 		// only the console stream goes through stdout's wrapper. The file's own
 		// wrapper also covers the copy the console stream makes of every line,
 		// so the log holds whole lines whichever way they arrived.
-		logWriter, out = logWriters(os.Stdout, f)
-		pal.on = false // escape codes would land in the file too
+		logWriter, out = report.LogWriters(os.Stdout, f)
+		pal.On = false // escape codes would land in the file too
 	}
-	stdout := io.Writer(&serialized{w: out})
+	stdout := io.Writer(&report.Serialized{W: out})
 
 	// Run-control messages ("Finishing: …", signal receipts) must not fight
 	// the dashboard for a screen it owns: a raw write into the alt screen
@@ -396,9 +408,9 @@ func run(argv []string) int {
 				if i > 0 {
 					fmt.Fprintln(stdout)
 				}
-				fmt.Fprintln(stdout, pal.bold(d.dir))
+				fmt.Fprintln(stdout, pal.Bold(d.dir))
 			}
-			if err := listReviews(stdout, pal, d.set, d.reviews, opts.width); err != nil {
+			if err := report.ListReviews(stdout, pal, d.set, d.reviews, opts.width); err != nil {
 				fmt.Fprintf(os.Stderr, "cannot write review listing: %v\n", err)
 				return exitFail
 			}
@@ -483,7 +495,7 @@ func run(argv []string) int {
 		// returns first would strand it with the bus subscription.
 		defer dash.Release()
 	} else {
-		rep := &reporter{out: stdout, pal: pal, multiDir: len(runs) > 1, quiet: opts.quiet, now: bus.Clock()}
+		rep := &report.Reporter{Out: stdout, Pal: pal, MultiDir: len(runs) > 1, Quiet: opts.quiet, Now: bus.Clock()}
 		consumers.Go(func() {
 			rep.Consume(reportEvents)
 		})
@@ -496,20 +508,20 @@ func run(argv []string) int {
 		// next line, the seed, is written from the event stream and is stamped
 		// when it happens.
 		if resumed {
-			rep.logf(time.Time{}, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
+			rep.Logf(time.Time{}, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
 				version, runID, prior.Reloads, prior.Loops())
 		}
-		rep.logf(time.Time{}, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agent.Labels(agents), ", "))
+		rep.Logf(time.Time{}, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agent.Labels(agents), ", "))
 		if autoDetected {
-			rep.logf(time.Time{}, "Auto-detected agents (name them with --agents to pin the pool)")
+			rep.Logf(time.Time{}, "Auto-detected agents (name them with --agents to pin the pool)")
 		}
 		if opts.jobs > 1 {
-			rep.logf(time.Time{}, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
+			rep.Logf(time.Time{}, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
 		} else if opts.stackedPRs {
 			if opts.maxLoops == 1 {
-				rep.logf(time.Time{}, "Stacked PR mode: sequential reviews in one isolated worktree")
+				rep.Logf(time.Time{}, "Stacked PR mode: sequential reviews in one isolated worktree")
 			} else {
-				rep.logf(time.Time{}, "Stacked PR mode: sequential reviews, new worktree per loop from the previous tip")
+				rep.Logf(time.Time{}, "Stacked PR mode: sequential reviews, new worktree per loop from the previous tip")
 			}
 		}
 	}
@@ -518,7 +530,7 @@ func run(argv []string) int {
 		// With --log it still has somewhere to write: the file. Without one,
 		// its subscription is drained, or the bus blocks when its buffer fills.
 		if logWriter != nil {
-			fileRep := &reporter{out: logWriter, pal: palette{}, multiDir: len(runs) > 1, quiet: opts.quiet, now: bus.Clock()}
+			fileRep := &report.Reporter{Out: logWriter, Pal: report.Palette{}, MultiDir: len(runs) > 1, Quiet: opts.quiet, Now: bus.Clock()}
 			consumers.Go(func() {
 				fileRep.Consume(reportEvents)
 			})
@@ -685,9 +697,9 @@ func run(argv []string) int {
 	wall := max(time.Since(startedAt), 0)
 	switch {
 	case !opts.tui:
-		summary(stdout, pal, runs, wall)
+		report.Summary(stdout, pal, reportDirs(runs), wall)
 	case logWriter != nil:
-		summary(logWriter, palette{}, runs, wall)
+		report.Summary(logWriter, report.Palette{}, reportDirs(runs), wall)
 	}
 	// The dashboard cleared itself on the way out, so a terminal-only run
 	// leaves nothing behind: point at the journal before exiting.
@@ -980,7 +992,7 @@ func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 // take on a guess. --yes and --yolo are that consent, and a run with no
 // terminal keeps the plain error rather than committing unattended.
 func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
-	opts *options, out io.Writer, pal palette, now func() time.Time) bool {
+	opts *options, out io.Writer, pal report.Palette, now func() time.Time) bool {
 
 	// The run's own agent, never --suggest-agent: that one was asked which
 	// reviews apply, which says nothing about who should write commits, and a
@@ -995,7 +1007,7 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	err := runner.CommitNow(ctx, runner.CommitOpts{
 		Dir: dir, Agent: spec, Bin: opts.bin, Push: opts.push, Yolo: opts.yolo,
 		Timeout: opts.timeout,
-		Out:     func(line string) { fmt.Fprintln(out, pal.dim("  "+line)) },
+		Out:     func(line string) { fmt.Fprintln(out, pal.Dim("  "+line)) },
 		Now:     now,
 	})
 	if err != nil {

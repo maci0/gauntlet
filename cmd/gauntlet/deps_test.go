@@ -69,7 +69,7 @@ var directModuleSites = map[string][]string{
 	"github.com/charmbracelet/lipgloss":  {"internal/ui/"},
 	"github.com/muesli/termenv":          {"internal/ui/"},
 	"github.com/maci0/toktop":            {"cmd/gauntlet/", "internal/runner/"},
-	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/agent/", "internal/normalize/"},
+	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/report/", "internal/agent/", "internal/normalize/"},
 	"golang.org/x/text":                  {"cmd/gauntlet/", "internal/evidence/", "internal/fuzzy/", "internal/prompt/", "internal/runner/", "internal/ui/"},
 	"golang.org/x/term":                  {"cmd/gauntlet/"},
 }

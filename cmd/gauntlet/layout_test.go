@@ -28,6 +28,10 @@ var allowedInternalImports = map[string][]string{
 	"internal/journal":      {"internal/gauntlethome", "internal/humanize"},
 	"internal/normalize":    {},
 	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize"},
+	"internal/report": {
+		"internal/agent", "internal/envx", "internal/fuzzy", "internal/humanize",
+		"internal/normalize", "internal/prompt", "internal/runner",
+	},
 	"internal/runner": {
 		"internal/agent", "internal/evidence", "internal/fuzzy", "internal/ghx", "internal/gitx",
 		"internal/humanize", "internal/normalize", "internal/prompt", "internal/runx",
@@ -43,6 +47,17 @@ var allowedInternalImports = map[string][]string{
 // TestInternalImportGraph fails when a package imports another against the
 // documented direction, when a new internal package appears undeclared, when
 // a declared package is gone, or when the map permits an edge nothing takes.
+// report importing agent is its test building a result's agent; the results
+// it prints carry one, so the edge is the same one runner has, and it is the
+// only place in internal/report that names a spec.
+// report importing runner is the plain reporter reading the same event types
+// the dashboard does, and the summary reading result types; it is the
+// counterpart of ui importing runner, one screen and one log. report importing
+// prompt is the --list rows naming reviews and sets, and importing fuzzy is
+// the collation the summary orders its merged per-agent rows and failure list
+// by. Nothing else in internal/ renders for a reader, so the palette, the
+// terminal-cell measurement, and the color decision have one owner rather than
+// being spelled per file in the composition root.
 // ui importing runner is the dashboard reading event types; the picker takes
 // FastSuggest on PickConfig so it does not need that edge for itself. ui
 // importing envx is the motion-off variables read by the one boolean reader,

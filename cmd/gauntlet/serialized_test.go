@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/maci0/gauntlet/internal/report"
 )
 
 // splitWriter takes a line apart between two destinations, the way an
@@ -43,7 +45,7 @@ func (s *splitWriter) whole() string {
 func TestSerializedKeepsLinesWholeUnderAMultiWriter(t *testing.T) {
 	var log bytes.Buffer
 	dst := &splitWriter{}
-	out := &serialized{w: io.MultiWriter(dst, &log)}
+	out := &report.Serialized{W: io.MultiWriter(dst, &log)}
 
 	const writers, lines = 4, 250
 	var wg sync.WaitGroup
@@ -84,8 +86,8 @@ func TestLogWritersSerializeEveryWriterToTheFile(t *testing.T) {
 	}
 	defer f.Close()
 	var screen bytes.Buffer
-	log, _ := logWriters(&screen, f)
-	stdout := io.Writer(&serialized{w: log})
+	log, _ := report.LogWriters(&screen, f)
+	stdout := io.Writer(&report.Serialized{W: log})
 
 	const writers, perWriter = 3, 200
 	var wg sync.WaitGroup

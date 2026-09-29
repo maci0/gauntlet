@@ -25,6 +25,7 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runx"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"golang.org/x/term"
@@ -129,7 +130,7 @@ type options struct {
 // invocation reads the same way: cause first, then the screen.
 func reportUsage(o *options, err error) error {
 	fmt.Fprintln(os.Stderr, err)
-	printUsage(os.Stderr, palette{on: colorEnabled(os.Stderr) && !o.noColor}, o.width)
+	printUsage(os.Stderr, report.Palette{On: report.ColorEnabled(os.Stderr) && !o.noColor}, o.width)
 	return parseError{err}
 }
 
@@ -290,7 +291,7 @@ func parseFlags(argv []string) (*options, error) {
 	fs.Usage = func() {}
 	if err := fs.Parse(expandAttachedValues(fs, argv)); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout) && !o.noColor}, o.width)
+			printUsage(os.Stdout, report.Palette{On: report.ColorEnabled(os.Stdout) && !o.noColor}, o.width)
 			return nil, errHelp
 		}
 		return nil, reportUsage(o, enhanceFlagError(err, o, fs))
@@ -326,7 +327,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.Usage = func() {
 		// A --no-color seen before the error applies here too, matching how
 		// -h renders its screen.
-		printUsage(os.Stderr, palette{on: colorEnabled(os.Stderr) && !o.noColor}, o.width)
+		printUsage(os.Stderr, report.Palette{On: report.ColorEnabled(os.Stderr) && !o.noColor}, o.width)
 	}
 
 	alias := func(short, long string, register func(name string)) {
@@ -557,7 +558,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	// The `help` word is the same request, and is parsed rather than handled
 	// before flags so `gauntlet --no-color help` still honors --no-color.
 	if raw.help || o.command == "help" {
-		printUsage(os.Stdout, palette{on: colorEnabled(os.Stdout) && !o.noColor}, o.width)
+		printUsage(os.Stdout, report.Palette{On: report.ColorEnabled(os.Stdout) && !o.noColor}, o.width)
 		return nil, errHelp
 	}
 

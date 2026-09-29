@@ -1,7 +1,15 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package main
+// Package report renders a run for a reader, on a plain stream rather than on
+// a screen. It is the counterpart to internal/ui: both consume the same event
+// bus and the same result types, one drawing a dashboard and one writing lines,
+// and a run with no TTY is not a run with no report.
+//
+// It takes a run's contribution as values (a Dir per directory, a Result per
+// review) rather than the composition root's own run state, so the layering
+// stays one-way: cmd/gauntlet decides what ran, this decides how it reads.
+package report
 
 import (
 	"fmt"
@@ -24,56 +32,56 @@ import (
 
 // ANSI styling for the plain (non-TUI) output. Kept to a handful of codes:
 // this is a log, and the dashboard is where color does real work.
-type palette struct{ on bool }
+type Palette struct{ On bool }
 
-func (p palette) wrap(code, s string) string {
-	if !p.on {
+func (p Palette) wrap(code, s string) string {
+	if !p.On {
 		return s
 	}
 	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
-func (p palette) bold(s string) string { return p.wrap("1", s) }
+func (p Palette) Bold(s string) string { return p.wrap("1", s) }
 
 // think renders reasoning: dim and italic, so it stays legible but visibly
 // subordinate to what the agent actually wrote.
-func (p palette) think(s string) string  { return p.wrap("2;3", s) }
-func (p palette) dim(s string) string    { return p.wrap("2", s) }
-func (p palette) red(s string) string    { return p.wrap("31", s) }
-func (p palette) green(s string) string  { return p.wrap("32", s) }
-func (p palette) yellow(s string) string { return p.wrap("33", s) }
-func (p palette) blue(s string) string   { return p.wrap("34", s) }
+func (p Palette) Think(s string) string  { return p.wrap("2;3", s) }
+func (p Palette) Dim(s string) string    { return p.wrap("2", s) }
+func (p Palette) Red(s string) string    { return p.wrap("31", s) }
+func (p Palette) Green(s string) string  { return p.wrap("32", s) }
+func (p Palette) Yellow(s string) string { return p.wrap("33", s) }
+func (p Palette) Blue(s string) string   { return p.wrap("34", s) }
 
 // Consumer-facing environment variables this package reads. One definition,
 // so the help screen's environment section (helpEnvVars in help.go) cannot
-// drift from what colorEnabled actually reads.
+// drift from what ColorEnabled actually reads.
 const (
-	envNoColor       = "NO_COLOR"
-	envTerm          = "TERM"
-	envCLIColorForce = "CLICOLOR_FORCE"
-	envForceColor    = "FORCE_COLOR"
+	EnvNoColor       = "NO_COLOR"
+	EnvTerm          = "TERM"
+	EnvCLIColorForce = "CLICOLOR_FORCE"
+	EnvForceColor    = "FORCE_COLOR"
 )
 
-// termDumb is the TERM value that cannot render a palette.
+// termDumb is the TERM value that cannot render a Palette.
 const termDumb = "dumb"
 
-// colorEnabled honors NO_COLOR (set at all, see no-color.org), TERM=dumb, and
+// ColorEnabled honors NO_COLOR (set at all, see no-color.org), TERM=dumb, and
 // whether the stream is a terminal. CLICOLOR_FORCE / FORCE_COLOR turn color
 // back on for a pipe, which is what `gauntlet … | less -R` needs.
 //
 // TERM is compared the way every other documented value is read, trimmed and
 // case-folded. An exact match let TERM=DUMB, or a TERM carrying a trailing
-// space from a wrapper that appends to it, keep a palette a dumb terminal
+// space from a wrapper that appends to it, keep a Palette a dumb terminal
 // cannot show, while the variable two lines below answered the same question
 // the documented way.
-func colorEnabled(f *os.File) bool {
-	if _, set := os.LookupEnv(envNoColor); set {
+func ColorEnabled(f *os.File) bool {
+	if _, set := os.LookupEnv(EnvNoColor); set {
 		return false
 	}
-	if strings.EqualFold(strings.TrimSpace(os.Getenv(envTerm)), termDumb) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv(EnvTerm)), termDumb) {
 		return false
 	}
-	for _, name := range []string{envCLIColorForce, envForceColor} {
+	for _, name := range []string{EnvCLIColorForce, EnvForceColor} {
 		if envx.On(os.Getenv(name)) {
 			return true
 		}
@@ -82,94 +90,94 @@ func colorEnabled(f *os.File) bool {
 	return err == nil && fi.Mode()&os.ModeCharDevice != 0
 }
 
-// serialized makes one writer safe for several goroutines. The plain run
-// writes to the same destination from the reporter goroutine and from both
+// Serialized makes one writer safe for several goroutines. The plain run
+// writes to the same destination from the Reporter goroutine and from both
 // signal handlers, and with --log that destination is an io.MultiWriter: its
 // Write is a loop of independent writes, so an interleaved one leaves a signal
 // line wedged into the middle of an agent's output line and a truncated line
 // in the log file. The lock makes each caller's line one unit of work.
-type serialized struct {
+type Serialized struct {
 	mu sync.Mutex
-	w  io.Writer
+	W  io.Writer
 }
 
-func (s *serialized) Write(p []byte) (int, error) {
+func (s *Serialized) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.w.Write(p)
+	return s.W.Write(p)
 }
 
-// logWriters returns the --log destination and the console stream that tees to
+// LogWriters returns the --log destination and the console stream that tees to
 // it. The file carries a lock of its own rather than borrowing the console
 // stream's: while the dashboard owns the screen, the run-control messages, the
-// file reporter, and both signal handlers write to the file alone, and only the
+// file Reporter, and both signal handlers write to the file alone, and only the
 // lines the console stream copies would otherwise be covered. Two writers on
 // the same file without one lock between them can split a line, since a write
 // the kernel accepts only in part is finished in a second call.
-func logWriters(console, f io.Writer) (log, out io.Writer) {
-	log = &serialized{w: f}
+func LogWriters(console, f io.Writer) (log, out io.Writer) {
+	log = &Serialized{W: f}
 	return log, io.MultiWriter(console, log)
 }
 
-// errWriter remembers the first write error and ignores every write after it,
+// ErrWriter remembers the first write error and ignores every write after it,
 // so a command built line by line can report the failure once, at the end,
 // instead of checking after each line.
-type errWriter struct {
-	out io.Writer
-	err error
+type ErrWriter struct {
+	Out io.Writer
+	Err error
 }
 
-func (e *errWriter) printf(format string, args ...any) {
-	if e.err == nil {
-		_, e.err = fmt.Fprintf(e.out, format, args...)
+func (e *ErrWriter) Printf(format string, args ...any) {
+	if e.Err == nil {
+		_, e.Err = fmt.Fprintf(e.Out, format, args...)
 	}
 }
 
-func (e *errWriter) println(args ...any) {
-	if e.err == nil {
-		_, e.err = fmt.Fprintln(e.out, args...)
+func (e *ErrWriter) Println(args ...any) {
+	if e.Err == nil {
+		_, e.Err = fmt.Fprintln(e.Out, args...)
 	}
 }
 
-// reporter turns the event stream into terminal output. It is the non-TUI
+// Reporter turns the event stream into terminal output. It is the non-TUI
 // consumer, and the only one that writes to stdout.
-type reporter struct {
-	out      io.Writer
-	pal      palette
-	multiDir bool
-	quiet    bool
+type Reporter struct {
+	Out      io.Writer
+	Pal      Palette
+	MultiDir bool
+	Quiet    bool
 	// now stamps a line whose event carried no timestamp of its own. Nil
 	// means time.Now; the run's own clock is passed in so a line written
 	// outside the event stream reads the same clock the events do.
-	now func() time.Time
+	Now func() time.Time
 }
 
-func (r *reporter) logf(at time.Time, format string, args ...any) {
+func (r *Reporter) Logf(at time.Time, format string, args ...any) {
 	if at.IsZero() {
 		at = r.clock()()
 	}
-	fmt.Fprintf(r.out, "[%s] %s\n", humanize.Clock(at),
+	fmt.Fprintf(r.Out, "[%s] %s\n", humanize.Clock(at),
 		normalize.Sanitize(fmt.Sprintf(format, args...)))
 }
 
-// clock is the reporter's clock: the injected one, or wall time.
-func (r *reporter) clock() func() time.Time {
-	if r.now != nil {
-		return r.now
+// clock is the Reporter's clock: the injected one, or wall time.
+func (r *Reporter) clock() func() time.Time {
+	if r.Now != nil {
+		return r.Now
 	}
 	return time.Now
 }
 
 // Consume drains the bus until it closes.
-func (r *reporter) Consume(events <-chan runner.Event) {
+func (r *Reporter) Consume(events <-chan runner.Event) {
 	for ev := range events {
 		r.handle(ev)
 	}
 }
 
-func (r *reporter) handle(ev runner.Event) {
+func (r *Reporter) handle(ev runner.Event) {
 	tag := ""
-	if r.multiDir && ev.Dir != "" {
+	if r.MultiDir && ev.Dir != "" {
 		tag = "[" + filepath.Base(ev.Dir) + "] "
 	}
 	switch ev.Kind {
@@ -177,22 +185,22 @@ func (r *reporter) handle(ev runner.Event) {
 		// The effective seed, not the configured one: --seed 0 derives it
 		// from the clock, so this is the only place a headless run states
 		// the seed that replays it.
-		r.logf(ev.Time, "%sseed %d, rerun with --seed %d", tag, ev.Seed, ev.Seed)
+		r.Logf(ev.Time, "%sseed %d, rerun with --seed %d", tag, ev.Seed, ev.Seed)
 	case runner.EvLog:
-		r.logf(ev.Time, "%s%s", tag, ev.Text)
+		r.Logf(ev.Time, "%s%s", tag, ev.Text)
 	case runner.EvOutput:
-		if r.quiet {
+		if r.Quiet {
 			return
 		}
 		line := r.paint(ev.LineKind, ev.Text)
 		if ev.Repeat > 1 {
-			line = fmt.Sprintf("%s %s", line, r.pal.dim(fmt.Sprintf("(x%d)", ev.Repeat)))
+			line = fmt.Sprintf("%s %s", line, r.Pal.Dim(fmt.Sprintf("(x%d)", ev.Repeat)))
 		}
-		prefix := r.pal.dim(fmt.Sprintf("%s%s │ ", tag, ev.Review))
-		fmt.Fprintf(r.out, "%s%s\n", prefix, line)
+		prefix := r.Pal.Dim(fmt.Sprintf("%s%s │ ", tag, ev.Review))
+		fmt.Fprintf(r.Out, "%s%s\n", prefix, line)
 	case runner.EvMerge:
 		if ev.Status == runner.StatusConflict {
-			r.logf(ev.Time, "%sMERGE CONFLICT: %s kept on %s", tag, ev.Review, ev.Branch)
+			r.Logf(ev.Time, "%sMERGE CONFLICT: %s kept on %s", tag, ev.Review, ev.Branch)
 		}
 	case runner.EvLoopEnd:
 		lines := ""
@@ -203,28 +211,28 @@ func (r *reporter) handle(ev runner.Event) {
 		if d, ok := humanize.Seconds(ev.Elapsed); ok {
 			loopElapsed = d
 		}
-		fmt.Fprintln(r.out)
-		r.logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
+		fmt.Fprintln(r.Out)
+		r.Logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
 			humanize.Duration(loopElapsed), lines)
-		fmt.Fprintln(r.out)
+		fmt.Fprintln(r.Out)
 	}
 }
 
 // paint colors one agent output line by what it is. Diffs are the case that
 // matters: a pasted patch is unreadable without the signs standing out.
-func (r *reporter) paint(k normalize.Kind, text string) string {
+func (r *Reporter) paint(k normalize.Kind, text string) string {
 	switch k {
 	case normalize.DiffAdd:
-		return r.pal.green(text)
+		return r.Pal.Green(text)
 	case normalize.DiffDel:
-		return r.pal.red(text)
+		return r.Pal.Red(text)
 	case normalize.DiffMeta:
-		return r.pal.bold(text)
+		return r.Pal.Bold(text)
 	case normalize.Thinking:
-		return r.pal.think(text)
+		return r.Pal.Think(text)
 	case normalize.Error:
 		// Errors are red everywhere else this program renders them (the
-		// dashboard's feed, doctor's failures, the summary's tally); yellow
+		// dashboard's feed, doctor's failures, the Summary's tally); yellow
 		// here would read as a warning, one degree softer than what it is.
 		//
 		// The ! is the dashboard's feedMark, and it is here for the same
@@ -237,16 +245,16 @@ func (r *reporter) paint(k normalize.Kind, text string) string {
 		// exists to surface read as ordinary narration (SC 1.4.1). This is the
 		// path a screen reader and a monochrome terminal actually read, so the
 		// mark cannot live only on the dashboard.
-		return r.pal.red("!" + text)
+		return r.Pal.Red("!" + text)
 	default:
 		return text
 	}
 }
 
-// runTotals is what every directory's stats add up to. Collecting it is
+// Totals is what every directory's stats add up to. Collecting it is
 // separate from printing it: the block below reads one struct, so a new figure
 // is one field here rather than another loop over results.
-type runTotals struct {
+type Totals struct {
 	counts      runner.Counts
 	loops       int
 	commitRuns  int
@@ -263,34 +271,44 @@ type runTotals struct {
 	// dropped is how many results a directory's per-result detail no longer
 	// holds, past the bound in runner.maxDetailResults. Every count above is
 	// exact regardless; only the row lists below are short by this much, and
-	// a summary that quietly printed a short list would read as the whole run.
+	// a Summary that quietly printed a short list would read as the whole run.
 	dropped int
 }
 
-func collectTotals(results []*dirRun) runTotals {
-	var t runTotals
+// Dir is one directory's contribution to a run's totals. The composition root
+// builds these from its own run state; the summary reads a shape, not the
+// CLI's per-directory record, so it needs nothing from a run but what it
+// prints. A nil Stats is a directory that contributed no result, and is
+// counted as nothing rather than as a zero.
+type Dir struct {
+	Stats *runner.Stats
+	Loops int
+}
+
+func collectTotals(dirs []Dir) Totals {
+	var t Totals
 	merged := map[string]runner.AgentSummary{}
-	for _, d := range results {
-		if d.stats == nil {
+	for _, d := range dirs {
+		if d.Stats == nil {
 			continue
 		}
-		t.counts.Add(d.stats.Counts())
-		i, dl, tok, at, tm, hl := d.stats.Totals()
+		t.counts.Add(d.Stats.Counts())
+		i, dl, tok, at, tm, hl := d.Stats.Totals()
 		t.ins, t.del, t.tokens = t.ins+i, t.del+dl, t.tokens+tok
 		t.agentTime += at
 		t.timed += tm
 		t.haveLines = t.haveLines || hl
-		t.loops += d.loops
-		t.commitRuns += d.stats.CommitRuns()
-		t.commitFails += d.stats.CommitFails()
-		t.dropped += d.stats.DetailDropped()
-		t.thinking += d.stats.Thinking()
-		for _, r := range d.stats.Results() {
+		t.loops += d.Loops
+		t.commitRuns += d.Stats.CommitRuns()
+		t.commitFails += d.Stats.CommitFails()
+		t.dropped += d.Stats.DetailDropped()
+		t.thinking += d.Stats.Thinking()
+		for _, r := range d.Stats.Results() {
 			if r.URL != "" {
 				t.pullRequest = append(t.pullRequest, r)
 			}
 		}
-		for _, a := range d.stats.ByAgent() {
+		for _, a := range d.Stats.ByAgent() {
 			cur := merged[a.Label]
 			cur.Label = a.Label
 			cur.Counts.Add(a.Counts)
@@ -298,7 +316,7 @@ func collectTotals(results []*dirRun) runTotals {
 			cur.Elapsed += a.Elapsed
 			merged[a.Label] = cur
 		}
-		t.failures = append(t.failures, d.stats.Failures()...)
+		t.failures = append(t.failures, d.Stats.Failures()...)
 	}
 	t.byAgent = make([]runner.AgentSummary, 0, len(merged))
 	for _, a := range merged {
@@ -318,20 +336,20 @@ func collectTotals(results []*dirRun) runTotals {
 	return t
 }
 
-// summary prints the end-of-run statistics block.
-func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) {
-	t := collectTotals(results)
+// Summary prints the end-of-run statistics block.
+func Summary(out io.Writer, pal Palette, dirs []Dir, wall time.Duration) {
+	t := collectTotals(dirs)
 	fmt.Fprintln(out)
-	fmt.Fprintln(out, pal.bold("=== Review loop stopped ==="))
+	fmt.Fprintln(out, pal.Bold("=== Review loop stopped ==="))
 
-	if len(results) > 1 {
-		fmt.Fprintf(out, "%s %d\n", pal.blue("Directories:"), len(results))
+	if len(dirs) > 1 {
+		fmt.Fprintf(out, "%s %d\n", pal.Blue("Directories:"), len(dirs))
 	}
-	fmt.Fprintf(out, "%s %d\n", pal.blue("Completed loops:"), t.loops)
+	fmt.Fprintf(out, "%s %d\n", pal.Blue("Completed loops:"), t.loops)
 	if len(t.pullRequest) > 0 {
 		// One field per line: branch names and URLs are reference detail, and
 		// cramming them onto one row makes none of the three readable.
-		fmt.Fprintln(out, pal.bold("Pull requests"))
+		fmt.Fprintln(out, pal.Bold("Pull requests"))
 		for _, pr := range t.pullRequest {
 			fmt.Fprintf(out, "  %s\n", pr.Review)
 			fmt.Fprintf(out, "    branch  %s\n", pr.Branch)
@@ -339,9 +357,9 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			fmt.Fprintf(out, "    url     %s\n", pr.URL)
 		}
 	}
-	fmt.Fprintf(out, "%s %d\n", pal.blue("Total reviews run:"), t.counts.Total())
-	fmt.Fprintf(out, "  Passed: %s\n", pal.green(fmt.Sprint(t.counts.OK)))
-	fmt.Fprintf(out, "  Failed: %s\n", pal.red(fmt.Sprint(t.counts.Fail+t.counts.Timeout)))
+	fmt.Fprintf(out, "%s %d\n", pal.Blue("Total reviews run:"), t.counts.Total())
+	fmt.Fprintf(out, "  Passed: %s\n", pal.Green(fmt.Sprint(t.counts.OK)))
+	fmt.Fprintf(out, "  Failed: %s\n", pal.Red(fmt.Sprint(t.counts.Fail+t.counts.Timeout)))
 	for _, row := range []struct {
 		label string
 		n     int
@@ -359,13 +377,13 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		// The counts above are exact; only the row lists (pull requests,
 		// failures) are short. Say so rather than let a truncated list read as
 		// the whole run.
-		fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
+		fmt.Fprintf(out, "  %s\n", pal.Dim(fmt.Sprintf(
 			"note: the per-review detail list holds the most recent %d results; %d earlier ones are counted above but not listed",
 			runner.MaxDetailResults, t.dropped)))
 	}
-	fmt.Fprintf(out, "%s %s\n", pal.blue("Total time:"), humanize.Duration(wall))
+	fmt.Fprintf(out, "%s %s\n", pal.Blue("Total time:"), humanize.Duration(wall))
 	if t.timed > 0 {
-		fmt.Fprintf(out, "%s %s across %d reviews (avg %s)\n", pal.blue("Agent time:"),
+		fmt.Fprintf(out, "%s %s across %d reviews (avg %s)\n", pal.Blue("Agent time:"),
 			humanize.Duration(t.agentTime), t.timed,
 			humanize.Duration(t.agentTime/time.Duration(t.timed)))
 	}
@@ -381,45 +399,45 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 			pct := humanize.Share(t.thinking, t.tokens)
 			note = fmt.Sprintf(", %s reasoning (%d%%)", humanize.Count(t.thinking), pct)
 		}
-		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.blue("Tokens:"),
+		fmt.Fprintf(out, "%s %s reported%s%s\n", pal.Blue("Tokens:"),
 			humanize.Count(t.tokens), rate, note)
 	}
 	if t.haveLines {
-		fmt.Fprintf(out, "%s +%d -%d\n", pal.blue("Lines changed:"), t.ins, t.del)
+		fmt.Fprintf(out, "%s +%d -%d\n", pal.Blue("Lines changed:"), t.ins, t.del)
 	}
 	if t.commitRuns > 0 {
 		note := ""
 		if t.commitFails > 0 {
 			note = fmt.Sprintf(", %d failed (changes may be uncommitted)", t.commitFails)
 		}
-		fmt.Fprintf(out, "%s %d%s\n", pal.blue("Commit steps:"), t.commitRuns, note)
+		fmt.Fprintf(out, "%s %d%s\n", pal.Blue("Commit steps:"), t.commitRuns, note)
 	}
 	if len(t.byAgent) > 1 {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, pal.bold("Per-agent stats"))
+		fmt.Fprintln(out, pal.Bold("Per-agent stats"))
 		for _, a := range t.byAgent {
 			rate := ""
 			if tps := a.TokensPerSec(); tps > 0 {
 				rate = fmt.Sprintf(", ~%.0f tok/s", tps)
 			}
 			fmt.Fprintf(out, "  %s ok=%d fail=%d timeout=%d%s\n",
-				padCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
+				PadCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
 		}
 	}
 	if len(t.failures) > 0 {
 		fmt.Fprintln(out)
-		fmt.Fprintln(out, pal.bold("Failed reviews"))
+		fmt.Fprintln(out, pal.Bold("Failed reviews"))
 		for _, f := range t.failures {
-			fmt.Fprintf(out, "  - %s (%s): %s\n", f.Review, f.Agent.Label(), failureDetail(f))
+			fmt.Fprintf(out, "  - %s (%s): %s\n", f.Review, f.Agent.Label(), FailureDetail(f))
 		}
 	}
 }
 
-// failureDetail is the one-line reason a review did not pass: what the agent
+// FailureDetail is the one-line reason a review did not pass: what the agent
 // said when it said something, and the outcome's own vocabulary when it did
 // not. Every status that counts as a failure has a line here, so none prints
 // as an empty parenthesis.
-func failureDetail(f runner.Result) string {
+func FailureDetail(f runner.Result) string {
 	switch f.Status {
 	case runner.StatusTimeout:
 		return "timeout"
@@ -442,52 +460,52 @@ func failureDetail(f runner.Result) string {
 	return string(f.Status)
 }
 
-// listReviews prints the available reviews, which are scheduled, and the sets.
-func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string, width int) error {
+// ListReviews prints the available reviews, which are scheduled, and the sets.
+func ListReviews(out io.Writer, pal Palette, set prompt.Set, scheduled []string, width int) error {
 	weight := map[string]int{}
 	for _, r := range scheduled {
 		weight[r]++
 	}
-	w := errWriter{out: out}
-	w.printf("Available reviews (%d):\n", set.Len())
+	w := ErrWriter{Out: out}
+	w.Printf("Available reviews (%d):\n", set.Len())
 	// The marks below are only as readable as their legend: spell them out
-	// once, right where they first appear. wrapIndent indents only its
+	// once, right where they first appear. WrapIndent indents only its
 	// continuation lines, so the first line carries its own.
-	w.println(pal.dim(strings.Repeat(" ", 4) + wrapIndent(
+	w.Println(pal.Dim(strings.Repeat(" ", 4) + WrapIndent(
 		"✓ scheduled   ○ available, not selected   xN selected with repeated weight   "+
 			"[project] discovered in the reviewed tree", width, 4)))
 	nameCol := 0
 	markCol := 2
 	for _, n := range set.Names {
-		nameCol = max(nameCol, cells(n))
-		// "x10" is three columns where every other mark is two, and padCells
+		nameCol = max(nameCol, Cells(n))
+		// "x10" is three columns where every other mark is two, and PadCells
 		// only pads, so a mark wider than its column would push the rest of
 		// that row out of line with the rows around it.
-		markCol = max(markCol, cells(reviewMark(weight[n])))
+		markCol = max(markCol, Cells(ReviewMark(weight[n])))
 	}
 	nameCol++
 	for _, name := range set.Names {
 		rev, _ := set.Get(name)
-		mark := reviewMark(weight[name])
+		mark := ReviewMark(weight[name])
 		origin := ""
 		if rev.IsProject() {
 			origin = "[project]"
 		}
-		prefix := "  " + padCells(mark, markCol) + " " + padCells(name, nameCol) + padCells(origin, 10) + " "
+		prefix := "  " + PadCells(mark, markCol) + " " + PadCells(name, nameCol) + PadCells(origin, 10) + " "
 		desc := rev.Summary()
 		if desc == "" {
 			desc = "(no description)"
 		}
-		room := max(width-cells(prefix), 20)
-		w.println(prefix + pal.dim(trimCells(desc, room)))
+		room := max(width-Cells(prefix), 20)
+		w.Println(prefix + pal.Dim(TrimCells(desc, room)))
 	}
 
-	w.println()
+	w.Println()
 	names := prompt.SetNames()
-	w.printf("Sets usable with --reviews/--exclude (%d):\n", len(names))
+	w.Printf("Sets usable with --reviews/--exclude (%d):\n", len(names))
 	setCol := 0
 	for _, n := range names {
-		setCol = max(setCol, cells(n))
+		setCol = max(setCol, Cells(n))
 	}
 	setCol++
 	for _, name := range names {
@@ -496,7 +514,7 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 			if name == "project" {
 				count = len(set.ProjectNames())
 			}
-			w.printf("  %s %s (%d)\n", padCells(name, setCol), desc, count)
+			w.Printf("  %s %s (%d)\n", PadCells(name, setCol), desc, count)
 			continue
 		}
 		var present []string
@@ -509,14 +527,14 @@ func listReviews(out io.Writer, pal palette, set prompt.Set, scheduled []string,
 		if body == "" {
 			body = "(no members in this prompt dir)"
 		}
-		w.printf("  %s %s\n", padCells(name, setCol), wrapIndent(body, width, setCol+3))
+		w.Printf("  %s %s\n", PadCells(name, setCol), WrapIndent(body, width, setCol+3))
 	}
-	return w.err
+	return w.Err
 }
 
-// reviewMark is the leading glyph for a review in the listing: how often it
+// ReviewMark is the leading glyph for a review in the listing: how often it
 // was scheduled, with the repeat weight spelled out.
-func reviewMark(weight int) string {
+func ReviewMark(weight int) string {
 	switch {
 	case weight > 1:
 		return fmt.Sprintf("x%d", weight)
@@ -527,54 +545,54 @@ func reviewMark(weight int) string {
 	}
 }
 
-// cells is how many terminal columns s occupies.
+// Cells is how many terminal columns s occupies.
 //
 // Neither bytes nor runes answer that. A CJK glyph is two columns wide and a
 // combining mark is none, so a column budget counted either way lets a review
 // name from the reviewed tree push everything after it out of line. The
 // dashboard already measures this way; these listings are the same text on
 // the same terminal, and were the last place still counting something else.
-func cells(s string) int { return uniseg.StringWidth(s) }
+func Cells(s string) int { return uniseg.StringWidth(s) }
 
-// padCells right-pads s to w terminal columns. fmt's %-*s pads to a rune
+// PadCells right-pads s to w terminal columns. fmt's %-*s pads to a rune
 // count, which is the same number only for text that happens to be narrow.
-func padCells(s string, w int) string {
-	if gap := w - cells(s); gap > 0 {
+func PadCells(s string, w int) string {
+	if gap := w - Cells(s); gap > 0 {
 		return s + strings.Repeat(" ", gap)
 	}
 	return s
 }
 
-// padCellsLeft left-pads s to w terminal columns, the %*s side. fmt's
-// right-aligning verb has the same rune-count limit padCells exists to avoid.
-func padCellsLeft(s string, w int) string {
-	if gap := w - cells(s); gap > 0 {
+// PadCellsLeft left-pads s to w terminal columns, the %*s side. fmt's
+// right-aligning verb has the same rune-count limit PadCells exists to avoid.
+func PadCellsLeft(s string, w int) string {
+	if gap := w - Cells(s); gap > 0 {
 		return strings.Repeat(" ", gap) + s
 	}
 	return s
 }
 
-// reviewNameColumn is the width the per-review listings give a review name,
-// one column wider than the widest of them. Measured in cells for the reason
-// cells exists: every one of these names can come from a reviewed repository
+// ReviewNameColumn is the width the per-review listings give a review name,
+// one column wider than the widest of them. Measured in Cells for the reason
+// Cells exists: every one of these names can come from a reviewed repository
 // and be written in any script, and a column budget counted in bytes or runes
 // is short by exactly the double-width glyphs in the longest name, which puts
 // the whole rest of the line one column-group left of the header.
-func reviewNameColumn(names []string) int {
+func ReviewNameColumn(names []string) int {
 	w := 0
 	for _, n := range names {
-		w = max(w, cells(n))
+		w = max(w, Cells(n))
 	}
 	return w + 1
 }
 
-// trimCells cuts s to at most w terminal columns, ellipsis included, between
+// TrimCells cuts s to at most w terminal columns, ellipsis included, between
 // grapheme clusters so a cut never lands inside one.
-func trimCells(s string, w int) string {
+func TrimCells(s string, w int) string {
 	if w <= 0 {
 		return ""
 	}
-	if cells(s) <= w {
+	if Cells(s) <= w {
 		return s
 	}
 	if w == 1 {
@@ -584,7 +602,7 @@ func trimCells(s string, w int) string {
 	used := 0
 	for len(s) > 0 {
 		cluster, rest, _, _ := uniseg.FirstGraphemeClusterInString(s, -1)
-		cw := cells(cluster)
+		cw := Cells(cluster)
 		if used+cw > w-1 { // one column is reserved for the ellipsis
 			break
 		}
@@ -595,18 +613,18 @@ func trimCells(s string, w int) string {
 	return strings.TrimRight(b.String(), " ") + "…"
 }
 
-// wrapIndent wraps a comma-separated list under a hanging indent. Columns
-// count terminal cells, the same measurement cells gives every other column
+// WrapIndent wraps a comma-separated list under a hanging indent. Columns
+// count terminal Cells, the same measurement Cells gives every other column
 // here, so a name from the reviewed tree that is not narrow does not push the
 // rest of its line out of place.
-func wrapIndent(s string, width, indent int) string {
+func WrapIndent(s string, width, indent int) string {
 	if width-indent < 20 {
 		return s
 	}
 	var b strings.Builder
 	col := indent
 	for i, word := range strings.Split(s, " ") {
-		n := cells(word)
+		n := Cells(word)
 		if i > 0 {
 			if col+n+1 > width {
 				b.WriteString("\n" + strings.Repeat(" ", indent))

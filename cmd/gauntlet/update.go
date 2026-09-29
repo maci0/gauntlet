@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
@@ -66,7 +67,7 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 }
 
 // cmdUpdate implements `gauntlet update`.
-func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) int {
+func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *options) int {
 	rel, err := selfupdate.Check(ctx, opts.updateRepo)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
@@ -82,7 +83,7 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) i
 		}
 		return exitOK
 	}
-	if _, err := fmt.Fprintf(out, "New release: %s (running %s)\n", pal.bold(rel.TagName), version); err != nil {
+	if _, err := fmt.Fprintf(out, "New release: %s (running %s)\n", pal.Bold(rel.TagName), version); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
 		return exitFail
 	}

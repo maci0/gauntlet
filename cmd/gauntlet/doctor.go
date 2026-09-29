@@ -18,16 +18,17 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/report"
 )
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
 // the process exit code: 1 when no agent can be launched at all, or when the
 // state root cannot be written to.
-func doctor(out io.Writer, pal palette, overrides map[string]string, width int) (code int) {
-	w := errWriter{out: out}
+func doctor(out io.Writer, pal report.Palette, overrides map[string]string, width int) (code int) {
+	w := report.ErrWriter{Out: out}
 	defer func() {
-		if w.err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", w.err)
+		if w.Err != nil {
+			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", w.Err)
 			code = exitFail
 		}
 	}()
@@ -51,22 +52,22 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	mark := func(ok bool, missing string) string {
 		if ok {
-			return pal.green("✓")
+			return pal.Green("✓")
 		}
 		if missing == "yellow" {
-			return pal.yellow("✗")
+			return pal.Yellow("✗")
 		}
-		return pal.dim("✗")
+		return pal.Dim("✗")
 	}
 	ratio := func(n, total int) string {
 		s := fmt.Sprintf("%d/%d", n, total)
 		switch {
 		case n == total:
-			return pal.green(s)
+			return pal.Green(s)
 		case n > 0:
-			return pal.yellow(s)
+			return pal.Yellow(s)
 		default:
-			return pal.red(s)
+			return pal.Red(s)
 		}
 	}
 
@@ -74,8 +75,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// are as real as the compiled-in ones and belong in the inventory.
 	agents := agent.AllNames()
 
-	w.println(pal.bold("Agent CLIs") +
-		pal.dim("  (✓ installed, ✗ missing; at least one required)"))
+	w.Println(pal.Bold("Agent CLIs") +
+		pal.Dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
 		bin := agent.Binary(a)
@@ -91,14 +92,14 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			if def.Note != "" {
 				extra += ": " + def.Note
 			}
-			note = pal.dim("  " + extra)
+			note = pal.Dim("  " + extra)
 			// An executable the definition names through a variable the
 			// operator has not exported expands to nothing, and the launch
 			// path refuses it. The row says which variable, rather than
 			// showing a missing mark beside a definition that reads as
 			// complete.
 			if err := agent.BinaryError(a); err != nil {
-				note = pal.red("  " + err.Error())
+				note = pal.Red("  " + err.Error())
 			}
 		}
 		if path := overrides[a]; path != "" {
@@ -109,16 +110,16 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			// (or exit 0) on an empty box.
 			if binRunnable(path) {
 				ok = true
-				note = pal.dim("  --bin " + path)
+				note = pal.Dim("  --bin " + path)
 			} else {
 				ok = false
-				note = pal.red("  --bin " + path + " is not a runnable file")
+				note = pal.Red("  --bin " + path + " is not a runnable file")
 			}
 		} else if agent.IsOptIn(a) && note == "" {
-			note = pal.dim("  opt-in: name it with --agents")
+			note = pal.Dim("  opt-in: name it with --agents")
 		} else if a == "dsh" && !ok && found["bunx"] != "" {
 			ok = true // launchable, but only when named: bunx fetches on first use
-			note = pal.dim("  via bunx (" + agent.DshNpmPackage + "); name it with --agents")
+			note = pal.Dim("  via bunx (" + agent.DshNpmPackage + "); name it with --agents")
 		}
 		if ok {
 			installed++
@@ -126,11 +127,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				usable++
 			}
 		}
-		w.printf("  %s %s%s\n", mark(ok, "dim"), a, note)
+		w.Printf("  %s %s%s\n", mark(ok, "dim"), a, note)
 	}
 
-	w.println()
-	w.println(pal.bold("Core tools") + pal.dim("  (used by every review)"))
+	w.Println()
+	w.Println(pal.Bold("Core tools") + pal.Dim("  (used by every review)"))
 	coreHave := 0
 	for _, c := range agent.CoreTools {
 		ok := have(c.Name)
@@ -138,7 +139,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			coreHave++
 		}
 		label := strings.ReplaceAll(c.Name, "|", " or ")
-		w.printf("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.dim(c.Purpose))
+		w.Printf("  %s %-24s %s\n", mark(ok, "yellow"), label, pal.Dim(c.Purpose))
 	}
 	// git's floor is a documented requirement, and an older one fails every
 	// review with "unknown option: --end-of-options" rather than anything that
@@ -149,19 +150,19 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			below, known := gitx.BelowFloor(line)
 			switch {
 			case known && below:
-				w.printf("  %s %-24s %s\n", pal.red("✗"), "git version",
-					pal.red(line+" is older than "+gitx.MinVersion+", which every review needs"))
+				w.Printf("  %s %-24s %s\n", pal.Red("✗"), "git version",
+					pal.Red(line+" is older than "+gitx.MinVersion+", which every review needs"))
 			case known:
-				w.printf("  %s %-24s %s\n", pal.green("✓"), "git version", pal.dim(line))
+				w.Printf("  %s %-24s %s\n", pal.Green("✓"), "git version", pal.Dim(line))
 			default:
-				w.printf("  %s %-24s %s\n", pal.yellow("✗"), "git version",
-					pal.yellow("no version in "+strconv.Quote(line)))
+				w.Printf("  %s %-24s %s\n", pal.Yellow("✗"), "git version",
+					pal.Yellow("no version in "+strconv.Quote(line)))
 			}
 		}
 	}
 
-	w.println()
-	w.println(pal.bold("Per-review helpers") + pal.dim("  (* = worth installing anywhere)"))
+	w.Println()
+	w.Println(pal.Bold("Per-review helpers") + pal.Dim("  (* = worth installing anywhere)"))
 	reviews := make([]string, 0, len(agent.ReviewTools)+len(agent.ReviewsWithoutTools))
 	for r := range agent.ReviewTools {
 		reviews = append(reviews, r)
@@ -172,7 +173,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// character, so a nameCol counted either other way is short by the width
 	// of the double-width glyphs in the longest name and every column after
 	// it lands further left than the header above.
-	nameCol := reviewNameColumn(reviews)
+	nameCol := report.ReviewNameColumn(reviews)
 
 	// Tallies are over unique binaries: many tools serve more than one review.
 	seenRec := map[string]bool{}
@@ -180,7 +181,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	for _, review := range reviews {
 		tools := agent.ReviewTools[review]
 		if len(tools) == 0 {
-			w.printf("  %s %s\n", padCells(review, nameCol), pal.dim("no external tools"))
+			w.Printf("  %s %s\n", report.PadCells(review, nameCol), pal.Dim("no external tools"))
 			continue
 		}
 		n := 0
@@ -209,9 +210,9 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				// The '*' carries the recommended distinction when color is
 				// off; styling only reinforces it.
 				if rec {
-					label = pal.bold(label)
+					label = pal.Bold(label)
 				} else {
-					label = pal.dim(label)
+					label = pal.Dim(label)
 				}
 			}
 			missing := "dim"
@@ -220,8 +221,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			}
 			cells = append(cells, mark(ok, missing)+" "+label)
 		}
-		head := fmt.Sprintf("  %s %s ", padCells(review, nameCol), ratio(n, len(tools)))
-		w.println(head + strings.Join(cells, "  "))
+		head := fmt.Sprintf("  %s %s ", report.PadCells(review, nameCol), ratio(n, len(tools)))
+		w.Println(head + strings.Join(cells, "  "))
 	}
 
 	recHave, optHave := 0, 0
@@ -240,12 +241,12 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	fuzzy.Sort(missingRec)
 
-	w.println()
-	w.printf("%s %s   %s %s   %s %s   %s %s\n",
-		pal.bold("Agents"), ratio(installed, len(agents)),
-		pal.bold("Core"), ratio(coreHave, len(agent.CoreTools)),
-		pal.bold("Recommended"), ratio(recHave, len(seenRec)),
-		pal.bold("Stack-specific"), ratio(optHave, len(seenOpt)))
+	w.Println()
+	w.Printf("%s %s   %s %s   %s %s   %s %s\n",
+		pal.Bold("Agents"), ratio(installed, len(agents)),
+		pal.Bold("Core"), ratio(coreHave, len(agent.CoreTools)),
+		pal.Bold("Recommended"), ratio(recHave, len(seenRec)),
+		pal.Bold("Stack-specific"), ratio(optHave, len(seenOpt)))
 
 	// An explicit --bin is the user vouching for one exact file, so a
 	// runnable override counts as an agent even when nothing auto-detects.
@@ -274,20 +275,20 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	case strings.TrimSpace(os.Getenv("GAUNTLET_HOME")) != "":
 		src = "from GAUNTLET_HOME"
 	}
-	w.println(pal.dim("State: " + root + "  (" + src + ")"))
+	w.Println(pal.Dim("State: " + root + "  (" + src + ")"))
 	if p := agent.CustomFilePath(); p != "" {
 		if _, err := os.Stat(p); err == nil {
-			w.println(pal.dim("Definitions: " + p))
+			w.Println(pal.Dim("Definitions: " + p))
 		}
 	}
 	for _, line := range envSettingLines() {
-		w.println(pal.dim(line))
+		w.Println(pal.Dim(line))
 	}
 	// A root that cannot be written loses the run journal, and a run that
 	// cannot journal is only reported by one line of a warning that scrolls
 	// past mid-run. Here it is the finding, before the verdict.
 	if problem := stateRootProblem(root); problem != "" {
-		w.println(pal.red("State root unusable: " + problem))
+		w.Println(pal.Red("State root unusable: " + problem))
 		stateBad = true
 	}
 	// What the state tree holds, so a restore is checked rather than assumed:
@@ -296,16 +297,16 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// Neither changes the verdict, both change what the operator believes they
 	// have.
 	if st, err := journal.Inspect(); err != nil {
-		w.println(pal.yellow("Run history unreadable: " + err.Error()))
+		w.Println(pal.Yellow("Run history unreadable: " + err.Error()))
 	} else if st.Journals > 0 || st.Pruned > 0 || st.Rows > 0 {
 		line := fmt.Sprintf("Run history: %s", humanize.Plural(st.Journals, "journal", "journals"))
 		if st.Disagreed > 0 {
-			w.println(pal.yellow(line + ", " + unmatchedRuns(st)))
+			w.Println(pal.Yellow(line + ", " + unmatchedRuns(st)))
 		} else {
-			w.println(pal.dim(line + ", index agrees"))
+			w.Println(pal.Dim(line + ", index agrees"))
 		}
 		if st.Pruned > 0 {
-			w.println(pal.dim(fmt.Sprintf(
+			w.Println(pal.Dim(fmt.Sprintf(
 				"  %s still recoverable: gauntlet runs --restore <run-id>",
 				humanize.Plural(st.Pruned, "pruned run", "pruned runs"))))
 		}
@@ -313,7 +314,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		// the half-line is not JSON, so the run replays as a shorter run that
 		// looks whole, and a restored archive is checked by its counts.
 		if st.Truncated > 0 {
-			w.println(pal.yellow(fmt.Sprintf(
+			w.Println(pal.Yellow(fmt.Sprintf(
 				"  %s mid-line: its last events are missing, so it lists as a shorter run",
 				humanize.Plural(st.Truncated, "journal ends", "journals end"))))
 		}
@@ -325,29 +326,29 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// loses the review itself, so they are named here, beside the counts an
 	// operator checks a restored tree against.
 	if branches := laneBranches(); len(branches) > 0 {
-		w.println(pal.yellow(fmt.Sprintf("Unlanded reviews: %s a run kept after a merge that did not land",
+		w.Println(pal.Yellow(fmt.Sprintf("Unlanded reviews: %s a run kept after a merge that did not land",
 			humanize.Plural(len(branches), "branch", "branches"))))
 		for _, name := range branches[:min(len(branches), unlandedShown)] {
-			w.println("  " + name)
+			w.Println("  " + name)
 		}
 		if rest := len(branches) - unlandedShown; rest > 0 {
-			w.println(pal.dim(fmt.Sprintf("  and %d more", rest)))
+			w.Println(pal.Dim(fmt.Sprintf("  and %d more", rest)))
 		}
-		w.println(pal.dim("  nothing else holds their commits: " + laneBundleHint))
+		w.Println(pal.Dim("  nothing else holds their commits: " + laneBundleHint))
 	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
 			msg = "No auto-detectable agent CLI found: install one, or name an opt-in agent with --agents."
 		}
-		w.println(pal.red(msg))
+		w.Println(pal.Red(msg))
 		return exitFail
 	}
 	if len(missingRec) > 0 {
-		w.println(pal.dim("Worth installing: ") + wrapIndent(strings.Join(missingRec, " "), width, 2))
+		w.Println(pal.Dim("Worth installing: ") + report.WrapIndent(strings.Join(missingRec, " "), width, 2))
 	}
-	w.println(pal.dim(tokenSourceLine))
-	w.println(pal.dim("Stack-specific tools only matter for the languages you review."))
+	w.Println(pal.Dim(tokenSourceLine))
+	w.Println(pal.Dim("Stack-specific tools only matter for the languages you review."))
 	if stateBad {
 		return exitFail
 	}
