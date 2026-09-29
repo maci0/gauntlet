@@ -113,22 +113,12 @@ func TestWriteSummaryAppliesTheKeepRunsBound(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", home)
 	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
 
-	finish := func(at time.Time, keep int) string {
-		t.Helper()
-		id := journal.NewRunID(at)
-		j, err := journal.Open(id, at)
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeSummary(j, at, at.Add(time.Minute), time.Minute, []string{"/project"}, nil, nil, 0, keep)
-		return id
-	}
-	kept := []string{finish(base, 0), finish(base.Add(time.Hour), 0)}
+	kept := []string{finishRun(t, base, 0), finishRun(t, base.Add(time.Hour), 0)}
 	if _, err := os.Stat(filepath.Join(home, "runs", "2026-01-02", kept[0]+".jsonl")); err != nil {
 		t.Errorf("--keep-runs 0 deleted a run: %v", err)
 	}
 	// A third run with a bound of one drops the two before it and keeps itself.
-	recent := finish(base.Add(2*time.Hour), 1)
+	recent := finishRun(t, base.Add(2*time.Hour), 1)
 	for _, id := range kept {
 		if _, err := os.Stat(filepath.Join(home, "runs", "2026-01-02", id+".jsonl")); err == nil {
 			t.Errorf("run %s survived a bound of one", id)
@@ -154,22 +144,11 @@ func TestWriteSummaryAppliesTheKeepRunsBound(t *testing.T) {
 func TestWriteSummaryReportsTheRunsTheKeepBoundEvicted(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
-	finish := func(at time.Time, keep int) string {
-		t.Helper()
-		id := journal.NewRunID(at)
-		j, err := journal.Open(id, at)
-		if err != nil {
-			t.Fatal(err)
-		}
-		writeSummary(j, at, at.Add(time.Minute), time.Minute, []string{"/project"},
-			nil, nil, 0, keep)
-		return id
-	}
 	for i := range 4 {
-		finish(base.Add(time.Duration(i)*time.Hour), 0)
+		finishRun(t, base.Add(time.Duration(i)*time.Hour), 0)
 	}
 	_, out := captureFD(t, &os.Stderr, func() int {
-		finish(base.Add(4*time.Hour), 1)
+		finishRun(t, base.Add(4*time.Hour), 1)
 		return exitOK
 	})
 	// The four runs it moved aside, less the one the bound keeps: three
@@ -187,12 +166,26 @@ func TestWriteSummaryReportsTheRunsTheKeepBoundEvicted(t *testing.T) {
 	// A later run inside the same bound unlinks the run the bound just left
 	// behind, and says that too rather than passing over it.
 	_, out = captureFD(t, &os.Stderr, func() int {
-		finish(base.Add(5*time.Hour), 1)
+		finishRun(t, base.Add(5*time.Hour), 1)
 		return exitOK
 	})
 	if !strings.Contains(out, "unlinked 1 run") {
 		t.Errorf("a run that unlinked one quarantined run said %q", out)
 	}
+}
+
+// finishRun records a run that started and ended around at and keeps the most
+// recent keep of them, the shape every --keep-runs case needs before its bound
+// applies.
+func finishRun(t *testing.T, at time.Time, keep int) string {
+	t.Helper()
+	id := journal.NewRunID(at)
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSummary(j, at, at.Add(time.Minute), time.Minute, []string{"/project"}, nil, nil, 0, keep)
+	return id
 }
 
 func writeScript(t *testing.T, path, body string) {

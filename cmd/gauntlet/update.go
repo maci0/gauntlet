@@ -77,22 +77,13 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		return exitFail
 	}
 	if !rel.NewerThan(version) {
-		if _, err := fmt.Fprintf(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
-			return exitFail
-		}
-		return exitOK
+		return writeStatus(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName)
 	}
-	if _, err := fmt.Fprintf(out, "New release: %s (running %s)\n", pal.Bold(rel.TagName), version); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
-		return exitFail
+	if code := writeStatus(out, "New release: %s (running %s)\n", pal.Bold(rel.TagName), version); code != exitOK {
+		return code
 	}
 	if opts.checkOnly {
-		if _, err := fmt.Fprintln(out, rel.HTMLURL); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
-			return exitFail
-		}
-		return exitOK
+		return writeStatus(out, "%s\n", rel.HTMLURL)
 	}
 	path, err := selfupdate.Apply(ctx, rel)
 	if err != nil {
@@ -102,7 +93,15 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
 		return exitFail
 	}
-	if _, err := fmt.Fprintf(out, "Installed %s to %s\n", rel.TagName, path); err != nil {
+	return writeStatus(out, "Installed %s to %s\n", rel.TagName, path)
+}
+
+// writeStatus writes one line of what the update found and returns the exit
+// code the command ends with: exitFail once a failed write has been reported,
+// exitOK otherwise. Every branch of cmdUpdate ends in such a line, and the
+// failure reads the same whichever branch it came from.
+func writeStatus(out io.Writer, format string, args ...any) int {
+	if _, err := fmt.Fprintf(out, format, args...); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
 		return exitFail
 	}

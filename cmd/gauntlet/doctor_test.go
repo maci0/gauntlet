@@ -294,20 +294,8 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
 
-	record := func(at time.Time) string {
-		t.Helper()
-		id := journal.NewRunID(at)
-		j, err := journal.Open(id, at)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
-			t.Fatal(err)
-		}
-		return id
-	}
-	second := record(base.Add(time.Hour))
-	record(base)
+	second := closedRun(t, base.Add(time.Hour))
+	closedRun(t, base)
 
 	var buf strings.Builder
 	doctor(&buf, report.Palette{}, nil, 80)
@@ -369,14 +357,7 @@ func TestDoctorReportsAnIndexWithNoJournals(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
 
-	id := journal.NewRunID(at)
-	j, err := journal.Open(id, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
+	closedRun(t, at)
 	// The copy that lost the journals and kept the derived index beside them.
 	if err := os.RemoveAll(filepath.Join(journal.Home(), "runs")); err != nil {
 		t.Fatal(err)
@@ -406,14 +387,7 @@ func TestDoctorReportsAJournalCutMidLine(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
 
-	id := journal.NewRunID(at)
-	j, err := journal.Open(id, at)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
+	id := closedRun(t, at)
 	// The tail a copy taken with the run still writing leaves behind.
 	f, err := os.OpenFile(filepath.Join(journal.Home(), "runs", "2026-01-02", id+".jsonl"),
 		os.O_WRONLY|os.O_APPEND, 0o600)
@@ -560,4 +534,20 @@ func TestReviewNameColumnMeasuresTerminalCells(t *testing.T) {
 			t.Errorf("padded %q occupies %d report.Cells, want %d", n, got, col)
 		}
 	}
+}
+
+// closedRun records a run that started and ended around at, closed the way a
+// finished run closes: the journal on disk and the index row beside it. Every
+// run-history case starts from one.
+func closedRun(t *testing.T, at time.Time) string {
+	t.Helper()
+	id := journal.NewRunID(at)
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	return id
 }
