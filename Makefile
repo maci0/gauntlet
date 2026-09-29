@@ -413,8 +413,8 @@ fmt-scripts: ## rewrite scripts with ruff format
 
 # Advisory scan of the dependency graph, the same invocation vulnscan.yml
 # runs on pull requests that touch go.mod or go.sum. The executable is pinned
-# for reproducibility; it still reads the current vulnerability database.
-# Needs network on first use; everything else in this Makefile does not.
+# for reproducibility; it still reads the current advisory database. One of
+# three network targets, with check-scripts and the first go command.
 .PHONY: vuln
 vuln: | test-tmpdir
 vuln: ## scan dependencies for reachable vulnerabilities (what vulnscan.yml runs)
@@ -699,6 +699,12 @@ release-version:
 # The Go comparison, the Go version to name, and the shellcheck pin are the
 # ones toolchain-min and check-scripts already use, so the three cannot report
 # three different answers about one machine.
+#
+# tar, cmp, and a checksum tool are the other three, and no other target
+# preflights them: repro archives the tree with tar and compares the binaries
+# with cmp, and artifacts writes and verifies dist/checksums.txt with one, so a
+# machine missing them learns it from a raw tar or shasum error after the
+# release-path targets have already been read.
 .PHONY: doctor
 doctor: ## report every missing prerequisite in one run, with what to install
 	@missing=0; \
@@ -751,6 +757,16 @@ doctor: ## report every missing prerequisite in one run, with what to install
 		ok "test scratch directory $(TMPDIR)"; \
 	else \
 		bad "a writable disk-backed test scratch directory" "set TMPDIR on the make command line; tests must not use a tmpfs or an ignored path inside this repository" "test, test-pkg, cover, ci, verify"; \
+	fi; \
+	if command -v tar >/dev/null 2>&1 && command -v cmp >/dev/null 2>&1; then \
+		ok "tar and cmp (repro archives the tree twice and compares the binaries)"; \
+	else \
+		bad "tar and cmp" "both are in the base system on Linux and macOS; a trimmed container image is the usual gap" "repro"; \
+	fi; \
+	if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then \
+		ok "sha256sum or shasum (artifacts writes and verifies dist/checksums.txt with it)"; \
+	else \
+		bad "sha256sum or shasum" "coreutils on Linux, shasum from perl on macOS" "artifacts, release"; \
 	fi; \
 	if [ "$$missing" -gt 0 ]; then \
 		echo "doctor: $$missing prerequisite(s) missing; the targets above still work without them" >&2; \

@@ -20,7 +20,8 @@ it, and it reports all of them before it fails, so one run answers the whole
 question instead of one tool per loop. It exits 0 when nothing is missing. The
 individual checks it folds in also fire on their own, which is why an older Go
 fails `make build` and `make test` directly, and why `make check-scripts` names
-`uvx` and shellcheck itself.
+`uvx` and shellcheck itself. The last three are `tar` and `cmp` for `repro`
+and a checksum tool for `artifacts`, which no other target preflights.
 
 - Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
   toolchain builds, tests, and formats the tree. `make build`, `make check`,
@@ -51,8 +52,11 @@ make build            # ./gauntlet for this host
 make test             # every package, race detector, shuffled order
 ```
 
-The suite is ~30s once the build cache is warm. The first run on a fresh
-clone compiles every package under the race detector and takes minutes.
+`make test` is a gate, not a loop: on a Linux box with the race detector and
+a warm build cache it measured 6m18, and `internal/runner` alone was 373s of
+it (`internal/journal` 53s, everything else under 25s). The first run on a
+fresh clone adds the compile of every package under the race detector on top.
+Use `make test-pkg` below while you work.
 
 The first run downloads Go modules; after that the loop is offline.
 `make` passes `-mod=readonly` on every target except two. `make vuln` clears
@@ -150,6 +154,12 @@ tool the runner image supplies
 rather than `uvx` installing, so a local copy whose version differs from
 `SHELLCHECK_VERSION` gets a note instead of a failure. `make fmt-scripts`
 rewrites scripts with ruff format.
+
+Three things in the loop reach the network, and all three do it on first use
+only: the first `go` command downloads the module graph, `check-scripts`
+downloads its four pinned tools through `uvx`, and `make vuln` downloads
+govulncheck (then reads the advisory database on every run). Once those are
+warm, the rest of the Makefile is offline.
 
 A maintainer can also repeat the gate by hand from the Actions tab:
 `ci` and `vulnscan` both take `workflow_dispatch`, so a runner-image or

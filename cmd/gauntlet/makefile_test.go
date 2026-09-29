@@ -1381,6 +1381,9 @@ func TestMakefileDoctorPreflightsEveryPrerequisite(t *testing.T) {
 		"command -v uvx",                               // as check-scripts reads it
 		"command -v shellcheck",                        // as check-scripts reads it
 		`mkdir -p "$(TMPDIR)"`,                         // the test scratch directory test-tmpdir creates
+		"command -v tar",                               // the archive repro cuts twice
+		"command -v cmp",                               // the comparison repro ends on
+		"command -v sha256sum",                         // the checksum artifacts writes and verifies
 	} {
 		if !strings.Contains(recipe, want) {
 			t.Errorf("make doctor must check %q", want)
@@ -1410,6 +1413,15 @@ func TestMakefileDoctorPreflightsEveryPrerequisite(t *testing.T) {
 	// A target nobody is told about is the one nobody runs.
 	if doc := readRepoFile(t, filepath.Join(moduleRoot(t), "CONTRIBUTING.md")); !strings.Contains(doc, "make doctor") {
 		t.Error("CONTRIBUTING.md must tell a contributor to run `make doctor` before the edit-test loop")
+	}
+	// The three tools the release-path targets need and nothing else
+	// preflights: a gap there otherwise arrives as a raw tar or shasum
+	// error, after a contributor has read a target that promised to check
+	// this machine.
+	for _, want := range []string{`"repro"`, `"artifacts, release"`} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make doctor must name the target that needs %s when that tool is missing", want)
+		}
 	}
 }
 
