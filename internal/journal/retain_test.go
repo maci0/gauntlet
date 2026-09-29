@@ -202,3 +202,33 @@ func readIndexFile(t *testing.T) map[string]bool {
 	}
 	return out
 }
+
+// A stream this process has open is not idle, and the kernel cannot be asked
+// the question on both platforms: Linux ties a flock to the open file
+// description, so the probe's descriptor conflicts with the writer's shared
+// lock, while macOS ties it to the process and the probe converts this
+// process's own shared lock and succeeds. Without the in-process record, a
+// prune on macOS would call a stream it is still appending to idle and move it
+// under a live run.
+func TestJournalThisProcessHoldsIsNotIdle(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+
+	live, err := Open("20260825T090000Z-0001", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	live.Write(map[string]string{"ev": "run_start"})
+	live.Flush()
+	path := journalPath("20260825T090000Z-0001")
+
+	if journalIdle(path) {
+		t.Error("a journal this process has open reads as idle")
+	}
+	if err := live.Close(Summary{Version: "test", Start: base, End: base}); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if !journalIdle(path) {
+		t.Error("a journal this process has closed still reads as in progress")
+	}
+}

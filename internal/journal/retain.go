@@ -64,6 +64,9 @@ func Prune(keep int) (int, error) {
 // cannot read is one the rename is about to move, and a read failure here is
 // not a reason to leave a run the keep window named.
 func journalIdle(path string) bool {
+	if holdsStream(path) {
+		return false
+	}
 	f, err := os.OpenFile(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return true

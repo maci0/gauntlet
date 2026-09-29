@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -91,6 +92,37 @@ func lockIndex(fd int, wait time.Duration, now func() time.Time, sleep func(time
 // so the journal is never lost to a lock this kernel cannot hold.
 func lockWriter(f *os.File) {
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
+}
+
+// openStreams is the journal files this process has open for writing, and
+// journalIdle consults it because the kernel cannot be asked the question
+// portably. The writer's shared lock is per open file description on Linux, so
+// the probe's separate descriptor conflicts with it and the run reads as busy;
+// on macOS a lock belongs to the process, so the probe converts this process's
+// own shared lock to an exclusive one, succeeds, and reports a stream it is
+// still appending to as idle for a prune to move aside. Naming the streams
+// this process holds answers the question the same way on both.
+var openStreams = struct {
+	sync.Mutex
+	byPath map[string]bool
+}{byPath: map[string]bool{}}
+
+func holdStream(path string) {
+	openStreams.Lock()
+	defer openStreams.Unlock()
+	openStreams.byPath[path] = true
+}
+
+func forgetStream(path string) {
+	openStreams.Lock()
+	defer openStreams.Unlock()
+	delete(openStreams.byPath, path)
+}
+
+func holdsStream(path string) bool {
+	openStreams.Lock()
+	defer openStreams.Unlock()
+	return openStreams.byPath[path]
 }
 
 // withIndexLock serializes index mutations across processes. writeIndex
@@ -367,6 +399,7 @@ func (j *Journal) closeFileLocked() {
 		return
 	}
 	j.closed = true
+	forgetStream(j.path)
 	if err := j.w.Flush(); err != nil && j.err == nil {
 		j.err = err
 	}

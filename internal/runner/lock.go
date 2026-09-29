@@ -35,8 +35,40 @@ func LockPath(dir string) string { return filepath.Join(dir, gitx.LockName) }
 
 // Lock is an exclusive, advisory lock on one review directory.
 type Lock struct {
-	mu sync.Mutex
-	fd int // -1 once released; guarded by mu
+	mu   sync.Mutex
+	fd   int    // -1 once released; guarded by mu
+	path string // the heldLocks key; guarded by mu
+}
+
+// heldLocks is the locks this process holds, keyed by the lock file's real
+// path. flock alone cannot say so: on Linux a lock belongs to the open file
+// description, so a second open of the same file conflicts with the first,
+// while on macOS it belongs to the process and the second flock call
+// converts the lock already held rather than failing. A run that locked one
+// tree twice therefore refused to start on one claimed platform and quietly
+// carried on with two sets of agents in one tree on the other. The registry is
+// what makes Acquire mean the same thing on both.
+var heldLocks = struct {
+	sync.Mutex
+	byPath map[string]bool
+}{byPath: map[string]bool{}}
+
+// hold reports whether this process already holds path, and claims it when it
+// does not. Release gives it back.
+func hold(path string) bool {
+	heldLocks.Lock()
+	defer heldLocks.Unlock()
+	if heldLocks.byPath[path] {
+		return true
+	}
+	heldLocks.byPath[path] = true
+	return false
+}
+
+func unhold(path string) {
+	heldLocks.Lock()
+	defer heldLocks.Unlock()
+	delete(heldLocks.byPath, path)
 }
 
 // Acquire takes the directory lock. The descriptor stays open for the lifetime
@@ -71,8 +103,17 @@ func Acquire(path string) (*Lock, error) {
 	// on the descriptor, and best effort: a file this account does not own
 	// will not chmod, and the flock below still governs who gets the run.
 	_ = syscall.Fchmod(fd, 0o600)
+	key := gitx.RealPath(path)
+	if hold(key) {
+		defer syscall.Close(fd)
+		if note := readNote(fd); note != "" {
+			return nil, fmt.Errorf("%w: %s (lock: %s)", ErrLocked, note, path)
+		}
+		return nil, fmt.Errorf("%w (lock: %s)", ErrLocked, path)
+	}
 	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		defer syscall.Close(fd)
+		unhold(key)
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			if note := readNote(fd); note != "" {
 				return nil, fmt.Errorf("%w: %s (lock: %s)", ErrLocked, note, path)
@@ -85,7 +126,7 @@ func Acquire(path string) (*Lock, error) {
 	// it. The flock is gone, so the run it describes is gone too: clear it
 	// rather than let a dead run keep answering for this directory.
 	_ = syscall.Ftruncate(fd, 0)
-	return &Lock{fd: fd}, nil
+	return &Lock{fd: fd, path: key}, nil
 }
 
 // Note records what the holder is doing now, so the next gauntlet to try this
@@ -169,6 +210,7 @@ func (l *Lock) Release() {
 	}
 	fd := l.fd
 	l.fd = -1
+	unhold(l.path)
 	_ = syscall.Ftruncate(fd, 0)
 	_ = syscall.Flock(fd, syscall.LOCK_UN)
 	_ = syscall.Close(fd)

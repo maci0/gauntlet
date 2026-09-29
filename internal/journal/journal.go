@@ -268,6 +268,7 @@ func Open(runID string, now time.Time) (*Journal, error) {
 	// it mid-run. A filesystem with no flock takes no lock, and the journal is
 	// written exactly as it was before this lock existed.
 	lockWriter(f)
+	holdStream(path)
 	if created {
 		// The journal is the source of truth the index is rebuilt from, so a
 		// machine that lost power must not lose the file that carries it. A

@@ -666,7 +666,11 @@ Design points:
 - A journal a run still has open is never moved, whatever the keep window says
   or whatever order its id gives it: the writer holds a shared `flock` on the
   stream it appends to and the prune takes an exclusive one, which fails while
-  the run is writing. Two gauntlet runs on the same state tree overlap easily,
+  the run is writing, and the process records the streams it holds so the
+  answer is the same on both platforms: a `flock` belongs to the open file
+  description on Linux, so the prune's own descriptor conflicts, and to the
+  process on macOS, where it would convert this process's own shared lock and
+  call a live stream idle. Two gauntlet runs on the same state tree overlap easily,
   and the second one's prune would otherwise move the first one's live event
   stream into `pruned/`, leaving the row its `Close` appends naming a file the
   listing no longer holds. The skipped run keeps its index row in the same
@@ -776,6 +780,9 @@ name programs, so the port blanks every execution-bearing key it can reach.
 - Untrusted text (prompt names, descriptions, agent output) is sanitized of
   control and bidi-formatting characters before display.
 - A `flock` on `.gauntlet.lock` prevents concurrent runs in one directory.
-  Release clears the holder note but keeps the inode: unlinking it could leave
+  The process also records the paths it holds, because `flock` alone does not
+  refuse a second lock in one process on every platform: Linux ties a lock to
+  the open file description and macOS to the process. Release clears the holder
+  note but keeps the inode: unlinking it could leave
   an opener locking the old inode while another run locks a newly created one.
   Do not remove the file while runs can start.
