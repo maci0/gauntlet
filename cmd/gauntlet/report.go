@@ -273,8 +273,8 @@ func collectTotals(results []*dirRun) runTotals {
 		t.commitRuns += d.stats.CommitRuns()
 		t.commitFails += d.stats.CommitFails()
 		t.dropped += d.stats.DetailDropped()
+		t.thinking += d.stats.Thinking()
 		for _, r := range d.stats.Results() {
-			t.thinking += r.Thinking
 			if r.URL != "" {
 				t.pullRequest = append(t.pullRequest, r)
 			}

@@ -538,7 +538,7 @@ func run(argv []string) int {
 			if maxLoops <= 0 {
 				// This directory already ran its loops; keep its results for
 				// the summary and do not start it again.
-				d.stats = &runner.Stats{Start: startedAt}
+				d.stats = runner.NewStats(startedAt, &runTokens)
 				d.stats.Seed(carried.Results, carried.CommitRuns, carried.CommitFails)
 				d.loops = carried.Loops
 				continue

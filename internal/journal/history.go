@@ -55,7 +55,7 @@ func events(runID string, gate func([]byte) bool, visit func([]byte)) error {
 }
 
 func eventsFile(path string, gate func([]byte) bool, visit func([]byte)) error {
-	f, err := os.Open(path)
+	f, err := openRead(path)
 	if err != nil {
 		return err
 	}

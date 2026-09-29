@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/fuzzy"
@@ -383,21 +383,18 @@ func stateRootProblem(root string) string {
 // about to report, and the probe's own create-close-remove is what surfaces
 // it with the path and the reason. The prefix cannot match anything but a
 // probe file: the name is reserved for this, and every other file the tool
-// writes carries a different one.
+// writes carries a different one. The age cutoff keeps a doctor running now
+// from unlinking the probe a second one is in the middle of writing.
 func sweepProbeLeftovers(root string) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !strings.HasPrefix(e.Name(), stateProbePrefix) {
-			continue
-		}
-		_ = os.Remove(filepath.Join(root, e.Name()))
-	}
+	gauntlethome.SweepStaleTemps(root, stateProbePrefix, stateProbeMaxAge, nil)
 }
 
 // stateProbePrefix names the temp file the writability probe creates, so one
 // left behind by an interrupted doctor is recognizable and never mistaken
 // for a run journal.
 const stateProbePrefix = ".gauntlet-doctor-"
+
+// stateProbeMaxAge is how old a probe file has to be before the sweep takes it.
+// A probe lives for the length of one create, write, close, and remove, so any
+// file older than this belongs to a doctor that did not get that far.
+const stateProbeMaxAge = time.Minute

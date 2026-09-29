@@ -46,10 +46,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
   journal prints replays the suggest step along with the schedule.
 - The launcher's pane titles now drop whole readings and mark the cut, the way the dashboard's panel titles already did. A title the frame was too narrow for was cut wherever the width ran out, so a pane holding fewer rows than it had read "AGENTS  none picked: auto-d", and could lose the "+3 more" that says it is holding rows back: a review or an agent missing from the list then read as one that does not exist. The same now holds for a key row that had to leave keys off, in the help overlay and in the small-terminal fallback: what did not fit is marked, so a row carrying two of four keys reads as two.
 - The small-terminal fallback kept the run state at every width. Its first row held the clock and the state together and was cut at the right when they did not both fit, which left a ten-column terminal showing "● RU…" where the one reading the fallback exists for had been. The clock goes first now, as the version and the loop number already did.
+- Reading a run journal now refuses a symlink and a non-regular file in its place, on the read paths as well as the write path. A FIFO named after a run id listed as a journal, and opening it for reading blocked until a writer appeared, which for a planted node is never: every later run in that state tree hung on the exit-time prune.
 
 ### Changed
 
 - The exit-code table in `--help` and in `docs/CLI.md` now covers the subcommands, not only a run. `gauntlet doctor` has exited 1 when no agent CLI is launchable and `gauntlet update` has exited 1 when the update fails, while the table said 1 meant a review failed, timed out, was skipped, or would not merge, so a script reading it could not tell a broken install from a failed review. Code 0 is worded for the whole command as well, since `runs`, `show`, and `--list` return it without a review ever running.
+- A merge that failed the post-squash `git diff --cached --quiet` now puts the tree back, like every other merge failure does. A timeout or a contended index on that one check left the whole review staged in the reviewed tree, which the next lane and the next run then read as a dirty tree.
+- A directory that already finished its loops before a hot reload now seeds its carried results into the run-wide token tally, so `--token-budget` measures the run against what the run has actually spent rather than ignoring the finished directory.
+- The summary's reasoning share is computed from the exact reasoning total instead of the capped result list, so a run past the 2000-result detail cap no longer prints a share that falls as old results are dropped.
 - `doctor` names the evidence tools the time and Unicode reviews already
   instruct an agent to reach for: `zdump` for `time-review` and `uconv` for
   `unicode-review` were named in the prompts and missing from the tool

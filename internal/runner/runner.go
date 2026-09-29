@@ -267,7 +267,7 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 	r := &Runner{
 		cfg:            cfg,
 		bus:            bus,
-		st:             &Stats{Start: start, run: cfg.RunTokens},
+		st:             NewStats(start, cfg.RunTokens),
 		repo:           repo,
 		sessionStarted: map[agent.Spec]bool{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),

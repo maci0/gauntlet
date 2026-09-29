@@ -67,7 +67,7 @@ func journalIdle(path string) bool {
 	if holdsStream(path) {
 		return false
 	}
-	f, err := os.OpenFile(path, syscall.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := openRead(path)
 	if err != nil {
 		return true
 	}

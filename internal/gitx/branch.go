@@ -110,6 +110,11 @@ func (r *Repo) Merge(ctx context.Context, branch, message string) MergeResult {
 	// nothing this tree does not already have.
 	clean, cErr := r.nothingStaged(ctx)
 	if cErr != nil {
+		// The squash already staged the review, and this is the one exit that
+		// does not put it back: every other failure below aborts for the same
+		// reason, and a tree left holding a foreign index is dirty to the next
+		// review and to the next run.
+		r.abortMerge(ctx)
 		return MergeResult{Detail: cErr.Error()}
 	}
 	if clean {

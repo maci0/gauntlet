@@ -101,6 +101,13 @@ type Stats struct {
 	Start time.Time
 }
 
+// NewStats is a Stats for a run started at start, counting against the run-wide
+// tally run. A nil run is a single-directory run, whose own totals are the
+// run's.
+func NewStats(start time.Time, run *Tokens) *Stats {
+	return &Stats{Start: start, run: run}
+}
+
 // Tokens is a run-wide token tally, shared by the runners of a
 // multi-directory run. One process runs one runner per directory, each with
 // its own Stats, so a ceiling read from that Stats alone is a ceiling per
@@ -350,6 +357,15 @@ func (s *Stats) Tokens() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.tokens
+}
+
+// Thinking is every reasoning token the run has recorded, exact for results
+// the detail slice has dropped, so a share computed against it does not fall as
+// the oldest results are cut.
+func (s *Stats) Thinking() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.thinking
 }
 
 // Totals sums lines changed, tokens reported, and agent wall time. The sums
