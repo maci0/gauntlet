@@ -313,18 +313,22 @@ func openNoFollow(path string) (*os.File, error) {
 		return nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
 	f := os.NewFile(uintptr(fd), path)
+	// Every refusal names the file. syscall.SetNonblock returns a bare errno,
+	// so a failure here reached the operator as "bad file descriptor" with
+	// nothing to say which prompt could not be read, the one error of the four
+	// the others all carry a path for.
 	fi, err := f.Stat()
 	if err != nil {
 		f.Close()
-		return nil, err
+		return nil, &os.PathError{Op: "stat", Path: path, Err: err}
 	}
 	if !fi.Mode().IsRegular() {
 		f.Close()
-		return nil, &os.PathError{Op: "read", Path: path, Err: errors.New("not a regular file")}
+		return nil, &os.PathError{Op: "open", Path: path, Err: errors.New("not a regular file")}
 	}
 	if err := syscall.SetNonblock(fd, false); err != nil {
 		f.Close()
-		return nil, err
+		return nil, &os.PathError{Op: "setnonblock", Path: path, Err: err}
 	}
 	return f, nil
 }

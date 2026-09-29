@@ -45,18 +45,39 @@ func LaneBranch(tag, slug string) string { return LaneBranchPrefix + tag + "/" +
 // branches (a run's lane scratch space under gauntlet/ and stacked-PR layers
 // under review/), since neither is ever a merge target.
 func (r *Repo) Branches(ctx context.Context) []string {
-	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	all, err := r.localRefNames(ctx, "refs/heads/")
 	if err != nil {
 		return nil
 	}
 	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		name := strings.TrimSpace(line)
-		if name != "" && !strings.HasPrefix(name, LaneBranchPrefix) && !strings.HasPrefix(name, StackBranchPrefix) {
+	for _, name := range all {
+		if !strings.HasPrefix(name, LaneBranchPrefix) && !strings.HasPrefix(name, StackBranchPrefix) {
 			names = append(names, name)
 		}
 	}
 	return names
+}
+
+// localRefNames lists the short names of the local branches matching the given
+// ref patterns, one name per line with blanks dropped. Every branch listing in
+// this package reads the same command and splits it the same way, so the
+// spelling of a ref pattern and the shape of a name are decided in one place:
+// a fourth copy is where "the list the run deleted" and "the list the run
+// reports" would start to disagree.
+func (r *Repo) localRefNames(ctx context.Context, patterns ...string) ([]string, error) {
+	out, err := r.run(ctx, gitQuick, append([]string{
+		"for-each-ref", "--format=%(refname:short)",
+	}, patterns...)...)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
 }
 
 // LaneBranches lists the local lane branches still on disk.
@@ -78,16 +99,9 @@ func (r *Repo) LaneBranches(ctx context.Context) []string {
 	if r == nil || !Available() {
 		return nil
 	}
-	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)",
-		"refs/heads/"+LaneBranchPrefix)
+	names, err := r.localRefNames(ctx, "refs/heads/"+LaneBranchPrefix)
 	if err != nil {
 		return nil
-	}
-	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			names = append(names, name)
-		}
 	}
 	return names
 }
@@ -442,18 +456,7 @@ func (r *Repo) RemoteBranchTip(ctx context.Context, remote, branch string) (tip 
 // commit subject that does not exist yet at recovery time, so recovery
 // matches this deterministic prefix and verifies candidates by commit graph.
 func (r *Repo) LocalBranchesWithPrefix(ctx context.Context, prefix string) ([]string, error) {
-	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)",
-		"refs/heads/"+prefix, "refs/heads/"+prefix+"-*")
-	if err != nil {
-		return nil, err
-	}
-	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
-			names = append(names, name)
-		}
-	}
-	return names, nil
+	return r.localRefNames(ctx, "refs/heads/"+prefix, "refs/heads/"+prefix+"-*")
 }
 
 // RemoteBranchesWithPrefix is LocalBranchesWithPrefix against the remote,
