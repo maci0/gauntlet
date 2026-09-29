@@ -117,6 +117,13 @@ jobs:
       # warning fail, so the config carries no output nobody reads. Rule
       # selection lives in .yamllint.
       - run: uvx yamllint@1.38.0 --strict .github
+      # A `run:` body is shell too, and four of the five in this repository
+      # decide what a tagged release publishes: the release notes, the tag
+      # guard, the smoke test, and the publish step. yamllint reads the YAML
+      # around a body and nothing read the shell inside it, so the same
+      # shellcheck that covers shots.sh covers each of them, through the
+      # Makefile that `make check-scripts` runs the same way.
+      - run: make check-workflow-shell
       # Preinstalled on the Ubuntu runner image; shots.sh is the only shell
       # script in the tree. `--enable=all` turns on every optional check
       # rather than the default set, so a check a later shellcheck adds fails
@@ -136,6 +143,11 @@ jobs:
         env:
           SHELLCHECK_VERSION: "0.11.0"
         run: |
+          # The line below prints which shellcheck the runner image carries.
+          # It masks a status on purpose, because there is nothing to fail on
+          # in a version print, so SC2312 is silenced here rather than
+          # reshaped into a second copy of the command CI runs.
+          # shellcheck disable=SC2312
           echo "shellcheck $(shellcheck --version | awk '/^version:/ {print $2}') (pin ${SHELLCHECK_VERSION})"
           shellcheck --enable=all --exclude=SC2250,SC2292 scripts/shots.sh
 

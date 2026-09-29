@@ -451,7 +451,7 @@ verify: check check-scripts ## the pull request's static checks and all three ta
 # 0.0.0, so the drift note below compared that against UV_VERSION and fired
 # on every run, on every machine, whatever uv was installed.
 .PHONY: check-scripts
-check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (CI parity)
+check-scripts: check-workflow-shell ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (CI parity)
 	@command -v uvx >/dev/null 2>&1 || { \
 		echo "check-scripts: uvx not found on PATH (install uv $(UV_VERSION): https://docs.astral.sh/uv/getting-started/installation/)" >&2; \
 		echo "CI runs: uvx ruff@$(RUFF_VERSION) check scripts" >&2; \
@@ -478,6 +478,42 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts
 	uvx yamllint@$(YAMLLINT_VERSION) --strict .github
 	shellcheck --enable=all --exclude=SC2250,SC2292 scripts/shots.sh
+
+# A `run:` body is shell too: the release path runs four of them on every tag,
+# and one of those bodies is what decides whether a release is published. The
+# Go build never reads a workflow, yamllint reads the YAML around the body and
+# not the shell inside it, and the only script shellcheck was given is
+# shots.sh, so a quoting or masked-return defect in that shell was found by
+# the tag that ran it rather than on the pull request that wrote it.
+#
+# Each body is written out as its own file and linted with the flags
+# shots.sh gets, under the same TMPDIR every other test scratch path uses.
+# The generated preamble disables SC2154 for one reason: GITHUB_REF_NAME and
+# SHELLCHECK_VERSION are set by the runner, and a fragment of a workflow
+# cannot assign them.
+#
+# An extraction that finds nothing has to fail rather than lint an empty glob:
+# a rename of `run:` to something else would otherwise read as a clean tree.
+# The awk program is one line because a workflow's YAML indentation is the
+# only thing delimiting a body, and a backslash-continued awk function is one
+# more dialect between GNU awk and the BSD one a macOS runner ships.
+.PHONY: check-workflow-shell
+check-workflow-shell: | test-tmpdir
+check-workflow-shell: ## shellcheck the shell the workflow `run:` steps execute
+	@command -v shellcheck >/dev/null 2>&1 || { \
+		echo "check-workflow-shell: shellcheck not found on PATH; macOS ships none (brew install shellcheck), Linux packages it as shellcheck" >&2; \
+		exit 1; \
+	}
+	@dir="$(TMPDIR)/workflow-shell"; \
+	rm -rf "$$dir"; mkdir -p "$$dir"; \
+	for wf in .github/workflows/*.yml; do \
+		stem="$${wf##*/}"; stem="$${stem%.*}"; \
+		awk -v dir="$$dir" -v stem="$$stem" 'function flush() { if (out != "") { print "#!/bin/bash" > out; print "# Generated from a `run:` body in " stem ".yml by `make check-workflow-shell`." > out; print "# The variables it reads (GITHUB_REF_NAME, SHELLCHECK_VERSION) are set by the runner." > out; print "# shellcheck disable=SC2154" > out; print body > out; close(out); out = ""; body = "" } } /^[[:space:]]*run: \|[[:space:]]*$$/ { flush(); n++; out = dir "/" stem "-" n ".sh"; next } out != "" { if ($$0 ~ /^          /) { body = body substr($$0, 11) "\n"; next } if ($$0 ~ /^[[:space:]]*$$/) { body = body "\n"; next } flush() } END { flush() }' "$$wf" || exit 1; \
+	done; \
+	set -- "$$dir"/*.sh; \
+	[ -f "$$1" ] || { echo "check-workflow-shell: no \`run:\` body was extracted from .github/workflows; the lint below would cover nothing" >&2; exit 1; }; \
+	echo "check-workflow-shell: linting $$# shell bodies"; \
+	shellcheck --enable=all --exclude=SC2250,SC2292 "$$dir"/*.sh
 
 .PHONY: fmt-scripts
 fmt-scripts: ## rewrite scripts with ruff format

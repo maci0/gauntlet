@@ -98,7 +98,7 @@ a checksum tool inside each copied tree and compares the whole asset set
 (`Makefile:733-771`), which puts the `go list` and module-cache grant reads
 the sbom entry point describes on a second invocation site, and the release
 job resolves an annotated tag to its commit before it builds anything
-(`.github/workflows/release.yml:107-133`). No risk row was added and none
+(`.github/workflows/release.yml:107-137`). No risk row was added and none
 was closed; R1 through R9 all stand where they stood.
 
 Last reviewed previously: 2026-09-30 against commit e333a04. That pass read the eight
@@ -333,7 +333,7 @@ The same pass closed a gap between what CONTRIBUTING requires of a release
 and what the release job checks, and narrowed a credential's reach in the
 pull-request suite. The release job now refuses a tag whose commit
 `origin/main` does not carry
-(`.github/workflows/release.yml:107-133`), before it builds anything: a tag is
+(`.github/workflows/release.yml:107-137`), before it builds anything: a tag is
 the only review the bytes behind it get, since the job runs `make release`
 (the suite, `check`) but not the pull-request gates, and both `update` and the
 README install serve the tag. The check is an ancestry test against a full
@@ -356,7 +356,7 @@ than a capability.
 Last reviewed previously: 2026-09-28 against commit 41faffe. That pass added one
 surface and one check. The release job now signs a build-provenance
 attestation per entry in `dist/checksums.txt`
-(`.github/workflows/release.yml:161-164`), which the workflow can do because
+(`.github/workflows/release.yml:167-170`), which the workflow can do because
 it now holds `id-token: write` and `attestations: write` alongside
 `contents: write`; signing needs the runner's OIDC identity, and the
 statement is a claim about which commit built which bytes, not a control on
@@ -691,7 +691,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:102-
   the binaries, so replacing it changes no claim anything verifies.
   The binaries themselves carry one more record the inventory does not: the
   release workflow signs a build-provenance attestation per entry in
-  `dist/checksums.txt` (`.github/workflows/release.yml:161-164`), stating the
+  `dist/checksums.txt` (`.github/workflows/release.yml:167-170`), stating the
   workflow, the tag, and the commit that produced the bytes, verifiable with
   `gh attestation verify`. The claim it makes is about provenance, not
   integrity of transport, and `update` does not check it, so the gap recorded

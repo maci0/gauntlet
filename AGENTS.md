@@ -31,7 +31,12 @@ but drops the sqlite driver.
 - `make check-scripts`: ruff and mypy `--strict` (with `rich` installed for its
   type information) over `scripts/`, and yamllint `--strict` over `.github/`,
   all three through version-pinned `uvx`, plus shellcheck from PATH over
-  `scripts/shots.sh`, the only shell script there. Rule selection is
+  `scripts/shots.sh` and over the shell a workflow `run:` step executes.
+  `make check-workflow-shell` is that second half on its own, and
+  `check-scripts` depends on it; a body is a `run: |` block written out under
+  `TMPDIR`, so a workflow that grows one needs no Makefile change, and an
+  extraction that finds none fails rather than linting an empty glob. Rule
+  selection is
   `pyproject.toml` for the Python tools and `.yamllint` for the YAML. shellcheck
   is the one tool CI cannot install a pinned copy of, so its pin is a warning
   on drift rather than a lock. Run `make fmt-scripts` to rewrite scripts with

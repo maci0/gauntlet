@@ -162,9 +162,12 @@ removes tested code paths.
 
 A separate `scripts` job lints `scripts/` with ruff (rules in
 [pyproject.toml](pyproject.toml)), mypy `--strict`, and shellcheck on
-`scripts/shots.sh`, and lints the YAML in [.github/](.github) with yamllint `--strict` (rules in
+`scripts/shots.sh` and on the shell inside the workflows, and lints the YAML
+in [.github/](.github) with yamllint `--strict` (rules in
 [.yamllint](.yamllint)). `make check-scripts` runs those same steps with
-the versions CI pins. It needs `uvx` (shipped with
+the versions CI pins. The workflow half is `make check-workflow-shell`: each
+`run:` body is written out under `TMPDIR` and given to the same shellcheck,
+because the shell a tag runs is no better covered than a script is. It needs `uvx` (shipped with
 [uv](https://docs.astral.sh/uv/getting-started/installation/)) and
 shellcheck on PATH; macOS ships no shellcheck, so install it with
 `brew install shellcheck` before running the gate there. Shellcheck is the one

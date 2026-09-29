@@ -127,7 +127,12 @@ jobs:
           git rev-parse --verify --quiet origin/main >/dev/null ||
             git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor HEAD origin/main; then
-            echo "$GITHUB_REF_NAME points at $(git rev-parse --short HEAD), which origin/main does not carry" >&2
+            # The sha is read once, before the message: a command substitution
+            # inside the echo would report a failing git as an empty commit
+            # and still exit 0, so the reader could not tell which side of
+            # the guard failed (SC2312).
+            sha="$(git rev-parse --short HEAD)"
+            echo "$GITHUB_REF_NAME points at $sha, which origin/main does not carry" >&2
             echo "cut the tag from a commit main already carries, or land the branch first" >&2
             exit 1
           fi
@@ -181,6 +186,11 @@ jobs:
           prerelease=false
           case "${GITHUB_REF_NAME%%+*}" in
             *-*) prerelease=true ;;
+            # Named rather than left to the case's own zero status: a tag
+            # whose suffix changes shape is a final release until someone
+            # says otherwise, and the explicit branch is what says so
+            # (SC2249).
+            *) prerelease=false ;;
           esac
           draft="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2>/dev/null || true)"
           if [ "$draft" = false ]; then
