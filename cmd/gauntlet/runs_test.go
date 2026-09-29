@@ -739,6 +739,44 @@ func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
 	}
 }
 
+// The JSON document is the copy an archive job, a dashboard, or a script
+// carries off the machine, so it must name no OS account the way the journal's
+// free text does not. The state root is a fact about the install, not a run, and
+// "~" is the spelling the operator recognizes, so shortening it costs a consumer
+// nothing. A root that does not sit under the home directory (a GAUNTLET_HOME
+// elsewhere, a CI cache) comes out whole: there is no account in it to take out.
+func TestRunsJSONKeepsTheAccountNameOut(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "alice")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", "")
+
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if code != exitOK {
+		t.Fatalf("runs --json exited %d:\n%s", code, got)
+	}
+	if strings.Contains(got, home) {
+		t.Fatalf("the listing names the account:\n%s", got)
+	}
+	var doc struct {
+		Home     string `json:"home"`
+		Journals string `json:"journals"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if want := "~/.gauntlet"; doc.Home != want {
+		t.Errorf("home = %q, want %q", doc.Home, want)
+	}
+	if want := "~/.gauntlet/runs"; doc.Journals != want {
+		t.Errorf("journals = %q, want %q", doc.Journals, want)
+	}
+}
+
 // An empty history is an empty list, not a sentence: `gauntlet runs --json` is
 // the call a dashboard makes on a machine that has never run a review, and a
 // message on that stream is a parse error there.

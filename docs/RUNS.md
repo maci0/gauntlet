@@ -370,7 +370,12 @@ Events are one JSON object per line (`run_start`, `loop_start`,
 narration in `text`). The `text` field and the `args` on an index row are
 written with the home directory shortened to `~`, because git errors and path
 errors reach them carrying the absolute path of the reviewed tree, and this
-is the copy that leaves the machine. The `dir` and `path` fields are stored as
+is the copy that leaves the machine. `gauntlet runs --json` shortens its `home`
+and `journals` fields the same way: they are facts about the install rather
+than about any run, so nothing matches on them, and a resolved path under
+`/home/<account>` would put the account name in every copy a script or an
+archive job takes away. The `dirs` and `path` of a row are the index fields
+above and stay resolved. The `dir` and `path` fields are stored as
 resolved paths: the listing and the history matcher need the path a person
 typed to still resolve. `review_start` and `review_end` carry
 `prompt_sha256`, the SHA-256 of the prompt text that launch was composed

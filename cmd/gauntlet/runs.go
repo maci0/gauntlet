@@ -103,7 +103,9 @@ const listedQuarantined = 5
 // else on the stream it parses, so the legend, the column layout, and the
 // humanized durations stay behind, and every count is the number the run
 // recorded. The runs are the index rows as journaled, so a field a future
-// journal adds reaches the consumer without a flag change.
+// journal adds reaches the consumer without a flag change. The two state paths
+// are the exception to "as journaled": they are not run data, and they carry
+// the home directory shortened to "~" (see writeRunsJSON).
 type runsJSON struct {
 	Home     string            `json:"home"`
 	Journals string            `json:"journals"`
@@ -152,9 +154,16 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
 	if entries == nil {
 		entries = []journal.Summary{}
 	}
+	// The two state paths name where this install keeps its tree, which is a
+	// fact about the machine and not about any run, so nothing matches on them
+	// and no consumer needs the account to use them. The home directory is
+	// shortened for the same reason the journal's free text is: this document is
+	// the one an archive job or a script carries off the machine, and a resolved
+	// path under /home/<account> names the operator in every copy. "~" is the
+	// spelling the operator recognizes and can expand.
 	doc := runsJSON{
-		Home:     journal.Home(),
-		Journals: filepath.Join(journal.Home(), "runs"),
+		Home:     normalize.RedactHome(journal.Home()),
+		Journals: normalize.RedactHome(filepath.Join(journal.Home(), "runs")),
 		Runs:     entries,
 		Pruned:   pruned,
 		History: historyJSON{
