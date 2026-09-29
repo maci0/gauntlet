@@ -868,7 +868,7 @@ func (m *model) renderMinimal() string {
 		tally.String(),
 	}
 	if len(m.conflicts) > 0 {
-		rows = append(rows, styleWarn.Render("unmerged: "+strings.Join(m.conflicts, ", ")))
+		rows = append(rows, styleWarn.Render("unmerged: "+m.conflictSummary()))
 	}
 	var active []string
 	for _, label := range m.laneOrd {
@@ -946,13 +946,6 @@ func (m *model) helpLines() []string {
 		styleDim.Render("  The keys below are what they do with the dashboard showing."),
 		"",
 	}
-	if len(m.conflicts) > 0 {
-		lines = append(lines, styleWarn.Render("Unmerged branches (kept for you to merge):"))
-		for _, c := range m.conflicts {
-			lines = append(lines, "  "+c)
-		}
-		lines = append(lines, "")
-	}
 	qLine := "  q           stop the run, killing what is running (press twice; esc cancels)"
 	if m.done {
 		qLine = "  q, esc, enter close (the run has finished)"
@@ -990,7 +983,42 @@ func (m *model) helpLines() []string {
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),
 	)
+	// The unmerged branches go at the end of the page, not the top: the
+	// overlay has a fixed height, and a list of run data in front of the key
+	// bindings pushes the keys the page exists to document below the fold once
+	// a run has conflicted enough branches.
+	if len(m.conflicts) > 0 {
+		lines = append(lines, "", styleWarn.Render("Unmerged branches (kept for you to merge):"))
+		for _, c := range m.conflicts {
+			lines = append(lines, "  "+c)
+		}
+		if m.conflictsDropped > 0 {
+			lines = append(lines, styleDim.Render(fmt.Sprintf(
+				"  and %d older one(s); every conflict is in the run summary and the journal",
+				m.conflictsDropped)))
+		}
+	}
 	return lines
+}
+
+// conflictSummaryMax is how many unmerged branches the small-terminal
+// fallback's one line names before it counts the rest instead.
+const conflictSummaryMax = 3
+
+// conflictSummary is the one-line form the small-terminal fallback draws: the
+// most recent branches, and how many the bound left out. The count leads
+// because the row is clipped at the terminal's width, and a count at the end
+// is the part that gets cut.
+func (m *model) conflictSummary() string {
+	shown := m.conflicts
+	if len(shown) > conflictSummaryMax {
+		shown = shown[len(shown)-conflictSummaryMax:]
+	}
+	out := strings.Join(shown, ", ")
+	if m.conflictsDropped > 0 {
+		out = fmt.Sprintf("%d older, %s", m.conflictsDropped, out)
+	}
+	return out
 }
 
 // footerKeys is the key legend for the full footer and the small-terminal

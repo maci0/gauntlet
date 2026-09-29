@@ -1614,8 +1614,10 @@ func TestHelpOverlayScrollsAndReflows(t *testing.T) {
 		t.Fatalf("home did not return to the first page: %s", got)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnd})
-	if !strings.Contains(stripANSI(m.View()), "interrupted") {
-		t.Fatal("end did not reach the last instruction")
+	// The unmerged branches close the page, below the instructions, so the end
+	// of the page is the last branch and every instruction above it.
+	if end := stripANSI(m.View()); !strings.Contains(end, "branch-14") {
+		t.Fatalf("end did not reach the last unmerged branch: %s", end)
 	}
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 80})
 	if !strings.Contains(stripANSI(m.View()), "close this help") {
@@ -1952,6 +1954,74 @@ func TestMinimalViewNamesUnmergedBranches(t *testing.T) {
 	got := stripANSI(m.renderMinimal())
 	if !strings.Contains(got, "unmerged:") || !strings.Contains(got, "sec-review") {
 		t.Fatalf("the fallback lost the unmerged branch:\n%s", got)
+	}
+}
+
+// A conflict is a branch that stays on disk until a human takes it, so the
+// dashboard's list only grows and a run left going has no bound of its own.
+// The list is capped at maxConflicts and keeps the newest, and both places it
+// is drawn say how many the cap left out: a short list must never read as the
+// whole run, and the help overlay's key bindings must not be pushed below the
+// fold by run data.
+func TestConflictListIsBoundedAndCountsWhatItDropped(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	total := maxConflicts + 5
+	for i := range total {
+		m.apply(runner.Event{
+			Kind: runner.EvMerge, Review: fmt.Sprintf("review-%02d", i),
+			Branch: fmt.Sprintf("gauntlet/x/review-%02d", i), Status: runner.StatusConflict,
+		})
+	}
+	if len(m.conflicts) != maxConflicts {
+		t.Fatalf("kept %d conflicts, want the bound %d", len(m.conflicts), maxConflicts)
+	}
+	if m.conflictsDropped != total-maxConflicts {
+		t.Fatalf("dropped %d, want %d", m.conflictsDropped, total-maxConflicts)
+	}
+	if newest := m.conflicts[len(m.conflicts)-1]; !strings.Contains(newest, fmt.Sprintf("review-%02d", total-1)) {
+		t.Fatalf("kept %q, want the newest conflict", newest)
+	}
+	if oldest := m.conflicts[0]; !strings.Contains(oldest, fmt.Sprintf("review-%02d", total-maxConflicts)) {
+		t.Fatalf("kept %q, want the oldest still inside the bound", oldest)
+	}
+
+	// The same conflict twice is still one branch.
+	again := m.conflicts[0]
+	m.apply(runner.Event{Kind: runner.EvMerge, Review: "review-06", Branch: "gauntlet/x/review-06", Status: runner.StatusConflict})
+	if len(m.conflicts) != maxConflicts || m.conflicts[0] != again {
+		t.Fatalf("a repeated conflict grew the list: %d kept, first %q", len(m.conflicts), m.conflicts[0])
+	}
+
+	minimal := stripANSI(m.renderMinimal())
+	if !strings.Contains(minimal, "older") {
+		t.Fatalf("the fallback claims a short list is the whole run:\n%s", minimal)
+	}
+
+	// The keys come first, so they are on the page without scrolling however
+	// many branches are unmerged.
+	lines := m.helpLines()
+	joined := stripANSI(strings.Join(lines, "\n"))
+	if !strings.Contains(joined, "q, esc, enter close") && !strings.Contains(joined, "stop the run, killing what is running") {
+		t.Fatalf("the help page lost its key bindings:\n%s", joined)
+	}
+	unmerged, glyphs := -1, -1
+	for i, l := range lines {
+		switch {
+		case strings.Contains(stripANSI(l), "Unmerged branches"):
+			unmerged = i
+		case strings.Contains(stripANSI(l), "Review glyphs"):
+			glyphs = i
+		}
+	}
+	if unmerged < 0 {
+		t.Fatalf("the help page lost the unmerged branches:\n%s", joined)
+	}
+	if unmerged < glyphs {
+		t.Fatalf("the unmerged list opens at line %d, in front of the last instruction at %d:\n%s", unmerged, glyphs, joined)
+	}
+	if !strings.Contains(joined, fmt.Sprintf("%d older one(s)", total-maxConflicts)) {
+		t.Fatalf("the help page does not say what the cap left out:\n%s", joined)
 	}
 }
 

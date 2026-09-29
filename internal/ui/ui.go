@@ -83,6 +83,18 @@ const (
 	laneSamples     = 120
 )
 
+// maxConflicts bounds the unmerged branches the dashboard keeps. A conflict is
+// a branch that will not merge and stays on disk until a human takes it, so
+// the list only grows, and a run left going with --max-loops 0 has no bound
+// of its own: it grew for the life of the process, and the help overlay spent
+// a screen of its fixed height on one line per conflict, pushing the key
+// bindings it exists to document below the fold. The newest are kept, because
+// they are the ones just produced and least likely to have been dealt with,
+// and the count the bound dropped is stated wherever the list is drawn, so a
+// short list never reads as the whole run. Every conflict is in the journal
+// and in the end-of-run summary regardless.
+const maxConflicts = 16
+
 // activityRateFull is the lines/s that reads as the top of the heat ramp on
 // the activity marker, so the color means the same thing every frame.
 const activityRateFull = 50
@@ -204,19 +216,23 @@ type model struct {
 	reloading  bool
 	quitArmed  bool // q/esc was pressed once; a second press stops the run
 
-	loop        int
-	counts      map[string]int
-	tokens      int
-	thinking    int
-	agentTime   time.Duration
-	ins, del    int
-	haveLines   bool
-	conflicts   []string
-	activity    []float64
-	liveRate    float64 // measured tok/s across the lanes reporting usage
-	pendingRate float64
-	lastSample  time.Time
-	now         time.Time
+	loop      int
+	counts    map[string]int
+	tokens    int
+	thinking  int
+	agentTime time.Duration
+	ins, del  int
+	haveLines bool
+	// conflicts is the unmerged branches this run left for a human, newest
+	// last and bounded at maxConflicts, with conflictsDropped counting what
+	// the bound left out.
+	conflicts        []string
+	conflictsDropped int
+	activity         []float64
+	liveRate         float64 // measured tok/s across the lanes reporting usage
+	pendingRate      float64
+	lastSample       time.Time
+	now              time.Time
 }
 
 // program is the part of a tea.Program the dashboard drives.
@@ -652,6 +668,10 @@ func (m *model) apply(ev runner.Event) {
 			entry := ev.Review + " (" + ev.Branch + ")"
 			if !slices.Contains(m.conflicts, entry) {
 				m.conflicts = append(m.conflicts, entry)
+				if len(m.conflicts) > maxConflicts {
+					m.conflicts = m.conflicts[len(m.conflicts)-maxConflicts:]
+					m.conflictsDropped++
+				}
 			}
 		}
 		if ev.Review != "" && ev.Ins != nil && ev.Del != nil {
