@@ -84,7 +84,9 @@ the finished block to paste back, so no cell is transcribed by hand.
 
 - Every `.go` file opens with the two-line header
   (`// Copyright (C) 2026 Marcel W. Wysocki`, then
-  `// SPDX-License-Identifier: AGPL-3.0-or-later`). Text is LF
+  `// SPDX-License-Identifier: AGPL-3.0-or-later`), which
+  `TestEveryGoFileCarriesTheLicenseHeader` holds every file to, the way
+  ruff's `CPY` rule holds the scripts. Text is LF
   (`.gitattributes`), and the runner needs POSIX process groups, `flock`,
   `O_NOFOLLOW`, and `execve`, so Linux and macOS only.
 - A direct module in `go.mod` must be a tagged release, imported by a non-test

@@ -119,8 +119,14 @@ disallow_any_explicit = true
 disallow_any_decorated = true
 disallow_any_unimported = true
 warn_unreachable = true
+# annotation-unchecked and empty-body are the two this tree was not opting into
+# by name: a `@no_type_check` decorator, and a body that is only a docstring in
+# an abstract or protocol method. Both are signatures a strict checker should
+# read and the annotations stop describing.
 enable_error_code = [
+    "annotation-unchecked",
     "deprecated",
+    "empty-body",
     "exhaustive-match",
     "explicit-override",
     "ignore-without-code",
