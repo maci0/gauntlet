@@ -584,7 +584,7 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 		delay := r.backoff(review, attempt)
 		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
-		if !r.sleep(ctx, delay) || r.budgetExhausted() != "" {
+		if !r.sleep(ctx, delay) || r.windowSpent(ctx) {
 			return Result{}, false
 		}
 		if !r.resetForRetry(ctx, review, wt) {
@@ -600,6 +600,9 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 		return Result{}, false
 	}
 	r.log("Retrying %s with another agent after %s failed", review, failed.Label())
+	if r.windowSpent(ctx) {
+		return Result{}, false
+	}
 	if !r.resetForRetry(ctx, review, wt) {
 		return Result{}, false
 	}

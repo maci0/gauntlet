@@ -234,6 +234,26 @@ func (r *Runner) budgetExhausted() string {
 	return ""
 }
 
+// windowSpent reports whether no further attempt may start, asking the
+// provider's own window the question the token budget cannot: --usage-limit
+// reads a percentage of a quota shared by every agent on the account, and the
+// review path is the only place that quota is consulted.
+//
+// A retry is where it matters most. The other two loops check the window once
+// per review before they take one off the queue, but a retry starts no new
+// review: it relaunches the one already in hand, up to --retries times and then
+// once per remaining agent in the pool, after a backoff that can be minutes.
+// A window checked only at the queue is a window a retry chain walks past, and
+// the chain is the part of the run that spends the most of it in the least
+// wall time.
+func (r *Runner) windowSpent(ctx context.Context) bool {
+	if ctx.Err() != nil || r.budgetExhausted() != "" {
+		return true
+	}
+	r.checkUsageLimit(ctx)
+	return r.finish.Load()
+}
+
 // runLoopSequential reviews the working tree in place, one review at a time.
 // This is the original's behavior, and the only mode that can review
 // uncommitted work.

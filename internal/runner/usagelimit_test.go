@@ -266,6 +266,79 @@ func TestUsageLimitUnderThresholdRunsEverything(t *testing.T) {
 	}
 }
 
+func TestUsageLimitStopsARetry(t *testing.T) {
+	// A retry takes no review off the queue, so the queue-side check never
+	// sees it: the review in hand is relaunched up to --retries times and then
+	// once per remaining agent. That chain is the part of a run that spends the
+	// most of a shared provider window in the least wall time, so the window is
+	// asked again before each relaunch. Under the limit for the first attempt,
+	// at the limit by the time the retry would start: the retry must not run.
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	marker := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo x >> `+marker+`
+echo "overloaded_error" >&2
+exit 1`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries = 2
+	cfg.UsageCmd = probeScript(t, "10", "80")
+	cfg.UsageLimit = 80
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+	r := runQuiet(t, cfg)
+
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(body), "x"); n != 1 {
+		t.Fatalf("agent ran %d times, want 1: the retry started after the window was spent", n)
+	}
+	if pending := r.Pending(); len(pending) != 0 {
+		t.Fatalf("the window stopping a retry must drop what never started: %v", pending)
+	}
+}
+
+func TestUsageLimitUnderThresholdStillRetries(t *testing.T) {
+	// The control for the stop above: a probe that stays under the limit must
+	// leave the retry chain alone. Without it, a retry check stuck at "stop"
+	// would pass that test.
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	marker := filepath.Join(t.TempDir(), "attempts")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+echo x >> `+marker+`
+attempts=$(wc -l < `+marker+`)
+if [ "$attempts" -lt 3 ]; then
+	echo "overloaded_error" >&2
+	exit 1
+fi
+echo "RESULT: no-changes"`)
+
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries = 2
+	cfg.UsageCmd = probeScript(t, "10")
+	cfg.UsageLimit = 80
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Millisecond
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+	r := runQuiet(t, cfg)
+
+	body, err := os.ReadFile(marker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(body), "x"); n != 3 {
+		t.Fatalf("agent ran %d times, want 3 (first try plus two retries)", n)
+	}
+	if c := r.Stats().Counts(); c.OK != 1 {
+		t.Fatalf("the third attempt succeeded, so the review did: %+v", c)
+	}
+}
+
 func TestUsageLimitNaNIgnored(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "first-review", "second-review")
