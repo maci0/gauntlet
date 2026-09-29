@@ -172,17 +172,17 @@ type helpEnvVar struct {
 
 // helpEnvVars is the environment section: the variables a consumer can set to
 // change gauntlet's behavior. GAUNTLET_HOME and GH_TOKEN/GITHUB_TOKEN are
-// read by internal packages (gauntlethome, selfupdate); the color names come
-// from report.go's consts, so this table cannot drift from colorEnabled.
+// read by internal packages (gauntlethome, selfupdate); the color names are
+// report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []helpEnvVar{
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json (default ~/.gauntlet)", false},
 	{"GAUNTLET_NO_ANIMATION", "stop the dashboard moving (reduced motion): the reasoning glyph holds one frame and the screen stops redrawing ten times a second; read first, so set to 0 or false it outranks the two below", false},
 	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
 	{"REDUCED_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},
-	{"NO_COLOR", "disable color, however it is set", false},
-	{"CLICOLOR_FORCE", "keep color when the output is piped", false},
-	{"FORCE_COLOR", "same as CLICOLOR_FORCE", false},
-	{"TERM", "\"dumb\" in any case disables color, even with the two above", false},
+	{envNoColor, "disable color, however it is set", false},
+	{envCLIColorForce, "keep color when the output is piped", false},
+	{envForceColor, "same as CLICOLOR_FORCE", false},
+	{envTerm, "\"dumb\" in any case disables color, even with the two above", false},
 	{"GITHUB_TOKEN", "used for GitHub release lookups and downloads", true},
 	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set", true},
 	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it", false},

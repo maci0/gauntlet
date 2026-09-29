@@ -630,8 +630,7 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 	}
 	// Git listed the tree, so it can also say which part of it is alive.
 	// The same handle already paid for the safe-config overlay on ListFiles;
-	// a second Open would recompute it and rev-parse a baseline this scan
-	// never uses.
+	// a second Open would build that overlay again for the same repo.
 	//
 	// The window is measured back from the run's own clock, so a replay of the
 	// same tree on the same seed sees the same churn: git resolving "90 days

@@ -553,7 +553,8 @@ func exitCode(cmd *exec.Cmd, err error) int {
 // while memory stays flat no matter how much the agent prints.
 const suggestTailBytes = 1 << 20
 
-// captureProc runs a command to completion and returns the tail of its stdout.
+// captureProc runs a command to completion and returns the tail of its
+// output, both streams interleaved in the order they arrived.
 // Used for the short helper steps whose output is parsed rather than streamed:
 // today that is the suggest triage. The bound is what makes an output loop in
 // the child a bounded annoyance instead of unbounded memory growth.

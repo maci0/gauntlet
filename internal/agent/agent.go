@@ -366,7 +366,9 @@ var dshModelRe = regexp.MustCompile(`^[A-Za-z0-9._/:-]+$`)
 // levels are provider-specific (opencode's "minimal" is not in Anthropic's
 // set), so like a model id the value travels verbatim and the CLI rejects
 // what it does not serve, but the charset is pinned because the value lands
-// on an argv: no separators, no whitespace, nothing flag-shaped.
+// on an argv in a flag value position, where no shell can read it as
+// anything else, so the bound is about whitespace and separators rather than
+// about flag injection.
 var effortRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 
 // ParseSpecs parses a comma-separated agent list ("claude", "mixed",

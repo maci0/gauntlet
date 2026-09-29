@@ -221,10 +221,11 @@ func restoreRun(out io.Writer, pal palette, runID string, asJSON bool) int {
 
 // runsColumn is one column of the listing. A number is right-aligned and a
 // name is not, and every column is as wide as its widest cell rather than a
-// width picked when the flag was written: a run id is a stamp plus the pid in
-// hex, so it is 17 characters on a machine that has not reused pid 1M yet and
-// 24 on one that has, and a fixed width that lined up the header on the first
-// shoved every column after RUN sideways on the second.
+// width picked when the flag was written: a run id is a 16-character stamp, a
+// dash, and the pid in unpadded hex, so it is 18 characters on a machine that
+// has not reused pid 1 yet and grows with the pid from there, and a fixed width
+// that lined up the header on the first shoved every column after RUN sideways
+// on the second.
 type runsColumn struct {
 	head  string
 	right bool

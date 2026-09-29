@@ -40,8 +40,9 @@ var safeConfig = []string{
 // (a merge driver, a signing program, a credential helper) inherits those
 // pipes, and without this bound one lingering child parks Run, and with it
 // the mutexes around Sample, Merge, and the worktree calls, forever past the
-// deadline. It is runx.WaitGrace, the bound every other child gets; a var only
-// so tests can shrink it.
+// deadline. It is runx.WaitGrace, the bound every git child gets, since one
+// lingering helper is the same failure whichever command spawned it; a var
+// only so tests can shrink it.
 var waitGrace = runx.WaitGrace
 
 // How long one git command may take, by what it has to do. A query answers

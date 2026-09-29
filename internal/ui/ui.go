@@ -636,7 +636,7 @@ func (m *model) apply(ev runner.Event) {
 			// wall-clock stamp taken from the journal has no monotonic
 			// reading, so an NTP step during a review empties the meter and
 			// rewinds the elapsed column on a run the timer has not touched.
-			// The tick that last refreshed m.now bounds the error at tickEvery.
+			// The tick that last refreshed m.now bounds the error at one redraw.
 			l.review, l.start, l.attempt = ev.Review, m.now, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
 			l.lastAt, l.lastThinkAt = ev.Time, time.Time{}

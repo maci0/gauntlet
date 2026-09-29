@@ -346,7 +346,9 @@ var (
 	}()
 )
 
-// Register adds or replaces a custom agent definition.
+// Register adds a custom agent definition. It refuses a name that is already
+// defined, by any spelling, so a redefinition is a visible error rather than a
+// silent last-one-wins; Unregister first if replacing one is the intent.
 func Register(name string, def Custom) error {
 	name = fuzzy.NFC(name)
 	if err := def.validate(name); err != nil {
