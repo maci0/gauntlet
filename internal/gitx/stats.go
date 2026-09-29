@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
@@ -90,7 +91,8 @@ const minSampleInterval = 750 * time.Millisecond
 
 // Sample returns cumulative (insertions, deletions) since the baseline, and
 // whether the measurement is available at all. Results are cached briefly and
-// shared across callers.
+// shared across callers holding the same own-artifact set; a caller with
+// another set is measured afresh rather than handed the previous set's number.
 //
 // git diff never sees untracked files, but reviews are told to add tests (new
 // files), so their lines are counted as insertions.
@@ -105,8 +107,11 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	defer r.mu.Unlock()
 	// The >= 0 half matters: a clock stepped backwards leaves lastAt in the
 	// future, and a sample from a future cache entry would report a tree the
-	// reviews have not produced yet.
-	if r.haveLast {
+	// reviews have not produced yet. The set comparison matters for the same
+	// reason from the other side: the cached value was measured under one set
+	// of own artifacts, and a caller holding another is owed a measurement of
+	// its own.
+	if r.haveLast && sameArtifactSet(r.lastOwn, ownArtifacts) {
 		if since := r.now().Sub(r.lastAt); since >= 0 && since < minSampleInterval {
 			return r.lastVal, true
 		}
@@ -148,7 +153,27 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	}
 
 	r.lastVal, r.lastAt, r.haveLast = st, r.now(), true
+	// A copy, not the caller's map: the run adds a directory's lock file to
+	// the one map it shares with every other directory's runner, and a stored
+	// reference would then describe a set that never existed.
+	r.lastOwn = maps.Clone(ownArtifacts)
 	return st, true
+}
+
+// sameArtifactSet reports whether two own-artifact sets name the same paths.
+// Two empty sets are the same set: an empty one owns nothing, so a measurement
+// taken under it counts every untracked file, which is what the next caller
+// holding an empty set wants too.
+func sameArtifactSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for p, own := range a {
+		if b[p] != own {
+			return false
+		}
+	}
+	return true
 }
 
 // Invalidate drops the cached sample so the next call measures fresh. Called
@@ -159,7 +184,7 @@ func (r *Repo) Invalidate() {
 		return
 	}
 	r.mu.Lock()
-	r.haveLast = false
+	r.haveLast, r.lastOwn = false, nil
 	r.mu.Unlock()
 }
 

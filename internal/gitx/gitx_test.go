@@ -277,10 +277,24 @@ func TestSampleCountsUntrackedAndSkipsOwnArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.Invalidate() // otherwise the 750ms sample cache returns the previous value
+	// No Invalidate: the debounce would still be inside its window, so this
+	// asserts that a sample taken under a different own-artifact set is
+	// measured rather than answered from the cache the first call filled.
 	st, ok = r.Sample(ctx, map[string]bool{real: true})
 	if !ok || st.Ins != 0 {
 		t.Fatalf("the runner's own artifacts must not count, got %+v ok=%v", st, ok)
+	}
+	// And the other direction: the set that does not own the file gets its
+	// five lines back, still inside the debounce window.
+	st, ok = r.Sample(ctx, nil)
+	if !ok || st.Ins != 5 {
+		t.Fatalf("a caller with a different artifact set must be remeasured, got %+v ok=%v", st, ok)
+	}
+	// The same set twice is the case the debounce exists for: the second call
+	// is served from the cache, so the value is the first one's.
+	st, ok = r.Sample(ctx, nil)
+	if !ok || st.Ins != 5 {
+		t.Fatalf("the cached sample must serve a caller holding the same set, got %+v ok=%v", st, ok)
 	}
 }
 
@@ -306,6 +320,34 @@ func TestSampleNegativeElapsedBypassesCache(t *testing.T) {
 	st2, ok2 := r.Sample(ctx, nil)
 	if !ok2 || st2.Ins != 1 {
 		t.Fatalf("negative elapsed should bypass cache and remeasure the one new file, got %+v", st2)
+	}
+}
+
+// TestSampleCacheIsolatesArtifactSetMutation pins the copy. The run shares one
+// own-artifact map with every directory's runner and adds each directory's lock
+// file to it, so a sample cached under the map as it stood must not be
+// answered from a set that has since grown.
+func TestSampleCacheIsolatesArtifactSetMutation(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	stamp := time.Date(2026, 7, 8, 9, 10, 11, 0, time.UTC)
+	now := stamp
+	r.Now = func() time.Time { return now }
+
+	lock := filepath.Join(r.Dir, ".gauntlet.lock")
+	if err := os.WriteFile(lock, []byte("run\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	own := map[string]bool{}
+	if st, ok := r.Sample(ctx, own); !ok || st.Ins != 1 {
+		t.Fatalf("the lock file counts while nothing owns it, got %+v ok=%v", st, ok)
+	}
+	// The run claims the lock file after the sample was cached.
+	own[lock] = true
+	now = stamp.Add(minSampleInterval)
+	st, ok := r.Sample(ctx, own)
+	if !ok || st.Ins != 0 {
+		t.Fatalf("a set that grew past the cached one must be remeasured, got %+v ok=%v", st, ok)
 	}
 }
 

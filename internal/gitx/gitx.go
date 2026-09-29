@@ -89,6 +89,14 @@ type Repo struct {
 	lastAt   time.Time
 	lastVal  Stats
 	haveLast bool
+	// lastOwn is the own-artifact set lastVal was measured under. The
+	// debounced value is a function of that set as much as of the tree, so the
+	// cache is only answered to a caller holding the same one: serving it to a
+	// caller with a different set would report the previous set's artifacts as
+	// the tree's lines. The set is one log file and one lock file per
+	// directory, so comparing it is cheaper than a git walk and far cheaper
+	// than a wrong number.
+	lastOwn map[string]bool
 
 	// lineCounts caches untracked-file line counts across samples, guarded by
 	// mu. Sampling repeats for the life of a loop, and re-reading every
