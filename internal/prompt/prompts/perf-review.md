@@ -161,7 +161,7 @@ Low-risk optimizations with clear measurable benefit.
 
 Important:
 - Base findings on the actual code, not assumptions.
-- If you are not sure about the impact, skip it.
+- If you are not sure about the impact, measure it or show it by inspection (an N+1 query, unbounded growth, a regex compiled per call). Skip the item when proving it needs numbers you cannot get.
 - Prefer the simplest fix that addresses the issue.
 - Do not sacrifice code clarity for marginal performance gains.
 - Consider the tradeoff between optimization effort and expected benefit.

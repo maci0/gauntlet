@@ -145,7 +145,7 @@ Small, low-risk changes with high documentation payoff.
 
 Important:
 - Base conclusions on the actual code.
-- If uncertain, skip it.
+- If uncertain, do not rewrite the claim: find the code or config it describes and settle it there. Skip the item when nothing in the tree settles it.
 - Prioritize issues that could mislead developers or cause misuse of APIs.
 - Focus on improvements a writer can act on rather than stylistic nitpicks.
 - Call out when documentation is already clear and sufficient.

@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Changed
+
+- Four bundled reviews stopped telling the agent to skip an item whenever it was unsure. In an auto-fix run the composed prompt already says doing nothing is the failure mode, so an unqualified "if you are not sure, skip it" in the block that survives composition left the agent to choose between the two, and a cautious reading meant the pass changed nothing. `code-review` now traces the function, its callers, and its tests until it can point at the wrong line, and skips the item only where the code does not settle the question; `doc-review` settles a doubtful claim against the code it describes instead of dropping it; `perf-review` measures the impact or shows it by inspection (an N+1 query, unbounded growth, a regex compiled per call) and skips only what it cannot prove; `sec-review` requires the call path from untrusted input to the sink, allows a hardening note without one, and skips the item where no path exists. The intent behind each line, no report on a guess, is unchanged.
+
 ## 1.28.0
 
 ### Changed

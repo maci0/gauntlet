@@ -169,7 +169,7 @@ Small, low-risk fixes with high security payoff.
 
 Important:
 - Base findings on the actual code, not assumptions.
-- If you are not sure about exploitability, skip it.
+- If you are not sure about exploitability, the finding needs the call path from untrusted input to the sink, traced in the code. Report it without that path only as a hardening note, and skip it when no path exists.
 - Prefer the simplest fix that eliminates the vulnerability.
 - Do not recommend security theater that adds complexity without real protection.
 - Consider the principle of least privilege in all recommendations.

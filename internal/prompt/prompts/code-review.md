@@ -188,7 +188,7 @@ Grouped by category, using the finding template above.
 
 Important:
 - Base findings on the actual code, not assumptions.
-- If you are not sure, skip it.
+- If you are not sure, do not change it yet: read the function, its callers, and its tests until you can point at the line that is wrong. Skip the item only when the code itself does not settle the question.
 - If the repository is large, prioritize the parts with the most duplication, complexity, inconsistency, or churn.
 - Identify patterns, not just isolated issues.
 - Optimize for feedback a team could turn into tickets immediately.
