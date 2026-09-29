@@ -20,6 +20,15 @@ import (
 // places that have room for a sentence: the block line and the hint.
 const filterMissedMsg = "no reviews match this filter (esc clears it, / to edit)"
 
+// minPickerW and minPickerH are the smallest terminal the launcher holds: the
+// tree beside two stacked panels, each of them a frame around one row at the
+// tightest. View guards on them and the fallback names them, so the size the
+// screen asks for and the size it accepts cannot drift apart.
+const (
+	minPickerW = 50
+	minPickerH = 12
+)
+
 func (p *picker) View() string {
 	if !p.ready {
 		return "\n  gauntlet is warming up…"
@@ -27,7 +36,7 @@ func (p *picker) View() string {
 	if p.help {
 		return p.renderHelp()
 	}
-	if p.w < 50 || p.h < 12 {
+	if p.w < minPickerW || p.h < minPickerH {
 		return p.renderNarrow()
 	}
 	// The run pane is a label and a value per row, and a pane too narrow for
@@ -133,21 +142,33 @@ func (p *picker) renderCommand() string {
 }
 
 // blocked reports why the composed run would not start, or "" when it would.
-// Worktree isolation cuts branches from a commit, so uncommitted edits to
-// tracked files would be invisible to every review: better to say so here
-// than to compose a command that fails on launch. Untracked files do not
-// block --jobs, so they do not block the launcher either. The same goes for
-// an empty agent pool: every run auto-detects its agents, so nothing here
-// can launch at all.
 func (p *picker) blocked() string {
+	if why := p.blockReason(); why != "" {
+		return why
+	}
+	if p.filterMissed(p.rows()) {
+		return filterMissedMsg
+	}
+	return ""
+}
+
+// blockReason is the part of blocked that is not the reader's own filter: the
+// machine cannot run the run, whatever the filter says. It is its own
+// predicate so a status line can outrank the filter hint with it while the
+// reader is still typing, without also warning about every keystroke of a
+// search that has not matched yet.
+func (p *picker) blockReason() string {
+	// Worktree isolation cuts branches from a commit, so uncommitted edits to
+	// tracked files would be invisible to every review: better to say so here
+	// than to compose a command that fails on launch. Untracked files do not
+	// block --jobs, so they do not block the launcher either. The same goes for
+	// an empty agent pool: every run auto-detects its agents, so nothing here
+	// can launch at all.
 	if len(p.cfg.Agents) == 0 {
 		return "no agent CLI is installed: install one (see: gauntlet doctor)"
 	}
 	if p.cfg.Dirty && p.concurrency().n > 1 && !p.stacked() {
 		return "concurrency above 1 needs a clean tree: commit or stash first, or set it back to 1"
-	}
-	if p.filterMissed(p.rows()) {
-		return filterMissedMsg
 	}
 	return ""
 }
@@ -229,6 +250,14 @@ func (p *picker) renderStatus() string {
 			fmt.Sprintf("⚠ %s again to discard the run, %s to keep it", p.quitKey, otherQuitKey(p.quitKey))), p.w)
 	}
 	if p.typing {
+		// A reason the run cannot start outranks the filter line: it is what
+		// makes enter dead, and it does not stop being true because the reader
+		// opened a search. Typing used to hide it entirely, so a box with no
+		// agent CLI installed read as a working launcher for as long as the
+		// search was open.
+		if why := p.blockReason(); why != "" {
+			return clipEllipsis(styleWarn.Render("⚠ "+why), p.w)
+		}
 		return clipEllipsis(styleDim.Render(p.hint()), p.w)
 	}
 	if why := p.blocked(); why != "" {
@@ -387,7 +416,12 @@ func (p *picker) renderNarrow() string {
 	command := styleValue.Render("gauntlet " + strings.Join(p.argv(), " "))
 	rows := []string{
 		wordmark() + styleDim.Render("  compose a run"),
-		styleDim.Render("terminal too small for the launcher"),
+		// A fallback that only says it is the fallback leaves the reader on a
+		// screen with no way to choose anything. Resizing is the way out, and
+		// it is immediate: the panes draw on the next frame, so the fallback
+		// names the size that brings them back.
+		styleDim.Render(fmt.Sprintf("launcher needs %d×%d; resize to pick reviews",
+			minPickerW, minPickerH)),
 		command,
 	}
 	// Enter is dead while the run is blocked, and the reason is the only

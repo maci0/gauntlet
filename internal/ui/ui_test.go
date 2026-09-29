@@ -197,7 +197,7 @@ func TestFrameFitsAtEverySize(t *testing.T) {
 
 func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
 	frame := staticFrame(demoConfig(), demoEvents(), 40, 10)
-	if !strings.Contains(frame, "too small") {
+	if !strings.Contains(frame, "needs") {
 		t.Fatalf("expected the minimal view, got:\n%s", frame)
 	}
 }
@@ -207,10 +207,25 @@ func TestSmallTerminalFallsBackInsteadOfBreaking(t *testing.T) {
 // hides how to finish gracefully forces the harsher one.
 func TestMinimalViewKeepsStateTallyAndKeys(t *testing.T) {
 	frame := stripANSI(staticFrame(demoConfig(), demoEvents(), 40, 10))
-	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "s finish", "too small"} {
+	for _, want := range []string{"RUNNING", "loop 1", "pass 1", "timeout 1", "? help", "s finish", "needs"} {
 		if !strings.Contains(frame, want) {
 			t.Fatalf("minimal view lost %q:\n%s", want, frame)
 		}
+	}
+}
+
+// The fallback is a screen the reader arrived at by having too little room,
+// so it has to say what to do about it. Resizing is the next action and it is
+// immediate, but only if the reader is told the size the panels need: a line
+// reading only that the terminal is too small is a dead end with no next
+// step, and the number is the same one the view guards on.
+func TestMinimalViewSaysHowToGetThePanelsBack(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 40, 10, true
+	got := stripANSI(m.renderMinimal())
+	want := fmt.Sprintf("dashboard needs %d×%d", minDashboardW, minDashboardH)
+	if !strings.Contains(got, want) || !strings.Contains(got, "resize") {
+		t.Fatalf("the fallback does not name the size that brings the panels back:\n%s", got)
 	}
 }
 
@@ -1642,8 +1657,11 @@ func TestQuitNeedsASecondPressWhileRunning(t *testing.T) {
 	if !m.quitArmed {
 		t.Fatal("the first q should ask for confirmation")
 	}
-	if got := stripANSI(m.View()); !strings.Contains(got, "q TO STOP") {
-		t.Fatalf("the header does not say q will stop the run:\n%s", got)
+	// "again" is the word the state has to carry: the press that armed the
+	// stop is the one that has to be repeated, which is what the launcher's
+	// own armed line says in as many words.
+	if got := stripANSI(m.View()); !strings.Contains(got, "q AGAIN TO STOP") {
+		t.Fatalf("the header does not say the press must be repeated:\n%s", got)
 	}
 	if got := lastLine(stripANSI(m.View())); !strings.Contains(got, "q:stop now") {
 		t.Fatalf("the footer still advertises a plain quit:\n%s", got)

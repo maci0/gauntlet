@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- The small-terminal fallbacks were dead ends. Both said the terminal was too small for the screen they were standing in for, which leaves the reader with no next action, and the launcher is the worse of the two: without its panels nothing on it can be chosen, so the only way out is to make room. Each now names the size the full view needs, from the same constants the view guards on, and says that resizing brings the panels back on the next frame. The dashboard's armed stop now reads `q AGAIN TO STOP`, naming the repeat the launcher has always named on its own armed line. The launcher's status line no longer lets the filter input hide a run that cannot start: a box with no agent CLI installed, or a dirty tree with more than one lane, read as a working launcher for as long as a search was open. A filter that has matched nothing stays the hint's own sentence, so a search does not warn on every keystroke.
+
 ### Changed
 
 - The help overlay's key row, on the dashboard and in the launcher, is now fitted to the pane instead of being one fixed string, and it names every key the overlay answers to. The row was cut mid-name on a narrow terminal ("j/k scrol", a key that does not exist) and left `space` out even though it pages the overlay down, so a key that worked read as broken. Whole segments drop from the right now, and the closing keys keep the row. The dashboard's close line also names `h`, which closes the overlay there and was unmentioned; the launcher's does not, because `h` folds a set there instead.

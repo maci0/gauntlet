@@ -23,6 +23,15 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
+// minDashboardW and minDashboardH are the smallest terminal the full
+// dashboard holds, stated once: View guards on them and the small-terminal
+// fallback names them, so the size the screen asks for and the size it
+// accepts cannot drift apart.
+const (
+	minDashboardW = 60
+	minDashboardH = 22
+)
+
 func (m *model) View() string {
 	if !m.ready {
 		// Bubble Tea paints the first frame before the window size arrives, and
@@ -39,7 +48,7 @@ func (m *model) View() string {
 	// the smallest terminal the full view can actually hold. The guard takes
 	// one row more than that, and below it the fallback answers what matters
 	// instead of a frame with its bottom open.
-	if m.w < 60 || m.h < 22 {
+	if m.w < minDashboardW || m.h < minDashboardH {
 		return m.renderMinimal()
 	}
 
@@ -185,7 +194,10 @@ func (m *model) renderHeader() string {
 func (m *model) stateLabel() (string, lipgloss.Style) {
 	switch {
 	case m.quitArmed:
-		return "● q TO STOP", styleBad
+		// "again" is the word the state was missing: the key that set it is
+		// the one that has to be pressed a second time, which the launcher's
+		// own armed line says in as many words.
+		return "● q AGAIN TO STOP", styleBad
 	case m.done:
 		return "● DONE", styleDim
 	case m.finishing:
@@ -868,7 +880,12 @@ func (m *model) renderMinimal() string {
 		rows = append(rows, styleInfo.Render("running: "+strings.Join(active, ", ")))
 	}
 	rows = append(rows,
-		styleDim.Render("terminal too small for the dashboard"),
+		// A fallback that only says it is the fallback leaves the reader at a
+		// screen with no next action. Resizing is the next action, and it is
+		// immediate: the model takes a new window size and draws the panels on
+		// the next frame, so the fallback names the size that brings them back.
+		styleDim.Render(fmt.Sprintf("dashboard needs %d×%d; resize for the panels",
+			minDashboardW, minDashboardH)),
 		styleDim.Render(hint.String()),
 	)
 	if m.h > 0 && len(rows) > m.h {

@@ -130,6 +130,46 @@ func TestNarrowLauncherDoesNotNameDeadArrowKeys(t *testing.T) {
 	}
 }
 
+// The narrow fallback is a screen the reader reached by having too little
+// room, so it has to name the way out. Resizing draws the panes on the next
+// frame, and only a reader told the size the panes need can act on that.
+func TestNarrowLauncherSaysHowToGetThePanelsBack(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h = 40, 10
+	got := stripANSI(p.renderNarrow())
+	want := fmt.Sprintf("launcher needs %d×%d", minPickerW, minPickerH)
+	if !strings.Contains(got, want) || !strings.Contains(got, "resize") {
+		t.Fatalf("the narrow fallback does not name the size that brings the panes back:\n%s", got)
+	}
+}
+
+// A reason the run cannot start is what makes enter dead, and opening the
+// filter did not make it any less true. Typing used to put the filter line
+// there instead, so a box with no agent CLI installed read as a working
+// launcher for as long as the search was open.
+func TestBlockReasonSurvivesTheFilterLine(t *testing.T) {
+	p := demoPicker()
+	p.cfg.Agents = nil
+	press(p, "/", "s", "e", "c")
+	if !p.typing {
+		t.Fatal("the filter did not open")
+	}
+	got := stripANSI(p.renderStatus())
+	if !strings.Contains(got, "no agent CLI is installed") {
+		t.Fatalf("the filter line hid the reason the run cannot start:\n%s", got)
+	}
+	// The search's own state is not a machine problem, so a filter that has
+	// matched nothing stays the hint's sentence rather than becoming a warning.
+	q := demoPicker()
+	press(q, "/", "z", "z", "z")
+	if got := stripANSI(q.renderStatus()); strings.Contains(got, "⚠") {
+		t.Fatalf("a fruitless search warned on every keystroke:\n%s", got)
+	}
+	if got := stripANSI(q.renderStatus()); !strings.Contains(got, "no reviews match") {
+		t.Fatalf("the hint lost the fruitless search:\n%s", got)
+	}
+}
+
 // esc is the way back, so the help has to say what it goes back from: a
 // reader who pressed it once to dismiss something and found the launcher
 // gone has no way to know it also leaves with nothing left to clear.
