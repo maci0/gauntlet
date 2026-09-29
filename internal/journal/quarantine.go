@@ -95,7 +95,7 @@ func trimQuarantine(keep int) error {
 			return err
 		}
 	}
-	return removeEmptyDirs(touched)
+	return removeEmptyDirs(touched, prunedDir())
 }
 
 // Quarantined reports the runs a prune has put aside and can still be
@@ -284,7 +284,7 @@ func Restore(runID string) error {
 		// empty directory per restore is the unbounded growth the quarantine
 		// bound exists to stop, and no later trim can remove it: trimQuarantine
 		// only unlinks files and the shard no longer holds any.
-		if err := removeEmptyDirs(map[string]struct{}{filepath.Dir(src): {}}); err != nil {
+		if err := removeEmptyDirs(map[string]struct{}{filepath.Dir(src): {}}, prunedDir()); err != nil {
 			return err
 		}
 		// A row left over from before the prune would be reconstructed from
@@ -300,9 +300,11 @@ func Restore(runID string) error {
 
 // removeEmptyDirs deletes the directories a set of removals emptied, and
 // syncs the parent of each one that goes, since a directory stays until its
-// parent records the removal.
-func removeEmptyDirs(touched map[string]struct{}) error {
-	root := prunedDir()
+// parent records the removal. root is the tree whose own removal is the end of
+// the walk rather than something to sync the parent of: it is recreated on
+// demand, so syncing a parent that still holds it would sync a directory that
+// is no longer there.
+func removeEmptyDirs(touched map[string]struct{}, root string) error {
 	emptied, removedRoot := false, false
 	// A sorted walk, not a map range: several shards can fail to remove at
 	// once, and the error the caller sees would otherwise be whichever one the
@@ -325,8 +327,8 @@ func removeEmptyDirs(touched map[string]struct{}) error {
 		}
 	}
 	if !emptied || removedRoot {
-		// pruned/ itself is the tree the bound applies to, so there is no
-		// parent here to sync its removal, and quarantine recreates it.
+		// The root is the tree the bound applies to, and it is recreated on
+		// demand, so there is no parent here whose sync records its removal.
 		return nil
 	}
 	return gauntlethome.SyncDir(root)

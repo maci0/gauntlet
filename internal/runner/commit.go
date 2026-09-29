@@ -220,6 +220,13 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		status = StatusTimeout
 	case pr.Canceled:
 		status = StatusInterrupted
+	case pr.StreamErr != nil:
+		// The agent exited on its own terms but its output was cut short, so
+		// the commit it claims to have made cannot be read off the stream.
+		// Below the timeout and cancel arms, which close the pipes on purpose
+		// and which a reader sees as the same broken pipe.
+		r.log("LOST OUTPUT: %s step (%s): %v", action, spec.Label(), pr.StreamErr)
+		status = StatusFail
 	case pr.ExitCode != 0:
 		r.log("%s step FAILED (%s), exit %d", action, spec.Label(), pr.ExitCode)
 		status = StatusFail

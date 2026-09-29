@@ -16,10 +16,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"syscall"
-
-	"github.com/maci0/gauntlet/internal/gauntlethome"
 )
 
 // Prune drops the run journals and index rows older than the newest keep, and
@@ -156,31 +153,10 @@ func pruneLocked(keep int) (int, error) {
 	// Moving the journals is what empties a shard, and os.Remove on a
 	// directory succeeds only when nothing is left in it, so a shard a
 	// retained run or a running one still writes into is left where it is
-	// rather than named for deletion.
-	emptied := false
-	// Sorted, not a map range: every failure here is noted in the order it is
-	// reached, so the notes a prune prints would otherwise come out in
-	// whatever order the map iterated.
-	dirs := make([]string, 0, len(touched))
-	for dir := range touched {
-		dirs = append(dirs, dir)
-	}
-	slices.Sort(dirs)
-	for _, dir := range dirs {
-		switch err := os.Remove(dir); {
-		case err == nil:
-			emptied = true
-		case errors.Is(err, fs.ErrNotExist):
-		case errors.Is(err, syscall.ENOTEMPTY), errors.Is(err, syscall.EEXIST):
-		default:
-			note(err)
-		}
-	}
-	// A removed shard is only gone for good once its parent records the
-	// removal, the same requirement as the one Open has for a new file.
-	if emptied {
-		note(gauntlethome.SyncDir(runsDir()))
-	}
+	// rather than named for deletion. A run filed straight into runs/ (an id
+	// naming no shard) makes the root itself the emptied directory; the shared
+	// helper stops there rather than syncing a parent that still holds it.
+	note(removeEmptyDirs(touched, runsDir()))
 	// The quarantine is bounded by the same keep, so a run stays recoverable
 	// until keep newer runs have pushed it out, and the state tree does not
 	// grow a second unbounded history beside the one Prune exists to bound.
