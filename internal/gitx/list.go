@@ -56,13 +56,14 @@ func (r *Repo) listFiles(ctx context.Context, limit int, pathspec ...string) ([]
 // says which parts of a tree are alive: a directory nobody has edited in a
 // quarter is not where the next review should look.
 //
-// The window is an instant on the repo's own clock, not a relative phrase.
-// git resolves "--since=90 days ago" against its own wall clock, so two
-// callers an hour apart, or one caller replayed a seeded run on a later day,
-// get different churn over the same tree; the cutoff has to be a value the
-// caller computed from the clock the run is already driving everything else
-// from. r.now() supplies that clock, and the cutoff is carried in UTC so the
-// result does not shift with the machine's zone.
+// The window is an instant the caller computed, not a relative phrase. git
+// resolves "--since=90 days ago" against its own wall clock, so two callers an
+// hour apart, or one caller replayed a seeded run on a later day, get
+// different churn over the same tree. The cutoff is therefore a parameter
+// rather than something read here: Repo.Now debounces the sample cache, and a
+// repo handle built for a churn scan has no clock set, so reading it would
+// silently give a wall-clock cutoff and lose the replay the caller asked for.
+// It is carried in UTC so the result does not shift with the machine's zone.
 func (r *Repo) ChangedSince(ctx context.Context, cutoff time.Time) ([]string, error) {
 	if r == nil || !Available() {
 		return nil, errGitUnavailable
