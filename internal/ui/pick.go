@@ -166,7 +166,7 @@ type picker struct {
 	// it are computed once instead of per render: every distinct review, and
 	// the folded form each name and description is matched against.
 	knownReviews []string
-	folds        map[string][2]string
+	folds        map[string]string
 }
 
 // The indexes of the run-pane rows that the other panes reach into.
@@ -196,7 +196,7 @@ func newPicker(cfg PickConfig) *picker {
 		selected:     map[string]bool{},
 		agents:       make([]bool, len(cfg.Agents)),
 		knownReviews: knownReviews,
-		folds:        map[string][2]string{},
+		folds:        map[string]string{},
 		opts: []option{
 			{kind: optCount, label: "concurrency", n: 1,
 				help: "parallel lanes (-j), worktree-isolated and merged back"},
@@ -619,7 +619,12 @@ func (p *picker) rowAt(i int) row {
 func (p *picker) arrow(d int) {
 	switch p.focus {
 	case paneReviews:
-		if p.rowAt(p.cursor[paneReviews]).kind == rowSuggest {
+		// A filter holds every set open, so the tree has no fold left to
+		// make: right on a review row changed nothing, and left on a set
+		// header moved the cursor without folding anything. The arrows step
+		// panes there, the way they do on the suggest row, so the key the
+		// legend names is the key that acts.
+		if p.filter != "" || p.rowAt(p.cursor[paneReviews]).kind == rowSuggest {
 			p.focus = p.sidePane(d)
 			return
 		}
@@ -799,8 +804,9 @@ func (p *picker) groupOn(i int) int {
 	return n
 }
 
-// matching is the members of a group the current filter keeps, by name or by
-// what the review says it does.
+// matching is the members of a group the current filter keeps: all of them
+// under a needle that names the set, otherwise those whose name or description
+// carries it.
 //
 // Both sides are normalized to NFC first: discovery stores every name NFC
 // (see prompt.Set), but typed text arrives in whatever form the terminal
@@ -818,28 +824,34 @@ func (p *picker) matching(g PickGroup) []PickReview {
 		return g.Reviews
 	}
 	needle := fuzzy.Fold(norm.NFC.String(p.filter))
+	// A set's name is text the reader is looking at, so typing it has to find
+	// the set. Answering "no reviews match this filter" to a word standing in
+	// the tree teaches the reader that the word is not there, and sends them
+	// spelling out a review name they never had to know.
+	if strings.Contains(p.fold(g.Name), needle) {
+		return g.Reviews
+	}
 	var out []PickReview
 	for _, rev := range g.Reviews {
-		fn, fd := p.folded(rev)
-		if strings.Contains(fn, needle) || strings.Contains(fd, needle) {
+		if strings.Contains(p.fold(rev.Name), needle) ||
+			strings.Contains(p.fold(rev.Desc), needle) {
 			out = append(out, rev)
 		}
 	}
 	return out
 }
 
-// folded returns the cached folded name and description of one review.
-func (p *picker) folded(rev PickReview) (string, string) {
-	key := rev.Name + "\x00" + rev.Desc
-	if f, ok := p.folds[key]; ok {
-		return f[0], f[1]
+// fold is one string's normalized, case-folded form, cached for the session.
+func (p *picker) fold(s string) string {
+	if f, ok := p.folds[s]; ok {
+		return f
 	}
-	f := [2]string{
-		fuzzy.Fold(norm.NFC.String(rev.Name)),
-		fuzzy.Fold(norm.NFC.String(rev.Desc)),
+	f := fuzzy.Fold(norm.NFC.String(s))
+	if p.folds == nil {
+		p.folds = map[string]string{}
 	}
-	p.folds[key] = f
-	return f[0], f[1]
+	p.folds[s] = f
+	return f
 }
 
 // chosen counts distinct selected reviews: a review in two sets is one review.

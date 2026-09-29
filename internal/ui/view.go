@@ -690,6 +690,14 @@ func (m *model) renderFeed(w, h int) string {
 		if len(m.feed) > 0 {
 			return styleFaint.Render("nothing matches this filter yet (f to widen it)")
 		}
+		// Once the run is over nothing can arrive, so a feed still calling
+		// itself waiting promises output that will never come, next to a
+		// header reading DONE. A run that ended without a line (nothing was
+		// ever launched, every agent refused to start) has to say so here:
+		// this panel is where a reader looks for what happened.
+		if m.done {
+			return styleFaint.Render("no agent output this run")
+		}
 		return styleFaint.Render("waiting for agent output…")
 	}
 	end := len(feed) - m.scroll

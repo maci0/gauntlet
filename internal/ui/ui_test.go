@@ -2311,6 +2311,20 @@ func TestFooterShowsEscLiveWhenPausedAtLiveEdge(t *testing.T) {
 	}
 }
 
+// A run that ends without a line cannot still be waiting for one: the feed
+// saying it is, under a header reading DONE, is a promise nothing will keep,
+// and the panel a reader checks for what happened answers none of it.
+func TestFeedNamesAFinishedRunThatSaidNothing(t *testing.T) {
+	m := newModel(demoConfig())
+	if got := stripANSI(m.renderFeed(titleRoom, 3)); !strings.Contains(got, "waiting") {
+		t.Fatalf("a running feed with no output reads %q, want the waiting state", got)
+	}
+	m.done = true
+	if got := stripANSI(m.renderFeed(titleRoom, 3)); !strings.Contains(got, "no agent output") {
+		t.Fatalf("a finished feed with no output reads %q, want the run to be named", got)
+	}
+}
+
 func TestFeedTitleMarksPaused(t *testing.T) {
 	m := newModel(demoConfig())
 	m.paused = true

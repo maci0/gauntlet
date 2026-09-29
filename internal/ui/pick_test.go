@@ -511,8 +511,9 @@ func TestPickRendersAtEverySize(t *testing.T) {
 	}
 }
 
-// The filter is a search across names and descriptions: it opens what it
-// finds, hides what it does not, and typing never reaches the panes.
+// The filter is a search across set names, review names, and descriptions: it
+// opens what it finds, hides what it does not, and typing never reaches the
+// panes.
 func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	p := demoPicker()
 	press(p, "/")
@@ -523,7 +524,7 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	if p.filter != "q" {
 		t.Fatalf("filter is %q: q must type, not quit", p.filter)
 	}
-	press(p, "u", "i")
+	press(p, "q", "u", "e")
 	names := []string{}
 	for _, r := range p.rows() {
 		if r.kind == rowReview {
@@ -531,7 +532,7 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 		}
 	}
 	if len(names) != 0 {
-		t.Fatalf("no review matches \"qui\", got %v", names)
+		t.Fatalf("no review matches \"que\", got %v", names)
 	}
 	p.filter = "vulnerab" // a word only a description carries
 	found := false
@@ -546,6 +547,34 @@ func TestPickFilterFindsByNameAndDescription(t *testing.T) {
 	p.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if p.typing || p.filter != "" {
 		t.Fatal("esc should clear the filter and return the keys to the panes")
+	}
+}
+
+// A set's name is on screen while the reader types, so a needle carrying it
+// has to find the set. The fruitless-filter notice under a word standing in
+// the tree teaches the reader the word is not there, and sends them spelling
+// out a review name they never had to know.
+func TestPickFilterFindsBySetName(t *testing.T) {
+	p := demoPicker()
+	press(p, "/")
+	press(p, "q", "u", "i", "c", "k")
+	if p.filterMissed(p.rows()) {
+		t.Fatalf("the set named %q is on screen, so filtering it must not report a miss:\n%s",
+			p.filter, stripANSI(p.reviewPanel(50, 20)))
+	}
+	want := map[string]bool{"sec-review": false, "code-review": false}
+	for _, r := range p.rows() {
+		if r.kind == rowReview {
+			want[r.review.Name] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Fatalf("filtering by the set name left %s out: %v", name, want)
+		}
+	}
+	if got := p.chosen(); got != 0 {
+		t.Fatalf("a filter selected %d reviews, want none: filtering is not ticking", got)
 	}
 }
 
@@ -1076,6 +1105,51 @@ func TestPickArrowsLeaveTheSuggestRow(t *testing.T) {
 			if p.focus != tc.want {
 				t.Fatalf("%s on the suggest row left the focus on pane %d, want %d",
 					tc.key, p.focus, tc.want)
+			}
+		})
+	}
+}
+
+// A filter holds every set open, so no row of the tree has a fold left to
+// make. The arrows were still named "fold", and on a review row they did
+// nothing at all, which a keyboard user cannot tell from a broken key: they
+// step panes here, the way they do on the suggest row.
+func TestPickArrowsStepPanesWhileFiltering(t *testing.T) {
+	arrow := func(t *testing.T, p *picker) string {
+		t.Helper()
+		p.w, p.h, p.ready = 104, 30, true
+		footer := lastLine(stripANSI(p.renderKeys()))
+		_, act, ok := strings.Cut(footer, "←/→:")
+		if !ok {
+			t.Fatalf("the key line names no arrow keys:\n%s", footer)
+		}
+		if end := strings.Index(act, " "); end >= 0 {
+			act = act[:end]
+		}
+		return act
+	}
+	for _, tc := range []struct {
+		name string
+		keys []string
+	}{
+		{"set header", []string{"j"}},
+		{"review in a set", []string{"j", "j"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := demoPicker()
+			p.filter = "code" // kept, not being typed: the state enter leaves
+			press(p, tc.keys...)
+			if got := arrow(t, p); got != "pane" {
+				t.Fatalf("a filtered %s advertises %q for the arrows, want the action they have", tc.name, got)
+			}
+			at := p.cursor[paneReviews]
+			press(p, "l")
+			if p.focus != paneAgents {
+				t.Fatalf("right on a filtered %s left the focus on pane %d, want %d",
+					tc.name, p.focus, paneAgents)
+			}
+			if p.cursor[paneReviews] != at {
+				t.Fatalf("a filtered %s moved the cursor, which reads as a fold that did not happen", tc.name)
 			}
 		})
 	}

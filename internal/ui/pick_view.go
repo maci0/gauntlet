@@ -311,6 +311,12 @@ func (p *picker) renderKeys() string {
 		default:
 			arrowAction = "pane"
 		}
+		// A filter holds every set open, so no row of the tree has a fold
+		// left to make and the arrows step panes there, the way the hint on
+		// a set header already says.
+		if p.filter != "" {
+			arrowAction = "pane"
+		}
 	}
 	q := "cancel"
 	if p.quitArmed {
@@ -531,7 +537,7 @@ func (p *picker) helpLines() []string {
 		"  space        toggle a review, a set, an agent, or a switch",
 		"  ← / →, h / l open or close a set, change a value, or step to the next pane",
 		"  a            all or none of what this pane is showing",
-		"  /            filter reviews by name or description; enter keeps it, esc clears",
+		"  /            filter reviews by set, name, or description; enter keeps it, esc clears",
 		"  ctrl+u / ctrl+w   clear the filter, or drop the word before the cursor",
 		"  enter        run the composed command",
 		qLeave,
