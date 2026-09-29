@@ -273,9 +273,12 @@ Agents run with their permission prompts disabled. That is the point of the
 tool, and it is why the containment rules exist: prompts are read with
 `O_NOFOLLOW` and size-capped, agent binaries resolve on a `PATH` without
 cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath=/dev/null`,
-`diff.external`, and `core.pager=cat`, untrusted text is stripped of
-control and bidi characters before display, and a `flock` on `.gauntlet.lock`
-keeps two runs out of one directory.
+`diff.external`, `core.pager=cat`, and a reviewed repository's own signing
+program blanked, untrusted text is stripped of control and bidi characters
+before display, and a `flock` on `.gauntlet.lock` plus a per-process registry
+of the locks this run holds keeps two runs out of one directory. The registry
+is what makes that true on macOS, where a `flock` belongs to the process and a
+second acquisition of a lock already held converts it rather than failing.
 
 Reviewing a repository you do not trust still means running it in a container.
 The boundaries are drawn one by one in
