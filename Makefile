@@ -116,9 +116,19 @@ run: build ## build, then run one loop here with the dashboard
 
 # RUN is a go test -run pattern (default: every test in the package).
 RUN ?=
-# test-pkg only. `make test` always runs the whole tree, so it takes no package
-# argument, and a PKG= passed there would have nothing to select from.
+# test-pkg and test-fast only. `make test` always runs the whole tree, so it
+# takes no package argument, and a PKG= passed there would have nothing to
+# select from.
 PKG ?=
+
+# The race detector is what makes a package's suite worth the minutes it costs,
+# and it is also what makes the loop between two edits long: internal/runner
+# alone is 373s of `make test` under it, on the Linux box that measured the
+# 6m18. It is a variable rather than a literal in the recipe below so the fast
+# loop is the same command without it, instead of a second copy of the recipe
+# that could drift from the one the gate runs. `test-fast` overrides it per
+# target; a command line still wins over both.
+TESTFLAGS ?= -race -shuffle=on
 
 # `go test -run` exits 0 when the pattern selects nothing, so a mistyped test
 # name reads as a pass and the edit-test loop loses an iteration before the
@@ -132,7 +142,7 @@ PKG ?=
 # and has no pipefail.
 define RUN_TESTS
 	@log="$(TMPDIR)/test.$$$$.log"; \
-	{ TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -run '$(RUN)' $(1) 2>&1; \
+	{ TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) $(TESTFLAGS) -run '$(RUN)' $(1) 2>&1; \
 	echo $$? >"$$log.status"; } | tee "$$log"; \
 	rc=$$(cat "$$log.status"); \
 	if [ "$$rc" -ne 0 ]; then rm -f "$$log" "$$log.status"; exit "$$rc"; fi; \
@@ -144,6 +154,18 @@ define RUN_TESTS
 	rm -f "$$log" "$$log.status"
 endef
 
+# A per-package target that silently ran the whole tree would be the slow loop
+# under the name of the fast one, so an empty PKG is a refusal. Shared by the
+# two targets that take one, so the guard cannot be true of one and not the
+# other.
+define NEEDS_PKG
+	@case "$(PKG)" in ""|./...) \
+		echo "$(1) needs a package: make $(1) PKG=./internal/prompt [RUN=TestName]" >&2; \
+		echo "$(1): PKG is empty, so it would run every package under a target that promises one" >&2; \
+		exit 1 ;; \
+	esac
+endef
+
 .PHONY: test
 test: | toolchain-min test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
@@ -153,19 +175,34 @@ test: ## run all tests with the race detector, shuffled order
 # test` so a green package here stays green in the full run.
 .PHONY: test-pkg
 test-pkg: | toolchain-min test-tmpdir test-cgo
-test-pkg: ## run one package's tests: make test-pkg PKG=./internal/prompt [RUN=TestName]
-	@case "$(PKG)" in ""|./...) \
-		echo "test-pkg needs a package: make test-pkg PKG=./internal/prompt [RUN=TestName]" >&2; \
-		echo "test-pkg: PKG is empty, so it would run every package under a target that promises one" >&2; \
-		exit 1 ;; \
-	esac
+test-pkg: ## run one package's tests under the race detector: make test-pkg PKG=./internal/prompt [RUN=TestName]
+	$(call NEEDS_PKG,test-pkg)
+	$(call RUN_TESTS,$(PKG))
+
+# The same run without the race detector, which is the only difference. A
+# contributor editing internal/runner otherwise pays 373s per iteration, and
+# the one command that costs less is a bare `go test`, which leaves off the
+# build tags this Makefile passes: that is the no-database build, not the
+# default one, so a green loop can be green against a configuration nothing
+# ships. Everything else is held identical, so a green `test-fast` is the same
+# build `test-pkg` would have run, minus the detector.
+#
+# Not a gate: -race is what catches the interleavings the suite exists to
+# catch, and nothing here does. `make test-pkg` on the package before pushing
+# is the check; this is the loop between two edits. The flags are per target
+# rather than a second recipe, so there is one `go test` line to keep correct.
+.PHONY: test-fast
+test-fast: TESTFLAGS := -shuffle=on
+test-fast: | toolchain-min test-tmpdir test-cgo
+test-fast: ## run one package's tests without the race detector: make test-fast PKG=./internal/runner [RUN=TestName]
+	$(call NEEDS_PKG,test-fast)
 	$(call RUN_TESTS,$(PKG))
 
 .PHONY: cover
 cover: | toolchain-min test-tmpdir test-cgo
 cover: ## test coverage summary, gated by COVER_MIN
 	@mkdir -p $(DIST)
-	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) -race -shuffle=on -coverprofile=$(DIST)/coverage.out ./...
+	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) $(TESTFLAGS) -coverprofile=$(DIST)/coverage.out ./...
 	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
 		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
 		awk -v got="$${total%\%}" -v min="$(COVER_MIN)" 'BEGIN { \

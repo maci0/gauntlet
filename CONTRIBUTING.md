@@ -82,9 +82,24 @@ package it is named for and refuses to run without one; `PKG` applies to it
 alone, since `make test` always runs the whole tree. A
 `RUN=` pattern that matches no test is an error rather than a pass, so a
 mistyped name cannot read as a green loop; the error names the pattern and
-the command that lists the real ones. Plain `go test` also works, but
-without `-tags sqlite` you are testing the no-database build rather than the
-default one.
+the command that lists the real ones.
+
+The race detector is most of what `test-pkg` costs, and on the slowest
+package it is the whole of the wait. When you are between two edits rather
+than about to push, `test-fast` is the same run without it:
+
+```sh
+make test-fast PKG=./internal/runner                # one package, no race detector
+make test-fast PKG=./internal/runner RUN=TestName   # one test in it
+```
+
+It is the one target that is a loop and not a check: it drops `-race` and
+keeps everything else, including `-tags sqlite` and the shuffled order, so a
+green `test-fast` is the build `test-pkg` would have run. Run `make test-pkg`
+on the package before you push, because nothing in the fast target looks for
+the interleavings the race detector finds. Reach for plain `go test` instead
+and the tags go with it: that is the no-database build, not the default one,
+so the loop stops matching what ships.
 
 Tests must not write into a tmpfs or into an ignored path inside this repo:
 the prompt discovery tests would otherwise see their own fixtures as

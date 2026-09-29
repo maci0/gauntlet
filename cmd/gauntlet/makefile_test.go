@@ -476,6 +476,71 @@ func TestMakefileTestPkgRunsAMatchingTest(t *testing.T) {
 	}
 }
 
+// `make test-fast` exists to cut the wait between two edits, so the only thing
+// it may drop is the race detector. Everything else it passes has to match
+// what `test-pkg` passes, build tags above all: a bare `go test` leaves those
+// off and runs the no-database build, which is the trap the target replaces.
+func TestMakefileTestFastDropsOnlyTheRaceDetector(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	flags := func(target string) string {
+		t.Helper()
+		cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "--dry-run", target,
+			"PKG=./internal/humanize")
+		cmd.Dir = moduleRoot(t)
+		cmd.Env = cleanMakeEnv()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("make --dry-run %s: %v\n%s", target, err, out)
+		}
+		return string(out)
+	}
+
+	fast := flags("test-fast")
+	if strings.Contains(fast, "-race") {
+		t.Fatalf("make test-fast still passes -race, so it is the slow loop under a new name:\n%s", fast)
+	}
+	if !strings.Contains(fast, "-tags sqlite") {
+		t.Fatalf("make test-fast dropped the build tags, so it tests a configuration nothing ships:\n%s", fast)
+	}
+	if !strings.Contains(fast, "-shuffle=on") {
+		t.Fatalf("make test-fast dropped -shuffle=on, so it is not the run test-pkg does:\n%s", fast)
+	}
+	if !strings.Contains(flags("test-pkg"), "-race") {
+		t.Fatal("make test-pkg no longer passes -race, so the gate a contributor runs before pushing stopped checking for races")
+	}
+}
+
+// A fast target that quietly stopped running, or that grew a divergence from
+// the recipe it shares, would read as a passing loop.
+func TestMakefileTestFastRunsAMatchingTest(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-fast",
+		"PKG=./internal/humanize", "RUN=TestDuration")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("make test-fast PKG=./internal/humanize RUN=TestDuration: %v\n%s", err, out)
+	}
+}
+
+// It takes the package it is named for, on the same terms test-pkg does.
+func TestMakefileTestFastRefusesToRunEveryPackage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-fast")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("make test-fast with no PKG ran the whole tree instead of refusing:\n%s", out)
+	}
+	if !strings.Contains(string(out), "make test-fast PKG=./internal/prompt") {
+		t.Fatalf("make test-fast must name the invocation that works:\n%s", out)
+	}
+}
+
 // The Makefile exports the build environment, so a test that shells out to it
 // inherits a command line the caller never wrote.
 func cleanMakeEnv() []string {
@@ -1252,7 +1317,7 @@ func TestDocumentedMakeTargetsExist(t *testing.T) {
 	}
 	// The loop every contributor is told to run has to be in that set, or the
 	// scan above could pass by reading nothing.
-	for _, name := range []string{"build", "test", "test-pkg", "check", "ci", "verify"} {
+	for _, name := range []string{"build", "test", "test-pkg", "test-fast", "check", "ci", "verify"} {
 		if !documented[name] {
 			t.Errorf("no document runs `make %s`, so the scan above is reading less than it claims", name)
 		}

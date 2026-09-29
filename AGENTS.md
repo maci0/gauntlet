@@ -36,7 +36,9 @@ but drops the sqlite driver.
   ruff format.
 - `make test RUN=TestName`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
-  with the same race, shuffle, and tag flags.
+  with the same race, shuffle, and tag flags. `make test-fast PKG=...` is the
+  same run without the race detector, for the loop between edits rather than
+  the check before a push.
 - `make cover`: the same suite with a coverage profile, gated by `COVER_MIN`
   in the Makefile. The floor is CI's number: a machine with agent CLIs
   installed reads about two points high. Raise it when CI reports higher,
