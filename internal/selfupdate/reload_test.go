@@ -162,6 +162,32 @@ func TestSaveStateRejectsInvalidRunID(t *testing.T) {
 	}
 }
 
+// The path SaveState returns becomes GAUNTLET_STATE, and the successor refuses
+// a relative one. The state root degrades to a relative ".gauntlet" whenever
+// neither GAUNTLET_HOME nor HOME yields a usable root, so writing a relative
+// path would save the handoff, exec, and then fail in the successor with
+// nothing said. The returned path has to be absolute, or the reload is refused
+// before it starts.
+func TestSaveStateReturnsAnAbsolutePath(t *testing.T) {
+	// A relative state root, as gauntlethome.Dir yields when it cannot
+	// resolve a home.
+	t.Chdir(t.TempDir())
+	dir := filepath.Join(".gauntlet", "state")
+	path, err := SaveState(dir, "run", handoffBlob{Loops: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(path) {
+		t.Fatalf("SaveState returned the relative path %s, which LoadState refuses", path)
+	}
+	var v handoffBlob
+	t.Setenv(stateEnv, path)
+	ok, err := LoadState(&v)
+	if err != nil || !ok {
+		t.Fatalf("the handoff SaveState wrote did not load back: ok=%v err=%v", ok, err)
+	}
+}
+
 func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
 	dir := t.TempDir()
 

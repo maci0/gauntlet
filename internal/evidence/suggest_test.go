@@ -529,7 +529,9 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	}
 
 	in := signals{mark: map[string]int{}}
-	peek(dir, []string{"http.go"}, &in, nil)
+	if err := peek(dir, []string{"http.go"}, &in, nil); err != nil {
+		t.Fatalf("peek on a readable tree: %v", err)
+	}
 	if in.mark["http"] == 0 {
 		t.Fatal("peek missed an in-tree net/http import")
 	}
@@ -545,7 +547,9 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	escape := filepath.Join("..", filepath.Base(outsideDir), "secret.go")
 	done := make(chan struct{})
 	go func() {
-		peek(dir, []string{"main.go", "evil.go", "pipe.go", escape}, &s, nil)
+		if err := peek(dir, []string{"main.go", "evil.go", "pipe.go", escape}, &s, nil); err != nil {
+			t.Errorf("peek on a readable tree: %v", err)
+		}
 		close(done)
 	}()
 	select {
@@ -555,6 +559,18 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	}
 	if s.mark["http"] > 0 {
 		t.Fatal("peek followed a symlink or escaped the tree")
+	}
+}
+
+// A tree that cannot be listed is a failure the operator has to hear about.
+// Reporting it as an empty tree is worse than reporting nothing: the file
+// rules then find nothing, the caller's "no review matched anything in this
+// tree" reads as a verdict on the code, and the one thing the operator could
+// do about it, looking at the path, is never named.
+func TestFastSuggestReportsATreeItCannotRead(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "not-a-tree")
+	if _, err := Reviews(missing, []string{"code-review"}, prompt.Set{}, func() time.Time { return frozenClock }); err == nil {
+		t.Fatal("a tree that cannot be listed was reported as one with nothing in it")
 	}
 }
 
@@ -597,13 +613,19 @@ func TestScanChurnWindowReadsTheInjectedClock(t *testing.T) {
 	dir := tree(t, "main.go\x00package main\n")
 	commit := commitAll(t, dir, "2026-03-01T12:00:00Z")
 
-	after := scan(dir, nil, func() time.Time { return commit.Add(24 * time.Hour) })
+	after, err := scan(dir, nil, func() time.Time { return commit.Add(24 * time.Hour) })
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
 	if !after.churn {
 		t.Fatal("a commit a day old is not churn")
 	}
 	// The window reaches back from the clock, so a clock a year past the
 	// commit puts its cutoff beyond it and the history reads as dormant.
-	before := scan(dir, nil, func() time.Time { return commit.Add(365 * 24 * time.Hour) })
+	before, err := scan(dir, nil, func() time.Time { return commit.Add(365 * 24 * time.Hour) })
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
 	if before.churn {
 		t.Fatal("a commit a year before the clock's window is still churn")
 	}

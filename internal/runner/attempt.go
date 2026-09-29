@@ -131,7 +131,12 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		return res
 	}
 
-	msg := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
+	changes, chErr := treeChanges(context.WithoutCancel(ctx), wt.Dir)
+	if chErr != nil {
+		r.log("Cannot read the status of the %s worktree, so the commit subject falls back to a generic one: %v",
+			review, chErr)
+	}
+	msg := commitSubject(res.Subject, changes)
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), msg)
 	if err != nil {
 		r.log("Cannot commit %s worktree: %v", review, err)

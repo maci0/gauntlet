@@ -36,8 +36,11 @@ func (r *Repo) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, errGitUnavailable
 	}
 	head, err := r.Tip(ctx, "HEAD")
-	if err != nil || !isHex(head) {
+	if err != nil {
 		return Snapshot{}, fmt.Errorf("cannot read HEAD: %w", err)
+	}
+	if !isHex(head) {
+		return Snapshot{}, errors.New("git rev-parse HEAD returned no commit id")
 	}
 	indexOut, err := r.run(ctx, gitQuick, "write-tree")
 	if err != nil {

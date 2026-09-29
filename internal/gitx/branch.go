@@ -152,7 +152,7 @@ func (r *Repo) abortMerge(ctx context.Context) {
 // The target branch must exist locally. On conflict the merge is aborted and
 // nothing moves, exactly as a review branch that will not merge is kept for a
 // human.
-func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) MergeResult {
+func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) (mr MergeResult) {
 	if r == nil || !Available() {
 		return MergeResult{Detail: "git is not available"}
 	}
@@ -178,14 +178,26 @@ func (r *Repo) MergeInto(ctx context.Context, target, branch, message string) Me
 		return MergeResult{Detail: err.Error()}
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", dir, target); err != nil {
-		r.abortWorktreeAdd(ctx, dir, "")
 		// A target already checked out elsewhere is the common cause, and it
 		// is the user's own checkout: say so rather than the raw git error.
-		return MergeResult{Detail: fmt.Sprintf("cannot check out %s to merge into: %v", target, err)}
+		return MergeResult{Detail: errors.Join(
+			fmt.Errorf("cannot check out %s to merge into: %w", target, err),
+			r.abortWorktreeAdd(ctx, dir, "")).Error()}
 	}
+	// The scratch checkout is a full copy of the target, so a cleanup that
+	// fails leaves a private tree behind in the reviewed repository. Saying so
+	// is the caller's only chance: the merge itself landed, and a bare
+	// "Merged" reads as nothing being left over.
 	defer func() {
 		cleanCtx := context.WithoutCancel(ctx)
-		_ = r.removeWorktreeDir(cleanCtx, dir)
+		if err := r.removeWorktreeDir(cleanCtx, dir); err != nil {
+			leftover := fmt.Sprintf("cannot remove the merge checkout %s: %v", dir, err)
+			if mr.Merged {
+				mr.Detail = strings.TrimSpace(mr.Detail + " (merged, but " + leftover + ")")
+				return
+			}
+			mr.Detail = strings.TrimSpace(strings.TrimSuffix(mr.Detail, ".") + " (" + leftover + ")")
+		}
 	}()
 
 	sub := r.subRepo(dir)

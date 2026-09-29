@@ -19,6 +19,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -498,7 +500,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 	if now == nil {
 		now = time.Now
 	}
-	s := scan(dir, declaredMarks(pool, set), now)
+	s, scanErr := scan(dir, declaredMarks(pool, set), now)
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
 		rank[name] = i
@@ -562,7 +564,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 			Reason: got.topReasons(reasonsShown),
 		})
 	}
-	return picked, historyErr
+	return picked, errors.Join(scanErr, historyErr)
 }
 
 // matchDeclared reports whether the tree carries any signal a review declared,
@@ -610,13 +612,21 @@ func historyWeight(h journal.ReviewHistory) float64 {
 // scan collects what the rules ask about, in one pass over the tree. declared
 // are the `mark:` substrings the reviews in the pool asked for, looked for
 // while the heads are being read anyway.
-func scan(dir string, declared []string, now func() time.Time) signals {
+//
+// The error is what the scan could not see, not whether the scan worked: a
+// tree that could not be listed and a root that could not be opened both
+// still yield signals, but the ones derived from what is missing would read
+// as evidence of absence. Reviews joins it with the history read's error so
+// one message covers everything this pass had to assume.
+func scan(dir string, declared []string, now func() time.Time) (signals, error) {
 	s := signals{
 		ext: map[string]int{}, name: map[string]bool{},
 		path: map[string]bool{}, mark: map[string]int{}, hot: map[string]int{},
 	}
 	root := filepath.Clean(dir)
-	paths, repo := listTree(root)
+	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
+	defer cancel()
+	paths, repo, err := listTree(ctx, root)
 	for _, rel := range paths {
 		if s.files >= scanMaxFiles {
 			break
@@ -624,9 +634,9 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 		s.files++
 		record(&s, rel)
 	}
-	peek(root, paths, &s, declared)
+	peekErr := peek(root, paths, &s, declared)
 	if repo == nil {
-		return s
+		return s, errors.Join(err, peekErr)
 	}
 	// Git listed the tree, so it can also say which part of it is alive.
 	// The same handle already paid for the safe-config overlay on ListFiles;
@@ -637,16 +647,22 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 	// same tree on the same seed sees the same churn: git resolving "90 days
 	// ago" against its wall clock would let the calendar, not the seed, decide
 	// which parts of a tree count as alive.
-	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
-	defer cancel()
 	cutoff := now().Add(-churnWindow)
-	if changed, err := repo.ChangedSince(ctx, cutoff); err == nil && len(changed) > 0 {
+	changed, churnErr := repo.ChangedSince(ctx, cutoff)
+	switch {
+	case churnErr != nil:
+		// A read that failed leaves churn off, and churn off weights every
+		// dormant area as live. That is a silent change to the suggestion
+		// set, so it is reported rather than absorbed.
+		churnErr = fmt.Errorf("cannot read which files changed since %s: %w",
+			cutoff.Format(time.DateOnly), churnErr)
+	case len(changed) > 0:
 		s.churn = true
 		for _, rel := range changed {
 			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++
 		}
 	}
-	return s
+	return s, errors.Join(err, peekErr, churnErr)
 }
 
 // churnTimeout caps the history read. A suggestion is not worth waiting on a
@@ -689,20 +705,34 @@ func record(s *signals, rel string) {
 // considers source; the walk is for a directory that is not a repository. The
 // handle is reused for the churn window so the safe-config overlay is paid
 // once.
-func listTree(root string) ([]string, *gitx.Repo) {
-	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
-	defer cancel()
+//
+// ctx bounds both paths and covers the walk as well as the git read. The walk
+// is the fallback taken precisely when git failed or was too slow, so leaving
+// it unbounded replaced a ten-second failure with a hang on the interactive
+// suggest path. The walk's own error is returned: a root that cannot be
+// walked is not a tree with nothing in it, and the caller has to be able to
+// say which one it got.
+func listTree(ctx context.Context, root string) ([]string, *gitx.Repo, error) {
 	repo := gitx.Open(root)
 	// Cap at scanMaxFiles so a million-file listing is not kept as one
 	// string that the first hundred thousand paths would pin. An empty
 	// listing is an answer (a tree with no files in it), not a failure to
 	// answer, and the walk below cannot tell the two apart.
 	if paths, err := repo.ListFilesAtMost(ctx, scanMaxFiles); err == nil {
-		return paths, repo
+		return paths, repo, nil
 	}
 	var out []string
-	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if err != nil {
+			if p == root {
+				// The root itself could not be read, so nothing was walked at
+				// all. Skipping it like an unreadable corner below would
+				// report an unreadable path as a tree with no files in it.
+				return err
+			}
 			return nil // an unreadable corner says nothing; keep walking
 		}
 		rel, relErr := filepath.Rel(root, p)
@@ -726,7 +756,7 @@ func listTree(root string) ([]string, *gitx.Repo) {
 		out = append(out, rel)
 		return nil
 	})
-	return out, nil
+	return out, nil, err
 }
 
 // peek reads the head of source files and records what they import and call.
@@ -736,10 +766,14 @@ func listTree(root string) ([]string, *gitx.Repo) {
 //
 // Marks are searched for until every kind has been seen, at which point no
 // later file can change the answer and the scan stops.
-func peek(root string, paths []string, s *signals, declared []string) {
+func peek(root string, paths []string, s *signals, declared []string) error {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
-		return
+		// A root the process cannot open turns every content rule off, so the
+		// run would answer from file names alone and read as though the tree
+		// carries no HTTP, no SQL, no auth. That is missing evidence, not
+		// negative evidence.
+		return fmt.Errorf("cannot open %s to read its files: %w", root, err)
 	}
 	defer dir.Close()
 	wanted := markSearch(declared)
@@ -750,7 +784,7 @@ func peek(root string, paths []string, s *signals, declared []string) {
 	read := 0
 	for _, rel := range paths {
 		if read >= peekMaxFiles || seenAll {
-			return
+			return nil
 		}
 		if !sourceExts[strings.ToLower(filepath.Ext(rel))] {
 			continue
@@ -773,6 +807,7 @@ func peek(root string, paths []string, s *signals, declared []string) {
 		markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
 		seenAll = len(s.mark) == kinds
 	}
+	return nil
 }
 
 // markFound records which of the given searches a file head satisfies. A kind

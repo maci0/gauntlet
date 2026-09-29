@@ -379,7 +379,12 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, branch string,
 	wt *gitx.Worktree, res *Result, parent, parentTip string, layer int) (string, string, bool) {
 
-	title := commitSubject(res.Subject, treeChanges(context.WithoutCancel(ctx), wt.Dir))
+	changes, chErr := treeChanges(context.WithoutCancel(ctx), wt.Dir)
+	if chErr != nil {
+		r.log("Cannot read the status of the %s layer worktree, so the commit subject falls back to a generic one: %v",
+			review, chErr)
+	}
+	title := commitSubject(res.Subject, changes)
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), title)
 	if err != nil {
 		r.failStackLayer(res, loopNo, review, branch, parent, err)
@@ -531,8 +536,18 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 			}
 			continue
 		}
-		if actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+name); err != nil || actualParent != parentTip {
-			continue // ancestry rejects it: not a one-commit child of this stack's previous layer
+		actualParent, err := r.repo.ParentTip(ctx, "refs/heads/"+name)
+		if err != nil {
+			// A layer branch descends from the pinned base, so it always has
+			// a parent: a read failure is git failing, not ancestry rejecting
+			// the branch. Reading it as a rejection would conclude this
+			// stack has no layer and re-run a review whose work is already
+			// committed, pushed, and possibly open as a pull request.
+			return parent, parentTip, false, fmt.Errorf(
+				"cannot read the parent of stack branch %s: %w", name, err)
+		}
+		if actualParent != parentTip {
+			continue // not a one-commit child of this stack's previous layer
 		}
 		if remoteFound && remoteTip != localTip {
 			return parent, parentTip, false, fmt.Errorf("local and remote stack branch %s differ", name)
