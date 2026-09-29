@@ -262,7 +262,7 @@ func (r *Repo) AddWorktree(ctx context.Context, name, tag, base string) (*Worktr
 	defer r.wtMu.Unlock()
 
 	slug := BranchSlug(name)
-	branch := fmt.Sprintf("gauntlet/%s/%s", tag, slug)
+	branch := LaneBranch(tag, slug)
 	return r.addBranchWorktree(ctx, r.worktreeDir(tag+"-"+slug), branch, base)
 }
 

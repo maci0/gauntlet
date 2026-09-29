@@ -412,6 +412,56 @@ func TestDoctorReportsAJournalCutMidLine(t *testing.T) {
 	}
 }
 
+// A review whose merge did not land is the one output no copy of the state
+// tree holds: the journal names the branch and nothing about the commits on
+// it. Doctor names the branches that are still there, because an operator
+// checks a machine before retiring it and the run that left them has long
+// since scrolled away.
+func TestDoctorReportsUnlandedReviewBranches(t *testing.T) {
+	if agent.Resolve("git") == "" {
+		t.Skip("no git on PATH")
+	}
+	dir, run := gitRepo(t, "package main\n")
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	run("branch", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane0-03", "security"))
+	run("branch", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane1-07", "performance"))
+	// A branch of the user's own is not review output and must not be named as
+	// work a backup has to carry.
+	run("branch", "feature/keep-me")
+	t.Chdir(dir)
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "Unlanded reviews: 2 branches") {
+		t.Fatalf("doctor did not report the branches a merge left behind:\n%s", out)
+	}
+	for _, name := range []string{
+		gitx.LaneBranch("20260929T164112Z-3930d-l1-lane0-03", "security"),
+		gitx.LaneBranch("20260929T164112Z-3930d-l1-lane1-07", "performance"),
+	} {
+		if !strings.Contains(out, name) {
+			t.Errorf("doctor did not name %s:\n%s", name, out)
+		}
+	}
+	if strings.Contains(out, "feature/keep-me") {
+		t.Errorf("doctor named a branch that is not review output:\n%s", out)
+	}
+	if !strings.Contains(out, "git bundle create") {
+		t.Errorf("doctor did not say what keeps those commits:\n%s", out)
+	}
+
+	// A repository whose reviews all landed holds no lane branch, so the line
+	// has nothing to say and stays off the report.
+	run("branch", "-D", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane0-03", "security"))
+	run("branch", "-D", gitx.LaneBranch("20260929T164112Z-3930d-l1-lane1-07", "performance"))
+	buf.Reset()
+	doctor(&buf, palette{}, nil, 80)
+	if out := buf.String(); strings.Contains(out, "Unlanded reviews") {
+		t.Fatalf("doctor reported unlanded reviews in a repository that has none:\n%s", out)
+	}
+}
+
 // A git older than the floor every call in internal/gitx makes rejects
 // --end-of-options, so a run fails on an error that names neither git nor a
 // version. Doctor reports the version it found, and the floor it is measured

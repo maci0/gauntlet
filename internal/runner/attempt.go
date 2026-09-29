@@ -87,7 +87,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 
 	// Switch the lane to a review-specific branch from the current tip.
 	oldBranch := wt.Branch
-	branch := fmt.Sprintf("gauntlet/%s/%s", tag, gitx.BranchSlug(review))
+	branch := gitx.LaneBranch(tag, gitx.BranchSlug(review))
 	if err := wt.StartBranch(cleanCtx, branch, base); err != nil {
 		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
 		res := Result{Review: review, Agent: r.pickAgent(review, nil),

@@ -28,6 +28,19 @@ func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// LaneBranchPrefix namespaces the branches a run's lane work runs on, and
+// StackBranchPrefix the layers a stacked-PR run publishes. A reviewed
+// repository can list and delete both as a set, and nothing else in the branch
+// namespace is the tool's.
+const (
+	LaneBranchPrefix  = "gauntlet/"
+	StackBranchPrefix = "review/"
+)
+
+// LaneBranch is the branch one review runs on inside a lane, from the tag that
+// keeps concurrent runs apart and the review's own slug.
+func LaneBranch(tag, slug string) string { return LaneBranchPrefix + tag + "/" + slug }
+
 // Branches lists local branch names, excluding gauntlet's own review
 // branches (a run's lane scratch space under gauntlet/ and stacked-PR layers
 // under review/), since neither is ever a merge target.
@@ -39,7 +52,40 @@ func (r *Repo) Branches(ctx context.Context) []string {
 	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
 		name := strings.TrimSpace(line)
-		if name != "" && !strings.HasPrefix(name, "gauntlet/") && !strings.HasPrefix(name, "review/") {
+		if name != "" && !strings.HasPrefix(name, LaneBranchPrefix) && !strings.HasPrefix(name, StackBranchPrefix) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// LaneBranches lists the local lane branches still on disk.
+//
+// A run deletes a lane branch once its review lands, and keeps it when the
+// merge conflicted or failed, so what survives is the work no merge carried:
+// the commits live in this repository and in the branch that names them, and
+// the run journal records only the branch. Nothing else holds them, which is
+// what makes them the one output a copy of the state tree does not.
+//
+// Stacked layers are not listed: a stacked run publishes each one as a pull
+// request, so the remote holds those commits.
+//
+// It answers with what it has, because it is a report about the machine rather
+// than a step in a run: no git, a directory that is not a repository, or a
+// store that will not list its refs is nothing to name, not a failure to raise
+// on a screen that is about something else.
+func (r *Repo) LaneBranches(ctx context.Context) []string {
+	if r == nil || !Available() {
+		return nil
+	}
+	out, err := r.run(ctx, gitQuick, "for-each-ref", "--format=%(refname:short)",
+		"refs/heads/"+LaneBranchPrefix)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name := strings.TrimSpace(line); name != "" {
 			names = append(names, name)
 		}
 	}

@@ -319,6 +319,23 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				humanize.Plural(st.Truncated, "journal ends", "journals end"))))
 		}
 	}
+	// The one output no copy of the state tree holds. A run deletes a lane
+	// branch once its review lands and keeps it when the merge did not, and
+	// then the commits are in the reviewed repository, under a branch the
+	// journal names but cannot replace. A machine retired with them on it
+	// loses the review itself, so they are named here, beside the counts an
+	// operator checks a restored tree against.
+	if branches := laneBranches(); len(branches) > 0 {
+		w.println(pal.yellow(fmt.Sprintf("Unlanded reviews: %s a run kept after a merge that did not land",
+			humanize.Plural(len(branches), "branch", "branches"))))
+		for _, name := range branches[:min(len(branches), unlandedShown)] {
+			w.println("  " + name)
+		}
+		if rest := len(branches) - unlandedShown; rest > 0 {
+			w.println(pal.dim(fmt.Sprintf("  and %d more", rest)))
+		}
+		w.println(pal.dim("  nothing else holds their commits: " + laneBundleHint))
+	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."
 		if installed > 0 {
@@ -336,6 +353,25 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		return exitFail
 	}
 	return exitOK
+}
+
+// unlandedShown is how many branch names the unlanded-review line prints.
+// A machine that accumulated conflicts is exactly the machine this line is for,
+// and a list that scrolls the rest of the report away helps nobody.
+const unlandedShown = 5
+
+// laneBundleHint is what keeps the commits those branches hold. The journal
+// names the branch and nothing about what is on it, so recovering the work
+// means copying the refs, which is one command and is not done by any backup of
+// the state tree.
+const laneBundleHint = "git bundle create <file> --all"
+
+// laneBranches lists the lane branches the repository this process runs in
+// still holds. The working directory, not the reviewed tree a run would pick:
+// doctor reports on the machine it was started in, and a directory that is not
+// a repository has no branches to name.
+func laneBranches() []string {
+	return gitx.Open(".").LaneBranches(context.Background())
 }
 
 // envSettingLines reports which documented variables this process actually

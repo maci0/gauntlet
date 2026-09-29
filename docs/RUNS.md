@@ -444,7 +444,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 | `state/<id>.json` | hot-reload handoff | ephemeral, deleted and the deletion synced after pickup, so a power cut cannot bring a handoff back and resume a run that already finished; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
 | `<repo>/.gauntlet.lock` | directory lock | persistent inode; holder note cleared on release; do not remove while runs can start |
 | `<repo>/.gauntlet/worktrees/` | isolated checkouts, `0700` | ephemeral; unmerged review branches stay in git |
-| `<repo>` refs under `gauntlet/` and `review/` | reviews that did not land, the only output no copy of `GAUNTLET_HOME` holds | back up the repository's refs: the journal names the branch and none of its contents |
+| `<repo>` refs under `gauntlet/` and `review/` | reviews that did not land, the only output no copy of `GAUNTLET_HOME` holds | back up the repository's refs: the journal names the branch and none of its contents; `gauntlet doctor` lists the `gauntlet/` ones still on disk |
 
 Review output lives in the reviewed repository's git history, not here. A
 run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
@@ -507,10 +507,15 @@ git clone /path/on/other-storage/repo.bundle /path/to/restored-repo
 ```
 
 A repository whose objects were already packed elsewhere, or whose reviews all
-landed, needs none of this. What it cannot be is assumed: check
-`git -C /path/to/repo for-each-ref refs/heads/gauntlet refs/heads/review`
-before a machine is retired, since those are the two prefixes a run's refs are
-namespaced under.
+landed, needs none of this. What it cannot be is assumed: `gauntlet doctor`
+names the branches under `gauntlet/` still on disk, which are the reviews whose
+merge did not land and which no copy of `GAUNTLET_HOME` holds. Branch names
+for older runs, and the `review/` layers a stacked run publishes, are read
+directly:
+
+```sh
+git -C /path/to/repo for-each-ref refs/heads/gauntlet refs/heads/review
+```
 
 Stop running CLI processes before taking the copy so the archive cannot catch
 a journal line halfway through a write. Back up `runs/`, `pruned/`, and

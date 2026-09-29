@@ -495,7 +495,12 @@ func TestSeedBoundsTheCarriedOverResults(t *testing.T) {
 	if got := len(st.Results()); got != maxDetailResults {
 		t.Fatalf("kept %d results, want the cap of %d", got, maxDetailResults)
 	}
-	if got, want := st.DetailDropped(), over; got != want {
+	// The successor's own result takes a slot of the cap, so the seed's own
+	// overflow of ten is joined by one more carried row that has nowhere to go:
+	// the run recorded 2010 results before the swap and one after, the listing
+	// holds the cap, and the count printed beside a short list is the
+	// difference rather than the seed's overflow alone.
+	if got, want := st.DetailDropped(), over+1; got != want {
 		t.Fatalf("DetailDropped() = %d, want %d", got, want)
 	}
 	kept := st.Results()
