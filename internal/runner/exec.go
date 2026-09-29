@@ -141,6 +141,13 @@ type procOpts struct {
 	// before, so a dashboard can show throughput while the agent is still
 	// running. Agents that report usage only at exit simply call it once.
 	Usage func(agent.Usage)
+	// Envelope is Usage's narrower half: it is called with what the agent's
+	// machine-readable output stated, and never with a figure matched out of
+	// the prose. A caller that acts on the number it is given (stopping a
+	// review, refusing a result) takes this one, because a model that printed
+	// "Total tokens: 4000000" would otherwise be able to act on its own
+	// account.
+	Envelope func(agent.Usage)
 }
 
 // runProc launches one agent, streams its output, and enforces the timeout.
@@ -245,8 +252,25 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	emitting.Store(true)
 	var callbacks sync.WaitGroup
 	var usageReportMu sync.Mutex
+	// deliver runs f under the same gate every callback goes through: no call
+	// starts once emitting is cleared, and the wait for the in-flight ones
+	// happens before the result is assembled.
+	deliver := func(f func()) {
+		if !emitting.Load() {
+			return
+		}
+		usageMu.Lock()
+		if !emitting.Load() {
+			usageMu.Unlock()
+			return
+		}
+		callbacks.Add(1)
+		usageMu.Unlock()
+		defer callbacks.Done()
+		f()
+	}
 	report := func(u agent.Usage) {
-		if !u.Known() || !emitting.Load() {
+		if !u.Known() {
 			return
 		}
 		usageMu.Lock()
@@ -269,12 +293,12 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			usageMu.Unlock()
 			return
 		}
-		callbacks.Add(1)
 		usageMu.Unlock()
-		usageReportMu.Lock()
-		o.Usage(snapshot)
-		usageReportMu.Unlock()
-		callbacks.Done()
+		deliver(func() {
+			usageReportMu.Lock()
+			defer usageReportMu.Unlock()
+			o.Usage(snapshot)
+		})
 	}
 	observe := func(line string) {
 		if o.Usage == nil || !agent.MayCarryUsage(line) {
@@ -295,7 +319,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		if u.Known() {
 			usageMu.Lock()
 			reported = maxUsage(reported, u)
+			snapshot := reported
 			usageMu.Unlock()
+			// The provider's own figure, and the only one a caller may act on:
+			// report below is also fed the numbers scraped out of prose.
+			if o.Envelope != nil {
+				deliver(func() { o.Envelope(snapshot) })
+			}
 		}
 		report(u)
 	}

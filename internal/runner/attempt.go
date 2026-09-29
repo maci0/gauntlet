@@ -338,10 +338,19 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 
 	start := r.now()
 
-	usage := r.watchUsage(ctx, spec, dir, review, loopNo, start)
+	// The run's token budget is read between reviews, so a launch that never
+	// stops on its own is the one shape of spend no ceiling catches. A review
+	// that reaches the whole budget by itself is stopped here, from the
+	// provider's own counters, and starts no successor: the loop's own budget
+	// check has already been passed by the time the figure arrives.
+	reviewCtx, stopReview := context.WithCancel(ctx)
+	defer stopReview()
+	cap := newReviewCap(r.cfg.TokenBudget, stopReview)
+
+	usage := r.watchUsage(reviewCtx, spec, dir, review, loopNo, start, cap.reading)
 	defer usage.halt()
 
-	pr := runProc(ctx, procOpts{
+	pr := runProc(reviewCtx, procOpts{
 		Argv:           argv,
 		Dir:            dir,
 		Timeout:        r.cfg.Timeout,
@@ -351,8 +360,9 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Sink:           r.outputSink(review, spec.Label()),
 		// Cumulative for this review: the dashboard turns successive values
 		// into a rate, and a review that never reports usage sends nothing.
-		Usage:  func(u agent.Usage) { usage.report(u.Reported(), max(u.Thinking, 0)) },
-		Stream: r.cfg.Stream,
+		Usage:    func(u agent.Usage) { usage.report(u.Reported(), max(u.Thinking, 0)) },
+		Envelope: func(u agent.Usage) { cap.reading(u.Reported()) },
+		Stream:   r.cfg.Stream,
 	})
 	tokens, thinking := usage.settle()
 	res.Elapsed = max(r.now().Sub(start), 0)
@@ -373,7 +383,19 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		}
 	}
 
+	spentTokens, overBudget := cap.spent()
 	switch {
+	case overBudget:
+		// A runaway is not a failure of the review and not an interruption of
+		// the run, and it is not retried: every attempt at the same launch
+		// costs what the last one did. The reading that stopped it is the
+		// ceiling, not a sum the caller has to add up.
+		r.log("OVER BUDGET: %s with %s after %s: one review spent %d tokens, "+
+			"the run's whole budget", review, spec.Label(),
+			humanize.Duration(res.Elapsed), spentTokens)
+		res.Status = StatusFail
+		res.Detail = fmt.Sprintf("stopped at %d tokens, the run's token budget", spentTokens)
+		r.forgetSession(spec)
 	case pr.Canceled:
 		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
 		res.Status = StatusInterrupted
@@ -470,9 +492,11 @@ type usageWatch struct {
 }
 
 // watchUsage starts following spec's transcript, which only counts what it
-// writes from since onward.
+// writes from since onward. onProvider is called with each reading the
+// transcript itself reports, which is the provider's record rather than
+// anything the model printed: the review's token cap acts on it.
 func (r *Runner) watchUsage(ctx context.Context, spec agent.Spec, dir, review string,
-	loopNo int, since time.Time) *usageWatch {
+	loopNo int, since time.Time, onProvider func(tokens int)) *usageWatch {
 
 	w := &usageWatch{
 		publish: func(tokens, thinking int) {
@@ -485,7 +509,14 @@ func (r *Runner) watchUsage(ctx context.Context, spec agent.Spec, dir, review st
 	}
 	watchCtx, cancel := context.WithCancel(ctx)
 	w.stop = cancel
-	w.done.Go(func() { w.reader.Run(watchCtx, w.report) })
+	w.done.Go(func() {
+		w.reader.Run(watchCtx, func(tokens, thinking int) {
+			w.report(tokens, thinking)
+			if onProvider != nil {
+				onProvider(tokens)
+			}
+		})
+	})
 	return w
 }
 
