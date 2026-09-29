@@ -374,7 +374,10 @@ is the copy that leaves the machine. `gauntlet runs --json` shortens its `home`
 and `journals` fields the same way: they are facts about the install rather
 than about any run, so nothing matches on them, and a resolved path under
 `/home/<account>` would put the account name in every copy a script or an
-archive job takes away. The `dirs` and `path` of a row are the index fields
+archive job takes away. A script that hands either field to `test -d`,
+`realpath`, or another tool expands the leading `~` first: the field is a
+display spelling, not a path the shell resolves on its own. The `dirs` and
+`path` of a row are the index fields
 above and stay resolved. The `dir` and `path` fields are stored as
 resolved paths: the listing and the history matcher need the path a person
 typed to still resolve. `review_start` and `review_end` carry
