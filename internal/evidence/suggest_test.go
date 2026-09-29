@@ -604,13 +604,19 @@ func TestScanChurnWindowReadsTheInjectedClock(t *testing.T) {
 	dir := tree(t, "main.go\x00package main\n")
 	commit := commitAll(t, dir, "2026-03-01T12:00:00Z")
 
-	after := scan(dir, nil, func() time.Time { return commit.Add(24 * time.Hour) })
+	after, err := scan(dir, nil, func() time.Time { return commit.Add(24 * time.Hour) })
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
 	if !after.churn {
 		t.Fatal("a commit a day old is not churn")
 	}
 	// The window reaches back from the clock, so a clock a year past the
 	// commit puts its cutoff beyond it and the history reads as dormant.
-	before := scan(dir, nil, func() time.Time { return commit.Add(365 * 24 * time.Hour) })
+	before, err := scan(dir, nil, func() time.Time { return commit.Add(365 * 24 * time.Hour) })
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
 	if before.churn {
 		t.Fatal("a commit a year before the clock's window is still churn")
 	}

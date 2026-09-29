@@ -64,7 +64,13 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
 	}
 	repo := gitx.Open(o.Dir)
-	before, _ := repo.Tip(ctx, "HEAD")
+	// The base tip is what tells the trailer strip whether this step made a
+	// commit, so an unreadable HEAD has to stop the step rather than leave it
+	// to amend a commit this run did not write.
+	before, err := repo.Tip(ctx, "HEAD")
+	if err != nil {
+		return fmt.Errorf("cannot read HEAD before the commit step: %w", err)
+	}
 	// The agent's last line is the only statement of why a commit step
 	// stopped where it did, and a caller that redirects o.Out (or the TUI,
 	// which routes through the bus) never sees the streamed text. Keep a

@@ -312,9 +312,11 @@ func applyTo(ctx context.Context, rel *Release, self string) (string, error) {
 	// The new binary's bytes are synced and the rollback copy's name is
 	// recorded before this point, so a power cut between the rename and the
 	// record leaves the replaced binary in place, under a name an update has
-	// already reported replacing.
+	// already reported replacing. The binary itself is in place either way,
+	// so the message names it rather than reading as an update that did not
+	// happen.
 	if err := gauntlethome.SyncDir(dir); err != nil {
-		return "", fmt.Errorf("cannot record %s: %w", self, err)
+		return "", fmt.Errorf("%s is installed, but the rename cannot be recorded: %w", self, err)
 	}
 	return self, nil
 }

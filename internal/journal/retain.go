@@ -13,6 +13,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"path/filepath"
 	"syscall"
@@ -56,19 +57,25 @@ func Prune(keep int) (int, error) {
 // A writer holds a shared lock on the stream it appends to, so an exclusive
 // lock that cannot be taken names a run in progress.
 //
-// A journal that cannot be opened at all is reported idle: a file the prune
-// cannot read is one the rename is about to move, and a read failure here is
-// not a reason to leave a run the keep window named.
-func journalIdle(path string) bool {
+// A journal that cannot be opened is not evidence of anything except a
+// failure to open it. A run another gauntlet is appending to is exactly what
+// an EACCES or an exhausted descriptor table looks like here, and moving it
+// out from under that writer costs a run. Only a journal that is already gone
+// is idle, because then there is nothing left to disturb; every other open
+// failure keeps the journal and is reported.
+func journalIdle(path string) (bool, error) {
 	if holdsStream(path) {
-		return false
+		return false, nil
 	}
 	f, err := openRead(path)
 	if err != nil {
-		return true
+		if errors.Is(err, fs.ErrNotExist) {
+			return true, nil
+		}
+		return false, err
 	}
 	defer f.Close()
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil
+	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil, nil
 }
 
 // pruneLocked does the work under the index lock, so a concurrent Close cannot
@@ -92,9 +99,24 @@ func pruneLocked(keep int) (int, error) {
 	// window says, and it is decided here rather than at the move: the index
 	// below is written from keepIDs, so a run that keeps its journal has to
 	// keep its row in the same pass.
+	//
+	// Every failure the probe meets is kept, not just the first, so the count
+	// returned below is what moved and the error is everything that did not:
+	// a journal kept because it could not be opened, and a journal kept
+	// because the move failed, are both a run the operator has to hear about.
+	var errs []error
+	note := func(err error) {
+		if err != nil {
+			errs = append(errs, err)
+		}
+	}
 	movable := make([]namedJournal, 0, len(stale))
 	for _, j := range stale {
-		if journalIdle(j.path) {
+		idle, err := journalIdle(j.path)
+		if err != nil {
+			note(fmt.Errorf("cannot tell whether %s is in use: %w", j.id, err))
+		}
+		if idle {
 			movable = append(movable, j)
 			continue
 		}
@@ -124,20 +146,10 @@ func pruneLocked(keep int) (int, error) {
 	}
 	if len(kept) != len(rows) {
 		if err := writeIndex(kept); err != nil {
-			return 0, err
+			return 0, errors.Join(append(errs, err)...)
 		}
 	}
 
-	// Every failure the move phase met is kept, not just the first: a prune
-	// that moved nine of ten runs and named one failure leaves the operator
-	// guessing about the other nine, and the count below is the one place
-	// that says what actually happened.
-	var errs []error
-	note := func(err error) {
-		if err != nil {
-			errs = append(errs, err)
-		}
-	}
 	touched := make(map[string]struct{}, 4)
 	moved := 0
 	for _, j := range movable {

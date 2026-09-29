@@ -19,6 +19,8 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -483,11 +485,12 @@ func (s scored) topReasons(n int) string {
 // reach minScore are left out: proposing everything would be the same as
 // proposing nothing.
 //
-// The error is the journal this directory's history is read from, returned
-// beside the picks rather than folded into them: an unreadable index leaves
-// every review at its neutral weight, which quietly re-proposes the reviews
-// that have already finished here without changing a line several times
-// over. The file evidence stands on its own, so the picks are still worth
+// The error is every evidence read that failed, returned beside the picks
+// rather than folded into them: an unreadable index leaves every review at
+// its neutral weight, which quietly re-proposes the reviews that have
+// already finished here without changing a line several times over, and an
+// unreadable churn window scales every area as though it were being edited
+// now. The file evidence stands on its own, so the picks are still worth
 // having; the caller says why the weighting is missing.
 //
 // now is the clock the churn window is measured back from. Nil means wall
@@ -499,7 +502,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 		now = time.Now
 	}
 	marks, declaredBy := declared(pool, set)
-	s := scan(dir, marks, now)
+	s, scanErr := scan(dir, marks, now)
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
 		rank[name] = i
@@ -559,7 +562,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 			Reason: got.topReasons(reasonsShown),
 		})
 	}
-	return picked, historyErr
+	return picked, errors.Join(scanErr, historyErr)
 }
 
 // matchDeclared reports whether the tree carries any signal a review declared,
@@ -607,7 +610,12 @@ func historyWeight(h journal.ReviewHistory) float64 {
 // scan collects what the rules ask about, in one pass over the tree. declared
 // are the `mark:` substrings the reviews in the pool asked for, looked for
 // while the heads are being read anyway.
-func scan(dir string, declared []string, now func() time.Time) signals {
+//
+// The error is the churn read, which liveness is built on: a history the
+// runner could not read scales every area as though it were edited this
+// quarter, so the caller is told rather than handed a set of picks that read
+// as though the evidence behind them had been checked.
+func scan(dir string, declared []string, now func() time.Time) (signals, error) {
 	s := signals{
 		ext: map[string]int{}, name: map[string]bool{},
 		path: map[string]bool{}, mark: map[string]int{}, hot: map[string]int{},
@@ -623,7 +631,7 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 	}
 	peek(root, paths, &s, declared)
 	if repo == nil {
-		return s
+		return s, nil
 	}
 	// Git listed the tree, so it can also say which part of it is alive.
 	// The same handle already paid for the safe-config overlay on ListFiles;
@@ -636,13 +644,17 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
 	cutoff := now().Add(-churnWindow)
-	if changed, err := repo.ChangedSince(ctx, cutoff); err == nil && len(changed) > 0 {
+	changed, err := repo.ChangedSince(ctx, cutoff)
+	if err != nil {
+		return s, fmt.Errorf("cannot read the churn of %s: %w", root, err)
+	}
+	if len(changed) > 0 {
 		s.churn = true
 		for _, rel := range changed {
 			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++
 		}
 	}
-	return s
+	return s, nil
 }
 
 // churnTimeout caps the history read. A suggestion is not worth waiting on a

@@ -324,8 +324,15 @@ func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
 	// A cancel during "git worktree add" can leave the entry locked;
 	// unlock it and try removing before falling back to manual cleanup.
 	_, _ = r.run(ctx, gitQuick, "worktree", "unlock", dir)
+	// The directory goes whenever git's remove did not take it away. Only a
+	// stat that says it is gone is proof of that: a stat that fails for any
+	// other reason says nothing about the checkout, and reading it as gone
+	// leaves a full copy of the repository on disk with nothing left naming
+	// it. RemoveAll on an absent path is a no-op, so the stat only has to
+	// rule that case out.
 	_, removeErr := r.run(ctx, gitNormal, "worktree", "remove", "--force", dir)
-	if _, statErr := os.Stat(dir); removeErr != nil || statErr == nil {
+	_, statErr := os.Stat(dir)
+	if removeErr != nil || !errors.Is(statErr, fs.ErrNotExist) {
 		if err := os.RemoveAll(dir); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("remove worktree dir: %w", err)
 		}
