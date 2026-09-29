@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
@@ -76,7 +76,13 @@ func subjectFromChanges(ch gitx.Changes) string {
 	if len(files) == 0 {
 		return "chore: update files"
 	}
-	sort.Strings(files)
+	// The order decides which file the subject names, so it is the order a
+	// reader would read the list in, not the order the bytes come out in.
+	// Sorting by byte value names "Zebra.go" ahead of "apple.go" and every
+	// capitalized path ahead of every lowercase one, and that name is what
+	// reaches the history, the PR title, and the merge message. fuzzy.Sort is
+	// the one ordering in this tree (see its doc for why).
+	fuzzy.Sort(files)
 	typ := subjectType(files)
 	what := subjectWhat(files, len(ch.Tracked) == 0)
 	if scope := subjectScope(files); scope != "" {
@@ -88,7 +94,15 @@ func subjectFromChanges(ch gitx.Changes) string {
 func subjectType(files []string) string {
 	docs, tests, ci := 0, 0, 0
 	for _, f := range files {
-		slash := filepath.ToSlash(f)
+		// Classification reads the folded path. The tables it consults are
+		// lowercase by convention, and the rest of this tree folds a path
+		// before looking it up (internal/evidence/suggest.go records a lowercased
+		// path and a lowercased extension). A tree holding "FOO_TEST.GO" or a
+		// "Docs/" directory would otherwise be typed chore, and on a
+		// case-insensitive volume (macOS by default) that is the same
+		// directory git and the reviewer are looking at. Only the classification
+		// folds: the name printed in the subject is the real spelling.
+		slash := strings.ToLower(filepath.ToSlash(f))
 		base := path.Base(slash)
 		switch {
 		case isTestPath(slash, base):
@@ -143,7 +157,9 @@ func isCIPath(slash string) bool {
 
 // boringScopes are directory names that name a layout convention, not an
 // area of the project. Using one as a conventional-commit scope would read
-// as "the src package" rather than what changed.
+// as "the src package" rather than what changed. Every key is lowercase, and
+// subjectScope folds the directory before looking it up: "SRC" and "src" are
+// one directory on a case-insensitive volume, and both name the convention.
 var boringScopes = map[string]bool{
 	"src": true, "lib": true, "pkg": true, "internal": true, "app": true,
 	"cmd": true, "testdata": true, "vendor": true, "scripts": true,
@@ -154,7 +170,8 @@ func subjectScope(files []string) string {
 	var scope string
 	for _, f := range files {
 		dir := path.Base(path.Dir(filepath.ToSlash(f)))
-		if dir == "." || dir == "" || dir == "/" || strings.HasPrefix(dir, ".") || boringScopes[dir] {
+		if dir == "." || dir == "" || dir == "/" || strings.HasPrefix(dir, ".") ||
+			boringScopes[strings.ToLower(dir)] {
 			return ""
 		}
 		dir = commitToken(dir)

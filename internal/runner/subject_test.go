@@ -46,16 +46,33 @@ func TestSubjectFromChanges(t *testing.T) {
 		{"tests only", gitx.Changes{Tracked: []string{"foo_test.go", "bar_test.go"}},
 			"test: update bar_test.go and foo_test.go"},
 		{"docs only", gitx.Changes{Tracked: []string{"README.md", "docs/CLI.md"}},
-			"docs: update README.md and CLI.md"},
+			"docs: update CLI.md and README.md"},
 		{"ci only", gitx.Changes{Tracked: []string{".github/workflows/ci.yml"}},
 			"ci: update ci.yml"},
 		{"mixed types stay chore", gitx.Changes{Tracked: []string{"foo.go", "foo_test.go"}},
-			"chore: update foo.go and foo_test.go"},
+			"chore: update foo_test.go and foo.go"},
 		{"same basename keeps the path", gitx.Changes{Tracked: []string{"a/foo.go", "b/foo.go"}},
 			"chore: update a/foo.go and b/foo.go"},
 		{"different directories drop the scope", gitx.Changes{Tracked: []string{
 			"internal/parser/parse.go", "internal/lexer/lex.go",
 		}}, "chore: update lex.go and parse.go"},
+		// The file a subject names is the one a reader looks for first, so the
+		// list is ordered the way it would be read rather than by byte value,
+		// which names every capitalized path ahead of every lowercase one.
+		{"files are ordered as a reader reads them", gitx.Changes{Tracked: []string{
+			"Zebra.go", "apple.go",
+		}}, "chore: update apple.go and Zebra.go"},
+		// The classification tables are lowercase, so the path is folded before
+		// it is looked up. The name in the subject keeps its real spelling.
+		{"a capitalized test suffix is still a test", gitx.Changes{Tracked: []string{
+			"FOO_TEST.GO",
+		}}, "test: update FOO_TEST.GO"},
+		{"a capitalized documentation suffix is still a doc", gitx.Changes{Tracked: []string{
+			"README.MD",
+		}}, "docs: update README.MD"},
+		{"a boring directory is boring whatever its case", gitx.Changes{Tracked: []string{
+			"SRC/parse.go",
+		}}, "chore: update parse.go"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

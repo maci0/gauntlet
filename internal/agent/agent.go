@@ -114,6 +114,12 @@ var streamFlags = map[string][]string{
 // (EqualFold) does not close the gap either: its orbit leaves U+0130 out, so
 // a definition registered "İşık" stayed unfindable under the "işık" every
 // lookup folded to.
+//
+// ToLower rather than fuzzy.Fold, which would also equate the long s with the
+// s and the final sigma with the ordinary one, because this is not only a key:
+// it is the name a run selects an agent by, prints in the journal, and shows
+// in the launcher. Folding to the smallest rune of each orbit turns "işık" into
+// "IŞIK", so the two would have to disagree about what the operator wrote.
 func foldName(s string) string {
 	return strings.ToLower(fuzzy.NFC(strings.TrimSpace(s)))
 }
