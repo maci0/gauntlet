@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,25 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
+
+// saveHandoff writes the reload handoff where the successor reads it, and
+// refuses a state root that is not usable.
+//
+// gauntlethome degrades to ".gauntlet" beside the working directory when
+// GAUNTLET_HOME cannot be stat-ed, is empty after expansion, and no usable
+// HOME is there. The journal accepts that location, since nothing it writes
+// is load-bearing; a handoff is not that. It carries the argv of the agents
+// the successor launches, and the fallback sits inside the tree under review,
+// so a repository could plant one there and a run could read it back. The
+// same rule already refuses the working-directory fallback for agents.json
+// (agent.CustomFilePath), and a reload with no state to hand over is better
+// than one that hands over a file a hostile tree owns.
+func saveHandoff(runID string, h handoff) (string, error) {
+	if _, ok := gauntlethome.Dir(); !ok {
+		return "", errors.New("no usable state root: set GAUNTLET_HOME to a directory this process can write")
+	}
+	return selfupdate.SaveState(gauntlethome.StateDir(), runID, h)
+}
 
 // handoff is the state a hot reload carries across the exec. It holds the
 // full results, not just counters: the successor prints the run's summary and
@@ -209,7 +229,7 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 		}
 		h.Dirs[handoffKey(d.dir)] = dh
 	}
-	statePath, err := selfupdate.SaveState(gauntlethome.StateDir(), runID, h)
+	statePath, err := saveHandoff(runID, h)
 	if err != nil {
 		// Without the handoff the successor would start a fresh run: a new
 		// run id, every loop restarted, and this process's journal already
