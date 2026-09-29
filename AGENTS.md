@@ -23,15 +23,17 @@ but drops the sqlite driver.
   coverage, dist, and reproducibility. `CONTRIBUTING.md` has the per-target
   detail.
 - `make verify`: `make check`, `make check-scripts`, then the suite under all
-  three tag sets, the whole pull-request gate in one command. `make ci` is the
-  edit-test loop, this is the before-push gate.
-- `make check-scripts`: ruff, mypy `--strict` (with `rich` installed for its
-  type information), and yamllint `--strict` via version-pinned `uvx` over
-  `scripts/` and `.github/`, plus shellcheck from PATH over `scripts/shots.sh`,
-  the only shell script there. Rule selection is `pyproject.toml` for the
-  Python tools and `.yamllint` for the YAML. shellcheck is the one tool CI
-  cannot install a pinned copy of, so its pin is a warning on drift rather
-  than a lock. Run `make fmt-scripts` to rewrite scripts with ruff format.
+  three tag sets, the whole pull-request gate in one command.
+  `make test-pkg PKG=... [RUN=...]` is the edit-test loop, this is the
+  before-push gate.
+- `make check-scripts`: ruff and mypy `--strict` (with `rich` installed for its
+  type information) over `scripts/`, and yamllint `--strict` over `.github/`,
+  all three through version-pinned `uvx`, plus shellcheck from PATH over
+  `scripts/shots.sh`, the only shell script there. Rule selection is
+  `pyproject.toml` for the Python tools and `.yamllint` for the YAML. shellcheck
+  is the one tool CI cannot install a pinned copy of, so its pin is a warning
+  on drift rather than a lock. Run `make fmt-scripts` to rewrite scripts with
+  ruff format.
 - `make test RUN=TestName`: the suite with the race detector and shuffled order.
 - `make test-pkg PKG=./internal/prompt [RUN=TestName]`: one package or test
   with the same race, shuffle, and tag flags.
@@ -123,15 +125,14 @@ the finished block to paste back, so no cell is transcribed by hand.
   the automation behind it. Write "the CLI", "the dashboard", or the package.
   `internal/prompt/rules/commit.md` states the rule for agents,
   `internal/runner/subject.go` drops an agent subject that credits a model
-  and writes one from the changed files instead, `internal/runner/subject_test.go`
-  pins that, and it holds for commits written by hand here too. Two exceptions.
-  A literal
-  identifier the message is about: `GAUNTLET_HOME`, `gauntlet pick`,
-  `.gauntlet.lock`. And the refs the runner cuts for itself (`AddWorktree`,
-  `AddStackWorktree`), namespaced `gauntlet/...` and `review/...` so a reviewed
-  repository can list and delete them as a set. That is why a stacked PR body
-  names its base branch: the reader has to check it out, and GitHub prints it
-  above the diff either way.
+  and writes one from the changed files instead,
+  `internal/runner/subject_test.go` pins that, and it holds for commits
+  written by hand here too. Two exceptions. A literal identifier the message is
+  about: `GAUNTLET_HOME`, `gauntlet pick`, `.gauntlet.lock`. And the refs the
+  runner cuts for itself (`AddWorktree`, `AddStackWorktree`), namespaced
+  `gauntlet/...` and `review/...` so a reviewed repository can list and delete
+  them as a set. That is why a stacked PR body names its base branch: the
+  reader has to check it out, and GitHub prints it above the diff either way.
 - **A conflicting merge is resolved or keeps its branch.** The conflict step
   may hand it to an agent in a scratch checkout; what comes back unresolved
   stays on its branch. Losing a review's entire output silently is worse than
