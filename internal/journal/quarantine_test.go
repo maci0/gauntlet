@@ -443,3 +443,32 @@ func TestInspectCountsBothDisagreements(t *testing.T) {
 		t.Fatalf("after losing a journal, Inspect reports %+v, want one disagreement", st)
 	}
 }
+
+// An index line that is valid JSON but names no run is a line the writer could
+// not close. It cannot be matched to a journal either way, so it is a row the
+// index holds and not a disagreement the operator is told to repair.
+func TestInspectSkipsAnIndexRowWithNoRunID(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	record(t, "20260825T090000Z-0001", base)
+
+	f, err := os.OpenFile(indexPath(), os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"start\":\"2026-08-25T09:00:00Z\"}\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err := Inspect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Journals != 1 || st.Rows != 2 || st.Disagreed != 0 {
+		t.Fatalf("Inspect reports %+v, want the id-less row held and not counted as a disagreement", st)
+	}
+}

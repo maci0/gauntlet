@@ -15,6 +15,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"golang.org/x/text/unicode/norm"
 )
@@ -1128,5 +1129,39 @@ func TestStackBodyDeduplicatesNFCAndNFDNotes(t *testing.T) {
 	body := r.stackBody(context.Background(), "test-review", "title", repo, "main", "feature", "main", 1, notes)
 	if body.Overview != nfcNote+"." {
 		t.Fatalf("Overview = %q, want %q", body.Overview, nfcNote+".")
+	}
+}
+
+// A name on ext4 and APFS may hold a byte that is not valid UTF-8, and the
+// two sides of the match spell it differently: git reports the raw byte while
+// the agent's note arrives already repaired to U+FFFD by the parser that read
+// it. The overview is built only from notes whose path the commit touched, so
+// without the repair the note is dropped as if it had described a file the
+// commit never touched.
+func TestStackBodyMatchesANoteAgainstARawNonUTF8FileName(t *testing.T) {
+	repo, _ := stackRepo(t)
+	gitOut(t, repo, "checkout", "-b", "feature")
+	raw := "bad\xff.txt"
+	f := filepath.Join(repo, raw)
+	if err := os.WriteFile(f, []byte("changed\n"), 0o644); err != nil {
+		t.Fatalf("writing a file whose name holds a raw byte: %v", err)
+	}
+	gitOut(t, repo, "add", raw)
+	gitOut(t, repo, "commit", "-m", "update the odd file")
+
+	// The parser that read the agent's line hands on the repaired spelling.
+	repaired := "bad�.txt"
+	if got := normalize.Repair(raw); got != repaired {
+		t.Fatalf("fixture is not the spelling a note arrives in: Repair(%q) = %q, want %q", raw, got, repaired)
+	}
+	if noteKey(raw) != noteKey(repaired) {
+		t.Fatalf("noteKey(%q) = %q and noteKey(%q) = %q, want the same key", raw, noteKey(raw), repaired, noteKey(repaired))
+	}
+
+	r := &Runner{repo: gitx.Open(repo)}
+	notes := []agent.FileNote{{Path: repaired, Note: "the odd name"}}
+	body := r.stackBody(context.Background(), "test-review", "title", repo, "main", "feature", "main", 1, notes)
+	if body.Overview != "the odd name." {
+		t.Fatalf("Overview = %q, want the note for the file the commit touched", body.Overview)
 	}
 }

@@ -538,8 +538,12 @@ func TestRecentIsNewestFirstAndSkipsGarbage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f.WriteString("{\"run_id\": trunca\n")
-	f.Close()
+	if _, err := f.WriteString("{\"run_id\": trunca\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	runs, err := Recent(2)
 	if err != nil {
