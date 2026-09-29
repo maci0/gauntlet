@@ -1025,9 +1025,9 @@ func (m *model) helpLines() []string {
 	// What it does is not the same in each: it asks for the graceful quit
 	// while the run is live, it closes outright while a finish is draining,
 	// and it closes outright when the run had nothing to finish into. The
-	// help used to name the graceful pair and then claim the closing one
-	// needed two presses, which is not what the key does (WCAG 3.3.2: a
-	// control's documented name has to be the control).
+	// name has to be the one press that works in each (WCAG 3.3.2: a
+	// control's documented name has to be the control), so the closing states
+	// do not document a two-press quit.
 	switch {
 	case m.done:
 		// Already covered by the close line above.
@@ -1203,13 +1203,14 @@ var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b",
 // drops from the right. The first survives always: a reader with no way to
 // close the overlay is stuck in it.
 //
-// Every key scrollHelp binds to is named here. The row used to be one fixed
-// string, so a pane narrower than it was cut mid-name ("j/k scrol"), naming a
-// key that does not exist, and space was left out entirely even though it
-// pages down: a key that works, is unmentioned, and reads as broken is the one
-// a keyboard user cannot tell from a missing one (WCAG 3.3.2). Fitting whole
-// segments fixes both: what does not fit is a key that was never claimed, not
-// half of one that was, and fitSegments marks what it dropped.
+// Every key scrollHelp binds to is named here, and the row is segmented
+// rather than one fixed string: a pane narrower than a fixed string was cut
+// mid-name ("j/k scrol"), naming a key that does not exist, and space was
+// left out entirely even though it pages down. A key that works, is
+// unmentioned, and reads as broken is the one a keyboard user cannot tell from
+// a missing one (WCAG 3.3.2). Fitting whole segments fixes both: what does
+// not fit is a key that was never claimed, not half of one that was, and
+// fitSegments marks what it dropped.
 //
 // pos is where the reader is in the help, empty when the whole page fits and
 // there is nothing to be lost by. It is a segment like the key names and sits

@@ -69,8 +69,8 @@ func (r *Repo) runIn(ctx context.Context, stdin io.Reader, timeout time.Duration
 
 // argv is the full git argument list: the per-repo overlay, then the static
 // safe config, then the caller's command. Overlay first so a later -c in
-// args (tests that re-enable a hook) still wins, matching the previous
-// "last -c wins" contract.
+// args (tests that re-enable a hook) still wins, keeping the "last -c wins"
+// contract for every layer.
 func (r *Repo) argv(args []string) []string {
 	extra := r.extraSafeConfig()
 	out := make([]string, 0, len(extra)+len(safeConfig)+len(args))

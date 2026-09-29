@@ -435,10 +435,11 @@ func (p *picker) filterKey(msg tea.KeyMsg, key string) (tea.Model, tea.Cmd) {
 	switch key {
 	case "ctrl+c":
 		// The universal way out, and the one key the help overlay names as
-		// closing whatever is on screen. It used to clear the filter here
-		// like esc does, so a reader reaching for it to leave instead lost
-		// their search and stayed: a key that is on screen as "close" and
-		// does not close (WCAG 3.3.2). esc is the key that clears.
+		// closing whatever is on screen. It must not also clear the filter the
+		// way esc does: a reader reaching for it to leave would lose their
+		// search and stay, and a key that is on screen as "close" and does not
+		// close is the one a keyboard user cannot read (WCAG 3.3.2). esc is
+		// the key that clears.
 		return p, tea.Quit
 	case "esc":
 		p.filter, p.typing = "", false

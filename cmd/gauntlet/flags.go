@@ -860,9 +860,10 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, fmt.Errorf("--prompt-dir: %w", err)
 		}
 		// A path that is not there is as much a bad flag value as one that is
-		// there and is a file. Discovery used to be what caught the missing
-		// half, so the two mistakes a user can make with one flag reported
-		// themselves differently, and the missing one lost the usage screen.
+		// there and is a file, so the missing half gets the same usage screen
+		// as the wrong-type half. Letting discovery find it instead would
+		// report the two mistakes a user can make with one flag differently,
+		// and the missing one without one.
 		fi, err := os.Stat(expanded)
 		switch {
 		case errors.Is(err, os.ErrNotExist):

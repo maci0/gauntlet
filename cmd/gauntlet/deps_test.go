@@ -69,7 +69,7 @@ var directModuleSites = map[string][]string{
 	"github.com/charmbracelet/lipgloss":  {"internal/ui/"},
 	"github.com/muesli/termenv":          {"internal/ui/"},
 	"github.com/maci0/toktop":            {"cmd/gauntlet/", "internal/runner/"},
-	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/agent/", "internal/normalize/"},
+	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/normalize/"},
 	"golang.org/x/text":                  {"cmd/gauntlet/", "internal/evidence/", "internal/fuzzy/", "internal/prompt/", "internal/runner/", "internal/ui/"},
 	"golang.org/x/term":                  {"cmd/gauntlet/"},
 }
@@ -94,6 +94,11 @@ func TestDirectModuleImportSites(t *testing.T) {
 	}
 
 	fset := token.NewFileSet()
+	// Every allowed prefix, and whether a file took it. Without the second
+	// half a prefix nothing imports is a containment claim DESIGN.md never
+	// had, which is how a package that stopped using a module keeps its name
+	// in the table.
+	used := make(map[string]map[string]bool, len(directModuleSites))
 	err := walkGoFiles(root, func(rel, path string) error {
 		body := readRepoFile(t, path)
 		f, err := parser.ParseFile(fset, path, body, parser.ImportsOnly)
@@ -110,6 +115,10 @@ func TestDirectModuleImportSites(t *testing.T) {
 				for _, p := range prefixes {
 					if strings.HasPrefix(rel, p) {
 						ok = true
+						if used[mod] == nil {
+							used[mod] = make(map[string]bool, len(prefixes))
+						}
+						used[mod][p] = true
 						break
 					}
 				}
@@ -125,6 +134,13 @@ func TestDirectModuleImportSites(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+	for mod, prefixes := range directModuleSites {
+		for _, p := range prefixes {
+			if !used[mod][p] {
+				t.Errorf("docs/DESIGN.md allows %s in %s, but no file imports it there; drop the stale prefix", mod, p)
+			}
+		}
 	}
 }
 

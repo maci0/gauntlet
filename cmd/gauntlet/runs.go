@@ -234,9 +234,9 @@ type runsColumn struct {
 
 // width is what the column prints at: the widest of its header and its cells.
 // The RUN and DIRS cells hold names from the reviewed tree, so the measure is
-// terminal cells (cells), not the byte or rune count the same table used to
-// take. Every other column here is ASCII, so the two differ only on the two
-// that are not.
+// terminal cells (cells), not the byte or rune count a name's length in Go
+// would give. Every other column here is ASCII, so the two differ only on the
+// two that are not.
 func (c runsColumn) width() int {
 	w := cells(c.head)
 	for _, cell := range c.cells {

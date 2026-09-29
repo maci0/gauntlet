@@ -257,7 +257,7 @@ func (p *picker) renderStatus() string {
 	if p.typing {
 		// A reason the run cannot start outranks the filter line: it is what
 		// makes enter dead, and it does not stop being true because the reader
-		// opened a search. Typing used to hide it entirely, so a box with no
+		// opened a search. Hiding it behind the filter would let a box with no
 		// agent CLI installed read as a working launcher for as long as the
 		// search was open.
 		if why := p.blockReason(); why != "" {

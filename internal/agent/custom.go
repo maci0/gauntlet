@@ -573,9 +573,8 @@ func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string 
 	// One replacer over every placeholder, rather than a chain that stops at
 	// the first kind an argument mentions: nothing says an argument carries
 	// only one. A definition that packs its settings into a single option
-	// ("--opts=model={model},effort={effort}") used to have the first
-	// placeholder expanded and the rest handed to the agent verbatim, so the
-	// CLI was launched with a literal "{effort}" in its argv.
+	// ("--opts=model={model},effort={effort}") needs every placeholder in
+	// that one argument expanded, not just the leading one.
 	//
 	// A Replacer scans the input once and never rescans what it substituted,
 	// so a prompt that happens to contain "{model}" stays the text the review

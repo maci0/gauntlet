@@ -364,12 +364,12 @@ func indexLines(f *os.File, visit func([]byte) bool) error {
 		if err == bufio.ErrBufferFull {
 			// A row longer than the buffer: gather it, since a visitor may
 			// need the whole line and the copy outlives the read. The gather
-			// stops at indexLineMax, the ceiling its two sibling readers on
-			// this same file already put on a row, because a line with no
-			// newline in it otherwise grows the buffer by whatever the file
-			// asks for. The walk ends there rather than allocating it: a row
-			// that size is a corrupt file, and every visitor here answers
-			// "not a row" about one.
+			// stops at indexLineMax, the ceiling readAllIndex puts on a row
+			// on the same file, because a line with no newline in it
+			// otherwise grows the buffer by whatever the file asks for. The
+			// walk ends there rather than allocating it: a row that size is
+			// a corrupt file, and every visitor here answers "not a row"
+			// about one.
 			long = append(long[:0], chunk...)
 			for err == bufio.ErrBufferFull {
 				if len(long) >= indexLineMax {
@@ -990,8 +990,9 @@ func commitIndex(write func(io.Writer) error) error {
 	return gauntlethome.SyncDir(Home())
 }
 
-// indexEvent is the subset of a journal line summarizeFile and History read.
-// Extra fields are ignored, matching Events.
+// indexEvent is the subset of a journal line summarizeFile reads. History
+// decodes the narrower historyEvent instead. Extra fields are ignored,
+// matching Events.
 type indexEvent struct {
 	Ev      string    `json:"ev"`
 	TS      time.Time `json:"ts"`
