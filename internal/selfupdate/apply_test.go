@@ -258,6 +258,54 @@ func TestApplyTwiceLeavesTheRollbackCopyAlone(t *testing.T) {
 	}
 }
 
+// The window between the rollback copy and the rename is the one a kill can
+// land in that leaves a state no run produced: the copy is on disk and the
+// binary it was copied from is still in place. A rerun over that state has to
+// converge on the release, and the copy has to end up holding the binary the
+// install replaced, not a second copy of itself.
+func TestApplyConvergesAfterAKillBetweenTheCopyAndTheRename(t *testing.T) {
+	payload := []byte("#!/bin/sh\necho new\n")
+	h := sha256.Sum256(payload)
+	_, rel := releaseServer(t, payload, hex.EncodeToString(h[:]))
+
+	dir := t.TempDir()
+	target := filepath.Join(dir, "gauntlet")
+	old := []byte("#!/bin/sh\necho old\n")
+	if err := os.WriteFile(target, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The state a run killed between keepPrevious and os.Rename leaves.
+	if err := os.WriteFile(target+PreviousSuffix, old, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := applyTo(context.Background(), rel, target)
+	if err != nil {
+		t.Fatalf("install over an interrupted one: %v", err)
+	}
+	if got != target {
+		t.Fatalf("installed %q, want %q", got, target)
+	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != string(payload) {
+		t.Fatalf("left %q, want the release", body)
+	}
+	kept, err := os.ReadFile(target + PreviousSuffix)
+	if err != nil {
+		t.Fatalf("the rollback copy is gone: %v", err)
+	}
+	if string(kept) != string(old) {
+		t.Fatalf("rollback copy is %q, want the binary the install replaced", kept)
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, ".gauntlet-update-*"))
+	if len(matches) != 0 {
+		t.Fatalf("temp files left behind: %v", matches)
+	}
+}
+
 // A release that never verified replaced nothing, so there is nothing to roll
 // back to and the copy is not made.
 func TestApplyLeavesNoRollbackCopyAfterAFailedVerification(t *testing.T) {
