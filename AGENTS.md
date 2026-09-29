@@ -24,8 +24,6 @@ but drops the sqlite driver.
   detail.
 - `make verify`: `make check`, `make check-scripts`, then the suite under all
   three tag sets, the whole pull-request gate in one command.
-  `make test-pkg PKG=... [RUN=...]` is the edit-test loop, this is the
-  before-push gate.
 - `make check-scripts`: ruff and mypy `--strict` (with `rich` installed for its
   type information) over `scripts/`, and yamllint `--strict` over `.github/`,
   all three through version-pinned `uvx`, plus shellcheck from PATH over
@@ -96,8 +94,8 @@ the finished block to paste back, so no cell is transcribed by hand.
   `O_NOFOLLOW`, and `execve`, so Linux and macOS only.
 - A direct module in `go.mod` must be a tagged release, imported by a non-test
   file, allowed for its import sites in `directModuleSites`, licensed MIT or
-  BSD-3-Clause, and named in the linked-module table in `docs/DESIGN.md`:
-  `cmd/gauntlet/deps_test.go` fails on any of the five.
+  BSD-3-Clause, and named in the tables under `## External dependencies` in
+  `docs/DESIGN.md`: `cmd/gauntlet/deps_test.go` fails on any of the five.
 
 ## Rules that are not style preferences
 
@@ -153,10 +151,12 @@ the finished block to paste back, so no cell is transcribed by hand.
   the screen changes shape; the script needs uv, chromium, and ImageMagick,
   and nothing else in the build reads them.
 - `docs/THREAT_MODEL.md` carries a `Last reviewed: <date> against commit
-  <sha>` stamp, and its `Makefile:<line>` pointers are checked against the
-  named target by `cmd/gauntlet/makefile_test.go`. Re-read the controls and
-  move the stamp when a change adds or removes a surface; one commit past the
-  stamp is the claim going stale.
+  <sha>` stamp. Its `Makefile:<line>` pointers are checked against the named
+  target by `cmd/gauntlet/makefile_test.go`, every other `path:line` pointer by
+  `cmd/gauntlet/threatmodel_test.go`, so a moved file fails the suite rather
+  than sending a reader to the wrong line. Re-read the controls and move the
+  stamp when a change adds or removes a surface; one commit past the stamp is
+  the claim going stale.
 - `README.md` is the landing page: keep it short; detail belongs in `docs/`.
 - A new flag is documented in `docs/CLI.md`, the help table in
   `cmd/gauntlet/help.go`, `CHANGELOG.md`, and `goldenFlagNames`
