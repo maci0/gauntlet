@@ -254,7 +254,15 @@ the unit of safe parallelism is **the directory**, not the agent.
   same way (`ui.Config.Now`, `reporter.now`, both handed `bus.Clock()`), so
   the dashboard's first reading, its end-of-run stamp, and a log line the
   bus could not stamp are the run's clock and not a second wall clock
-  beside it. Results are reported in review-name
+  beside it. Production sets that clock once, at the bus, from the run's
+  start instant and the monotonic reading, so every reader inside the run
+  shares one handle and an NTP step cannot expire or extend `--runtime`;
+  a caller that replays a run replaces the handle instead of each reader
+  reaching for the wall clock. The one wait on the review path, the pause
+  between two attempts of a failed review, is the matching seam
+  (`Bus.Sleep`): its length is already a keyed draw from the seed, so with
+  the wait injected a replay spends simulated time rather than the backoff
+  the seed chose. Results are reported in review-name
   order, not lane completion order, so a replayed seed prints the same
   report. Every git invocation runs with `LC_ALL=C`, because git translates
   its own output and that output reaches the journal and the error a failed

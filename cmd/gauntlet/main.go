@@ -274,6 +274,13 @@ func run(argv []string) int {
 		opts.seed = effectiveSeed(opts.seed, prior.Seed, clock)
 	}
 
+	// The run's clock, defined next to the instant it is anchored on so every
+	// reader below shares one handle: the suggest transcript's stamps, the
+	// runner's elapsed times and runtime budget, the sample debounce, the
+	// event stamps, and the dashboard. Advanced by the monotonic reading, so
+	// an NTP step during the run cannot expire or extend a budget.
+	runClock := func() time.Time { return startedAt.Add(time.Since(startedAt)) }
+
 	ownArtifacts := map[string]bool{}
 	if opts.logFile != "" {
 		ownArtifacts[gitx.RealPath(opts.logFile)] = true
@@ -372,7 +379,7 @@ func run(argv []string) int {
 	}
 
 	if err := planReviews(ctx, needPlanning(runs, prior, resumed), opts, agents, stdout, pal,
-		time.Now); err != nil {
+		runClock); err != nil {
 		if errors.Is(err, errAborted) {
 			return exitOK
 		}
@@ -431,6 +438,10 @@ func run(argv []string) int {
 	}
 
 	bus := runner.NewBus()
+	// The run's one clock, set before anything reads it: the dashboard and
+	// the reporter take theirs from Clock below, and the runner, the sample
+	// debounce, and the event stamps all read the bus itself.
+	bus.Now = runClock
 	reportEvents := bus.Subscribe(1024)
 	journalEvents := bus.Subscribe(1024)
 	lockEvents := bus.Subscribe(1024)
@@ -688,7 +699,7 @@ func run(argv []string) int {
 	if reloadFailed {
 		code = exitFail
 	}
-	writeSummary(jrnl, origin, wall, dirs, agents, runs, code, opts.keepRuns)
+	writeSummary(jrnl, origin, runClock(), wall, dirs, agents, runs, code, opts.keepRuns)
 	return code
 }
 
@@ -883,13 +894,15 @@ func journaledArgs(args []string) []string {
 	return out
 }
 
-// writeSummary closes the journal with this run's index entry.
-func writeSummary(j *journal.Journal, start time.Time, elapsed time.Duration, dirs []string,
+// writeSummary closes the journal with this run's index entry. end is the
+// run's last clock reading, so the entry's span and its elapsed come from one
+// clock rather than a wall-clock read beside them.
+func writeSummary(j *journal.Journal, start, end time.Time, elapsed time.Duration, dirs []string,
 	agents []agent.Spec, runs []*dirRun, code, keepRuns int) {
 
 	s := journal.Summary{
 		Version: version, Dirs: dirs, Agents: agent.Labels(agents),
-		Args: journaledArgs(os.Args[1:]), Start: start, End: time.Now(), ExitCode: &code,
+		Args: journaledArgs(os.Args[1:]), Start: start, End: end, ExitCode: &code,
 	}
 	if elapsed > 0 {
 		s.Elapsed = elapsed.Seconds()

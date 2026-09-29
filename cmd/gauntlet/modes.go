@@ -173,8 +173,9 @@ var (
 //
 // now stamps the suggest step's log lines. It is a parameter rather than a
 // wall-clock read inside the closure so a caller replaying a run drives the
-// whole transcript from one handle; production passes time.Now, because
-// these lines are live progress and a frozen stamp would be a lie.
+// whole transcript from one handle; production passes the run's clock, the
+// same one the runner measures against, because these lines are live progress
+// and a frozen stamp would be a lie.
 func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []agent.Spec,
 	out io.Writer, pal palette, now func() time.Time) error {
 

@@ -567,7 +567,7 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 		delay := r.backoff(review, attempt)
 		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
-		if !sleepCtx(ctx, delay) || r.budgetExhausted() != "" {
+		if !r.sleep(ctx, delay) || r.budgetExhausted() != "" {
 			return Result{}, false
 		}
 		if !r.resetForRetry(ctx, review, wt) {

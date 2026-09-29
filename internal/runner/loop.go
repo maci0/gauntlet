@@ -217,6 +217,9 @@ func (r *Runner) log(format string, args ...any) {
 // now is the runner's clock: the bus's injected Now, or wall time.
 func (r *Runner) now() time.Time { return r.bus.now() }
 
+// sleep is the runner's wait: the bus's injected Sleep, or a real timer.
+func (r *Runner) sleep(ctx context.Context, d time.Duration) bool { return r.bus.sleep(ctx, d) }
+
 // budgetExhausted names the run budget that has run out, or "" while reviews
 // may still start. --runtime is the wall clock; --token-budget is the total
 // tokens recorded so far, a hot reload's predecessor included, so a ceiling

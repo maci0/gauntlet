@@ -1247,6 +1247,50 @@ exit 1`)
 	}
 }
 
+// The pause between two attempts is the run's only wait on the review path,
+// and its length is a pure function of the seed, so the wait itself is the
+// last thing standing between a run and a replay that spends simulated time.
+// The backoff is an hour here, so a run that reached for a real timer would
+// hang rather than report: finishing at all is the assertion, and the waits
+// it asked for are the seeded ones.
+func TestRetryBackoffWaitsOnTheBusClock(t *testing.T) {
+	oldDelay := retryBaseDelay
+	retryBaseDelay = time.Hour
+	t.Cleanup(func() { retryBaseDelay = oldDelay })
+
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "writer", `exit 1`)
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.Retries = 2
+	cfg.Seed = 7
+
+	bus := NewBus()
+	drain(bus)
+	var waits []time.Duration
+	bus.Sleep = func(ctx context.Context, d time.Duration) bool {
+		if ctx.Err() != nil {
+			return false
+		}
+		waits = append(waits, d)
+		return true
+	}
+	r := runOn(t, cfg, bus)
+
+	if c := r.Stats().Counts(); c.Failures() != 1 {
+		t.Fatalf("counts: %+v, want the review to fail after its retries", c)
+	}
+	want := []time.Duration{r.backoff("sec-review", 0), r.backoff("sec-review", 1)}
+	if len(waits) != len(want) {
+		t.Fatalf("waited %d times (%v), want %d", len(waits), waits, len(want))
+	}
+	for i, d := range waits {
+		if d != want[i] {
+			t.Errorf("wait %d = %s, want the seeded backoff %s", i, d, want[i])
+		}
+	}
+}
+
 // A review killed while it waits to retry is interrupted, not failed. The
 // cancel is what ended the review, so recording the attempt's own failure
 // would count an operator quit as a review the repository did not pass.

@@ -118,7 +118,7 @@ func TestWriteSummaryAppliesTheKeepRunsBound(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeSummary(j, at, time.Minute, []string{"/project"}, nil, nil, 0, keep)
+		writeSummary(j, at, at.Add(time.Minute), time.Minute, []string{"/project"}, nil, nil, 0, keep)
 		return id
 	}
 	kept := []string{finish(base, 0), finish(base.Add(time.Hour), 0)}
@@ -164,7 +164,7 @@ func TestWriteSummaryPreservesInterruptedCount(t *testing.T) {
 	stats.Add(runner.Result{Status: runner.StatusOK})
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
-	writeSummary(j, start, time.Minute, []string{"/project"}, nil,
+	writeSummary(j, start, start.Add(time.Minute), time.Minute, []string{"/project"}, nil,
 		[]*dirRun{{stats: stats}}, 130, defaultKeepRuns)
 	data, err := os.ReadFile(filepath.Join(home, "index.jsonl"))
 	if err != nil {

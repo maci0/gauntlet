@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -132,6 +133,12 @@ type Bus struct {
 	// elapsed, the runtime budget, and a clock-derived seed. Injectable
 	// for tests; nil means time.Now.
 	Now func() time.Time
+	// Sleep is the run's only wait on the review path, the pause between two
+	// attempts of a failed review. Its length is already a pure function of
+	// the seed, so the wait is the last thing between a run and a replay that
+	// spends simulated time instead of seconds. Injectable for tests and
+	// simulation; nil means a real timer.
+	Sleep func(ctx context.Context, d time.Duration) bool
 }
 
 // NewBus returns a bus with no subscribers.
@@ -154,6 +161,15 @@ func (b *Bus) Clock() func() time.Time {
 		return b.Now
 	}
 	return time.Now
+}
+
+// sleep waits for d on the bus clock and reports false if ctx ended first. A
+// real timer when none was injected, so a nil bus still waits.
+func (b *Bus) sleep(ctx context.Context, d time.Duration) bool {
+	if b != nil && b.Sleep != nil {
+		return b.Sleep(ctx, d)
+	}
+	return sleepCtx(ctx, d)
 }
 
 // Subscribe returns a channel receiving every future event. It is safe to call
