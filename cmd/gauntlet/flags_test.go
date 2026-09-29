@@ -374,6 +374,18 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"whitespace pr-base", []string{"--stacked-prs", "--pr-base", "   "}, "--pr-base is empty", nil},
 		{"empty suggest-agent", []string{"--suggest-agent", ""}, "--suggest-agent is empty", nil},
 		{"whitespace suggest-agent", []string{"--suggest-agent", "   "}, "--suggest-agent is empty", nil},
+		// A triage agent is one agent: two specs would leave the run asking
+		// for claude while dropping codex on the floor, silently.
+		{"two suggest-agents", []string{"--suggest-agent", "claude,codex"}, "exactly one agent", nil},
+		{"one suggest-agent", []string{"--suggest-agent", "claude:sonnet"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.suggestAgent == nil {
+				t.Fatal("--suggest-agent claude:sonnet parsed to no agent")
+			}
+			if o.suggestAgent.Tool != "claude" || o.suggestAgent.Model != "sonnet" {
+				t.Fatalf("suggest agent is %+v, want claude:sonnet", o.suggestAgent)
+			}
+		}},
 		{"empty usage-cmd", []string{"--usage-cmd", ""}, "--usage-cmd is blank", nil},
 		{"empty exclude", []string{"--exclude", ""}, "--exclude is empty", nil},
 		{"empty agents", []string{"--agents", ""}, "--agents is empty", nil},
@@ -784,6 +796,10 @@ func captureFD(t *testing.T, target **os.File, f func() int) (int, string) {
 	}()
 	orig := *target
 	*target = w
+	// Restoring on the way out, not on the way back: a t.Fatal inside f is a
+	// runtime.Goexit, which would leave os.Stdout pointed at a pipe whose read
+	// side this test closes and the copy goroutine still writes to.
+	defer func() { *target = orig }()
 	code := f()
 	*target = orig
 	if err := w.Close(); err != nil {

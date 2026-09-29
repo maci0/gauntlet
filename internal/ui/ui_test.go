@@ -829,6 +829,57 @@ func TestTailColsIgnoresNaN(t *testing.T) {
 	}
 }
 
+// A lane that has been sampling longer than the chart is wide keeps the
+// newest samples: the rightmost column is the latest reading, so keeping the
+// oldest w would redraw every lane as a stale window. The peak is measured
+// over the window the chart draws, not over the samples that fell out of it.
+func TestTailColsKeepsTheNewestSamples(t *testing.T) {
+	cols, peak := tailCols([]float64{1, 2, 3, 4, 5}, 3)
+	if len(cols) != 3 {
+		t.Fatalf("tailCols len = %d, want 3", len(cols))
+	}
+	if want := []float64{3, 4, 5}; !slices.Equal(cols, want) {
+		t.Fatalf("tailCols = %v, want the newest %v", cols, want)
+	}
+	if peak != 5 {
+		t.Fatalf("tailCols peak = %v, want 5", peak)
+	}
+	// A spike that has scrolled out of the window does not scale the bars.
+	if _, peak := tailCols([]float64{99, 1, 1}, 2); peak != 1 {
+		t.Fatalf("tailCols peak = %v, want 1: a sample outside the window scaled the chart", peak)
+	}
+}
+
+// Every status the runner reports has a cell of its own. A failure drawing the
+// pending dot, or a conflict drawing a check, is the reading the grid exists
+// to carry, and the glyph is the only thing on screen that says which.
+func TestStatusGlyphIsDistinctForEveryStatus(t *testing.T) {
+	cases := []struct {
+		status runner.Status
+		glyph  string
+	}{
+		{statusPending, "·"},
+		{statusRunning, "▸"},
+		{runner.StatusOK, "✓"},
+		{runner.StatusFail, "✗"},
+		{runner.StatusTimeout, "⧖"},
+		{runner.StatusConflict, "⑂"},
+		{runner.StatusSkipped, "–"},
+		{runner.StatusInterrupted, "␘"},
+	}
+	seen := map[string]runner.Status{}
+	for _, c := range cases {
+		got, _ := statusGlyph(c.status)
+		if got != c.glyph {
+			t.Errorf("statusGlyph(%q) = %q, want %q", c.status, got, c.glyph)
+		}
+		if other, dup := seen[got]; dup {
+			t.Errorf("statusGlyph(%q) and statusGlyph(%q) share the glyph %q", c.status, other, got)
+		}
+		seen[got] = c.status
+	}
+}
+
 func TestHeatColorNaN(t *testing.T) {
 	if got := heatColor(math.NaN()); got != cTrack {
 		t.Fatalf("heatColor(NaN) = %v, want cTrack (%v)", got, cTrack)
@@ -1367,7 +1418,12 @@ func TestRedrawRateFollowsTheMotionAccommodation(t *testing.T) {
 func TestThinkGlyphPreEpochDoesNotPanic(t *testing.T) {
 	// Go's % keeps the dividend's sign: UnixNano before 1970 is negative, so
 	// the frame index used to be -1 and the slice lookup panicked.
+	// NO_MOTION and REDUCED_MOTION are cleared too: either one makes
+	// motionOff() hold, thinkGlyph answers with the still frame, and this
+	// switch accepts it without ever reaching the index.
 	t.Setenv("GAUNTLET_NO_ANIMATION", "")
+	t.Setenv("NO_MOTION", "")
+	t.Setenv("REDUCED_MOTION", "")
 	now := time.Unix(-1, 0)
 	got := thinkGlyph(now, now)
 	switch got {

@@ -148,3 +148,25 @@ func TestList(t *testing.T) {
 		}
 	}
 }
+
+// ListOf counts the rest from the total the caller states, not from the items
+// it kept: a caller that filtered paths out of a conflict prompt holds fewer
+// names than there were changes, and "and 6 more" has to be 6.
+func TestListOfCountsTheRestFromTheStatedTotal(t *testing.T) {
+	cases := []struct {
+		items        []string
+		limit, total int
+		want         string
+	}{
+		{[]string{"a"}, 3, 7, "a and 6 more"},
+		{[]string{"a", "b", "c"}, 2, 9, "a, b and 7 more"},
+		{[]string{"a"}, 0, 1, "a"},
+		{[]string{"a", "b"}, 5, 1, "a, b"},
+		{nil, 3, 7, ""},
+	}
+	for _, c := range cases {
+		if got := ListOf(c.items, c.limit, c.total); got != c.want {
+			t.Errorf("ListOf(%v, %d, %d) = %q, want %q", c.items, c.limit, c.total, got, c.want)
+		}
+	}
+}

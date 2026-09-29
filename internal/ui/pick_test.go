@@ -2085,11 +2085,15 @@ func TestNarrowLauncherMarksDroppedKeys(t *testing.T) {
 // (SC 1.4.1). So the row names it itself, in the words it is drawn with.
 func TestRunRowsNameWhyTheyCannotApply(t *testing.T) {
 	row := func(p *picker, label string) string {
+		t.Helper()
 		for r := range strings.SplitSeq(stripANSI(p.runPanel(60, p.paneHeight(paneOptions))), "\n") {
 			if strings.Contains(r, label) {
 				return r
 			}
 		}
+		// A missing row is not a row without a note, which is the one case the
+		// negative assertion below would otherwise pass on.
+		t.Fatalf("the run pane draws no %q row", label)
 		return ""
 	}
 	p := demoPicker()

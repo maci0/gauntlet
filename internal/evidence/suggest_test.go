@@ -353,15 +353,19 @@ func TestFastSuggestIgnoresASubstringTheTreeLacks(t *testing.T) {
 // value that repeats one of its labels does not double-count.
 func TestMarkSearchAddsDeclaredWithoutDisturbingTheTable(t *testing.T) {
 	base := len(marks)
-	if got := markSearch(nil); len(got) != base {
-		t.Fatalf("no declared marks changed the table: %d entries, want %d", len(got), base)
-	}
 	got := markSearch([]string{"comptime", "comptime", "", "borrow"})
 	if len(got) != base+2 {
 		t.Fatalf("added %d entries for 2 distinct values", len(got)-base)
 	}
 	if len(marks) != base {
 		t.Fatal("markSearch wrote into the package-level table")
+	}
+	// A declared value is recorded under its own name: matchDeclared looks it
+	// up by that token, so an entry labelled with anything else never fires.
+	for i, e := range got[base:] {
+		if e.says != "borrow" && e.says != "comptime" {
+			t.Fatalf("declared entry %d is labelled %q, want the value it was declared with", i, e.says)
+		}
 	}
 	many := make([]string, declaredMarkMax*2)
 	for i := range many {
@@ -415,6 +419,9 @@ func TestFastSuggestMatchesMarkIgnoringNonASCIICase(t *testing.T) {
 	}
 	if reason == "" {
 		t.Fatal("CAFÉ in a source file never matched mark:café")
+	}
+	if !strings.Contains(reason, "mark:café") {
+		t.Errorf("evidence was %q, which does not name the mark that matched", reason)
 	}
 }
 

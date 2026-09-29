@@ -324,7 +324,10 @@ func TestLookPath(t *testing.T) {
 		t.Fatalf("LookPath(nonexistent) = %q, want empty", got)
 	}
 
-	relBin := filepath.Join(".", "mytool")
+	// A bare "./name" has to reach the relative branch: filepath.Join
+	// cleans it to "name", which is the plain PATH lookup asserted above and
+	// would leave the absolute-path conversion untested.
+	relBin := "./mytool"
 	oldWd, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +338,34 @@ func TestLookPath(t *testing.T) {
 	}
 	if got := LookPath(relBin); got != bin {
 		t.Fatalf("LookPath(%q) = %q, want absolute %q", relBin, got, bin)
+	}
+}
+
+// A path that names a directory or a file without an execute bit is not
+// runnable, and LookPath says so with an empty result rather than handing the
+// caller something exec will fail on later.
+func TestLookPathRejectsWhatItCannotRun(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(plain, []byte("not a program\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(dir, "bin")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{dir, sub, plain, "./notes.txt", filepath.Join(sub, "..", "notes.txt")} {
+		if got := LookPath(name); got != "" {
+			t.Errorf("LookPath(%q) = %q, want empty", name, got)
+		}
 	}
 }
 

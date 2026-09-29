@@ -444,3 +444,64 @@ func TestRunningTokenTotalMatchesTheRecordedResults(t *testing.T) {
 		t.Fatalf("sum over Results() = %d, want %d", sum, want)
 	}
 }
+
+// A run long enough to pass maxDetailResults keeps the newest ones and says
+// how many it dropped. An off-by-one in the window either duplicates a row or
+// drops a review that is not the oldest, and the count is what a summary
+// prints next to a short list, so a wrong number there reads as the whole run.
+func TestDetailKeepsTheNewestResultsAndCountsTheRest(t *testing.T) {
+	st := &Stats{Start: time.Now()}
+	const over = 10
+	for i := range maxDetailResults + over {
+		st.Add(Result{Review: fmt.Sprintf("r%05d-review", i), Status: StatusOK})
+	}
+	if got, want := len(st.Results()), maxDetailResults; got != want {
+		t.Fatalf("kept %d results, want the cap of %d", got, want)
+	}
+	if got, want := st.DetailDropped(), over; got != want {
+		t.Fatalf("DetailDropped() = %d, want %d", got, want)
+	}
+	kept := st.Results()
+	// Names sort, so the window is read by name rather than by position: what
+	// has to hold is that the dropped ten are the first ten of the run, in one
+	// name order, and that nothing is listed twice.
+	if first, last := kept[0].Review, kept[len(kept)-1].Review; first != "r00010-review" || last != "r02009-review" {
+		t.Fatalf("kept %s through %s, want r00010-review through r02009-review", first, last)
+	}
+	names := make([]string, len(kept))
+	for i, r := range kept {
+		names[i] = r.Review
+	}
+	if !slices.IsSorted(names) {
+		t.Fatalf("detail is not in name order: %v", names[:4])
+	}
+	if dup := slices.Compact(slices.Clone(names)); len(dup) != len(names) {
+		t.Fatalf("a result is listed twice: %d of %d names are distinct", len(dup), len(names))
+	}
+}
+
+// A hot reload seeds a predecessor's whole run, which is bounded on its own
+// and again against the cap once it is in front of the successor's own work.
+func TestSeedBoundsTheCarriedOverResults(t *testing.T) {
+	const over = 10
+	carried := make([]Result, maxDetailResults+over)
+	for i := range carried {
+		carried[i] = Result{Review: fmt.Sprintf("r%05d-review", i), Status: StatusOK}
+	}
+	st := &Stats{Start: time.Now()}
+	st.Add(Result{Review: "zz-successor-review", Status: StatusOK})
+	st.Seed(carried, 0, 0)
+
+	if got := len(st.Results()); got != maxDetailResults {
+		t.Fatalf("kept %d results, want the cap of %d", got, maxDetailResults)
+	}
+	if got, want := st.DetailDropped(), over; got != want {
+		t.Fatalf("DetailDropped() = %d, want %d", got, want)
+	}
+	kept := st.Results()
+	// The successor's own work is the newest, so it stays listed: a seed that
+	// pushed it off the end would drop the result the live run just produced.
+	if got := kept[len(kept)-1].Review; got != "zz-successor-review" {
+		t.Fatalf("the newest result is %q, want the successor's own", got)
+	}
+}

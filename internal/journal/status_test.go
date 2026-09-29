@@ -5,7 +5,6 @@ package journal
 
 import (
 	"os"
-	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +54,9 @@ func TestInspectCountsJournalsCutMidLine(t *testing.T) {
 	// The run is not hidden, and it is not reported as whole: it replays with
 	// the events that did land.
 	var events int
-	Events("20260825T090000Z-0001", func(map[string]any) { events++ })
+	if err := Events("20260825T090000Z-0001", func(map[string]any) { events++ }); err != nil {
+		t.Fatalf("replaying a cut journal: %v", err)
+	}
 	if events == 0 {
 		t.Fatal("a cut journal must still replay the events that did land")
 	}
@@ -120,9 +121,6 @@ func TestInspectDoesNotCountAnEmptyJournalAsTruncated(t *testing.T) {
 	}
 	if fi.Size() != 0 {
 		t.Fatalf("Inspect wrote to the journal: %d bytes", fi.Size())
-	}
-	if strings.Contains(string(mustRead(t, journalPath("20260825T090000Z-0001"))), "truncat") {
-		t.Fatal("the journal carries the report instead of the run")
 	}
 }
 

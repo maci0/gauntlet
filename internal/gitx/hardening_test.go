@@ -280,7 +280,9 @@ func TestGitLocaleIsPinnedToC(t *testing.T) {
 		env := gitEnv()
 		found := false
 		for _, kv := range env {
-			if kv == gitLocale {
+			// "LC_ALL=C" rather than the gitLocale constant: this asserts the
+			// locale git is pinned to, and the constant is the value under test.
+			if kv == "LC_ALL=C" {
 				found = true
 			} else if strings.HasPrefix(kv, "LC_ALL=") {
 				t.Fatalf("LC_ALL=%q left an unexpected entry: %q", val, kv)

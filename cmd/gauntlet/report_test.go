@@ -447,3 +447,35 @@ func TestPaletteColors(t *testing.T) {
 		t.Errorf("on.blue = %q", on.blue("text"))
 	}
 }
+
+// The one-line reason a review did not pass is the only place a run says why.
+// Every status that counts as a failure has to name itself here, and the two
+// StatusFail cases have to stay apart: an agent that ran and exited 7 and an
+// agent that never started are different problems, and "exit 0" on the second
+// would report a launch failure as a pass.
+func TestFailureDetailNamesEveryFailingStatus(t *testing.T) {
+	cases := []struct {
+		name   string
+		result runner.Result
+		want   string
+	}{
+		{"timeout", runner.Result{Status: runner.StatusTimeout}, "timeout"},
+		{"conflict names its branch", runner.Result{Status: runner.StatusConflict, Branch: "gauntlet/x/sec-review"},
+			"merge conflict, kept on gauntlet/x/sec-review"},
+		{"skipped with nothing to say", runner.Result{Status: runner.StatusSkipped},
+			"skipped: never ran (unknown name or unreadable prompt)"},
+		{"skipped with a reason", runner.Result{Status: runner.StatusSkipped, Detail: "prompt not found"},
+			"skipped: prompt not found"},
+		{"agent exit code", runner.Result{Status: runner.StatusFail, ExitCode: 7}, "exit 7"},
+		{"never launched", runner.Result{Status: runner.StatusFail, ExitCode: -1}, "launch failed"},
+		{"agent said why", runner.Result{Status: runner.StatusFail, ExitCode: 7, Detail: "the tests fail"}, "the tests fail"},
+		{"anything else is its own name", runner.Result{Status: runner.Status("elsewhere")}, "elsewhere"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := failureDetail(c.result); got != c.want {
+				t.Fatalf("failureDetail(%+v) = %q, want %q", c.result, got, c.want)
+			}
+		})
+	}
+}

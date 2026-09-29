@@ -539,6 +539,32 @@ func TestHasCommitDistinguishesMissingFromError(t *testing.T) {
 	}
 }
 
+// A revision expression is not a sha, and an option is not a sha either. Both
+// have to be refused before they reach git: "HEAD" would answer a question
+// about the wrong commit, and "--output=<path>" would land in the argument
+// position where rev-parse treats it as a file to write.
+func TestHasCommitRefusesAnythingThatIsNotASha(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	marker := filepath.Join(t.TempDir(), "pwned")
+	for _, name := range []string{
+		"HEAD",
+		"main",
+		"zz",
+		"",
+		"--output=" + marker,
+		strings.Repeat("a", 39),
+	} {
+		has, err := r.HasCommit(ctx, name)
+		if err != nil || has {
+			t.Errorf("HasCommit(%q) = %v, %v; want false, nil", name, has, err)
+		}
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("HasCommit passed an option through to rev-parse, which wrote a file")
+	}
+}
+
 func TestDeleteBranchesMatching(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
@@ -921,9 +947,12 @@ func TestWorktreeDirsAreOwnerOnly(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := fi.Mode().Perm(); got != ownerOnly {
-			t.Errorf("%s is %#o, want %#o: another local user could read the checkout",
-				dir, got, ownerOnly)
+		// 0o700 spelled out, not the constant the checkouts are created with:
+		// the claim is that another local account cannot read them, and a
+		// widened ownerOnly would otherwise keep this green.
+		if got := fi.Mode().Perm(); got != 0o700 {
+			t.Errorf("%s is %#o, want 0o700: another local user could read the checkout",
+				dir, got)
 		}
 	}
 }
