@@ -10,8 +10,12 @@
       runs govulncheck on exactly that pull request)
 - [ ] `make cover` passes if the change removes tested code (CI gates on a
       coverage floor)
-- [ ] `make dist` and `make repro` pass if the change touches the release
-      path (a cross-compiled platform or the build flags)
+- [ ] `make artifacts VERSION=ci` and `make smoke VERSION=ci` pass if the
+      change touches the release path (a cross-compiled platform, the build
+      flags, or what `dist/` inventories). The `dist` job runs both on every
+      push and on macOS as well, and the BSD branches of those two targets
+      only execute there
+- [ ] `make repro` passes if the change touches the release path
 - [ ] `CHANGELOG.md` has an entry under `## Unreleased`, if the change is
       user-visible; internal refactors need none
 

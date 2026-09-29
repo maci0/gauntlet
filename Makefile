@@ -148,9 +148,10 @@ run: build ## build, then run one loop here with the dashboard
 
 # RUN is a go test -run pattern (default: every test in the package).
 RUN ?=
-# test-pkg and test-fast only. `make test` always runs the whole tree, so it
-# takes no package argument, and a PKG= passed there would have nothing to
-# select from.
+# test-pkg and test-fast only. `make test` always runs the whole tree, so a
+# PKG= passed there has nothing to select from, and NEEDS_NO_PKG below turns
+# that into a refusal rather than the six-minute run the contributor was
+# trying to avoid.
 PKG ?=
 
 # The race detector is what makes a package's suite worth the minutes it costs,
@@ -198,9 +199,24 @@ define NEEDS_PKG
 	esac
 endef
 
+# The other direction: `make test` takes no package, and a PKG= passed there
+# used to be ignored in silence. A contributor who wants one package and types
+# it on the target whose name matches the docs gets the whole tree under the
+# race detector instead, which is the six-minute gate the per-package targets
+# exist to avoid, and nothing says the PKG= was dropped.
+define NEEDS_NO_PKG
+	@case "$(PKG)" in ""|./...) ;; \
+		*) \
+			echo "$(1) runs the whole tree and takes no PKG: make test-pkg PKG=$(PKG) [RUN=TestName]" >&2; \
+			echo "$(1): PKG='$(PKG)' was dropped, so the run below is every package under the race detector" >&2; \
+			exit 1 ;; \
+	esac
+endef
+
 .PHONY: test
 test: | toolchain-min test-tmpdir test-cgo
 test: ## run all tests with the race detector, shuffled order
+	$(call NEEDS_NO_PKG,test)
 	$(call RUN_TESTS,./...)
 
 # One package at a time keeps the edit-test loop fast; the flags match `make

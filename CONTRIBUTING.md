@@ -82,7 +82,9 @@ make test-pkg PKG=./internal/prompt RUN=TestStripReportSections   # one test in 
 `test-pkg` uses the same tags, race detector, and temp directory as
 `make test`, so a green loop stays green in the full run. It takes the
 package it is named for and refuses to run without one; `PKG` applies to it
-alone, since `make test` always runs the whole tree. A
+alone, since `make test` always runs the whole tree, and `make test PKG=...`
+refuses rather than dropping the package and running the tree under the race
+detector. A
 `RUN=` pattern that matches no test is an error rather than a pass, so a
 mistyped name cannot read as a green loop; the error names the pattern and
 the command that lists the real ones.

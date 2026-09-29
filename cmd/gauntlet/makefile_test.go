@@ -476,6 +476,45 @@ func TestMakefileTestPkgRefusesToRunEveryPackage(t *testing.T) {
 	}
 }
 
+// The other direction. `make test PKG=./internal/prompt` took the package and
+// ran ./... under the race detector without saying so, which is the six-minute
+// gate the per-package targets exist to avoid, reached by typing the PKG the
+// docs describe on the target whose name matches them.
+func TestMakefileTestRefusesAPackage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test", "PKG=./internal/humanize")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("make test with a PKG ran the whole tree instead of refusing:\n%s", out)
+	}
+	if !strings.Contains(string(out), "make test-pkg PKG=./internal/humanize") {
+		t.Fatalf("make test must name the invocation that runs one package:\n%s", out)
+	}
+}
+
+// PKG=./... is the whole tree written out, which is what a sub-make of the
+// gate passes, so the refusal above cannot be the whole story. A RUN that
+// matches nothing ends the run at the selection check, which is the point
+// where the guard would have fired had it fired at all.
+func TestMakefileTestAcceptsTheWholeTreeAsAPackage(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test",
+		"PKG=./...", "RUN=TestNoSuchTestNameAnywhere")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	out, _ := cmd.CombinedOutput()
+	if strings.Contains(string(out), "takes no PKG") {
+		t.Fatalf("make test PKG=./... is the whole tree and must not be refused:\n%s", out)
+	}
+	if !strings.Contains(string(out), "no test matches RUN=") {
+		t.Fatalf("make test PKG=./... must reach the test run, not stop at the guard:\n%s", out)
+	}
+}
+
 // `go test -run` exits 0 when the pattern selects nothing, so a mistyped test
 // name reported a pass. Both targets that take RUN must turn that into a
 // failure that names the pattern and how to list the real names.
