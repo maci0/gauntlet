@@ -120,3 +120,30 @@ default question is settled:
 - Recent runs from `~/.gauntlet/index.jsonl`, which already records the argv,
   offered as one-key presets.
 - A key that copies the composed command line.
+
+## staticcheck and golangci-lint for the Go tree
+
+`make check` is the Go analysis gate and it is what CI blocks on: `go mod tidy
+-diff` and `gofmt -l`, which no build tag changes, then `go fix -diff` and
+`go vet` under `sqlite`, bare, and `notoktop`, so a build mode that only one
+leg compiles is never unvetted. `govulncheck` runs in its own workflow, and
+the race suite carries a coverage floor that ratchets upward.
+
+What is not wired in is `staticcheck`, alone or through `golangci-lint`.
+
+**Why.** Not a judgment that the tree is clean under it. The tree has never
+been run against staticcheck, and its first run over a codebase this size
+returns a finding list nobody has triaged; turning that into a blocking step
+in one change is a red gate with no review behind it, which is the failure
+mode a misconfigured analyzer creates. The blocker is triage, not
+reachability: `go run honnef.co/go/tools/cmd/staticcheck@VERSION ./...` fetches
+from the module proxy the way `make vuln` already does, so nothing about
+pinning it is new.
+
+**What would need deciding.** Which of its checks are adopted: the
+correctness groups first (`SA`, `S1`), which is the part `go vet` has no
+equivalent for, with `ST*` style groups as a later pass if the SA findings
+clear. A `.staticcheck.conf` would carry the exclusions, each with a reason,
+and `make check` plus `ci.yml` would grow the step together, the way
+`TestScriptsChecksMatchCI` and `TestScriptsJobChecksAreReproducedLocally`
+already hold the scripts job and `check-scripts` to one command set.

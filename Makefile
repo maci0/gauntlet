@@ -362,6 +362,14 @@ verify: check check-scripts ## the pull request's static checks and all three ta
 # definitions are linted with the same uvx pins as the Python tools, since a
 # malformed one is a syntax error the Go build never sees.
 #
+# shellcheck runs with `--enable=all`, not the default set, so a check a
+# later shellcheck adds fails here rather than reading as a clean tree; that
+# includes check-extra-masked-returns, where a pipeline, a test, or a process
+# substitution reports success while the work inside it died. Two are
+# excluded, SC2250 (braces around every expansion) and SC2292 ([[ ]] over
+# [ ]), both spelling rules this tree does not follow anywhere and neither
+# of which hides a defect. shots.sh passes the rest at the pinned version.
+#
 # `uv --version`, not `uv version`: the latter with no argument reports the
 # version of the project pyproject.toml declares, which is the placeholder
 # 0.0.0, so the drift note below compared that against UV_VERSION and fired
@@ -374,7 +382,7 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 		echo "         uvx ruff@$(RUFF_VERSION) format --check scripts" >&2; \
 		echo "         uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts" >&2; \
 		echo "         uvx yamllint@$(YAMLLINT_VERSION) --strict .github" >&2; \
-		echo "         shellcheck --enable=check-extra-masked-returns scripts/shots.sh" >&2; \
+		echo "         shellcheck --enable=all --exclude=SC2250,SC2292 scripts/shots.sh" >&2; \
 		exit 1; \
 	}
 	@command -v shellcheck >/dev/null 2>&1 || { \
@@ -393,7 +401,7 @@ check-scripts: ## ruff, mypy --strict, and yamllint --strict, plus shellcheck (C
 	uvx ruff@$(RUFF_VERSION) format --check scripts
 	uvx --with rich==$(RICH_VERSION) mypy@$(MYPY_VERSION) --strict scripts
 	uvx yamllint@$(YAMLLINT_VERSION) --strict .github
-	shellcheck --enable=check-extra-masked-returns scripts/shots.sh
+	shellcheck --enable=all --exclude=SC2250,SC2292 scripts/shots.sh
 
 .PHONY: fmt-scripts
 fmt-scripts: ## rewrite scripts with ruff format

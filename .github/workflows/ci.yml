@@ -118,10 +118,14 @@ jobs:
       # selection lives in .yamllint.
       - run: uvx yamllint@1.38.0 --strict .github
       # Preinstalled on the Ubuntu runner image; shots.sh is the only shell
-      # script in the tree. check-extra-masked-returns is off by default and
-      # is the class where a command's failure is swallowed: a pipeline, a
-      # test, or a process substitution that reports success while the work
-      # inside it died.
+      # script in the tree. `--enable=all` turns on every optional check
+      # rather than the default set, so a check a later shellcheck adds fails
+      # here instead of reading as a clean tree. That includes
+      # check-extra-masked-returns, the class where a command's failure is
+      # swallowed: a pipeline, a test, or a process substitution that reports
+      # success while the work inside it died. Two spelling rules are
+      # excluded, SC2250 and SC2292, and neither is one the tree follows:
+      # neither hides a defect.
       #
       # The one tool this job cannot install a pinned copy of, so the pin is
       # a record of the version the image is expected to carry rather than a
@@ -133,7 +137,7 @@ jobs:
           SHELLCHECK_VERSION: "0.11.0"
         run: |
           echo "shellcheck $(shellcheck --version | awk '/^version:/ {print $2}') (pin ${SHELLCHECK_VERSION})"
-          shellcheck --enable=check-extra-masked-returns scripts/shots.sh
+          shellcheck --enable=all --exclude=SC2250,SC2292 scripts/shots.sh
 
   dist:
     runs-on: ubuntu-24.04

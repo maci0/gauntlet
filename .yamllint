@@ -18,8 +18,9 @@ rules:
   truthy:
     check-keys: false
 
-  # The longest line in the workflows is 110 characters, inside a run block.
-  # 120 caps the tree without reflowing it; raise it only with the code.
+  # The longest line in the workflows is 115 characters, a run-block echo in
+  # release.yml. 120 caps the tree without reflowing it; raise it only with
+  # the code, and lower it only when the longest line is already under it.
   line-length:
     max: 120
 
