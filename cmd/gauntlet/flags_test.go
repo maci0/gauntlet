@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -602,7 +603,19 @@ func TestParseFlagsExplicitEmptyReviews(t *testing.T) {
 }
 
 func TestParseFlagsRepeatableAndCommaLists(t *testing.T) {
-	o, err := parseFlags([]string{"-r", "sec,doc", "-r", "perf", "-x", "test", "--dirs", "a,b", "--dirs", "c"})
+	// --dirs is resolved while parsing, so the entries have to be directories
+	// that exist; what this is about is the list, not the paths.
+	base := t.TempDir()
+	var dirs []string
+	for _, name := range []string{"a", "b", "c"} {
+		dir := filepath.Join(base, name)
+		if err := os.Mkdir(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		dirs = append(dirs, dir)
+	}
+	o, err := parseFlags([]string{"-r", "sec,doc", "-r", "perf", "-x", "test",
+		"--dirs", strings.Join(dirs[:2], ","), "--dirs", dirs[2]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -612,8 +625,11 @@ func TestParseFlagsRepeatableAndCommaLists(t *testing.T) {
 	if o.exclude != "test" {
 		t.Fatalf("exclude: %q", o.exclude)
 	}
-	if strings.Join(o.dirs, "|") != "a|b|c" {
+	if strings.Join(o.dirs, "|") != strings.Join(dirs, "|") {
 		t.Fatalf("dirs: %v", o.dirs)
+	}
+	if strings.Join(o.resolvedDirs, "|") != strings.Join(dirs, "|") {
+		t.Fatalf("resolvedDirs: %v", o.resolvedDirs)
 	}
 }
 
@@ -1101,6 +1117,63 @@ func TestParseFlagsRejectsFilePromptDir(t *testing.T) {
 	_, err := parseFlags([]string{"--prompt-dir", file})
 	if err == nil || !strings.Contains(err.Error(), "not a directory") {
 		t.Fatalf("want not a directory error, got %v", err)
+	}
+}
+
+// A path that is not a directory is a flag value the parser refuses, so every
+// way of getting it wrong is reported from the same place, with the usage
+// screen behind the message. The missing case used to be the one that lost it:
+// --dir and --dirs were resolved when the run started, and --prompt-dir only
+// for the half where the path exists and is a file.
+func TestParseFlagsRejectsPathsThatAreNotDirectories(t *testing.T) {
+	base := t.TempDir()
+	file := filepath.Join(base, "not-a-dir")
+	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, want string
+		args       []string
+	}{
+		{"dir missing", "no such directory", []string{"--dir", filepath.Join(base, "absent")}},
+		{"dirs missing", "no such directory", []string{"--dirs", filepath.Join(base, "absent")}},
+		{"dir is a file", "not a directory", []string{"--dir", file}},
+		{"dirs is a file", "not a directory", []string{"--dirs", file}},
+		{"prompt-dir missing", "no such directory", []string{"--prompt-dir", filepath.Join(base, "absent")}},
+		{"prompt-dir is a file", "not a directory", []string{"--prompt-dir", file}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseFlags(append(tc.args, "--list"))
+			if err == nil {
+				t.Fatal("want a usage error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("want %q, got %v", tc.want, err)
+			}
+			// reportUsage is what puts the help screen on stderr, and its
+			// marker is what stops run from printing the message twice.
+			if _, ok := errors.AsType[parseError](err); !ok {
+				t.Fatalf("want the usage screen reported, got %v", err)
+			}
+		})
+	}
+}
+
+// The directories a run reviews are resolved while parsing, so the run path
+// takes what the parser already vetted.
+func TestParseFlagsResolvesTheTargetDirectories(t *testing.T) {
+	base := t.TempDir()
+	sub := filepath.Join(base, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	opts, err := parseFlags([]string{"--dirs", sub, "--list"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{sub}
+	if !slices.Equal(opts.resolvedDirs, want) {
+		t.Fatalf("resolvedDirs = %q, want %q", opts.resolvedDirs, want)
 	}
 }
 

@@ -47,17 +47,17 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 	}()
 	if len(entries) == 0 {
 		w.printf("No runs recorded yet under %s\n", journal.Home())
-		return exitOK
-	}
-	cols := newRunsColumns(entries)
-	w.println(cols.header())
-	// The column's name overstates what it counts; say so once, right where
-	// it first appears, or a run that only skipped reviews reads as broken.
-	// It has to name every bucket, including the one that catches a terminal
-	// status a newer journal wrote and this build cannot read.
-	w.println(pal.dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
-	for i := range entries {
-		w.println(cols.row(i, pal))
+	} else {
+		cols := newRunsColumns(entries)
+		w.println(cols.header())
+		// The column's name overstates what it counts; say so once, right where
+		// it first appears, or a run that only skipped reviews reads as broken.
+		// It has to name every bucket, including the one that catches a terminal
+		// status a newer journal wrote and this build cannot read.
+		w.println(pal.dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
+		for i := range entries {
+			w.println(cols.row(i, pal))
+		}
 	}
 	// Where the journals live is a fact about this machine, not a row of the
 	// table, so it goes to stderr. The legend above stays on stdout: it heads
@@ -67,14 +67,18 @@ func cmdRuns(out io.Writer, pal palette, limit int, restore string, asJSON bool)
 	// A prune is unattended, so the runs it moved out of the listing are
 	// named where the user reads the listing: a dropped run is recoverable
 	// only by someone who knows it is still on disk. The bound keeps a
-	// large quarantine from printing two hundred ids.
-	if held, err := journal.Quarantined(); err != nil {
+	// large quarantine from printing two hundred ids. An empty listing says
+	// it too, since an index that has been pruned to nothing is exactly the
+	// case where the quarantine is the only place the history is.
+	held, err := journal.Quarantined()
+	if err != nil {
 		// The JSON form reports this, so the table does too: a pruned list that
 		// could not be read would otherwise read as a claim that nothing is
 		// recoverable.
 		fmt.Fprintf(os.Stderr, "cannot read the pruned run list: %v\n", err)
 		return exitFail
-	} else if len(held) > 0 {
+	}
+	if len(held) > 0 {
 		shown := held
 		more := ""
 		if len(shown) > listedQuarantined {

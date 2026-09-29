@@ -631,6 +631,57 @@ func TestRunsRestoresAPrunedRun(t *testing.T) {
 	}
 }
 
+// An index that has been pruned to nothing is exactly the case where the
+// quarantine is the only place the history is, so the recoverable runs are
+// named even with no rows to list. The note and the journal path used to be
+// below the table's early return and went unread with it.
+func TestRunsNamesRecoverableRunsWithAnEmptyListing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	ids := []string{journal.NewRunID(start), journal.NewRunID(start.Add(time.Hour))}
+	for i, id := range ids {
+		j, err := journal.Open(id, start.Add(time.Duration(i)*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := j.Close(journal.Summary{Start: start, End: start.Add(time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := journal.Prune(1); err != nil {
+		t.Fatal(err)
+	}
+	// Prune keeps the newest run, so emptying the listing takes the survivor
+	// with it. That is the state a lost index and a rotated journal leave
+	// behind: nothing listed, and everything still on disk.
+	for _, gone := range []string{
+		filepath.Join(home, "runs", "2026-01-02", ids[1]+".jsonl"),
+		filepath.Join(home, "index.jsonl"),
+	} {
+		if err := os.Remove(gone); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var buf bytes.Buffer
+	code, diagnostic := captureStderrFor(t, func() int {
+		return cmdRuns(&buf, palette{}, 10, "", false)
+	})
+	if code != exitOK {
+		t.Fatalf("an empty listing should still exit %d, got %d", exitOK, code)
+	}
+	if !strings.Contains(buf.String(), "No runs recorded yet") {
+		t.Fatalf("the empty listing is not reported:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), ids[0]) || !strings.Contains(buf.String(), "gauntlet runs --restore") {
+		t.Fatalf("the recoverable run %s is not named on an empty listing:\n%s", ids[0], buf.String())
+	}
+	if !strings.Contains(diagnostic.String(), filepath.Join(home, "runs")) {
+		t.Fatalf("the journal path is missing from stderr:\n%s", diagnostic.String())
+	}
+}
+
 // `gauntlet runs --json` exists for a script, so the contract is what a parser
 // sees: stdout carries one JSON document and nothing else. The table's legend,
 // its column layout, and the journal path on stderr are for a person, and the

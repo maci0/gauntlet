@@ -193,11 +193,7 @@ func run(argv []string) int {
 		return exitOK
 	}
 
-	dirs, err := resolveDirs(opts)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return exitUsage
-	}
+	dirs := opts.resolvedDirs
 
 	// Continue a run that a hot reload interrupted, so counters and the
 	// journal survive the swap. Loaded before discovery: a resumed stacked

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -61,6 +62,11 @@ func resolveDirs(opts *options) ([]string, error) {
 			if err != nil {
 				if globbed {
 					continue
+				}
+				if errors.Is(err, os.ErrNotExist) {
+					// The syscall text ("stat …: no such file or
+					// directory") names the operation, not the mistake.
+					return nil, fmt.Errorf("%s: %s: no such directory", label, abs)
 				}
 				return nil, fmt.Errorf("%s: %s: %w", label, abs, err)
 			}

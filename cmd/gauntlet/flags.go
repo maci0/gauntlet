@@ -62,8 +62,13 @@ type options struct {
 	bin    map[string]string
 
 	// execution
-	dir              string
-	dirs             []string
+	dir  string
+	dirs []string
+	// resolvedDirs is dirs (or the single dir) after expansion and
+	// validation, absolute and deduplicated. It is filled while parsing so a
+	// path that is not there is reported like every other bad flag value,
+	// rather than from the run path with no usage screen beside it.
+	resolvedDirs     []string
 	timeout          time.Duration
 	runtime          time.Duration
 	tokenBudget      int
@@ -817,11 +822,29 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if err != nil {
 			return nil, fmt.Errorf("--prompt-dir: %w", err)
 		}
-		if fi, err := os.Stat(expanded); err == nil && !fi.IsDir() {
+		// A path that is not there is as much a bad flag value as one that is
+		// there and is a file. Discovery used to be what caught the missing
+		// half, so the two mistakes a user can make with one flag reported
+		// themselves differently, and the missing one lost the usage screen.
+		fi, err := os.Stat(expanded)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			return nil, fmt.Errorf("--prompt-dir %s: no such directory", expanded)
+		case err != nil:
+			return nil, fmt.Errorf("--prompt-dir %s: %w", expanded, err)
+		case !fi.IsDir():
 			return nil, fmt.Errorf("--prompt-dir %s: not a directory", expanded)
 		}
 		o.promptDir = expanded
 	}
+	// Same reasoning for --dir and --dirs: a path that is not a directory is
+	// a flag value the parser refuses, so it is reported here rather than
+	// from the run path, which prints the message without the screen.
+	resolved, err := resolveDirs(o)
+	if err != nil {
+		return nil, err
+	}
+	o.resolvedDirs = resolved
 	if err := validateLog(o, fs); err != nil {
 		return nil, err
 	}

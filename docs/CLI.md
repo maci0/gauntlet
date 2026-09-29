@@ -12,7 +12,7 @@ installed.
 | `gauntlet pick` | compose a run on screen, then run it |
 | `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, and what the run history holds: journals on disk, whether the index matches them, and pruned runs still recoverable |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
-| `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. |
+| `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet version` / `help` | print the version / this help |
 
@@ -64,7 +64,10 @@ several paths uses the first.
 
 Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
-that is unset or empty is a usage error rather than expanding to nothing. An
+that is unset or empty is a usage error rather than expanding to nothing. A
+path that is not there, or is there and is not a directory, is a usage error
+(exit 2) reported while parsing, named by the flag it came from and followed by
+the help screen, the same as any other bad flag value. An
 explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
 `--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, `--exclude`,
 `--agents`, or `--dirs` is refused the same way `--dir` is.

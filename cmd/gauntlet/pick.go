@@ -31,12 +31,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		fmt.Fprintln(os.Stderr, "pick needs a terminal on stdin and stdout")
 		return exitUsage
 	}
-	dirs, err := resolveDirs(opts)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return exitUsage
-	}
-	dir := dirs[0] // the launcher composes one run for one tree
+	dir := opts.resolvedDirs[0] // the launcher composes one run for one tree
 
 	set, _, err := prompt.Discover(ctx, opts.promptDir, dir)
 	if err != nil {
