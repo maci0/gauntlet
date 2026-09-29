@@ -102,7 +102,7 @@ Instructions:
 - Read the actual tests, not just the test names.
 - Verify that assertions match the described test intent.
 - Check that mocks and stubs are realistic.
-- Consider what bugs would slip through the current test suite.
+- Name the bug a missing assertion would let through: the input that triggers it, the wrong value it produces, and the line the assertion belongs on. A gap with no bug behind it is a coverage number, not a finding.
 - Do not recommend adding tests for trivial code.
 - Focus on tests that matter: critical paths, complex logic, and known fragile areas.
 - Distinguish between:

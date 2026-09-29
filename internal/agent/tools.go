@@ -26,7 +26,7 @@ var ReviewsWithoutTools = []string{
 	"agentrules-review", "cache-review", "design-review", "dr-review",
 	"dst-review", "dx-review", "functionality-review", "numerics-review",
 	"perfectionism-review", "prompt-review", "skills-review", "specs-review",
-	"threat-review", "time-review", "uislop-review", "unicode-review",
+	"threat-review", "uislop-review",
 }
 
 // RecommendedTools are worth installing on any machine: language-agnostic and
@@ -89,7 +89,9 @@ var ReviewTools = map[string][]string{
 	"slop-review": {"jscpd"},
 	"test-review": {"coverage", "cargo-llvm-cov", "cargo-tarpaulin", "c8", "nyc",
 		"mutmut", "cargo-mutants", "stryker"},
-	"ux-review": {"lighthouse", "vnu", "htmlhint", "stylelint"},
+	"time-review":    {"zdump"},
+	"unicode-review": {"uconv"},
+	"ux-review":      {"lighthouse", "vnu", "htmlhint", "stylelint"},
 }
 
 // ToolsFor lists the helper binaries one review can use: the core search

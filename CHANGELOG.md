@@ -30,6 +30,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - The pull-request gate and the advisory scan can be started by hand from the Actions tab, so a runner-image or package-index incident is answered by re-running the workflow rather than by pushing an empty commit. A manual run no longer cancels the push it repeats: the event is part of each workflow's concurrency group, since both resolve to the same ref.
 
+### Changed
+
+- `doctor` names the evidence tools the time and Unicode reviews already
+  instruct an agent to reach for: `zdump` for `time-review` and `uconv` for
+  `unicode-review` were named in the prompts and missing from the tool
+  catalog, so both reviews were reported as having no helper tools and the
+  prompt never learned whether the tool was installed.
+
 ## 1.29.0
 
 ### Changed
