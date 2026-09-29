@@ -957,7 +957,12 @@ func lines(p *int) int {
 //
 // The line totals are the sum over layers, not over publications: a merge or
 // pull_request event repeated in one stream counts once, the way History
-// counts one run per review.
+// counts one run per review. A review_end repeated in one stream counts once
+// too, for the same reason: a review that ends twice in a loop and a lane is
+// one review, and a run that resumed under a restarted loop number replays
+// those keys. Loops are the exception and are counted as they arrive: a
+// successor restarts numbering at 1, and the run really did stop and start
+// again.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
 	f, err := os.Open(path)
@@ -969,6 +974,7 @@ func summarizeFile(runID, path string) (Summary, error) {
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	seenDir := map[string]bool{}
 	counted := map[layerKey]bool{}
+	ended := map[layerKey]bool{}
 	var lastTS time.Time
 	for sc.Scan() {
 		var e indexEvent
@@ -996,6 +1002,20 @@ func summarizeFile(runID, path string) (Summary, error) {
 				s.Agents = append([]string(nil), e.Agents...)
 			}
 		case "review_end":
+			// A review ends once per loop, so the directory, the loop, the
+			// review, and the lane that ran it name that one execution. A
+			// hot-reload successor restarts loop numbering at 1 and
+			// re-runs what its predecessor was interrupted on, which
+			// repeats every field of this key: counting it twice would
+			// report one review as two, and double its tokens and lines
+			// against the run's budget and its exit code. Unlike a
+			// publication, the key is claimed unconditionally, because a
+			// review that did not finish cleanly still finished.
+			key := layerKey{dir: e.Dir, review: e.Review, branch: e.Branch, loop: e.Loop}
+			if ended[key] {
+				break
+			}
+			ended[key] = true
 			s.Reviews++
 			switch e.Status {
 			case "", "ok":

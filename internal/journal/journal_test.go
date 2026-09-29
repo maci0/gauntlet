@@ -1732,6 +1732,61 @@ func TestRecentPreservesStartAcrossRepeatedRunStarts(t *testing.T) {
 	}
 }
 
+// A hot reload execs a successor that restarts loop numbering at 1 and
+// re-runs whatever its predecessor was interrupted on, so one review ends
+// twice in one stream under the same key. The run's row is a statement about
+// the run, and the run ran that review once: counting the second end would
+// inflate the review count, its status bucket, its tokens, and the lines it
+// left, against the budget the run reconciles them with.
+func TestSummarizeFileCountsAReviewThatEndsTwiceOnce(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	end := func(status string, tokens int) map[string]any {
+		return map[string]any{"ev": "review_end", "dir": "/w", "loop": 1,
+			"review": "sec-review", "status": status, "tokens": tokens,
+			"ins": 10, "del": 2}
+	}
+	// The predecessor's loop, then the successor replaying it: same key.
+	for _, e := range []map[string]any{end("fail", 100), end("ok", 100)} {
+		j.Write(e)
+	}
+	// A different loop, a different lane, and a different directory are
+	// three more reviews, and none of them may be folded into the first.
+	for _, e := range []map[string]any{
+		{"ev": "review_end", "dir": "/w", "loop": 2, "review": "sec-review", "status": "ok"},
+		{"ev": "review_end", "dir": "/w", "loop": 1, "review": "sec-review", "branch": "lane-1", "status": "ok"},
+		{"ev": "review_end", "dir": "/other", "loop": 1, "review": "sec-review", "status": "ok"},
+	} {
+		j.Write(e)
+	}
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first of the repeated pair wins: a run that was interrupted and
+	// resumed did not pass the review, it did it.
+	if s.Reviews != 4 || s.OK != 3 || s.Failed != 1 {
+		t.Fatalf("a review that ended twice was counted twice: %+v", s)
+	}
+	if s.Tokens != 100 {
+		t.Fatalf("tokens = %d, want the repeated end's 100 counted once", s.Tokens)
+	}
+	if !s.LinesMeasured || s.Ins != 10 || s.Del != 2 {
+		t.Fatalf("lines = +%d -%d measured=%t, want the repeated end counted once",
+			s.Ins, s.Del, s.LinesMeasured)
+	}
+}
+
 func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)
@@ -1742,7 +1797,9 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, e := range []map[string]any{
+	// One event per review: the summary counts a repeated review_end key
+	// once, so seven events that named the same review would be one review.
+	for i, e := range []map[string]any{
 		{"ev": "review_end", "status": "ok"},
 		{"ev": "review_end", "status": "fail"},
 		{"ev": "review_end", "status": "timeout"},
@@ -1751,6 +1808,7 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 		{"ev": "review_end", "status": "interrupted"},
 		{"ev": "review_end"},
 	} {
+		e["review"] = fmt.Sprintf("review-%d", i)
 		j.Write(e)
 	}
 	j.Flush()
@@ -2331,6 +2389,12 @@ func FuzzDecodeEvents(f *testing.F) {
 		// lines as historyEvent; the two must see one event.
 		var index indexEvent
 		var historyLine historyEvent
+		// Reviews are counted per execution, not per line: the summary
+		// drops a review_end whose key repeats, so the oracle has to
+		// count distinct keys to compare against it. Loops have no such
+		// rule, and a successor that restarts numbering at 1 really did
+		// run a second loop, so those stay a line count.
+		ended := map[layerKey]bool{}
 		decoded, reviews, loops := 0, 0, 0
 		if err := eventsFile(path, nil, func(line []byte) {
 			decoded++
@@ -2349,7 +2413,12 @@ func FuzzDecodeEvents(f *testing.F) {
 			}
 			switch index.Ev {
 			case "review_end":
-				reviews++
+				key := layerKey{dir: index.Dir, review: index.Review,
+					branch: index.Branch, loop: index.Loop}
+				if !ended[key] {
+					ended[key] = true
+					reviews++
+				}
 			case "loop_end":
 				loops++
 			}
