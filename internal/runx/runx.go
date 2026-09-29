@@ -23,6 +23,12 @@ import (
 	"time"
 )
 
+// WaitGrace is how long Wait may sit on output pipes a grandchild of the
+// killed child still holds before Guard and Bound give up on it. Every child
+// launched through this package is passed this, so one unreapable helper
+// costs every caller the same bound rather than each spelling its own.
+const WaitGrace = 10 * time.Second
+
 // Writer keeps at most Limit bytes, then discards the rest so a pipe does
 // not back-pressure the child into a hang. Hit is set once the cap is
 // exceeded, so the caller can refuse a truncated listing.

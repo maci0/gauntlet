@@ -66,10 +66,6 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 	return exitOK
 }
 
-// indexerWaitGrace is how long Wait may outlive the deadline kill before it
-// gives up on an unreapable child, the same insurance runProc carries.
-const indexerWaitGrace = 10 * time.Second
-
 // runIndexer runs a helper binary to completion. Its output is not parsed or
 // stored, only filtered on its way to the terminal.
 //
@@ -91,7 +87,7 @@ func runIndexer(ctx context.Context, bin string, args []string, dir string) int 
 	// goroutines for stdout and stderr run concurrently.
 	stdout, stderr := normalize.NewDisplayWriter(os.Stdout), normalize.NewDisplayWriter(os.Stderr)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	runx.Guard(cmd, indexerWaitGrace)
+	runx.Guard(cmd, runx.WaitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	err := cmd.Run()
 	// Run has joined both copy goroutines, so whatever each held is final.

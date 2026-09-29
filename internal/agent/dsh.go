@@ -81,10 +81,6 @@ func parseDshProvider(dump string) string {
 	return ""
 }
 
-// dshProbeGrace is how long Wait may outlive the deadline kill before it
-// gives up on an unreapable child.
-const dshProbeGrace = 10 * time.Second
-
 // dshProbeTimeout bounds the config dump. A hung launcher must not park the
 // first dsh:model launch for the rest of the run.
 const dshProbeTimeout = 120 * time.Second
@@ -143,7 +139,7 @@ var dumpDshConfig = func(base []string) (string, error) {
 	cmd.Dir = os.TempDir()
 	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
-	out, errOut := runx.Bound(cmd, dshDumpMaxBytes, dshProbeGrace)
+	out, errOut := runx.Bound(cmd, dshDumpMaxBytes, runx.WaitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {

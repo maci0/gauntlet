@@ -29,16 +29,15 @@ var licenseFileNames = []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "LICENCE
 // release.
 const goListTimeout = 2 * time.Minute
 
-// goListWait bounds how long Wait may sit on output pipes a grandchild of the
-// toolchain still holds, and goListMaxBytes caps what `go list` may print. One
-// line per module path and directory, so a graph with thousands of modules
-// stays far below the cap; a module path the toolchain echoes back arbitrarily
-// long is a corrupt graph, and the inventory says so rather than building a
-// map out of it. licenseFileMax is the same bound on a grant read whole: a
-// LICENSE is a few tens of kilobytes, and a module shipping something else is
-// not carrying a license this can classify.
+// goListMaxBytes caps what `go list` may print. One line per module path and
+// directory, so a graph with thousands of modules stays far below the cap; a
+// module path the toolchain echoes back arbitrarily long is a corrupt graph,
+// and the inventory says so rather than building a map out of it.
+// licenseFileMax is the same bound on a grant read whole: a LICENSE is a few
+// tens of kilobytes, and a module shipping something else is not carrying a
+// license this can classify. The wait on the pipes a grandchild of the
+// toolchain still holds is runx.WaitGrace, the bound every other child gets.
 const (
-	goListWait     = 10 * time.Second
 	goListMaxBytes = 8 << 20
 	licenseFileMax = 1 << 20
 )
@@ -120,7 +119,7 @@ func moduleDirs(root string, paths []string) (map[string]string, error) {
 	cmd.Dir = root
 	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
-	out, errOut := runx.Bound(cmd, goListMaxBytes, goListWait)
+	out, errOut := runx.Bound(cmd, goListMaxBytes, runx.WaitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
 		if detail := strings.TrimSpace(errOut.String()); detail != "" {
