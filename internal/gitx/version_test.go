@@ -49,9 +49,15 @@ func TestMinVersionParses(t *testing.T) {
 }
 
 func TestVersionReportsTheGitOnPath(t *testing.T) {
+	// Available is the guard for "no git on PATH". Skipping on Version's own
+	// empty result instead would report a Version that regressed to "" as a
+	// skip on a machine that has git.
+	if !Available() {
+		t.Skip("no git on PATH")
+	}
 	line := Version(context.Background())
 	if line == "" {
-		t.Skip("no git on PATH")
+		t.Fatal("Available reported a git, but Version returned no line")
 	}
 	if !strings.HasPrefix(line, "git version") {
 		t.Fatalf("Version() = %q, want a `git version` line", line)

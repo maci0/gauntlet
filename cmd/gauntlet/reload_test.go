@@ -61,14 +61,21 @@ func TestResumeOriginClamped(t *testing.T) {
 		{StartedAt: now.Add(time.Hour)},
 		{StartedAt: time.Time{}},
 	} {
-		origin := prior.StartedAt
-		startedAt := resumeStart(now, prior)
-		if origin.IsZero() || origin.After(now) {
-			origin = startedAt
-		}
+		origin := resumeOrigin(now, prior)
 		if origin.IsZero() || origin.After(now) {
 			t.Errorf("origin must be non-zero and not in future, got %v", origin)
 		}
+	}
+}
+
+// A clock that did not step keeps the handoff's own start, so the positive
+// case holds the clamp above honest: clamping unconditionally would silently
+// restart the runtime budget of every ordinary resume.
+func TestResumeOriginKeepsAPlausibleHandoff(t *testing.T) {
+	now := time.Now()
+	prior := handoff{StartedAt: now.Add(-90 * time.Minute), Elapsed: 90 * time.Minute}
+	if got := resumeOrigin(now, prior); !got.Equal(prior.StartedAt) {
+		t.Fatalf("origin %v, want the handoff's own start %v", got, prior.StartedAt)
 	}
 }
 

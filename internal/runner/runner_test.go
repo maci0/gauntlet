@@ -673,7 +673,9 @@ echo "RESULT: changed=1"`)
 	if out := gitOut(t, repo, "branch", "--list", "gauntlet/*"); out != "" {
 		t.Fatalf("a failed commit must leave no branch:\n%s", out)
 	}
-	if entries, err := os.ReadDir(repo); err == nil {
+	if entries, err := os.ReadDir(repo); err != nil {
+		t.Fatalf("reading the reviewed tree back: %v", err)
+	} else {
 		for _, e := range entries {
 			if e.Name() == ".gauntlet" {
 				t.Error("worktree root survived a failed commit")
@@ -1259,11 +1261,27 @@ func TestRetryStopsAtRuntimeBudget(t *testing.T) {
 				nil, r.cfg.Agents[0], 1, 0); retried {
 				t.Fatal("retried after the runtime budget expired")
 			}
+			// Two claims, not one. A budget already spent must be refused
+			// silently: a log line there would tell the operator a retry
+			// started and never did. The backoff case is the opposite -- the
+			// attempt was announced before the budget was re-checked -- so it
+			// has to produce that line, or the loop below proves nothing by
+			// finding nothing.
+			var logs []string
 			for len(events) > 0 {
-				ev := <-events
-				if !tc.duringBackoff || !strings.HasPrefix(ev.Text, "Retrying ") {
-					t.Fatalf("retry proceeded after budget exhaustion: %+v", ev)
+				logs = append(logs, (<-events).Text)
+			}
+			if tc.duringBackoff {
+				if len(logs) == 0 {
+					t.Fatal("the backoff was not announced, so the budget check that follows it is untested")
 				}
+				for _, text := range logs {
+					if !strings.HasPrefix(text, "Retrying ") {
+						t.Fatalf("retry published %q after the budget expired", text)
+					}
+				}
+			} else if len(logs) != 0 {
+				t.Fatalf("an exhausted budget published %q before it was noticed", logs)
 			}
 		})
 	}
@@ -2411,7 +2429,9 @@ func TestCancelDuringParallelLeavesNoWorktrees(t *testing.T) {
 
 	// Interrupting mid-flight must not leave checkouts, branches, or a
 	// half-merged tree behind: the next run has to start from a sane repo.
-	if entries, err := os.ReadDir(repo); err == nil {
+	if entries, err := os.ReadDir(repo); err != nil {
+		t.Fatalf("reading the reviewed tree back: %v", err)
+	} else {
 		for _, e := range entries {
 			if e.Name() == ".gauntlet" {
 				t.Error("worktree root survived the cancel")

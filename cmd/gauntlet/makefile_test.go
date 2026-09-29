@@ -957,63 +957,61 @@ func releasePlatforms(makefile string) []string {
 // target out from under one of them, and the reference that caught it is the
 // only thing that keeps the rest from going stale the same way.
 //
-// Every pointer in the document is a case here. Covering two names while five
-// more pointed into the same file is how those five survived a build commit
-// that moved every one of them, and how TestDocsPointAtTheMakefileLineTheyName
-// sat red for a whole pass. A new `Makefile:` citation is a new case.
+// Every pointer in the document is a row in the table below, keyed by the
+// exact range it cites, and the walk fails on one the table does not carry.
+// Covering a few names while others pointed into the same file is how those
+// others survived a build commit that moved every one of them: a citation no
+// row claims is checked by nobody and still reads green. A new `Makefile:`
+// citation is a new row.
 func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 	root := moduleRoot(t)
 	lines := strings.Split(makefileText(t), "\n")
 	doc := readRepoFile(t, filepath.Join(root, "docs", "THREAT_MODEL.md"))
-	for _, tc := range []struct {
-		name string
-		want string
-	}{
-		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
-		{name: "make release", want: ".PHONY: release"},
-		{name: "make repro", want: ".PHONY: repro"},
-		{name: "make dist platform check", want: "GOAMD64=$(GOAMD64)"},
-		{name: "make doctor", want: ".PHONY: doctor"},
-		{name: "member list and archive", want: "git ls-files -z --cached --others --exclude-standard"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			checked := 0
-			prev := 0
-			for i := 0; ; {
-				at := strings.Index(doc[i:], "Makefile:")
-				if at < 0 {
-					break
-				}
-				i += at + len("Makefile:")
-				// The sentence that owns the reference is the one naming
-				// it, so a reference belongs to a case only when that
-				// name is close behind it. The lookback stops at the
-				// previous reference, not at a fixed offset: a
-				// sentence that cites two targets would otherwise put
-				// both names in front of the second pointer, and each
-				// case would then demand the other's line.
-				from := max(prev, i-200)
-				prev = i
-				if !strings.Contains(doc[from:i], tc.name) {
-					continue
-				}
-				end := strings.IndexAny(doc[i:], "-)\n,`")
-				if end < 0 {
-					t.Fatal("unterminated Makefile reference in THREAT_MODEL.md")
-				}
-				atol, err := strconv.Atoi(doc[i : i+end])
-				if err != nil || atol < 1 || atol > len(lines) {
-					t.Fatalf("THREAT_MODEL.md has a Makefile reference with no usable line number: %q", doc[i-9:i+end])
-				}
-				checked++
-				if !strings.Contains(lines[atol-1], tc.want) {
-					t.Errorf("THREAT_MODEL.md points at Makefile:%d for %s, which reads %q", atol, tc.name, lines[atol-1])
-				}
-			}
-			if checked == 0 {
-				t.Fatalf("THREAT_MODEL.md has no Makefile reference that names %s", tc.name)
-			}
-		})
+	// The text the first line of each cited range has to carry. Checked on
+	// the range's first line, which is where a moved target shows up: the
+	// `.PHONY` marker, the assignment, the recipe step.
+	wants := map[string]string{
+		"26-41":   "override export GOFLAGS",
+		"75":      "GOVULNCHECK_VERSION",
+		"342-354": ".PHONY: tidy",
+		"390":     "check: ##",
+		"517":     ".PHONY: check-workflow-shell",
+		"616-624": "GOAMD64=$(GOAMD64)",
+		"678":     "could ship a binary built from a tree",
+		"715-718": "command -v sha256sum >/dev/null",
+		"689":     ".PHONY: release",
+		"791-830": ".PHONY: repro",
+		"799-800": "git ls-files -z --cached --others --exclude-standard",
+		"845-851": ".PHONY: release-version",
+		"876-943": ".PHONY: doctor",
+	}
+	cited := map[string]bool{}
+	for _, m := range regexp.MustCompile("Makefile:([0-9][0-9-]*)").FindAllStringSubmatch(doc, -1) {
+		span := m[1]
+		lo, err := strconv.Atoi(strings.Split(span, "-")[0])
+		if err != nil || lo < 1 || lo > len(lines) {
+			t.Errorf("docs/THREAT_MODEL.md cites Makefile:%s, which is not a line in a %d-line file",
+				span, len(lines))
+			continue
+		}
+		want, known := wants[span]
+		if !known {
+			t.Errorf("docs/THREAT_MODEL.md cites Makefile:%s and no row names what it points at; add one", span)
+			continue
+		}
+		cited[span] = true
+		if got := lines[lo-1]; !strings.Contains(got, want) {
+			t.Errorf("docs/THREAT_MODEL.md points at Makefile:%s, whose first line reads %q, not %q",
+				span, got, want)
+		}
+	}
+	if len(cited) == 0 {
+		t.Fatal("no Makefile reference was found in docs/THREAT_MODEL.md; the walk is broken, not the document")
+	}
+	for span := range wants {
+		if !cited[span] {
+			t.Errorf("docs/THREAT_MODEL.md no longer cites Makefile:%s; drop the row or cite it", span)
+		}
 	}
 }
 

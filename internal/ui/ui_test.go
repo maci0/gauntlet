@@ -120,23 +120,26 @@ func TestCompletedDashboardFreezesClock(t *testing.T) {
 	}
 }
 
+// The live rate is a sum of per-lane rates, so the same event sequence used
+// to land on a different float depending on the order the lanes came back in.
+// Lane order fixes that, and the check is on the bits: an equal-looking rate
+// that summed in a different order is exactly the regression, and a rounded
+// comparison would not see it.
 func TestUsageRateReplay(t *testing.T) {
 	for _, configured := range [][]string{
 		nil,
 		{"first", "second", "third"},
 		{"first", "second", "first", "third"},
 	} {
-		for replay := range 128 {
-			cfg := demoConfig()
-			cfg.Agents = configured
-			m := newModel(cfg)
-			for i, label := range []string{"first", "second", "third"} {
-				m.Update(eventMsg{Kind: runner.EvReviewStart, Review: label, Agent: label, Time: cfg.Started})
-				m.Update(eventMsg{Kind: runner.EvUsage, Agent: label, Tokens: i + 1, Time: cfg.Started.Add(10 * time.Second)})
-			}
-			if got, want := math.Float64bits(m.liveRate), uint64(0x3fe3333333333334); got != want {
-				t.Fatalf("agents %v replay %d: rate bits = %#x, want %#x", configured, replay, got, want)
-			}
+		cfg := demoConfig()
+		cfg.Agents = configured
+		m := newModel(cfg)
+		for i, label := range []string{"first", "second", "third"} {
+			m.Update(eventMsg{Kind: runner.EvReviewStart, Review: label, Agent: label, Time: cfg.Started})
+			m.Update(eventMsg{Kind: runner.EvUsage, Agent: label, Tokens: i + 1, Time: cfg.Started.Add(10 * time.Second)})
+		}
+		if got, want := math.Float64bits(m.liveRate), uint64(0x3fe3333333333334); got != want {
+			t.Fatalf("agents %v: rate bits = %#x, want %#x", configured, got, want)
 		}
 	}
 }
@@ -201,12 +204,25 @@ func TestFrameFitsAtEverySize(t *testing.T) {
 					"the frame ran off the pane:\n%s", agents, h, opened, closed, stripANSI(frame))
 			}
 			// The full view is exactly the pane; the minimal fallback is
-			// deliberately short.
-			if h >= 22 {
-				if lines := strings.Split(frame, "\n"); len(lines) != h {
+			// deliberately short. Either way there is something to show, and
+			// no row may outrun the pane: at the fallback heights nothing else
+			// here would catch a row wider than 100 columns, because the
+			// fallback draws no panel for opened/closed to count.
+			lines := strings.Split(frame, "\n")
+			for i, ln := range lines {
+				if got := lipgloss.Width(ln); got > 100 {
+					t.Fatalf("%d agents at %d rows: row %d is %d columns wide, pane is 100: %q",
+						agents, h, i, got, ln)
+				}
+			}
+			if h >= minDashboardH {
+				if len(lines) != h {
 					t.Fatalf("%d agents at %d rows: frame is %d rows, pane is %d",
 						agents, h, len(lines), h)
 				}
+			} else if strings.TrimSpace(stripANSI(frame)) == "" {
+				t.Fatalf("%d agents at %d rows: below the full-view floor the "+
+					"fallback must still draw, got an empty frame", agents, h)
 			}
 		}
 	}

@@ -28,15 +28,15 @@ func TestInspectCountsJournalsCutMidLine(t *testing.T) {
 		t.Fatalf("two closed journals report %d truncated, want 0", st.Truncated)
 	}
 
-	// The tail a run that lost power mid-write leaves: a run_start, then a
-	// second event that never got its newline. The listing still names the
-	// run, so only the count says the last events are gone.
+	// The tail a run that lost power mid-write leaves: a complete line, then a
+	// second event cut before its JSON finished. The listing still names the
+	// run, so only the replay says the last event is gone.
 	path := journalPath("20260825T090000Z-0001")
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.WriteString(`{"ev":"loop_start","loop":2}`); err != nil {
+	if _, err := f.WriteString("{\"ev\":\"loop_start\",\"loop\":2}\n{\"ev\":\"review_"); err != nil {
 		t.Fatal(err)
 	}
 	f.Close()
@@ -51,14 +51,20 @@ func TestInspectCountsJournalsCutMidLine(t *testing.T) {
 	if st.Journals != 2 || st.Rows != 2 {
 		t.Fatalf("a cut journal is still a journal: %+v", st)
 	}
-	// The run is not hidden, and it is not reported as whole: it replays with
-	// the events that did land.
-	var events int
-	if err := Events("20260825T090000Z-0001", func(map[string]any) { events++ }); err != nil {
+	// The run is not hidden, and it is not reported as whole: it replays the
+	// one event that landed whole and drops the half-written one behind it.
+	// An exact count, not a non-zero one: a replay that dropped the complete
+	// line, or that emitted the torn one as a phantom, has restored nothing
+	// worth having.
+	var events []string
+	if err := Events("20260825T090000Z-0001", func(m map[string]any) {
+		ev, _ := m["ev"].(string)
+		events = append(events, ev)
+	}); err != nil {
 		t.Fatalf("replaying a cut journal: %v", err)
 	}
-	if events == 0 {
-		t.Fatal("a cut journal must still replay the events that did land")
+	if len(events) != 1 || events[0] != "loop_start" {
+		t.Fatalf("a cut journal replays %v, want just the loop_start that landed", events)
 	}
 }
 

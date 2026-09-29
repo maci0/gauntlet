@@ -232,10 +232,13 @@ func TestExpandPathRefusesUnsetOrEmpty(t *testing.T) {
 	}
 }
 
+// The only way to make os.UserHomeDir fail is an empty HOME; where it
+// answers anyway, the refusal path below is unreachable from a test and the
+// skip says so rather than passing on a home it did not ask for.
 func TestExpandPathTildeNeedsHome(t *testing.T) {
 	t.Setenv("HOME", "")
 	if _, err := os.UserHomeDir(); err == nil {
-		t.Skip("UserHomeDir falls back to the passwd database when HOME is empty")
+		t.Skip("os.UserHomeDir answers for an empty HOME, so ~ cannot be made to fail here")
 	}
 	got, err := ExpandPath("~" + string(os.PathSeparator) + "src")
 	if err == nil || !strings.Contains(err.Error(), "home directory is unknown") {

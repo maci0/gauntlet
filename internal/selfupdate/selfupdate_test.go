@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -480,18 +481,31 @@ func TestGetAssetDoesNotRetryARefusedRedirect(t *testing.T) {
 
 func TestGetAssetStopsRetryingWhenTheContextEnds(t *testing.T) {
 	var hits atomic.Int64
+	// The cancel waits for the first request rather than a fixed delay, so
+	// the retry loop is provably entered before it is cut: a sleep long
+	// enough on a slow machine cancels before the first attempt, and the
+	// test then passes without having exercised a single retry.
+	seen := make(chan struct{})
+	var once sync.Once
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
+		once.Do(func() { close(seen) })
 		hijackAndDrop(w)
 	}))
 	defer ts.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	go func() {
-		time.Sleep(50 * time.Millisecond)
+		defer close(done)
+		select {
+		case <-seen:
+		case <-time.After(10 * time.Second):
+		}
 		cancel()
 	}()
 	_, err := fetch(ctx, ts.URL, 1024)
+	<-done
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want context.Canceled once the caller gives up, got: %v", err)
 	}

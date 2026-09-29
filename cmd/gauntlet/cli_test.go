@@ -194,10 +194,17 @@ func TestStraySubcommandSaysWhereItBelongs(t *testing.T) {
 // has to say so, so the two forms cannot disagree.
 func TestShowStillExitsZeroForHelpAndVersion(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	// The exit code is the claim, so it is what the test reads: parseFlags
+	// hands back a non-nil options on nearly every path, so a shape check
+	// there would pass for a run that exits 2.
 	for _, argv := range [][]string{{"show", "--help"}, {"show", "-V"}, {"show", "--version"}} {
-		out, perr := parseFlags(argv)
-		if !errors.Is(perr, errHelp) && out == nil {
-			t.Errorf("%v: parseFlags returned %v, want help or a version run", argv, perr)
+		var code int
+		out := captureStdout(t, func() { code = run(argv) })
+		if code != exitOK {
+			t.Errorf("%v: exit %d, want %d", argv, code, exitOK)
+		}
+		if out == "" {
+			t.Errorf("%v: printed nothing to stdout", argv)
 		}
 	}
 }

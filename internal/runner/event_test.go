@@ -9,9 +9,8 @@ import (
 	"time"
 )
 
-// TestBusPublishAfterClose pins the shutdown contract: the auto-update and
-// hot-reload watchers can hold an event past the end of the run, and a Publish
-// landing after Close must be dropped, not panic on a closed channel.
+// A status that reports the run as intact is the one a review that failed,
+// timed out, was skipped, or conflicted must not carry.
 func TestStatusFailed(t *testing.T) {
 	for _, s := range []Status{StatusFail, StatusTimeout, StatusSkipped, StatusConflict} {
 		if !s.Failed() {
@@ -25,6 +24,9 @@ func TestStatusFailed(t *testing.T) {
 	}
 }
 
+// TestBusPublishAfterClose pins the shutdown contract: the auto-update and
+// hot-reload watchers can hold an event past the end of the run, and a Publish
+// landing after Close must be dropped, not panic on a closed channel.
 func TestBusPublishAfterClose(t *testing.T) {
 	bus := NewBus()
 	ch := bus.Subscribe(4)
