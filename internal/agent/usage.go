@@ -144,7 +144,7 @@ func parseCount(s string) int {
 	return n
 }
 
-// Tail is a fixed-size ring that keeps only the last TailBytes of a stream.
+// Tail is a fixed-size ring that keeps only the last size bytes of a stream.
 type Tail struct {
 	buf   []byte
 	size  int

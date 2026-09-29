@@ -831,7 +831,7 @@ func listJournals() ([]namedJournal, error) {
 }
 
 // listJournalsN returns the newest n journals, newest first. n <= 0 means
-// every journal, the walk recoverIndexTail uses.
+// every journal, which is the walk the index rebuild uses.
 func listJournalsN(n int) ([]namedJournal, error) {
 	all, err := allJournals()
 	if err != nil || n <= 0 || len(all) <= n {
@@ -1097,8 +1097,8 @@ func summarizeFile(runID, path string) (Summary, error) {
 	return s, nil
 }
 
-// recentChunk is the first slice taken from the end of the index: thousands of
-// runs at ~300 bytes each, so most installs never read twice.
+// recentChunk is the first slice taken from the end of the index: a few
+// hundred runs at ~300 bytes each, so most installs never read twice.
 const recentChunk = 256 << 10
 
 // maxTailHint bounds the slice parseTail reserves up front. n is a caller's

@@ -419,7 +419,9 @@ func Repair(s string) string {
 }
 
 // Truncate cuts s to at most w code points, without splitting a UTF-8
-// sequence, marking the cut with an ellipsis. Code points are a bound, not a
+// sequence, marking the cut with an ellipsis. A w of 1 or less leaves the
+// string whole: the mark is the only thing that could fit, and a line reduced
+// to a bare ellipsis tells a reader nothing. Code points are a bound, not a
 // layout measurement: wide characters occupy two terminal cells and a
 // combining mark zero, so display-width cutting lives with the dashboard,
 // which owns the column math.

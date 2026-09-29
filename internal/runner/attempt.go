@@ -20,9 +20,12 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
-// outputRateLimit bounds how many lines one agent may contribute per second.
+// outputRateLimit bounds how many lines one normalizer admits per second.
 // Above this, output is summarized instead of echoed: no dashboard and no log
-// file is improved by 10k lines/s of narration.
+// file is improved by 10k lines/s of narration. Each of an agent's two output
+// streams carries its own normalizer, so the ceiling is per stream, and the
+// reasoning lines of a machine-readable event are emitted around it rather
+// than through it.
 const outputRateLimit = 200
 
 // runLane takes the reviews the schedule assigned to this lane and runs them

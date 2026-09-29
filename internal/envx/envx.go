@@ -15,7 +15,7 @@ package envx
 
 import "strings"
 
-// offValues are the values that mean "off" for a documented boolean variable.
+// off reports whether a value means "off" for a documented boolean variable.
 // Anything else, including a value that is not a boolean at all, means "on":
 // the variable is an opt-in the operator sets deliberately, and refusing to
 // read it would silently ignore a setting someone typed.

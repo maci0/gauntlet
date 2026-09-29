@@ -37,5 +37,5 @@ func (nopReader) Final() (int, int)                   { return 0, 0 }
 
 // openTranscript builds the reader that tails an agent's session log. A var
 // so tests can substitute a reader that outlives the agent, which is the
-// race the join in runReview is there to close.
+// race usageWatch.halt's join is there to close.
 var openTranscript = newTranscriptReader

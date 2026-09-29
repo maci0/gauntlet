@@ -66,7 +66,8 @@ Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
 that is unset or empty is a usage error rather than expanding to nothing. An
 explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
-`--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, or `--exclude` is refused the same way `--dir` is.
+`--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, `--exclude`,
+`--agents`, or `--dirs` is refused the same way `--dir` is.
 An empty `--reviews` is refused too, and by the run rather than by the parser, so
 that it cannot quietly expand to every review: nothing was filtered, and the
 message names the flag.

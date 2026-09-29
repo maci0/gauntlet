@@ -7,8 +7,9 @@
 // with nothing to restore from. So a pruned journal is renamed into pruned/
 // and the quarantine is bounded by the same keep, which gives a pruned run
 // the same lifetime in runs terms as a retained one has until the next prune
-// pushes it out. Restoring is a rename back into runs/<shard>/, after which
-// the next listing rebuilds the index row from the journal.
+// pushes it out. Restoring is a rename back to where the run's id files it,
+// the shard it names or the top of runs/, and the index row is rewritten from
+// the journal right there rather than left to the next listing.
 
 package journal
 

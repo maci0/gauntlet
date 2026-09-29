@@ -196,8 +196,8 @@ func pathEntry(s string) string {
 }
 
 // PathsNamed is the subset of --paths entries the scope block names, in order,
-// dropping what pathEntry renders empty. It is exported so a caller can report
-// the drop rather than let the prompt quietly read narrower than the flag was.
+// dropping what pathEntry renders empty. What it drops, pathsNote counts in the
+// prompt, so the scope never reads narrower than the flag was without saying so.
 func PathsNamed(paths []string) []string {
 	out := make([]string, 0, min(len(paths), pathsNoteMax))
 	for _, p := range paths {
@@ -284,10 +284,9 @@ func Compose(body string, timeout time.Duration, review string, yolo bool, tools
 
 // CommitPrompt is the instruction for the post-review commit step. The agent
 // only commits: the runner strips AI trailers and pushes afterwards, so the
-// prompt carries no push or divergence-recovery step of its own.
+// rule the prompt carries has no push or divergence-recovery step to fill in.
 func CommitPrompt() string {
-	return strings.NewReplacer("{push_step}", "", "{merge_step}", "").
-		Replace(rule("commit.md"))
+	return rule("commit.md")
 }
 
 // Bounds on conflicted paths named in a resolver prompt. The paths come from

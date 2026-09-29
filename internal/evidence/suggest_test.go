@@ -217,6 +217,30 @@ func TestFastSuggestReadsWhatIsMissing(t *testing.T) {
 	}
 }
 
+// A review draws more reasons than reasonsShown, and the printed line is the
+// only explanation it gets, so it has to lead with the evidence worth most
+// rather than whichever rule the table reached first.
+func TestFastSuggestLeadsWithTheStrongestEvidence(t *testing.T) {
+	pool := []string{"db-review", "test-review", "doc-review", "build-review", "code-review"}
+	dir := tree(t,
+		"go.mod\x00module x\n",
+		"main.go\x00import \"database/sql\"\n",
+		"main_test.go\x00package main\n",
+	)
+	var reason string
+	for _, s := range reviews(t, dir, pool, prompt.Set{}) {
+		if s.Name == "db-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("db-review was not proposed for a tree that opens a database")
+	}
+	if !strings.HasPrefix(reason, "database access in the source") {
+		t.Errorf("db-review's evidence was %q, which does not lead with the strong rule", reason)
+	}
+}
+
 // Directory names are a guess about a codebase; what it imports is a fact.
 func TestFastSuggestReadsInsideFiles(t *testing.T) {
 	pool := []string{

@@ -315,11 +315,13 @@ func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
 	}
 }
 
-// ownerOnly is the mode every directory this package creates is left at. The
-// reviewed repository may be private, and a checkout of it is a second copy of
-// that data on a machine that may have more than one local account: a
-// directory left at 0755 hands every other user on the machine a readable copy
-// of the whole tree.
+// ownerOnly is the mode a scratch directory this package creates under the
+// reviewed repository is left at. The reviewed repository may be private, and
+// a checkout of it is a second copy of that data on a machine that may have
+// more than one local account: a directory left at 0755 hands every other user
+// on the machine a readable copy of the whole tree. A directory created inside
+// git's own layout, such as the .git/info holding the exclude file, is left
+// at the mode git uses, because it holds no copy of the tree.
 const ownerOnly = 0o700
 
 // prepareWorktreeDir clears a leftover checkout at dir and creates its parent.

@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-// CoreTools are the search and rewrite binaries the injected rules point every
-// review at. "a|b" means either binary satisfies the check.
+// CoreTools are the binaries every review is told to reach for: the search and
+// rewrite tools the injected rules name, plus the git the runner drives.
+// "a|b" means either binary satisfies the check.
 var CoreTools = []struct{ Name, Purpose string }{
 	{"git", "line stats, and required for --jobs worktrees"},
 	{"rg", "text search"},
@@ -93,7 +94,8 @@ var ReviewTools = map[string][]string{
 
 // ToolsFor lists the helper binaries one review can use: the core search
 // tools every review is pointed at, then that review's own. The order is the
-// catalog's, so the prompt names them the way doctor does.
+// catalog's, so the prompt names them the way doctor does. Git is left out: it
+// is the runner's own tool, and a review is not allowed to run it.
 func ToolsFor(review string) []string {
 	seen := map[string]bool{}
 	var out []string
@@ -105,7 +107,7 @@ func ToolsFor(review string) []string {
 	}
 	for _, c := range CoreTools {
 		if c.Name == "git" {
-			continue // the runner's own tool, not one the agent reaches for
+			continue
 		}
 		add(c.Name)
 	}

@@ -43,13 +43,18 @@ var drainGrace = 5 * time.Second
 // sees the default.
 var maxLineBytes = 4 << 20
 
-// streamLineCols is the width cap for one line of agent output, shared by the
+// streamLineCols is the cap on one line of agent output, shared by the
 // normalizer and by stream events that bypass it (thinking lines, raw echo).
+// It counts code points, not terminal cells, so it bounds how much text a line
+// can carry rather than how wide it renders.
 const streamLineCols = 2000
 
 // procResult is the outcome of one agent process.
 type procResult struct {
-	ExitCode int // -1 when the process was signalled or never exited cleanly
+	// ExitCode is the agent's own status: 0 on success, its exit code on a
+	// normal failure, 128+signal when a signal ended it, and -1 only when no
+	// status is available (a launch failure, or a child left unreaped).
+	ExitCode int
 	TimedOut bool
 	Canceled bool
 	Usage    agent.Usage
@@ -280,9 +285,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 				// Verbatim means the visible characters survive untouched; the
 				// escape sequences and controls that could drive or spoof the
 				// terminal do not. Agent output is untrusted, and this line is
-				// headed for a terminal (or a log file) as-is. The width cap
-				// still applies: it is the frame size a reader's terminal has
-				// to absorb, not a rewrite of the text.
+				// headed for a terminal (or a log file) as-is. The cap
+				// still applies: it bounds the frame size a reader's terminal has
+				// to absorb, without rewriting the text.
 				emit(normalize.Line{
 					Text:   normalize.Truncate(normalize.Display(line), streamLineCols),
 					Repeat: 1,

@@ -117,9 +117,10 @@ func (r Review) Desc() string {
 	return descFromBody(body)
 }
 
-// summaryPrefix introduces the short form of a review's subject, for places
-// that show the whole catalog at once and have one line per review: --list,
-// the launcher's review picker, and the README grid.
+// summaryPrefix introduces the short form of a review's subject, for the
+// places that have one line per review and cannot carry a sentence: --list,
+// the launcher's review picker, a stacked PR's scope line, and the README
+// grid.
 //
 //	Summary: stale reads, cross-tenant bleed, stampedes
 //

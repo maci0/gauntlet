@@ -514,7 +514,7 @@ collapsing, and rate limiting, but not the safety floor: every line that
 reaches a terminal or log passes through `normalize.Display`, which strips
 escapes and control characters while leaving visible text alone. Agent output
 is untrusted, so no mode echoes it byte-for-byte. Stream events (thinking
-lines) get the same treatment at `emitStream`, plus the width cap.
+lines) get the same treatment at `emitStream`, plus the length cap.
 
 ## Self-update and hot reload
 

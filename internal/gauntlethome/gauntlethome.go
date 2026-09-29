@@ -24,12 +24,13 @@ import (
 // working directory once, here, so every later read of the root agrees no
 // matter where in the process it happens.
 //
-// The boolean is false only when neither source applies: GAUNTLET_HOME unset
-// and no usable HOME. Dir then degrades to ".gauntlet" beside the working
-// directory. That fallback is acceptable for the journal (nothing it writes is
-// load-bearing) and must be refused for anything carrying executable argv:
-// a definitions file picked up from there would let the reviewed tree define
-// its own agents.
+// The boolean is false whenever neither source yields a usable root:
+// GAUNTLET_HOME unset, empty after expansion, or naming something that is not
+// a directory, and no usable HOME either. Dir then degrades to ".gauntlet"
+// beside the working directory. That fallback is acceptable for the journal
+// (nothing it writes is load-bearing) and must be refused for anything
+// carrying executable argv: a definitions file picked up from there would let
+// the reviewed tree define its own agents.
 func Dir() (string, bool) {
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
 		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {

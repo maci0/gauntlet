@@ -22,8 +22,8 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// ANSI styling for the plain (non-TUI) output. Kept to five codes: this is a
-// log, and the dashboard is where color does real work.
+// ANSI styling for the plain (non-TUI) output. Kept to a handful of codes:
+// this is a log, and the dashboard is where color does real work.
 type palette struct{ on bool }
 
 func (p palette) wrap(code, s string) string {

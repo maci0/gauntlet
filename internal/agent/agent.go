@@ -52,7 +52,8 @@ func Labels(specs []Spec) []string {
 	return out
 }
 
-// Valid lists every supported agent CLI.
+// Valid lists the agent CLIs built into the binary. Agents defined at runtime
+// through agents.json or --agent-cmd are the rest; AllNames has the full set.
 var Valid = []string{
 	"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent",
 	"kimi", "opencode", "crush", "clanker", "dsh", "microagent",

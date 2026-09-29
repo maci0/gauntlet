@@ -447,7 +447,29 @@ func isTestFile(name string) bool {
 type scored struct {
 	name    string
 	score   float64
-	reasons []string
+	reasons []reason
+}
+
+// reason is one piece of evidence for a review and what that evidence was
+// worth, so the printed line can lead with the strongest rather than the first
+// the rule table happened to reach.
+type reason struct {
+	text   string
+	weight float64
+}
+
+// topReasons returns the reasons worth printing, strongest first, dropping the
+// rest. Ties keep rule order, so an equal-weight list reads in table order.
+func (s scored) topReasons(n int) string {
+	ordered := slices.Clone(s.reasons)
+	slices.SortStableFunc(ordered, func(a, b reason) int {
+		return cmp.Compare(b.weight, a.weight)
+	})
+	texts := make([]string, 0, min(len(ordered), n))
+	for _, r := range ordered[:min(len(ordered), n)] {
+		texts = append(texts, r.text)
+	}
+	return strings.Join(texts, ", ")
 }
 
 // Reviews reads the tree and returns the reviews its files justify, best
@@ -468,7 +490,7 @@ func Reviews(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, er
 		rank[name] = i
 	}
 	by := map[string]*scored{}
-	add := func(name, reason string, points float64) {
+	add := func(name, why string, points float64) {
 		if _, ok := rank[name]; !ok || points <= 0 {
 			return
 		}
@@ -478,8 +500,8 @@ func Reviews(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, er
 			by[name] = got
 		}
 		got.score += points
-		if !slices.Contains(got.reasons, reason) {
-			got.reasons = append(got.reasons, reason)
+		if !slices.ContainsFunc(got.reasons, func(r reason) bool { return r.text == why }) {
+			got.reasons = append(got.reasons, reason{text: why, weight: points})
 		}
 	}
 
@@ -523,7 +545,7 @@ func Reviews(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, er
 	for _, got := range out {
 		picked = append(picked, prompt.Suggestion{
 			Name:   got.name,
-			Reason: strings.Join(got.reasons[:min(len(got.reasons), reasonsShown)], ", "),
+			Reason: got.topReasons(reasonsShown),
 		})
 	}
 	return picked, historyErr

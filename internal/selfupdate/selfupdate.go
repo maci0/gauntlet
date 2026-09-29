@@ -331,8 +331,8 @@ func keepPrevious(self string) error {
 	}
 	defer in.Close()
 	// The sweep in NewTempFile covers this prefix, so a copy interrupted by a
-	// kill or a power cut is removed by the next update rather than
-	// accumulating.
+	// kill or a power cut is removed by a later update once it is older than
+	// the retention window, rather than accumulating.
 	tmp, err := gauntlethome.NewTempFile(filepath.Dir(self), ".gauntlet-update-", nil)
 	if err != nil {
 		return fmt.Errorf("cannot keep %s for rollback: %w", prev, err)
