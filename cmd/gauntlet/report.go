@@ -4,7 +4,6 @@
 package main
 
 import (
-	"cmp"
 	"fmt"
 	"io"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/envx"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -297,11 +297,13 @@ func collectTotals(results []*dirRun) runTotals {
 	// every time, whichever order the directories finished in. The failure
 	// list is sorted stably for the reason Stats.Failures is: a review that
 	// failed in two loops is two rows, and the loops have to stay in run
-	// order.
+	// order. Both keys are ordered by the same collation the lists they merged
+	// were, so the totals are printed in the order the per-directory rows were.
+	byName := fuzzy.Comparator()
 	slices.SortFunc(t.byAgent, func(a, b runner.AgentSummary) int {
-		return cmp.Compare(a.Label, b.Label)
+		return byName(a.Label, b.Label)
 	})
-	slices.SortStableFunc(t.failures, func(a, b runner.Result) int { return cmp.Compare(a.Review, b.Review) })
+	slices.SortStableFunc(t.failures, func(a, b runner.Result) int { return byName(a.Review, b.Review) })
 	return t
 }
 

@@ -80,7 +80,12 @@ list of names those two print (the agent names an error offers, the review
 and set names the picker, the dry run, and `doctor` show) is ordered by the
 same collation rather than by code point, so a name outside ASCII sorts where
 a reader looks for it; the CLI
-uses it for unknown commands and flags too. `journal` imports `humanize`, so
+uses it for unknown commands and flags too. `runner` imports it for the same
+reason: the run's own result list, failure list, and per-tool breakdown are
+keyed by a review name and a `tool:model` label, both of which the reviewed
+tree and the operator's own configuration name, and `fuzzy.Comparator` is what
+orders records by such a field the way `fuzzy.Sort` orders a bare list.
+`journal` imports `humanize`, so
 the one reader of the persisted `elapsed_s` field is the one that renders it,
 and the run listing, the headless reporter, and the dashboard cannot disagree
 about what a run's duration is.

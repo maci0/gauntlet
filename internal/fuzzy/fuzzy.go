@@ -54,13 +54,23 @@ func Sort(names []string) {
 	if len(names) < 2 {
 		return
 	}
-	// A collator carries per-comparison state, so it is not safe to share
-	// across goroutines and one is built per call. Building it costs a table
-	// lookup, and the lists are tens of names built once per listing.
-	c := collate.New(language.Und)
+	cmpNames := Comparator()
 	sort.SliceStable(names, func(i, j int) bool {
-		return c.CompareString(names[i], names[j]) < 0
+		return cmpNames(names[i], names[j]) < 0
 	})
+}
+
+// Comparator returns the three-way comparison Sort orders by, for a caller
+// that sorts records of its own by a name field rather than a bare list of
+// names: a stat sorted by review name, a breakdown sorted by tool:model label.
+// Ordering such a list by byte value is the same defect Sort exists to fix,
+// one package away from it.
+//
+// The collator carries per-comparison state, so the returned function is not
+// safe to share across goroutines and builds one collator per call. Build it
+// once per sort and reuse it for every comparison the sort makes.
+func Comparator() func(a, b string) int {
+	return collate.New(language.Und).CompareString
 }
 
 // Closest returns the candidate nearest want within a small edit distance,

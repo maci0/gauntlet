@@ -180,6 +180,42 @@ func TestByAgentGroupsAndSorts(t *testing.T) {
 	}
 }
 
+// TestListsOrderNonASCIINamesByCollation pins that the run's own lists are
+// read the way every other list of names in the tool is. A review name and an
+// agent name are the reviewed tree's and the operator's own, so they carry
+// accents and scripts: ordered by byte value both landed after every ASCII
+// name whatever letter they started with, and the summary read as if the
+// non-ASCII runs were the tail of the run rather than rows in it.
+func TestListsOrderNonASCIINamesByCollation(t *testing.T) {
+	st := &Stats{}
+	for _, name := range []string{"Zebra-review", "Ähre-review", "日本語-review"} {
+		st.Add(Result{Review: name, Status: StatusFail, Agent: agent.Spec{Tool: name}})
+	}
+
+	want := []string{"Ähre-review", "Zebra-review", "日本語-review"}
+	got := make([]string, 0, len(want))
+	for _, r := range st.Results() {
+		got = append(got, r.Review)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Results() = %q, want %q", got, want)
+	}
+	got = got[:0]
+	for _, r := range st.Failures() {
+		got = append(got, r.Review)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Failures() = %q, want %q", got, want)
+	}
+	got = got[:0]
+	for _, a := range st.ByAgent() {
+		got = append(got, a.Label)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ByAgent() = %q, want %q", got, want)
+	}
+}
+
 func TestByAgentIgnoresNegativeElapsed(t *testing.T) {
 	st := &Stats{}
 	st.Add(Result{Status: StatusOK, Elapsed: 10 * time.Second, Agent: agent.Spec{Tool: "claude"}})

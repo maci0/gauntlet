@@ -4,12 +4,12 @@
 package runner
 
 import (
-	"cmp"
 	"slices"
 	"sync"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 )
 
 // Result is the outcome of one review run.
@@ -275,11 +275,17 @@ func (s *Stats) DetailDropped() int {
 // them, differently on every replay of the same seed. The sort is stable: the
 // same review can run once per loop, and those are sequential, so keeping
 // insertion order within a name keeps the loops in the order they ran.
+//
+// Name order is the collation every other list of names the tool prints uses,
+// not byte order: a review named by the reviewed tree in its own script or with
+// an accent reads in the letter a reader looks for it under instead of at the
+// end of the list.
 func (s *Stats) Results() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := append([]Result(nil), s.results...)
-	slices.SortStableFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
+	byName := fuzzy.Comparator()
+	slices.SortStableFunc(out, func(a, b Result) int { return byName(a.Review, b.Review) })
 	return out
 }
 
@@ -395,6 +401,9 @@ func (a AgentSummary) TokensPerSec() float64 {
 
 // ByAgent breaks the run down per tool:model, in label order. The breakdown
 // is exact for every result, including the ones the detail slice has dropped.
+// Label order is collation, as the review lists are: an operator's own agent
+// name is a label, and one written in another script has to file where they
+// look for it.
 func (s *Stats) ByAgent() []AgentSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -402,7 +411,8 @@ func (s *Stats) ByAgent() []AgentSummary {
 	for _, a := range s.byAgent {
 		out = append(out, *a)
 	}
-	slices.SortFunc(out, func(a, b AgentSummary) int { return cmp.Compare(a.Label, b.Label) })
+	byLabel := fuzzy.Comparator()
+	slices.SortFunc(out, func(a, b AgentSummary) int { return byLabel(a.Label, b.Label) })
 	return out
 }
 
@@ -432,6 +442,7 @@ func (s *Stats) Failures() []Result {
 			out = append(out, r)
 		}
 	}
-	slices.SortStableFunc(out, func(a, b Result) int { return cmp.Compare(a.Review, b.Review) })
+	byName := fuzzy.Comparator()
+	slices.SortStableFunc(out, func(a, b Result) int { return byName(a.Review, b.Review) })
 	return out
 }

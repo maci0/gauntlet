@@ -29,8 +29,9 @@ var allowedInternalImports = map[string][]string{
 	"internal/normalize":    {},
 	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize"},
 	"internal/runner": {
-		"internal/agent", "internal/evidence", "internal/ghx", "internal/gitx", "internal/humanize",
-		"internal/normalize", "internal/prompt", "internal/runx", "internal/streamjson",
+		"internal/agent", "internal/evidence", "internal/fuzzy", "internal/ghx", "internal/gitx",
+		"internal/humanize", "internal/normalize", "internal/prompt", "internal/runx",
+		"internal/streamjson",
 	},
 	"internal/runx":       {},
 	"internal/selfupdate": {"internal/gauntlethome"},
@@ -50,6 +51,9 @@ var allowedInternalImports = map[string][]string{
 // is not an agent; that edge is the only reason the file-signal suggester is
 // its own package rather than a second mode inside the scheduler, and it is
 // the one place the runner's public Suggest reaches past its own files.
+// runner importing fuzzy is the collation the run's result list and per-tool
+// breakdown are ordered by, the order every other printed list of names in the
+// tool already uses.
 // Nothing in internal/ may import ui. A permission no import uses is a
 // hole left open for the next file, and docs/DESIGN.md would describe a
 // dependency that does not exist, so the map has to name only the edges the

@@ -5,6 +5,7 @@ package fuzzy
 
 import (
 	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -330,6 +331,41 @@ func TestSort(t *testing.T) {
 				t.Errorf("Sort(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// TestComparator pins that a caller sorting its own records by a name field
+// gets the order Sort would give those names, in both directions: a negative
+// result for the name that comes first, and a total order across scripts
+// rather than the code-point one a three-way compare buys by default.
+func TestComparator(t *testing.T) {
+	less := Comparator()
+	pairs := []struct {
+		a, b string
+		want bool
+	}{
+		{"apple", "Zebra", true},
+		{"Zebra", "apple", false},
+		{"Ätna", "Zebra", true},
+		{"apple", "apple", false},
+		{"alpha", "日本語-review", true},
+	}
+	for _, p := range pairs {
+		got := less(p.a, p.b)
+		if (got < 0) != p.want {
+			t.Errorf("Comparator()(%q, %q) = %d, want less=%v", p.a, p.b, got, p.want)
+		}
+		if reverse := less(p.b, p.a); (reverse > 0) != (got < 0) {
+			t.Errorf("Comparator()(%q, %q) = %d, reverse = %d, want opposite signs",
+				p.b, p.a, got, reverse)
+		}
+	}
+	// The order a sort built on it produces is Sort's own.
+	names := []string{"zeta", "Ätna", "Apple", "日本語-review", "mango"}
+	sort.SliceStable(names, func(i, j int) bool { return less(names[i], names[j]) < 0 })
+	want := []string{"Apple", "Ätna", "mango", "zeta", "日本語-review"}
+	if !slices.Equal(names, want) {
+		t.Errorf("sorted by Comparator = %q, want %q", names, want)
 	}
 }
 
