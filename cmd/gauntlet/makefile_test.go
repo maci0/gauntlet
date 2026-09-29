@@ -1014,6 +1014,7 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 	}{
 		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
 		{name: "make release", want: ".PHONY: release"},
+		{name: "release-version", want: ".PHONY: release-version"},
 		{name: "make repro", want: ".PHONY: repro"},
 		{name: "make dist platform check", want: "GOAMD64=$(GOAMD64)"},
 		{name: "make doctor", want: ".PHONY: doctor"},

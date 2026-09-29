@@ -328,7 +328,7 @@ note had described as flattening only); a line count read out of `git diff
 hostile tree cannot turn a clamped `Atoi` result into a negative in the journal
 (`parseCount`, `internal/gitx/stats.go:38-50`); a bundled prompt may no longer
 edit a value it has no source for, which is an auto-fix allowance crossing
-B1->B2 as prose (`internal/prompt/prompts/`); and `make release` refuses the
+B1->B2 as prose (`internal/prompt/prompts/`); and the release recipe refuses the
 `dev` default `VERSION` carries, so a rehearsed release cannot publish complete
 assets at a version no tag names (`release-version`, `Makefile:845-851`).
 Nothing in the numbered risk table gained a row.
@@ -366,8 +366,8 @@ it now holds `id-token: write` and `attestations: write` alongside
 statement is a claim about which commit built which bytes, not a control on
 what a release serves. R2 therefore stands, narrowed only for a reader who
 runs `gh attestation verify`: `update` still installs what the release page
-serves. `make check` gained `go mod tidy -diff` (`Makefile:342-354`, run
-from `Makefile:390`), so a require the source no longer imports is caught
+serves. `make check` gained `go mod tidy -diff` (`Makefile:333-346`, run
+from `Makefile:388`), so a require the source no longer imports is caught
 before it ships; the manifest is an input to the build, and a stale line in
 it is a module fetched and hashed on every build. Nothing in the numbered
 risk table gained a row.

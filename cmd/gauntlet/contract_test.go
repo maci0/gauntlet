@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -166,6 +167,95 @@ func TestDocsCLIMatchesTheContract(t *testing.T) {
 			t.Errorf("docs/CLI.md does not document exit code %s in its exit codes table; exit codes are consumer contract API", code)
 		}
 	}
+}
+
+// goldenFlagDefaults are the flag defaults docs/CLI.md states as a literal
+// value, which the parser's own DefValue spells the same way. A default is
+// documented behavior, so it is contract as the flag's name is: raising
+// --keep-runs, retrialing a review a third time by default, or repointing
+// --update-repo changes what every consumer who never typed the flag gets,
+// and the flag-name snapshot would report nothing, because no name moved.
+// Defaults docs/CLI.md words rather than spells (unlimited, off, none,
+// auto-detect, a duration) are a reader's, not a comparison's: a change to
+// one shows in the help screen and belongs in the changelog.
+var goldenFlagDefaults = map[string]string{
+	"jobs":        "1",
+	"keep-runs":   "200",
+	"limit":       "20",
+	"push-remote": "origin",
+	"retries":     "2",
+	"update-repo": "maci0/gauntlet",
+}
+
+// A default that moved out from under the documentation is a release that
+// changes behavior without changing a name, which is the one kind of contract
+// drift no other snapshot here can see.
+func TestFlagDefaultsMatchTheContract(t *testing.T) {
+	fs, _ := buildFlagSet(&options{})
+	data, err := os.ReadFile(filepath.Join("..", "..", "docs", "CLI.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := docsCLIDefaults(string(data))
+	for name, want := range goldenFlagDefaults {
+		f := fs.Lookup(name)
+		if f == nil {
+			t.Errorf("the contract names a default for --%s, which is not a flag", name)
+			continue
+		}
+		if f.DefValue != want {
+			t.Errorf("--%s defaults to %q, not the contracted %q; a default is documented behavior, so the change needs a CHANGELOG entry and the right bump kind", name, f.DefValue, want)
+		}
+		rows := documented[name]
+		if len(rows) == 0 {
+			t.Errorf("docs/CLI.md has no default for --%s", name)
+			continue
+		}
+		for _, got := range rows {
+			if got != want {
+				t.Errorf("docs/CLI.md documents --%s as defaulting to %q, not %q", name, got, want)
+			}
+		}
+	}
+}
+
+// docsCLIFlagName reads the long flag out of a table cell like
+// “-j, --jobs N“, which is how docs/CLI.md spells a flag with a metavar.
+var docsCLIFlagName = regexp.MustCompile(`--([a-z][a-z0-9-]*)`)
+
+// docsCLIDefaults reads the Default column of the flag tables under
+// ## Options in docs/CLI.md, keyed by the long flag name, one entry per table
+// that states one. Two tables describing one flag with two defaults is drift
+// the caller sees, so nothing is collapsed here. The other tables are left
+// out: the Commands table spells a flag inside a command line, and Modes and
+// Output state what a switch does rather than what it defaults to.
+func docsCLIDefaults(text string) map[string][]string {
+	out := map[string][]string{}
+	inOptions := false
+	for line := range strings.SplitSeq(text, "\n") {
+		switch {
+		case line == "## Options":
+			inOptions = true
+			continue
+		case inOptions && strings.HasPrefix(line, "## "):
+			inOptions = false
+			continue
+		case !inOptions || !strings.HasPrefix(line, "| `"):
+			continue
+		}
+		// A leading empty cell, the flag, its default, and the purpose.
+		cells := strings.Split(line, "|")
+		if len(cells) < 4 {
+			continue
+		}
+		m := docsCLIFlagName.FindStringSubmatch(cells[1])
+		if m == nil {
+			continue
+		}
+		def := strings.Trim(strings.TrimSpace(cells[2]), "`")
+		out[m[1]] = append(out[m[1]], def)
+	}
+	return out
 }
 
 // .env.example is how a consumer discovers the variables this binary reads
