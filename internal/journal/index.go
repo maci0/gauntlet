@@ -364,12 +364,12 @@ func indexLines(f *os.File, visit func([]byte) bool) error {
 		if err == bufio.ErrBufferFull {
 			// A row longer than the buffer: gather it, since a visitor may
 			// need the whole line and the copy outlives the read. The gather
-			// stops at indexLineMax, the ceiling its two sibling readers on
-			// this same file already put on a row, because a line with no
-			// newline in it otherwise grows the buffer by whatever the file
-			// asks for. The walk ends there rather than allocating it: a row
-			// that size is a corrupt file, and every visitor here answers
-			// "not a row" about one.
+			// stops at indexLineMax, the ceiling readAllIndex already puts on
+			// a row of this same file, because a line with no newline in it
+			// otherwise grows the buffer by whatever the file asks for. The
+			// walk ends there rather than allocating it: a row that size is
+			// a corrupt file, and every visitor here answers "not a row"
+			// about one.
 			long = append(long[:0], chunk...)
 			for err == bufio.ErrBufferFull {
 				if len(long) >= indexLineMax {
@@ -1040,8 +1040,8 @@ const maxPlausibleCount = 1 << 40
 // count reads one counted figure as a measurement or as zero. A figure past
 // the bound, and a negative one, are not counts: a git diff has no such line
 // count, and reading one as a number is what makes the sum that follows wrap.
-// It is applied where figures are added, never where a line is decoded, so
-// the two decoders of a journal line still see the same event.
+// It is applied where a figure is about to be summed, never on the way in, so
+// the decoded event is the one the journal wrote.
 func count(v int) int {
 	if v <= 0 || v > maxPlausibleCount {
 		return 0

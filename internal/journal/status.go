@@ -20,8 +20,10 @@ type Status struct {
 	// Disagreed is how many runs the two copies tell apart: a journal the
 	// index does not name (a crash between the last Flush and Close, or a
 	// listing that has not repaired it yet) plus a row whose journal is gone.
-	// The next `gauntlet runs` appends the first kind; nothing reconstructs
-	// the second, which is why it counts.
+	// The index tail repair appends a journal left at the end of the file;
+	// a hole behind a later Close is filled for the listing only and never
+	// appended, and nothing reconstructs a row whose journal is gone, which
+	// is why that counts.
 	Disagreed int
 	// Pruned is how many journals the retention bound moved to pruned/ and
 	// can still restore.

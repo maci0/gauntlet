@@ -13,11 +13,12 @@ import (
 	"github.com/maci0/gauntlet/internal/runx"
 )
 
-// The oldest git this package can talk to. Every call below separates its
-// options with `--end-of-options` (git 2.24) and creates branches with `git
-// switch` (2.23), so an older git answers "unknown option" where a broken
-// repository would have answered something else. README states the floor;
-// BelowFloor is how `gauntlet doctor` checks the machine against it.
+// The oldest git this package can talk to. The calls that take a ref or path
+// the reviewed repository supplied separate it from the options with
+// `--end-of-options` (git 2.24), and branches are created with `git switch`
+// (2.23), so an older git answers "unknown option" where a broken repository
+// would have answered something else. README states the floor; BelowFloor is
+// how `gauntlet doctor` checks the machine against it.
 const MinVersion = "2.24"
 
 // minVersion is MinVersion as the numbers BelowFloor compares.

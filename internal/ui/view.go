@@ -478,8 +478,8 @@ func motionOff() bool {
 
 // thinkGlyph animates only while reasoning is actively growing: a still glyph
 // means the agent thought earlier, a turning one means it is thinking now.
-// Under GAUNTLET_NO_ANIMATION the turning glyph holds one frame instead, so
-// the state it carries survives the freeze.
+// Under any of the variables motionOff reads, the turning glyph holds one
+// frame instead, so the state it carries survives the freeze.
 func thinkGlyph(now, last time.Time) string {
 	if last.IsZero() || now.IsZero() || now.Before(last) || now.Sub(last) > thinkingStill {
 		return "◌"

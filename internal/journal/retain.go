@@ -101,11 +101,11 @@ func pruneLocked(keep int) (int, error) {
 		keepIDs[j.id] = struct{}{}
 	}
 
-	// The index goes first. A journal removed while its row survived would
-	// leave a listing entry pointing at a file that is gone, and Recent would
-	// print that run as a run. The reverse, a row whose journal is gone, is
-	// what the tail already tolerates: it reconstructs what it can and skips
-	// a run it cannot read.
+	// The index goes first. A row naming a journal that is about to leave
+	// runs/ would outlive the file it points at, and the listing is read off
+	// the journals under runs/: an orphan row drops out of it, so the run
+	// disappears from the listing the moment its journal does. Prune is the
+	// only thing that brings it back, from pruned/.
 	rows, err := readAllIndex()
 	if err != nil {
 		return 0, err

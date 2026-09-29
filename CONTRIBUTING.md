@@ -259,7 +259,7 @@ next change has somewhere to land. Do not rename it in place:
 `Unreleased`, so a tree without one fails the suite the release job runs. The
 number in the heading follows from what the section holds:
 `TestChangelogSemVerBumps` rejects an `### Added` in a patch and a `### Removed`
-below 1.0. Commit that, then:
+anywhere but a major release, `## Unreleased` included. Commit that, then:
 
 ```sh
 ver=X.Y.Z                            # the version that heading now names

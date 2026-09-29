@@ -129,24 +129,24 @@ every row, so an upgrade that changes a license fails before it ships.
 | `charmbracelet/colorprofile` | maps a terminal profile onto lipgloss's renderer | `lipgloss`, `termenv` |
 | `charmbracelet/x/ansi` | ANSI and SGR parsing for the styled dashboard output | `lipgloss`, `bubbletea` |
 | `charmbracelet/x/cellbuf` | screen buffer and damage tracking behind `bubbletea`'s renderer | `bubbletea` |
-| `charmbracelet/x/term` | terminal queries and the OSC 52 clipboard `bubbletea` exposes | `bubbletea` |
-| `aymanbagabas/go-osc52/v2` | writes the OSC 52 sequence above | `charmbracelet/x/term` |
+| `charmbracelet/x/term` | terminal queries and raw-mode handling for the TUI | `bubbletea`, `colorprofile`, `x/cellbuf` |
+| `aymanbagabas/go-osc52/v2` | writes the OSC 52 clipboard sequence termenv emits | `termenv` |
 | `lucasb-eyer/go-colorful` | color-space conversion for lipgloss's adaptive pairs | `lipgloss` |
 | `mattn/go-runewidth` | column width for the dashboard's tables | `bubbletea` |
-| `mattn/go-isatty` | is-this-a-terminal checks behind the raw-mode switch | `termenv`, `golang.org/x/term` |
-| `muesli/ansi` | ANSI writer the cell buffer emits its updates through | `charmbracelet/x/cellbuf` |
+| `mattn/go-isatty` | is-this-a-terminal checks behind the raw-mode switch | `termenv` |
+| `muesli/ansi` | ANSI writer the standard renderer emits its updates through | `bubbletea` |
 | `muesli/cancelreader` | interruptible reads so a repaint never eats a keystroke | `bubbletea` |
-| `xo/terminfo` | terminal capability database behind termenv's profiles | `termenv` |
+| `xo/terminfo` | terminal capability database behind colorprofile's profiles | `charmbracelet/colorprofile` |
 | `golang.org/x/sys` | the `ioctl` and terminal calls the standard library does not wrap | `x/term`, `isatty` |
 | `klauspost/compress` | zstd decoder for dsh concatenated session logs | `toktop/agentusage`; `-tags notoktop` drops it |
 | `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | `toktop`; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `modernc.org/libc` | the cgo-free libc the pure-Go SQLite driver is built on | `modernc.org/sqlite` |
 | `modernc.org/memory` | the allocator `libc` hands out | `modernc.org/libc` |
 | `modernc.org/mathutil` | bit helpers for the big-integer arithmetic in `libc` | `modernc.org/libc` |
-| `remyoudompheng/bigfft` | the transform behind the arbitrary-precision math in `libc` | `modernc.org/libc` |
+| `remyoudompheng/bigfft` | the transform behind the arbitrary-precision math in `libc` | `modernc.org/mathutil` |
 | `ncruces/go-strftime` | the strftime the pure-Go `libc` provides itself where it cannot call the platform's C library, so the darwin build links it | `modernc.org/libc` |
-| `dustin/go-humanize` | byte and time formatting inside toktop's transcript parsing | `toktop`; `-tags notoktop` drops it |
-| `google/uuid` | session identifiers toktop uses to key a transcript | `toktop`; `-tags notoktop` drops it |
+| `dustin/go-humanize` | byte and time formatting inside the cgo-free libc | `modernc.org/libc`; `TAGS=` builds drop it |
+| `google/uuid` | identifiers the cgo-free libc generates | `modernc.org/libc`; `TAGS=` builds drop it |
 
 `go.mod` also requires `erikgeiser/coninput` and `mattn/go-localereader`, and
 no shipped build links them: both are imported by bubbletea's

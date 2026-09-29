@@ -561,9 +561,9 @@ that survived whole and non-zero on one that lost journals. Compare the numbers
 against the machine the copy came from: the same journals, the same pruned runs,
 no disagreement. A tree that cannot be read exits non-zero rather than printing
 zeros, so a failed read is never read as an empty history. `gauntlet doctor`
-prints the same counts on its `Run history` line, but its exit code is about the
-agent inventory: it exits 1 on a fresh machine with no agent CLI installed, and
-that says nothing about the restore.
+prints every count but `rows` on its `Run history` line, and its exit code is
+about the agent inventory: it exits 1 on a fresh machine with no agent CLI
+installed, and that says nothing about the restore.
 
 `truncated` is how many journals end mid-line, a file cut by a power cut or by a
 copy taken while a run was still writing. Nothing else reports such a file: the

@@ -23,9 +23,9 @@ var brailleBits = [4][2]byte{
 }
 
 // brailleSuffix is the glyph pattern for a cell whose last n sub-rows are lit,
-// for n from 0 to 4. The level fills a cell from its top down, so the lit
-// sub-rows are always the topmost ones and that count is the whole of what a
-// cell's pattern depends on: five patterns, not the 256 a bitwise index over
+// for n from 0 to 4. A value fills a cell from the baseline up, so the lit
+// sub-rows are always the bottommost ones and that count is the whole of what
+// a cell's pattern depends on: five patterns, not the 256 a bitwise index over
 // all eight dots would allow.
 var brailleSuffix = func() (t [5]int) {
 	for n := 1; n < len(t); n++ {

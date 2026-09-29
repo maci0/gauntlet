@@ -645,8 +645,9 @@ func scan(dir string, declared []string, now func() time.Time) signals {
 	return s
 }
 
-// churnTimeout caps the history read. A suggestion is not worth waiting on a
-// repository with a decade of commits.
+// churnTimeout caps the history read and the tree listing that runs beside it.
+// A suggestion is not worth waiting on a repository with a decade of commits,
+// or on one whose file listing never finishes.
 const churnTimeout = 10 * time.Second
 
 // nfcPath slashes and NFC-normalizes one path received from outside (git

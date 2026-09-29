@@ -17,16 +17,19 @@ import (
 	"time"
 )
 
-// Dir returns the state root and whether it rests on a usable HOME.
+// Dir returns the state root and whether that root is usable.
 //
 // Precedence: GAUNTLET_HOME when set to anything non-empty, else $HOME/.gauntlet.
 // A GAUNTLET_HOME that is not already absolute is resolved against the
 // working directory once, here, so every later read of the root agrees no
 // matter where in the process it happens.
 //
-// The boolean is false whenever neither source yields a usable root:
-// GAUNTLET_HOME unset, empty after expansion, or naming something that is not
-// a directory, and no usable HOME either. A root that does not exist yet is
+// The boolean is false whenever the source it took yields no usable root, with
+// no fallback to the other one: a GAUNTLET_HOME naming something that is not a
+// directory is refused rather than quietly answered from $HOME, because a
+// mistyped variable should not look like a working setup. Only an unset or
+// whitespace-only GAUNTLET_HOME falls through to HOME, and there the false
+// answer means HOME itself yielded nothing. A root that does not exist yet is
 // still a usable root: the journal creates it on first write. A root that
 // exists but cannot be stat-ed, behind a permission this process does not hold
 // or a symlink loop, is not: it is neither absent nor a directory, and a

@@ -923,8 +923,8 @@ func StackLoopFinalBranch(loop, index int, review, subject string) string {
 }
 
 // topicSlugMax bounds the topic fragment of a branch name. The subject it is
-// cut from is capped elsewhere at 100 runes; a ref that long stops being
-// something a reviewer can read in a branch list.
+// cut from is clipped to 72 runes before it gets here; a ref that long stops
+// being something a reviewer can read in a branch list.
 const topicSlugMax = 40
 
 // TopicSlug distills a commit subject into the short topic a stack branch

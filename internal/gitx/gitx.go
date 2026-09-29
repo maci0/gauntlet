@@ -52,8 +52,9 @@ func gitPath() string {
 }
 
 // Available reports whether git itself was found. Found is not the whole
-// question: the calls below separate options with `--end-of-options` (git
-// 2.24) and create branches with `git switch` (2.23), so git older than 2.24
+// question: the calls that take a ref or path the reviewed repository supplied
+// separate it from the options with `--end-of-options` (git 2.24), and
+// branches are created with `git switch` (2.23), so git older than 2.24
 // answers "unknown option" where a broken repository would have answered
 // something else. README states that floor.
 func Available() bool { return gitPath() != "" }
@@ -206,10 +207,10 @@ func (r *Repo) HasBaseline() bool {
 	return r.baseline != ""
 }
 
-// ensureBaseline records HEAD once, and only once it has been read. Sample is
-// the only caller that needs it; ListFiles, Status, and CheckIgnore share the
-// handle and must not each spawn a git process for a commit they never
-// compare against.
+// ensureBaseline records HEAD once, and only once it has been read. Every
+// caller that compares a commit against the baseline needs it; ListFiles,
+// Status, and CheckIgnore share the handle and must not each spawn a git
+// process for a commit they never compare against.
 //
 // The memo is keyed on having read a commit, not on having asked. A probe
 // that failed describes a moment: git missing from PATH, a worktree whose
