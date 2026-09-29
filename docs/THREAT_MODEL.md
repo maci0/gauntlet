@@ -940,8 +940,8 @@ event stream of another run sharing the same `GAUNTLET_HOME` into `pruned/`,
 which is destruction of evidence for a run that has not finished writing it.
 The persisted elapsed-seconds field is decoded in
 one place, `humanize.Seconds`
-(`internal/humanize/humanize.go:28-38), which refuses a value at or below
-zero, a NaN, an infinity, and a magnitude past the nanosecond range rather
+(`internal/humanize/humanize.go:28-41), which refuses a value at or below
+zero, a NaN, an infinity, and a magnitude at or past the nanosecond range rather
 than clamping: `json.Unmarshal` hands back whatever the bytes held, and a
 corrupt or same-user-planted journal is a file this tool reads, where a
 negative or wrapped duration renders as a run that never ended.

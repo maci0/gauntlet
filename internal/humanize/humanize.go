@@ -20,8 +20,8 @@ import (
 // seconds rather than a time.Duration's nanoseconds, so the multiply is the
 // conversion and every reader has to make it.
 //
-// A value at or below zero, a NaN or an infinity, and a magnitude past the
-// nanosecond range are all refused rather than clamped. json.Unmarshal hands
+// A value at or below zero, a NaN or an infinity, and a magnitude at or past
+// the nanosecond range are all refused rather than clamped. json.Unmarshal hands
 // back whatever the bytes held, and a corrupt or hostile journal is a file the
 // tool reads: a negative duration renders as a run that never ended, and a
 // past-the-range one wraps to a negative int64 and does the same.
