@@ -95,6 +95,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 			Binary:  cfg.Bin[spec.Tool],
 			Timeout: cfg.Timeout,
 			Dir:     cfg.Dir,
+			Now:     cfg.Now,
 		})
 		if err != nil {
 			lastErr = fmt.Errorf("cannot launch %s to suggest reviews: %w", spec.Label(), err)

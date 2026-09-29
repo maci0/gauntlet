@@ -133,6 +133,9 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // belongs to a reload that died between the save and the exec, which nothing
 // will ever pick up again.
 func SaveState(dir, runID string, v any) (string, error) {
+	if dir == "" {
+		return "", errors.New("no usable state directory for the handoff")
+	}
 	if runID == "" || runID == "." || strings.ContainsAny(runID, "/\\") || strings.Contains(runID, "..") {
 		return "", errors.New("invalid run id for state")
 	}

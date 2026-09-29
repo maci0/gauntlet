@@ -43,6 +43,8 @@ type CommitOpts struct {
 	// Out receives the agent's normalized output, so a caller with a terminal
 	// can show the work rather than a silent pause. Nil discards it.
 	Out func(string)
+	// Now is the clock the argv's own memos age against. Nil means time.Now.
+	Now func() time.Time
 }
 
 // CommitNow hands the working tree to one agent to commit, returning an
@@ -57,7 +59,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout, Dir: o.Dir})
+		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout, Dir: o.Dir, Now: o.Now})
 	if err != nil {
 		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
 	}
@@ -190,7 +192,8 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: r.cfg.Dir})
+		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: r.cfg.Dir,
+			Now: r.bus.Clock()})
 	if err != nil {
 		r.log("Cannot build %s command for %s: %v", action, spec.Label(), err)
 		r.st.addCommitFail()

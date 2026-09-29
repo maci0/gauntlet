@@ -287,6 +287,12 @@ the unit of safe parallelism is **the directory**, not the agent.
   a time decision crosses into an external process, so it is passed the
   clock rather than left to git's own: a cutoff git resolved for itself
   would let the date a run happened on decide which reviews it proposed.
+  The argv an agent is launched with carries the same clock
+  (`agent.BuildOpts.Now`, handed the bus clock), because two of the decisions
+  that argv makes are timed: whether a failed dsh provider probe is retried,
+  and which overlay files the cache sweep removes. On the wall clock those
+  turn how long a review took into a difference in what the next one is
+  launched with.
   The one wait on the review path, the pause
   between two attempts of a failed review, is the matching seam
   (`Bus.Sleep`): its length is already a keyed draw from the seed, so with

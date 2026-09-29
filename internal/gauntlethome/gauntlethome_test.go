@@ -169,11 +169,13 @@ func TestStateDirSitsUnderTheRoot(t *testing.T) {
 		t.Fatalf("StateDir = %q, want %q", got, want)
 	}
 
-	// A degraded root must still name one path, so a caller that cannot get a
-	// usable root writes its handoff somewhere rather than not at all.
+	// A degraded root names none: the relative fallback is under the working
+	// directory, which in a run is the reviewed tree, and a handoff written
+	// there is one nothing will pick up and one the tree should not have
+	// gained. The caller that needs the handoff reports the refusal instead.
 	t.Setenv("GAUNTLET_HOME", "$GAUNTLET_NONEXISTENT_DIR_VAR/state")
-	if got, want := StateDir(), filepath.Join(".gauntlet", "state"); got != want {
-		t.Fatalf("degraded StateDir = %q, want %q", got, want)
+	if got := StateDir(); got != "" {
+		t.Fatalf("degraded StateDir = %q, want the empty string", got)
 	}
 }
 

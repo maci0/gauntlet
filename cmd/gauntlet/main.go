@@ -581,7 +581,7 @@ func run(argv []string) int {
 		}
 		r, err := runner.New(ctx, cfg, bus)
 		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
-			commitFirst(ctx, d.dir, agents, opts, stdout, pal) {
+			commitFirst(ctx, d.dir, agents, opts, stdout, pal, bus.Clock()) {
 			r, err = runner.New(ctx, cfg, bus)
 		}
 		if err != nil {
@@ -966,7 +966,7 @@ func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 // take on a guess. --yes and --yolo are that consent, and a run with no
 // terminal keeps the plain error rather than committing unattended.
 func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
-	opts *options, out io.Writer, pal palette) bool {
+	opts *options, out io.Writer, pal palette, now func() time.Time) bool {
 
 	// The run's own agent, never --suggest-agent: that one was asked which
 	// reviews apply, which says nothing about who should write commits, and a
@@ -982,6 +982,7 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 		Dir: dir, Agent: spec, Bin: opts.bin, Push: opts.push, Yolo: opts.yolo,
 		Timeout: opts.timeout,
 		Out:     func(line string) { fmt.Fprintln(out, pal.dim("  "+line)) },
+		Now:     now,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)

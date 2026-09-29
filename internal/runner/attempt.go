@@ -304,6 +304,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Stream:   r.cfg.Stream,
 		Timeout:  r.cfg.Timeout,
 		Dir:      dir,
+		Now:      r.bus.Clock(),
 	})
 	if err != nil {
 		r.log("Cannot build command for %s: %v", spec.Label(), err)

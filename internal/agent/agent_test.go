@@ -2212,7 +2212,7 @@ func isolateDshPatches(t *testing.T) string {
 func TestWriteDshPatchLandsUnderTheIsolatedCache(t *testing.T) {
 	cache := isolateDshPatches(t)
 
-	path, err := writeDshPatch("prov-model", "- id: agent-default-model\n")
+	path, err := writeDshPatch("prov-model", "- id: agent-default-model\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2227,7 +2227,7 @@ func TestWriteDshPatchLandsUnderTheIsolatedCache(t *testing.T) {
 		t.Fatalf("overlay body = %q", body)
 	}
 
-	again, err := writeDshPatch("prov-model", "- id: agent-default-model\n")
+	again, err := writeDshPatch("prov-model", "- id: agent-default-model\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2355,7 +2355,7 @@ func TestDshProbeIsPerLauncher(t *testing.T) {
 	})
 
 	for range 3 {
-		p, err := dshDefaultProvider([]string{"dsh"})
+		p, err := dshDefaultProvider([]string{"dsh"}, nil)
 		if err != nil || p != "prov-from-dsh" {
 			t.Fatalf("first launcher probed as %q, %v", p, err)
 		}
@@ -2364,7 +2364,7 @@ func TestDshProbeIsPerLauncher(t *testing.T) {
 		t.Errorf("one launcher was probed %d times, want 1", probed["dsh"])
 	}
 
-	if _, err := dshDefaultProvider([]string{"elsewhere-dsh"}); err == nil {
+	if _, err := dshDefaultProvider([]string{"elsewhere-dsh"}, nil); err == nil {
 		t.Fatal("a second launcher's failure was answered from the first's memo")
 	}
 	if probed["elsewhere-dsh"] != 1 {
@@ -2372,7 +2372,7 @@ func TestDshProbeIsPerLauncher(t *testing.T) {
 	}
 
 	// The failing launcher must not have displaced the working one.
-	p, err := dshDefaultProvider([]string{"dsh"})
+	p, err := dshDefaultProvider([]string{"dsh"}, nil)
 	if err != nil || p != "prov-from-dsh" {
 		t.Fatalf("the memo lost the first launcher: %q, %v", p, err)
 	}
@@ -2398,7 +2398,7 @@ func TestDshProbeRunsBinOverride(t *testing.T) {
 	if cmd[0] != "/opt/dsh/bin/dsh" {
 		t.Fatalf("argv starts with %q, want the override", cmd[0])
 	}
-	if p, err := dshDefaultProvider([]string{"/opt/dsh/bin/dsh"}); err != nil || p != "prov-a" {
+	if p, err := dshDefaultProvider([]string{"/opt/dsh/bin/dsh"}, nil); err != nil || p != "prov-a" {
 		t.Fatalf("the memo does not answer for the override: %q, %v", p, err)
 	}
 }
@@ -2421,7 +2421,8 @@ func probeDshConfig(t *testing.T, dump func(base []string) (string, error)) {
 // A probe that failed is evidence about a moment: the bunx fallback's fetch
 // failing once must not leave the launcher unresolvable for the rest of the
 // run. The error is still kept within the window, so a run does not pay a
-// subprocess per launch.
+// subprocess per launch. The window is measured on the injected clock, so it
+// is the run's own timeline and not how long an attempt really took.
 func TestDshProbeRetriesAfterAFailure(t *testing.T) {
 	probed := 0
 	probeDshConfig(t, func(base []string) (string, error) {
@@ -2432,11 +2433,20 @@ func TestDshProbeRetriesAfterAFailure(t *testing.T) {
 		return "prov-a", nil
 	})
 
-	if _, err := dshDefaultProvider([]string{"dsh"}); err == nil {
+	start := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	now := start
+	clock := func() time.Time { return now }
+
+	if _, err := dshDefaultProvider([]string{"dsh"}, clock); err == nil {
 		t.Fatal("the first probe failed, so it must report the failure")
 	}
-	if p, err := dshDefaultProvider([]string{"dsh"}); err == nil || p != "" {
-		t.Fatalf("inside %s the failure is still the answer: %q, %v", dshProbeRetry, p, err)
+	// A clock that does not move is a run that does not move: the failure
+	// stays the answer however many launches follow it.
+	for range 3 {
+		now = start.Add(dshProbeRetry / 2)
+		if p, err := dshDefaultProvider([]string{"dsh"}, clock); err == nil || p != "" {
+			t.Fatalf("inside %s the failure is still the answer: %q, %v", dshProbeRetry, p, err)
+		}
 	}
 	if probed != 1 {
 		t.Fatalf("a kept failure was re-probed %d times inside the window, want 1", probed)
@@ -2444,15 +2454,65 @@ func TestDshProbeRetriesAfterAFailure(t *testing.T) {
 
 	// Past the window the memo is a statement about a moment, so it is
 	// re-probed and the launcher resolves.
-	dshProbes.Lock()
-	dshProbes.byBase[strings.Join([]string{"dsh"}, "\x00")] = dshProviderProbe{
-		err: errors.New("no agent-default-model provider"),
-		at:  time.Now().Add(-2 * dshProbeRetry),
-	}
-	dshProbes.Unlock()
-	p, err := dshDefaultProvider([]string{"dsh"})
+	now = start.Add(2 * dshProbeRetry)
+	p, err := dshDefaultProvider([]string{"dsh"}, clock)
 	if err != nil || p != "prov-a" {
 		t.Fatalf("a stale failure was served instead of re-probed: %q, %v", p, err)
+	}
+	if probed != 2 {
+		t.Fatalf("probed %d times, want 2", probed)
+	}
+}
+
+// The probe window and the overlay sweep both read the run's clock, so a
+// replay of the same run re-probes and sweeps at the same points no matter
+// how long the first pass waited. A nil clock is wall time, so a caller with
+// no run clock keeps the old behavior.
+func TestDshMemoFollowsTheInjectedClock(t *testing.T) {
+	probed := 0
+	probeDshConfig(t, func(base []string) (string, error) {
+		probed++
+		return "", errors.New("no agent-default-model provider")
+	})
+	start := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	clock := func() time.Time { return start }
+	if _, err := dshDefaultProvider([]string{"dsh"}, clock); err == nil {
+		t.Fatal("the injected dump failed, so the probe must report it")
+	}
+	if _, err := dshDefaultProvider([]string{"dsh"}, clock); err == nil {
+		t.Fatal("the injected dump still fails, so the probe must report it")
+	}
+	if probed != 1 {
+		t.Fatalf("probed %d times at one instant, want 1", probed)
+	}
+
+	// The overlay directory the write sweeps is the run's timeline too: an
+	// overlay older than dshPatchAge on the injected clock is gone after the
+	// next write, and one inside the age stays.
+	cache := isolateDshPatches(t)
+	dir := filepath.Join(cache, "gauntlet", "dsh")
+	aged := filepath.Join(dir, "gone.yml")
+	if _, err := writeDshPatch("gone", "body\n", clock); err != nil {
+		t.Fatal(err)
+	}
+	fresh := start.Add(-dshPatchAge / 2)
+	if err := os.Chtimes(aged, fresh, fresh); err != nil {
+		t.Fatal(err)
+	}
+	// A new key, so the memo does not short-circuit the sweep on the one
+	// under test.
+	if _, err := writeDshPatch("fresh", "body\n", clock); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(aged); err != nil {
+		t.Fatalf("an overlay inside dshPatchAge was swept at the injected instant: %v", err)
+	}
+	if _, err := writeDshPatch("later", "body\n",
+		func() time.Time { return start.Add(dshPatchAge) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(aged); err == nil {
+		t.Fatal("an overlay past dshPatchAge survived the injected clock")
 	}
 }
 
@@ -2462,7 +2522,7 @@ func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 	dir := filepath.Join(cache, "gauntlet", "dsh")
 	// Callers slug the key first (dshModelPatch), so it is always one path
 	// element.
-	path, err := writeDshPatch("prov_model", "body-one\n")
+	path, err := writeDshPatch("prov_model", "body-one\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2486,7 +2546,7 @@ func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 	dshPatchMu.Lock()
 	delete(dshPatches, "prov_model")
 	dshPatchMu.Unlock()
-	if _, err := writeDshPatch("prov_model", "body-two\n"); err != nil {
+	if _, err := writeDshPatch("prov_model", "body-two\n", nil); err != nil {
 		t.Fatal(err)
 	}
 	if body, err := os.ReadFile(path); err != nil || string(body) != "body-two\n" {
@@ -2532,11 +2592,11 @@ func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 	}
 
 	cache := isolateDshPatches(t)
-	path1, err := dshModelPatch("foo_bar", "baz")
+	path1, err := dshModelPatch("foo_bar", "baz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path2, err := dshModelPatch("foo", "bar_baz")
+	path2, err := dshModelPatch("foo", "bar_baz", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2573,11 +2633,11 @@ func TestDshPatchKeyDoesNotCollide(t *testing.T) {
 func TestDshPatchKeySeparatesCaseVariants(t *testing.T) {
 	isolateDshPatches(t)
 
-	lower, err := dshModelPatch("openai", "gpt-5")
+	lower, err := dshModelPatch("openai", "gpt-5", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	upper, err := dshModelPatch("openai", "GPT-5")
+	upper, err := dshModelPatch("openai", "GPT-5", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2610,7 +2670,7 @@ func TestDshModelPatchRejectsInvalidIdentifiers(t *testing.T) {
 		{"prov space", "model"},
 		{"prov", "model space"},
 	} {
-		if _, err := dshModelPatch(tc.prov, tc.model); err == nil {
+		if _, err := dshModelPatch(tc.prov, tc.model, nil); err == nil {
 			t.Errorf("dshModelPatch(%q, %q) succeeded, want rejection", tc.prov, tc.model)
 		}
 	}
@@ -2619,7 +2679,7 @@ func TestDshModelPatchRejectsInvalidIdentifiers(t *testing.T) {
 func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 	isolateDshPatches(t)
 
-	path, err := writeDshPatch("gone", "body-one\n")
+	path, err := writeDshPatch("gone", "body-one\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2628,7 +2688,7 @@ func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 	}
 	// The in-process table still names the path; a cache cleaner (or the
 	// user) deleting the file must not keep handing dsh a missing overlay.
-	got, err := writeDshPatch("gone", "body-two\n")
+	got, err := writeDshPatch("gone", "body-two\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2647,7 +2707,7 @@ func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 func TestWriteDshPatchRewritesAForeignBody(t *testing.T) {
 	isolateDshPatches(t)
 
-	path, err := writeDshPatch("prov@model", "body-this-build\n")
+	path, err := writeDshPatch("prov@model", "body-this-build\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2657,7 +2717,7 @@ func TestWriteDshPatchRewritesAForeignBody(t *testing.T) {
 	if err := os.WriteFile(path, []byte("body-other-vers\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writeDshPatch("prov@model", "body-this-build\n"); err != nil {
+	if _, err := writeDshPatch("prov@model", "body-this-build\n", nil); err != nil {
 		t.Fatal(err)
 	}
 	got, err := os.ReadFile(path)
@@ -2671,7 +2731,7 @@ func TestWriteDshPatchRewritesAForeignBody(t *testing.T) {
 func TestWriteDshPatchKeepsAnIdenticalBody(t *testing.T) {
 	isolateDshPatches(t)
 
-	path, err := writeDshPatch("prov@model", "body\n")
+	path, err := writeDshPatch("prov@model", "body\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2682,7 +2742,7 @@ func TestWriteDshPatchKeepsAnIdenticalBody(t *testing.T) {
 	dshPatchMu.Lock()
 	delete(dshPatches, "prov@model")
 	dshPatchMu.Unlock()
-	if _, err := writeDshPatch("prov@model", "body\n"); err != nil {
+	if _, err := writeDshPatch("prov@model", "body\n", nil); err != nil {
 		t.Fatal(err)
 	}
 	second, err := os.Stat(path)
@@ -2711,7 +2771,7 @@ func TestWriteDshPatchCleansStaleTemps(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := writeDshPatch("stale-key", "body\n"); err != nil {
+	if _, err := writeDshPatch("stale-key", "body\n", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -2738,7 +2798,7 @@ func TestWriteDshPatchSweepsOldOverlays(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	path, err := writeDshPatch("current@model", "body\n")
+	path, err := writeDshPatch("current@model", "body\n", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2758,7 +2818,7 @@ func TestDshPatchMapIsBounded(t *testing.T) {
 	// it, and one more write has to fit inside the cap too.
 	for i := range dshPatchMapMax + 2 {
 		key := "prov" + strconv.Itoa(i) + "@model"
-		if _, err := writeDshPatch(key, "body\n"); err != nil {
+		if _, err := writeDshPatch(key, "body\n", nil); err != nil {
 			t.Fatal(err)
 		}
 		dshPatchMu.Lock()

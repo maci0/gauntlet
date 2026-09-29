@@ -67,7 +67,7 @@ sbom listing, the dsh probe, and the indexer.
 Two build-side changes are carried as developer and release surface, not as
 runtime boundaries: `make repro` now runs the release inventory generator and
 a checksum tool inside each copied tree and compares the whole asset set
-(`Makefile:685-723`), which puts the `go list` and module-cache grant reads
+(`Makefile:701-739`), which puts the `go list` and module-cache grant reads
 the sbom entry point describes on a second invocation site, and the release
 job resolves an annotated tag to its commit before it builds anything
 (`.github/workflows/release.yml:107-133`). No risk row was added and none

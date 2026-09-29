@@ -169,15 +169,22 @@ var dumpDshConfig = func(base []string) (string, error) {
 // whole group: Output reads through a pipe, and a grandchild that outlived the
 // killed child would hold that pipe open and hang this call forever. KillGroup
 // is deferred so grandchildren are reaped on normal exit as well.
-func dshDefaultProvider(base []string) (string, error) {
+//
+// now is the clock the retry window is measured on; nil means wall time. It is
+// the run's clock, so whether a replay re-probes depends on the run's own
+// timeline rather than on how long the previous attempt really took.
+func dshDefaultProvider(base []string, now func() time.Time) (string, error) {
+	if now == nil {
+		now = time.Now
+	}
 	key := strings.Join(base, "\x00")
 	dshProbes.Lock()
 	defer dshProbes.Unlock()
 	p, ok := dshProbes.byBase[key]
-	if ok && (p.err == nil || time.Since(p.at) < dshProbeRetry) {
+	if ok && (p.err == nil || now().Sub(p.at) < dshProbeRetry) {
 		return p.provider, p.err
 	}
-	p = dshProviderProbe{at: time.Now()}
+	p = dshProviderProbe{at: now()}
 	p.provider, p.err = dumpDshConfig(base)
 	dshProbes.byBase[key] = p
 	return p.provider, p.err
@@ -230,13 +237,13 @@ func dshPatchHolds(path, body string) bool {
 // dshModelPatch writes (once per provider/model pair) the YAML overlay that
 // pins dsh's model, and returns its path. It lives in the user cache dir, not
 // a temp filesystem: it is small, reusable across runs, and never secret.
-func dshModelPatch(provider, model string) (string, error) {
+func dshModelPatch(provider, model string, now func() time.Time) (string, error) {
 	if !dshModelRe.MatchString(provider) || !dshModelRe.MatchString(model) {
 		return "", fmt.Errorf("invalid provider %q or model %q", provider, model)
 	}
 	body := fmt.Sprintf("- id: agent-default-model\n  config:\n    provider: '%s'\n    model: '%s'\n",
 		provider, model)
-	return writeDshPatch(dshPatchKey(provider, model), body)
+	return writeDshPatch(dshPatchKey(provider, model), body, now)
 }
 
 // writeDshPatch stores one overlay under the user cache dir and returns its
@@ -250,7 +257,11 @@ func dshModelPatch(provider, model string) (string, error) {
 // truncate sees an empty or half-written config; a rename is atomic, so every
 // reader gets one whole file, and identical content makes old and new
 // interchangeable.
-func writeDshPatch(key, body string) (string, error) {
+//
+// now is the clock the directory sweep ages files against; nil means wall
+// time. It is the run's clock, so which overlays a replay finds already
+// written does not depend on how long the first attempt took.
+func writeDshPatch(key, body string, now func() time.Time) (string, error) {
 	if key == "" || key == "." || strings.ContainsAny(key, "/\\") || strings.Contains(key, "..") {
 		return "", errors.New("invalid overlay key")
 	}
@@ -270,7 +281,7 @@ func writeDshPatch(key, body string) (string, error) {
 	// The sweep covers the directory and not just the overlays in it, so a
 	// rename that never completed does not leave its temporary behind
 	// forever. It runs per write, and a write is one per pair per process.
-	gauntlethome.SweepStaleTemps(dir, "", dshPatchAge, nil)
+	gauntlethome.SweepStaleTemps(dir, "", dshPatchAge, now)
 	path := filepath.Join(dir, key+".yml")
 	if !dshPatchHolds(path, body) {
 		if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-", path, []byte(body)); err != nil {

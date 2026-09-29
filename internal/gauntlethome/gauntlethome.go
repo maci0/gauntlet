@@ -58,8 +58,16 @@ func Dir() (string, bool) {
 // handoff files live. The layout of the tree belongs here beside the resolver
 // of its root, so a caller writing a handoff does not reach through the
 // journal for a path the journal does not own.
+//
+// An unusable root yields the empty string rather than Dir's relative
+// fallback: a handoff is load-bearing (a successor without one restarts the
+// run), so it must fail to be written instead of landing in a .gauntlet
+// beside the working directory, which in a run is the reviewed tree.
 func StateDir() string {
-	root, _ := Dir()
+	root, ok := Dir()
+	if !ok {
+		return ""
+	}
 	return filepath.Join(root, "state")
 }
 

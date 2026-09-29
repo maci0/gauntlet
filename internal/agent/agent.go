@@ -498,6 +498,11 @@ type BuildOpts struct {
 	// flag out, which is fine only when Dir matches a directory agy already
 	// knows (the user's checkout, not a worktree cut for this review).
 	Dir string
+	// Now is the clock the argv's own memos age against: whether a failed dsh
+	// provider probe is retried, and which overlay files the cache sweep
+	// removes. Nil means time.Now. It is the run's clock, so the argv a
+	// replay builds does not depend on how long an earlier attempt took.
+	Now func() time.Time
 }
 
 // maxPromptArg bounds one exec argument. A composed prompt travels as a
@@ -619,7 +624,7 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 				// One probe keeps the provider and its failure together:
 				// re-invoking to recover a dropped error is only safe while
 				// the memo holds, and pairs two outcomes with one condition.
-				p, perr := dshDefaultProvider(base)
+				p, perr := dshDefaultProvider(base, opts.Now)
 				if perr != nil {
 					return nil, fmt.Errorf("cannot determine the dsh provider for model %q: %w; "+
 						"use dsh:<provider>/<model>", spec.Model, perr)
@@ -629,7 +634,7 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 			if provider == "" {
 				return nil, fmt.Errorf("cannot determine the dsh provider for model %q; use dsh:<provider>/<model>", spec.Model)
 			}
-			patch, err := dshModelPatch(provider, model)
+			patch, err := dshModelPatch(provider, model, opts.Now)
 			if err != nil {
 				return nil, err
 			}
