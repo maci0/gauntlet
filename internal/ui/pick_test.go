@@ -1212,6 +1212,31 @@ func TestPickHelpOverlayClosesWithoutLeaving(t *testing.T) {
 	}
 }
 
+// The launcher's help names every key that edits a filter, so the key a reader
+// reaches for by habit is a documented one rather than an unmentioned key that
+// reads as broken (WCAG 3.3.2). Each name is checked against the binding it
+// documents, so a key that is renamed or dropped fails here.
+func TestPickHelpNamesTheFilterEditingKeys(t *testing.T) {
+	p := demoPicker()
+	press(p, "?")
+	got := stripANSI(p.View())
+	for _, want := range []string{"backspace", "delete", "ctrl+h", "ctrl+u", "ctrl+w"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("help does not name %q:\n%s", want, got)
+		}
+	}
+	// And what the help names is what the filter does with it.
+	press(p, "q")
+	press(p, "/")
+	for _, r := range "abc" {
+		p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+	p.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	if p.filter != "ab" {
+		t.Fatalf("backspace left the filter at %q, want %q", p.filter, "ab")
+	}
+}
+
 // Stack mode owns commits and the job count: conflicting choices are kept for
 // later but omitted while stacking, and +/- must not sneak a -j back in.
 func setupConflictingOptionsPicker() *picker {

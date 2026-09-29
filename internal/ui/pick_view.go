@@ -517,7 +517,9 @@ const qLeave = "  q, esc       leave without running (press the same key twice; 
 
 // escLeave is what esc does at each depth, in the order the key meets them: it
 // is the way back, so it has to be said where the way back is being looked for.
-const escLeave = "  esc          cancel an armed quit, clear the filter, or ask to leave once there is nothing to clear"
+// It fits one row on a hundred columns: a key line that wraps reads as two, and
+// the key table is a page a reader scrolls through rather than scans.
+const escLeave = "  esc          cancel an armed quit, clear the filter, or leave once there is nothing to clear"
 
 func (p *picker) helpLines() []string {
 	lines := []string{
@@ -539,6 +541,13 @@ func (p *picker) helpLines() []string {
 		"  a            all or none of what this pane is showing",
 		"  /            filter reviews by set, name, or description; enter keeps it, esc clears",
 		"  ctrl+u / ctrl+w   clear the filter, or drop the word before the cursor",
+		// The editing keys a filter needs are named here with ctrl+u and
+		// ctrl+w, which is where a reader looks for them. Backspace was bound
+		// and named nowhere: a key that works, is never mentioned, and reads as
+		// broken is the one a keyboard user cannot tell from a missing one
+		// (WCAG 3.3.2). delete and ctrl+h are the same edit, sent by keyboards
+		// and terminals that map them, so one line names all three.
+		"  backspace   drop the last character of the filter (delete, ctrl+h do the same)",
 		"  enter        run the composed command",
 		qLeave,
 		escLeave,
