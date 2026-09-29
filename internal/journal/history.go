@@ -235,7 +235,10 @@ func historyGate(line []byte) bool {
 // counts and changes nothing, exactly like a review that changed nothing.
 //
 // Runs that cannot be read are skipped: this is a convenience log, and a
-// suggestion is not worth failing over.
+// suggestion is not worth failing over. A skipped run is reported alongside the
+// answer rather than left out of it, so a caller weighting reviews by this
+// history says why the weighting is thin instead of applying it as if the run
+// had never landed.
 //
 // A directory is matched by its resolved path, not by its spelling. On macOS
 // /tmp is a symlink into /private/tmp, so the same tree is journaled under
@@ -247,6 +250,7 @@ func History(dir string) (map[string]ReviewHistory, error) {
 		return nil, err
 	}
 	out := map[string]ReviewHistory{}
+	var skipped []error
 	// The directory is asked about once per journal line, and resolving a
 	// spelling costs a syscall per path component, so both sides are resolved
 	// once here instead of per line.
@@ -316,7 +320,17 @@ func History(dir string) (map[string]ReviewHistory, error) {
 				continue
 			}
 		}
-		_ = events(run.RunID, historyGate, tally)
+		// Both reads failed and nothing was tallied, so this run weighs
+		// nothing in the answer. The tally is kept: the other runs are sound,
+		// and a caller that logs the error and carries on is better placed
+		// than one handed a confident map built from a partial read.
+		if err := events(run.RunID, historyGate, tally); err != nil {
+			skipped = append(skipped, fmt.Errorf("run %s: %w", run.RunID, err))
+		}
+	}
+	if len(skipped) > 0 {
+		return out, fmt.Errorf("%d of %d recent runs could not be read: %w",
+			len(skipped), len(runs), errors.Join(skipped...))
 	}
 	return out, nil
 }

@@ -26,15 +26,21 @@ import (
 //
 // The boolean is false whenever neither source yields a usable root:
 // GAUNTLET_HOME unset, empty after expansion, or naming something that is not
-// a directory, and no usable HOME either. Dir then degrades to ".gauntlet"
-// beside the working directory. That fallback is acceptable for the journal
-// (nothing it writes is load-bearing) and must be refused for anything
-// carrying executable argv: a definitions file picked up from there would let
-// the reviewed tree define its own agents.
+// a directory, and no usable HOME either. A root that does not exist yet is
+// still a usable root: the journal creates it on first write. A root that
+// exists but cannot be stat-ed, behind a permission this process does not hold
+// or a symlink loop, is not: it is neither absent nor a directory, and a
+// definitions file read from there would let the reviewed tree define its own
+// agents, which is what the boolean exists to refuse. Dir then degrades to
+// ".gauntlet" beside the working directory, acceptable for the journal (nothing
+// it writes is load-bearing) and refused for anything carrying executable argv.
 func Dir() (string, bool) {
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
 		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {
-			if fi, err := os.Stat(exp); err == nil && !fi.IsDir() {
+			switch fi, err := os.Stat(exp); {
+			case err != nil && !os.IsNotExist(err):
+				return ".gauntlet", false
+			case err == nil && !fi.IsDir():
 				return ".gauntlet", false
 			}
 			return absolute(exp), true

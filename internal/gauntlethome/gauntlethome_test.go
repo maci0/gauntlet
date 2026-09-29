@@ -68,6 +68,44 @@ func TestDirIgnoresWhitespaceOnlyGauntletHome(t *testing.T) {
 	}
 }
 
+func TestDirRefusesGauntletHomeItCannotStat(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// A symlink pointing at itself cannot be resolved, so the stat fails with
+	// something other than "not exist". That is neither a directory nor a root
+	// waiting to be created, and it is exactly the case the boolean refuses:
+	// a definitions file read from there would define the reviewed tree's own
+	// agents.
+	loop := filepath.Join(home, "loop")
+	if err := os.Symlink(loop, loop); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	t.Setenv("GAUNTLET_HOME", loop)
+	got, ok := Dir()
+	if ok {
+		t.Fatalf("GAUNTLET_HOME %q cannot be stat-ed, but Dir claims a usable root", loop)
+	}
+	if got != ".gauntlet" {
+		t.Fatalf("Dir = %q, want the degraded %q", got, ".gauntlet")
+	}
+}
+
+func TestDirAcceptsGauntletHomeThatDoesNotExistYet(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	// A root the journal has not created yet is not a broken one: it is what
+	// the first run of a fresh install points at.
+	want := filepath.Join(home, "state", "deeper")
+	t.Setenv("GAUNTLET_HOME", want)
+	got, ok := Dir()
+	if !ok {
+		t.Fatal("GAUNTLET_HOME names a directory to be created, but Dir refuses it")
+	}
+	if got != want {
+		t.Fatalf("Dir = %q, want %q", got, want)
+	}
+}
+
 func TestDirDefaultsToGauntletUnderHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", "")

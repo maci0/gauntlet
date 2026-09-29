@@ -216,6 +216,11 @@ type Journal struct {
 	w   *lineBuffer
 	enc *json.Encoder
 	err error
+	// dropped counts the events Write turned away after err was set. The
+	// error itself names the failure once; the count is what says how much
+	// of the run the journal never recorded, so a summary that reads as
+	// complete is not taken at face value.
+	dropped int
 
 	closed  bool // the file is flushed and closed; a later Close only indexes
 	indexed bool // the summary row is written; further Closes add nothing
@@ -386,6 +391,11 @@ func openRead(path string) (*os.File, error) {
 }
 
 // Write appends one event. A nil Journal is a no-op, so callers never branch.
+//
+// Once an event has failed to write, later events are turned away rather than
+// each retried into the same failure, and the ones turned away are counted so
+// Close can report the gap. Silently dropping them would leave a journal that
+// ends mid-run and a summary that reads as though the run ended there.
 func (j *Journal) Write(v any) {
 	if j == nil {
 		return
@@ -393,6 +403,7 @@ func (j *Journal) Write(v any) {
 	j.mu.Lock()
 	defer j.mu.Unlock()
 	if j.err != nil {
+		j.dropped++
 		return
 	}
 	if err := j.enc.Encode(v); err != nil {
@@ -435,15 +446,22 @@ func (j *Journal) Close(s Summary) error {
 	}
 	j.closeFileLocked()
 	s.RunID, s.Path = j.runID, j.path
+	// The summary describes the whole run, so a run whose journal is missing
+	// a tail has to say how much is missing before the count of what it did
+	// record is read as the count of what happened.
+	journalErr := j.err
+	if journalErr != nil && j.dropped > 0 {
+		journalErr = fmt.Errorf("%w (%d further events were not recorded)", journalErr, j.dropped)
+	}
 	if err := appendIndex(s); err != nil {
 		// An index failure is not sticky: a later Close retries the append.
 		// A journal write error that already landed in j.err still wins,
 		// but both are preserved so neither is swallowed.
-		if j.err != nil {
-			return errors.Join(j.err, fmt.Errorf("append index: %w", err))
+		if journalErr != nil {
+			return errors.Join(journalErr, fmt.Errorf("append index: %w", err))
 		}
 		return fmt.Errorf("append index: %w", err)
 	}
 	j.indexed = true
-	return j.err
+	return journalErr
 }

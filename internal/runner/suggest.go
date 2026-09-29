@@ -119,7 +119,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 			// gets a turn rather than the schedule being quietly narrowed.
 			// Below the cancel and timeout arms: those close the pipes on
 			// purpose, which the reader sees as the same broken pipe.
-			lastErr = fmt.Errorf("%s suggested reviews from a stream that ended early (%v)",
+			lastErr = fmt.Errorf("%s suggested reviews from a stream that ended early: %w",
 				spec.Label(), res.StreamErr)
 		case res.ExitCode != 0:
 			lastErr = errors.New(withNote(

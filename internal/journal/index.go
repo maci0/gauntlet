@@ -191,8 +191,20 @@ func appendIndexLocked(s Summary) (err error) {
 			err = cerr
 		}
 	}()
-	if _, err = f.Write(line); err != nil {
+	// os.File.Write reports how much of the line it wrote and returns an
+	// error for the rest, and the bytes it did write stay in the file. The
+	// next append starts at the end of the file, so the fragment would be
+	// welded onto its own row and the two would parse as neither: the
+	// interrupted run and the run that follows it both stop listing.
+	// Truncating back to where this call started is the only way to keep
+	// the file whole-line, and the truncation joins the error so a rollback
+	// that itself failed is visible rather than assumed.
+	end, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
 		return err
+	}
+	if _, err = f.Write(line); err != nil {
+		return errors.Join(err, f.Truncate(end))
 	}
 	if err := f.Sync(); err != nil {
 		return err
@@ -745,12 +757,19 @@ func allJournals() ([]namedJournal, error) {
 		return nil, err
 	}
 	var out []namedJournal
+	var unread []error
 	// runs/ itself, then each shard under it: a journal filed at the top of
 	// the tree, which a hand-named run id produces, is read once here rather
 	// than once per entry.
+	//
+	// A journal the walk could not stat or open is not a reason to throw the
+	// rest of the tree away: the entries that did read are still the operator's
+	// runs, and losing the whole listing over one bad entry is a worse answer
+	// than a listing that says which entry it missed. So the error travels
+	// back with the batch instead of replacing it.
 	top, err := journalsInDir(root)
 	if err != nil {
-		return nil, err
+		unread = append(unread, err)
 	}
 	out = top
 	for _, e := range entries {
@@ -759,7 +778,7 @@ func allJournals() ([]namedJournal, error) {
 		}
 		batch, err := journalsInDir(filepath.Join(root, e.Name()))
 		if err != nil {
-			return nil, err
+			unread = append(unread, err)
 		}
 		out = append(out, batch...)
 	}
@@ -778,6 +797,9 @@ func allJournals() ([]namedJournal, error) {
 			continue
 		}
 		deduped = append(deduped, j)
+	}
+	if len(unread) > 0 {
+		return deduped, errors.Join(unread...)
 	}
 	return deduped, nil
 }
@@ -805,6 +827,7 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 		return nil, err
 	}
 	var batch []namedJournal
+	var statErrs []error
 	for _, f := range files {
 		if !strings.HasSuffix(f.Name(), ".jsonl") {
 			continue
@@ -820,7 +843,19 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 		// FUSE mounts) hands back ModeIrregular, which reads as "not a
 		// directory", and the listing would then hand every reader a path it
 		// cannot open as a file.
-		if fi, err := f.Info(); err != nil || fi.IsDir() {
+		//
+		// A stat that fails is not that: the entry may well be the journal,
+		// and dropping it here would leave the run absent from every
+		// listing, from the keep window a prune computes, and from the
+		// anchor the index recovery compares against, with nothing saying
+		// why. It is collected and returned beside the batch, so the
+		// entries that could be read are still read.
+		fi, err := f.Info()
+		if err != nil {
+			statErrs = append(statErrs, fmt.Errorf("%s: %w", filepath.Join(dir, f.Name()), err))
+			continue
+		}
+		if fi.IsDir() {
 			continue
 		}
 		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
@@ -828,6 +863,9 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 	slices.SortFunc(batch, func(a, b namedJournal) int {
 		return runIDOrder(b.id, a.id)
 	})
+	if len(statErrs) > 0 {
+		return batch, errors.Join(statErrs...)
+	}
 	return batch, nil
 }
 
@@ -848,10 +886,12 @@ func listJournals() ([]namedJournal, error) {
 // every journal, which is the walk the index rebuild uses.
 func listJournalsN(n int) ([]namedJournal, error) {
 	all, err := allJournals()
-	if err != nil || n <= 0 || len(all) <= n {
+	if n <= 0 || len(all) <= n {
 		return all, err
 	}
-	return all[:n], nil
+	// Truncating the list does not make the entries the walk could not read
+	// readable, so the report of them rides along with the shorter list.
+	return all[:n], err
 }
 
 // rebuildIndex rewrites index.jsonl from every run journal, oldest first, so

@@ -128,13 +128,18 @@ func pruneLocked(keep int) (int, error) {
 		}
 	}
 
-	var firstErr error
+	// Every failure the move phase met is kept, not just the first: a prune
+	// that moved nine of ten runs and named one failure leaves the operator
+	// guessing about the other nine, and the count below is the one place
+	// that says what actually happened.
+	var errs []error
 	note := func(err error) {
-		if err != nil && firstErr == nil {
-			firstErr = err
+		if err != nil {
+			errs = append(errs, err)
 		}
 	}
 	touched := make(map[string]struct{}, 4)
+	moved := 0
 	for _, j := range movable {
 		// The journal is renamed into pruned/ rather than unlinked, so a
 		// keep the user got wrong is a move and not a loss. A journal that
@@ -147,6 +152,7 @@ func pruneLocked(keep int) (int, error) {
 			}
 			continue
 		}
+		moved++
 		touched[filepath.Dir(j.path)] = struct{}{}
 	}
 	// Moving the journals is what empties a shard, and os.Remove on a
@@ -162,14 +168,16 @@ func pruneLocked(keep int) (int, error) {
 	if err := trimQuarantine(keep); err != nil {
 		note(err)
 	}
-	if firstErr != nil {
-		return 0, firstErr
+	if len(errs) > 0 {
+		// The runs that did move are gone from runs/ whatever else failed,
+		// so the count is what moved and the error is what did not.
+		return moved, errors.Join(errs...)
 	}
 	// Every movable run is out of runs/ on the way out of here: a journal that
 	// was already gone is the outcome the rename wanted, and one whose rename
 	// failed is an error the caller already gets. A run left behind for still
 	// being written is not a removal and is not counted as one.
-	return len(movable), nil
+	return moved, nil
 }
 
 // readAllIndex parses the whole index, oldest first, skipping the lines it
