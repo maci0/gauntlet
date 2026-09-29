@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/maci0/gauntlet/internal/sbom"
 )
@@ -66,17 +67,15 @@ func run(args []string) error {
 	// The license of each module is read out of the module cache the build
 	// that produced these binaries just filled, so the inventory records the
 	// grant that shipped rather than one a consumer would have to rebuild to
-	// find. A module whose grant is missing or unrecognized is named here
-	// instead of being dropped from the document: an inventory that says
-	// nothing about a module's terms is what this closes.
+	// find. A module whose grant is missing or unrecognized stops the run
+	// here: an inventory that says nothing about a module's terms is what
+	// this closes, and a document carrying one anyway closed nothing.
 	licensed, err := sbom.ResolveLicenses(mods)
 	if err != nil {
 		return err
 	}
-	for _, m := range licensed {
-		if m.License == "" {
-			fmt.Fprintf(os.Stderr, "sbom: no license resolved for %s %s\n", m.Path, m.Version)
-		}
+	if err := checkLicenses(licensed); err != nil {
+		return err
 	}
 	doc := sbom.New(name, modulePath, *version, licensed)
 	var buf bytes.Buffer
@@ -88,4 +87,24 @@ func run(args []string) error {
 	}
 	fmt.Fprintf(os.Stderr, "sbom: %s lists %d modules\n", *out, len(doc.Components))
 	return nil
+}
+
+// checkLicenses fails when a module in the inventory carries no resolved
+// license, naming every one of them. The document is written only after this
+// passes, so a release never ships a CycloneDX file that is silent about the
+// terms of something it links: `make artifacts` runs this command, and the
+// tagged release that calls it, so an unresolvable grant fails the run rather
+// than riding along in a document a consumer reads as complete.
+func checkLicenses(mods []sbom.Module) error {
+	var unresolved []string
+	for _, m := range mods {
+		if m.License == "" {
+			unresolved = append(unresolved, m.Path+" "+m.Version)
+		}
+	}
+	if len(unresolved) == 0 {
+		return nil
+	}
+	return fmt.Errorf("no license resolved for %d of %d modules: %s",
+		len(unresolved), len(mods), strings.Join(unresolved, ", "))
 }

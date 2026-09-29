@@ -177,8 +177,10 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   the artifact describing the dependency surface adds nothing to it. The
   serial number is derived from the contents rather than drawn at random, so
   a rebuild produces the same document. A module whose license is not
-  resolved carries no `licenses` field, and `cmd/sbom` names it on stderr
-  rather than guessing one.
+  resolved is named rather than guessed at, and `cmd/sbom` fails the run
+  before writing the document: `make artifacts` and the release that calls
+  it stop, so no release ships an inventory that says nothing about the
+  terms of a module it links.
 - Every release also publishes a build-provenance attestation per binary
   (`actions/attest-build-provenance`, pinned by commit SHA, over the entries
   in `checksums.txt`), so a consumer can check with `gh attestation verify`
@@ -196,9 +198,12 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   step are not dependabot's to track, and each is pinned in the Makefile and
   in the workflow that runs it, with a test holding the two equal.
 - Licenses of every linked module are MIT or BSD-3-Clause, compatible with
-  this repo's AGPL-3.0-or-later. `TestLinkedModuleLicenses` reads the
-  LICENSE file of every module a shipped build links, transitive ones
-  included, so a version bump that changes a license fails the suite.
+  this repo's AGPL-3.0-or-later. `TestLinkedModuleLicenses` reads the grant
+  of every module a shipped build links, transitive ones included, so a
+  version bump that changes a license fails the suite. It reads it from
+  `sbom.LicenseFileNames()`, the same names the inventory reads, so a grant
+  filed under a name this gate did not know passed here and stopped the
+  release instead.
 - The sqlite driver tracks upstream SQLite closely; when auditing, read the
   `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
   self-constructed queries against agent-owned database files, never SQL

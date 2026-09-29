@@ -23,6 +23,15 @@ import (
 // they are read. A module that carries none of them has no grant to record.
 var licenseFileNames = []string{"LICENSE", "LICENSE.txt", "LICENSE.md", "LICENCE", "COPYING"}
 
+// LicenseFileNames returns the names a grant is read from, in order. The
+// license gate on the pull request reads the same list rather than a list of
+// its own: it runs long before the release does, and a module whose grant is
+// filed under a name only the release knew about passed that gate and then
+// stopped the tag with an inventory that could not name its license.
+func LicenseFileNames() []string {
+	return slices.Clone(licenseFileNames)
+}
+
 // goListTimeout bounds the `go list` that locates the module directories.
 // It answers from the module cache the release build just filled; the bound
 // is there so a wedged toolchain fails the inventory instead of hanging the

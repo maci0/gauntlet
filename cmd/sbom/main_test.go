@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/sbom"
 )
 
 // buildTimeout bounds the one build this test needs.
@@ -106,6 +108,33 @@ func TestRunRejectsIncompleteInvocation(t *testing.T) {
 		if err := run(args); err == nil {
 			t.Errorf("run(%q) succeeded; a missing flag or a missing binary must fail", args)
 		}
+	}
+}
+
+// A module whose grant could not be read is the one case where the document
+// would ship incomplete: every other component is filled from the binary's own
+// build info, and this one is a lookup that can come back empty. The run
+// stopped, so the release that calls it stops too.
+func TestCheckLicensesRefusesAnUnresolvedGrant(t *testing.T) {
+	mods := []sbom.Module{
+		{Path: "example.com/resolved", Version: "v1.0.0", License: "MIT"},
+		{Path: "example.com/silent", Version: "v2.0.0"},
+		{Path: "example.com/also-silent", Version: "v0.1.0"},
+	}
+	err := checkLicenses(mods)
+	if err == nil {
+		t.Fatal("checkLicenses accepted a module with no resolved license; the release would ship an inventory silent about its terms")
+	}
+	for _, want := range []string{"example.com/silent v2.0.0", "example.com/also-silent v0.1.0", "2 of 3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "example.com/resolved") {
+		t.Errorf("error %q names a module whose license was resolved", err)
+	}
+	if err := checkLicenses(mods[:1]); err != nil {
+		t.Errorf("checkLicenses on a fully resolved inventory returned %v", err)
 	}
 }
 

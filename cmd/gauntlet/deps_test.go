@@ -17,6 +17,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/sbom"
 )
 
 // goCmdTimeout bounds every `go` subprocess the dependency tests run. Two of
@@ -825,13 +827,13 @@ func listModuleDirs(t *testing.T, root string, paths []string) map[string]string
 
 func readLicense(t *testing.T, dir, module string) string {
 	t.Helper()
-	for _, name := range []string{"LICENSE", "LICENSE.txt", "LICENSE.md"} {
+	for _, name := range sbom.LicenseFileNames() {
 		b, err := os.ReadFile(filepath.Join(dir, name))
 		if err == nil {
 			return string(b)
 		}
 	}
-	t.Fatalf("%s has no LICENSE in %s", module, dir)
+	t.Fatalf("%s ships no grant in %s under any of %v", module, dir, sbom.LicenseFileNames())
 	return ""
 }
 
