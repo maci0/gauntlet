@@ -98,6 +98,9 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	if !r.HasBaseline() {
 		return Stats{}, false
 	}
+	// Read the sha before taking r.mu: a baseline is retired exactly once,
+	// so the value read here is the one the diff below is taken against.
+	base := r.baselineSHA()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// The >= 0 half matters: a clock stepped backwards leaves lastAt in the
@@ -117,7 +120,7 @@ func (r *Repo) Sample(ctx context.Context, ownArtifacts map[string]bool) (Stats,
 	var diffErr, lsErr error
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		diff, diffErr = r.run(ctx, gitQuick, "diff", "--shortstat", r.baseline, "--")
+		diff, diffErr = r.run(ctx, gitQuick, "diff", "--shortstat", base, "--")
 	})
 	wg.Go(func() {
 		untracked, lsErr = r.run(ctx, gitQuick, "ls-files", "--others", "--exclude-standard", "-z")

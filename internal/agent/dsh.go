@@ -27,8 +27,21 @@ import (
 // the provider probed once from --dump-config.
 var (
 	dshPatchMu sync.Mutex
-	dshPatches = map[string]string{}
+	dshPatches = map[string]dshPatch{}
 )
+
+// dshPatch is one memoized overlay: where it lives and the body it holds.
+//
+// The body is memoized alongside the path because the overlay is a
+// materialized result keyed by name, and the name carries only the provider
+// and the model. The directory is shared by every run and every version, so a
+// file already sitting under a key is not this build's file: another version
+// of the program may have written a body formatted differently, or pinned a
+// different field, and dsh would be handed whatever that one left behind.
+type dshPatch struct {
+	path string
+	body string
+}
 
 // dshPatchMapMax bounds the memo. Entries cost nothing to rebuild (a stat and
 // at worst a rewrite of an identical file), and the key space is every
@@ -100,11 +113,22 @@ var dshProbes = struct {
 }{byBase: map[string]dshProviderProbe{}}
 
 // dshProviderProbe is one memoized probe: a result and its error, taken once
-// for one launcher argv.
+// for one launcher argv, and the moment it was taken.
 type dshProviderProbe struct {
 	provider string
 	err      error
+	at       time.Time
 }
+
+// dshProbeRetry is how long a failed probe keeps its error. A success is kept
+// for the life of the process, because the provider in the headless profile is
+// a property of the install. A failure is not: the launcher being absent, the
+// bunx fallback's fetch failing, and a config dump that came back empty are
+// three statements about one moment, and a run long enough to outlive all
+// three would otherwise never resolve a bare dsh:model again. The error is
+// still kept, so the caller can say why, and re-probing costs one subprocess
+// per launcher per window, on a path that runs once per dsh launch.
+const dshProbeRetry = 30 * time.Second
 
 // dumpDshConfig runs the launcher's config dump and returns the provider the
 // headless profile's agent-default-model entry names. A var because the call
@@ -139,9 +163,11 @@ var dumpDshConfig = func(base []string) (string, error) {
 
 // dshDefaultProvider probes the headless profile's configured provider once
 // per launcher argv. A failed probe keeps its error, not just an empty result,
-// so the caller can say why a bare dsh:model could not be resolved. The failure
-// is kept per launcher too: one launcher missing from PATH says nothing about
-// the bunx fallback that stands in for it.
+// so the caller can say why a bare dsh:model could not be resolved, and keeps
+// it per launcher too: one launcher missing from PATH says nothing about the
+// bunx fallback that stands in for it. Only a success is kept for good; a
+// failure is re-probed after dshProbeRetry, because a probe that failed is
+// evidence about a moment and not about the install.
 //
 // The probe runs in its own process group and the deadline kill takes down the
 // whole group: Output reads through a pipe, and a grandchild that outlived the
@@ -152,10 +178,12 @@ func dshDefaultProvider(base []string) (string, error) {
 	dshProbes.Lock()
 	defer dshProbes.Unlock()
 	p, ok := dshProbes.byBase[key]
-	if !ok {
-		p.provider, p.err = dumpDshConfig(base)
-		dshProbes.byBase[key] = p
+	if ok && (p.err == nil || time.Since(p.at) < dshProbeRetry) {
+		return p.provider, p.err
 	}
+	p = dshProviderProbe{at: time.Now()}
+	p.provider, p.err = dumpDshConfig(base)
+	dshProbes.byBase[key] = p
 	return p.provider, p.err
 }
 
@@ -185,6 +213,24 @@ func dshKeyPart(s string) string {
 	return b.String()
 }
 
+// dshPatchHolds reports whether path already holds exactly body.
+//
+// Existence is not the question, contents are: the key names a provider and a
+// model and nothing about the version or the shape of the overlay under it,
+// and the directory outlives any one build. A file that is the wrong length, or
+// is not a regular file at all, fails on the stat and is never read, so a
+// planted symlink or FIFO in the cache directory is rewritten over rather than
+// read through. The size check also bounds the read: body is the overlay this
+// package formats, under a hundred bytes.
+func dshPatchHolds(path, body string) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() != int64(len(body)) {
+		return false
+	}
+	got, err := os.ReadFile(path)
+	return err == nil && string(got) == body
+}
+
 // dshModelPatch writes (once per provider/model pair) the YAML overlay that
 // pins dsh's model, and returns its path. It lives in the user cache dir, not
 // a temp filesystem: it is small, reusable across runs, and never secret.
@@ -198,8 +244,9 @@ func dshModelPatch(provider, model string) (string, error) {
 }
 
 // writeDshPatch stores one overlay under the user cache dir and returns its
-// path. A process writes each key once unless the file has since vanished,
-// in which case it is rewritten so dsh is never pointed at a missing path.
+// path. A process writes each key once unless the file has since vanished or
+// no longer holds the body this build wants, either of which rewrites it, so
+// dsh is never pointed at a missing path or at another version's overlay.
 //
 // The file is renamed over any existing copy rather than truncated in place:
 // the cache is shared across gauntlet processes, and another run's dsh child
@@ -213,11 +260,8 @@ func writeDshPatch(key, body string) (string, error) {
 	}
 	dshPatchMu.Lock()
 	defer dshPatchMu.Unlock()
-	if p, ok := dshPatches[key]; ok {
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-		delete(dshPatches, key)
+	if p, ok := dshPatches[key]; ok && p.body == body && dshPatchHolds(p.path, body) {
+		return p.path, nil
 	}
 	dir, err := os.UserCacheDir()
 	if err != nil {
@@ -232,12 +276,14 @@ func writeDshPatch(key, body string) (string, error) {
 	// forever. It runs per write, and a write is one per pair per process.
 	gauntlethome.SweepStaleTemps(dir, "", dshPatchAge, nil)
 	path := filepath.Join(dir, key+".yml")
-	if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-", path, []byte(body)); err != nil {
-		return "", err
+	if !dshPatchHolds(path, body) {
+		if err := gauntlethome.WriteFileAtomic(dir, "."+key+".yml-", path, []byte(body)); err != nil {
+			return "", err
+		}
 	}
 	if len(dshPatches) >= dshPatchMapMax {
 		clear(dshPatches)
 	}
-	dshPatches[key] = path
+	dshPatches[key] = dshPatch{path: path, body: body}
 	return path, nil
 }

@@ -75,9 +75,16 @@ type Repo struct {
 	// branch or a checkout in the reviewed repo.
 	wtMu sync.Mutex
 
-	mu       sync.Mutex
+	// baseMu guards the baseline and the flag that retires the probe. The
+	// flag is set only by a probe that read a commit, so a probe that failed
+	// (git not on PATH yet, a rev-parse that did not answer) is retried by
+	// the next caller instead of pinning the handle to "no measurement" for
+	// the life of the run.
+	baseMu   sync.Mutex
+	baseSet  bool
 	baseline string
-	baseOnce sync.Once
+
+	mu       sync.Mutex
 	lastAt   time.Time
 	lastVal  Stats
 	haveLast bool
@@ -193,21 +200,48 @@ func (r *Repo) HasBaseline() bool {
 		return false
 	}
 	r.ensureBaseline()
+	r.baseMu.Lock()
+	defer r.baseMu.Unlock()
 	return r.baseline != ""
 }
 
-// ensureBaseline records HEAD once. Sample is the only caller that needs it;
-// ListFiles, Status, and CheckIgnore share the handle and must not each
-// spawn a git process for a commit they never compare against.
+// ensureBaseline records HEAD once, and only once it has been read. Sample is
+// the only caller that needs it; ListFiles, Status, and CheckIgnore share the
+// handle and must not each spawn a git process for a commit they never
+// compare against.
+//
+// The memo is keyed on having read a commit, not on having asked. A probe
+// that failed describes a moment: git missing from PATH, a worktree whose
+// HEAD is not written yet, a rev-parse that lost a race with a checkout.
+// Retiring the handle on that answer would report "not measurable" for the
+// rest of the run, and the dashboard shows n/a for a number the tree has had
+// all along, so a failure is retried and only a sha retires the probe.
 func (r *Repo) ensureBaseline() {
-	r.baseOnce.Do(func() {
-		if !Available() {
-			return
-		}
-		if out, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD"); err == nil {
-			r.baseline = strings.TrimSpace(string(out))
-		}
-	})
+	r.baseMu.Lock()
+	defer r.baseMu.Unlock()
+	if r.baseSet {
+		return
+	}
+	if !Available() {
+		return
+	}
+	out, err := r.run(context.Background(), gitQuick, "rev-parse", "HEAD")
+	if err != nil {
+		return
+	}
+	sha := strings.TrimSpace(string(out))
+	if sha == "" {
+		return
+	}
+	r.baseline, r.baseSet = sha, true
+}
+
+// baselineSHA returns the commit line stats are measured against, "" when the
+// probe has not read one.
+func (r *Repo) baselineSHA() string {
+	r.baseMu.Lock()
+	defer r.baseMu.Unlock()
+	return r.baseline
 }
 
 func (r *Repo) subRepo(dir string) *Repo {

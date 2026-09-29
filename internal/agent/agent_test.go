@@ -2345,6 +2345,44 @@ func probeDshConfig(t *testing.T, dump func(base []string) (string, error)) {
 	})
 }
 
+// A probe that failed is evidence about a moment: the bunx fallback's fetch
+// failing once must not leave the launcher unresolvable for the rest of the
+// run. The error is still kept within the window, so a run does not pay a
+// subprocess per launch.
+func TestDshProbeRetriesAfterAFailure(t *testing.T) {
+	probed := 0
+	probeDshConfig(t, func(base []string) (string, error) {
+		probed++
+		if probed == 1 {
+			return "", errors.New("no agent-default-model provider")
+		}
+		return "prov-a", nil
+	})
+
+	if _, err := dshDefaultProvider([]string{"dsh"}); err == nil {
+		t.Fatal("the first probe failed, so it must report the failure")
+	}
+	if p, err := dshDefaultProvider([]string{"dsh"}); err == nil || p != "" {
+		t.Fatalf("inside %s the failure is still the answer: %q, %v", dshProbeRetry, p, err)
+	}
+	if probed != 1 {
+		t.Fatalf("a kept failure was re-probed %d times inside the window, want 1", probed)
+	}
+
+	// Past the window the memo is a statement about a moment, so it is
+	// re-probed and the launcher resolves.
+	dshProbes.Lock()
+	dshProbes.byBase[strings.Join([]string{"dsh"}, "\x00")] = dshProviderProbe{
+		err: errors.New("no agent-default-model provider"),
+		at:  time.Now().Add(-2 * dshProbeRetry),
+	}
+	dshProbes.Unlock()
+	p, err := dshDefaultProvider([]string{"dsh"})
+	if err != nil || p != "prov-a" {
+		t.Fatalf("a stale failure was served instead of re-probed: %q, %v", p, err)
+	}
+}
+
 func TestWriteDshPatchReplacesWholeFile(t *testing.T) {
 	cache := isolateDshPatches(t)
 
@@ -2526,6 +2564,62 @@ func TestWriteDshPatchRewritesAMissingFile(t *testing.T) {
 	}
 	if body, err := os.ReadFile(path); err != nil || string(body) != "body-two\n" {
 		t.Fatalf("missing file was not rewritten: %q, %v", body, err)
+	}
+}
+
+// The overlay directory is shared by every version of the program and the key
+// names only the provider and the model, so a file already under a key is not
+// this build's file. An overlay another version left behind has to be
+// rewritten, not handed to dsh.
+func TestWriteDshPatchRewritesAForeignBody(t *testing.T) {
+	isolateDshPatches(t)
+
+	path, err := writeDshPatch("prov@model", "body-this-build\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What a build that formatted the overlay differently left in the shared
+	// directory, written after this process started and outside its memo.
+	// Same length on purpose: a length check is not the question either.
+	if err := os.WriteFile(path, []byte("body-other-vers\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writeDshPatch("prov@model", "body-this-build\n"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil || string(got) != "body-this-build\n" {
+		t.Fatalf("a foreign overlay was served instead of rewritten: %q, %v", got, err)
+	}
+}
+
+// The same body must not be rewritten: the sweep and the rename cost a
+// directory walk and a file creation, and a cache that never hits is not one.
+func TestWriteDshPatchKeepsAnIdenticalBody(t *testing.T) {
+	isolateDshPatches(t)
+
+	path, err := writeDshPatch("prov@model", "body\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dshPatchMu.Lock()
+	delete(dshPatches, "prov@model")
+	dshPatchMu.Unlock()
+	if _, err := writeDshPatch("prov@model", "body\n"); err != nil {
+		t.Fatal(err)
+	}
+	second, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A rewrite renames a new file over the old, so the inode is what tells
+	// the two apart; a timestamp is too coarse to promise it.
+	if !os.SameFile(first, second) {
+		t.Fatal("an overlay that already held this build's body was rewritten")
 	}
 }
 

@@ -358,6 +358,34 @@ func TestSampleNeedsABaseline(t *testing.T) {
 	}
 }
 
+// A failed baseline probe is a fact about a moment, not about the tree: git
+// missing from PATH when the handle is first asked must not pin the handle to
+// "not measurable" for the rest of the run.
+func TestBaselineProbeRetriesAfterFailure(t *testing.T) {
+	if !Available() {
+		t.Skip("git is required for gitx tests")
+	}
+	r := newRepo(t)
+
+	// Same repository, a handle whose first probe cannot run: the memo has
+	// to survive the failure without having spent its one attempt. A PATH
+	// holding one empty directory resolves no git; the empty PATH does not,
+	// because AbsPATH substitutes a default for it.
+	later := Open(r.Dir)
+	realPath := os.Getenv("PATH")
+	t.Setenv("PATH", t.TempDir())
+	if later.HasBaseline() {
+		t.Fatal("a PATH with no git in it cannot produce a baseline")
+	}
+	t.Setenv("PATH", realPath)
+	if !later.HasBaseline() {
+		t.Fatal("a handle whose first probe failed must retry, not report no baseline forever")
+	}
+	if later.baselineSHA() != r.baselineSHA() {
+		t.Fatalf("retried baseline %q, want the committed %q", later.baselineSHA(), r.baselineSHA())
+	}
+}
+
 // Sampling repeats every interval for the life of a loop, so an unchanged
 // file must answer from the cache (same count) and an edited one must not
 // (size and mtime no longer match, so the entry is recomputed).
