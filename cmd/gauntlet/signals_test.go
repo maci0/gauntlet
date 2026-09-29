@@ -21,12 +21,19 @@ import (
 // armed for the next one.
 func driveInterrupts(t *testing.T) (chan<- os.Signal, context.Context, *gracefulStop, <-chan int) {
 	t.Helper()
+	return driveInterruptsKilling(t, func() {})
+}
+
+// driveInterruptsKilling is driveInterrupts with the force-kill's agent-group
+// kill observable, so a test can assert it ran before the process left.
+func driveInterruptsKilling(t *testing.T, kill func()) (chan<- os.Signal, context.Context, *gracefulStop, <-chan int) {
+	t.Helper()
 	ctx, stop := context.WithCancel(context.Background())
 	t.Cleanup(stop)
 	graceful := &gracefulStop{}
 	ch := make(chan os.Signal, 3)
 	exited := make(chan int, 1)
-	go watchInterrupts(ctx, ch, stop, io.Discard, graceful, func(code int) { exited <- code })
+	go watchInterrupts(ctx, ch, stop, io.Discard, graceful, kill, func(code int) { exited <- code })
 	return ch, ctx, graceful, exited
 }
 
@@ -68,6 +75,30 @@ func TestInterruptIsStagedGracefulThenStopThenKill(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the third Ctrl-C never force-killed")
+	}
+}
+
+// The force-kill leaves through os.Exit, which runs no deferred function, so
+// the group kill every agent launch defers on its own return never fires on
+// that path. The handler kills the live agent groups itself, and does it
+// before it exits rather than after.
+func TestForceKillStopsTheAgentsItLeavesBehind(t *testing.T) {
+	var killed bool
+	ch, _, graceful, exited := driveInterruptsKilling(t, func() { killed = true })
+
+	graceful.request(io.Discard)
+	ch <- os.Interrupt
+	ch <- os.Interrupt
+	select {
+	case code := <-exited:
+		if code != 128+int(syscall.SIGINT) {
+			t.Fatalf("force-kill exited %d, want %d", code, 128+int(syscall.SIGINT))
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the second Ctrl-C after a finish request never force-killed")
+	}
+	if !killed {
+		t.Fatal("the force-kill left without stopping the agents it launched")
 	}
 }
 

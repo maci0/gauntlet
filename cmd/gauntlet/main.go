@@ -733,8 +733,9 @@ func openLogFile(path string) (*os.File, error) {
 	}
 	if info, err := f.Stat(); err == nil && info.Mode().IsRegular() {
 		if err := f.Chmod(0o600); err != nil {
-			f.Close()
-			return nil, fmt.Errorf("cannot secure log file %s: %w", path, err)
+			return nil, errors.Join(
+				fmt.Errorf("cannot secure log file %s: %w", path, err),
+				f.Close())
 		}
 	}
 	return f, nil

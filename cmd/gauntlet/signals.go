@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // watchSignals maps process signals onto the two kinds of stop.
@@ -48,7 +50,7 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 	signal.Notify(ch, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		defer signal.Stop(ch)
-		watchInterrupts(ctx, ch, stop, out, graceful, os.Exit)
+		watchInterrupts(ctx, ch, stop, out, graceful, runner.KillAgents, os.Exit)
 	}()
 }
 
@@ -57,8 +59,13 @@ func watchSignals(ctx context.Context, stop context.CancelFunc, out io.Writer, g
 // delivery out to all registered channels, so a test that signals the process
 // would leave handlers behind for the next one. watchSignals itself unregisters
 // on ctx.Done.
+//
+// kill runs before exit because os.Exit runs no deferred function: the group
+// kill every agent launch defers on its own return is the one release the
+// force-kill would otherwise skip, and an agent left with no parent still holds
+// the worktree it was reviewing.
 func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.CancelFunc,
-	out io.Writer, graceful *gracefulStop, exit func(int)) {
+	out io.Writer, graceful *gracefulStop, kill func(), exit func(int)) {
 	for {
 		var sig os.Signal
 		var ok bool
@@ -83,6 +90,7 @@ func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.Canc
 			return
 		}
 		fmt.Fprintln(out, "\nForce-killing.")
+		kill()
 		exit(128 + int(syscall.SIGINT))
 		return
 	}

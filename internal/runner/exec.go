@@ -50,6 +50,46 @@ var maxLineBytes = 4 << 20
 // can carry rather than how wide it renders.
 const streamLineCols = 2000
 
+// live is every agent process group this process has started and has not yet
+// released. It exists for one exit path: a force-kill leaves the process
+// through os.Exit, which runs no deferred function, so the group kill runProc
+// defers on every other exit never fires and the agent subtree is reparented to
+// init and keeps running with the reviewed worktree still open. The registry is
+// what KillAgents can reach when there is no longer a deferred call to run.
+var live = struct {
+	sync.Mutex
+	groups map[*exec.Cmd]struct{}
+}{groups: map[*exec.Cmd]struct{}{}}
+
+// trackAgent registers a started agent's process group and returns the release
+// that drops it. It is deferred by the caller, so the registry holds a child
+// only while that child is one runProc has not returned from.
+func trackAgent(cmd *exec.Cmd) func() {
+	live.Lock()
+	live.groups[cmd] = struct{}{}
+	live.Unlock()
+	return func() {
+		live.Lock()
+		delete(live.groups, cmd)
+		live.Unlock()
+	}
+}
+
+// KillAgents SIGKILLs every agent process group still running in this process.
+// It is what an abrupt exit calls before leaving, so no agent outlives the run
+// that launched it.
+func KillAgents() {
+	live.Lock()
+	groups := make([]*exec.Cmd, 0, len(live.groups))
+	for cmd := range live.groups {
+		groups = append(groups, cmd)
+	}
+	live.Unlock()
+	for _, cmd := range groups {
+		runx.KillGroup(cmd, syscall.SIGKILL)
+	}
+}
+
 // procResult is the outcome of one agent process.
 type procResult struct {
 	// ExitCode is the agent's own status: 0 on success, its exit code on a
@@ -163,6 +203,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	// this catches the happy path where the agent exited on its own but a
 	// grandchild is still running. Matches probeUsage's defer runx.KillGroup.
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
+	// Registered so KillAgents can reach this child from the one exit that runs
+	// no defer at all: the force-kill, which leaves through os.Exit.
+	defer trackAgent(cmd)()
 	defer func() {
 		outR.Close()
 		errR.Close()

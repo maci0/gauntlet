@@ -51,6 +51,62 @@ func TestZeroTimeoutMeansUnlimited(t *testing.T) {
 	}
 }
 
+// A force-kill leaves the process through os.Exit, which runs no deferred
+// function, so the group kill runProc defers on every other exit does not fire
+// there. The live registry is what KillAgents reads instead, and it must hold a
+// running agent and nothing else.
+func TestKillAgentsStopsARunningAgentAndForgetsAFinishedOne(t *testing.T) {
+	live.Lock()
+	before := len(live.groups)
+	live.Unlock()
+	if before != 0 {
+		t.Fatalf("%d agents registered before the test started", before)
+	}
+
+	bin := fakeAgent(t, t.TempDir(), "agent", "sleep 30")
+	res := make(chan procResult, 1)
+	go func() { res <- runProc(context.Background(), procOpts{Argv: []string{bin}}) }()
+	waitForTracked(t)
+	if got := trackedAgents(); got != 1 {
+		t.Fatalf("%d live agents during a launch, want 1", got)
+	}
+
+	// The exit path that skips every defer: no deferred group kill, no deferred
+	// release, and no chance to wait.
+	KillAgents()
+	select {
+	case r := <-res:
+		if r.ExitCode == 0 {
+			t.Fatal("the killed agent reported success")
+		}
+	case <-time.After(20 * time.Second):
+		t.Fatal("KillAgents left the agent running")
+	}
+	// A launch that came back must not stay registered: the pid it names can
+	// belong to an unrelated process by the time this process force-kills.
+	if got := trackedAgents(); got != 0 {
+		t.Fatalf("%d agents still registered after their launch returned", got)
+	}
+}
+
+func trackedAgents() int {
+	live.Lock()
+	defer live.Unlock()
+	return len(live.groups)
+}
+
+// waitForTracked waits until a launch has registered its process group.
+func waitForTracked(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for trackedAgents() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the launch never registered its process group")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 func TestTerminateKillsChildrenAfterLeaderExits(t *testing.T) {
 	leader := exec.Command("sleep", "30")
 	leader.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
