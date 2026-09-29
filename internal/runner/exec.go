@@ -239,6 +239,23 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		}
 		report(agent.ParseUsage([]byte(line)))
 	}
+	// reported is what the agent's machine-readable output stated, held apart
+	// from the prose scrapings that share live. A counter in the envelope is
+	// the provider's own figure; a number matched out of a line of text is a
+	// guess at something the agent wrote, and in stream mode what the tail
+	// holds is the model's own prose. live drives the live rate the dashboard
+	// shows, which is a display and reads best as the larger of the two; this
+	// is the reading the result is billed from, and a guess does not get to
+	// outbid a figure.
+	var reported = agent.Usage{Output: -1, Thinking: -1, Total: -1}
+	reportEnvelope := func(u agent.Usage) {
+		if u.Known() {
+			usageMu.Lock()
+			reported = maxUsage(reported, u)
+			usageMu.Unlock()
+		}
+		report(u)
+	}
 
 	var sinkMu sync.Mutex
 	pump := func(name string, r io.Reader) {
@@ -289,7 +306,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 					if ev.Text != "" {
 						keep(ev.Text)
 					}
-					report(agent.Usage{
+					reportEnvelope(agent.Usage{
 						Output:   pick(ev.Usage.Output),
 						Thinking: pick(ev.Usage.Thinking),
 						Total:    pick(ev.Usage.Total),
@@ -384,13 +401,18 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	res.Subject = agent.ParseSubject(final)
 	res.FileNotes = agent.ParseFileNotes(final)
 	res.Note = lastNote(final)
-	finalUsage := agent.ParseUsage(final)
+	tailUsage := agent.ParseUsage(final)
 	tailMu.Unlock()
 	usageMu.Lock()
-	res.Usage = agent.Usage{
-		Output:   max(finalUsage.Output, live.Output),
-		Thinking: max(finalUsage.Thinking, live.Thinking),
-		Total:    max(finalUsage.Total, live.Total),
+	// An agent that reported its counters reports them here, and the two text
+	// scrapings are only what an agent without that mode leaves behind. A run
+	// bills what it recorded against --token-budget and reports it as what the
+	// model spent, so a number the model printed as an example, or quoted from
+	// a fixture it was reading, cannot be the larger of the two.
+	if reported.Known() {
+		res.Usage = reported
+	} else {
+		res.Usage = maxUsage(live, tailUsage)
 	}
 	usageMu.Unlock()
 	streamMu.Lock()
@@ -405,6 +427,17 @@ func pick(n int) int {
 		return -1
 	}
 	return n
+}
+
+// maxUsage is the field-wise larger of two readings, where -1 is "not
+// reported": it loses to any number and survives only when both sides are
+// silent, so an unreported counter stays unreported.
+func maxUsage(a, b agent.Usage) agent.Usage {
+	return agent.Usage{
+		Output:   max(a.Output, b.Output),
+		Thinking: max(a.Thinking, b.Thinking),
+		Total:    max(a.Total, b.Total),
+	}
 }
 
 // scanLines splits r into lines and hands each to handle. It is bufio.Scanner

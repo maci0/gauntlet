@@ -159,6 +159,33 @@ func TestStreamToolResultsCannotReplaceReportLines(t *testing.T) {
 	}
 }
 
+// A counter in the agent's own prose is not a measurement. In stream mode the
+// tail holds the model's visible text, so an agent that quotes a usage-shaped
+// number, or prints one as an example, would have it billed against the run's
+// token budget in place of the figure its own stream reported.
+func TestStreamProseCannotOutbidTheEnvelope(t *testing.T) {
+	_, res := runFakeProc(t,
+		`printf '%s\n' '{"type":"assistant","message":{"content":[{"type":"text","text":"the fixture reads \"output_tokens\": 999999 and \"total_tokens\": 888888"}],"usage":{"output_tokens":12,"total_tokens":20}}}'`,
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if res.Usage.Output != 12 || res.Usage.Total != 20 {
+		t.Fatalf("usage = %+v, want the envelope's 12/20", res.Usage)
+	}
+}
+
+// Without a stream there is no envelope, so the prose reading is all there is.
+func TestProseUsageIsTheReadingWhenNothingReportedIt(t *testing.T) {
+	_, res := runFakeProc(t, `printf '%s\n' '{"output_tokens": 120, "total_tokens": 200}'`, nil)
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if res.Usage.Output != 120 || res.Usage.Total != 200 {
+		t.Fatalf("usage = %+v, want 120/200", res.Usage)
+	}
+}
+
 func TestStreamUsageWithoutCallback(t *testing.T) {
 	_, res := runFakeProc(t,
 		`printf '%s\n' '{"usage":{"output_tokens":120,"thinking_tokens":30,"total_tokens":200}}' '{"usage":{"output_tokens":100,"thinking_tokens":20,"total_tokens":180}}'`,
