@@ -2522,6 +2522,40 @@ func TestDshProbeRetriesAfterAFailure(t *testing.T) {
 	}
 }
 
+// A clock stepped backwards leaves the memoized probe in the future, and the
+// negative age that follows compares below the retry window forever. The
+// failure would then be kept for the life of the process and a bare dsh:model
+// would stay unresolvable for the rest of the run.
+func TestDshProbeRetriesAfterTheClockStepsBack(t *testing.T) {
+	probed := 0
+	probeDshConfig(t, func(base []string) (string, error) {
+		probed++
+		if probed == 1 {
+			return "", errors.New("no agent-default-model provider")
+		}
+		return "prov-a", nil
+	})
+
+	start := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+	now := start
+	clock := func() time.Time { return now }
+	if _, err := dshDefaultProvider([]string{"dsh"}, clock); err == nil {
+		t.Fatal("the first probe failed, so it must report the failure")
+	}
+
+	// An NTP correction or a manual set moves the clock back behind the reading
+	// the memo was stamped with. The age is negative, which is not "inside the
+	// window" but "the window cannot be measured", so the probe is retaken.
+	now = start.Add(-time.Hour)
+	p, err := dshDefaultProvider([]string{"dsh"}, clock)
+	if err != nil || p != "prov-a" {
+		t.Fatalf("a failure kept across a backwards step was served instead of re-probed: %q, %v", p, err)
+	}
+	if probed != 2 {
+		t.Fatalf("probed %d times, want 2", probed)
+	}
+}
+
 // The probe window and the overlay sweep both read the run's clock, so a
 // replay of the same run re-probes and sweeps at the same points no matter
 // how long the first pass waited. A nil clock is wall time, so a caller with

@@ -189,8 +189,19 @@ func dshDefaultProvider(base []string, now func() time.Time) (string, error) {
 	dshProbes.Lock()
 	defer dshProbes.Unlock()
 	p, ok := dshProbes.byBase[key]
-	if ok && (p.err == nil || now().Sub(p.at) < dshProbeRetry) {
-		return p.provider, p.err
+	if ok {
+		if p.err == nil {
+			return p.provider, p.err
+		}
+		// The >= 0 half matters. A clock stepped backwards (an NTP correction, a
+		// manual set) leaves at in the future, and the age it produces is
+		// negative, which compares below the window for as long as the process
+		// lives: a failure is then kept forever and the launcher that a later
+		// probe would have resolved stays unresolvable for the rest of the run.
+		// gitx.Repo.Sample and normalize.Normalizer.allow guard the same way.
+		if age := now().Sub(p.at); age >= 0 && age < dshProbeRetry {
+			return p.provider, p.err
+		}
 	}
 	p = dshProviderProbe{at: now()}
 	p.provider, p.err = dumpDshConfig(base)
