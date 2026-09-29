@@ -8,10 +8,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
@@ -137,7 +137,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		reviews = append(reviews, r)
 	}
 	reviews = append(reviews, agent.ReviewsWithoutTools...)
-	sort.Strings(reviews)
+	fuzzy.Sort(reviews)
 	nameCol := 0
 	for _, r := range reviews {
 		nameCol = max(nameCol, len(r))
@@ -208,7 +208,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			optHave++
 		}
 	}
-	sort.Strings(missingRec)
+	fuzzy.Sort(missingRec)
 
 	w.println()
 	w.printf("%s %s   %s %s   %s %s   %s %s\n",

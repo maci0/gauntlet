@@ -5,7 +5,6 @@ package prompt
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
@@ -83,7 +82,7 @@ func SetNames() []string {
 	for n := range DynamicSets {
 		out = append(out, n)
 	}
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }
 
@@ -162,7 +161,7 @@ func (s Set) unknownError(unknown map[string]bool, flag string) error {
 	for n := range unknown {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	fuzzy.Sort(names)
 
 	described := make([]string, 0, len(names))
 	for _, n := range names {

@@ -14,7 +14,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +98,7 @@ func dryRun(out io.Writer, pal palette, runs []*dirRun, agents []agent.Spec, opt
 				names = names[:opts.maxReviews]
 			}
 		} else {
-			sort.Strings(names)
+			fuzzy.Sort(names)
 		}
 		col := 0
 		for _, n := range names {

@@ -262,6 +262,108 @@ func TestNFC(t *testing.T) {
 	}
 }
 
+// TestSort pins the order a reader sees in every list of names the tool
+// prints. Byte order puts "Zebra" before "apple" and every non-ASCII name
+// after every ASCII one; the list is read by a person scanning for the name
+// they want, and the same names are already matched case-insensitively by the
+// picker filter and by Closest.
+func TestSort(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{
+			name: "empty",
+			in:   nil,
+			want: nil,
+		},
+		{
+			name: "one",
+			in:   []string{"only"},
+			want: []string{"only"},
+		},
+		{
+			// The built-in names are lowercase ASCII letters, digits, and
+			// dashes, and a list of those is already in this order, so
+			// nothing the tool ships moves.
+			name: "builtin name shapes hold",
+			in:   []string{"sec-review", "a11y-review", "code-review", "error-review"},
+			want: []string{"a11y-review", "code-review", "error-review", "sec-review"},
+		},
+		{
+			// Case and punctuation are ordered by collation weight, not by
+			// code point. Byte order had every capital and every underscore
+			// ahead of the lowercase letters.
+			name: "case and punctuation by weight",
+			in:   []string{"zeta", "alpha", "Beta", "a11y", "_under"},
+			want: []string{"_under", "a11y", "alpha", "Beta", "zeta"},
+		},
+		{
+			name: "case is not order",
+			in:   []string{"zebra", "Apple", "mango"},
+			want: []string{"Apple", "mango", "zebra"},
+		},
+		{
+			// U+00C4 sorts after "Z" by code point, so byte order files an
+			// accented name after every plain one.
+			name: "accented beside its letter",
+			in:   []string{"Zebra", "Ätna", "Apple"},
+			want: []string{"Apple", "Ätna", "Zebra"},
+		},
+		{
+			name: "cjk among the latin names",
+			in:   []string{"zeta", "日本語-review", "alpha"},
+			want: []string{"alpha", "zeta", "日本語-review"},
+		},
+		{
+			name: "cyrillic and greek",
+			in:   []string{"zeta", "Код", "alpha", "Ασφάλεια"},
+			want: []string{"alpha", "zeta", "Ασφάλεια", "Код"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := slices.Clone(tt.in)
+			Sort(got)
+			if !slices.Equal(got, tt.want) {
+				t.Errorf("Sort(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSortIsPermutation drives Sort over arbitrary names: it must reorder
+// nothing away, drop nothing, and panic on nothing, which is what every
+// caller of a name list depends on. The name lists come from a reviewed
+// repository and from ~/.gauntlet/agents.json, so they are arbitrary bytes
+// as far as this package is concerned.
+func TestSortIsPermutation(t *testing.T) {
+	seeds := [][]string{
+		{},
+		{"a"},
+		{"a", "a", "a"},
+		{"", "a", "", "b"},
+		{"日本語", "α", "Код", "a"},
+		{"\x00\x01", "\xff\xfe", "a"},
+		{"codex🚀", "codex", "codex👨‍👩‍👧"},
+		{strings.Repeat("a", 500), "b"},
+		{"İstanbul", "istanbul", "Istanbul"},
+	}
+	for _, seed := range seeds {
+		got := slices.Clone(seed)
+		Sort(got)
+		if len(got) != len(seed) {
+			t.Fatalf("Sort(%q) changed the length to %d", seed, len(got))
+		}
+		for _, n := range seed {
+			if !slices.Contains(got, n) {
+				t.Errorf("Sort(%q) dropped %q: %q", seed, n, got)
+			}
+		}
+	}
+}
+
 func TestIsASCII(t *testing.T) {
 	cases := []struct {
 		in   string

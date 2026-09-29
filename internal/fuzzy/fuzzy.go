@@ -9,10 +9,13 @@
 package fuzzy
 
 import (
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -22,6 +25,42 @@ func NFC(s string) string {
 		return s
 	}
 	return norm.NFC.String(s)
+}
+
+// Sort orders names the way a reader looks for them.
+//
+// sort.Strings compares code points, which puts "Zebra" before "apple" and
+// "Ätna" after "Zulu". Every list this orders is read by a person choosing
+// from it: the agent names an error offers, the review names the picker and
+// the dry run show, the set names a mistyped --reviews names back. A name
+// outside ASCII then sorts to the end of the list whatever letter it starts
+// with, and a name carrying an accent sorts nowhere near the letter a reader
+// types to find it. The same names are already matched case-insensitively and
+// accent-tolerantly by the picker filter and by Closest, so a list ordered by
+// bytes contradicts what the rest of the tool does with those names.
+//
+// A list of lowercase ASCII letters and digits, with no punctuation, is
+// already in this order, so the built-in agent and review names do not move.
+// Case and punctuation are ordered by collation weight rather than by code
+// point, which is the change: "Beta" files under B and "_under" under _,
+// where byte order had put every capital first.
+//
+// Root collation, not a language: the tool has no locale setting, and
+// English, German, and Turkish readers all want "apple" before "Äpple" and
+// "apple" before "Zebra". Root is the order all of them agree on, and it
+// keeps CJK, Cyrillic, and Arabic names ordered among themselves rather than
+// in one block after every Latin one.
+func Sort(names []string) {
+	if len(names) < 2 {
+		return
+	}
+	// A collator carries per-comparison state, so it is not safe to share
+	// across goroutines and one is built per call. Building it costs a table
+	// lookup, and the lists are tens of names built once per listing.
+	c := collate.New(language.Und)
+	sort.SliceStable(names, func(i, j int) bool {
+		return c.CompareString(names[i], names[j]) < 0
+	})
 }
 
 // Closest returns the candidate nearest want within a small edit distance,

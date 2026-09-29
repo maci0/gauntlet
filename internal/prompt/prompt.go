@@ -17,13 +17,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"syscall"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
 
@@ -272,7 +272,7 @@ func BundledNames() []string {
 	for _, e := range entries {
 		out = append(out, strings.TrimSuffix(filepath.Base(e), ".md"))
 	}
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }
 

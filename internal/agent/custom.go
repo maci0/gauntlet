@@ -13,7 +13,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"unicode"
@@ -413,7 +412,7 @@ func CustomNames() []string {
 	for n := range custom {
 		out = append(out, n)
 	}
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }
 

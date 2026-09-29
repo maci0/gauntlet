@@ -10,7 +10,6 @@ package ui
 import (
 	"fmt"
 	"os"
-	"sort"
 	"strings"
 	"time"
 
@@ -18,6 +17,7 @@ import (
 	"github.com/rivo/uniseg"
 
 	"github.com/maci0/gauntlet/internal/envx"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -103,11 +103,13 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 
 // sortedOrder is the review order alphabetically, rebuilt only when a review
 // is scheduled. The grid shows it every frame; sorting there would spend the
-// frame budget re-deriving a constant.
+// frame budget re-deriving a constant. The order is collation, not byte
+// order: a project review named in a non-Latin script belongs beside the
+// others in the grid, not in a block after every ASCII name.
 func (m *model) sortedOrder() []string {
 	if m.orderDirty {
 		m.sorted = append(m.sorted[:0], m.order...)
-		sort.Strings(m.sorted)
+		fuzzy.Sort(m.sorted)
 		m.orderDirty = false
 	}
 	return m.sorted

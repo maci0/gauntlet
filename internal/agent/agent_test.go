@@ -2783,6 +2783,39 @@ func TestAllNamesAndUnregister(t *testing.T) {
 	}
 }
 
+// TestAllNamesCollation pins the order of the agent list an unknown-tool
+// error prints. A name is a user's own: it comes from --agent-cmd or from
+// ~/.gauntlet/agents.json, so it is as likely to be "Ähre" or "日本語" as
+// "claude". Byte order put either after every ASCII name, which reads as the
+// list ending there rather than as one name among many.
+func TestAllNamesCollation(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	for _, n := range []string{"Ähre", "日本語", "Zebra"} {
+		if err := Register(n, Custom{Argv: []string{"x", "{prompt}"}}); err != nil {
+			t.Fatalf("Register(%q): %v", n, err)
+		}
+	}
+	names := AllNames()
+	pos := func(n string) int {
+		i := slices.Index(names, n)
+		if i < 0 {
+			t.Fatalf("AllNames missing %q: %v", n, names)
+		}
+		return i
+	}
+	// Ähre files under A, between "agy" and "clanker". Byte order put it
+	// after every built-in, at the very end of the list.
+	if !(pos("agy") < pos("Ähre") && pos("Ähre") < pos("clanker")) {
+		t.Errorf("AllNames = %v, want Ähre between agy and clanker", names)
+	}
+	// Root collation orders Latin before CJK, so 日本語 lands at the end.
+	// It is there, and it is last only because of the script, not because
+	// the sort is byte-wise: a second CJK name has to follow it.
+	if pos("日本語") != len(names)-1 {
+		t.Errorf("AllNames = %v, want 日本語 last under root collation", names)
+	}
+}
+
 func TestResolveMany(t *testing.T) {
 	if got := ResolveMany(nil); len(got) != 0 {
 		t.Fatalf("ResolveMany(nil) = %v, want empty map", got)

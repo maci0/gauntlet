@@ -50,7 +50,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/sbom` | the CycloneDX inventory of a release, read out of the built binaries' build info |
 | `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
 | `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
-| `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), and the typo-tolerant match behind every "did you mean" hint |
+| `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), the typo-tolerant match behind every "did you mean" hint, and the collation every printed list of names is ordered by |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, and
@@ -61,8 +61,9 @@ without any of them reaching back;
 kill and output cap; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, the `envx` boolean reader, which the motion-off variables go
-through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold behind
-the picker's filter, and nothing else. The picker takes the file-signal suggester name from `PickConfig`
+through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold and
+collation behind the picker's filter and the grid's review order, and nothing
+else. The picker takes the file-signal suggester name from `PickConfig`
 rather than importing `evidence` for it. `cmd/gauntlet` and `ui` import `envx`,
 the one reader of the boolean environment variables, so the one list of
 values that mean off, which `docs/CLI.md` states once for all five variables,
@@ -74,7 +75,11 @@ same hardened resolver and safe config as every other git invocation,
 and `humanize` so composed prompts spell timeouts the same way the rest of
 the binary does. `agent`
 and `prompt` import `fuzzy`, so a
-mistyped review or agent name gets the same suggestion everywhere; the CLI
+mistyped review or agent name gets the same suggestion everywhere, and every
+list of names those two print (the agent names an error offers, the review
+and set names the picker, the dry run, and `doctor` show) is ordered by the
+same collation rather than by code point, so a name outside ASCII sorts where
+a reader looks for it; the CLI
 uses it for unknown commands and flags too. `journal` imports `humanize`, so
 the one reader of the persisted `elapsed_s` field is the one that renders it,
 and the run listing, the headless reporter, and the dashboard cannot disagree

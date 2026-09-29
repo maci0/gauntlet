@@ -4,8 +4,9 @@
 package agent
 
 import (
-	"sort"
 	"strings"
+
+	"github.com/maci0/gauntlet/internal/fuzzy"
 )
 
 // CoreTools are the binaries every review is told to reach for: the search and
@@ -169,6 +170,6 @@ func AllProbeNames() []string {
 		names = append(names, tools...)
 	}
 	out := ToolBins(names)
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }

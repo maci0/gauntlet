@@ -12,7 +12,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -142,7 +141,7 @@ func didYouMean(tool string) string {
 func AllNames() []string {
 	out := append([]string(nil), Valid...)
 	out = append(out, CustomNames()...)
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }
 
@@ -473,7 +472,7 @@ func cutEffort(s string) (base, effort string) {
 
 func sortedValid() []string {
 	out := append([]string(nil), Valid...)
-	sort.Strings(out)
+	fuzzy.Sort(out)
 	return out
 }
 

@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
 )
 
@@ -87,7 +88,7 @@ func Discover(ctx context.Context, promptDir, projectRoot string) (Set, []string
 	for n := range byName {
 		names = append(names, n)
 	}
-	sort.Strings(names)
+	fuzzy.Sort(names)
 	return Set{Names: names, byName: byName}, warnings, nil
 }
 

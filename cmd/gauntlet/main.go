@@ -14,7 +14,6 @@ import (
 	"os"
 	"runtime/debug"
 	"slices"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -24,6 +23,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -831,7 +831,7 @@ func noteLocks(runs []*dirRun, runID string, events <-chan runner.Event) {
 			for review, agent := range active {
 				parts = append(parts, review.review+" ("+agent+")")
 			}
-			sort.Strings(parts) // map order would make the note flicker
+			fuzzy.Sort(parts) // map order would make the note flicker
 			// Two lanes on one repeated review with the same agent would
 			// otherwise print it twice, which reads as two reviews rather
 			// than the one the reader is waiting for.
