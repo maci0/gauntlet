@@ -2823,6 +2823,47 @@ func mustRecord(t *testing.T, cfg Config) []Event {
 	return events
 }
 
+// The ceiling is read while a review is spending, not only between them: an
+// agent that keeps reporting tokens is stopped at the budget, so the run stops
+// at the number the operator set rather than at whatever the review in flight
+// spent inside its own timeout.
+func TestTokenBudgetStopsTheReviewInFlight(t *testing.T) {
+	dir := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	// Reports 1000 tokens a tick and never finishes on its own: only the
+	// budget can end this review before the 40 ticks run out.
+	bin := fakeAgent(t, t.TempDir(), "chatty", `
+i=0
+while [ $i -lt 40 ]; do
+	i=$((i+1))
+	echo "Total tokens: $((i*1000))"
+	sleep 0.05
+done`)
+	cfg := baseConfig(t, dir, set, []string{"a-review", "b-review"}, bin)
+	cfg.TokenBudget = 1500
+
+	r, events := runRecorded(t, cfg)
+	if n := countKind(events, EvReviewStart); n != 1 {
+		t.Fatalf("started %d reviews, want only the one the budget stopped", n)
+	}
+	c := r.Stats().Counts()
+	if c.Interrupted != 1 || c.OK != 0 {
+		t.Fatalf("counts: %+v, want one interrupted review and no finished one", c)
+	}
+	if n := countKind(events, EvReviewEnd); n != 1 {
+		t.Fatalf("published %d review_end events, want 1", n)
+	}
+	var saidWhy bool
+	for _, ev := range events {
+		if ev.Kind == EvLog && strings.Contains(ev.Text, "token budget") {
+			saidWhy = true
+		}
+	}
+	if !saidWhy {
+		t.Fatal("the run stopped the review without saying the budget was why")
+	}
+}
+
 // The budget stops what starts next, not what already ran: the reviews before
 // it committed, so the loop's commit and merge steps still run and their work
 // still lands.

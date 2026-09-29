@@ -11,6 +11,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
@@ -338,7 +339,22 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	usage := r.watchUsage(ctx, spec, dir, review, loopNo, start)
 	defer usage.halt()
 
-	pr := runProc(ctx, procOpts{
+	// The run's token ceiling, read while this review is still spending. The
+	// loop reads it before every review, which bounds the schedule but not the
+	// run: an agent that keeps going spends whatever it spends inside its own
+	// timeout, so the last review of a run can overshoot the ceiling by more
+	// than all the ones before it put together. Canceling the launch is the
+	// only lever a headless CLI leaves, and it is the same one the timeout uses.
+	//
+	// A canceled review is not retried: the tokens that stopped it are in no
+	// tally yet, so a retry would read the budget as still unspent and spend
+	// it again.
+	runCtx, stopOnBudget := context.WithCancel(ctx)
+	defer stopOnBudget()
+	var budgetStop atomic.Bool
+	var budgetSpent atomic.Int64
+
+	pr := runProc(runCtx, procOpts{
 		Argv:           argv,
 		Dir:            dir,
 		Timeout:        r.cfg.Timeout,
@@ -348,7 +364,23 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Sink:           r.outputSink(review, spec.Label()),
 		// Cumulative for this review: the dashboard turns successive values
 		// into a rate, and a review that never reports usage sends nothing.
-		Usage:  func(u agent.Usage) { usage.report(u.Reported(), max(u.Thinking, 0)) },
+		Usage: func(u agent.Usage) {
+			usage.report(u.Reported(), max(u.Thinking, 0))
+			if r.cfg.TokenBudget <= 0 || budgetStop.Load() {
+				return
+			}
+			// The run's tally plus what this review has reported: the result
+			// carrying this review's own count is only recorded once it ends.
+			spent := r.st.Tokens() + u.Reported()
+			if spent < r.cfg.TokenBudget {
+				return
+			}
+			budgetSpent.Store(int64(spent))
+			budgetStop.Store(true)
+			r.log("Token budget reached during %s (%s) at %d of %d tokens: stopping it there",
+				review, spec.Label(), spent, r.cfg.TokenBudget)
+			stopOnBudget()
+		},
 		Stream: r.cfg.Stream,
 	})
 	tokens, thinking := usage.settle()
@@ -372,7 +404,16 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 
 	switch {
 	case pr.Canceled:
-		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
+		if budgetStop.Load() {
+			// The run stopped this one, not the operator: say which, since the
+			// two look the same from the status alone.
+			r.log("Stopped: %s (%s) at the token budget, %d of %d tokens spent",
+				review, spec.Label(), budgetSpent.Load(), r.cfg.TokenBudget)
+			res.Detail = fmt.Sprintf("stopped at the token budget: %d of %d tokens spent",
+				budgetSpent.Load(), r.cfg.TokenBudget)
+		} else {
+			r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
+		}
 		res.Status = StatusInterrupted
 		r.forgetSession(spec)
 	case pr.TimedOut:

@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- `--token-budget N` stopped a run only between reviews, so the ceiling it promised was one review away from honest. The loop read the tally before taking the next review and nothing read it while one was in flight, and a review spends for as long as its timeout allows: a run under `--token-budget 1000000` could bill far past a million on the last review alone, and that is the review a wall-clock budget cannot bound either. A review that reports tokens is now stopped at the ceiling the same way a timeout stops it, and the review_end row says the budget was why. An agent that reports no usage is unaffected, as it is everywhere else the tally is read.
+
 ## 1.29.0
 
 ### Changed
