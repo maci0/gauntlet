@@ -44,6 +44,26 @@ type Result struct {
 	Detail   string // infrastructure failure detail when no agent exit explains it
 }
 
+// maxDetailResults bounds the per-result detail a Stats keeps. A run with
+// --max-loops 0 records a result per review per loop for as long as it is left
+// going, so the detail has no bound the run itself imposes: it grew for the
+// life of the process, and every tally walked it, so a stacked run paid
+// O(loops^2) under the mutex every lane contends for, and a hot reload
+// serialized the whole slice into a handoff past the 16 MiB read cap, which
+// its reader treats as a corrupt blob and the successor exits on.
+//
+// The cap is on detail only. Every number a run reports is folded in as the
+// result arrives and stays exact for all of them; past the cap the summary
+// stops listing individual rows (the pull-request list, the per-review failure
+// list) and keeps counting. detailDropped records how many it stopped
+// listing, so a run that hit the cap says so rather than reporting a short
+// list as the whole run.
+const maxDetailResults = 2000
+
+// MaxDetailResults is the bound maxDetailResults names, exported so the
+// summary can print it next to the number of rows it left out.
+const MaxDetailResults = maxDetailResults
+
 // Stats accumulates results across a run. Safe for concurrent use: parallel
 // review lanes Add results while the commit step records its runs, and a
 // reader may tally at any point in between.
@@ -51,14 +71,23 @@ type Stats struct {
 	mu      sync.Mutex
 	results []Result
 
-	// tokens is the running sum of Result.Tokens. A run with --max-loops 0
-	// records a result per review per loop for as long as it is left going, so
-	// results has no bound to give. A budget reads Tokens before every review
-	// it takes, and a scan of the whole slice per read is quadratic over such
-	// a run, under the mutex every other reader contends for. The total is
-	// kept alongside the slice so the budget costs the same on loop 2 and on
-	// loop 2000.
-	tokens int
+	// The aggregates below are the running sums of the results, maintained as
+	// each one arrives so the readers below cost the same on loop 2 and on
+	// loop 2000. They cover every result, including the ones the detail slice
+	// has already dropped.
+	tokens   int
+	counts   Counts
+	byAgent  map[string]*AgentSummary
+	ins, del int
+	thinking int
+	// agentTime and timed are summed only over results with a positive
+	// Elapsed, and haveLines only over results that reported lines.
+	agentTime time.Duration
+	timed     int
+	haveLines bool
+
+	// detailDropped is how many results the detail slice has discarded.
+	detailDropped int
 
 	commitRuns  int
 	commitFails int
@@ -132,11 +161,59 @@ func (s *Stats) addCommitFail() {
 	s.mu.Unlock()
 }
 
+// fold adds one result to the running aggregates. The caller holds s.mu.
+func (s *Stats) fold(r Result) {
+	s.tokens += r.Tokens
+	s.thinking += r.Thinking
+	if r.HaveLines {
+		s.ins += r.Ins
+		s.del += r.Del
+		s.haveLines = true
+	}
+	if r.Elapsed > 0 {
+		s.agentTime += r.Elapsed
+		s.timed++
+	}
+	// An empty status is publication metadata recovered without launching an
+	// agent. Counts and ByAgent have always skipped those, and skipping them
+	// here too is what keeps the two agreeing with a walk over the slice.
+	if r.Status == "" {
+		return
+	}
+	s.counts.tally(r.Status)
+	if s.byAgent == nil {
+		s.byAgent = map[string]*AgentSummary{}
+	}
+	label := r.Agent.Label()
+	a, ok := s.byAgent[label]
+	if !ok {
+		a = &AgentSummary{Label: label}
+		s.byAgent[label] = a
+	}
+	a.Counts.tally(r.Status)
+	a.Tokens += r.Tokens
+	if r.Elapsed > 0 {
+		a.Elapsed += r.Elapsed
+	}
+}
+
+// keepDetail appends to the capped detail slice, dropping the oldest result
+// once it is full. The caller holds s.mu.
+func (s *Stats) keepDetail(r Result) {
+	if len(s.results) < maxDetailResults {
+		s.results = append(s.results, r)
+		return
+	}
+	copy(s.results, s.results[1:])
+	s.results[len(s.results)-1] = r
+	s.detailDropped++
+}
+
 // Add records one result.
 func (s *Stats) Add(r Result) {
 	s.mu.Lock()
-	s.results = append(s.results, r)
-	s.tokens += r.Tokens
+	s.fold(r)
+	s.keepDetail(r)
 	s.mu.Unlock()
 	s.run.Add(r.Tokens)
 }
@@ -147,11 +224,23 @@ func (s *Stats) Add(r Result) {
 func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.mu.Lock()
 	carried := 0
+	kept := make([]Result, 0, min(len(results), maxDetailResults))
+	// Oldest first, so the detail kept is the most recent work, the same end
+	// of the run the cap keeps when results arrive one at a time.
 	for _, r := range results {
-		s.tokens += r.Tokens
+		s.fold(r)
 		carried += r.Tokens
 	}
-	s.results = append(append([]Result(nil), results...), s.results...)
+	if len(results) > maxDetailResults {
+		s.detailDropped += len(results) - maxDetailResults
+		kept = append(kept, results[len(results)-maxDetailResults:]...)
+	} else {
+		kept = append(kept, results...)
+	}
+	s.results = append(kept, s.results...)
+	if len(s.results) > maxDetailResults {
+		s.results = append([]Result(nil), s.results[len(s.results)-maxDetailResults:]...)
+	}
 	s.commitRuns += commitRuns
 	s.commitFails += commitFails
 	s.mu.Unlock()
@@ -161,7 +250,18 @@ func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	s.run.Add(carried)
 }
 
-// Results returns a copy of every result so far, in review-name order.
+// DetailDropped is how many results the detail slice has discarded. It is
+// nonzero only on a run long enough to pass maxDetailResults, and it is
+// reported so a summary that lists fewer rows than the run ran says why.
+func (s *Stats) DetailDropped() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.detailDropped
+}
+
+// Results returns a copy of the results still held, in review-name order. The
+// slice is bounded at maxDetailResults; a result older than the bound is
+// counted everywhere but not listed here, and DetailDropped reports how many.
 //
 // Lanes finish in whatever order the OS scheduler picks, so insertion order
 // would make a --jobs > 1 run report its reviews, and any list built from
@@ -227,18 +327,12 @@ func (c Counts) Total() int {
 // Failures counts results that make the run exit nonzero.
 func (c Counts) Failures() int { return c.Fail + c.Timeout + c.Skipped + c.Conflict }
 
-// Counts tallies the recorded results.
+// Counts tallies the recorded results. The tally is exact for every result,
+// including the ones the detail slice has dropped.
 func (s *Stats) Counts() Counts {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var c Counts
-	for _, r := range s.results {
-		if r.Status == "" {
-			continue // publication metadata recovered without launching an agent
-		}
-		c.tally(r.Status)
-	}
-	return c
+	return s.counts
 }
 
 // Tokens is every token the run has recorded, including results a predecessor
@@ -258,22 +352,12 @@ func (s *Stats) Tokens() int {
 	return s.tokens
 }
 
-// Totals sums lines changed, tokens reported, and agent wall time.
+// Totals sums lines changed, tokens reported, and agent wall time. The sums
+// are exact for every result, including the ones the detail slice has dropped.
 func (s *Stats) Totals() (ins, del, tokens int, agentTime time.Duration, timed int, haveLines bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, r := range s.results {
-		if r.HaveLines {
-			ins += r.Ins
-			del += r.Del
-			haveLines = true
-		}
-		if r.Elapsed > 0 {
-			agentTime += r.Elapsed
-			timed++
-		}
-	}
-	return ins, del, s.tokens, agentTime, timed, haveLines
+	return s.ins, s.del, s.tokens, s.agentTime, s.timed, s.haveLines
 }
 
 // AgentSummary is one agent's slice of the run.
@@ -293,29 +377,13 @@ func (a AgentSummary) TokensPerSec() float64 {
 	return float64(a.Tokens) / a.Elapsed.Seconds()
 }
 
-// ByAgent breaks the run down per tool:model, in label order.
+// ByAgent breaks the run down per tool:model, in label order. The breakdown
+// is exact for every result, including the ones the detail slice has dropped.
 func (s *Stats) ByAgent() []AgentSummary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	byLabel := map[string]*AgentSummary{}
-	for _, r := range s.results {
-		if r.Status == "" {
-			continue
-		}
-		label := r.Agent.Label()
-		a, ok := byLabel[label]
-		if !ok {
-			a = &AgentSummary{Label: label}
-			byLabel[label] = a
-		}
-		a.Counts.tally(r.Status)
-		a.Tokens += r.Tokens
-		if r.Elapsed > 0 {
-			a.Elapsed += r.Elapsed
-		}
-	}
-	out := make([]AgentSummary, 0, len(byLabel))
-	for _, a := range byLabel {
+	out := make([]AgentSummary, 0, len(s.byAgent))
+	for _, a := range s.byAgent {
 		out = append(out, *a)
 	}
 	slices.SortFunc(out, func(a, b AgentSummary) int { return cmp.Compare(a.Label, b.Label) })
@@ -330,6 +398,11 @@ func (s *Stats) ByAgent() []AgentSummary {
 // Sorted like Results, and stable for the same reason: a review that failed
 // in two loops contributes two rows, each carrying its own branch, exit
 // code, and lines, and an unstable sort would print them in either order.
+//
+// The list covers the results the detail slice still holds, so a run longer
+// than maxDetailResults lists only its recent failures. Every failure is
+// still counted in Counts and Failures(), and DetailDropped says how many rows
+// the list left out.
 //
 // A status this build does not recognize is not listed here either: it is
 // counted in Other, and claiming a failure it may not be would make the exit

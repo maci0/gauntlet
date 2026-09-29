@@ -249,6 +249,11 @@ type runTotals struct {
 	pullRequest []runner.Result
 	byAgent     []runner.AgentSummary
 	failures    []runner.Result
+	// dropped is how many results a directory's per-result detail no longer
+	// holds, past the bound in runner.maxDetailResults. Every count above is
+	// exact regardless; only the row lists below are short by this much, and
+	// a summary that quietly printed a short list would read as the whole run.
+	dropped int
 }
 
 func collectTotals(results []*dirRun) runTotals {
@@ -267,6 +272,7 @@ func collectTotals(results []*dirRun) runTotals {
 		t.loops += d.loops
 		t.commitRuns += d.stats.CommitRuns()
 		t.commitFails += d.stats.CommitFails()
+		t.dropped += d.stats.DetailDropped()
 		for _, r := range d.stats.Results() {
 			t.thinking += r.Thinking
 			if r.URL != "" {
@@ -335,6 +341,14 @@ func summary(out io.Writer, pal palette, results []*dirRun, wall time.Duration) 
 		if row.n > 0 {
 			fmt.Fprintf(out, "%s: %d\n", row.label, row.n)
 		}
+	}
+	if t.dropped > 0 {
+		// The counts above are exact; only the row lists (pull requests,
+		// failures) are short. Say so rather than let a truncated list read as
+		// the whole run.
+		fmt.Fprintf(out, "  %s\n", pal.dim(fmt.Sprintf(
+			"note: the per-review detail list holds the most recent %d results; %d earlier ones are counted above but not listed",
+			runner.MaxDetailResults, t.dropped)))
 	}
 	fmt.Fprintf(out, "%s %s\n", pal.blue("Total time:"), humanize.Duration(wall))
 	if t.timed > 0 {

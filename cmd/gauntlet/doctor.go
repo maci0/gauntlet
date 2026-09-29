@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -360,6 +361,7 @@ func stateRootProblem(root string) string {
 	case !fi.IsDir():
 		return root + " is not a directory"
 	}
+	sweepProbeLeftovers(root)
 	f, err := os.CreateTemp(root, stateProbePrefix+"*")
 	if err != nil {
 		return fmt.Sprintf("%s is not writable: %v", root, err)
@@ -373,6 +375,26 @@ func stateRootProblem(root string) string {
 		return fmt.Sprintf("%s holds %s that cannot be removed: %v", root, name, err)
 	}
 	return ""
+}
+
+// sweepProbeLeftovers removes probe files an earlier doctor was killed before
+// it could unlink, so a crash does not leave one behind per run. A removal
+// that fails is swallowed on purpose: it means the same thing the probe is
+// about to report, and the probe's own create-close-remove is what surfaces
+// it with the path and the reason. The prefix cannot match anything but a
+// probe file: the name is reserved for this, and every other file the tool
+// writes carries a different one.
+func sweepProbeLeftovers(root string) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), stateProbePrefix) {
+			continue
+		}
+		_ = os.Remove(filepath.Join(root, e.Name()))
+	}
 }
 
 // stateProbePrefix names the temp file the writability probe creates, so one

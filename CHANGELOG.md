@@ -30,6 +30,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - Four bundled reviews stopped telling the agent to skip an item whenever it was unsure. In an auto-fix run the composed prompt already says doing nothing is the failure mode, so an unqualified "if you are not sure, skip it" in the block that survives composition left the agent to choose between the two, and a cautious reading meant the pass changed nothing. `code-review` now traces the function, its callers, and its tests until it can point at the wrong line, and skips the item only where the code does not settle the question; `doc-review` settles a doubtful claim against the code it describes instead of dropping it; `perf-review` measures the impact or shows it by inspection (an N+1 query, unbounded growth, a regex compiled per call) and skips only what it cannot prove; `sec-review` requires the call path from untrusted input to the sink, allows a hardening note without one, and skips the item where no path exists. The intent behind each line, no report on a guess, is unchanged.
 
+### Fixed
+
+- An unlimited run (`--max-loops 0`) no longer accumulates one in-memory result record per review per loop for the life of the process. Every number the summary reports is now folded in as a result arrives and stays exact for all of them, which also makes a stacked run's per-loop line accounting constant-time instead of quadratic. The per-review detail list (the pull-request and failure rows) is bounded at the most recent 2000 results and the summary says how many earlier ones it counted but did not list, rather than printing a short list as the whole run. A hot reload also stops serializing the whole history into its handoff file, which on a long run grew past the 16 MiB read cap its reader applies, and the reader treats an oversized blob as corrupt and exits on: such a run could lose its resume entirely.
+- `doctor` now removes probe files an earlier interrupted run left in the state root, so a killed `doctor` no longer leaves one file behind per run.
+
 ## 1.28.0
 
 ### Changed
