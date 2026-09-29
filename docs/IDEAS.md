@@ -121,29 +121,30 @@ default question is settled:
   offered as one-key presets.
 - A key that copies the composed command line.
 
-## staticcheck and golangci-lint for the Go tree
+## golangci-lint for the Go tree
 
 `make check` is the Go analysis gate and it is what CI blocks on: `go mod tidy
--diff` and `gofmt -l`, which no build tag changes, then `go fix -diff` and
-`go vet` under `sqlite`, bare, and `notoktop`, so a build mode that only one
-leg compiles is never unvetted. `govulncheck` runs in its own workflow, and
-the race suite carries a coverage floor that ratchets upward.
+-diff` and `gofmt -l`, which no build tag changes, then `go fix -diff`,
+`go vet`, and `staticcheck` under `sqlite`, bare, and `notoktop`, so a build
+mode that only one leg compiles is never unvetted. `govulncheck` runs in its
+own workflow, and the race suite carries a coverage floor that ratchets
+upward.
 
-What is not wired in is `staticcheck`, alone or through `golangci-lint`.
+What is not wired in is `golangci-lint`, which would carry staticcheck plus
+the linters this tree does not run (`errcheck`, `ineffassign`, `gocritic`,
+the security groups) behind one command and one config.
 
-**Why.** Not a judgment that the tree is clean under it. The tree has never
-been run against staticcheck, and its first run over a codebase this size
-returns a finding list nobody has triaged; turning that into a blocking step
-in one change is a red gate with no review behind it, which is the failure
-mode a misconfigured analyzer creates. The blocker is triage, not
-reachability: `go run honnef.co/go/tools/cmd/staticcheck@VERSION ./...` fetches
-from the module proxy the way `make vuln` already does, so nothing about
-pinning it is new.
+**Why.** staticcheck already runs, at a pinned version, fetched through `go
+run` the way `make vuln` fetches govulncheck, so nothing has to be installed
+to get it. golangci-lint would replace that with a binary a contributor
+installs and a version a runner has to keep, and the two `gosec` and
+`errcheck` it would add are the only rules this tree does not already have
+somewhere: the security checks worth having sit in the bundled sec-review
+prompt and in the coverage ratchet, and this tree has no ignored error for
+`errcheck` to find.
 
-**What would need deciding.** Which of its checks are adopted: the
-correctness groups first (`SA`, `S1`), which is the part `go vet` has no
-equivalent for, with `ST*` style groups as a later pass if the SA findings
-clear. A `.staticcheck.conf` would carry the exclusions, each with a reason,
-and `make check` plus `ci.yml` would grow the step together, the way
-`TestScriptsChecksMatchCI` and `TestScriptsJobChecksAreReproducedLocally`
-already hold the scripts job and `check-scripts` to one command set.
+**What would need deciding.** Whether a second config file next to
+`pyproject.toml` and `.yamllint` is worth the rules it adds, and which
+linter the `go` gate stops naming directly when the runner does. A change
+like that has to land with the version pinned in the Makefile and in the
+workflow that runs it, the way `STATICCHECK_VERSION` is now.

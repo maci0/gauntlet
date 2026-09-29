@@ -240,10 +240,68 @@ func TestMakefileVulnScansSelectedTags(t *testing.T) {
 	}
 }
 
+// staticcheck is fetched rather than installed, so the version a run uses is
+// the one the Makefile records: a recipe that dropped the pin would resolve
+// whatever the proxy serves that week, and a green tree would stop meaning
+// the same thing twice. It reads the same TAGS variable vet does, so one of
+// the three shipped configurations can be checked on its own.
+func TestMakefileStaticcheckIsPinnedAndScansSelectedTags(t *testing.T) {
+	pin := makefilePin(makefileText(t), "STATICCHECK_VERSION")
+	if pin == "" {
+		t.Fatal("the Makefile does not pin STATICCHECK_VERSION, so make check resolves whatever the proxy serves")
+	}
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "default", want: "-tags sqlite ./..."},
+		{name: "bare", args: []string{"TAGS="}, want: "./..."},
+		{name: "notoktop", args: []string{"TAGS=notoktop"}, want: "-tags notoktop ./..."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			args := append([]string{"--no-print-directory", "-n", "staticcheck", "GO=go", "STATICCHECK_VERSION=" + pin}, tc.args...)
+			cmd := exec.CommandContext(ctx, "make", args...)
+			cmd.Dir = moduleRoot(t)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make staticcheck dry run: %v\n%s", err, out)
+			}
+			// The analyzer command is the last recipe line; the order-only
+			// prerequisite above it (the scratch directory the go command
+			// refuses to start without) is not part of this contract.
+			printed := strings.Split(strings.TrimSpace(string(out)), "\n")
+			got := strings.Join(strings.Fields(printed[len(printed)-1]), " ")
+			want := "GOFLAGS= go run honnef.co/go/tools/cmd/staticcheck@" + pin + " " + tc.want
+			if got != want {
+				t.Fatalf("analysis command:\n%s\nwant:\n%s", got, want)
+			}
+		})
+	}
+}
+
+// The gofmt of the toolchain on PATH, asked of the toolchain rather than
+// read off the test binary. runtime.GOROOT is deprecated: it is the root the
+// running binary was built with, not the one whose gofmt the Makefile
+// invokes, and the two differ whenever the test runs under a toolchain
+// wrapper or a rebuilt binary.
+func toolchainGofmt(t *testing.T) string {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "go", "env", "GOROOT").Output()
+	if err != nil {
+		t.Fatalf("go env GOROOT: %v", err)
+	}
+	return filepath.Join(strings.TrimSpace(string(out)), "bin", "gofmt")
+}
+
 func TestMakefileFmtWithSpacedToolchainPath(t *testing.T) {
 	dir := t.TempDir()
 	formatter := filepath.Join(dir, "go fmt")
-	if err := os.Symlink(filepath.Join(runtime.GOROOT(), "bin", "gofmt"), formatter); err != nil {
+	if err := os.Symlink(toolchainGofmt(t), formatter); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "Makefile"), []byte(makefileText(t)), 0o600); err != nil {
@@ -295,11 +353,24 @@ func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
 				// to it, with the recipe's silencing @ stripped.
 				cmd, _, _ := strings.Cut(strings.TrimPrefix(line, "@"), " ||")
 				cmd = strings.TrimSpace(cmd)
-				if strings.HasPrefix(cmd, "go fix ") || strings.HasPrefix(cmd, "go vet ") {
+				switch {
+				case strings.HasPrefix(cmd, "go fix "), strings.HasPrefix(cmd, "go vet "):
+					analysis = append(analysis, cmd)
+				case strings.HasPrefix(cmd, "make --no-print-directory staticcheck"):
 					analysis = append(analysis, cmd)
 				}
 			}
-			want := "go fix -diff -tags sqlite ./...\ngo fix -diff ./...\ngo fix -diff -tags notoktop ./...\ngo vet -tags sqlite ./...\ngo vet ./...\ngo vet -tags notoktop ./..."
+			want := strings.Join([]string{
+				"go fix -diff -tags sqlite ./...",
+				"go fix -diff ./...",
+				"go fix -diff -tags notoktop ./...",
+				"go vet -tags sqlite ./...",
+				"go vet ./...",
+				"go vet -tags notoktop ./...",
+				"make --no-print-directory staticcheck TAGS=sqlite",
+				"make --no-print-directory staticcheck TAGS=",
+				"make --no-print-directory staticcheck TAGS=notoktop",
+			}, "\n")
 			if got := strings.Join(analysis, "\n"); got != want {
 				t.Fatalf("analysis commands:\n%s\nwant:\n%s", got, want)
 			}

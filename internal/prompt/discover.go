@@ -358,9 +358,9 @@ func sameFile(a, b string) bool {
 	if !oka || !okb || sa != sb || sa > maxBytes {
 		return false
 	}
-	ab, oka := readBounded(a, sa+1)
-	bb, okb := readBounded(b, sb+1)
-	return oka && int64(len(ab)) == sa && int64(len(bb)) == sb && bytes.Equal(ab, bb)
+	ab, readA := readBounded(a, sa+1)
+	bb, readB := readBounded(b, sb+1)
+	return readA && readB && int64(len(ab)) == sa && int64(len(bb)) == sb && bytes.Equal(ab, bb)
 }
 
 func fileSize(path string) (int64, bool) {

@@ -56,6 +56,14 @@ UV_VERSION ?= 0.12.6
 # TestScriptsToolPinsMatchCI keeps this line and the workflow's in step.
 SHELLCHECK_VERSION ?= 0.11.0
 GOVULNCHECK_VERSION ?= v1.7.0
+# staticcheck is the Go half's linter the way ruff is the scripts half's: it
+# is fetched through `go run` at a pinned version, exactly as govulncheck
+# below it, so `make check` needs nothing installed and CI and a contributor
+# read the same number. The version is the staticcheck release, which is
+# also the Go release it was built against; bump it together with the
+# toolchain pin above, never alone, since an analyzer that cannot read this
+# compiler's export data fails every package rather than reporting findings.
+STATICCHECK_VERSION ?= v0.8.1
 
 # Release artifacts must not depend on the build host's locale or timezone:
 # the shell orders glob expansion with strcoll, so checksums.txt would list
@@ -279,6 +287,27 @@ vet: | test-tmpdir
 vet: ## run go vet
 	$(GO) vet $(GOTAGS) ./...
 
+# go vet is the compiler's own set, which is why it is not the only analysis
+# `check` runs: it answers what the compiler can see (printf verbs, lost
+# cancellation, unreachable code) and nothing about the mistakes a compiler
+# cannot make, a mistyped format argument in a log line, a redundant
+# conversion, a branch that can never be taken. staticcheck is that second
+# set, and it is what catches a defect that compiles cleanly.
+#
+# Fetched with `go run` at a pinned version rather than installed, the same
+# trade `make vuln` makes: nothing to install before a contributor can run
+# the gate, and the version a run uses is the one this Makefile records
+# instead of whatever is on PATH. GOFLAGS is cleared for the same reason
+# govulncheck clears it: -mod=readonly is this module's build flag, and the
+# analyzer is a separate module resolved by the proxy.
+#
+# The tag set is the caller's, the same variable vet reads, so one of the
+# three shipped configurations can be checked on its own.
+.PHONY: staticcheck
+staticcheck: | test-tmpdir
+staticcheck: ## run staticcheck under $(TAGS)
+	GOFLAGS= $(GO) run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) $(GOTAGS) ./...
+
 # go.mod carries the supply chain and go.sum the hashes, and nothing else
 # reads either: -mod=readonly stops a build from rewriting them, and the
 # pinned-module tests in cmd/gauntlet read what is there. A module that
@@ -376,6 +405,9 @@ check: ## verify the module manifests, formatting, toolchain fixes, and vet (CI 
 	$(GO) vet -tags sqlite ./...
 	$(GO) vet ./...
 	$(GO) vet -tags notoktop ./...
+	$(MAKE) --no-print-directory staticcheck TAGS=sqlite
+	$(MAKE) --no-print-directory staticcheck TAGS=
+	$(MAKE) --no-print-directory staticcheck TAGS=notoktop
 
 # The Go half of a pull request: analysis across all three tag sets, then
 # the race suite. The scripts job is separate (check-scripts) because it

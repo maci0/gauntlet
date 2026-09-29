@@ -213,7 +213,7 @@ func TestMaybeErrorCoversErrorWords(t *testing.T) {
 func TestSanitizeStripsBidiAndControls(t *testing.T) {
 	// U+202E reverses everything after it on a terminal, and BEL rings it:
 	// both must vanish while the visible text and the tab's spacing survive.
-	in := "safe‮codename\ttab"
+	in := "safe\u202ecodename\ttab"
 	if got, want := Sanitize(in), "safecodename tab"; got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

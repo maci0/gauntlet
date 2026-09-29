@@ -126,12 +126,15 @@ It is minutes rather than seconds. A pull request also runs `make cover`,
 `make repro`, which `make verify` leaves out on purpose; run those when the
 change touches the release path or removes tested code.
 
-`make check` is `go mod tidy -diff`, gofmt, `go fix`, and vet across all three tag
-configurations CI tests (default `sqlite`, bare, and `notoktop`). It mirrors
-ci.yml's first step exactly: if `make check` is green locally, that step is
-green there. A `tidy` diff means go.mod or go.sum no longer says what the
-module graph resolves to, so a require is missing, stale, or a leftover:
-run `go mod tidy` and commit the result. The
+`make check` is `go mod tidy -diff`, gofmt, `go fix`, vet, and staticcheck across
+all three tag configurations CI tests (default `sqlite`, bare, and
+`notoktop`). It mirrors ci.yml's first step exactly: if `make check` is green
+locally, that step is green there. A `tidy` diff means go.mod or go.sum no
+longer says what the module graph resolves to, so a require is missing, stale,
+or a leftover: run `go mod tidy` and commit the result. staticcheck is fetched
+at the pinned `STATICCHECK_VERSION` with `go run`, the way `make vuln` fetches
+govulncheck, so there is nothing to install; `make staticcheck TAGS=...` runs
+one tag set on its own. The
 pull request template
 ([.github/pull_request_template.md](.github/pull_request_template.md))
 restates this list as a checklist.

@@ -20,7 +20,7 @@ func TestParseFileNotes(t *testing.T) {
 		"  path: b.go: lowercase prefix still counts",
 		"PATH: no-note-here",
 		"PATH: internal/cache/store.go: the later line wins",
-		"PATH: evil.go: text‮with a bidi override\tand controls",
+		"PATH: evil.go: text\u202ewith a bidi override\tand controls",
 		"SUBJECT: fix: unrelated",
 	}, "\n"))
 	notes := ParseFileNotes(tail)
@@ -36,7 +36,7 @@ func TestParseFileNotes(t *testing.T) {
 	if notes[2].Path != "evil.go" || notes[2].Note != "textwith a bidi overrideand controls" {
 		t.Fatalf("notes[2] = %+v, want evil.go sanitized note", notes[2])
 	}
-	if strings.ContainsRune(notes[2].Note, '‮') || strings.ContainsRune(notes[2].Note, '\t') {
+	if strings.ContainsRune(notes[2].Note, '\u202e') || strings.ContainsRune(notes[2].Note, '\t') {
 		t.Fatalf("control and format characters survived: %q", notes[2].Note)
 	}
 }

@@ -14,9 +14,13 @@ but drops the sqlite driver.
   a second opinion about them: a new tool that some target requires has to be
   checked here in the same change.
 - `make check`: fails unless `go mod tidy -diff` is empty, then checks
-  formatting without rewriting; `go fix -diff` and vet
+  formatting without rewriting; `go fix -diff`, vet, and staticcheck
   under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
   apply reported Go fixes under the same three tag sets before committing.
+  staticcheck is fetched with `go run` at `STATICCHECK_VERSION`, like
+  govulncheck, so `make check` needs nothing installed. It is the Go tree's
+  linter and the version is pinned in the Makefile alone: CI runs `make
+  check`, so there is no second copy to keep in step.
 - `make ci`: `make check` across all three tag sets, then `make test` for
   the selected `TAGS` (default `sqlite`). `.github/workflows/ci.yml` is
   wider: all three tag sets on Linux and macOS, plus the scripts lint,

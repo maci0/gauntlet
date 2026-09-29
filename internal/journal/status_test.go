@@ -123,12 +123,3 @@ func TestInspectDoesNotCountAnEmptyJournalAsTruncated(t *testing.T) {
 		t.Fatalf("Inspect wrote to the journal: %d bytes", fi.Size())
 	}
 }
-
-func mustRead(t *testing.T, path string) []byte {
-	t.Helper()
-	b, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return b
-}

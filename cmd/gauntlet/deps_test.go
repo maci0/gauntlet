@@ -879,8 +879,11 @@ func richPin(text string) string {
 	return m[1]
 }
 
+// makefilePin reads a `NAME ?= VERSION` line. The leading v is optional: a
+// Go module version carries one and a Python or shell tool version does not,
+// and both spellings are a version the recipe pastes into a command.
 func makefilePin(text, name string) string {
-	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + ` \?= ([0-9][0-9A-Za-z._-]*)$`)
+	re := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(name) + ` \?= (v?[0-9][0-9A-Za-z._-]*)$`)
 	m := re.FindStringSubmatch(text)
 	if m == nil {
 		return ""

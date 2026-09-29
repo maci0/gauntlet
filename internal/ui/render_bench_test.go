@@ -33,9 +33,7 @@ func renderModel(b *testing.B) *model {
 			Jobs:    4, Timeout: 20 * time.Minute, Budget: 2 * time.Hour,
 		},
 	}
-	for _, d := range dirs {
-		m.cfg.Dirs = append(m.cfg.Dirs, d)
-	}
+	m.cfg.Dirs = append(m.cfg.Dirs, dirs...)
 	agents := []string{"claude", "codex", "gemini", "copilot", "opencode", "crush", "aider", "kilo"}
 	for i, a := range agents {
 		l := &laneState{

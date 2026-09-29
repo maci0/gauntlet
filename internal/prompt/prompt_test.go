@@ -1343,7 +1343,7 @@ func TestComposePathsNeutralizeHostileEntries(t *testing.T) {
 		"a\nb",
 		"a b\tc",
 		"a`b",
-		"a‮b",
+		"a\u202eb",
 		strings.Repeat("d", PathEntryMax+1),
 	} {
 		if PathEntrySafe(p) {
