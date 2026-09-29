@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.29.0
+
 ### Changed
 
 - `--suggest-agent gauntlet` now prints the strongest evidence beside a review, not the first three the rule table happened to reach. A repository with tests, documentation and a Go module scored an HTTP handler at two units but printed "source files to read, a test suite, documentation", because those three rules are evaluated first and each worth one, so the evidence that actually ranked the review was dropped from the line explaining it. Each reason now carries the weight that admitted it, and the three printed are the heaviest, with equal weights keeping table order.
