@@ -121,6 +121,33 @@ printf '{"type":"assistant","cwd":"%s","message":{"usage":{"input_tokens":5,"out
 echo "RESULT: no-changes"`,
 		},
 		{
+			// The store keeps one chat log per project directory and names
+			// that directory in a .project_root file beside chats/, so the
+			// attribution is the file rather than the record.
+			name: "gemini chat log", transcript: true, tool: "gemini", wantFinal: 450,
+			script: `
+d="$HOME/.gemini/tmp/proj/chats"; mkdir -p "$d"
+printf '%s' "$PWD" > "$HOME/.gemini/tmp/proj/.project_root"
+printf '{"type":"assistant","usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":150,"totalTokenCount":200}}\n' >> "$d/s.jsonl"
+sleep 0.4
+printf '{"type":"assistant","usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":300,"totalTokenCount":400}}\n' >> "$d/s.jsonl"
+echo "RESULT: no-changes"`,
+		},
+		{
+			// agy logs steps under brain/<conversation-id>, and the step
+			// names no working directory: history.jsonl at the store root is
+			// what ties the conversation to a workspace.
+			name: "agy transcript", transcript: true, tool: "agy", wantFinal: 450,
+			script: `
+root="$HOME/.gemini/antigravity-cli"; mkdir -p "$root/brain/c1/.system_generated/logs"
+printf '{"conversationId":"c1","workspace":"%s"}\n' "$PWD" > "$root/history.jsonl"
+f="$root/brain/c1/.system_generated/logs/transcript.jsonl"
+printf '{"step_index":1,"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":150,"totalTokenCount":200}}\n' >> "$f"
+sleep 0.4
+printf '{"step_index":2,"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":300,"totalTokenCount":400}}\n' >> "$f"
+echo "RESULT: no-changes"`,
+		},
+		{
 			name: "codex rollout", transcript: true, tool: "codex", wantFinal: 1300, wantThinking: 400,
 			script: `
 d="$HOME/.codex/sessions/2026/08/25"; mkdir -p "$d"; f="$d/rollout-x.jsonl"

@@ -1349,6 +1349,7 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 		"usage with blank roots":     {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"", "  "}}},
 		"usage with one blank root":  {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid", ""}}},
 		"usage with blank suffix":    {Argv: []string{"x", "{prompt}"}, Usage: &UsageSpec{Roots: []string{"/valid"}, Suffix: "  "}},
+		"note with formatting rune":  {Argv: []string{"x", "{prompt}"}, Note: "two\u200Blines"},
 	}
 	for name, def := range cases {
 		if err := Register("tmp", def); err == nil {
@@ -1701,6 +1702,34 @@ func TestCustomAgentMismatchedPlaceholdersRejected(t *testing.T) {
 			name: "note whitespace only",
 			def:  Custom{Argv: base.Argv, Note: "   "},
 			want: "note cannot be whitespace only",
+		},
+		// A note is printed beside the agent's name in a doctor row and on
+		// the launcher's own line, so it draws on a terminal exactly as
+		// written. Refused rather than stripped, the way a name is.
+		{
+			name: "note with a newline",
+			def:  Custom{Argv: base.Argv, Note: "first\nsecond"},
+			want: "note cannot hold control or formatting characters",
+		},
+		{
+			name: "note with an escape sequence",
+			def:  Custom{Argv: base.Argv, Note: "\x1b[31mred"},
+			want: "note cannot hold control or formatting characters",
+		},
+		{
+			name: "note with a bidi override",
+			def:  Custom{Argv: base.Argv, Note: "right\u202Eleft"},
+			want: "note cannot hold control or formatting characters",
+		},
+		{
+			name: "note with a zero-width joiner",
+			def:  Custom{Argv: base.Argv, Note: "tw\u200Bwo"},
+			want: "note cannot hold control or formatting characters",
+		},
+		{
+			name: "note that is not valid UTF-8",
+			def:  Custom{Argv: base.Argv, Note: "broken\xff"},
+			want: "note cannot hold control or formatting characters",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
