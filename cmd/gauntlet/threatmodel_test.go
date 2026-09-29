@@ -21,11 +21,14 @@ import (
 // makefile_test.go; these are the rest of them.
 
 // sourcePointer is a `path:line` or `path:line-line` reference to a Go source
-// file or the Makefile, as written in backticks. Several pointers in one span
-// carry bare line numbers after the first path (`reload.go:24,188-196`), so
-// every number in the span is checked against that file.
+// file, a script, a workflow, or the Makefile, as written in backticks. Several
+// pointers in one span carry bare line numbers after the first path
+// (`reload.go:24,188-196`), so every number in the span is checked against that
+// file. The workflow files are here for the same reason as the rest: a pointer
+// into `.github/workflows` is a claim about the release pipeline, and it drifts
+// when a step is added above the one it names.
 var sourcePointer = regexp.MustCompile(
-	"`([\\w./-]+\\.(?:go|py|sh)|Makefile):([\\d,-]+)`")
+	"`([\\w./-]+\\.(?:go|py|sh|yml)|Makefile):([\\d,-]+)`")
 
 // TestThreatModelPointersResolve checks that every source pointer in
 // docs/THREAT_MODEL.md names a file in the tree and a line range inside it.
@@ -64,6 +67,74 @@ func TestThreatModelPointersResolve(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no source pointer was found in docs/THREAT_MODEL.md; the walk is broken, not the document")
+	}
+}
+
+// A line range inside the file is not the claim the document makes. Three
+// citations into release.yml sat well inside it while naming steps other than
+// the ones they describe: a step added above them moved what a reader lands
+// on, and TestThreatModelPointersResolve reports nothing, because a range that
+// fits the file is a range, not the right one. Every workflow citation is
+// therefore a case below, keyed by the file and the line it names, holding
+// the text that line's range must contain. A citation with no case is a gap in
+// the list, not a pass.
+var workflowPointer = regexp.MustCompile("`(?:[\\w./-]*/)?([\\w-]+\\.yml):([\\d,-]+)`")
+
+func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
+	root := moduleRoot(t)
+	doc := strings.Join(fileLines(t, filepath.Join(root, "docs", "THREAT_MODEL.md")), "\n")
+	cases := []struct {
+		file, want string
+		at         int
+	}{
+		{"release.yml", "Refuse a tag that is not on main", 131},
+		{"release.yml", "actions/attest-build-provenance@", 167},
+		{"release.yml", "dist/sbom.json", 194},
+		{"ci.yml", "GITHUB_TOKEN", 41},
+		{"vulnscan.yml", "schedule:", 10},
+		{"vulnscan.yml", "GITHUB_TOKEN", 40},
+		{"vulnscan.yml", "run: make vuln", 32},
+	}
+	dir := filepath.Join(root, ".github", "workflows")
+	covered := map[string]bool{}
+	var cited []string
+	for _, m := range workflowPointer.FindAllStringSubmatchIndex(doc, -1) {
+		file, span := doc[m[2]:m[3]], doc[m[4]:m[5]]
+		first, last, err := pointerRange(strings.Split(span, ",")[0])
+		if err != nil {
+			t.Errorf("docs/THREAT_MODEL.md cites %s:%s: %v", file, span, err)
+			continue
+		}
+		lines := fileLines(t, filepath.Join(dir, file))
+		if last > len(lines) {
+			t.Errorf("docs/THREAT_MODEL.md cites %s:%s, which has %d lines", file, span, len(lines))
+			continue
+		}
+		key := file + ":" + strconv.Itoa(first)
+		want, known := "", false
+		for _, tc := range cases {
+			if tc.file == file && tc.at == first {
+				want, known = tc.want, true
+				covered[key] = true
+			}
+		}
+		if !known {
+			t.Errorf("docs/THREAT_MODEL.md cites %s and no case names what it points at; add one", key)
+			continue
+		}
+		got := strings.Join(lines[first-1:last], "\n")
+		if !strings.Contains(got, want) {
+			t.Errorf("docs/THREAT_MODEL.md points at %s (%d-%d), which reads %q, not %q", key, first, last, got, want)
+		}
+		cited = append(cited, key)
+	}
+	if len(cited) == 0 {
+		t.Fatal("no workflow pointer was found in docs/THREAT_MODEL.md; the walk is broken, not the document")
+	}
+	for _, tc := range cases {
+		if key := tc.file + ":" + strconv.Itoa(tc.at); !covered[key] {
+			t.Errorf("docs/THREAT_MODEL.md no longer cites %s; drop the case or cite it", key)
+		}
 	}
 }
 
@@ -164,10 +235,10 @@ func resolvePointer(t *testing.T, root, name string, qualified map[string]string
 }
 
 // pointerTargets lists every file a pointer can name: the repository root, the
-// command, the scripts directory, and each internal package.
+// command, the scripts directory, the workflows, and each internal package.
 func pointerTargets(t *testing.T, root string) []string {
 	t.Helper()
-	dirs := []string{root, filepath.Join(root, "scripts")}
+	dirs := []string{root, filepath.Join(root, "scripts"), filepath.Join(root, ".github", "workflows")}
 	for _, parent := range []string{"internal", "cmd"} {
 		dirs = append(dirs, filepath.Join(root, parent))
 		entries, err := os.ReadDir(filepath.Join(root, parent))
