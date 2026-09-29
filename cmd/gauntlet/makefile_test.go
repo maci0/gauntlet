@@ -656,13 +656,17 @@ func TestMakefileTestFastRefusesToRunEveryPackage(t *testing.T) {
 }
 
 // The Makefile exports the build environment, so a test that shells out to it
-// inherits a command line the caller never wrote.
+// inherits a command line the caller never wrote. PKG and RUN go with
+// MAKEFLAGS: make exports a command-line variable to every recipe, so the
+// documented `make test-pkg PKG=./cmd/gauntlet` reached the nested
+// `make test-pkg` with PKG set, the guard never fired, and the package ran
+// itself until the test binary's timeout killed it.
 func cleanMakeEnv() []string {
 	var env []string
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
-		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL":
+		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL", "PKG", "RUN":
 			continue
 		}
 		env = append(env, entry)
