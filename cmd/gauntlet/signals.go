@@ -83,7 +83,7 @@ func watchInterrupts(ctx context.Context, ch <-chan os.Signal, stop context.Canc
 			return
 		}
 		fmt.Fprintln(out, "\nForce-killing.")
-		exit(128 + int(syscall.SIGINT))
+		exit(exitInterrupted)
 		return
 	}
 }

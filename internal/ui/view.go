@@ -161,16 +161,12 @@ func (m *model) renderHeader() string {
 	// state. Dim chrome yields to it piece by piece, so a narrow terminal
 	// loses the version or the run id before it loses where the run stands.
 	left := []string{wordmark()}
-	fits := func(piece string) bool {
-		joined := strings.Join(left, "  ") + "  " + piece
-		return lipgloss.Width(joined)+lipgloss.Width(right)+2 <= m.w
-	}
 	for _, piece := range []string{
 		styleDim.Render("v" + m.cfg.Version),
 		styleDim.Render(m.cfg.RunID),
 		styleInfo.Render(mode),
 	} {
-		if fits(piece) {
+		if headerFits(m.w, left, right, piece) {
 			left = append(left, piece)
 		}
 	}
@@ -185,7 +181,7 @@ func (m *model) renderHeader() string {
 		if room >= 4 {
 			left = append(left, styleDim.Render(dirLabel(m.cfg.Dirs[0], room)))
 		}
-	} else if fits(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))) {
+	} else if headerFits(m.w, left, right, fmt.Sprintf("%d dirs", len(m.cfg.Dirs))) {
 		left = append(left, styleDim.Render(fmt.Sprintf("%d dirs", len(m.cfg.Dirs))))
 	}
 	return spread(strings.Join(left, "  "), right, m.w)
@@ -1210,6 +1206,13 @@ func scrollHelp(scroll int, key string, lines []string, w, h int) int {
 		scroll += max(viewport-1, 1)
 	}
 	return clampi(scroll, 0, bound)
+}
+
+// headerFits reports whether one more piece of dim header chrome still fits on
+// a line of w cells beside right, given the left pieces already there.
+func headerFits(w int, left []string, right, piece string) bool {
+	joined := strings.Join(left, "  ") + "  " + piece
+	return lipgloss.Width(joined)+lipgloss.Width(right)+2 <= w
 }
 
 // spread lays left and right on one row, w columns wide.

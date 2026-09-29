@@ -5,13 +5,11 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime"
 	"strings"
-	"syscall"
 
 	"golang.org/x/term"
 
@@ -35,8 +33,8 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 
 	set, _, err := prompt.Discover(ctx, opts.promptDir, dir)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+		if interrupted(ctx, err) {
+			return exitInterrupted
 		}
 		fmt.Fprintln(os.Stderr, err)
 		return exitUsage
@@ -61,15 +59,15 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		Version:     version,
 	})
 	if err != nil {
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+		if interrupted(ctx, err) {
+			return exitInterrupted
 		}
 		fmt.Fprintln(os.Stderr, err)
 		return exitFail
 	}
 	if !ok {
 		if ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+			return exitInterrupted
 		}
 		return exitOK
 	}

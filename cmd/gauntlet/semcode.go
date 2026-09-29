@@ -50,7 +50,7 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 			continue
 		}
 		if ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+			return exitInterrupted
 		}
 		switch {
 		case timedOut:

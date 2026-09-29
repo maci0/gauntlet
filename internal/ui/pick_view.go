@@ -115,15 +115,11 @@ func (p *picker) renderHeader() string {
 	// toggle and is the header's reason to exist. Dim chrome yields to it
 	// piece by piece, so a narrow terminal loses the version or the title
 	// before it loses what the run would cover.
-	fits := func(piece string) bool {
-		joined := strings.Join(left, "  ") + "  " + piece
-		return lipgloss.Width(joined)+lipgloss.Width(right)+2 <= p.w
-	}
 	for _, piece := range []string{
 		styleDim.Render("v" + p.cfg.Version),
 		styleInfo.Render("compose a run"),
 	} {
-		if fits(piece) {
+		if headerFits(p.w, left, right, piece) {
 			left = append(left, piece)
 		}
 	}

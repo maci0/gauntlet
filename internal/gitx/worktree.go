@@ -245,12 +245,6 @@ func (r *Repo) worktreeDir(name string) string {
 	return filepath.Join(r.worktreeRootDir(), BranchSlug(name))
 }
 
-// checkBranchName rejects a name git would not accept as a ref before it
-// reaches a command line, the shared check behind every branch a stack names.
-func (r *Repo) checkBranchName(ctx context.Context, branch string) error {
-	return r.ValidateBranchName(ctx, branch)
-}
-
 // AddWorktree creates a checkout of base on a fresh branch. The name identifies
 // the checkout (a persistent lane, or a one-shot conflict resolver); the tag
 // (run id plus loop and lane) keeps concurrent and repeated runs from colliding
@@ -274,7 +268,7 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 		return nil, err
 	}
 	defer r.wtMu.Unlock()
-	if err := r.checkBranchName(ctx, branch); err != nil {
+	if err := r.ValidateBranchName(ctx, branch); err != nil {
 		return nil, err
 	}
 	return r.addBranchWorktree(ctx, r.worktreeDir("stack-"+BranchSlug(tag)), branch, base)
@@ -462,7 +456,7 @@ func (w *Worktree) StartBranch(ctx context.Context, branch, base string) error {
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
-	if err := w.repo.checkBranchName(ctx, branch); err != nil {
+	if err := w.repo.ValidateBranchName(ctx, branch); err != nil {
 		return err
 	}
 	sub := w.subRepo()
@@ -996,7 +990,7 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	if name == w.Branch {
 		return nil
 	}
-	if err := w.repo.checkBranchName(ctx, name); err != nil {
+	if err := w.repo.ValidateBranchName(ctx, name); err != nil {
 		return err
 	}
 	w.repo.wtMu.Lock()

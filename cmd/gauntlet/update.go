@@ -5,11 +5,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/runner"
@@ -69,8 +67,8 @@ func autoUpdateLoop(ctx context.Context, opts *options, bus *runner.Bus) {
 func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) int {
 	rel, err := selfupdate.Check(ctx, opts.updateRepo)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+		if interrupted(ctx, err) {
+			return exitInterrupted
 		}
 		fmt.Fprintf(os.Stderr, "cannot check for updates: %v\n", err)
 		return exitFail
@@ -95,8 +93,8 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal palette, opts *options) i
 	}
 	path, err := selfupdate.Apply(ctx, rel)
 	if err != nil {
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+		if interrupted(ctx, err) {
+			return exitInterrupted
 		}
 		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
 		return exitFail
