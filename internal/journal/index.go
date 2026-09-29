@@ -129,7 +129,7 @@ func holdsStream(path string) bool {
 // replaces index.jsonl by rename, so the lock lives in a sibling file: a
 // flock on the index itself would be left on the old inode after the swap.
 func withIndexLock(fn func() error) error {
-	if err := os.MkdirAll(Home(), 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivate(Home()); err != nil {
 		return err
 	}
 	fd, err := syscall.Open(indexLockPath(),
@@ -167,7 +167,7 @@ func appendIndex(s Summary) error {
 // written in its place, so the index holds one row per run and the file grows
 // by exactly one line per run however often the ending is reached.
 func appendIndexLocked(s Summary) (err error) {
-	if err := os.MkdirAll(Home(), 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivate(Home()); err != nil {
 		return err
 	}
 	line, err := json.Marshal(s)
@@ -244,7 +244,7 @@ func indexNamesRun(runID string) (bool, error) {
 	if runID == "" {
 		return false, nil
 	}
-	f, err := os.Open(indexPath())
+	f, err := openNoFollow(indexPath(), os.O_RDONLY)
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -284,7 +284,7 @@ func runIDNeedle(runID string) []byte {
 func rewriteIndexDropping(runID string, newLine []byte) error {
 	needle := runIDNeedle(runID)
 	return commitIndex(func(w io.Writer) error {
-		f, err := os.Open(indexPath())
+		f, err := openNoFollow(indexPath(), os.O_RDONLY)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -466,7 +466,7 @@ func Recent(n int) ([]Summary, error) {
 }
 
 func readIndex(n int) ([]Summary, error) {
-	f, err := os.Open(indexPath())
+	f, err := openNoFollow(indexPath(), os.O_RDONLY)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -900,7 +900,7 @@ func writeIndex(rows []Summary) error {
 // buffer's worth of index instead of all of it. The caller holds the index
 // lock.
 func commitIndex(write func(io.Writer) error) error {
-	if err := os.MkdirAll(Home(), 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivate(Home()); err != nil {
 		return err
 	}
 	tmp, err := gauntlethome.NewTempFile(Home(), ".index.jsonl-", nil)
@@ -998,7 +998,7 @@ func lines(p *int) int {
 // again.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
-	f, err := os.Open(path)
+	f, err := openNoFollow(path, os.O_RDONLY)
 	if err != nil {
 		return Summary{}, err
 	}

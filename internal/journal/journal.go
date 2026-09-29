@@ -248,7 +248,7 @@ func Open(runID string, now time.Time) (*Journal, error) {
 		path = prev
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivate(dir); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_APPEND, 0o600)
@@ -284,15 +284,23 @@ func Open(runID string, now time.Time) (*Journal, error) {
 	return &Journal{runID: runID, path: path, f: f, w: w, enc: json.NewEncoder(w)}, nil
 }
 
-// openNoFollow opens an existing file for writing, refusing a symlink in its
-// place. os.OpenFile has no O_NOFOLLOW, and the two appends that reach an
-// already-existing file here are the ones with no O_EXCL to prove the create:
-// the journal for a run id that is already on disk, and the index row. The
-// state root is 0700, but a GAUNTLET_HOME that resolves beside the working
+// openNoFollow opens an existing file, refusing a symlink in its place.
+// os.OpenFile and os.Open have no O_NOFOLLOW. The two appends that reach an
+// already-existing file are the ones with no O_EXCL to prove the create: the
+// journal for a run id that is already on disk, and the index row. The state
+// root is 0700, but a GAUNTLET_HOME that resolves beside the working
 // directory (no usable HOME) puts it inside the reviewed tree, where a
 // committed .gauntlet/runs/<shard>/<id>.jsonl link would otherwise receive
 // the run's paths, prompt names, and agent output. The lock file and the
 // journals prune probes already carry the flag; these two were the gap.
+//
+// Reads go through it for the same reason and not only that one: the planted
+// link then has nothing to disclose either. `show` and `list` parse what they
+// read and print it, so a committed .gauntlet/runs/<shard>/<id>.jsonl or
+// .gauntlet/index.jsonl symlink would surface the contents of any file on the
+// machine as a run's event stream. os.Lstat, not os.Stat, is the matching
+// answer for the existence probes that select a path: it reports a link as
+// what it is, so the candidate is passed over rather than resolved.
 func openNoFollow(path string, flag int) (*os.File, error) {
 	fd, err := syscall.Open(path, flag|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
 	if err != nil {

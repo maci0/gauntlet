@@ -581,19 +581,18 @@ const maxExcludeBytes = 1 << 20
 
 // readScanFile reads a file for the marker scan, refusing anything past
 // maxScanBytes by size rather than by reading it first.
+//
+// The paths come from `git diff --name-only --diff-filter=U`, so a
+// conflicted name is one the reviewed repository picked, and the agent that
+// was asked to resolve it can leave anything at that name. openRegular, not
+// os.Open: a symlink planted there, or tracked in the checkout, would
+// otherwise be read out of the tree, up to the scan limit.
 func readScanFile(name string) ([]byte, error) {
-	f, err := os.Open(name)
+	f, fi, err := openRegular(name)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if fi.IsDir() {
-		return nil, &fs.PathError{Op: "read", Path: name, Err: errors.New("is a directory")}
-	}
 	if fi.Size() > maxScanBytes {
 		return nil, fmt.Errorf("file is %d bytes, over the %d-byte scan limit", fi.Size(), maxScanBytes)
 	}

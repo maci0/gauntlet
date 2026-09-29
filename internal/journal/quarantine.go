@@ -56,7 +56,7 @@ func journalPath(runID string) string {
 // removal nor the arrival is recorded anywhere else.
 func quarantine(runID, path string) error {
 	dst := quarantinePath(runID)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivate(filepath.Dir(dst)); err != nil {
 		return err
 	}
 	if err := os.Rename(path, dst); err != nil {
@@ -121,7 +121,7 @@ func Pruned(runID string) bool {
 	if !validRunID(runID) {
 		return false
 	}
-	_, err := os.Stat(quarantinePath(runID))
+	_, err := os.Lstat(quarantinePath(runID))
 	return err == nil
 }
 
@@ -260,14 +260,14 @@ func Restore(runID string) error {
 			return fmt.Errorf("%w: %s", ErrAlreadyListed, runID)
 		}
 		src := quarantinePath(runID)
-		if _, err := os.Stat(src); err != nil {
+		if _, err := os.Lstat(src); err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return fmt.Errorf("%w: %s under %s", ErrNotPruned, runID, prunedDir())
 			}
 			return err
 		}
 		dst := journalPath(runID)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		if err := gauntlethome.MkdirAllPrivate(filepath.Dir(dst)); err != nil {
 			return err
 		}
 		if err := os.Rename(src, dst); err != nil {

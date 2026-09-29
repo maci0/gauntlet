@@ -203,7 +203,7 @@ func pruneLocked(keep int) (int, error) {
 // this package is about to bound, and reading a bounded tail would drop the
 // rows in between.
 func readAllIndex() ([]Summary, error) {
-	f, err := os.Open(indexPath())
+	f, err := openNoFollow(indexPath(), os.O_RDONLY)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil

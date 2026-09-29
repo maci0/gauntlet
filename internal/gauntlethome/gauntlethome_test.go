@@ -438,3 +438,47 @@ func TestSweepStaleTempsFollowsTheInjectedClock(t *testing.T) {
 		t.Errorf("a file past the cutoff should be gone (stat err=%v)", err)
 	}
 }
+
+// The state root degrades to ".gauntlet" beside the working directory when
+// GAUNTLET_HOME names nothing usable and there is no usable HOME, which puts
+// it inside the reviewed tree. A repository that ships one of these as a
+// symlink would otherwise decide where the journal's renames land, so every
+// existing component has to be a real directory and the mode is 0700.
+func TestMkdirAllPrivateRefusesASymlinkedComponent(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(root, "outside")
+	if err := os.Mkdir(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "state")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := MkdirAllPrivate(filepath.Join(link, "runs", "2026-08-25")); err == nil {
+		t.Fatal("MkdirAllPrivate created through a symlinked component")
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("directory was created outside the state root: %v entries, %v", entries, err)
+	}
+
+	// The real path still works, and the components it makes are private.
+	made := filepath.Join(root, "ok", "runs")
+	if err := MkdirAllPrivate(made); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(made)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o700 {
+		t.Fatalf("made directory mode is %o, want 700", fi.Mode().Perm())
+	}
+
+	// A plain file where a directory belongs is refused too, not just a link.
+	if err := os.WriteFile(filepath.Join(root, "file"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := MkdirAllPrivate(filepath.Join(root, "file", "under")); err == nil {
+		t.Fatal("MkdirAllPrivate created under a regular file")
+	}
+}

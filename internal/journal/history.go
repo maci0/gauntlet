@@ -55,7 +55,7 @@ func events(runID string, gate func([]byte) bool, visit func([]byte)) error {
 }
 
 func eventsFile(path string, gate func([]byte) bool, visit func([]byte)) error {
-	f, err := os.Open(path)
+	f, err := openNoFollow(path, os.O_RDONLY)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func locateRun(runID string) (string, bool, error) {
 	}
 	direct = append(direct, filepath.Join(root, runID+".jsonl"))
 	for _, p := range direct {
-		if _, err := os.Stat(p); err == nil {
+		if _, err := os.Lstat(p); err == nil {
 			return p, true, nil
 		}
 	}
@@ -159,7 +159,7 @@ func locateRun(runID string) (string, bool, error) {
 			continue
 		}
 		p := filepath.Join(root, d.Name(), runID+".jsonl")
-		if _, err := os.Stat(p); err == nil {
+		if _, err := os.Lstat(p); err == nil {
 			return p, true, nil
 		}
 	}

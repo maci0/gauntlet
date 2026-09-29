@@ -10,8 +10,10 @@ package gauntlethome
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -55,6 +57,48 @@ func Dir() (string, bool) {
 func StateDir() string {
 	root, _ := Dir()
 	return filepath.Join(root, "state")
+}
+
+// MkdirAllPrivate is os.MkdirAll at 0700 that refuses to create through a
+// symlink.
+//
+// os.MkdirAll follows a link at any component, and the state root can sit
+// inside the reviewed tree: Dir degrades to ".gauntlet" beside the working
+// directory when GAUNTLET_HOME names nothing usable and there is no usable
+// HOME. A repository that ships .gauntlet/runs or .gauntlet/pruned as a
+// symlink therefore decides where the journal's quarantine rename moves files
+// to, and the 0700 below applies only to components this call creates, so a
+// planted directory also keeps whatever mode it was given. Every existing
+// component is lstat-ed and must be a real directory.
+func MkdirAllPrivate(dir string) error {
+	dir = filepath.Clean(dir)
+	// Top-down, so each component is checked before the one below it is made.
+	var stack []string
+	for p := dir; ; p = filepath.Dir(p) {
+		stack = append(stack, p)
+		if parent := filepath.Dir(p); parent == p {
+			break
+		}
+	}
+	for _, p := range slices.Backward(stack) {
+
+		fi, err := os.Lstat(p)
+		switch {
+		case err == nil:
+			// Lstat never reports a symlink as a directory, so a planted
+			// link lands here as the refusal it is.
+			if !fi.IsDir() {
+				return fmt.Errorf("%s is not a real directory", p)
+			}
+			continue
+		case !errors.Is(err, fs.ErrNotExist):
+			return err
+		}
+		if err := os.Mkdir(p, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+	}
+	return nil
 }
 
 // absolute resolves p against the working directory. If the working directory

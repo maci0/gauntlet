@@ -1007,3 +1007,58 @@ func TestExtraSafeConfigRebuildsAfterGlobalConfigChanges(t *testing.T) {
 		t.Fatalf("overlay did not pick up the changed global config: %q", second)
 	}
 }
+
+// The reviewed repository picks gitDir: `.git` can be a symlink, and the
+// snapshot writes a private index into it. Following the link would create
+// that index outside the repository, and a planted `.git/index` link would be
+// read out of tree to seed it. Both must be refused, not followed.
+func TestSnapshotRefusesAPlantedGitDirLink(t *testing.T) {
+	ctx := context.Background()
+	r := newRepo(t)
+	outside := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.Rename(filepath.Join(r.Dir, ".git"), outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(r.Dir, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Snapshot(ctx); err == nil {
+		t.Fatal("Snapshot followed the planted .git symlink")
+	}
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "gauntlet-snap-") {
+			t.Fatalf("snapshot index escaped the repository: %s", e.Name())
+		}
+	}
+}
+
+// The conflict-marker scan reads paths `git diff --name-only --diff-filter=U`
+// names, and an agent asked to resolve one can leave a symlink there. The
+// read must stay in the checkout, as every other read in this package does.
+func TestUnresolvedRefusesAPlantedSymlink(t *testing.T) {
+	ctx := context.Background()
+	r := newRepo(t)
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secret, []byte("<<<<<<< ours\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(w.Dir, "notes.md")
+	if err := os.Symlink(secret, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Unresolved(ctx, []string{"notes.md"}); err == nil {
+		t.Fatal("the marker scan followed a symlink out of the checkout")
+	}
+}

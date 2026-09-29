@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -89,6 +91,14 @@ func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	// The reviewed repository picks gitDir: `.git` can be a symlink or a
+	// gitfile whose path lands elsewhere, and `.git/info` can be planted
+	// outright. Every write below lands in it, so it is proven to be a real
+	// directory first, the same rule ExcludeOwnArtifacts applies to the
+	// exclude file.
+	if !realDir(gitDir) {
+		return "", fmt.Errorf("git directory %s is not a real directory", gitDir)
+	}
 	sweepStaleSnapshots(gitDir, r.now())
 	tmp, err := os.CreateTemp(gitDir, "gauntlet-snap-")
 	if err != nil {
@@ -96,18 +106,31 @@ func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
-	if err := tmp.Close(); err != nil {
-		return "", err
-	}
-	if data, err := os.ReadFile(filepath.Join(gitDir, "index")); err == nil {
-		if err := os.WriteFile(tmpName, data, 0o600); err != nil {
+	// The real index is copied through the descriptor CreateTemp already
+	// holds, and read through O_NOFOLLOW. Reopening tmpName by name after a
+	// close would throw the O_EXCL away and follow a symlink swapped into
+	// the name, and a planted `.git/index` link would be read out of tree.
+	if src, _, err := openRegular(filepath.Join(gitDir, "index")); err == nil {
+		_, err = io.Copy(tmp, src)
+		if cerr := src.Close(); err == nil {
+			err = cerr
+		}
+		if err != nil {
 			return "", err
 		}
-	} else if !os.IsNotExist(err) {
+		if err := tmp.Close(); err != nil {
+			return "", err
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", err
-	} else if err := os.Remove(tmpName); err != nil {
+	} else {
+		if err := tmp.Close(); err != nil {
+			return "", err
+		}
 		// An empty file is not a valid index; git add will create one.
-		return "", err
+		if err := os.Remove(tmpName); err != nil {
+			return "", err
+		}
 	}
 	if _, err := r.runIndex(ctx, tmpName, gitNormal, "add", "-A"); err != nil {
 		return "", fmt.Errorf("cannot snapshot the worktree: %w", err)

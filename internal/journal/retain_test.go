@@ -232,3 +232,44 @@ func TestJournalThisProcessHoldsIsNotIdle(t *testing.T) {
 		t.Error("a journal this process has closed still reads as in progress")
 	}
 }
+
+// The writes carry O_NOFOLLOW because a GAUNTLET_HOME with no usable HOME
+// resolves beside the working directory, inside the reviewed tree, where a
+// committed .gauntlet/runs/<shard>/<id>.jsonl link is a file the repository
+// chooses. The reads have to refuse the same link: `show` parses what it
+// reads and prints it, so a planted one would surface the contents of any file
+// on the machine as a run's event stream.
+func TestReadsRefuseAPlantedSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	const id = "20260825T090000Z-0001"
+	record(t, id, start)
+	real := filepath.Join(home, "runs", "2026-08-25", id+".jsonl")
+	if _, err := os.Lstat(real); err != nil {
+		t.Fatalf("the recorded journal is not where it should be: %v", err)
+	}
+
+	// The target holds what a leak would print: a line that is not an event.
+	secret := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(secret, []byte(`{"api_key":"sk-not-a-real-key"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(real); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, real); err != nil {
+		t.Fatal(err)
+	}
+
+	var got []map[string]any
+	if err := Events(id, func(ev map[string]any) { got = append(got, ev) }); err == nil {
+		t.Fatal("Events followed a symlink out of the state root")
+	}
+	if len(got) != 0 {
+		t.Fatalf("the planted link was parsed as event stream: %v", got)
+	}
+	if _, err := os.Lstat(real); err != nil {
+		t.Fatal("the planted link should survive the refusal: ", err)
+	}
+}
