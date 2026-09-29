@@ -34,13 +34,13 @@ also publish its changes as a linear, unmerged PR stack.
 |---|---|
 | `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), the per-run preflight steps, and the plain reporter |
 | `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
-| `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
+| `internal/agent` | agent specs, the installed-tool inventory doctor and auto-detection read through `runx`'s resolver, command construction, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
 | `internal/normalize` | agent output noise reduction and line classification, and in `display.go` the sanitize, home redaction, and clipping every untrusted string shown to a reader goes through |
 | `internal/gitx` | the repo handle and its baseline (`gitx.go`), hardened git invocation and the safe config overlay (`exec.go`), worktree line stats (`stats.go`), status and diff porcelain parsing (`status.go`), the tree listing (`list.go`), and the commit-trailer cleanup (`trailers.go`); worktrees, branches, and snapshots in `worktree.go`, `branch.go`, and `snapshot.go` |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
-| `internal/runx` | process-group kill, WaitDelay (`WaitGrace`, the one bound every child is given rather than a number each caller spells), and capped stdout/stderr for every child |
+| `internal/runx` | how every child is launched and read: process-group kill, WaitDelay (`WaitGrace`, the one bound every child is given rather than a number each caller spells), capped stdout/stderr, the first line of a child's output with credentials stripped, and the one rule for finding a binary on a `PATH` no chdir can change meaning under (`AbsPATH`, `AbsPATHEnv`, `LookPath`), which is what makes an agent and the git it drives resolve the same way |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
 | `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
 | `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus `ExpandPath` for the `~` and `$VAR` forms of a configured root, and the durable-write helpers (`WriteFileAtomic`, `SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
@@ -58,7 +58,8 @@ Dependency direction is strictly downward: `runner` imports `agent`,
 file-signal suggester reaches the tree, the run history, and the catalog
 without any of them reaching back;
 `gitx`, `ghx`, `agent`, and `sbom` import `runx` for the shared child
-kill and output cap; `ui` imports
+kill, output cap, and binary resolution, so the one `PATH` rule behind "a
+review target cannot plant an executable by name" is stated once; `ui` imports
 `runner`'s event types plus the shared `normalize` line kinds, `humanize`
 formatters, the `envx` boolean reader, which the motion-off variables go
 through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold and

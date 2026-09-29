@@ -205,7 +205,7 @@ func IsOptIn(tool string) bool {
 //
 // runx.AbsPATH is the one implementation of that rule, including what an empty
 // PATH falls back to, so an agent and the git it drives are resolved the same
-// way.
+// way. It is also what keys the memo below, so a PATH change is seen by both.
 func pathNoCWD() string {
 	return runx.AbsPATH()
 }
@@ -244,6 +244,11 @@ func resolveStore(name, path, found string) {
 // Resolve returns the absolute path of an executable found on a
 // cwd-independent PATH, or "" when it is not installed. Results are memoized:
 // doctor and auto-detection probe the same names repeatedly.
+//
+// The memo and the concurrent fan-out in ResolveMany are the only thing this
+// package adds. The rule the answer is computed by, the absolute-only PATH and
+// what runs on it, is runx's, so an agent and the git it drives cannot be
+// resolved by two walkers that answer differently.
 func Resolve(name string) string {
 	path := pathNoCWD()
 	if got, ok := resolveLookup(name, path); ok {

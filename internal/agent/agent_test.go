@@ -18,6 +18,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 func TestParseSpecs(t *testing.T) {
@@ -414,6 +416,39 @@ func TestResolveFindsAgentWithNoPathSet(t *testing.T) {
 		if dir == "" || !filepath.IsAbs(dir) {
 			t.Fatalf("empty-PATH fallback carries the non-absolute segment %q", dir)
 		}
+	}
+}
+
+// A relative PATH segment is a directory under whatever the run's cwd is when
+// the segment is read, so a stub planted there is what a review target would
+// execute in place of the agent. Resolve has to drop the segment, and it has
+// to drop it the way git's own resolver does, or a run can resolve an agent and
+// a git that disagree about which directories are safe.
+func TestResolveIgnoresRelativePathSegments(t *testing.T) {
+	work := t.TempDir()
+	if err := os.Mkdir(filepath.Join(work, "bin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stub := filepath.Join(work, "bin", "pretend-agent")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+	t.Setenv("PATH", "bin")
+
+	if got := Resolve("pretend-agent"); got != "" {
+		t.Fatalf("Resolve = %q from the relative PATH segment \"bin\", want none", got)
+	}
+	if got := runx.LookPath("pretend-agent"); got != Resolve("pretend-agent") {
+		t.Fatalf("agent and git resolvers disagree: runx.LookPath = %q, Resolve = %q",
+			got, Resolve("pretend-agent"))
+	}
+
+	// The absolute form of the same directory is still found, so the segment
+	// was dropped rather than the lookup broken.
+	t.Setenv("PATH", filepath.Join(work, "bin"))
+	if got := Resolve("pretend-agent"); got != stub {
+		t.Fatalf("Resolve = %q from the absolute PATH segment, want %q", got, stub)
 	}
 }
 
