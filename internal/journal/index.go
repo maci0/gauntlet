@@ -989,8 +989,46 @@ type historyEvent struct {
 	Del    int    `json:"del"`
 }
 
+// maxPlausibleCount bounds one counted figure read out of a journal, and the
+// running total it is added into. The agent, git, and stream paths all bound
+// theirs for the same reason: a journal is a file the tool reads, and one
+// number in it is whatever the bytes held. The value is the one
+// agent.maxPlausible and gitx.maxPlausibleCount already use, so a run's line
+// count is bounded the same way whichever path recorded it.
+const maxPlausibleCount = 1 << 40
+
+// count reads one counted figure as a measurement or as zero. A figure past
+// the bound, and a negative one, are not counts: a git diff has no such line
+// count, and reading one as a number is what makes the sum that follows wrap.
+// It is applied where figures are added, never where a line is decoded, so
+// the two decoders of a journal line still see the same event.
+func count(v int) int {
+	if v <= 0 || v > maxPlausibleCount {
+		return 0
+	}
+	return v
+}
+
+// addCount folds one counted figure into a running total, and holds the total
+// at the bound rather than letting it wrap. The totals land in the summary
+// index and are printed from there, so an int64 that carried past its end
+// reports a run that deleted a negative number of lines, and the pairing that
+// decides whether a review changed anything reads it as no change at all.
+func addCount(total *int, add int) {
+	add = count(add)
+	if add == 0 {
+		return
+	}
+	if *total > maxPlausibleCount-add {
+		*total = maxPlausibleCount
+		return
+	}
+	*total += add
+}
+
 // lines unwraps a counted line delta. An absent field is zero here and
 // distinct in LinesMeasured, so "not attributed" never sums as "no change".
+// The value is what the line held; what may be counted of it is addCount's.
 func lines(p *int) int {
 	if p == nil {
 		return 0
@@ -1086,9 +1124,9 @@ func summarizeFile(runID, path string) (Summary, error) {
 				// FAILED column stops explaining the run's exit code.
 				s.Other++
 			}
-			s.Ins += lines(e.Ins)
-			s.Del += lines(e.Del)
-			s.Tokens += e.Tokens
+			addCount(&s.Ins, lines(e.Ins))
+			addCount(&s.Del, lines(e.Del))
+			addCount(&s.Tokens, e.Tokens)
 		case "merge", "pull_request":
 			// A layer's counts are added once, keyed by the branch its work
 			// landed on. A publication that reaches the journal twice (a
@@ -1104,8 +1142,8 @@ func summarizeFile(runID, path string) (Summary, error) {
 			if e.Ins != nil {
 				counted[key] = true
 			}
-			s.Ins += lines(e.Ins)
-			s.Del += lines(e.Del)
+			addCount(&s.Ins, lines(e.Ins))
+			addCount(&s.Del, lines(e.Del))
 		}
 		s.LinesMeasured = s.LinesMeasured || e.Ins != nil
 	}

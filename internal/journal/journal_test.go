@@ -1301,6 +1301,73 @@ func TestSummaryCountsAReplayedLayerOnce(t *testing.T) {
 	}
 }
 
+// A journal is a file the tool reads, so a count in it is whatever the bytes
+// held. Every other parse path in the tree bounds what a counter may claim
+// (agent.maxMatch, gitx.parseCount, streamjson.asInt); the rebuilt summary
+// was the one that did not, so two events each claiming a figure near the
+// int64 ceiling carried the total past its end and the run reported a
+// negative number of deleted lines.
+func TestSummaryDoesNotWrapOnAbsurdCounts(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 1, 6, 0, 0, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Past the bound on its own, and at the int64 ceiling so the second
+	// event is what carries the sum over the end. Written as json.Number so
+	// the journal holds the integer a hostile or corrupt writer would, rather
+	// than a float the encoder would write in exponent form.
+	huge := json.Number("9223372036854775807")
+	events := []map[string]any{
+		{"ev": "review_end", "dir": "/w/huge", "review": "sec-review", "status": "ok",
+			"ins": huge},
+		{"ev": "review_end", "dir": "/w/huge", "review": "sec-review", "status": "ok",
+			"ins": huge, "del": huge, "tokens": huge},
+		// A real count in the same run, which has to survive the two above.
+		{"ev": "merge", "dir": "/w/huge", "review": "sec-review", "loop": 2,
+			"branch": "gauntlet/2-1/sec-review", "status": "ok", "ins": 7, "del": 2},
+	}
+	for _, e := range events {
+		j.Write(e)
+	}
+	j.Flush()
+
+	rows, err := Recent(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("Recent(1) = %d rows, want the one unindexed run", len(rows))
+	}
+	got := rows[0]
+	if got.Ins < 0 || got.Del < 0 || got.Tokens < 0 {
+		t.Fatalf("rebuilt summary = +%d/-%d and %d tokens: a counted figure carried the total past its end",
+			got.Ins, got.Del, got.Tokens)
+	}
+	// The two absurd figures claim nothing; the measured one is the whole.
+	if got.Ins != 7 || got.Del != 2 || got.Tokens != 0 {
+		t.Errorf("rebuilt summary = +%d/-%d and %d tokens, want +7/-2 and none: a misparse is still being counted",
+			got.Ins, got.Del, got.Tokens)
+	}
+	if !got.LinesMeasured {
+		t.Error("LinesMeasured = false, want true: the run's lines were measured")
+	}
+
+	// History reads the same fields and decides on ins+del, so the same bytes
+	// must not tell it a review changed nothing.
+	h, err := History("/w/huge")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := h["sec-review"]; got.Runs != 2 || got.Changed != 1 {
+		t.Errorf("sec-review history = %+v, want 2 runs and 1 that changed something", got)
+	}
+}
+
 // A journal that cannot be read to its end has already been tallied for every
 // line before the failure. Replaying it by id on top of that counted the same
 // review twice, and the suggester read a directory where every review always

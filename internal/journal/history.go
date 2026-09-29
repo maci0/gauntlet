@@ -267,7 +267,11 @@ func History(dir string) (map[string]ReviewHistory, error) {
 			if e.Review == "" || !same.is(e.Dir) {
 				return
 			}
-			ins, del := e.Ins, e.Del
+			// count before the sum: ins+del is an int add over two numbers
+			// a journal chose, and one that carried past its end reads as a
+			// review that deleted a negative number of lines, which is a
+			// review that changed nothing.
+			ins, del := count(e.Ins), count(e.Del)
 			switch e.Ev {
 			case "review_end":
 				if e.Status != "" && e.Status != "ok" {
