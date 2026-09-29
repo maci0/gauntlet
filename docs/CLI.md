@@ -10,7 +10,7 @@ installed.
 |---|---|
 | `gauntlet [flags]` | review the current directory, looping until stopped |
 | `gauntlet pick` | compose a run on screen, then run it |
-| `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, and what the run history holds: journals on disk, whether the index matches them, and pruned runs still recoverable |
+| `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, and what the run history holds: journals on disk, whether the index matches them, journals cut mid-line, and pruned runs still recoverable |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
 | `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |

@@ -280,6 +280,14 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				"  %s still recoverable: gauntlet runs --restore <run-id>",
 				humanize.Plural(st.Pruned, "pruned run", "pruned runs"))))
 		}
+		// A journal cut mid-line is the one loss the counts above cannot show:
+		// the half-line is not JSON, so the run replays as a shorter run that
+		// looks whole, and a restored archive is checked by its counts.
+		if st.Truncated > 0 {
+			w.println(pal.yellow(fmt.Sprintf(
+				"  %s ends mid-line: its last events are missing, so it lists as a shorter run",
+				humanize.Plural(st.Truncated, "journal", "journals"))))
+		}
 	}
 	if usable == 0 && !pinned {
 		msg := "No agent CLI found: install one to run reviews."

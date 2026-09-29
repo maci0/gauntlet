@@ -116,7 +116,8 @@ type runsJSON struct {
 
 // historyJSON is what the state tree holds behind those rows: the journals the
 // index is derived from, the rows the index could answer with, the runs the two
-// copies tell apart, and how many pruned journals are still restorable. It is
+// copies tell apart, how many pruned journals are still restorable, and how
+// many journals were cut short mid-line. It is
 // what `gauntlet doctor` prints on its Run history line, carried here because
 // a restore is checked against the tree rather than against the exit code of the
 // run that wrote it, and doctor's exit code is about the agent inventory.
@@ -125,6 +126,7 @@ type historyJSON struct {
 	Rows      int `json:"rows"`
 	Disagreed int `json:"disagreed"`
 	Pruned    int `json:"pruned"`
+	Truncated int `json:"truncated"`
 }
 
 // writeRunsJSON prints the index for a consumer, and prints nothing else: the
@@ -171,6 +173,7 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
 			Rows:      st.Rows,
 			Disagreed: st.Disagreed,
 			Pruned:    st.Pruned,
+			Truncated: st.Truncated,
 		},
 	}
 	enc := json.NewEncoder(out)

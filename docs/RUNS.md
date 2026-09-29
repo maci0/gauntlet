@@ -544,7 +544,7 @@ journal can be read end to end. The third answers "is what survived complete",
 on its `history` object:
 
 ```json
-"history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12 }
+"history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12, "truncated": 0 }
 ```
 
 `journals` is the irreplaceable count, the event streams the index is derived
@@ -557,6 +557,15 @@ zeros, so a failed read is never read as an empty history. `gauntlet doctor`
 prints the same counts on its `Run history` line, but its exit code is about the
 agent inventory: it exits 1 on a fresh machine with no agent CLI installed, and
 that says nothing about the restore.
+
+`truncated` is how many journals end mid-line, a file cut by a power cut or by a
+copy taken while a run was still writing. Nothing else reports such a file: the
+half-line is not JSON, so the run lists, replays, and summarizes as a complete
+run that is missing its last events, and the counts above are all the ones a
+whole archive and a short one share. An empty journal is not truncated, it is a
+run that has recorded nothing yet. Any non-zero `truncated` means the archive is
+short: re-take it with no run in flight, and read the counts of the copy you
+take again.
 
 Only after those three succeed should the restored directory replace the lost
 `GAUNTLET_HOME`. The tree half of the drill runs in the suite:

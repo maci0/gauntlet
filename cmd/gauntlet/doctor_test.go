@@ -369,3 +369,43 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 		t.Fatalf("doctor leaked a run id into its report:\n%s", out)
 	}
 }
+
+// A journal cut mid-line is the loss the run history counts cannot show: the
+// run is there, the index row is there, and the last events are gone. Doctor
+// says so, because its Run history line is what an operator checks a restored
+// tree against.
+func TestDoctorReportsAJournalCutMidLine(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+
+	id := journal.NewRunID(at)
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	// The tail a copy taken with the run still writing leaves behind.
+	f, err := os.OpenFile(filepath.Join(journal.Home(), "runs", "2026-01-02", id+".jsonl"),
+		os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"ev":"loop_start","loop":2`); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "Run history: 1 journal, index agrees") {
+		t.Fatalf("doctor should still report the run it can list:\n%s", out)
+	}
+	if !strings.Contains(out, "1 journal ends mid-line") {
+		t.Fatalf("doctor should report the journal that lost its last events:\n%s", out)
+	}
+}

@@ -707,8 +707,12 @@ Design points:
   listing no longer holds. The skipped run keeps its index row in the same
   pass, so it still lists when it finishes.
 - `Inspect` reads the tree for `gauntlet doctor`: journals on disk, index
-  rows, runs the two copies tell apart, and pruned runs. A restore is checked
-  against that rather than against the exit code of the run that wrote it.
+  rows, runs the two copies tell apart, pruned runs, and journals cut
+  mid-line. A restore is checked against that rather than against the exit
+  code of the run that wrote it. A cut journal is its own count because the
+  counts of runs cannot show it: the half-line is not JSON, so the run lists
+  and replays as a shorter run that looks whole, which is what an archive job
+  that copies the tree with a run still writing produces.
 - Date sharding keeps one directory listing small; the flat index makes "what
   did I run last week" a tail rather than a tree walk. A generated run id
   encodes that date, so looking one up is a stat of one file, not a probe of

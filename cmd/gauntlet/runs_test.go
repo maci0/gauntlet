@@ -856,6 +856,7 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 			Rows      int `json:"rows"`
 			Disagreed int `json:"disagreed"`
 			Pruned    int `json:"pruned"`
+			Truncated int `json:"truncated"`
 		} `json:"history"`
 	}
 	if err := json.Unmarshal([]byte(got), &doc); err != nil {
@@ -872,6 +873,38 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 	}
 	if h.Pruned != 1 {
 		t.Errorf("history reports %d quarantined runs, want 1:\n%s", h.Pruned, got)
+	}
+	// Every journal in the archive is whole, which the counts above cannot say:
+	// a run cut off mid-line is still a run, and still has its index row.
+	if h.Truncated != 0 {
+		t.Errorf("history reports %d journals cut mid-line, want none:\n%s", h.Truncated, got)
+	}
+	shard := filepath.Join(home, "runs", "2026-01-02")
+	entry, err := os.ReadDir(shard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cut := filepath.Join(shard, entry[0].Name())
+	f, err := os.OpenFile(cut, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"ev":"loop_start","loop":2`); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	// The archive job copied the tree with a run still writing, so the copy is
+	// short. The run still lists and its row still agrees; the count is the
+	// only thing that says its last events are gone.
+	_, got = captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if doc.History.Truncated != 1 {
+		t.Errorf("history reports %d journals cut mid-line, want 1:\n%s", doc.History.Truncated, got)
 	}
 }
 
