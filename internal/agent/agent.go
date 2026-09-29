@@ -320,8 +320,9 @@ func Binary(tool string) string {
 // order. Discovery is PATH-based: an agent whose binary is not on PATH under
 // its own name must be named explicitly (see --bin).
 func Installed() []Spec {
-	names := make([]string, 0, len(AllNames()))
-	for _, t := range AllNames() {
+	all := AllNames()
+	names := make([]string, 0, len(all))
+	for _, t := range all {
 		if !IsOptIn(t) {
 			names = append(names, t)
 		}

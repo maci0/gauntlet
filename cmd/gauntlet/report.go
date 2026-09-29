@@ -546,7 +546,9 @@ func trimCells(s string, w int) string {
 }
 
 // wrapIndent wraps a comma-separated list under a hanging indent. Columns
-// count runes, agreeing with how the names themselves are measured.
+// count terminal cells, the same measurement cells gives every other column
+// here, so a name from the reviewed tree that is not narrow does not push the
+// rest of its line out of place.
 func wrapIndent(s string, width, indent int) string {
 	if width-indent < 20 {
 		return s
