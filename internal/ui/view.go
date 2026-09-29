@@ -1045,7 +1045,16 @@ func (m *model) helpLines() []string {
 	// describing it names a key that does nothing, which is the one a
 	// keyboard user cannot tell from a key that is missing.
 	if !m.done {
-		lines = append(lines, "  space       pause the feed (output collects; reviews keep running)")
+		// The line says what the key does from where the reader is, the way the
+		// footer legend does. While the feed is held, pressing space lets it
+		// run again, and a page that still says "pause" describes a state the
+		// reader is not in: the one line they open the overlay for is the one
+		// that misreports the state they opened it in.
+		space := "  space       pause the feed (output collects; reviews keep running)"
+		if m.paused {
+			space = "  space       resume the feed (go back to the live edge)"
+		}
+		lines = append(lines, space)
 	}
 	lines = append(lines,
 		"  esc         cancel quit confirmation, or reset paused/scrolled feed to live",

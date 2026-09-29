@@ -322,6 +322,54 @@ func TestConcurrencyStopsAtTheMachineCPUs(t *testing.T) {
 	}
 }
 
+// Turning suggest on raises the next question a suggested run asks, and the
+// run pane is where it is answered. The keys have to go there with the cursor:
+// a pane draws its cursor bar only where the keys act, so a cursor pointed at
+// a row in another pane left the row it pointed at looking like any other, and
+// the toggle that had just happened went unmarked on screen.
+func TestSuggestToggleTakesTheKeyboardToTheSuggesterRow(t *testing.T) {
+	p := demoPicker()
+	p.toggle()
+	if !p.suggest {
+		t.Fatal("space on the suggest row did not turn suggest on")
+	}
+	if p.focus != paneOptions || p.cursor[paneOptions] != optSuggestAgent {
+		t.Fatalf("the keyboard is on pane %d row %d, want the run pane's suggest agent (row %d)",
+			p.focus, p.cursor[paneOptions], optSuggestAgent)
+	}
+	// A focus nothing on screen marks is not orientation, so the bar has to be
+	// drawn on the row it names.
+	pane := stripANSI(p.runPanel(40, len(p.opts)))
+	marked := false
+	for _, ln := range strings.Split(pane, "\n") {
+		if strings.Contains(ln, "suggest agent") {
+			marked = strings.Contains(ln, "❯")
+		}
+	}
+	if !marked {
+		t.Fatalf("the suggest agent row carries no cursor bar:\n%s", pane)
+	}
+}
+
+// A filter that matched nothing is reported twice: by the pane that has
+// nothing to draw and by the status line that owes the reader a next action.
+// One literal says it, so the two cannot drift into sentences a reader has to
+// reconcile, the way the missing-agent sentence is not written twice.
+func TestFilterMissIsOneSentenceEverywhereItIsReported(t *testing.T) {
+	p := demoPicker()
+	p.filter = "nothing-matches-this"
+	rows := p.rows()
+	if !p.filterMissed(rows) {
+		t.Fatal("the demo filter matched a review")
+	}
+	if got := stripANSI(p.reviewPanel(60, p.paneHeight(paneReviews))); !strings.Contains(got, filterMissedMsg) {
+		t.Fatalf("the reviews pane does not carry the shared notice:\n%s", got)
+	}
+	if got := stripANSI(p.hint()); got != filterMissedMsg {
+		t.Fatalf("the status hint is %q, want the shared %q", got, filterMissedMsg)
+	}
+}
+
 // FastSuggest is passed in rather than imported from the runner, so a caller
 // that does not name one must not grow a --suggest-agent gauntlet of its own.
 func TestPickerOmitsFileSignalSuggesterWhenUnset(t *testing.T) {

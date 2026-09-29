@@ -2626,6 +2626,24 @@ func TestHelpDropsTheDeadPauseKeyWhenTheRunIsOver(t *testing.T) {
 	}
 }
 
+// The overlay names the pause key from the state the reader is in, so a paused
+// reader who opens it to find out how to unpause is not told to pause again.
+// The footer legend already follows the state; the page has to agree with it.
+func TestHelpNamesThePauseKeyFromTheCurrentState(t *testing.T) {
+	m := newModel(demoConfig())
+	m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	if !m.paused {
+		t.Fatal("space did not pause the feed")
+	}
+	held := stripANSI(strings.Join(m.helpLines(), "\n"))
+	if !strings.Contains(held, "resume the feed") {
+		t.Fatalf("a paused dashboard documents the pause key as:\n%s", held)
+	}
+	if strings.Contains(held, "pause the feed") {
+		t.Fatalf("a paused dashboard still says space pauses the feed:\n%s", held)
+	}
+}
+
 // The fallback's running row is clipped like every other line, and a clip
 // leaves the tail of the lane list unnamed with nothing to say how much. The
 // panel and the grid both count what they dropped, so an agent missing from

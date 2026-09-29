@@ -702,8 +702,12 @@ func (p *picker) toggle() {
 			p.suggest = !p.suggest
 			if p.suggest {
 				// The next question a suggested run raises is who suggests,
-				// and that lives in the run pane. Point at it.
-				p.cursor[paneOptions] = optSuggestAgent
+				// and that lives in the run pane. Move the keyboard there as
+				// well as the cursor: a pane draws its cursor bar only where
+				// the keys act, so pointing the cursor without the focus left
+				// the row it pointed at looking like any other, and the toggle
+				// that just happened went unmarked on screen.
+				p.focus, p.cursor[paneOptions] = paneOptions, optSuggestAgent
 			}
 		case rowReview:
 			p.selected[r.review.Name] = !p.selected[r.review.Name]

@@ -18,7 +18,7 @@ import (
 
 // filterMissedMsg is what a filter that matched nothing says, in the two
 // places that have room for a sentence: the block line and the hint.
-const filterMissedMsg = "no reviews match this filter (esc clears it, / to edit)"
+const filterMissedMsg = "no reviews match this filter (esc clears it)"
 
 // minPickerW and minPickerH are the smallest terminal the launcher holds: the
 // tree beside two stacked panels, each of them a frame around one row at the
@@ -739,7 +739,7 @@ func (p *picker) reviewPanel(w, h int) string {
 	// silence reads as an empty prompt set rather than a search that missed.
 	// The dashboard's feed carries a parallel message for the same reason.
 	if p.filterMissed(rows) {
-		lines = append(lines, styleFaint.Render("no reviews match this filter (esc clears it)"))
+		lines = append(lines, styleFaint.Render(filterMissedMsg))
 	}
 	// The title is laid as segments, so a pane too narrow for them all drops
 	// whole readings instead of being cut mid-word, and what it dropped is
