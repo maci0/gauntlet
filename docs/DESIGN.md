@@ -114,7 +114,7 @@ library cannot, and each was kept small on purpose.
 | `charmbracelet/lipgloss` | dashboard styling and adaptive color pairs | imported by `internal/ui` only |
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
-| `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `internal/report`, and text truncation in `internal/agent` and `internal/normalize` |
+| `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `internal/report`, text truncation in `internal/normalize`, and the cell widths the CLI tests measure in `cmd/gauntlet` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 

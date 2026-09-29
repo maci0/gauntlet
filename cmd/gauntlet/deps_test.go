@@ -69,7 +69,7 @@ var directModuleSites = map[string][]string{
 	"github.com/charmbracelet/lipgloss":  {"internal/ui/"},
 	"github.com/muesli/termenv":          {"internal/ui/"},
 	"github.com/maci0/toktop":            {"cmd/gauntlet/", "internal/runner/"},
-	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/report/", "internal/agent/", "internal/normalize/"},
+	"github.com/rivo/uniseg":             {"cmd/gauntlet/", "internal/ui/", "internal/report/", "internal/normalize/"},
 	"golang.org/x/text":                  {"cmd/gauntlet/", "internal/evidence/", "internal/fuzzy/", "internal/prompt/", "internal/runner/", "internal/ui/"},
 	"golang.org/x/term":                  {"cmd/gauntlet/"},
 }
@@ -126,6 +126,68 @@ func TestDirectModuleImportSites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// An allowed prefix nothing imports is the other direction of the same
+// table: it widens the containment a reviewer reads without widening the
+// imports that exist, so the document and the map agree on paper while the
+// module can reach a package the claim does not mention. Every prefix must
+// be earned by an import, or dropped.
+func TestDirectModuleSitePrefixesAreImported(t *testing.T) {
+	root := moduleRoot(t)
+	mods := make([]string, 0, len(directModuleSites))
+	for mod := range directModuleSites {
+		mods = append(mods, mod)
+	}
+	dirs := importedDirsByModule(t, root, mods)
+
+	for mod, prefixes := range directModuleSites {
+		for _, prefix := range prefixes {
+			// The prefixes are spelled as import-site path prefixes, with
+			// the trailing slash a package directory carries; an import
+			// directory is the same path without one.
+			pkg := strings.TrimSuffix(prefix, "/")
+			used := false
+			for _, dir := range dirs[mod] {
+				if dir == pkg || strings.HasPrefix(dir, pkg+"/") {
+					used = true
+					break
+				}
+			}
+			if !used {
+				t.Errorf("directModuleSites allows %s in %s, but no package under it imports the module; drop the prefix", mod, prefix)
+			}
+		}
+	}
+}
+
+// importedDirsByModule maps each module to the directories that import it,
+// a package's import and a test file's both counting: the containment a
+// module is held to covers everything the tree compiles under it.
+func importedDirsByModule(t *testing.T, root string, modules []string) map[string][]string {
+	t.Helper()
+	dirs := make(map[string][]string, len(modules))
+	fset := token.NewFileSet()
+	err := walkGoFiles(root, func(rel, path string) error {
+		f, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		dir := filepath.ToSlash(filepath.Dir(rel))
+		for _, spec := range f.Imports {
+			imp := strings.Trim(spec.Path.Value, `"`)
+			for _, mod := range modules {
+				if imp == mod || strings.HasPrefix(imp, mod+"/") {
+					dirs[mod] = append(dirs[mod], dir)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dirs
 }
 
 // A direct module pinned to a pseudo-version is an unpublished commit in
