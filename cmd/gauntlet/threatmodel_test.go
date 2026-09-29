@@ -141,10 +141,13 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 // qualifiedPointers maps a file name to the one path the document spells with
 // a directory. A bare name is ambiguous where two packages hold the same file
 // name and the document qualifies both, so ambiguousNames says which one the
-// bare name means.
+// bare name means. exec.go is that case for the agent-side file: the tables
+// name internal/runner/exec.go for the child-process plumbing and spell the
+// git one internal/gitx/exec.go wherever it points at git's own execs.
 var ambiguousNames = map[string]string{
 	"reload.go": "internal/selfupdate/reload.go",
 	"main.go":   "cmd/gauntlet/main.go",
+	"exec.go":   "internal/runner/exec.go",
 }
 
 func qualifiedPointers(lines []string) map[string]string {

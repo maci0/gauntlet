@@ -25,6 +25,7 @@ import (
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runx"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"golang.org/x/term"
 )
@@ -510,6 +511,18 @@ func resolveUsage(o *options, fs *flag.FlagSet) error {
 		o.usageArgv = strings.Fields(o.usageCmd)
 		if len(o.usageArgv) == 0 {
 			return errUsageCmdBlank
+		}
+		// The probe's first word has to name something runnable, checked here
+		// with the same resolution the probe itself gets at run time
+		// (runx.LookPath over the absolute-only PATH), so this cannot disagree
+		// with it. The runner fails open on a probe that will not run, which is
+		// right for a probe that breaks mid-run and wrong for one that never
+		// could: a typo there left the run enforcing no limit at all, reported
+		// by a single line that scrolls past under the agent output, while the
+		// operator believed the ceiling was in force. --bin refuses an
+		// unresolvable path for the same reason.
+		if runx.LookPath(o.usageArgv[0]) == "" {
+			return fmt.Errorf("--usage-cmd: not an executable: %s", o.usageArgv[0])
 		}
 	}
 	return nil

@@ -416,6 +416,14 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 		{"usage limit nan", []string{"--usage-cmd", "true", "--usage-limit", "nan"}, "percentage", nil},
 		{"usage limit Inf", []string{"--usage-cmd", "true", "--usage-limit", "Inf"}, "percentage", nil},
 		{"usage limit over 100", []string{"--usage-cmd", "true", "--usage-limit", "101"}, "percentage", nil},
+		// A probe that cannot be launched would fail open on every check, so
+		// the run would enforce no limit at all while the operator believed
+		// the ceiling was in force. One line of agent output is too late to
+		// find that out.
+		{"usage probe not on PATH", []string{"--usage-cmd", "gauntlet-no-such-probe", "--usage-limit", "80"},
+			"not an executable", nil},
+		{"usage probe path absent", []string{"--usage-cmd", "/nonexistent/usage-probe", "--usage-limit", "80"},
+			"not an executable", nil},
 		{"trailing argument", []string{"extra"}, "unknown command", nil},
 		{"check outside update", []string{"--check"}, "--check requires 'gauntlet update'", nil},
 		{"limit outside runs", []string{"--limit", "5"}, "--limit requires 'gauntlet runs'", nil},
