@@ -3,8 +3,10 @@
 # yamllint, and ci.yml's scripts job runs the same command, so a broken
 # definition fails on a pull request instead of on the tag that needs it.
 #
-# Three rules leave the default set, each for a reason that is in the file it
-# silences. Every other rule keeps yamllint's own setting.
+# Four settings leave yamllint's own values, each for a reason that is in the
+# entry it covers: document-start is dropped, truthy stops checking keys,
+# comments asks for one space, and the line-length cap rises from 80 to 120.
+# Every other rule keeps yamllint's setting.
 extends: default
 
 rules:
