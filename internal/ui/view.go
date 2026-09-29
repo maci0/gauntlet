@@ -920,7 +920,12 @@ func (m *model) helpLines() []string {
 	// own keys, so the overlay says which screen they describe.
 	lines := []string{
 		styleTitle.Render("gauntlet dashboard"),
-		styleDim.Render("q  esc  ?  ctrl+c  close this help"),
+		// h closes the overlay here and toggles it from the dashboard below, so
+		// it belongs in the close line too: a key that works and that the one
+		// line saying how to leave this screen leaves out is a key a reader
+		// cannot find (WCAG 3.3.2). The launcher's overlay is this same page
+		// with h dropped, because there h folds a set instead.
+		styleDim.Render("q  esc  ?  h  ctrl+c  close this help"),
 		styleDim.Render("  The keys below are what they do with the dashboard showing."),
 		"",
 	}
@@ -1042,6 +1047,22 @@ func helpRows(lines []string, w int) []string {
 	return strings.Split(lipgloss.NewStyle().Width(max(w, 1)).Render(strings.Join(lines, "\n")), "\n")
 }
 
+// helpLegend is the overlay's own key row, as whole segments a narrow pane
+// drops from the right. The first survives always: a reader with no way to
+// close the overlay is stuck in it.
+//
+// Every key scrollHelp binds to is named here. The row used to be one fixed
+// string, so a pane narrower than it was cut mid-name ("j/k scrol"), naming a
+// key that does not exist, and space was left out entirely even though it
+// pages down: a key that works, is unmentioned, and reads as broken is the one
+// a keyboard user cannot tell from a missing one (WCAG 3.3.2). Fitting whole
+// segments fixes both: what does not fit is a key that was never claimed, not
+// half of one that was.
+func helpLegend(w int) string {
+	segs := []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end"}
+	return styleDim.Render(fitSegments(segs, "  ", w))
+}
+
 // renderHelpPage draws the overlay from its scroll position over a wrapped
 // copy of the help text, the visible page ending at the bottom edge, padded
 // so the frame stays one block. The last row is the overlay's own key legend:
@@ -1059,7 +1080,7 @@ func renderHelpPage(lines []string, scroll, w, h int) string {
 	for len(out) < viewport {
 		out = append(out, "")
 	}
-	out = append(out, styleDim.Render("q/esc close  j/k scroll  pgup/pgdn  home/end"))
+	out = append(out, helpLegend(w))
 	return clipBlock(out, w, h)
 }
 

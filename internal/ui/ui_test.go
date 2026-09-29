@@ -2098,6 +2098,57 @@ func TestScrollHelpSupportsBForPageUp(t *testing.T) {
 	}
 }
 
+// The overlay's own key row names every key scrollHelp binds. space pages the
+// overlay down and was unmentioned, so a reader pressing it saw the help move
+// and had no way to know the row was lying by omission rather than the key
+// being broken (WCAG 3.3.2).
+func TestHelpOverlayNamesEveryKeyItBinds(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.help, m.ready = 100, 30, true, true
+	legend := lastLine(stripANSI(m.View()))
+	for _, want := range []string{"q/esc close", "j/k scroll", "pgup/pgdn", "space", "home/end"} {
+		if !strings.Contains(legend, want) {
+			t.Fatalf("the help overlay's key row does not name %q:\n%s", want, legend)
+		}
+	}
+	// And the keys the close line claims are the ones that close it. h is
+	// bound on the dashboard and was missing from that line.
+	head, _, ok := strings.Cut(stripANSI(m.View()), "close this help")
+	if !ok {
+		t.Fatal("the overlay does not say how to close it")
+	}
+	closeLine := strings.TrimSpace(strings.Split(head, "\n")[len(strings.Split(head, "\n"))-1])
+	if !strings.Contains(closeLine, "h") {
+		t.Fatalf("h closes this overlay but the close line does not say so: %q", closeLine)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("h")})
+	if m.help {
+		t.Fatal("h did not close the help")
+	}
+}
+
+// A pane too narrow for the whole key row loses whole keys rather than half a
+// name: a legend ending in "j/k scrol" advertises a key that does not exist.
+func TestHelpLegendDropsWholeSegmentsNotHalfNames(t *testing.T) {
+	for _, w := range []int{20, 30, 45, 60, 80, 200} {
+		legend := stripANSI(helpLegend(w))
+		if got := lipgloss.Width(legend); w >= len("q/esc close") && got > w {
+			t.Errorf("at %d columns the legend is %d wide: %q", w, got, legend)
+		}
+		if !strings.HasPrefix(legend, "q/esc close") {
+			t.Errorf("at %d columns the closing keys are not the first thing kept: %q", w, legend)
+		}
+		// Whatever survives is a whole key name, so no segment ends mid-word.
+		for seg := range strings.SplitSeq(legend, "  ") {
+			switch seg {
+			case "q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end":
+			default:
+				t.Errorf("at %d columns the legend carries a cut segment %q: %q", w, seg, legend)
+			}
+		}
+	}
+}
+
 // The fallback's key line is its last row and is the one that stays: a
 // terminal three rows tall trimmed from the bottom is a tally and no way to
 // leave, which is the dead end the fallback exists to avoid.
