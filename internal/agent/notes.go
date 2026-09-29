@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"slices"
 	"strings"
-	"unicode"
 	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -104,8 +103,7 @@ func cleanReportedLine(s string, maxRunes int) string {
 		if r == ' ' {
 			return r
 		}
-		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) ||
-			unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) {
+		if hiddenRune(r) {
 			return -1
 		}
 		return r

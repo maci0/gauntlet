@@ -428,13 +428,11 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 	if err := validateAssetURL(url); err != nil {
 		return nil, err
 	}
-	var lastErr error
 	for attempt := range assetAttempts {
 		resp, err := getAssetOnce(ctx, url)
 		if err == nil {
 			return resp, nil
 		}
-		lastErr = err
 		if !transient(err) || attempt == assetAttempts-1 {
 			return nil, err
 		}
@@ -442,7 +440,7 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 			return nil, ctx.Err()
 		}
 	}
-	return nil, lastErr
+	return nil, ctx.Err()
 }
 
 func getAssetOnce(ctx context.Context, url string) (*http.Response, error) {

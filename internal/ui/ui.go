@@ -128,17 +128,12 @@ const (
 )
 
 type reviewState struct {
-	name     string
 	status   runner.Status
 	agentLbl string
-	start    time.Time
 	elapsed  time.Duration
-	tokens   int
-	ins, del int
 }
 
 type laneState struct {
-	label   string
 	review  string
 	start   time.Time
 	done    int
@@ -314,7 +309,7 @@ func newModel(cfg Config) *model {
 		if _, dup := m.reviews[r]; dup {
 			continue // repeats are weight, not extra rows
 		}
-		m.reviews[r] = &reviewState{name: r, status: statusPending}
+		m.reviews[r] = &reviewState{status: statusPending}
 		m.order = append(m.order, r)
 	}
 	// Pre-seed the lanes so the panel shows its structure before the first
@@ -633,7 +628,7 @@ func (m *model) apply(ev runner.Event) {
 		}
 	case runner.EvReviewStart:
 		r := m.review(ev.Review)
-		r.status, r.agentLbl, r.start = statusRunning, ev.Agent, ev.Time
+		r.status, r.agentLbl = statusRunning, ev.Agent
 		if l := m.lane(m.laneKey(ev)); l != nil {
 			// The lane's clock, not the event's. The elapsed column and the
 			// timeout meter are m.now minus this, and the timeout they mirror
@@ -671,10 +666,6 @@ func (m *model) apply(ev runner.Event) {
 		if d, ok := humanize.Seconds(ev.Elapsed); ok {
 			r.elapsed = d
 		}
-		r.tokens = ev.Tokens
-		if ev.Ins != nil && ev.Del != nil {
-			r.ins, r.del = *ev.Ins, *ev.Del
-		}
 		m.counts[string(ev.Status)]++
 		m.tokens += ev.Tokens
 		m.thinking += ev.Thinking
@@ -700,10 +691,6 @@ func (m *model) apply(ev runner.Event) {
 					m.conflictsDropped++
 				}
 			}
-		}
-		if ev.Review != "" && ev.Ins != nil && ev.Del != nil {
-			r := m.review(ev.Review)
-			r.ins, r.del = *ev.Ins, *ev.Del
 		}
 	case runner.EvReload:
 		m.reloading = true
@@ -773,7 +760,7 @@ func (m *model) review(name string) *reviewState {
 	if r, ok := m.reviews[name]; ok {
 		return r
 	}
-	r := &reviewState{name: name, status: statusPending}
+	r := &reviewState{status: statusPending}
 	m.reviews[name] = r
 	m.order = append(m.order, name)
 	m.orderDirty = true
@@ -797,7 +784,7 @@ func (m *model) lane(label string) *laneState {
 	if l, ok := m.lanes[label]; ok {
 		return l
 	}
-	l := &laneState{label: label}
+	l := &laneState{}
 	m.lanes[label] = l
 	m.laneOrd = append(m.laneOrd, label)
 	m.hues.get(label)

@@ -38,7 +38,7 @@ func renderModel(b *testing.B) *model {
 	agents := []string{"claude", "codex", "gemini", "copilot", "opencode", "crush", "aider", "kilo"}
 	for i, a := range agents {
 		l := &laneState{
-			label: a, review: "security-review", start: m.now.Add(-90 * time.Second),
+			review: "security-review", start: m.now.Add(-90 * time.Second),
 			done: 4 + i, failed: i % 3, tokens: 120000 * (i + 1),
 			thinkTokens: 30000 * (i + 1), liveTokens: 4000, liveThinking: 900,
 			tokenRate: 12.5 + float64(i), lastAt: m.now, lastThinkAt: m.now,
