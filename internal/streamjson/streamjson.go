@@ -205,7 +205,7 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			if textKeys[lower] || thinkingTextKeys[lower] {
 				fields = append(fields, objField{key: lower, str: v, hasStr: true})
 			}
-		case float64, json.Number:
+		case float64:
 			if n, ok := asInt(v); ok {
 				assign(&local, lower, n)
 			}
@@ -324,34 +324,20 @@ func appendText(into *strings.Builder, s string) {
 // a negative percentage. No review generates that many tokens.
 const maxPlausible = 1 << 40
 
+// asInt converts a decoded JSON number to a token count, or reports that it
+// is not one. The decoder runs without UseNumber, so a float64 is the only
+// numeric type that reaches here.
+//
+// The conversion is only defined within the range of int, and out-of-range
+// results differ by platform (amd64 gives the minimum, arm64 saturates to the
+// maximum), so a counter outside that range is reported as nothing rather than
+// as a platform-dependent lie. MaxInt sits beside maxPlausible because a
+// 32-bit int fills first. A fractional count would otherwise truncate
+// (1.9 -> 1). !(n >= 1) is what rejects NaN: n < 1 does not.
 func asInt(v any) (int, bool) {
-	switch n := v.(type) {
-	case float64:
-		// The conversion below is only defined within the range of int, and
-		// out-of-range results differ by platform (amd64 gives the minimum,
-		// arm64 saturates to the maximum). A counter outside it is not a
-		// measurement: report nothing rather than a platform-dependent lie.
-		//
-		// JSON numbers arrive here as float64, so a fractional count would
-		// otherwise truncate (1.9 -> 1). MaxInt sits beside maxPlausible
-		// because a 32-bit int fills first. !(n >= 1) is what rejects NaN:
-		// n < 1 does not.
-		if !(n >= 1) || n != math.Trunc(n) || n > maxPlausible || n > float64(math.MaxInt) {
-			return 0, false
-		}
-		return int(n), true
-	case json.Number:
-		// Not reachable through Parse, which decodes without UseNumber, but
-		// the guard belongs next to the conversion rather than with whichever
-		// caller happens not to trigger it. int is 32 bits on some builds, so
-		// a bare int(i) would silently truncate a counter that does not fit
-		// and report 5 for 2^32+5 -- the platform-dependent lie the float64
-		// case above exists to avoid.
-		i, err := n.Int64()
-		if err != nil || i < 1 || i > math.MaxInt || i > maxPlausible {
-			return 0, false
-		}
-		return int(i), true
+	n, ok := v.(float64)
+	if !ok || !(n >= 1) || n != math.Trunc(n) || n > maxPlausible || n > float64(math.MaxInt) {
+		return 0, false
 	}
-	return 0, false
+	return int(n), true
 }

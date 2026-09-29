@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"math"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -296,42 +295,8 @@ func TestAbsurdCountersReportNothing(t *testing.T) {
 	}
 }
 
-// asInt's json.Number case is not on Parse's path today -- Parse decodes
-// without UseNumber -- so nothing else here would notice it truncating. The
-// float64 case spends five lines on exactly this hazard; the sibling case has
-// to hold the same line, or enabling UseNumber one day would quietly turn a
-// counter that does not fit an int into a small, plausible number.
-func TestNumberCountersAreRangeChecked(t *testing.T) {
-	for _, c := range []struct {
-		in   string
-		want int
-		ok   bool
-	}{
-		{"120", 120, true},
-		{"0", 0, false},
-		{"-5", 0, false},
-		{"9223372036854775808", 0, false}, // past int64: Int64 itself refuses
-		{"1.5", 0, false},                 // not an integer count
-		{"1099511627776", 1 << 40, true},  // trillion-token cap, inclusive
-		{"1099511627777", 0, false},       // one past the cap
-	} {
-		got, ok := asInt(json.Number(c.in))
-		if ok != c.ok || got != c.want {
-			t.Errorf("asInt(json.Number(%q)) = %d, %v; want %d, %v", c.in, got, ok, c.want, c.ok)
-		}
-	}
-	// The bound is int, not int64, so a 32-bit build refuses what it cannot
-	// hold rather than reporting the low half of it. 2^33 sits under the
-	// trillion-token cap and above 32-bit MaxInt.
-	mid := json.Number(strconv.FormatInt(1<<33, 10))
-	got, ok := asInt(mid)
-	if want := math.MaxInt > 1<<33; ok != want {
-		t.Errorf("asInt(%s) = %d, %v; want ok=%v on this platform", mid, got, ok, want)
-	}
-}
-
 func TestFloatCountersAreIntegersInRange(t *testing.T) {
-	// Parse's path: encoding/json yields float64, never json.Number.
+	// Parse's path: encoding/json yields float64.
 	for _, c := range []struct {
 		in   float64
 		want int
