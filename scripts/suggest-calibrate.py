@@ -46,10 +46,20 @@ def module_root() -> pathlib.Path:
 
 
 def gauntlet_home() -> pathlib.Path:
-    """Locate the run journal, honoring GAUNTLET_HOME when it is set."""
+    """Locate the run journal, honoring GAUNTLET_HOME when it is set.
+
+    The same precedence and the same expansions as internal/gauntlethome:
+    ~ and $VAR both expand, a value that is empty is the variable unset, and
+    a path naming something that is not a directory is refused at startup by
+    the CLI, so it is refused here too rather than read.
+    """
     raw = os.environ.get("GAUNTLET_HOME")
     if raw and raw.strip():
-        return pathlib.Path(raw.strip()).expanduser()
+        path = pathlib.Path(os.path.expandvars(raw.strip())).expanduser()
+        if path.exists() and not path.is_dir():
+            msg = f"GAUNTLET_HOME {path}: not a directory"
+            raise SystemExit(msg)
+        return path
     return pathlib.Path.home() / ".gauntlet"
 
 
