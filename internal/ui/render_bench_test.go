@@ -5,6 +5,7 @@ package ui
 
 import (
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -55,15 +56,15 @@ func renderModel(b *testing.B) *model {
 	}
 	for i := range 60 {
 		m.apply(runner.Event{
-			Kind: runner.EvReviewStart, Review: "review-" + itoa(i%30),
+			Kind: runner.EvReviewStart, Review: "review-" + strconv.Itoa(i%30),
 			Agent: agents[i%len(agents)], Time: m.now, Dir: dirs[i%2],
 		})
 	}
 	m.orderDirty = true
 	for i := range feedMax {
 		m.pushFeed(feedLine{
-			text: "ok  internal/pkg/thing.go:42  a line of agent narration number " + itoa(i),
-			kind: normalize.Plain, agent: agents[i%len(agents)], review: "review-" + itoa(i%30),
+			text: "ok  internal/pkg/thing.go:42  a line of agent narration number " + strconv.Itoa(i),
+			kind: normalize.Plain, agent: agents[i%len(agents)], review: "review-" + strconv.Itoa(i%30),
 		})
 	}
 	m.filter = feedSignal
@@ -73,20 +74,6 @@ func renderModel(b *testing.B) *model {
 
 func mNow() time.Time {
 	return time.Date(2026, 8, 25, 13, 3, 0, 0, time.UTC)
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }
 
 // BenchmarkView measures one frame of the dashboard at the size a real

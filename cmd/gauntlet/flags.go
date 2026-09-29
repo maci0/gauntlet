@@ -320,10 +320,6 @@ type rawFlags struct {
 // enumerate the flags and compare them against the help screen.
 func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	raw := &rawFlags{}
-	reviews, exclude, agents, bins, dirs := &raw.reviews, &raw.exclude, &raw.agents, &raw.bins, &raw.dirs
-	agentCmds := &raw.agentCmds
-	suggestAgent, suggest, once, showVersion := &raw.suggestAgent, &raw.suggest, &raw.once, &raw.showVersion
-	help := &raw.help
 
 	fs := flag.NewFlagSet("gauntlet", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
@@ -341,32 +337,32 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	}
 
 	alias("r", "reviews", func(n string) {
-		fs.Var(reviews, n, "reviews and/or sets to run (comma-separated, repeatable); "+
+		fs.Var(&raw.reviews, n, "reviews and/or sets to run (comma-separated, repeatable); "+
 			"repeats add weight, 'suggest' adds an agent's picks")
 	})
-	alias("x", "exclude", func(n string) { fs.Var(exclude, n, "reviews and/or sets to skip") })
+	alias("x", "exclude", func(n string) { fs.Var(&raw.exclude, n, "reviews and/or sets to skip") })
 	fs.Var(&raw.paths, "paths", "scope reviews to these files, directories, or globs, "+
 		"relative to the reviewed directory (comma-separated, repeatable)")
 	alias("s", "suggest", func(n string) {
-		fs.BoolVar(suggest, n, false, "have an agent pick the reviews, beside any named with --reviews")
+		fs.BoolVar(&raw.suggest, n, false, "have an agent pick the reviews, beside any named with --reviews")
 	})
-	fs.StringVar(suggestAgent, "suggest-agent", "",
+	fs.StringVar(&raw.suggestAgent, "suggest-agent", "",
 		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
 	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout",
 		fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute)))
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
 	alias("a", "agents", func(n string) {
-		fs.Var(agents, n, "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent")
+		fs.Var(&raw.agents, n, "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent")
 	})
-	fs.Var(bins, "bin", "run an agent from a specific executable, TOOL=PATH (repeatable)")
-	fs.Var(agentCmds, "agent-cmd", "define an agent: NAME=ARGV with a {prompt} placeholder (repeatable)")
+	fs.Var(&raw.bins, "bin", "run an agent from a specific executable, TOOL=PATH (repeatable)")
+	fs.Var(&raw.agentCmds, "agent-cmd", "define an agent: NAME=ARGV with a {prompt} placeholder (repeatable)")
 
 	alias("C", "dir", func(n string) { fs.StringVar(&o.dir, n, ".", "directory to review") })
-	fs.Var(dirs, "dirs", "review several directories in parallel, each with its own --jobs pool (repeatable, comma-separated)")
+	fs.Var(&raw.dirs, "dirs", "review several directories in parallel, each with its own --jobs pool (repeatable, comma-separated)")
 	// The name the Python tool used. Scripts that pass it keep working, but it
 	// takes a comma-separated list here rather than space-separated arguments.
-	fs.Var(dirs, "target-dirs", "alias of --dirs")
+	fs.Var(&raw.dirs, "target-dirs", "alias of --dirs")
 	alias("t", "timeout", func(n string) {
 		fs.Var(durationFlag{d: &o.timeout}, n,
 			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
@@ -393,7 +389,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		o.seed = n
 		return nil
 	})
-	alias("1", "once", func(n string) { fs.BoolVar(once, n, false, "run a single loop and exit") })
+	alias("1", "once", func(n string) { fs.BoolVar(&raw.once, n, false, "run a single loop and exit") })
 	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
 	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
 	fs.StringVar(&o.mergeInto, "merge-into", "",
@@ -429,8 +425,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.autoUpdate, "auto-update", false, "check for new releases during the run and install them")
 	fs.StringVar(&o.updateRepo, "update-repo", selfupdate.DefaultRepo, "GitHub repo to fetch releases from")
 	fs.BoolVar(&o.checkOnly, "check", false, "update: report the latest release without installing")
-	alias("V", "version", func(n string) { fs.BoolVar(showVersion, n, false, "print the version and exit") })
-	alias("h", "help", func(n string) { fs.BoolVar(help, n, false, "show this help and exit") })
+	alias("V", "version", func(n string) { fs.BoolVar(&raw.showVersion, n, false, "print the version and exit") })
+	alias("h", "help", func(n string) { fs.BoolVar(&raw.help, n, false, "show this help and exit") })
 	fs.IntVar(&o.runsLimit, "limit", defaultRunsLimit, "runs: how many entries to list")
 	fs.StringVar(&o.restoreRun, "restore", "",
 		"runs: put a pruned run back in the listing by run id")
@@ -443,7 +439,6 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 // configureAgents loads the agent definitions for a run: the user's file
 // first, then the --agent-cmd definitions on the command line, which win.
 func configureAgents(o *options, fs *flag.FlagSet, agentCmds listFlag) error {
-	// A file of definitions first, then the command line, which wins.
 	if path := agent.CustomFilePath(); path != "" {
 		if err := agent.LoadCustomFile(path); err != nil {
 			return err

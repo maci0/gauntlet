@@ -249,7 +249,7 @@ func Resolve(name string) string {
 	if got, ok := resolveLookup(name, path); ok {
 		return got
 	}
-	found := lookIn(name, path)
+	found := runx.LookPath(name)
 	resolveStore(name, path, found)
 	return found
 }
@@ -280,41 +280,6 @@ func ResolveMany(names []string) map[string]string {
 	}
 	wg.Wait()
 	return out
-}
-
-// found returns the absolute path of an executable candidate, or "" if it is
-// not one. The Abs error is dropped: a path that cannot be made absolute is
-// one this process will not launch either.
-func found(p string) string {
-	if err := executable(p); err != nil {
-		return ""
-	}
-	abs, _ := filepath.Abs(p)
-	return abs
-}
-
-// lookIn is exec.LookPath restricted to an explicit PATH.
-func lookIn(name, path string) string {
-	if strings.ContainsRune(name, os.PathSeparator) {
-		return found(name)
-	}
-	for _, dir := range filepath.SplitList(path) {
-		if abs := found(filepath.Join(dir, name)); abs != "" {
-			return abs
-		}
-	}
-	return ""
-}
-
-func executable(p string) error {
-	fi, err := os.Stat(p)
-	if err != nil {
-		return err
-	}
-	if fi.IsDir() || fi.Mode()&0o111 == 0 {
-		return os.ErrPermission
-	}
-	return nil
 }
 
 // needsExpand reports whether an executable names something ExpandPath has to

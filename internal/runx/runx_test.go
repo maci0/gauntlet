@@ -186,7 +186,6 @@ func TestGuard(t *testing.T) {
 	if cmd.Cancel == nil {
 		t.Fatal("Guard must set Cancel func")
 	}
-	// Cancel before Start should not error or panic
 	if err := cmd.Cancel(); err != nil {
 		t.Fatalf("Cancel before start = %v", err)
 	}
@@ -387,7 +386,6 @@ func TestOutcomeNamesTheDeadline(t *testing.T) {
 }
 
 func TestKillGroup(t *testing.T) {
-	// Nil cmd or process should not panic
 	KillGroup(nil, syscall.SIGKILL)
 	KillGroup(&exec.Cmd{}, syscall.SIGKILL)
 	KillGroup(&exec.Cmd{Process: &os.Process{Pid: 0}}, syscall.SIGKILL)

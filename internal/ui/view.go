@@ -783,7 +783,7 @@ func (m *model) footerLegend(avail int) string {
 	var b strings.Builder
 	w := 0
 	for _, k := range m.footerKeys(true) {
-		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.d)
+		seg := styleValue.Render(k.k) + styleDim.Render(":"+k.v)
 		segW := lipgloss.Width(seg)
 		if w > 0 && w+2+segW > avail {
 			break
@@ -894,7 +894,7 @@ func (m *model) renderMinimal() string {
 	var hint strings.Builder
 	hintW := 0
 	for _, k := range m.footerKeys(false) {
-		seg := k.k + " " + k.d
+		seg := k.k + " " + k.v
 		segW := uniseg.StringWidth(seg)
 		if hintW > 0 && hintW+2+segW > m.w {
 			break
@@ -1126,9 +1126,9 @@ func (m *model) conflictSummary() string {
 // fallback. Labels follow the current state so a paused feed says resume, a
 // finished run says close, and a dead action (finish after the run ended) is
 // not advertised. scrollable is false on the fallback, which has no feed.
-func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
+func (m *model) footerKeys(scrollable bool) []keyHint {
 	if m.quitArmed {
-		return []struct{ k, d string }{
+		return []keyHint{
 			{"q", "stop now"}, {"esc", "cancel"}, {"?", "help"},
 		}
 	}
@@ -1139,7 +1139,7 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 	case m.finishing:
 		q = "stop now"
 	}
-	keys := []struct{ k, d string }{
+	keys := []keyHint{
 		{"q", q}, {"?", "help"},
 	}
 	// Pausing holds a feed, and the fallback draws none: the key there would
@@ -1150,27 +1150,27 @@ func (m *model) footerKeys(scrollable bool) []struct{ k, d string } {
 		if m.paused {
 			space = "resume"
 		}
-		keys = append(keys, struct{ k, d string }{"space", space})
+		keys = append(keys, keyHint{"space", space})
 	}
 	if scrollable {
-		keys = append(keys, struct{ k, d string }{"j/k", "scroll"})
+		keys = append(keys, keyHint{"j/k", "scroll"})
 	}
 	// A paused or scrolled feed is named in the header, which the fallback
 	// draws too, so the way back to live is named there as well: a state the
 	// screen reports and nothing on it can clear is a dead end the reader has
 	// to guess out of.
 	if m.paused || m.scroll > 0 {
-		keys = append(keys, struct{ k, d string }{"esc", "live"})
+		keys = append(keys, keyHint{"esc", "live"})
 	}
 	if !m.done && !m.finishing && m.cfg.OnFinish != nil {
-		keys = append(keys, struct{ k, d string }{"s", "finish"})
+		keys = append(keys, keyHint{"s", "finish"})
 	}
 	if scrollable {
 		f := "filter"
 		if m.filter == feedSignal {
 			f = "widen"
 		}
-		keys = append(keys, struct{ k, d string }{"f", f})
+		keys = append(keys, keyHint{"f", f})
 	}
 	return keys
 }

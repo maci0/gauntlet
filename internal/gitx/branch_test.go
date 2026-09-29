@@ -82,9 +82,6 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 	}
 }
 
-// SquashIn is the conflict step's first move: it must land what merges and
-// name what does not, without either state escaping into the main tree.
-
 func TestMergeConflictDetailNamesTheConflict(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

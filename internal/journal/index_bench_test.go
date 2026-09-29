@@ -6,6 +6,7 @@ package journal
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -20,8 +21,8 @@ func BenchmarkAppendIndexLocked(b *testing.B) {
 			b.Setenv("GAUNTLET_HOME", home)
 			var buf strings.Builder
 			for i := range rows {
-				buf.WriteString(`{"run_id":"r` + itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
-				buf.WriteString(itoa(i))
+				buf.WriteString(`{"run_id":"r` + strconv.Itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
+				buf.WriteString(strconv.Itoa(i))
 				buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
 			}
 			if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
@@ -32,7 +33,7 @@ func BenchmarkAppendIndexLocked(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; b.Loop(); i++ {
 				if err := appendIndexLocked(Summary{
-					RunID:         "new" + itoa(i),
+					RunID:         "new" + strconv.Itoa(i),
 					Path:          "/home/u/.gauntlet/runs/2026-08-25/new.jsonl",
 					Dirs:          []string{"/w"},
 					Start:         now,
@@ -60,8 +61,8 @@ func BenchmarkIndexScan(b *testing.B) {
 			b.Setenv("GAUNTLET_HOME", home)
 			var buf strings.Builder
 			for i := range rows {
-				buf.WriteString(`{"run_id":"r` + itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
-				buf.WriteString(itoa(i))
+				buf.WriteString(`{"run_id":"r` + strconv.Itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
+				buf.WriteString(strconv.Itoa(i))
 				buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
 			}
 			if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
@@ -86,22 +87,8 @@ func scanIndexFor(runID string) (bool, error) {
 func label(n int) string {
 	switch {
 	case n >= 1000:
-		return itoa(n/1000) + "k"
+		return strconv.Itoa(n/1000) + "k"
 	default:
-		return itoa(n)
+		return strconv.Itoa(n)
 	}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	i := len(buf)
-	for n > 0 {
-		i--
-		buf[i] = byte('0' + n%10)
-		n /= 10
-	}
-	return string(buf[i:])
 }

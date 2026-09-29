@@ -243,17 +243,20 @@ var majorVersionSuffix = regexp.MustCompile(`^v[2-9][0-9]*$`)
 // componentName and componentGroup split a module path into the CycloneDX
 // name and group, dropping a major-version suffix from both.
 func componentName(path string) string {
-	if i := strings.LastIndex(path, "/"); i >= 0 && majorVersionSuffix.MatchString(path[i+1:]) {
-		return moduleName(path[:i])
-	}
-	return moduleName(path)
+	return moduleName(stripMajorVersion(path))
 }
 
 func componentGroup(path string) string {
+	return moduleGroup(stripMajorVersion(path))
+}
+
+// stripMajorVersion drops a /vN segment, which CycloneDX carries as the
+// component version rather than the name.
+func stripMajorVersion(path string) string {
 	if i := strings.LastIndex(path, "/"); i >= 0 && majorVersionSuffix.MatchString(path[i+1:]) {
-		return moduleGroup(path[:i])
+		return path[:i]
 	}
-	return moduleGroup(path)
+	return path
 }
 
 func moduleName(path string) string {

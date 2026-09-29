@@ -385,13 +385,12 @@ func joinKeys(keys []keyHint, gap, fold string, w int, tight bool) (string, bool
 		}
 		segs = append(segs, styleValue.Render(k.k)+styleDim.Render(":"+action))
 	}
-	wid := func(s string) int { return lipgloss.Width(s) }
 	full := strings.Join(segs, gap)
-	if wid(full) <= w {
+	if lipgloss.Width(full) <= w {
 		return full, true
 	}
 	for i, seg := range segs {
-		if i > 0 && wid(strings.Join(segs[:i], gap))+len(gap)+wid(seg) > w {
+		if i > 0 && lipgloss.Width(strings.Join(segs[:i], gap))+len(gap)+lipgloss.Width(seg) > w {
 			return strings.Join(segs[:i], gap), false
 		}
 	}

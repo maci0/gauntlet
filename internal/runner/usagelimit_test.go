@@ -202,7 +202,7 @@ func probeScript(t *testing.T, answers ...string) []string {
 	counter := filepath.Join(dir, "n")
 	var cases strings.Builder
 	for i, a := range answers {
-		cases.WriteString("  " + itoa(i) + ") printf '" + a + "\\n' ;;\n")
+		cases.WriteString("  " + strconv.Itoa(i) + ") printf '" + a + "\\n' ;;\n")
 	}
 	body := "n=0\n" +
 		"[ -f " + counter + " ] && n=$(cat " + counter + ")\n" +
@@ -211,18 +211,6 @@ func probeScript(t *testing.T, answers ...string) []string {
 		"  *) printf '" + answers[len(answers)-1] + "\\n' ;;\n" +
 		"esac\n"
 	return []string{fakeAgent(t, dir, "probe", body)}
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b []byte
-	for n > 0 {
-		b = append([]byte{byte('0' + n%10)}, b...)
-		n /= 10
-	}
-	return string(b)
 }
 
 func TestUsageLimitFinishesTheReviewInFlight(t *testing.T) {
