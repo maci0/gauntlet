@@ -545,6 +545,15 @@ func padCells(s string, w int) string {
 	return s
 }
 
+// padCellsLeft left-pads s to w terminal columns, the %*s side. fmt's
+// right-aligning verb has the same rune-count limit padCells exists to avoid.
+func padCellsLeft(s string, w int) string {
+	if gap := w - cells(s); gap > 0 {
+		return strings.Repeat(" ", gap) + s
+	}
+	return s
+}
+
 // trimCells cuts s to at most w terminal columns, ellipsis included, between
 // grapheme clusters so a cut never lands inside one.
 func trimCells(s string, w int) string {

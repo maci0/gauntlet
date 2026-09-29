@@ -905,6 +905,44 @@ func TestTailRingManyWrites(t *testing.T) {
 	}
 }
 
+// A tail window is a byte range, so it can begin inside a multi-byte
+// sequence. The fragment decodes to U+FFFD in a raw echo and loses the line it
+// belonged to to the anchored line-scrapers, so the head is cut back to the
+// next rune boundary. The window may never be longer than it was, only shorter.
+func TestTailDropsAPartialRuneAtItsHead(t *testing.T) {
+	// "日本語" is three bytes per rune, so an 8-byte window lands inside the
+	// second one whichever way it is cut.
+	tl := NewTail(8)
+	tl.WriteString("日本語")
+	got := string(tl.Bytes())
+	if !utf8.ValidString(got) {
+		t.Fatalf("tail %q is not valid UTF-8", got)
+	}
+	if want := "本語"; got != want {
+		t.Errorf("tail %q, want %q", got, want)
+	}
+
+	// Wrapping the ring and landing mid-sequence must do the same thing.
+	tl = NewTail(5)
+	tl.WriteString("ab日本") // ring now wraps, holding "b日本"
+	if got := string(tl.Bytes()); !utf8.ValidString(got) || got != "本" {
+		t.Errorf("wrapped tail %q is not a clean cut at a rune boundary", got)
+	}
+
+	// A window that starts on a boundary is untouched, and one short enough to
+	// be nothing but a fragment comes back empty rather than as U+FFFD.
+	tl = NewTail(7)
+	tl.WriteString("éclair")
+	if got := string(tl.Bytes()); got != "éclair" {
+		t.Errorf("boundary-aligned tail %q, want %q", got, "éclair")
+	}
+	tl = NewTail(1)
+	tl.WriteString("日")
+	if got := tl.Bytes(); len(got) != 0 {
+		t.Errorf("a window holding only half a rune returned %q, want empty", got)
+	}
+}
+
 // FuzzUsageTail drives the output-tail ring buffer with arbitrary writes in
 // arbitrary chunkings and checks it against a reference model: the retained
 // bytes are always exactly the last size bytes written, never more. The

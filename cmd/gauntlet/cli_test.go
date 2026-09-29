@@ -19,7 +19,9 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/journal"
+
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/rivo/uniseg"
 )
 
 // captureStderr swaps os.Stderr for a pipe, runs f, and returns what was
@@ -550,6 +552,70 @@ func TestRunsColumnsLineUp(t *testing.T) {
 	if got, want := strip(col.field(1, col.width(), palette{on: true})), col.field(1, col.width(), palette{}); got != want {
 		t.Errorf("colored FAILED cell renders as %q, want %q", got, want)
 	}
+}
+
+// The DIRS cell holds directory names out of the reviewed tree, so it is the
+// one column whose text is not this program's. It has to line up like the rest,
+// which means the width is measured in terminal cells: a byte count made a
+// checkout under a CJK name pad the column to three times its content while
+// fmt padded by runes, and the header walked away from its cells.
+func TestRunsColumnsLineUpOnWideDirectoryNames(t *testing.T) {
+	entries := []journal.Summary{
+		{RunID: "20260102T030405Z-1f4", Dirs: []string{"/src/a"}},
+		{RunID: "20260102T030406Z-1f400", Dirs: []string{"/src/日本語のテキスト"}},
+		{RunID: "20260102T030407Z-1f4000", Dirs: []string{"/src/éclair"}},
+	}
+	cols := newRunsColumns(entries)
+	lines := []string{cols.header()}
+	for row := range entries {
+		lines = append(lines, cols.row(row, palette{}))
+	}
+	for i, line := range lines {
+		if !utf8.ValidString(line) {
+			t.Fatalf("line %d is not valid UTF-8: %q", i, line)
+		}
+	}
+	// Column starts are the only invariant that matters here, so they are
+	// walked in cells the way a terminal would.
+	for c, col := range cols {
+		at := 0
+		for _, before := range cols[:c] {
+			at += before.width() + len(runsGap)
+		}
+		if at == 0 {
+			continue
+		}
+		for i, line := range lines {
+			got := atCells(line, at, col.width())
+			if want := strings.TrimRight(col.headField(col.width()), " "); i == 0 {
+				if got != want {
+					t.Errorf("column %d (%s) header renders as %q, want %q:\n%s", c, col.head, got, want, line)
+				}
+				continue
+			}
+			if want := strings.TrimRight(col.field(i-1, col.width(), palette{}), " "); got != want {
+				t.Errorf("row %d column %d (%s) renders as %q, want %q:\n%s", i-1, c, col.head, got, want, line)
+			}
+		}
+	}
+}
+
+// atCells returns the w cells of line starting at cell offset at, trailing
+// padding trimmed. The rows are built from a palette with color off, so the
+// line holds no escape.
+func atCells(line string, at, w int) string {
+	var b strings.Builder
+	pos, used := 0, 0
+	for pos < len(line) {
+		cluster, rest, cw, _ := uniseg.FirstGraphemeClusterInString(line[pos:], -1)
+		if used >= at && used < at+w {
+			b.WriteString(cluster)
+		}
+		used += cw
+		pos += len(cluster)
+		_ = rest
+	}
+	return strings.TrimRight(b.String(), " ")
 }
 
 // doctor's "exits 1 if no agent is usable" contract covers --bin overrides:

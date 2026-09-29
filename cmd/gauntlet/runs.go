@@ -233,12 +233,14 @@ type runsColumn struct {
 }
 
 // width is what the column prints at: the widest of its header and its cells.
+// The RUN and DIRS cells hold names from the reviewed tree, so the measure is
+// terminal cells (cells), not the byte or rune count the same table used to
+// take. Every other column here is ASCII, so the two differ only on the two
+// that are not.
 func (c runsColumn) width() int {
-	w := len(c.head)
+	w := cells(c.head)
 	for _, cell := range c.cells {
-		if len(cell) > w {
-			w = len(cell)
-		}
+		w = max(w, cells(cell))
 	}
 	return w
 }
@@ -249,9 +251,9 @@ func (c runsColumn) width() int {
 func (c runsColumn) field(row int, width int, pal palette) string {
 	cell := c.cells[row]
 	if c.right {
-		cell = fmt.Sprintf("%*s", width, cell)
+		cell = padCellsLeft(cell, width)
 	} else {
-		cell = fmt.Sprintf("%-*s", width, cell)
+		cell = padCells(cell, width)
 	}
 	if c.head == "FAILED" && strings.TrimSpace(cell) != "0" {
 		return pal.red(cell)
@@ -261,9 +263,9 @@ func (c runsColumn) field(row int, width int, pal palette) string {
 
 func (c runsColumn) headField(width int) string {
 	if c.right {
-		return fmt.Sprintf("%*s", width, c.head)
+		return padCellsLeft(c.head, width)
 	}
-	return fmt.Sprintf("%-*s", width, c.head)
+	return padCells(c.head, width)
 }
 
 // runsColumns is the whole table, columns in print order.

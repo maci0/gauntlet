@@ -6,6 +6,7 @@ package agent
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // TailBytes is how much of an agent's output is kept for usage parsing. Usage
@@ -196,16 +197,40 @@ func (t *Tail) WriteString(s string) (int, error) {
 // Bytes returns the retained tail. It aliases the ring until the retained
 // bytes wrap; when they do it is a fresh copy assembled from both ends.
 // Either way: copy before holding past the next Write.
+//
+// The ring keeps whole bytes, so the window it returns can start in the middle
+// of a multi-byte sequence. Only the head can, since bytes leave at the front,
+// and a leading fragment decodes to U+FFFD in every reader of these bytes: a
+// raw echo shows it and the line-scrapers lose the line it belonged to. It is
+// dropped instead, which costs at most utf8.UTFMax-1 bytes of a tail that was
+// already truncated. This is the same cut internal/runner/lock.go makes on the
+// lock line it reads back.
 func (t *Tail) Bytes() []byte {
 	if t == nil || t.valid == 0 {
 		return nil
 	}
 	end := t.off + t.valid
 	if end <= t.size {
-		return t.buf[t.off:end]
+		return dropLeadingPartialRune(t.buf[t.off:end])
 	}
 	out := make([]byte, t.valid)
 	copied := copy(out, t.buf[t.off:])
 	copy(out[copied:], t.buf[:end-t.size])
-	return out
+	return dropLeadingPartialRune(out)
+}
+
+// dropLeadingPartialRune removes a UTF-8 sequence the window begins inside of.
+// A window that starts on a rune boundary is returned whole.
+func dropLeadingPartialRune(b []byte) []byte {
+	for len(b) > 0 {
+		if !utf8.RuneStart(b[0]) {
+			b = b[1:] // a continuation byte: the rune it belongs to starts earlier
+			continue
+		}
+		if !utf8.FullRune(b) {
+			return b[:0]
+		}
+		return b
+	}
+	return b
 }
