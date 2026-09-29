@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
@@ -647,7 +648,17 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 		}
 		var parts []string
 		seen := map[string]bool{}
+		// The notes are model output and the overview is cut to
+		// prBodyOverviewMax when it renders, so spending the bound here
+		// keeps a review that reported a note per file from building
+		// megabytes of joined string to throw all but 400 runes of it away.
+		// What fits is the same either way: a shorter overview is one the
+		// render would have cut at this character anyway.
+		budget := prBodyOverviewMax
 		for _, n := range notes {
+			if budget <= 0 {
+				break
+			}
 			// A note whose path the commit never touched describes the wrong
 			// diff, or was planted; it contributes nothing to the overview.
 			if !touched[noteKey(n.Path)] {
@@ -660,6 +671,9 @@ func (r *Runner) stackBody(ctx context.Context, review, title, dir, from, to, ba
 			}
 			seen[part] = true
 			parts = append(parts, part)
+			// "; " between parts and the closing "." ride on the same bound:
+			// they are what the joined string is, not an allowance on top.
+			budget -= utf8.RuneCountInString(part) + 3
 		}
 		if len(parts) > 0 {
 			b.Overview = strings.Join(parts, "; ") + "."

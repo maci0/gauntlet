@@ -68,9 +68,7 @@ func (b prBody) render() string {
 	var sb strings.Builder
 	sb.WriteString("## Summary\n\n")
 	sb.WriteString(mdText(b.Title, prBodyTitleMax))
-	// Backticks are replaced like mdCode does, for the opposite reason: in
-	// prose position one would open a code span that swallows what follows.
-	if ov := strings.ReplaceAll(mdText(b.Overview, prBodyOverviewMax), "`", "'"); ov != "" {
+	if ov := mdText(b.Overview, prBodyOverviewMax); ov != "" {
 		sb.WriteString("\n\n" + ov)
 	}
 	if scope := mdText(b.Scope, prBodyScopeMax); scope != "" {
@@ -141,8 +139,17 @@ func (b prBody) stackNote() string {
 // only reads as markup at the start of a line, so flattening is what makes an
 // injected "## " inert, and doing it with a space rather than nothing keeps
 // the words on either side from being welded into one.
+//
+// A backtick is replaced the way mdCode replaces one, for the opposite
+// reason: in prose position it opens a code span that swallows what follows,
+// so a subject reading "restore the `parser` path" renders with "parser path"
+// set in code and no other reader able to tell. The replacement is here
+// rather than at the call site so every prose position gets it: the title, the
+// overview, and a project's declared scope are all untrusted text, and each
+// one went out with the span still open before.
 func mdText(s string, limit int) string {
-	return normalize.Truncate(escapeInline(norm.NFC.String(mdFlat(s))), limit)
+	flat := strings.ReplaceAll(mdFlat(norm.NFC.String(s)), "`", "'")
+	return normalize.Truncate(escapeInline(flat), limit)
 }
 
 // mdFlat collapses untrusted text to one sanitized line, without deciding what
