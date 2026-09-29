@@ -575,6 +575,15 @@ release byte-for-byte means the tag, a clean tree, and that Go release.
 `make repro` proves the rest on every CI run by building twice and
 comparing, for each platform in `PLATFORMS`; the second build strips the
 locale the Makefile pins, so it runs under the host's ambient one.
+
+`PLATFORMS` is four targets and the suite runs on two of them. The `test` job
+is a matrix over `ubuntu-24.04` and `macos-15`, so `linux/arm64` and
+`darwin/amd64` are built and byte-compared by the `dist` and `repro` jobs and
+never executed. A release ships those two beside the tested pair, and that is
+the edge of the claim: a link error on either is caught before the tag, a
+fault that appears only when the binary runs is not. Only a runner of that
+architecture closes it.
+
 The clean tree in that sentence is checked, not assumed: `make release`
 refuses a working tree with an uncommitted or untracked change before it
 builds anything, because `-buildvcs=false` leaves no revision and no dirty
