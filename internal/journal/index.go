@@ -815,12 +815,12 @@ func journalPreference(j namedJournal) int {
 	return 1
 }
 
-// journalsInDir returns one shard's journals, newest first. The order comes
-// from runIDOrder rather than from the directory listing's byte order: two
-// runs minted in the same second carry pids of different hex widths, and
-// ReadDir files the wider one below the narrower one. A read error is the
-// caller's to report: a shard that cannot be listed is a finding, and a walk
-// that swallowed it would report a tree that is merely short.
+// journalsInDir returns one shard's journals, in the order the directory
+// listed them. It does not sort: allJournals, the only caller, orders the whole
+// tree by run id straight after, and runIDOrder is expensive enough to be worth
+// not spending twice on the same pair. A read error is the caller's to report: a
+// shard that cannot be listed is a finding, and a walk that swallowed it would
+// report a tree that is merely short.
 func journalsInDir(dir string) ([]namedJournal, error) {
 	files, err := os.ReadDir(dir)
 	if err != nil {
@@ -860,9 +860,6 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 		}
 		batch = append(batch, namedJournal{id: id, path: filepath.Join(dir, f.Name())})
 	}
-	slices.SortFunc(batch, func(a, b namedJournal) int {
-		return runIDOrder(b.id, a.id)
-	})
 	if len(statErrs) > 0 {
 		return batch, errors.Join(statErrs...)
 	}

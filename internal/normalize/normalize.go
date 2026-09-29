@@ -227,9 +227,10 @@ func clean(raw string) (string, bool) {
 	s = stripControl(s)
 	// Drop the decorative left gutter, then judge what is left. Doing this
 	// before the emptiness checks is what turns opencode's "|" continuation
-	// lines into either real content or nothing.
-	if g := gutterRe.FindString(s); g != "" && len(g) < len(s) {
-		s = s[len(g):]
+	// lines into either real content or nothing. The index pair, not
+	// FindString, so the matched gutter is not allocated per line.
+	if g := gutterRe.FindStringIndex(s); g != nil && g[1] < len(s) {
+		s = s[g[1]:]
 	}
 	s = strings.TrimRightFunc(s, unicode.IsSpace)
 	if s == "" {

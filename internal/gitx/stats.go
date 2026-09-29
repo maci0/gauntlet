@@ -250,6 +250,18 @@ func (r *Repo) pruneLineCounts(live []string) {
 // untracked file every sample, so the cache is what keeps repeated sampling
 // at stat cost.
 func (r *Repo) countLinesCached(path string) int {
+	// Answer from the cache off an Lstat, before opening. A cached file is one
+	// the previous sample already read, so this is the whole cost of it: the
+	// open is not skipped for a hit, and a no-follow open of an unchanged tree
+	// spends three times the syscalls to learn what one stat says. A symlink
+	// carries the link's own size and mtime, which never match a cached regular
+	// file, so it falls through to the open that refuses it.
+	if li, err := os.Lstat(path); err == nil {
+		if e, ok := r.lineCounts[path]; ok && li.Mode().IsRegular() &&
+			e.size == li.Size() && e.modTime.Equal(li.ModTime()) {
+			return e.lines
+		}
+	}
 	f, fi, err := openRegular(path)
 	if err != nil {
 		delete(r.lineCounts, path)

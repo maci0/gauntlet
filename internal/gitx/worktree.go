@@ -781,13 +781,34 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 	if err != nil {
 		return fmt.Errorf("list branches matching %s: %w", pattern, err)
 	}
-	var failed []error
+	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
 		line = strings.TrimRight(line, "\r")
 		name := strings.TrimSpace(line)
 		if name == "" {
 			continue
 		}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	// One process for the whole sweep: a cancelled `--jobs` run leaves a branch
+	// per lane, and a fork and an exec per branch is the dominant cost of
+	// tidying up after it. `git branch -D` takes every name and deletes all it
+	// can.
+	r.wtMu.Lock()
+	_, err = r.run(ctx, gitNormal, append([]string{"branch", "-D", "--"}, names...)...)
+	r.wtMu.Unlock()
+	if err == nil {
+		return nil
+	}
+	// A batch that failed does not say which branch, or which of them are still
+	// there. Walk the names to separate a single held branch from a sweep that
+	// genuinely could not delete anything, so the report still names every
+	// survivor.
+	var failed []error
+	for _, name := range names {
 		if err := r.DeleteBranch(ctx, name); err != nil {
 			failed = append(failed, err)
 		}
