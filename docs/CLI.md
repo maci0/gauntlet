@@ -263,5 +263,11 @@ comments, trailing commas, unknown keys, and duplicate keys within an object
 are refused at startup rather than half-read. Field names match without regard
 to case, so `opt_in` and `OPT_IN` in the same definition are duplicates too.
 Duplicate agent names are also refused; definitions must not rely on JSON key
-order to override values. `gauntlet doctor` lists
-every agent it knows, defined ones included, and the file it read them from.
+order to override values. A name gauntlet ships is refused the same way, by
+`--agent-cmd` and by the file: a definition of a built-in name is a startup
+error, not a silent override, because the compiled-in flags are the ones the
+agent is launched with. An entry that named a built-in before that name shipped
+(`microagent` is the one added in 1.27.0) has to be deleted on upgrade; the file
+is the only place it can have come from, and `gauntlet doctor` names the file it
+read. `gauntlet doctor` lists every agent it knows, defined ones included, and
+the file it read them from.

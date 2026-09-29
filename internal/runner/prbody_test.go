@@ -226,6 +226,34 @@ func TestPRBodyNeutralizesInlineMarkup(t *testing.T) {
 	}
 }
 
+// A backtick in prose opens a code span that runs to the next backtick, so an
+// unpaired one in an agent's note swallows every following word of the
+// paragraph. The replacement belongs in the flattening rather than at one
+// call site: the title, the overview, and a declared scope are all untrusted
+// text read from the reviewed repository, and a span left open in any of them
+// takes the rest of the section with it.
+func TestPRBodyProseCarriesNoBacktick(t *testing.T) {
+	body := prBody{
+		Title:    "fix: restore the `parser` path",
+		Scope:    "`internal/cache` and `internal/gitx`",
+		Overview: "the `parser` path reopened a span",
+		Files:    []string{"internal/cache/store.go"},
+		Base:     "main", Root: "main", Layer: 1,
+	}.render()
+	summary, _, _ := strings.Cut(body, "\n\n## Changes")
+	if strings.Contains(summary, "`") {
+		t.Fatalf("an unpaired backtick survived into the summary:\n%s", body)
+	}
+	// The text is still there, and the file list, which is a code span by
+	// design, is unaffected.
+	if !strings.Contains(summary, "'parser'") {
+		t.Fatalf("the backtick was dropped instead of replaced:\n%s", body)
+	}
+	if !strings.Contains(body, "- `internal/cache/store.go`") {
+		t.Fatalf("the file list lost its code span:\n%s", body)
+	}
+}
+
 // unescapedDelimiter returns the first "[" "]" "<" or ">" a Markdown
 // renderer would still act on, or "" when the text carries none.
 func unescapedDelimiter(s string) string {
