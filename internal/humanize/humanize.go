@@ -118,6 +118,14 @@ func Share(part, whole int) int {
 // List names a few items and counts the rest, for a message that has to fit
 // on one line: "a.go, b.go, c.go and 4 more".
 func List(items []string, limit int) string {
+	return ListOf(items, limit, len(items))
+}
+
+// ListOf is List with the total stated apart from the items, for a caller that
+// holds only the names it will print and does not want to build the ones it
+// will not. The count is taken from total, so passing a shorter items is what
+// makes the rest appear.
+func ListOf(items []string, limit, total int) string {
 	switch {
 	case len(items) == 0:
 		return ""
@@ -125,12 +133,11 @@ func List(items []string, limit int) string {
 		limit = 1
 	}
 	shown := items
-	rest := 0
 	if len(items) > limit {
-		shown, rest = items[:limit], len(items)-limit
+		shown = items[:limit]
 	}
 	out := strings.Join(shown, ", ")
-	if rest > 0 {
+	if rest := total - len(shown); rest > 0 {
 		out += fmt.Sprintf(" and %d more", rest)
 	}
 	return out

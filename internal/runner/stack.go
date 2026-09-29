@@ -40,7 +40,7 @@ func (e *StackDirtyError) Error() string {
 	}
 	return fmt.Sprintf("%s has %d uncommitted file(s) that stacked PRs would exclude (%s)",
 		normalize.Sanitize(e.Dir), len(e.Tracked)+len(e.Untracked),
-		humanize.List(e.DisplayPaths(), 3))
+		e.PathList())
 }
 
 // DisplayPaths returns sanitized tracked paths followed by sanitized
@@ -52,6 +52,26 @@ func (e *StackDirtyError) DisplayPaths() []string {
 	}
 	paths := slices.Concat(e.Tracked, e.Untracked)
 	return safePaths(paths)
+}
+
+// PathList is DisplayPaths rendered for a one-line message, which names a few
+// and counts the rest. It is what Error formats with, and an error is printed
+// once per log line, so it reads the first names off the two lists rather than
+// joining and sanitizing all of them.
+func (e *StackDirtyError) PathList() string {
+	if e == nil {
+		return ""
+	}
+	shown := make([]string, 0, pathListLimit)
+	for _, group := range [...][]string{e.Tracked, e.Untracked} {
+		for _, p := range group {
+			if len(shown) == pathListLimit {
+				break
+			}
+			shown = append(shown, normalize.Sanitize(p))
+		}
+	}
+	return humanize.ListOf(shown, pathListLimit, len(e.Tracked)+len(e.Untracked))
 }
 
 // StackPrep is what stacked mode proves before any agent starts, the

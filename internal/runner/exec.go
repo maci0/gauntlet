@@ -5,12 +5,12 @@ package runner
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"os"
 	"os/exec"
-	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -561,12 +561,23 @@ func withNote(msg, out string) string {
 // bytes reach a log or a screen without having been cleaned. runx.FirstLine
 // then cuts at the newline and redacts anything shaped like a credential in a
 // URL.
+//
+// It walks the newline boundaries from the end rather than splitting: the tail
+// is the whole session, and splitting it builds a string per line to read one
+// of them.
 func lastNote(out []byte) string {
-	lines := strings.Split(string(out), "\n")
-	for _, line := range slices.Backward(lines) {
-		if line := normalize.Truncate(normalize.Display(line), streamLineCols); strings.TrimSpace(line) != "" {
-			return runx.FirstLine(line)
+	for rest := out; ; {
+		var line []byte
+		if i := bytes.LastIndexByte(rest, '\n'); i >= 0 {
+			line, rest = rest[i+1:], rest[:i]
+		} else {
+			line, rest = rest, nil
+		}
+		if s := normalize.Truncate(normalize.Display(string(line)), streamLineCols); strings.TrimSpace(s) != "" {
+			return runx.FirstLine(s)
+		}
+		if rest == nil {
+			return ""
 		}
 	}
-	return ""
 }

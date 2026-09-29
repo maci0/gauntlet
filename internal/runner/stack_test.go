@@ -492,6 +492,9 @@ func TestStackedPRsDirtyCheckoutNeedsConsentAndUsesRemoteBase(t *testing.T) {
 	if nilDirty.DisplayPaths() != nil {
 		t.Fatalf("nil.DisplayPaths() = %v, want nil", nilDirty.DisplayPaths())
 	}
+	if nilDirty.PathList() != "" {
+		t.Fatalf("nil.PathList() = %q, want empty", nilDirty.PathList())
+	}
 	if nilDirty.Error() != "stacked PR confirmation required" {
 		t.Fatalf("nil.Error() = %q, want default message", nilDirty.Error())
 	}

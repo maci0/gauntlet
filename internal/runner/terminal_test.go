@@ -116,3 +116,29 @@ func TestWithNoteUsesTheLastLine(t *testing.T) {
 		t.Fatalf("withNote = %q", got)
 	}
 }
+
+// lastNote walks the newline boundaries from the end. The cases below are the
+// ones where a walk and a split disagree about how many lines there are: a
+// trailing newline, no newline at all, nothing but newlines, and an empty tail.
+func TestLastNoteLineBoundaries(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"\n", ""},
+		{"\n\n\n", ""},
+		{"   \n\t\n", ""},
+		{"reason", "reason"},
+		{"reason\n", "reason"},
+		{"first\nreason", "reason"},
+		{"first\nreason\n", "reason"},
+		{"first\nreason\n\n\n", "reason"},
+		{"first\nreason\n   \n", "reason"},
+	}
+	for _, c := range cases {
+		if got := lastNote([]byte(c.in)); got != c.want {
+			t.Errorf("lastNote(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

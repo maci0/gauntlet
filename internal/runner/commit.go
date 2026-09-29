@@ -149,7 +149,7 @@ func unfinishedCommit(ctx context.Context, repo *gitx.Repo, own map[string]bool)
 	}
 	if len(changes.Tracked) > 0 {
 		return fmt.Errorf("still uncommitted after the commit step: %s",
-			humanize.List(safePaths(changes.Tracked), 3))
+			safePathList(changes.Tracked, pathListLimit))
 	}
 	return nil
 }

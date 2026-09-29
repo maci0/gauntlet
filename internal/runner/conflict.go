@@ -93,7 +93,7 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 	}
 	if len(left) > 0 {
 		note("%s still has conflict markers in %s, leaving the branch for a human",
-			review, humanize.List(safePaths(left), 3))
+			review, safePathList(left, pathListLimit))
 		return mr, notes
 	}
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), message)
@@ -194,7 +194,7 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		return false
 	}
 	note("Resolving the %s conflict in %s with %s", review,
-		humanize.List(safePaths(paths), 3), spec.Label())
+		safePathList(paths, pathListLimit), spec.Label())
 	pr := runProc(ctx, procOpts{
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,

@@ -141,11 +141,10 @@ func (n *Normalizer) Push(raw string) []Line {
 		text = Truncate(text, n.cfg.MaxWidth)
 	}
 
-	kind := n.classify(text)
+	kind, verb := n.classify(text)
 	if kind == Progress {
-		verb := "session"
-		if m := progressRe.FindStringSubmatch(text); m != nil {
-			verb = strings.ToLower(m[1])
+		if verb == "" {
+			verb = "session"
 		}
 		if n.lastVerb == verb {
 			return nil // same activity, still going: one line is enough
@@ -298,27 +297,33 @@ func isControl(r rune) bool {
 		unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r)
 }
 
-// classify labels one line, tracking diff state across calls.
-func (n *Normalizer) classify(s string) Kind {
+// classify labels one line, tracking diff state across calls. The second
+// return is the progress verb when the line is a progress line matching
+// progressRe, and empty for every other kind.
+func (n *Normalizer) classify(s string) (Kind, string) {
 	if k, ok := n.classifyDiff(s); ok {
-		return k
+		return k, ""
 	}
 	switch {
 	case opencodeHeaderRe.MatchString(s):
 		// Which model an agent picked is worth knowing once; opencode reprints
 		// it, so it is treated as progress and collapsed by verb.
-		return Progress
+		return Progress, ""
 	case resultRe.MatchString(s):
-		return Result
+		return Result, ""
 	case toolRe.MatchString(s):
-		return Tool
-	case progressRe.MatchString(s):
-		return Progress
-	case maybeError(s) && errorRe.MatchString(s):
-		return Error
-	default:
-		return Plain
+		return Tool, ""
 	}
+	// One run carries both the verdict and the verb: a second pass over every
+	// progress line to recover a capture group the first one already had is
+	// waste on the one line shape an agent repeats most.
+	if m := progressRe.FindStringSubmatch(s); m != nil {
+		return Progress, strings.ToLower(m[1])
+	}
+	if maybeError(s) && errorRe.MatchString(s) {
+		return Error, ""
+	}
+	return Plain, ""
 }
 
 // maybeError is a case-insensitive trigram prefilter for errorRe: the regex

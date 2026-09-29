@@ -3,7 +3,14 @@
 
 package runner
 
-import "github.com/maci0/gauntlet/internal/normalize"
+import (
+	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/normalize"
+)
+
+// pathListLimit is how many paths a one-line message names before it counts
+// the rest instead.
+const pathListLimit = 3
 
 // safePaths renders worktree paths for an error or log line. They come from
 // git status against a possibly hostile tree: a file name may carry escape,
@@ -17,4 +24,15 @@ func safePaths(paths []string) []string {
 		out[i] = normalize.Sanitize(p)
 	}
 	return out
+}
+
+// safePathList is humanize.List(safePaths(paths), limit) for the common case,
+// without the pass it no longer needs: a tree with thousands of untracked
+// files would otherwise sanitize every one of them to render the first three.
+// Only the names that reach the message are cleaned; the count is taken from
+// the untouched length.
+func safePathList(paths []string, limit int) string {
+	limit = max(limit, 1)
+	shown := paths[:min(len(paths), limit)]
+	return humanize.ListOf(safePaths(shown), limit, len(paths))
 }

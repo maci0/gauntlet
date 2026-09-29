@@ -18,7 +18,6 @@ import (
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
-	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
@@ -47,11 +46,11 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 		// are sanitized here rather than left to every consumer.
 		return fmt.Errorf("%w: commit or stash your changes first, "+
 			"or run without --jobs to review the tree in place (%s)",
-			ErrDirtyTree, humanize.List(safePaths(changes.Tracked), 3))
+			ErrDirtyTree, safePathList(changes.Tracked, pathListLimit))
 	}
 	if n := len(changes.Untracked); n > 0 {
 		r.log("%d untracked file(s) stay put and are not reviewed: %s",
-			n, humanize.List(safePaths(changes.Untracked), 3))
+			n, safePathList(changes.Untracked, pathListLimit))
 	}
 	// The run lock on this directory is held, so nothing under the worktree
 	// root belongs to a live run: whatever is in it is scratch a previous
