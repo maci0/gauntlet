@@ -687,7 +687,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:102-
   describes it. It narrows what a reader has to guess about a release's
   dependency surface; it is not a second integrity control.
   The release ships the license text beside them as `dist/LICENSE`
-(`Makefile:714`, uploaded at `.github/workflows/release.yml:200-208`),
+  (`Makefile:714`, uploaded at `.github/workflows/release.yml:200-208`),
   because a binary offered under the AGPL carries the terms with it and a
   consumer who installs the binary alone has nowhere else to read them. It is
   a copy of the repository's own `LICENSE` and carries no claim of its own: it

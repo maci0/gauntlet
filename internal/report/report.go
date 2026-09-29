@@ -207,13 +207,16 @@ func (r *Reporter) handle(ev runner.Event) {
 		if ev.Ins != nil && ev.Del != nil {
 			lines = fmt.Sprintf(", +%d/-%d lines", *ev.Ins, *ev.Del)
 		}
-		var loopElapsed time.Duration
+		// An elapsed the decoder refused stays missing: "0s" is a
+		// measurement of a loop that took no time, and a loop the clock
+		// never ticked through is not that.
+		loopElapsed := "n/a"
 		if d, ok := humanize.Seconds(ev.Elapsed); ok {
-			loopElapsed = d
+			loopElapsed = humanize.Duration(d)
 		}
 		fmt.Fprintln(r.Out)
 		r.Logf(ev.Time, "%s=== Loop %d complete in %s%s ===", tag, ev.Loop,
-			humanize.Duration(loopElapsed), lines)
+			loopElapsed, lines)
 		fmt.Fprintln(r.Out)
 	}
 }

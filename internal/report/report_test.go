@@ -137,6 +137,14 @@ func TestReporterRendersEveryEventKind(t *testing.T) {
 	if strings.Contains(out.String(), "lines") {
 		t.Fatalf("a loop with unmeasured lines invented a tally:\n%s", out.String())
 	}
+
+	// An elapsed the decoder refused is missing, not zero: "0s" reads as a
+	// loop that took no time at all, which is a measurement nobody made.
+	out.Reset()
+	r.handle(runner.Event{Kind: runner.EvLoopEnd, Loop: 3})
+	if !strings.Contains(out.String(), "Loop 3 complete in n/a") {
+		t.Fatalf("a refused elapsed was rendered as a duration:\n%s", out.String())
+	}
 }
 
 func TestReporterConsumeDrainsUntilClosed(t *testing.T) {

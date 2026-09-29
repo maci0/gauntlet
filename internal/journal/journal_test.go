@@ -3135,3 +3135,112 @@ func TestSummarizeFileRefusesAJournalSymlink(t *testing.T) {
 		t.Fatal("summarizeFile followed a symlink standing where a journal lives")
 	}
 }
+
+// A shard the walk cannot open is one bad entry, not an empty history. Recent
+// reports it beside the runs that did read rather than replacing them with an
+// error, so a listing stays a listing and names what it missed.
+func TestRecentKeepsTheRunsAJournalItCannotReadCostItOnlyThatOne(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	base := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	readable := NewRunID(base)
+	if _, err := finishRun(readable, base, "/readable"); err != nil {
+		t.Fatal(err)
+	}
+	// A different UTC day, so the shard that goes dark is not the one the
+	// run that has to stay listed is filed in.
+	elsewhere := base.Add(24 * time.Hour)
+	shut := NewRunID(elsewhere)
+	if _, err := finishRun(shut, elsewhere, "/shut"); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores mode bits, so a shard cannot be made unreadable here")
+	}
+	shard := filepath.Join(runsDir(), shardFromRunID(shut))
+	if err := os.Chmod(shard, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(shard, 0o700) })
+
+	runs, err := Recent(10)
+	if err == nil {
+		t.Fatal("Recent hid the journal it could not read")
+	}
+	found := false
+	for _, r := range runs {
+		if r.RunID == readable {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("Recent dropped the run that did read, returning %+v", runs)
+	}
+}
+
+// History weights a review by the runs it has seen. A listing that came back
+// short still weights by the runs that did read, and says the weighting is
+// thin rather than answering as if the missing runs had never happened.
+func TestHistoryWeighsByTheRunsItCouldRead(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	base := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+	id := NewRunID(base)
+	j, err := Open(id, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": base, "dir": "/repo"})
+	j.Write(map[string]any{
+		"ev": "review_end", "ts": base.Add(time.Minute), "dir": "/repo",
+		"review": "sec-review", "status": "ok", "ins": 3, "del": 1,
+	})
+	if err := j.Close(Summary{
+		Version: "test", Dirs: []string{"/repo"},
+		Start: base, End: base.Add(time.Minute), Loops: 1, Reviews: 1, OK: 1,
+		Ins: 3, Del: 1, LinesMeasured: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores mode bits, so a shard cannot be made unreadable here")
+	}
+	// A different UTC day, so the shard that goes dark is not the one the
+	// run under test is filed in.
+	elsewhere := base.Add(24 * time.Hour)
+	shut := NewRunID(elsewhere)
+	if _, err := finishRun(shut, elsewhere, "/elsewhere"); err != nil {
+		t.Fatal(err)
+	}
+	shard := filepath.Join(runsDir(), shardFromRunID(shut))
+	if err := os.Chmod(shard, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(shard, 0o700) })
+
+	got, err := History("/repo")
+	if err == nil {
+		t.Fatal("History hid the listing failure behind a confident answer")
+	}
+	if got["sec-review"].Runs != 1 {
+		t.Fatalf("History = %+v, want the run it could read", got)
+	}
+}
+
+// finishRun writes and closes a one-directory run so a listing has something
+// to find.
+func finishRun(id string, start time.Time, dir string) (Summary, error) {
+	j, err := Open(id, start)
+	if err != nil {
+		return Summary{}, err
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": start, "dir": dir})
+	s := Summary{
+		Version: "test", Dirs: []string{dir},
+		Start: start, End: start.Add(time.Minute),
+		Loops: 1, Reviews: 1, OK: 1,
+	}
+	return s, j.Close(s)
+}

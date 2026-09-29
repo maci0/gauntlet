@@ -245,10 +245,7 @@ func historyGate(line []byte) bool {
 // whichever of the two the operator typed, and comparing the text would read a
 // tree with a full history as one with none.
 func History(dir string) (map[string]ReviewHistory, error) {
-	runs, err := Recent(historyRuns)
-	if err != nil {
-		return nil, err
-	}
+	runs, listingErr := Recent(historyRuns)
 	out := map[string]ReviewHistory{}
 	var skipped []error
 	// The directory is asked about once per journal line, and resolving a
@@ -331,6 +328,12 @@ func History(dir string) (map[string]ReviewHistory, error) {
 	if len(skipped) > 0 {
 		return out, fmt.Errorf("%d of %d recent runs could not be read: %w",
 			len(skipped), len(runs), errors.Join(skipped...))
+	}
+	// A listing that came back short still holds the runs that did read, and
+	// weighting by them is better than weighting by nothing. The shortfall is
+	// named beside the answer rather than replacing it.
+	if listingErr != nil {
+		return out, fmt.Errorf("the run listing is incomplete: %w", listingErr)
 	}
 	return out, nil
 }

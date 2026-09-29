@@ -156,7 +156,7 @@ var helpExamples = []struct{ Cmd, Help string }{
 
 var helpExitCodes = []struct{ Code, Meaning string }{
 	{"0", "the command did what it was asked: every review ran and passed, or the listing, replay, or report was printed"},
-	{"1", "a review failed, timed out, was skipped, or would not merge; a commit step failed; doctor found no agent to launch; update failed"},
+	{"1", "a review failed, timed out, was skipped, or would not merge; a commit step failed; doctor found no agent to launch; update failed; the run listing could not be read in full"},
 	{"2", "usage error"},
 	{"75", "another instance holds the lock for that directory"},
 	{"130", "interrupted"},

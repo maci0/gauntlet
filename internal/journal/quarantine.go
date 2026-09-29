@@ -89,7 +89,13 @@ func trimQuarantine(keep int) (int, error) {
 	touched := make(map[string]struct{}, 4)
 	evicted := 0
 	for _, q := range slices.Backward(held[keep:]) {
-		if err := os.Remove(q.path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		if err := os.Remove(q.path); err != nil {
+			// A file that was already gone was destroyed by something
+			// else, and the caller warns about permanent loss, so this
+			// call does not enter the count.
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
 			return evicted, err
 		}
 		evicted++

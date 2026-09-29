@@ -27,13 +27,15 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 	if restore != "" {
 		return restoreRun(out, pal, restore, asJSON)
 	}
-	entries, err := journal.Recent(limit)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot read run index: %v\n", err)
-		return exitFail
+	entries, listErr := journal.Recent(limit)
+	if listErr != nil {
+		fmt.Fprintf(os.Stderr, "run listing is incomplete: %v\n", listErr)
 	}
 	if asJSON {
-		return writeRunsJSON(out, entries)
+		if code := writeRunsJSON(out, entries); code != 0 {
+			return code
+		}
+		return exitCodeFor(listErr)
 	}
 	bw := bufio.NewWriter(out)
 	w := report.ErrWriter{Out: bw}
@@ -90,6 +92,17 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 		w.Printf("%s\n", pal.Dim(fmt.Sprintf(
 			"Pruned, still recoverable (gauntlet runs --restore ID): %s%s",
 			strings.Join(shown, " "), more)))
+	}
+	return exitCodeFor(listErr)
+}
+
+// exitCodeFor turns a listing that came back short into a failing exit. The
+// rows that did read are still printed: a listing that names what it missed
+// beats no listing, and a script reading the exit code still learns the answer
+// is not the whole answer.
+func exitCodeFor(err error) int {
+	if err != nil {
+		return exitFail
 	}
 	return exitOK
 }

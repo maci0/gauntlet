@@ -456,23 +456,35 @@ func Recent(n int) ([]Summary, error) {
 	if n <= 0 {
 		return nil, nil
 	}
-	if err := recoverIndex(); err != nil {
-		return nil, err
+	// Every failure below is reported beside the listing, never in place of
+	// it: a journal or a shard the walk could not read leaves the other runs
+	// the operator ran just as real, and dropping the whole listing names one
+	// bad entry as if no run had ever happened. The error is never nil away
+	// either, so a caller that has to act on it still can.
+	var problems []error
+	note := func(err error) {
+		if err != nil {
+			problems = append(problems, err)
+		}
 	}
+	note(recoverIndex())
 	out, err := readIndex(n)
 	if err != nil {
-		return nil, err
+		note(err)
+		return nil, errors.Join(problems...)
 	}
 	out = dedupeRunIDs(out)
 	want, err := listJournalsN(n)
-	if err != nil || len(want) == 0 {
+	note(err)
+	if len(want) == 0 {
 		// No journals: the index is the listing, as tests and a
 		// hand-written index rely on.
-		return out, err
+		return out, errors.Join(problems...)
 	}
 	lookup, err := indexLookup(want, out)
 	if err != nil {
-		return nil, err
+		note(err)
+		return out, errors.Join(problems...)
 	}
 	// A hole behind a later Close cannot be appended: that would make it
 	// the newest index row, and recoverIndex would then reconstruct the
@@ -488,7 +500,7 @@ func Recent(n int) ([]Summary, error) {
 		}
 		lookup[j.id] = s
 	}
-	return summariesFor(want, lookup), nil
+	return summariesFor(want, lookup), errors.Join(problems...)
 }
 
 func readIndex(n int) ([]Summary, error) {
