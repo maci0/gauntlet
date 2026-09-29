@@ -25,6 +25,7 @@ import (
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
+	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
@@ -937,8 +938,20 @@ func writeSummary(j *journal.Journal, start, end time.Time, elapsed time.Duratio
 	// The run's own row is the newest one, so pruning here never touches the
 	// run that just finished, and a failure only means the state tree keeps
 	// growing: it is not this run's problem to report as its own.
-	if _, err := journal.Prune(keepRuns); err != nil {
+	//
+	// Evicted runs are the one loss a prune makes permanent. Every other run
+	// it touched was renamed into the quarantine and `gauntlet runs --restore`
+	// can bring it back; the ones the bound pushed out of that quarantine were
+	// unlinked, which happens when --keep-runs is lowered. Silence there would
+	// make history the operator could have restored five minutes ago simply
+	// stop existing, so the count is what the run says it destroyed.
+	res, err := journal.Prune(keepRuns)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: cannot prune old run journals: %v\n", err)
+	}
+	if res.Evicted > 0 {
+		fmt.Fprintf(os.Stderr, "Warning: the --keep-runs %d bound unlinked %s from the quarantine, and nothing else holds them\n",
+			keepRuns, humanize.Plural(res.Evicted, "run", "runs"))
 	}
 }
 

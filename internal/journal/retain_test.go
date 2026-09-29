@@ -45,12 +45,12 @@ func TestPruneDropsBothCopies(t *testing.T) {
 		record(t, id, base.Add(time.Duration(i)*time.Hour))
 	}
 
-	removed, err := Prune(3)
+	res, err := Prune(3)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 3 {
-		t.Fatalf("pruned %d runs, want 3", removed)
+	if res.Moved != 3 {
+		t.Fatalf("moved %d runs, want 3", res.Moved)
 	}
 
 	rows, err := Recent(10)
@@ -102,12 +102,12 @@ func TestPruneKeepsWhatItIsToldTo(t *testing.T) {
 	}
 
 	for _, keep := range []int{0, -1, 3, 10} {
-		removed, err := Prune(keep)
+		res, err := Prune(keep)
 		if err != nil {
 			t.Fatalf("Prune(%d): %v", keep, err)
 		}
-		if removed != 0 {
-			t.Errorf("Prune(%d) removed %d runs, want none", keep, removed)
+		if res.Moved != 0 {
+			t.Errorf("Prune(%d) moved %d runs, want none", keep, res.Moved)
 		}
 	}
 	if rows, err := Recent(10); err != nil || len(rows) != 3 {
@@ -163,12 +163,12 @@ func TestPruneLeavesAnOlderRunInProgress(t *testing.T) {
 	older.Flush()
 	record(t, "20260825T100000Z-00bb", base.Add(time.Hour))
 
-	removed, err := Prune(1)
+	res, err := Prune(1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 0 {
-		t.Errorf("Prune(1) removed %d runs, want none while a run is still open", removed)
+	if res.Moved != 0 {
+		t.Errorf("Prune(1) moved %d runs, want none while a run is still open", res.Moved)
 	}
 	if _, err := os.Stat(journalPath("20260825T090000Z-00aa")); err != nil {
 		t.Errorf("the run in progress lost its journal: %v", err)
@@ -250,21 +250,21 @@ func TestPruneTwiceChangesNothing(t *testing.T) {
 		record(t, id, base.Add(time.Duration(i)*time.Hour))
 	}
 
-	removed, err := Prune(2)
+	res, err := Prune(2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 1 {
-		t.Fatalf("pruned %d runs, want 1", removed)
+	if res.Moved != 1 {
+		t.Fatalf("moved %d runs, want 1", res.Moved)
 	}
 	first := state(t)
 	for round := range 2 {
-		removed, err := Prune(2)
+		res, err := Prune(2)
 		if err != nil {
 			t.Fatalf("second prune %d: %v", round, err)
 		}
-		if removed != 0 {
-			t.Errorf("second prune %d removed %d runs, want none", round, removed)
+		if res.Moved != 0 {
+			t.Errorf("second prune %d moved %d runs, want none", round, res.Moved)
 		}
 		if got := state(t); got != first {
 			t.Errorf("second prune %d changed the tree:\n got %q\nwant %q", round, got, first)
@@ -273,12 +273,12 @@ func TestPruneTwiceChangesNothing(t *testing.T) {
 
 	// One more run, then the same prune: the repeat costs exactly the new run.
 	record(t, "20260825T120000Z-0004", base.Add(3*time.Hour))
-	removed, err = Prune(2)
+	res, err = Prune(2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if removed != 1 {
-		t.Fatalf("prune after a new run removed %d runs, want 1", removed)
+	if res.Moved != 1 {
+		t.Fatalf("prune after a new run moved %d runs, want 1", res.Moved)
 	}
 	// The bound holds on both sides of the repeat: the newest two runs are
 	// listed and indexed, and the quarantine is back to its own keep rather
@@ -288,6 +288,52 @@ func TestPruneTwiceChangesNothing(t *testing.T) {
 		"indexed [20260825T110000Z-0003 20260825T120000Z-0004]"
 	if got := state(t); got != want {
 		t.Errorf("prune after a new run left:\n got %q\nwant %q", got, want)
+	}
+}
+
+// A move is recoverable and an eviction is not, so the two come back apart.
+// The quarantine is bounded by the same keep the listing is, which is what
+// makes lowering the bound the one way a prune destroys history the tree was
+// still holding: the runs it moves aside are restorable and the ones the new
+// bound no longer covers are unlinked. The count is what a run tells the
+// operator it destroyed, and without it the loss is silent.
+func TestPruneReportsTheRunsItEvictedFromTheQuarantine(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	for i, id := range []string{
+		"20260825T090000Z-0001", "20260825T100000Z-0002", "20260825T110000Z-0003",
+		"20260825T120000Z-0004", "20260825T130000Z-0005",
+	} {
+		record(t, id, base.Add(time.Duration(i)*time.Hour))
+	}
+
+	res, err := Prune(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Moved != 3 {
+		t.Errorf("moved %d runs, want the three outside the bound", res.Moved)
+	}
+	// Three moved aside, and the bound covers two, so the oldest of them is
+	// unlinked: the one journal no rename put anywhere.
+	if res.Evicted != 1 {
+		t.Errorf("evicted %d runs, want the one the quarantine bound no longer covered", res.Evicted)
+	}
+	want := "listed [20260825T130000Z-0005 20260825T120000Z-0004] " +
+		"quarantined [20260825T110000Z-0003 20260825T100000Z-0002] " +
+		"indexed [20260825T120000Z-0004 20260825T130000Z-0005]"
+	if got := state(t); got != want {
+		t.Errorf("prune(2) over five runs left:\n got %q\nwant %q", got, want)
+	}
+
+	// A prune with nothing to move evicts nothing, so the run's own line does
+	// not claim a loss on every ordinary run.
+	res, err = Prune(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res != (PruneResult{}) {
+		t.Errorf("a prune inside the bound reports %+v, want nothing moved or evicted", res)
 	}
 }
 

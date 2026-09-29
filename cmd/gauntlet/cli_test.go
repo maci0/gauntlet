@@ -488,8 +488,8 @@ func TestShowNamesTheRestoreCommandForAPrunedRun(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if removed, err := journal.Prune(1); err != nil || removed != 1 {
-		t.Fatalf("Prune(1) = %d, %v; want 1, nil", removed, err)
+	if res, err := journal.Prune(1); err != nil || res.Moved != 1 {
+		t.Fatalf("Prune(1) = %+v, %v; want 1 moved, nil", res, err)
 	}
 
 	got := captureStderr(t, func() int { return cmdShow(io.Discard, pruned) })

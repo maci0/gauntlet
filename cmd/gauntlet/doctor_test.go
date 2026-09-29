@@ -373,6 +373,43 @@ func TestDoctorReportsTheRunHistory(t *testing.T) {
 	}
 }
 
+// The other way the two copies tell a different story is the one no listing
+// repairs: an index row whose journal is gone, which is what a restore that
+// carried the index over and left the runs behind looks like. Doctor has to
+// say so, and it has to stop offering the listing as the repair.
+func TestDoctorReportsAnIndexWithNoJournals(t *testing.T) {
+	state := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", state)
+	t.Setenv("PATH", t.TempDir())
+	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+
+	id := journal.NewRunID(at)
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	// The copy that lost the journals and kept the derived index beside them.
+	if err := os.RemoveAll(filepath.Join(journal.Home(), "runs")); err != nil {
+		t.Fatal(err)
+	}
+
+	var buf strings.Builder
+	doctor(&buf, palette{}, nil, 80)
+	out := buf.String()
+	if !strings.Contains(out, "Run history: 0 journals") {
+		t.Fatalf("doctor should report the empty tree rather than say nothing:\n%s", out)
+	}
+	if !strings.Contains(out, "1 row named by the index with no journal on disk") {
+		t.Fatalf("doctor should name the row whose journal is gone:\n%s", out)
+	}
+	if strings.Contains(out, "gauntlet runs repairs") {
+		t.Fatalf("doctor points at a listing that cannot rebuild a missing journal:\n%s", out)
+	}
+}
+
 // A journal cut mid-line is the loss the run history counts cannot show: the
 // run is there, the index row is there, and the last events are gone. Doctor
 // says so, because its Run history line is what an operator checks a restored

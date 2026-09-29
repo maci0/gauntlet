@@ -297,11 +297,10 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	// have.
 	if st, err := journal.Inspect(); err != nil {
 		w.println(pal.yellow("Run history unreadable: " + err.Error()))
-	} else if st.Journals > 0 || st.Pruned > 0 {
+	} else if st.Journals > 0 || st.Pruned > 0 || st.Rows > 0 {
 		line := fmt.Sprintf("Run history: %s", humanize.Plural(st.Journals, "journal", "journals"))
 		if st.Disagreed > 0 {
-			w.println(pal.yellow(line + fmt.Sprintf(
-				", %d not matched by the index (gauntlet runs repairs what it can reconstruct)", st.Disagreed)))
+			w.println(pal.yellow(line + ", " + unmatchedRuns(st)))
 		} else {
 			w.println(pal.dim(line + ", index agrees"))
 		}
@@ -449,6 +448,23 @@ func stateRootProblem(root string) string {
 		return fmt.Sprintf("%s holds %s that cannot be removed: %v", root, name, err)
 	}
 	return ""
+}
+
+// unmatchedRuns names what the index and the journals do not agree about, in
+// the direction that decides whether the run can come back. A journal the
+// index does not name is a run that died before its summary row, and the next
+// listing appends one from the event stream. The other direction cannot be
+// repaired: a row whose journal is gone names a run no copy of the tree holds,
+// which is the state a half-restored archive leaves behind, and pointing at a
+// listing to fix it would send an operator after a command that cannot bring
+// the run back.
+func unmatchedRuns(st journal.Status) string {
+	if st.Journals == 0 {
+		return fmt.Sprintf("%s named by the index with no journal on disk, and no listing can rebuild %s",
+			humanize.Plural(st.Disagreed, "row", "rows"),
+			humanize.Plural(st.Disagreed, "it", "them"))
+	}
+	return fmt.Sprintf("%d not matched by the index (gauntlet runs repairs what it can reconstruct)", st.Disagreed)
 }
 
 // sweepProbeLeftovers removes probe files an earlier doctor was killed before

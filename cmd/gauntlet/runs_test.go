@@ -145,6 +145,55 @@ func TestWriteSummaryAppliesTheKeepRunsBound(t *testing.T) {
 	}
 }
 
+// Lowering the bound is the one way a run destroys history the state tree was
+// still holding: the runs the bound moves aside are restorable with
+// `gauntlet runs --restore`, and the ones it pushes out of that quarantine are
+// unlinked. A run that deleted them without a word would make a year of
+// history stop existing, so it says how many are gone.
+func TestWriteSummaryReportsTheRunsTheKeepBoundEvicted(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	finish := func(at time.Time, keep int) string {
+		t.Helper()
+		id := journal.NewRunID(at)
+		j, err := journal.Open(id, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeSummary(j, at, at.Add(time.Minute), time.Minute, []string{"/project"},
+			nil, nil, 0, keep)
+		return id
+	}
+	for i := range 4 {
+		finish(base.Add(time.Duration(i)*time.Hour), 0)
+	}
+	_, out := captureFD(t, &os.Stderr, func() int {
+		finish(base.Add(4*time.Hour), 1)
+		return exitOK
+	})
+	// The four runs it moved aside, less the one the bound keeps: three
+	// journals were unlinked, and the run says so.
+	if !strings.Contains(out, "unlinked 3 runs") || !strings.Contains(out, "nothing else holds them") {
+		t.Errorf("a run that unlinked three quarantined runs said %q", out)
+	}
+	held, err := journal.Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(held) != 1 {
+		t.Fatalf("quarantine holds %v, want the one run the bound of one covers", held)
+	}
+	// A later run inside the same bound unlinks the run the bound just left
+	// behind, and says that too rather than passing over it.
+	_, out = captureFD(t, &os.Stderr, func() int {
+		finish(base.Add(5*time.Hour), 1)
+		return exitOK
+	})
+	if !strings.Contains(out, "unlinked 1 run") {
+		t.Errorf("a run that unlinked one quarantined run said %q", out)
+	}
+}
+
 func writeScript(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(body+"\n"), 0o755); err != nil {

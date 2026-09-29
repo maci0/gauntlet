@@ -476,7 +476,17 @@ gauntlet runs --restore 20260825T131500Z-a91f
 
 moves it back and rewrites its index row, after which `gauntlet show` replays
 it. N runs later the quarantine drops it, so a long absence is a real loss:
-nothing copies an evicted run anywhere.
+nothing copies an evicted run anywhere. That eviction is the only deletion
+here that unlinks a journal, so a run that does it says so on stderr:
+
+```
+Warning: the --keep-runs 200 bound unlinked 4600 runs from the quarantine, and nothing else holds them
+```
+
+Lowering the bound is what produces one, and the first run after an upgrade
+that tightens it can produce a large count in a single pass. The moved runs
+stay restorable; the unlinked ones are gone, which is why the count is printed
+rather than left for the next listing to contradict.
 
 A journal a run still has open is never pruned, so two gauntlet runs sharing
 one `GAUNTLET_HOME` cannot move a running one's event stream out from under it.
@@ -564,6 +574,13 @@ zeros, so a failed read is never read as an empty history. `gauntlet doctor`
 prints the same counts on its `Run history` line, but its exit code is about the
 agent inventory: it exits 1 on a fresh machine with no agent CLI installed, and
 that says nothing about the restore.
+
+`disagreed` covers two directions and only one of them is a repair. A journal
+the index does not name is a run that died before its summary row, and the next
+listing appends one from the event stream. A row whose journal is gone names a
+run no copy of the tree holds, which is what an archive restored without its
+`runs/` looks like, and no listing brings it back. Doctor says which of the two
+it found, so a half-restored tree is not sent to a command that cannot fix it.
 
 `truncated` is how many journals end mid-line, a file cut by a power cut or by a
 copy taken while a run was still writing. Nothing else reports such a file: the

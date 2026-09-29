@@ -18,12 +18,25 @@ import (
 	"syscall"
 )
 
+// PruneResult is what one Prune did to the history: Moved runs left the listing for
+// the quarantine and are still restorable, Evicted runs were unlinked from it
+// and are gone from the machine. The two are reported apart because they are
+// not the same loss, and only the second one is permanent.
+type PruneResult struct {
+	Moved   int
+	Evicted int
+}
+
 // Prune drops the run journals and index rows older than the newest keep, and
-// removes any shard directory left empty. It returns how many runs it dropped.
+// removes any shard directory left empty. It reports what it did to the
+// history, so a run can say what the bound cost rather than leaving the
+// operator to find out.
 //
 // A dropped journal is renamed into pruned/, not unlinked, and the quarantine
 // is bounded by the same keep, so a run stays recoverable until keep newer
-// runs have replaced it. Restore puts one back.
+// runs have replaced it. Restore puts one back. Lowering the bound is the one
+// way to destroy history the quarantine still held, and the runs that fell
+// outside it come back in Evicted.
 //
 // A keep of zero or less keeps everything and does nothing, so a caller that
 // has no configured bound never deletes history by accident.
@@ -38,17 +51,17 @@ import (
 // and a Status that reports a disagreement. A run whose clock sits behind the
 // run that started after it is the one case the ordering mis-orders, and that
 // is the ordering walkJournals already trusts to mean "latest".
-func Prune(keep int) (int, error) {
+func Prune(keep int) (PruneResult, error) {
 	if keep <= 0 {
-		return 0, nil
+		return PruneResult{}, nil
 	}
-	var removed int
+	var res PruneResult
 	err := withIndexLock(func() error {
-		n, err := pruneLocked(keep)
-		removed = n
+		var err error
+		res, err = pruneLocked(keep)
 		return err
 	})
-	return removed, err
+	return res, err
 }
 
 // journalIdle reports whether a journal can be moved out of the listing now,
@@ -74,13 +87,13 @@ func journalIdle(path string) bool {
 // pruneLocked does the work under the index lock, so a concurrent Close cannot
 // append a row between the read that decides what to keep and the write that
 // keeps it. The caller holds the lock.
-func pruneLocked(keep int) (int, error) {
+func pruneLocked(keep int) (PruneResult, error) {
 	all, err := listJournals()
 	if err != nil {
-		return 0, err
+		return PruneResult{}, err
 	}
 	if len(all) <= keep {
-		return 0, nil
+		return PruneResult{}, nil
 	}
 	// listJournals is newest first, so everything past the window is the tail.
 	stale := all[keep:]
@@ -108,7 +121,7 @@ func pruneLocked(keep int) (int, error) {
 	// a run it cannot read.
 	rows, err := readAllIndex()
 	if err != nil {
-		return 0, err
+		return PruneResult{}, err
 	}
 	kept := rows[:0:0]
 	for _, s := range rows {
@@ -124,7 +137,7 @@ func pruneLocked(keep int) (int, error) {
 	}
 	if len(kept) != len(rows) {
 		if err := writeIndex(kept); err != nil {
-			return 0, err
+			return PruneResult{}, err
 		}
 	}
 
@@ -139,7 +152,7 @@ func pruneLocked(keep int) (int, error) {
 		}
 	}
 	touched := make(map[string]struct{}, 4)
-	moved := 0
+	res := PruneResult{}
 	for _, j := range movable {
 		// The journal is renamed into pruned/ rather than unlinked, so a
 		// keep the user got wrong is a move and not a loss. A journal that
@@ -152,7 +165,7 @@ func pruneLocked(keep int) (int, error) {
 			}
 			continue
 		}
-		moved++
+		res.Moved++
 		touched[filepath.Dir(j.path)] = struct{}{}
 	}
 	// Moving the journals is what empties a shard, and os.Remove on a
@@ -165,19 +178,23 @@ func pruneLocked(keep int) (int, error) {
 	// The quarantine is bounded by the same keep, so a run stays recoverable
 	// until keep newer runs have pushed it out, and the state tree does not
 	// grow a second unbounded history beside the one Prune exists to bound.
-	if err := trimQuarantine(keep); err != nil {
+	// What falls outside it is unlinked, so the count is carried out with the
+	// rest: an evicted journal is the one run no rename put aside.
+	evicted, err := trimQuarantine(keep)
+	res.Evicted = evicted
+	if err != nil {
 		note(err)
 	}
 	if len(errs) > 0 {
 		// The runs that did move are gone from runs/ whatever else failed,
 		// so the count is what moved and the error is what did not.
-		return moved, errors.Join(errs...)
+		return res, errors.Join(errs...)
 	}
 	// Every movable run is out of runs/ on the way out of here: a journal that
 	// was already gone is the outcome the rename wanted, and one whose rename
 	// failed is an error the caller already gets. A run left behind for still
 	// being written is not a removal and is not counted as one.
-	return moved, nil
+	return res, nil
 }
 
 // readAllIndex parses the whole index, oldest first, skipping the lines it

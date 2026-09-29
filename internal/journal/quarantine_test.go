@@ -27,8 +27,8 @@ func TestPruneQuarantinesAndRestore(t *testing.T) {
 		record(t, id, base.Add(time.Duration(i)*time.Hour))
 	}
 
-	if removed, err := Prune(2); err != nil || removed != 2 {
-		t.Fatalf("Prune(2) = %d, %v; want 2, nil", removed, err)
+	if res, err := Prune(2); err != nil || res.Moved != 2 {
+		t.Fatalf("Prune(2) = %+v, %v; want 2 moved, nil", res, err)
 	}
 
 	held, err := Quarantined()
@@ -84,8 +84,8 @@ func TestPrunedTracksTheQuarantine(t *testing.T) {
 		}
 	}
 
-	if removed, err := Prune(1); err != nil || removed != 1 {
-		t.Fatalf("Prune(1) = %d, %v; want 1, nil", removed, err)
+	if res, err := Prune(1); err != nil || res.Moved != 1 {
+		t.Fatalf("Prune(1) = %+v, %v; want 1 moved, nil", res, err)
 	}
 	if !Pruned(old) {
 		t.Error("Pruned is false for the run the prune took out")
@@ -183,7 +183,7 @@ func TestQuarantineIgnoresUnvalidatedRunIDs(t *testing.T) {
 	}
 	// A keep of one covers the real run. The planted stem sorts above it, so
 	// counting it would spend the window and unlink the real one.
-	if err := trimQuarantine(1); err != nil {
+	if _, err := trimQuarantine(1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(quarantinePath("20260825T090000Z-0001")); err != nil {
@@ -305,7 +305,7 @@ func TestQuarantineSeesARunFiledWithoutAShard(t *testing.T) {
 	if err := quarantine("20260825T100000Z-0001", journalPath("20260825T100000Z-0001")); err != nil {
 		t.Fatal(err)
 	}
-	if err := trimQuarantine(1); err != nil {
+	if _, err := trimQuarantine(1); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(quarantinePath("0handrun")); !errors.Is(err, fs.ErrNotExist) {
@@ -382,7 +382,7 @@ func TestQuarantineCountsARunIDOnce(t *testing.T) {
 	}
 	// A keep of two covers both runs. Counting the stray copy would spend a
 	// slot on the duplicate and unlink the older run to stay inside it.
-	if err := trimQuarantine(2); err != nil {
+	if _, err := trimQuarantine(2); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(quarantinePath("20260825T090000Z-0001")); err != nil {
