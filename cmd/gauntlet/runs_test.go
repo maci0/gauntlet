@@ -436,6 +436,47 @@ func TestShowPreservesExactNumbers(t *testing.T) {
 	}
 }
 
+// The replayed line is a copy a reader pastes into an issue or a chat, so the
+// account name has to come out of it the way it comes out of the JSON listing.
+// The field on disk stays resolved: the run matches its locks and index rows
+// against it.
+func TestShowShortensTheAccountNameInTheReplayedDir(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "alice")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", filepath.Join(home, ".gauntlet"))
+	runID := "20260826T120000Z-dead"
+	dir := filepath.Join(journal.Home(), "runs", "2026-08-26")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"ev":"review_start","ts":"2026-08-26T12:00:00Z","dir":"` +
+		filepath.Join(home, "src", "gauntlet") + `","review":"code"}`
+	if err := os.WriteFile(filepath.Join(dir, runID+".jsonl"), []byte(line+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdShow(&buf, runID); code != exitOK {
+		t.Fatalf("replaying a recorded run should exit %d, got %d", exitOK, code)
+	}
+	if strings.Contains(buf.String(), home) {
+		t.Fatalf("the replay names the account:\n%s", buf.String())
+	}
+	if want := `"dir":"~/src/gauntlet"`; !strings.Contains(buf.String(), want) {
+		t.Fatalf("replay = %q, want it to carry %s", buf.String(), want)
+	}
+	// The journal keeps it resolved: the run matches its own locks on it.
+	raw, err := os.ReadFile(filepath.Join(dir, runID+".jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), home) {
+		t.Fatalf("the replay shortened the field on disk:\n%s", raw)
+	}
+}
+
 func TestShowSanitizesReplayedEvents(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 	runID := "20260826T120000Z-dead"
@@ -783,6 +824,70 @@ func TestRunsJSONKeepsTheAccountNameOut(t *testing.T) {
 	}
 	if want := "~/.gauntlet/runs"; doc.Journals != want {
 		t.Errorf("journals = %q, want %q", doc.Journals, want)
+	}
+}
+
+// A row's own paths are the other half of the account name in that document.
+// The index keeps them resolved, because the listing and the history matcher
+// resolve a path the person typed against them, but nothing resolves the
+// rendered ones: a reviewed tree under the operator's home is /home/<account>/
+// in every copy of this JSON that is kept, and the field a consumer reads to
+// know which project a run covered is the last place the account should be.
+func TestRunsJSONShortensTheRunPathsToo(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "alice")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	proj := filepath.Join(home, "src", "gauntlet")
+	if err := os.MkdirAll(proj, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", filepath.Join(home, ".gauntlet"))
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	j, err := journal.Open(journal.NewRunID(start), start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: start, End: start, Dirs: []string{proj}}); err != nil {
+		t.Fatal(err)
+	}
+
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	if code != exitOK {
+		t.Fatalf("runs --json exited %d:\n%s", code, got)
+	}
+	if strings.Contains(got, home) {
+		t.Fatalf("a run row names the account:\n%s", got)
+	}
+	var doc struct {
+		Runs []journal.Summary `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if len(doc.Runs) != 1 {
+		t.Fatalf("got %d runs, want 1:\n%s", len(doc.Runs), got)
+	}
+	if want := "~/src/gauntlet"; len(doc.Runs[0].Dirs) != 1 || doc.Runs[0].Dirs[0] != want {
+		t.Errorf("dirs = %q, want [%q]", doc.Runs[0].Dirs, want)
+	}
+	if want := "~/.gauntlet/runs/2026-01-02/" + doc.Runs[0].RunID + ".jsonl"; doc.Runs[0].Path != want {
+		t.Errorf("path = %q, want %q", doc.Runs[0].Path, want)
+	}
+	// The index row keeps the resolved paths: the listing and the history
+	// matcher resolve against them, and a shortened row would break both.
+	row := journal.Summary{Path: filepath.Join(home, ".gauntlet", "runs", "x.jsonl"), Dirs: []string{proj}}
+	if got := redactSummaryPaths([]journal.Summary{row}); got[0].Path == row.Path || got[0].Dirs[0] == row.Dirs[0] {
+		t.Errorf("the input row was rewritten in place: %+v", row)
+	}
+	// A tree outside the home directory holds no account name, so it comes out
+	// whole rather than mangled.
+	outside := journal.Summary{Path: "/var/cache/gauntlet/runs/x.jsonl", Dirs: []string{"/srv/proj"}}
+	if got := redactSummaryPaths([]journal.Summary{outside}); got[0].Path != outside.Path || got[0].Dirs[0] != outside.Dirs[0] {
+		t.Errorf("a path outside the home was rewritten: %+v", got[0])
 	}
 }
 

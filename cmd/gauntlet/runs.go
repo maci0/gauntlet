@@ -162,11 +162,14 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
 	// shortened for the same reason the journal's free text is: this document is
 	// the one an archive job or a script carries off the machine, and a resolved
 	// path under /home/<account> names the operator in every copy. "~" is the
-	// spelling the operator recognizes and can expand.
+	// spelling the operator recognizes and can expand. A row's own paths are
+	// shortened the same way (see redactSummaryPaths): the index keeps them
+	// resolved because the listing and the history matcher resolve against
+	// them, and nothing here does.
 	doc := runsJSON{
 		Home:     normalize.RedactHome(journal.Home()),
 		Journals: normalize.RedactHome(filepath.Join(journal.Home(), "runs")),
-		Runs:     entries,
+		Runs:     redactSummaryPaths(entries),
 		Pruned:   pruned,
 		History: historyJSON{
 			Journals:  st.Journals,
@@ -183,6 +186,34 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
 		return exitFail
 	}
 	return exitOK
+}
+
+// redactSummaryPaths returns entries with the home directory shortened in the
+// two path fields a row carries: where its journal sits, and the directories
+// the run reviewed. Both are resolved paths under the operator's account in
+// every case where the tree lives in their home, and this document is the copy
+// that leaves the machine, so a resolved one puts the account name in every
+// archive and every dashboard payload that keeps it.
+//
+// The index rows themselves stay resolved, because the listing and the history
+// matcher resolve a path the person typed against them. Only the rendered copy
+// is shortened, and only where there is an account to take out: a
+// GAUNTLET_HOME outside the home directory, or a reviewed tree on another
+// mount, has no account in it and comes out whole.
+func redactSummaryPaths(entries []journal.Summary) []journal.Summary {
+	out := make([]journal.Summary, len(entries))
+	for i, e := range entries {
+		e.Path = normalize.RedactHome(e.Path)
+		if e.Dirs != nil {
+			dirs := make([]string, len(e.Dirs))
+			for j, d := range e.Dirs {
+				dirs[j] = normalize.RedactHome(d)
+			}
+			e.Dirs = dirs
+		}
+		out[i] = e
+	}
+	return out
 }
 
 // restoreRun puts a pruned journal back in the listing and says so plainly:
@@ -393,6 +424,14 @@ func cmdShow(out io.Writer, runID string) int {
 		kind, _ := ev["ev"].(string)
 		delete(ev, "ts")
 		delete(ev, "ev")
+		// The event carries the reviewed tree's absolute path because the run
+		// matches its own locks and index rows against it. A replay is a copy
+		// people paste into an issue or a chat, and a resolved path under
+		// /home/<account> names the operator in every one of them, so the
+		// rendered line says "~" where the field on disk stays resolved.
+		if dir, ok := ev["dir"].(string); ok {
+			ev["dir"] = normalize.RedactHome(dir)
+		}
 		rest, _ := json.Marshal(ev)
 		// The journal records events verbatim, and event text can carry
 		// fragments of a hostile repository (git error output, merge-conflict

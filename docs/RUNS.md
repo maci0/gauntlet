@@ -376,11 +376,13 @@ than about any run, so nothing matches on them, and a resolved path under
 `/home/<account>` would put the account name in every copy a script or an
 archive job takes away. A script that hands either field to `test -d`,
 `realpath`, or another tool expands the leading `~` first: the field is a
-display spelling, not a path the shell resolves on its own. The `dirs` and
-`path` of a row are the index fields
-above and stay resolved. The `dir` and `path` fields are stored as
-resolved paths: the listing and the history matcher need the path a person
-typed to still resolve. `review_start` and `review_end` carry
+display spelling, not a path the shell resolves on its own. It shortens the
+`dirs` and `path` of every run in the document for the same reason, and only in
+the rendered copy: the index row on disk keeps them resolved, because the
+listing and the history matcher need the path a person typed to still resolve.
+The `dir` field of an event is stored resolved for the same reason, and
+`gauntlet show` shortens it on the replayed line, since a replay is a copy a
+reader pastes into an issue. `review_start` and `review_end` carry
 `prompt_sha256`, the SHA-256 of the prompt text that launch was composed
 from, so an output stays attributable to exact words after the prompt file
 has changed or disappeared, and both carry `attempt`, the 1-based try the
