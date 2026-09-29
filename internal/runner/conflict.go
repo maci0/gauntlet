@@ -33,7 +33,10 @@ const conflictTimeout = 10 * time.Minute
 //
 // Anything that does not work out leaves the branch exactly as a plain
 // conflict does: kept, unmerged, and reported. The review's output is never
-// dropped on the strength of a resolution nobody checked.
+// dropped on the strength of a resolution nobody checked. The scratch branch
+// the resolution is built on follows the same rule: it is deleted once the
+// resolution is in the main tree, and kept, with a command to land it, once it
+// is the only copy of a commit the main tree refused.
 //
 // It returns the lines it would have logged rather than logging them: the whole
 // step runs under the merge lock every lane is waiting on, and a log line is a
@@ -56,9 +59,17 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 		note("Cannot resolve the %s conflict: %v", review, err)
 		return mr, notes
 	}
+	// keepBranch is set once the resolution is a commit nothing else holds.
+	// A merge that then refuses it must leave the branch for a human, the same
+	// rule a plain conflict follows, rather than delete the only copy of what
+	// the resolver produced.
+	keepBranch := false
 	defer func() {
 		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
 			note("Cannot remove the conflict checkout for %s: %v", review, err)
+		}
+		if keepBranch {
+			return
 		}
 		if err := r.repo.DeleteBranch(context.WithoutCancel(ctx), wt.Branch); err != nil {
 			note("Cannot delete the conflict branch for %s: %v", review, err)
@@ -95,7 +106,21 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 		// is nothing left to land, and the review's branch is spent.
 		return gitx.MergeResult{Merged: true}, notes
 	}
-	return r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message), notes
+	// From here the branch carries a commit the main tree does not have. A
+	// merge that refuses it (an untracked file it would overwrite, a bad ref)
+	// is not a reason to throw the commit away, so the branch is kept and
+	// named: a rerun of the same step must not be the only thing that can land
+	// it, and a run that dies between the commit and the merge must not lose
+	// the resolution with it.
+	keepBranch = true
+	mr = r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message)
+	if mr.Merged {
+		keepBranch = false
+		return mr, notes
+	}
+	note("Keeping the %s resolution on branch %s (%s)", review, wt.Branch, mr.Detail)
+	note("To land it after resolving: %s", conflictHint(wt.Branch, message))
+	return mr, notes
 }
 
 // commitScope is what the resolution's commit will actually contain: the

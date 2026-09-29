@@ -86,7 +86,7 @@ const conflictMarker = "<<<<<<<"
 // idempotent, and nothing else in a run depends on it, so a failure is
 // reported and the run continues: the cost of a skipped exclude is noisier git
 // status output. A short write is a failure, though, not a success: the next
-// run's substring check would not match a truncated line and would append the
+// run's entry check would not match a truncated line and would append the
 // same entry again on every run.
 func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	out, err := r.run(ctx, gitQuick, "rev-parse", "--git-common-dir")
@@ -114,8 +114,9 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 		_ = f.Close()
 	}
 	var missing []string
+	present := excludedEntries(text)
 	for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
-		if !strings.Contains(text, entry) {
+		if !present[entry] {
 			missing = append(missing, entry)
 		}
 	}
@@ -148,6 +149,29 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	// The close is where a full disk surfaces on an append that buffered, so
 	// both failures are reported rather than the first one alone.
 	return errors.Join(writeErr, f.Close())
+}
+
+// excludedEntries is the set of patterns an exclude file actually applies.
+//
+// git reads one pattern per line, so membership is a line that equals the
+// entry. A substring search over the whole file is not the same question: a
+// commented-out entry, a trailing comment on another pattern, or a longer
+// pattern that happens to contain the entry all read as "already there", and
+// the entry is then never written. Nothing appends it later either, since every
+// later run makes the same wrong answer, so the scratch directory stays
+// untracked for the life of the clone.
+func excludedEntries(text string) map[string]bool {
+	entries := map[string]bool{}
+	for line := range strings.SplitSeq(text, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		if entry := strings.TrimSpace(line); entry != "" {
+			entries[entry] = true
+		}
+	}
+	return entries
 }
 
 // realDir reports whether path is an existing real directory. Lstat never

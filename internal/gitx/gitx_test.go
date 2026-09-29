@@ -562,6 +562,43 @@ func TestDirtyPathsNonASCIIFilename(t *testing.T) {
 	}
 }
 
+// An entry that only looks present does not count as one: git reads one
+// pattern per line, so a commented-out entry and a longer pattern containing
+// one are not the entry. Reading the file for substrings took both for it and
+// wrote nothing, and no later run makes a different answer, so the scratch
+// directory stayed untracked in the reviewed tree for good.
+func TestExcludeOwnArtifactsAddsEntriesALookalikeDoesNotCover(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	exclude := filepath.Join(r.Dir, ".git", "info", "exclude")
+	if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(exclude,
+		[]byte("# /.gauntlet/worktrees/\n/.gauntlet/worktrees-old/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.ExcludeOwnArtifacts(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	body, err := os.ReadFile(exclude)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !excludedEntries(string(body))["/"+worktreeRoot+"/"] {
+		t.Fatalf("the lookalike lines were taken for the entry:\n%s", body)
+	}
+	if n := strings.Count(string(body), "\n/"+worktreeRoot+"/\n"); n != 1 {
+		t.Fatalf("the entry was written %d times:\n%s", n, body)
+	}
+	// And it took effect: the scratch root is ignored now.
+	probe := worktreeRoot + "/probe"
+	if ignored := r.CheckIgnore(ctx, []string{probe}); !ignored[probe] {
+		t.Fatalf("%s is still untracked work in the reviewed tree", probe)
+	}
+}
+
 // gauntlet's own scratch never belongs in a project's git status, and the
 // exclusion is written once however often a run asks for it.
 func TestExcludeOwnArtifactsIsIdempotent(t *testing.T) {

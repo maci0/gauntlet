@@ -481,6 +481,64 @@ esac`)
 	}
 }
 
+// TestParallelModeKeepsARefusedResolution: a resolution the resolver finished
+// is a commit nothing else holds, and the merge that would carry it into the
+// main tree can still refuse it. Here the resolver is clean and adds a file the
+// user's tree already has untracked, which git will not overwrite. The
+// resolution branch is then the only copy of that work, so it is kept for a
+// human instead of deleted, and the run still reports the review as a conflict
+// the review's own branch is kept for.
+func TestParallelModeKeepsARefusedResolution(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "a-review", "b-review")
+	// The file the resolution adds, present untracked in the main tree: git
+	// refuses a merge that would overwrite it, which is a failure no edit to
+	// the conflicted lines can clear.
+	shared := filepath.Join(repo, "extra.md")
+	if err := os.WriteFile(shared, []byte("the user's own file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in
+*"Conflicted files:"*)
+	grep -v -e '^<<<<<<<' -e '^=======$' -e '^>>>>>>>' main.go > merged.tmp
+	mv merged.tmp main.go
+	printf 'added by the resolver\n' > extra.md
+	echo "RESOLVE: done" ;;
+*a-review*)
+	printf 'package main\n\nfunc main() { a() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+*)
+	printf 'package main\n\nfunc main() { b() }\n' > main.go
+	echo "RESULT: changed=1" ;;
+esac`)
+
+	cfg := baseConfig(t, repo, set, []string{"a-review", "b-review"}, bin)
+	cfg.Jobs = 2
+	cfg.ResolveConflicts = true
+
+	r := runQuiet(t, cfg)
+
+	if c := r.Stats().Counts(); c.Conflict != 1 || c.OK != 1 {
+		t.Fatalf("want one merge and one conflict, got %+v", c)
+	}
+	fix := gitOut(t, repo, "branch", "--list", "gauntlet/*-fix/*")
+	if fix == "" {
+		t.Fatal("the resolution commit was deleted with its branch, losing the resolver's work")
+	}
+	// What was kept is a commit the main tree does not have, not an empty
+	// scratch branch, and the user's own file is still theirs.
+	if n := gitOut(t, repo, "rev-list", "--count", "main.."+fix); n != "1" {
+		t.Fatalf("the kept resolution branch adds %s commits to main, want the one the resolver made", n)
+	}
+	if body := readTree(t, repo, "extra.md"); !strings.Contains(body, "the user's own") {
+		t.Fatalf("the merge overwrote the user's untracked file:\n%s", body)
+	}
+	if body := readTree(t, repo, "main.go"); strings.Contains(body, "<<<<<<<") {
+		t.Fatalf("conflict markers reached the tree:\n%s", body)
+	}
+}
+
 // TestParallelModeConflictPromptOmitsControlPaths: git happily carries
 // control characters in a filename, and the conflict step names the conflicted
 // paths in an agent prompt. A path with an embedded newline could forge
