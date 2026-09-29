@@ -777,18 +777,9 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 		return nil
 	}
 	r.PruneWorktrees(ctx)
-	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
+	names, err := r.listBranchesMatching(ctx, pattern)
 	if err != nil {
 		return fmt.Errorf("list branches matching %s: %w", pattern, err)
-	}
-	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		line = strings.TrimRight(line, "\r")
-		name := strings.TrimSpace(line)
-		if name == "" {
-			continue
-		}
-		names = append(names, name)
 	}
 	if len(names) == 0 {
 		return nil
@@ -804,16 +795,45 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 		return nil
 	}
 	// A batch that failed does not say which branch, or which of them are still
-	// there. Walk the names to separate a single held branch from a sweep that
-	// genuinely could not delete anything, so the report still names every
-	// survivor.
+	// there: `git branch -D` deletes the branches it can and exits nonzero on
+	// the rest. Re-listing is what separates a held branch from one the batch
+	// already removed, so the report names every survivor and only the
+	// survivors. A listing that fails leaves every name a candidate, which is
+	// the walk this was before.
+	pending := names
+	if still, lErr := r.listBranchesMatching(ctx, pattern); lErr == nil {
+		pending = nil
+		for _, name := range names {
+			if slices.Contains(still, name) {
+				pending = append(pending, name)
+			}
+		}
+	}
 	var failed []error
-	for _, name := range names {
+	for _, name := range pending {
 		if err := r.DeleteBranch(ctx, name); err != nil {
 			failed = append(failed, err)
 		}
 	}
 	return errors.Join(failed...)
+}
+
+// listBranchesMatching names the local branches the pattern selects, one per
+// line. The `--` is what keeps an option-shaped pattern from reaching git as
+// an option, which is why a pattern like "--pattern*" lists nothing rather
+// than changing what the sweep does.
+func (r *Repo) listBranchesMatching(ctx context.Context, pattern string) ([]string, error) {
+	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name := strings.TrimSpace(strings.TrimRight(line, "\r")); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names, nil
 }
 
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which
