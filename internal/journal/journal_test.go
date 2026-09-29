@@ -2700,7 +2700,7 @@ func TestRestoredTreeListsWhatSurvived(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !st.Consistent() || st.Journals != 1 || st.Pruned != 1 {
+	if st.Disagreed != 0 || st.Journals != 1 || st.Pruned != 1 {
 		t.Fatalf("restored tree does not agree with itself: %+v", st)
 	}
 	held, err := Quarantined()

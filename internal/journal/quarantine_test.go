@@ -392,7 +392,7 @@ func TestInspectCountsBothDisagreements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Journals != 2 || st.Rows != 2 || st.Disagreed != 0 || !st.Consistent() {
+	if st.Journals != 2 || st.Rows != 2 || st.Disagreed != 0 {
 		t.Fatalf("a closed tree reports %+v, want two runs in agreement", st)
 	}
 
@@ -404,7 +404,7 @@ func TestInspectCountsBothDisagreements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Journals != 1 || st.Rows != 2 || st.Disagreed != 1 || st.Consistent() {
+	if st.Journals != 1 || st.Rows != 2 || st.Disagreed != 1 {
 		t.Fatalf("after losing a journal, Inspect reports %+v, want one disagreement", st)
 	}
 }

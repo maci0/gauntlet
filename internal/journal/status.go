@@ -28,10 +28,6 @@ type Status struct {
 	Pruned int
 }
 
-// Consistent reports whether the two copies of the history tell the same
-// story, the state a completed run leaves behind.
-func (s Status) Consistent() bool { return s.Disagreed == 0 }
-
 // Inspect reads the state tree and reports what it holds. A missing tree is
 // zero runs, not an error: an install that has never run has nothing wrong
 // with it. A walk error is returned, since a tree that cannot be read is a

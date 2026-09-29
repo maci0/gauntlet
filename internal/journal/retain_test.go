@@ -185,7 +185,7 @@ func TestPruneLeavesAnOlderRunInProgress(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("listing has %d runs, want both: %v", len(rows), rows)
 	}
-	if st, err := Inspect(); err != nil || !st.Consistent() {
+	if st, err := Inspect(); err != nil || st.Disagreed != 0 {
 		t.Errorf("state tree after the run finished is %+v (err %v), want consistent", st, err)
 	}
 }
