@@ -9,6 +9,8 @@ import (
 	"testing"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 func TestParseFileNotes(t *testing.T) {
@@ -174,4 +176,30 @@ func FuzzParseFileNotes(f *testing.F) {
 			}
 		}
 	})
+}
+
+// An agent launched with the operator's environment prints a rejected key when
+// it reports the failure, and a note an agent prints can carry one it read
+// through the CLI. These two lines are the ones that outlive the run, as the
+// commit message and as the PR title and body, so a credential in one is
+// republished to everyone who can see the repository.
+func TestReportedLinesRedactCredentials(t *testing.T) {
+	tail := []byte(strings.Join([]string{
+		"SUBJECT: the push failed: GITHUB_TOKEN=ghp_abcdefghijklmnopqrstuvwxyz012345",
+		"PATH: internal/cache/store.go: retry with ANTHROPIC_API_KEY=sk-ant-0123456789abcdefXYZ",
+	}, "\n"))
+	if got := ParseSubject(tail); strings.Contains(got, "ghp_") || strings.Contains(got, "012345") {
+		t.Errorf("ParseSubject kept a credential: %q", got)
+	} else if !strings.Contains(got, runx.Redacted) {
+		t.Errorf("ParseSubject = %q, want the credential replaced", got)
+	}
+	notes := ParseFileNotes(tail)
+	if len(notes) != 1 {
+		t.Fatalf("ParseFileNotes returned %d notes, want 1", len(notes))
+	}
+	if strings.Contains(notes[0].Note, "sk-ant-") || strings.Contains(notes[0].Note, "abcdefXYZ") {
+		t.Errorf("ParseFileNotes kept a credential: %q", notes[0].Note)
+	} else if !strings.Contains(notes[0].Note, runx.Redacted) {
+		t.Errorf("ParseFileNotes note = %q, want the credential replaced", notes[0].Note)
+	}
 }

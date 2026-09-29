@@ -244,7 +244,12 @@ func indexNamesRun(runID string) (bool, error) {
 	if runID == "" {
 		return false, nil
 	}
-	f, err := os.Open(indexPath())
+	// openRead, not os.Open: the state root is beside the reviewed tree
+	// whenever GAUNTLET_HOME is unusable and no HOME resolves, and a planted
+	// FIFO named index.jsonl otherwise blocks every run's Close on an open
+	// that waits for a writer who never comes, before the write side's
+	// O_NOFOLLOW open below is ever reached.
+	f, err := openRead(indexPath())
 	if errors.Is(err, os.ErrNotExist) {
 		return false, nil
 	}
@@ -284,7 +289,7 @@ func runIDNeedle(runID string) []byte {
 func rewriteIndexDropping(runID string, newLine []byte) error {
 	needle := runIDNeedle(runID)
 	return commitIndex(func(w io.Writer) error {
-		f, err := os.Open(indexPath())
+		f, err := openRead(indexPath())
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -346,9 +351,18 @@ func indexLines(f *os.File, visit func([]byte) bool) error {
 		line := chunk
 		if err == bufio.ErrBufferFull {
 			// A row longer than the buffer: gather it, since a visitor may
-			// need the whole line and the copy outlives the read.
+			// need the whole line and the copy outlives the read. The gather
+			// stops at indexLineMax, the ceiling its two sibling readers on
+			// this same file already put on a row, because a line with no
+			// newline in it otherwise grows the buffer by whatever the file
+			// asks for. The walk ends there rather than allocating it: a row
+			// that size is a corrupt file, and every visitor here answers
+			// "not a row" about one.
 			long = append(long[:0], chunk...)
 			for err == bufio.ErrBufferFull {
+				if len(long) >= indexLineMax {
+					return fmt.Errorf("index line exceeds %d bytes", indexLineMax)
+				}
 				chunk, err = r.ReadSlice('\n')
 				long = append(long, chunk...)
 			}
@@ -466,7 +480,7 @@ func Recent(n int) ([]Summary, error) {
 }
 
 func readIndex(n int) ([]Summary, error) {
-	f, err := os.Open(indexPath())
+	f, err := openRead(indexPath())
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -998,7 +1012,12 @@ func lines(p *int) int {
 // again.
 func summarizeFile(runID, path string) (Summary, error) {
 	s := Summary{RunID: runID, Path: path}
-	f, err := os.Open(path)
+	// openRead, not os.Open: the listing that produced path filters on the
+	// suffix and the run id only, so a FIFO planted at a run id's name opens
+	// for reading and blocks until a writer appears, which for a planted node
+	// is never, and the suggester and the run listing wait on it. A symlink
+	// is refused for the same reason the write side refuses one.
+	f, err := openRead(path)
 	if err != nil {
 		return Summary{}, err
 	}

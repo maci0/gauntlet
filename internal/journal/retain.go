@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"syscall"
 )
@@ -179,7 +178,10 @@ func pruneLocked(keep int) (int, error) {
 // this package is about to bound, and reading a bounded tail would drop the
 // rows in between.
 func readAllIndex() ([]Summary, error) {
-	f, err := os.Open(indexPath())
+	// openRead, not os.Open, for the reason indexNamesRun and summarizeFile
+	// use it: a planted FIFO at this path blocks every reader forever, and a
+	// planted symlink is followed.
+	f, err := openRead(indexPath())
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil

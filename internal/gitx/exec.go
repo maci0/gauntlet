@@ -356,11 +356,16 @@ func (r *Repo) execGitEnv(ctx context.Context, stdin io.Reader, extraEnv []strin
 	err := runx.Outcome(ctx, cmd.Run())
 	if err != nil {
 		// Git explains itself on stderr; dropping it turns every failure into
-		// a bare exit status that says nothing about the cause. Userinfo is
-		// stripped first: a remote stored as https://user:pass@host/... is
-		// otherwise echoed verbatim into the error the runner prints and
-		// journals.
-		if msg := runx.RedactUserinfo(strings.TrimSpace(errBuf.String())); msg != "" {
+		// a bare exit status that says nothing about the cause. Userinfo and
+		// credentials are stripped first: a remote stored as
+		// https://user:pass@host/... is otherwise echoed verbatim into the
+		// error the runner prints and journals, and so is the token in the
+		// query or path of a remote an agent (steered by reviewed-repo
+		// content) set, or the one an operator's credential helper or ssh
+		// prints. RedactUserinfo only covers the scheme://user:pass@ spelling,
+		// so both passes run, which is what every other child-output-to-error
+		// path in the tree already does through runx.FirstLine.
+		if msg := runx.RedactSecrets(runx.RedactUserinfo(strings.TrimSpace(errBuf.String()))); msg != "" {
 			return out.Bytes(), fmt.Errorf("%w: %s", err, msg)
 		}
 	}

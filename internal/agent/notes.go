@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/normalize"
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // FileNote is one "PATH: <file>: <what was done>" line the review protocol
@@ -90,15 +91,22 @@ func ParseSubject(tail []byte) string {
 }
 
 // cleanReportedLine sanitizes one line of agent output headed for a file
-// people read. Formatting and separators go first, then the trim: dropping a
-// hidden character can expose whitespace that was hiding behind it, and the
-// result is a line of text, not a line of text with a ragged end. A subject
-// becomes a commit message, where a newline would forge a body or an author
-// trailer and a bidi override would reverse the log line; a file note lands
-// in a PR body with the same exposure. The cut is by code points and lands on
-// a grapheme boundary: a commit subject survives verbatim, and a byte count
-// would land inside the UTF-8 encoding of anything past ASCII.
+// people read. Credentials go first, then formatting and separators, then the
+// trim: a rejected key is reported by printing it, so an agent the reviewed
+// repository steered can print a token it read out of the operator's
+// environment, and these lines are the ones that outlive the run, as the commit
+// message and as the PR title and body. The note the same tail carries is
+// already redacted (runx.FirstLine); these two were parsed one line away from
+// it and missed. Then the trim: dropping a hidden character can expose
+// whitespace that was hiding behind it, and the result is a line of text, not a
+// line of text with a ragged end. A subject becomes a commit message, where a
+// newline would forge a body or an author trailer and a bidi override would
+// reverse the log line; a file note lands in a PR body with the same exposure.
+// The cut is by code points and lands on a grapheme boundary: a commit subject
+// survives verbatim, and a byte count would land inside the UTF-8 encoding of
+// anything past ASCII.
 func cleanReportedLine(s string, maxRunes int) string {
+	s = runx.RedactSecrets(s)
 	s = strings.Map(func(r rune) rune {
 		if r == ' ' {
 			return r

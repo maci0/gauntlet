@@ -3018,3 +3018,53 @@ func FuzzRunIDPath(f *testing.F) {
 		}
 	})
 }
+
+// The state root can resolve beside the reviewed tree (no usable HOME), so
+// index.jsonl and a run journal are paths the repository controls. A plain
+// os.Open on either follows a planted symlink and blocks forever on a planted
+// FIFO, which for a node with no writer is never.
+func TestIndexAndJournalReadsRefuseAPlantedFIFO(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	if err := os.MkdirAll(Home(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(indexPath(), 0o600); err != nil {
+		t.Skipf("cannot make a fifo: %v", err)
+	}
+	// A read that blocked would hang the test rather than fail it, so each
+	// answer is taken on its own goroutine and given a deadline.
+	done := make(chan error, 1)
+	go func() {
+		_, err := indexNamesRun("fifo-run")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("indexNamesRun read a fifo standing where index.jsonl lives")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("indexNamesRun blocked on a fifo")
+	}
+	_, err := readAllIndex()
+	if err == nil {
+		t.Fatal("readAllIndex read a fifo standing where index.jsonl lives")
+	}
+}
+
+func TestSummarizeFileRefusesAJournalSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	target := filepath.Join(t.TempDir(), "elsewhere.jsonl")
+	if err := os.WriteFile(target, []byte(`{"ev":"run_start","ts":"2026-01-01T00:00:00Z"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(Home(), "link-run.jsonl")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := summarizeFile("link-run", link); err == nil {
+		t.Fatal("summarizeFile followed a symlink standing where a journal lives")
+	}
+}
