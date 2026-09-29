@@ -18,6 +18,7 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // outputRateLimit bounds how many lines one normalizer admits per second.
@@ -690,6 +691,17 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 
 // outputSink forwards normalized agent lines onto the bus. --quiet drops them
 // at the source, so a chatty agent costs nothing.
+//
+// Credentials are stripped on the way out. An agent prints what it read: a
+// provider that rejects a key says so by naming it, a shell that expands an
+// environment variable prints the value, and a line the model assembled from
+// the tree can carry either. normalize.Display keeps the visible characters and
+// drops the escape sequences, so a line that reached the bus was safe to show
+// but not necessarily safe to keep, and every subscriber of EvOutput keeps it:
+// the run journal writes it to disk, where it outlives the run, and the TUI
+// scrollback outlives the screen. The subject, the file notes, and every error
+// string already pass through runx.RedactSecrets for the same reason, and this
+// is the one place they are not: the bulk of what the agent said.
 func (r *Runner) outputSink(review, agentLabel string) func(normalize.Line) {
 	if r.cfg.Quiet {
 		return nil
@@ -697,7 +709,7 @@ func (r *Runner) outputSink(review, agentLabel string) func(normalize.Line) {
 	return func(l normalize.Line) {
 		r.bus.Publish(Event{
 			Kind: EvOutput, Dir: r.cfg.Dir, Review: review, Agent: agentLabel,
-			Text: l.Text, LineKind: l.Kind, Repeat: l.Repeat,
+			Text: runx.RedactSecrets(l.Text), LineKind: l.Kind, Repeat: l.Repeat,
 		})
 	}
 }
