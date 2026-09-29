@@ -28,6 +28,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Added
 
+- Lane narration in the run journal now names the review and the lane it was published from (`review` and `lane` on a `log` event, 1-based, absent on a sequential run). The lanes of a `--jobs` run publish concurrently, so which lane's line lands first is the scheduler's choice and two runs of one seed interleave them differently; a line naming no review could not be placed back in either recording. Run-scope narration, which is about the run rather than one lane's work, is unchanged and still names no review.
 - The pull-request gate and the advisory scan can be started by hand from the Actions tab, so a runner-image or package-index incident is answered by re-running the workflow rather than by pushing an empty commit. A manual run no longer cancels the push it repeats: the event is part of each workflow's concurrency group, since both resolve to the same ref.
 - A conflict resolution the agent finished is no longer deleted when the merge that would carry it in still fails. The resolution is one commit nothing else holds, and the scratch branch it was built on was removed on every exit, so a merge git refused for a reason no edit to the conflicted lines can clear (an untracked file it would overwrite) destroyed the resolver's work and left the review reported as a conflict with nothing resolved to show. The branch is now kept, named in the run's log, and printed with the command that lands it, the way a review branch a plain conflict leaves behind is.
 

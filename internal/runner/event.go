@@ -62,6 +62,11 @@ type Event struct {
 	Review string `json:"review,omitempty"`
 	Agent  string `json:"agent,omitempty"`
 	Loop   int    `json:"loop,omitempty"`
+	// Lane is which persistent worktree published the event, 1-based, and
+	// zero on a sequential run. With --jobs N the lanes publish concurrently,
+	// so the order lines arrive in is the scheduler's; the lane and review
+	// are what a journal sorts by to put a replay back in the same order.
+	Lane int `json:"lane,omitempty"`
 
 	// PromptSHA is the SHA-256, hex-encoded, of the review prompt text this
 	// launch was composed from. It sits on review_start and review_end: the

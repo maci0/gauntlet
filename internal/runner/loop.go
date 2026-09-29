@@ -209,8 +209,25 @@ func resolveTools(reviews []string) map[string]string {
 	return agent.ResolveMany(agent.ToolBins(entries))
 }
 
+// log is run-scope narration: it names no review, because it is about the run
+// rather than one lane's work. Lane narration goes through logReview, which
+// names the review it belongs to.
 func (r *Runner) log(format string, args ...any) {
 	r.bus.Publish(Event{Kind: EvLog, Dir: r.cfg.Dir, Text: fmt.Sprintf(format, args...)})
+}
+
+// logReview is narration about one review in one lane. A --jobs run publishes
+// it from every lane at once, so which lane's line lands first is the
+// scheduler's choice and a replay cannot reproduce it; naming the loop, lane,
+// and review is what lets a reader (the journal, a test) put a line back in
+// the same place twice. Lane 0 is the sequential and single-lane run, which
+// has no lane to name.
+func (r *Runner) logReview(loopNo, lane int, review, format string, args ...any) {
+	ev := Event{Kind: EvLog, Dir: r.cfg.Dir, Review: review, Text: fmt.Sprintf(format, args...)}
+	if lane > 0 {
+		ev.Loop, ev.Lane = loopNo, lane
+	}
+	r.bus.Publish(ev)
 }
 
 // now is the runner's clock: the bus's injected Now, or wall time.
@@ -271,7 +288,7 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 		if !ok {
 			break
 		}
-		res := r.runReview(ctx, review, loopNo, nil)
+		res := r.runReview(ctx, review, loopNo, 0, nil)
 		r.st.Add(res)
 		if ctx.Err() != nil {
 			// The cancel landed while this review ran or right after it; the
