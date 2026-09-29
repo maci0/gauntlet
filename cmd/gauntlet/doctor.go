@@ -168,11 +168,11 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	}
 	reviews = append(reviews, agent.ReviewsWithoutTools...)
 	fuzzy.Sort(reviews)
-	nameCol := 0
-	for _, r := range reviews {
-		nameCol = max(nameCol, len(r))
-	}
-	nameCol++
+	// Cells, not bytes and not runes: a CJK review name is two columns per
+	// character, so a nameCol counted either other way is short by the width
+	// of the double-width glyphs in the longest name and every column after
+	// it lands further left than the header above.
+	nameCol := reviewNameColumn(reviews)
 
 	// Tallies are over unique binaries: many tools serve more than one review.
 	seenRec := map[string]bool{}
@@ -180,7 +180,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 	for _, review := range reviews {
 		tools := agent.ReviewTools[review]
 		if len(tools) == 0 {
-			w.printf("  %-*s %s\n", nameCol, review, pal.dim("no external tools"))
+			w.printf("  %s %s\n", padCells(review, nameCol), pal.dim("no external tools"))
 			continue
 		}
 		n := 0
@@ -220,7 +220,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			}
 			cells = append(cells, mark(ok, missing)+" "+label)
 		}
-		head := fmt.Sprintf("  %-*s %s ", nameCol, review, ratio(n, len(tools)))
+		head := fmt.Sprintf("  %s %s ", padCells(review, nameCol), ratio(n, len(tools)))
 		w.println(head + strings.Join(cells, "  "))
 	}
 

@@ -554,6 +554,20 @@ func padCellsLeft(s string, w int) string {
 	return s
 }
 
+// reviewNameColumn is the width the per-review listings give a review name,
+// one column wider than the widest of them. Measured in cells for the reason
+// cells exists: every one of these names can come from a reviewed repository
+// and be written in any script, and a column budget counted in bytes or runes
+// is short by exactly the double-width glyphs in the longest name, which puts
+// the whole rest of the line one column-group left of the header.
+func reviewNameColumn(names []string) int {
+	w := 0
+	for _, n := range names {
+		w = max(w, cells(n))
+	}
+	return w + 1
+}
+
 // trimCells cuts s to at most w terminal columns, ellipsis included, between
 // grapheme clusters so a cut never lands inside one.
 func trimCells(s string, w int) string {

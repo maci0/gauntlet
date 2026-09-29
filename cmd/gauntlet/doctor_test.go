@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"time"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/gitx"
@@ -507,5 +508,33 @@ func TestReadmeGitFloorMatchesTheConstant(t *testing.T) {
 	}
 	if !strings.HasPrefix(stated, gitx.MinVersion) {
 		t.Fatalf("README states git %q; the code requires %s", stated, gitx.MinVersion)
+	}
+}
+
+// A review name can be written in any script: a reviewed repository names its
+// own prompts, and doctor lists them in one column. The column is measured in
+// terminal cells, so a name of double-width glyphs gets the room it draws
+// with. Counting bytes or runes instead makes the column short by the width of
+// those glyphs and pushes every column after the name out of alignment, which
+// is a line that reads as two misaligned tables rather than one.
+func TestReviewNameColumnMeasuresTerminalCells(t *testing.T) {
+	const cjk = "日本語-review" // 3 double-width + 1 space + 7 narrow
+	names := []string{"sec-review", cjk}
+
+	col := reviewNameColumn(names)
+	if got, want := col, cells(cjk)+1; got != want {
+		t.Errorf("reviewNameColumn = %d, want %d (the widest name in cells, plus one)", got, want)
+	}
+	if runeCount := utf8.RuneCountInString(cjk) + 1; col <= runeCount {
+		t.Errorf("reviewNameColumn = %d, no wider than the %d a rune count yields; the double-width "+
+			"glyphs in %q each need two cells", col, runeCount, cjk)
+	}
+	// Every name has to land in the same column, which is what the padding is
+	// for. A name that draws wider than the budget would push the columns
+	// after it along.
+	for _, n := range names {
+		if got := cells(padCells(n, col)); got != col {
+			t.Errorf("padded %q occupies %d cells, want %d", n, got, col)
+		}
 	}
 }
