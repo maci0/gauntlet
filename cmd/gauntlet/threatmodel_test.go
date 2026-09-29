@@ -87,9 +87,9 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 		file, want string
 		at         int
 	}{
-		{"release.yml", "Refuse a tag that is not on main", 132},
-		{"release.yml", "actions/attest-build-provenance@", 168},
-		{"release.yml", "dist/sbom.json", 195},
+		{"release.yml", "git merge-base --is-ancestor HEAD origin/main", 107},
+		{"release.yml", "actions/attest-build-provenance@", 161},
+		{"release.yml", "dist/sbom.json", 188},
 		{"release.yml", "set -eu -o pipefail", 64},
 		{"ci.yml", "GITHUB_TOKEN", 48},
 		{"vulnscan.yml", "schedule:", 10},

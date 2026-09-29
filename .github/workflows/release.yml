@@ -90,6 +90,20 @@ jobs:
       # silently reverts. A released heading and a tag correspond one to one,
       # so either mistake reaches this step with a CHANGELOG section to
       # extract, and the section alone cannot tell them apart.
+      #
+      # A tag is the only review the bytes behind it can get: this workflow
+      # does not re-run the pull-request gates, and CONTRIBUTING says to cut
+      # the tag from a commit main already carries. `make release` below still
+      # runs the suite, so this is about what reached a pull request, not
+      # about whether the tree passes.
+      #
+      # The ancestry check is here, in the same guard as the version order,
+      # rather than in a step of its own: one step refuses both mistakes, so
+      # there is no ordering between two checks of the same question. HEAD is
+      # the commit the tag resolves to, so an annotated tag is read through to
+      # its commit rather than compared as a tag object. The fetch is the
+      # fallback for a checkout that did not bring the branch; the repository
+      # is public and no credential is in this job's environment.
       - name: Refuse a tag that is not a new release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -110,27 +124,6 @@ jobs:
             echo "tag $GITHUB_REF_NAME is older than the published v$latest; a release only ever moves forward" >&2
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
-            echo "tag $GITHUB_REF_NAME is on a commit main does not carry;" \
-              "the next release from main would revert it" >&2
-            exit 1
-          fi
-
-      # A tag is what `gauntlet update` and the README install both serve, and
-      # this workflow does not re-run the pull-request gates, so a tag is the
-      # only review the bytes behind it can get. CONTRIBUTING says to cut it
-      # from a commit main already carries; nothing here enforced that, and a
-      # tag pushed from a side branch would publish unreviewed source under a
-      # version the changelog and the attestation name as reviewed. `make
-      # release` below still runs the suite, so this is about what reached a
-      # pull request, not about whether the tree passes.
-      #
-      # HEAD is the commit the tag resolves to, so an annotated tag is read
-      # through to its commit rather than compared as a tag object. The fetch
-      # is the fallback for a checkout that did not bring the branch; the
-      # repository is public and no credential is in this job's environment.
-      - name: Refuse a tag that is not on main
-        run: |
           git rev-parse --verify --quiet origin/main >/dev/null ||
             git fetch --quiet --no-tags origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor HEAD origin/main; then

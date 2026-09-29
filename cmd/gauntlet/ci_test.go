@@ -233,9 +233,9 @@ func TestReleaseRefusesATagThatIsNotOnMain(t *testing.T) {
 		t.Error("release job must refuse a tag whose commit origin/main does not carry")
 	}
 	build := strings.Index(text, "name: Build every platform")
-	check := strings.Index(text, "name: Refuse a tag that is not on main")
+	check := strings.Index(text, "name: Refuse a tag that is not a new release")
 	if check < 0 {
-		t.Fatal("release.yml has no ancestry step")
+		t.Fatal("release.yml has no guard step")
 	}
 	if check > build {
 		t.Error("check the tag before building; the build is the expensive half")
@@ -374,7 +374,7 @@ func TestReleaseRefusesAStaleOrUnmergedTag(t *testing.T) {
 	}{
 		{onMain, "v1.4.0", false, ""},
 		{stale, "v1.2.0", false, "older than the published v1.3.0"},
-		{offMain, "v1.4.0", true, "main does not carry"},
+		{offMain, "v1.4.0", true, "origin/main does not carry"},
 		{candidate, "v1.4.0-rc.1", false, ""},
 	}
 	for _, tc := range cases {
