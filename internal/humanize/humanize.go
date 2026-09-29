@@ -29,7 +29,12 @@ func Seconds(secs float64) (time.Duration, bool) {
 	if secs <= 0 || math.IsNaN(secs) || math.IsInf(secs, 0) {
 		return 0, false
 	}
-	if secs > float64(math.MaxInt64)/float64(time.Second) {
+	// The bound is the quotient itself and the comparison is >=, because
+	// float64(math.MaxInt64) rounds up to 2^63: a value equal to the quotient
+	// multiplies to exactly 2^63, which is one past the largest int64 and
+	// converts to MinInt64. A > would let that one band through and hand back
+	// the negative duration this refuses, about 292 years of elapsed seconds.
+	if secs >= float64(math.MaxInt64)/float64(time.Second) {
 		return 0, false
 	}
 	return time.Duration(secs * float64(time.Second)), true

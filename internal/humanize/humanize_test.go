@@ -28,6 +28,13 @@ func TestSeconds(t *testing.T) {
 		{math.Inf(1), 0, false},
 		{math.Inf(-1), 0, false},
 		{float64(math.MaxInt64), 0, false},
+		// The last representable second whose nanoseconds still fit, and the
+		// quotient above it: float64(math.MaxInt64) rounds up to 2^63, so a >
+		// against the quotient admitted values that multiply to 2^63 and
+		// convert to MinInt64, the negative duration this refuses.
+		{math.Nextafter(float64(math.MaxInt64)/float64(time.Second), 0),
+			time.Duration(int64(9223372036854774784)), true},
+		{float64(math.MaxInt64) / float64(time.Second), 0, false},
 	}
 	for _, c := range cases {
 		got, ok := Seconds(c.secs)
