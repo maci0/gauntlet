@@ -1,6 +1,18 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Package evidence is the suggester that is not an agent.
+//
+// `--suggest-agent gauntlet` answers the same question the triage step asks,
+// from what is on disk: which files exist, how many of them, what they say
+// inside, what has changed lately, and how past runs on this directory went.
+// It costs milliseconds and no tokens, and it is honest about what it is:
+// evidence, not judgment. An agent reads the code and can tell a toy HTTP
+// handler from a payment path; this cannot.
+//
+// Every observation is scored rather than merely present: one stray .css file
+// in a Go repository is not a frontend, and a directory nobody has touched in
+// a quarter is not where the next review should look.
 package evidence
 
 import (
@@ -23,19 +35,6 @@ import (
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
-
-// Package evidence is the suggester that is not an agent.
-//
-// `--suggest-agent gauntlet` answers the same question the triage step asks,
-// from what is on disk: which files exist, how many of them, what they say
-// inside, what has changed lately, and how past runs on this directory went.
-// It costs milliseconds and no tokens, and it is honest about what it is:
-// evidence, not judgment. An agent reads the code and can tell a toy HTTP
-// handler from a payment path; this cannot.
-//
-// Every observation is scored rather than merely present: one stray .css file
-// in a Go repository is not a frontend, and a directory nobody has touched in
-// a quarter is not where the next review should look.
 
 // AgentName is the value --suggest-agent takes to use this instead of
 // launching an agent.

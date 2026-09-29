@@ -1,6 +1,16 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// Every stochastic choice the runner makes goes through these keyed draws
+// rather than one shared random stream. A stream's output depends on the order
+// it is consumed from, and parallel lanes consume concurrently, so a recorded
+// seed would not reproduce which agent ran what, how long a retry waited, or
+// what order a later loop ran in. Keyed by loop number, review name, and
+// attempt instead, every choice is a pure function of the effective seed and
+// inputs that are part of the journal, which is what makes a seeded --jobs > 1
+// run replay like a sequential one and lets a hot-reload successor pick up the
+// interrupted run's schedule as if the swap had never happened.
+
 package runner
 
 import "time"
@@ -18,16 +28,6 @@ func fnv64aString(s string) uint64 {
 	}
 	return h
 }
-
-// Every stochastic choice the runner makes goes through these keyed draws
-// rather than one shared random stream. A stream's output depends on the order
-// it is consumed from, and parallel lanes consume concurrently, so a recorded
-// seed would not reproduce which agent ran what, how long a retry waited, or
-// what order a later loop ran in. Keyed by loop number, review name, and
-// attempt instead, every choice is a pure function of the effective seed and
-// inputs that are part of the journal, which is what makes a seeded --jobs > 1
-// run replay like a sequential one and lets a hot-reload successor pick up the
-// interrupted run's schedule as if the swap had never happened.
 
 // mix64 is the splitmix64 finalizer. FNV alone leaves structured inputs
 // correlated in low bits; this spreads them across the word so drawIndex's

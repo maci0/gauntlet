@@ -1,6 +1,17 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+// The launcher: the screen `gauntlet pick` opens so a run can be composed
+// without knowing the flags first. It decides nothing on its own. What it
+// produces is an argv, which the caller runs through the same parser every
+// other invocation goes through, and which it shows on screen the whole time
+// so the flags are learned rather than hidden.
+//
+// It is drawn as the dashboard is drawn, with the same instruments: the
+// wordmark and a spread header, titled instrument panels, one hue per agent
+// everywhere it appears, and meters that show their unlit remainder. The two
+// screens are the same cockpit at two moments, so they read the same way.
+
 package ui
 
 import (
@@ -16,17 +27,6 @@ import (
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 )
-
-// The launcher: the screen `gauntlet pick` opens so a run can be composed
-// without knowing the flags first. It decides nothing on its own. What it
-// produces is an argv, which the caller runs through the same parser every
-// other invocation goes through, and which it shows on screen the whole time
-// so the flags are learned rather than hidden.
-//
-// It is drawn as the dashboard is drawn, with the same instruments: the
-// wordmark and a spread header, titled instrument panels, one hue per agent
-// everywhere it appears, and meters that show their unlit remainder. The two
-// screens are the same cockpit at two moments, so they read the same way.
 
 // PickConfig is what the launcher needs to know about this machine: what can
 // be reviewed, what can review it, and how much of it can run at once.
