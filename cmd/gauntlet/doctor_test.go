@@ -383,7 +383,7 @@ func TestDoctorReportsAnIndexWithNoJournals(t *testing.T) {
 	}
 
 	var buf strings.Builder
-	doctor(&buf, palette{}, nil, 80)
+	doctor(&buf, report.Palette{}, nil, 80)
 	out := buf.String()
 	if !strings.Contains(out, "Run history: 0 journals") {
 		t.Fatalf("doctor should report the empty tree rather than say nothing:\n%s", out)

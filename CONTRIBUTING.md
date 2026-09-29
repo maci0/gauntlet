@@ -61,7 +61,10 @@ Use `make test-pkg` below while you work.
 The first run downloads Go modules; after that the loop is offline.
 `make` passes `-mod=readonly` on every target except two. `make vuln` clears
 it, because govulncheck is not a build input, and `make tidy` sets
-`-mod=mod`, because computing the answer is its job. So a drift from go.sum
+`-mod=mod`, because computing the answer is its job. An inherited `GOFLAGS`
+is replaced rather than appended to, so it cannot add a `-tags` or `-ldflags`
+of its own; a command line still wins, which is how `make test GOFLAGS=-v`
+works. So a drift from go.sum
 fails the command instead of rewriting the lockfile, and the one target that
 may rewrite it only reports the diff. Change modules with `go get` /
 `go mod tidy`, not as a side effect of the build.

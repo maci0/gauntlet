@@ -606,7 +606,13 @@ ambient go.work above the checkout cannot add its modules or replace
 directives to the build, and `GOTOOLCHAIN=local` pins compilation to the
 installed toolchain rather than downloading compiler releases from the network.
 Make also exports `GOAMD64=v1` and `GOARM64=v8.0`, so ambient CPU settings
-cannot raise the minimum processor requirements of release binaries.
+cannot raise the minimum processor requirements of release binaries, and it
+overrides `GOFLAGS` rather than appending to it, so an ambient one carrying
+`-tags` or `-ldflags` cannot compile a different program under the same name.
+`GOEXPERIMENT` is exported empty and `GOFIPS140=off`, closing the two
+toolchain settings that change the bytes; the experiment set is recorded in
+every binary and `make dist` checks it against what the build was told to
+use, beside `GOOS`, `GOARCH`, and the microarchitecture level.
 The one input that cannot be normalized is the toolchain: a binary records
 the compiler version, and the `go` line in `go.mod` is a language minimum, not
 the release that ships. So the exact Go release is pinned once, in the

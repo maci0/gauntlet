@@ -140,16 +140,17 @@ func TestMakefileExportsBuildEnvironment(t *testing.T) {
 	for _, env := range os.Environ() {
 		key, _, _ := strings.Cut(env, "=")
 		switch key {
-		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GOFLAGS", "GOWORK", "GOAMD64", "GOARM64", "GOTOOLCHAIN":
+		case "MAKEFLAGS", "MFLAGS", "MAKEOVERRIDES", "GOFLAGS", "GOWORK", "GOAMD64", "GOARM64", "GOTOOLCHAIN", "GOEXPERIMENT", "GOFIPS140":
 			continue
 		}
 		cmd.Env = append(cmd.Env, env)
 	}
-	cmd.Env = append(cmd.Env, "GOWORK=/nonexistent/go.work", "GOFLAGS=-buildvcs=false", "GOAMD64=v3", "GOARM64=v9.0", "GOTOOLCHAIN=auto")
+	cmd.Env = append(cmd.Env, "GOWORK=/nonexistent/go.work", "GOFLAGS=-buildvcs=false", "GOAMD64=v3", "GOARM64=v9.0", "GOTOOLCHAIN=auto",
+		"GOEXPERIMENT=loopvar", "GOFIPS140=inprocess")
 	cmd.Stdin = strings.NewReader(strings.Join([]string{
 		"include Makefile",
 		"print-env:",
-		"\t@printf 'GOFLAGS=%s\\nGOWORK=%s\\nGOAMD64=%s\\nGOARM64=%s\\nGOTOOLCHAIN=%s\\n' \"$$GOFLAGS\" \"$$GOWORK\" \"$$GOAMD64\" \"$$GOARM64\" \"$$GOTOOLCHAIN\"",
+		"\t@printf 'GOFLAGS=%s\\nGOWORK=%s\\nGOAMD64=%s\\nGOARM64=%s\\nGOTOOLCHAIN=%s\\nGOEXPERIMENT=%s\\nGOFIPS140=%s\\n' \"$$GOFLAGS\" \"$$GOWORK\" \"$$GOAMD64\" \"$$GOARM64\" \"$$GOTOOLCHAIN\" \"$$GOEXPERIMENT\" \"$$GOFIPS140\"",
 		"",
 	}, "\n"))
 	out, err := cmd.CombinedOutput()
@@ -163,8 +164,8 @@ func TestMakefileExportsBuildEnvironment(t *testing.T) {
 			got[key] = value
 		}
 	}
-	if env, want := got["GOFLAGS"], "-mod=readonly"; !strings.Contains(env, want) {
-		t.Fatalf("GOFLAGS in a recipe environment: %q, want it to contain %q", env, want)
+	if env, want := got["GOFLAGS"], "-mod=readonly"; env != want {
+		t.Fatalf("GOFLAGS in a recipe environment: %q, want %q", env, want)
 	}
 	if env := got["GOWORK"]; env != "off" {
 		t.Fatalf("GOWORK in a recipe environment: %q, want \"off\"", env)
@@ -172,7 +173,7 @@ func TestMakefileExportsBuildEnvironment(t *testing.T) {
 	if env := got["GOTOOLCHAIN"]; env != "local" {
 		t.Fatalf("GOTOOLCHAIN in a recipe environment: %q, want \"local\"", env)
 	}
-	for key, want := range map[string]string{"GOAMD64": "v1", "GOARM64": "v8.0"} {
+	for key, want := range map[string]string{"GOAMD64": "v1", "GOARM64": "v8.0", "GOEXPERIMENT": "", "GOFIPS140": "off"} {
 		if env := got[key]; env != want {
 			t.Errorf("%s in a recipe environment: %q, want %q", key, env, want)
 		}

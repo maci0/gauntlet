@@ -17,11 +17,28 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # Honor go.sum: a missing or extra module must fail the command rather than
 # rewrite the manifests. `make vuln` clears this because govulncheck is not a
 # build input.
-export GOFLAGS += -mod=readonly
+#
+# `override`, not `+=`: an exported GOFLAGS is a build input like any other,
+# and a `go env -w GOFLAGS=-tags=notoktop` or an inherited GOFLAGS carrying
+# -tags, -gcflags, or -ldflags would compile a different program under the same
+# name, which is what -mod=readonly is here to rule out. A command line still
+# wins, so `make test GOFLAGS=-v` is the escape hatch it has always been.
+override export GOFLAGS := -mod=readonly
 export GOWORK := off
 export GOTOOLCHAIN := local
 export GOAMD64 := v1
 export GOARM64 := v8.0
+# The rest of the toolchain state that changes the bytes rather than the build's
+# shape, closed for the same reason GOAMD64 is: an ambient setting left in the
+# go env file compiles the same source into a different binary, and the
+# compiler records what it used. GOEXPERIMENT is recorded in every binary
+# (`go version -m` prints it), so `dist` checks it below; GOFIPS140 selects a
+# FIPS module for the standard library and is recorded by neither, so it is
+# closed here rather than checked. Empty GOEXPERIMENT is the toolchain's own
+# default set, not "no experiments": a Go release that turns one on by default
+# still gets it.
+export GOEXPERIMENT :=
+export GOFIPS140 := off
 
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for
@@ -569,6 +586,10 @@ clean: ## remove build artifacts
 # `go env -w GOAMD64=v3` left behind once would compile the same source into
 # different bytes, and the compiler records the level it used. The asset name
 # cannot carry it, so the binary is the only place the claim can be checked.
+# The experiment set is in that list for the same reason and the same way:
+# GOEXPERIMENT is pinned empty above, so what the toolchain enables by default
+# is what every asset has to record. It is compared only when the default is
+# not empty, because `go version -m` prints no line for an empty one.
 .PHONY: dist
 dist: | toolchain
 dist: ## build every release platform into dist/
@@ -586,7 +607,7 @@ dist: ## build every release platform into dist/
 		name=$${entry%:*}; \
 		if wait "$${entry#*:}"; then echo "built $$name"; else echo "build failed: $$name" >&2; status=1; fi; \
 	done; [ $$status -eq 0 ] || exit $$status
-	@set -e; for target in $(PLATFORMS); do \
+	@set -e; experiments="$$($(GO) env GOEXPERIMENT)"; for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		f="$(DIST)/$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		info=$$($(GO) version -m "$$f" 2>/dev/null) || { echo "dist: $$f is missing or not a Go binary" >&2; exit 1; }; \
@@ -595,6 +616,7 @@ dist: ## build every release platform into dist/
 			amd64) kv="$$kv GOAMD64=$(GOAMD64)" ;; \
 			arm64) kv="$$kv GOARM64=$(GOARM64)" ;; \
 		esac; \
+		if [ -n "$$experiments" ]; then kv="$$kv GOEXPERIMENT=$$experiments"; fi; \
 		for kv in $$kv; do \
 			key=$${kv%%=*}; want=$${kv#*=}; \
 			got=$$(printf '%s\n' "$$info" | awk -v k="$$key" -v v="$$want" '$$1 == "build" && $$2 == k "=" v { print v }'); \
