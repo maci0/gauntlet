@@ -138,6 +138,12 @@ rather than `uvx` installing, so a local copy whose version differs from
 `SHELLCHECK_VERSION` gets a note instead of a failure. `make fmt-scripts`
 rewrites scripts with ruff format.
 
+A maintainer can also repeat the gate by hand from the Actions tab:
+`ci` and `vulnscan` both take `workflow_dispatch`, so a runner-image or
+package-index incident is answered by re-running rather than by pushing an
+empty commit. Neither manual run cancels the push it repeats; each workflow
+puts the event in its concurrency group for that reason.
+
 Pull requests that touch `go.mod` or `go.sum` additionally run govulncheck,
 the advisory scan of the dependency graph
 ([vulnscan.yml](.github/workflows/vulnscan.yml)). `make vuln` runs the same

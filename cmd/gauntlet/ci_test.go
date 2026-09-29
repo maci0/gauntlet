@@ -5,10 +5,13 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -545,6 +548,299 @@ func TestDistJobSmokeTestsHostBinary(t *testing.T) {
 	}
 	if strings.Contains(text, `"$binary" version`) {
 		t.Fatal("dist job must not inline the version check; make smoke owns it")
+	}
+}
+
+// A manual run and the push it repeats resolve to the same ref, so a workflow
+// that can be dispatched by hand and cancels superseded runs needs the event
+// in its group: without it, repeating a failed run stops the run it was asked
+// to repeat. Read over every workflow, so the next one added is covered.
+func TestManualDispatchIsNotCancelledByTheRunItRepeats(t *testing.T) {
+	dir := filepath.Join(moduleRoot(t), ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".yml") {
+			continue
+		}
+		name := ent.Name()
+		text := readRepoFile(t, filepath.Join(dir, name))
+		if !strings.Contains(text, "workflow_dispatch:") {
+			continue
+		}
+		if !strings.Contains(text, "cancel-in-progress: true") {
+			continue
+		}
+		if !strings.Contains(text, "github.event_name") {
+			t.Errorf("%s: a workflow that can be dispatched by hand and cancels superseded runs must put github.event_name in its concurrency group", name)
+		}
+	}
+}
+
+// The three tag sets and two platforms are a matrix whose cells are selected by
+// `if:` conditions on the test and cover steps, and a condition that stops
+// matching one of them drops a build configuration off the gate with nothing
+// red: the job still runs, on the cells that survived. So the matrix and its
+// conditions are read and evaluated here rather than trusted to the comments
+// beside them.
+func TestTestJobRunsTheSuiteOnEveryMatrixCell(t *testing.T) {
+	job := workflowJobs(readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml")))["test"]
+	if job == "" {
+		t.Fatal("ci.yml has no test job")
+	}
+	oses := matrixAxis(t, job, "os")
+	tags := matrixAxis(t, job, "tags")
+	if want := []string{"ubuntu-24.04", "macos-15"}; !slices.Equal(oses, want) {
+		t.Errorf("test job os axis = %q, want %q", oses, want)
+	}
+	// The empty entry is the third configuration: transcripts without the
+	// database driver. It is the one a reader drops as a typo, and a matrix
+	// without it tests a build nothing ships.
+	if want := []string{"sqlite", "", "notoktop"}; !slices.Equal(tags, want) {
+		t.Errorf("test job tags axis = %q, want %q", tags, want)
+	}
+
+	steps := conditionalMakeSteps(job)
+	if len(steps) == 0 {
+		t.Fatal("test job has no conditional make step")
+	}
+	for _, os := range oses {
+		var checked bool
+		for _, tag := range tags {
+			cell := map[string]string{"os": os, "tags": tag}
+			var suite bool
+			for _, step := range steps {
+				run, err := evalWorkflowCondition(step.ifExpr, cell)
+				if err != nil {
+					t.Fatalf("step %q on %s/%q: %v", step.target, os, tag, err)
+				}
+				if !run {
+					continue
+				}
+				if step.target == "test" || step.target == "cover" {
+					suite = true
+				}
+				if step.target == "check" {
+					checked = true
+				}
+			}
+			if !suite {
+				t.Errorf("%s/%s: no cell runs the suite; this build configuration is untested and the job is still green", os, tag)
+			}
+		}
+		if !checked {
+			t.Errorf("%s: no cell runs make check", os)
+		}
+	}
+}
+
+var (
+	matrixAxisList = regexp.MustCompile(`(?m)^\s+` + `(\w+):\s*\[([^\]]*)\]\s*$`)
+	stepRun        = regexp.MustCompile(`^\s+- run: make (\w+)`)
+)
+
+// matrixAxis reads one `key: [a, b]` list out of a job's matrix.
+func matrixAxis(t *testing.T, job, key string) []string {
+	t.Helper()
+	for _, m := range matrixAxisList.FindAllStringSubmatch(job, -1) {
+		if m[1] != key {
+			continue
+		}
+		var out []string
+		for item := range strings.SplitSeq(m[2], ",") {
+			if item = strings.TrimSpace(item); item != "" {
+				out = append(out, unquoteWorkflowLiteral(item))
+			}
+		}
+		if len(out) == 0 {
+			t.Fatalf("matrix axis %q is empty", key)
+		}
+		return out
+	}
+	t.Fatalf("test job matrix has no %q axis", key)
+	return nil
+}
+
+type makeStep struct{ target, ifExpr string }
+
+// conditionalMakeSteps pairs each `- run: make <target>` with the `if:` on the
+// line below it. A step with no condition runs in every cell and carries the
+// empty expression, which evaluates to true.
+func conditionalMakeSteps(job string) []makeStep {
+	var steps []makeStep
+	lines := strings.Split(job, "\n")
+	for i, raw := range lines {
+		m := stepRun.FindStringSubmatch(raw)
+		if m == nil {
+			continue
+		}
+		step := makeStep{target: m[1], ifExpr: "true"}
+		for _, next := range lines[i+1:] {
+			trimmed := strings.TrimSpace(next)
+			if after, ok := strings.CutPrefix(trimmed, "if:"); ok {
+				step.ifExpr = strings.TrimSpace(after)
+				break
+			}
+			if trimmed == "" {
+				break
+			}
+		}
+		steps = append(steps, step)
+	}
+	return steps
+}
+
+func unquoteWorkflowLiteral(s string) string {
+	if len(s) >= 2 && (s[0] == '\'' && s[len(s)-1] == '\'' || s[0] == '"' && s[len(s)-1] == '"') {
+		return s[1 : len(s)-1]
+	}
+	return s
+}
+
+// evalWorkflowCondition evaluates the flat subset of GitHub's expression
+// grammar the workflows use: `||`, `&&`, and a `==` or `!=` against
+// matrix.tags, matrix.os, or runner.os. Anything else is an error rather than
+// a guess, so a condition written in a form this does not model fails the
+// suite instead of being read as true.
+func evalWorkflowCondition(expr string, cell map[string]string) (bool, error) {
+	// Spacing around the operators is the only thing separating a comparison
+	// into three fields, so it goes before the expression is split.
+	expr = strings.Join(strings.Fields(expr), "")
+	for or := range strings.SplitSeq(expr, "||") {
+		any := false
+		for and := range strings.SplitSeq(or, "&&") {
+			all := true
+			for factor := range strings.FieldsSeq(and) {
+				v, err := evalWorkflowFactor(factor, cell)
+				if err != nil {
+					return false, err
+				}
+				all = all && v
+			}
+			any = any || all
+		}
+		if any {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func evalWorkflowFactor(factor string, cell map[string]string) (bool, error) {
+	negate := false
+	if rest, ok := strings.CutPrefix(factor, "!"); ok {
+		negate, factor = true, strings.TrimSpace(rest)
+	}
+	var value bool
+	switch factor {
+	case "true":
+		value = true
+	case "false":
+		value = false
+	default:
+		if operand, known := workflowOperand(factor); known {
+			// A bare operand is GitHub's truthiness, and the empty string is
+			// false, which is the one matrix value that reads either way.
+			value = operand(cell) != "" && operand(cell) != "false"
+			return value != negate, nil
+		}
+		var ok bool
+		if value, ok = compareWorkflowOperand(factor, cell); !ok {
+			return false, fmt.Errorf("cannot evaluate %q: this reader covers `||`, `&&`, and == / != against matrix.tags, matrix.os, and runner.os", factor)
+		}
+	}
+	return value != negate, nil
+}
+
+func compareWorkflowOperand(factor string, cell map[string]string) (bool, bool) {
+	for _, op := range []string{"!=", "=="} {
+		left, right, found := strings.Cut(factor, op)
+		if !found {
+			continue
+		}
+		lhs, ok := workflowOperandValue(strings.TrimSpace(left), cell)
+		if !ok {
+			return false, false
+		}
+		rhs, ok := workflowOperandValue(strings.TrimSpace(right), cell)
+		if !ok {
+			return false, false
+		}
+		return (lhs == rhs) == (op == "=="), true
+	}
+	return false, false
+}
+
+func workflowOperandValue(operand string, cell map[string]string) (string, bool) {
+	if read, ok := workflowOperand(operand); ok {
+		return read(cell), true
+	}
+	if literal, err := strconv.Unquote(operand); err == nil {
+		return literal, true
+	}
+	return unquoteWorkflowLiteral(operand), true
+}
+
+// workflowOperand resolves the context references a condition can read. A
+// literal resolves to a constant instead, and reports false, so a bare
+// `matrix.tags` is not mistaken for the word.
+func workflowOperand(operand string) (func(map[string]string) string, bool) {
+	switch operand {
+	case "matrix.tags":
+		return func(cell map[string]string) string { return cell["tags"] }, true
+	case "matrix.os":
+		return func(cell map[string]string) string { return cell["os"] }, true
+	case "runner.os":
+		return func(cell map[string]string) string { return runnerOS(cell["os"]) }, true
+	}
+	return nil, false
+}
+
+// runnerOS maps a runner image to the value GitHub gives `runner.os`, which is
+// what the workflow's own condition compares against.
+func runnerOS(image string) string {
+	if strings.HasPrefix(image, "macos") {
+		return "Darwin"
+	}
+	return "Linux"
+}
+
+// The reader decides which matrix cells run the suite, so its reading of a
+// condition is what the check above rests on. Every form the workflows use is
+// pinned here, including the two where GitHub's truthiness and the empty
+// matrix value meet.
+func TestWorkflowConditionReader(t *testing.T) {
+	linux := map[string]string{"os": "ubuntu-24.04", "tags": "sqlite"}
+	empty := map[string]string{"os": "ubuntu-24.04", "tags": ""}
+	mac := map[string]string{"os": "macos-15", "tags": ""}
+	for _, tc := range []struct {
+		expr string
+		cell map[string]string
+		want bool
+	}{
+		{`matrix.tags == 'sqlite'`, linux, true},
+		{`matrix.tags == 'sqlite'`, empty, false},
+		{`matrix.tags != 'sqlite' || runner.os != 'Linux'`, mac, true},
+		{`matrix.tags != 'sqlite' || runner.os != 'Linux'`, linux, false},
+		{`matrix.tags != 'sqlite' && runner.os != 'Linux'`, mac, true},
+		{`matrix.tags == 'sqlite' && runner.os == 'Linux'`, linux, true},
+		{`matrix.tags == 'sqlite'`, empty, false},
+		{`!matrix.tags`, empty, true},
+		{`matrix.tags == "sqlite"`, linux, true},
+	} {
+		got, err := evalWorkflowCondition(tc.expr, tc.cell)
+		if err != nil {
+			t.Errorf("%s: %v", tc.expr, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s with %q = %v, want %v", tc.expr, tc.cell, got, tc.want)
+		}
+	}
+	if _, err := evalWorkflowCondition("contains(github.event.pull_request.labels, 'x')", linux); err == nil {
+		t.Error("a condition this reader does not model must be an error, not a verdict")
 	}
 }
 

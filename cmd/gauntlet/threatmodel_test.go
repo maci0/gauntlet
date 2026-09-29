@@ -90,10 +90,10 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 		{"release.yml", "Refuse a tag that is not on main", 131},
 		{"release.yml", "actions/attest-build-provenance@", 167},
 		{"release.yml", "dist/sbom.json", 194},
-		{"ci.yml", "GITHUB_TOKEN", 41},
+		{"ci.yml", "GITHUB_TOKEN", 48},
 		{"vulnscan.yml", "schedule:", 10},
-		{"vulnscan.yml", "GITHUB_TOKEN", 40},
-		{"vulnscan.yml", "run: make vuln", 32},
+		{"vulnscan.yml", "GITHUB_TOKEN", 44},
+		{"vulnscan.yml", "run: make vuln", 35},
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	covered := map[string]bool{}

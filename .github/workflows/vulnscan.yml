@@ -24,8 +24,12 @@ on:
 permissions:
   contents: read
 
+# The event name is in the group for the same reason as in ci.yml: this
+# workflow cancels superseded runs, and a manual scan of main resolves to the
+# ref the push that triggered it used, so without it the manual run stops the
+# run it was asked to repeat.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

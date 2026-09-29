@@ -4,14 +4,21 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A maintainer repeats the gate from the Actions tab after a runner image or
+  # a package index incident, rather than pushing an empty commit to ask for
+  # it again.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # Superseded runs on the same branch or pull request only burn runners: the
-# result of an older commit tells nothing about the newer one.
+# result of an older commit tells nothing about the newer one. The event name
+# is part of the group because a manual run and the push it repeats resolve to
+# the same ref, and cancel-in-progress would then stop the run the manual one
+# was asked to replace.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -124,8 +124,8 @@ claim about which commits reached a pull request, not an integrity control:
 it narrows nothing in the numbered risk table. It does not cover a rewritten
 `main`, which the branch protection rules on the host do, and which cannot be
 read from the tree. Every job in every workflow clears `GITHUB_TOKEN` and
-`GH_TOKEN` (`.github/workflows/ci.yml:41-43` for the pull-request `test` job,
-and `vulnscan.yml:40-42` for the scanner), the pattern the release job
+`GH_TOKEN` (`.github/workflows/ci.yml:48-50` for the pull-request `test` job,
+and `vulnscan.yml:44-46` for the scanner), the pattern the release job
 already used for its write token. The rule is the same everywhere because the
 exposure is: each of those jobs runs code that inherits its environment, and
 the widest of them is the `test` job, which starts the agent CLIs the suite
@@ -446,7 +446,7 @@ publication uses that account's Git credentials (`internal/runner/commit.go:95`)
   pushes (`.github/workflows/vulnscan.yml:10-22`). Actions are commit-pinned,
   the runner uses `ubuntu-24.04`, and checkout disables persisted credentials.
   The scanner is version-pinned through `GOVULNCHECK_VERSION` in `Makefile:51`,
-  invoked by `make vuln` (`.github/workflows/vulnscan.yml:32-54`). Release and
+  invoked by `make vuln` (`.github/workflows/vulnscan.yml:35-58`). Release and
   checksum downloads enforce `validateAssetURL` across HTTP redirects and cap
   redirects at 10 (`client.CheckRedirect`, `internal/selfupdate/selfupdate.go:145-157`).
   Release checksum verification uses constant-time comparison

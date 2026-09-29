@@ -26,6 +26,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- The pull-request gate and the advisory scan can be started by hand from the Actions tab, so a runner-image or package-index incident is answered by re-running the workflow rather than by pushing an empty commit. A manual run no longer cancels the push it repeats: the event is part of each workflow's concurrency group, since both resolve to the same ref.
+
 ## 1.29.0
 
 ### Changed
