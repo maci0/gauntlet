@@ -4,8 +4,10 @@
 package journal
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -231,4 +233,84 @@ func TestJournalThisProcessHoldsIsNotIdle(t *testing.T) {
 	if !journalIdle(path) {
 		t.Error("a journal this process has closed still reads as in progress")
 	}
+}
+
+// Prune fires unattended at the end of every run, so the second execution of
+// the same keep is the normal case, not a retry: a run whose keep the history
+// already satisfies must leave the tree exactly as it found it, and a run that
+// arrived since must cost one journal, one row, and one quarantine slot, with
+// the bound still holding.
+func TestPruneTwiceChangesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	for i, id := range []string{
+		"20260825T090000Z-0001", "20260825T100000Z-0002", "20260825T110000Z-0003",
+	} {
+		record(t, id, base.Add(time.Duration(i)*time.Hour))
+	}
+
+	removed, err := Prune(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("pruned %d runs, want 1", removed)
+	}
+	first := state(t)
+	for round := range 2 {
+		removed, err := Prune(2)
+		if err != nil {
+			t.Fatalf("second prune %d: %v", round, err)
+		}
+		if removed != 0 {
+			t.Errorf("second prune %d removed %d runs, want none", round, removed)
+		}
+		if got := state(t); got != first {
+			t.Errorf("second prune %d changed the tree:\n got %q\nwant %q", round, got, first)
+		}
+	}
+
+	// One more run, then the same prune: the repeat costs exactly the new run.
+	record(t, "20260825T120000Z-0004", base.Add(3*time.Hour))
+	removed, err = Prune(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("prune after a new run removed %d runs, want 1", removed)
+	}
+	// The bound holds on both sides of the repeat: the newest two runs are
+	// listed and indexed, and the quarantine is back to its own keep rather
+	// than one per prune.
+	want := "listed [20260825T120000Z-0004 20260825T110000Z-0003] " +
+		"quarantined [20260825T100000Z-0002 20260825T090000Z-0001] " +
+		"indexed [20260825T110000Z-0003 20260825T120000Z-0004]"
+	if got := state(t); got != want {
+		t.Errorf("prune after a new run left:\n got %q\nwant %q", got, want)
+	}
+}
+
+// state is the whole of what a prune can change: the runs in the listing, the
+// index rows, and the quarantines still recoverable.
+func state(t *testing.T) string {
+	t.Helper()
+	rows, err := Recent(100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := make([]string, 0, len(rows))
+	for _, s := range rows {
+		listed = append(listed, s.RunID)
+	}
+	held, err := Quarantined()
+	if err != nil {
+		t.Fatal(err)
+	}
+	indexed := make([]string, 0, len(rows))
+	for id := range readIndexFile(t) {
+		indexed = append(indexed, id)
+	}
+	slices.Sort(indexed)
+	return fmt.Sprintf("listed %v quarantined %v indexed %v", listed, held, indexed)
 }
