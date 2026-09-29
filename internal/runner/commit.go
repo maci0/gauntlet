@@ -93,6 +93,11 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 			fmt.Sprintf("commit step timed out after %s", humanize.Duration(timeout)), tailText))
 	case pr.Canceled:
 		return context.Canceled
+	case pr.StreamErr != nil:
+		// Below the timeout and cancel arms: those close the pipes on
+		// purpose, which the reader sees as the same broken pipe.
+		return errors.New(withNote(
+			fmt.Sprintf("commit step output ended early: %v", pr.StreamErr), tailText))
 	case pr.ExitCode != 0:
 		return errors.New(withNote(
 			fmt.Sprintf("commit step failed: %s exited %d", o.Agent.Label(), pr.ExitCode), tailText))

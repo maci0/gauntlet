@@ -19,6 +19,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
@@ -716,9 +717,17 @@ func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
 	if err := json.Unmarshal([]byte(got), &doc); err != nil {
 		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
 	}
-	if doc.Home != home || doc.Journals != filepath.Join(home, "runs") {
+	// Both paths are written with the home directory shortened: this document
+	// is the one an archive job carries off the machine, and a resolved path
+	// under /home/<account> names the operator in every copy.
+	wantHome := normalize.RedactHome(home)
+	wantJournals := normalize.RedactHome(filepath.Join(home, "runs"))
+	if doc.Home != wantHome || doc.Journals != wantJournals {
 		t.Errorf("state paths: home %q, journals %q, want %q and %q",
-			doc.Home, doc.Journals, home, filepath.Join(home, "runs"))
+			doc.Home, doc.Journals, wantHome, wantJournals)
+	}
+	if strings.Contains(doc.Home, os.Getenv("USER")) && os.Getenv("USER") != "" {
+		t.Errorf("state paths carry the account name (%q); they should not", doc.Home)
 	}
 	if len(doc.Runs) != 1 {
 		t.Fatalf("got %d runs, want 1:\n%s", len(doc.Runs), got)

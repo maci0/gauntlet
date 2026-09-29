@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -70,6 +71,12 @@ type procResult struct {
 	// decide whether running the same launch again could differ.
 	Note string
 	Err  error // launch failure only
+	// StreamErr is set when the agent's output pipe broke part way through,
+	// so the tail this result was parsed from is short. Subject, FileNotes,
+	// Note, and Usage are then whatever the agent managed to print before the
+	// break, which reads as a complete answer unless a caller checks. It is
+	// separate from Err because the process ran and exited on its own terms.
+	StreamErr error
 }
 
 // procOpts configures one agent launch.
@@ -164,6 +171,22 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	tail := agent.NewTail(agent.TailBytes)
 	var tailMu sync.Mutex
 	var wg sync.WaitGroup
+	// A pipe that breaks mid-stream truncates the tail, and the subject, note,
+	// and file notes parsed from it look exactly like ones the agent really
+	// printed. The first error is kept and reported so a caller can treat a
+	// cut-short transcript as a failure rather than as the whole answer.
+	var streamMu sync.Mutex
+	var streamErr error
+	recordStreamErr := func(err error) {
+		if err == nil {
+			return
+		}
+		streamMu.Lock()
+		if streamErr == nil {
+			streamErr = err
+		}
+		streamMu.Unlock()
+	}
 
 	// Live usage tracking. Counters an agent prints are cumulative within a
 	// run, so the maximum seen so far is the current value.
@@ -218,7 +241,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	}
 
 	var sinkMu sync.Mutex
-	pump := func(r io.Reader) {
+	pump := func(name string, r io.Reader) {
 		norm := normalize.New(normalize.Config{
 			MaxLinesPerSec: o.MaxLinesPerSec,
 			MaxWidth:       streamLineCols,
@@ -298,13 +321,15 @@ func runProc(ctx context.Context, o procOpts) procResult {
 				emit(l)
 			}
 		}
-		scanLines(r, handle)
+		if err := scanLines(r, handle); err != nil {
+			recordStreamErr(fmt.Errorf("reading %s of %s: %w", name, o.Argv[0], err))
+		}
 		for _, l := range norm.Flush() {
 			emit(l)
 		}
 	}
-	wg.Go(func() { pump(outR) })
-	wg.Go(func() { pump(errR) })
+	wg.Go(func() { pump("stdout", outR) })
+	wg.Go(func() { pump("stderr", errR) })
 
 	waitErr := make(chan error, 1)
 	go func() { waitErr <- cmd.Wait() }()
@@ -368,6 +393,9 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		Total:    max(finalUsage.Total, live.Total),
 	}
 	usageMu.Unlock()
+	streamMu.Lock()
+	res.StreamErr = streamErr
+	streamMu.Unlock()
 	return res
 }
 
@@ -384,7 +412,13 @@ func pick(n int) int {
 // bounded chunks instead of ending the read (see maxLineBytes). A trailing
 // carriage return is dropped like ScanLines would; a final line without a
 // newline still arrives.
-func scanLines(r io.Reader, handle func(line string)) {
+//
+// The returned error is nil at a clean end of stream and non-nil when the
+// stream broke part way through, so the caller can tell a transcript that
+// ended because the agent finished from one cut short by a dead pipe. The
+// lines already handled stand either way; what the error adds is the fact
+// that the tail is incomplete.
+func scanLines(r io.Reader, handle func(line string)) error {
 	br := bufio.NewReaderSize(r, 64<<10)
 	var buf []byte
 	emit := func(b []byte) {
@@ -437,7 +471,10 @@ func scanLines(r io.Reader, handle func(line string)) {
 			if len(buf) > 0 {
 				emit(buf)
 			}
-			return
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
 		}
 	}
 }

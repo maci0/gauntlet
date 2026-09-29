@@ -4,14 +4,18 @@
 package selfupdate
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestChecksumFor(t *testing.T) {
@@ -408,6 +412,131 @@ func TestFetchIncludesErrorMessageOnFailure(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "API rate limit exceeded") {
 		t.Fatalf("fetch should include remote error message, got: %v", err)
 	}
+}
+
+func TestGetAssetRetriesATransientFailure(t *testing.T) {
+	var hits atomic.Int64
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if hits.Add(1) == 1 {
+			// A connection killed before the response headers is the shape a
+			// second attempt can clear; a refused status is not.
+			hijackAndDrop(w)
+			return
+		}
+		_, _ = w.Write([]byte("asset"))
+	}))
+	defer ts.Close()
+
+	old := client
+	client = &http.Client{Timeout: 5 * time.Second}
+	t.Cleanup(func() { client = old })
+
+	data, err := fetch(context.Background(), ts.URL, 1024)
+	if err != nil {
+		t.Fatalf("fetch should recover from a dropped connection, got: %v", err)
+	}
+	if string(data) != "asset" {
+		t.Fatalf("fetch returned %q, want %q", data, "asset")
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("server saw %d requests, want 2 (one retry)", hits.Load())
+	}
+}
+
+func TestGetAssetDoesNotRetryARefusedStatus(t *testing.T) {
+	var hits atomic.Int64
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	if _, err := fetch(context.Background(), ts.URL, 1024); err == nil {
+		t.Fatal("fetch should fail on 404")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("server saw %d requests, want 1 (404 is not transient)", hits.Load())
+	}
+}
+
+// A redirect the URL check refuses is a decision this process made, and it
+// arrives wrapped in the same *url.Error a dropped connection does.
+func TestGetAssetDoesNotRetryARefusedRedirect(t *testing.T) {
+	var hits atomic.Int64
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		http.Redirect(w, r, "https://evil.example.com/malicious", http.StatusFound)
+	}))
+	defer ts.Close()
+
+	_, err := fetch(context.Background(), ts.URL, 1024)
+	if err == nil || !strings.Contains(err.Error(), "untrusted asset host") {
+		t.Fatalf("redirect to untrusted host should be refused, got: %v", err)
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("server saw %d requests, want 1 (a refused redirect is not transient)", hits.Load())
+	}
+}
+
+func TestGetAssetStopsRetryingWhenTheContextEnds(t *testing.T) {
+	var hits atomic.Int64
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		hijackAndDrop(w)
+	}))
+	defer ts.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	_, err := fetch(ctx, ts.URL, 1024)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("want context.Canceled once the caller gives up, got: %v", err)
+	}
+	if hits.Load() > assetAttempts {
+		t.Fatalf("server saw %d requests, want at most %d", hits.Load(), assetAttempts)
+	}
+}
+
+func TestDownloadNamesTheAssetItCouldNotFinish(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1024")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("half"))
+		// Closing without the promised bytes ends the body early.
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+	}))
+	defer ts.Close()
+
+	var buf bytes.Buffer
+	_, err := download(context.Background(), ts.URL, &buf)
+	if err == nil {
+		t.Fatal("download should fail on a truncated body")
+	}
+	if !strings.Contains(err.Error(), ts.URL) {
+		t.Fatalf("error should name the asset, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "4 bytes") {
+		t.Fatalf("error should report how far the transfer got, got: %v", err)
+	}
+}
+
+// hijackAndDrop takes the connection out from under the client without a
+// response, the way a proxy dying or a laptop changing networks does.
+func hijackAndDrop(w http.ResponseWriter) {
+	hj, ok := w.(http.Hijacker)
+	if !ok {
+		return
+	}
+	conn, _, err := hj.Hijack()
+	if err != nil {
+		return
+	}
+	conn.Close()
 }
 
 func TestReleaseNilReceiver(t *testing.T) {

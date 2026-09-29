@@ -5,6 +5,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/iotest"
 	"time"
 	"unicode/utf8"
 
@@ -391,6 +393,45 @@ func TestStreamTailKeepsDecodedTextForReportParsers(t *testing.T) {
 		res.FileNotes[0].Note != "guard the nil map write" {
 		t.Fatalf("file notes = %+v", res.FileNotes)
 	}
+}
+
+// A stream that ends cleanly is not an error. A stream that breaks part way
+// through is, because everything the caller parses out of the tail afterwards
+// is then short and reads as complete.
+func TestScanLinesReportsABrokenStream(t *testing.T) {
+	t.Run("clean end", func(t *testing.T) {
+		var got []string
+		err := scanLines(strings.NewReader("one\ntwo\n"), func(l string) { got = append(got, l) })
+		if err != nil {
+			t.Fatalf("a stream that ended on EOF is not a failure, got: %v", err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("got %v, want two lines", got)
+		}
+	})
+
+	t.Run("broken mid-line", func(t *testing.T) {
+		var got []string
+		err := scanLines(iotest.ErrReader(errors.New("read: input/output error")),
+			func(l string) { got = append(got, l) })
+		if err == nil {
+			t.Fatal("a failed read must be reported, not swallowed")
+		}
+		if !strings.Contains(err.Error(), "input/output error") {
+			t.Fatalf("the cause must survive, got: %v", err)
+		}
+	})
+
+	t.Run("lines before the break still arrive", func(t *testing.T) {
+		r := io.MultiReader(strings.NewReader("kept\n"), iotest.ErrReader(errors.New("boom")))
+		var got []string
+		if err := scanLines(r, func(l string) { got = append(got, l) }); err == nil {
+			t.Fatal("want the read error")
+		}
+		if len(got) != 1 || got[0] != "kept" {
+			t.Fatalf("got %v, want the line read before the break", got)
+		}
+	})
 }
 
 func TestScanLinesCarriageReturn(t *testing.T) {

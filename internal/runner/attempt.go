@@ -389,6 +389,22 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
+	case pr.StreamErr != nil:
+		// The agent ran to its own end but its output was cut short, so the
+		// subject and note were parsed from a partial stream. Retrying is
+		// worth a try, and saying so beats filing a cut transcript as a
+		// finished review. This sits below the cancel and timeout arms
+		// because those close the pipes on purpose, which a reader sees as
+		// the same broken pipe.
+		r.log("LOST OUTPUT: %s (%s) after %s: %v", review, spec.Label(),
+			humanize.Duration(res.Elapsed), pr.StreamErr)
+		res.Status = StatusFail
+		res.Detail = withNote("output stream ended early", pr.StreamErr.Error())
+		r.forgetSession(spec)
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+			return retry
+		}
+		interruptedOnCancel(ctx, &res)
 	case pr.ExitCode != 0:
 		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)

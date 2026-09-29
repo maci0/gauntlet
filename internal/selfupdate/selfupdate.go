@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -31,6 +32,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -39,6 +41,17 @@ import (
 // DefaultRepo is the GitHub repository releases are fetched from when
 // --update-repo is omitted.
 const DefaultRepo = "maci0/gauntlet"
+
+// assetAttempts is how many times a release asset request is made before the
+// update gives up, and the shape of the wait between them. Three covers the
+// ordinary cases (a dial that raced a wake, a body cut mid-transfer) without
+// turning a real outage into a long stall: the client timeout already bounds
+// each attempt.
+const (
+	assetAttempts  = 3
+	assetRetryBase = 1 * time.Second
+	assetRetryMax  = 8 * time.Second
+)
 
 // githubPart is one side of owner/repo: letters, digits, and . _ -, and not
 // a "." / ".." path segment that would climb out of /repos/.
@@ -406,10 +419,33 @@ func isLoopback(host string) bool {
 	return false
 }
 
+// getAsset opens url for reading, retrying a connection that fails for a
+// transient reason. The retry covers the request up to the response headers
+// only: a body already partly written into a caller's file is never resumed,
+// because re-reading a fresh body would append a second copy of the asset
+// rather than replace the first.
 func getAsset(ctx context.Context, url string) (*http.Response, error) {
 	if err := validateAssetURL(url); err != nil {
 		return nil, err
 	}
+	var lastErr error
+	for attempt := range assetAttempts {
+		resp, err := getAssetOnce(ctx, url)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		if !transient(err) || attempt == assetAttempts-1 {
+			return nil, err
+		}
+		if !sleepCtx(ctx, assetBackoff(attempt)) {
+			return nil, ctx.Err()
+		}
+	}
+	return nil, lastErr
+}
+
+func getAssetOnce(ctx context.Context, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -425,6 +461,63 @@ func getAsset(ctx context.Context, url string) (*http.Response, error) {
 		return nil, err
 	}
 	return resp, nil
+}
+
+// transient reports whether err is a network failure worth trying again. A
+// refused status, a rejected URL, and a cancelled context are answers the
+// server or the operator already gave, so repeating the request cannot change
+// them. Only the transport-level failures that a second attempt can clear
+// qualify: a dial or read that timed out, a connection cut mid-handshake, a
+// body that ended early.
+func transient(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	// client.Do wraps whatever the transport reported, so the classification
+	// is on the error inside: a redirect the URL check refused arrives here
+	// wrapped too, and repeating it would only repeat the refusal.
+	if ue, ok := errors.AsType[*url.Error](err); ok {
+		err = ue.Err
+	}
+	// A deadline the transport imposed on one attempt (a dial or header
+	// timeout) is transient, unlike a deadline the caller set on the context.
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return !errors.Is(err, context.DeadlineExceeded)
+	}
+	// A peer that goes away before answering reads as a bare io.EOF when the
+	// connection was closed cleanly and as ErrUnexpectedEOF when it was cut,
+	// and a body cut short mid-transfer is the same failure one layer in.
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.EPIPE)
+}
+
+// assetBackoff is the wait before the next asset attempt: doubling from
+// assetRetryBase, capped, and jittered so several installs retrying after the
+// same outage do not come back together. The jitter is drawn from the wall
+// clock, which is enough here: self-update is not a seeded replay.
+func assetBackoff(attempt int) time.Duration {
+	d := assetRetryBase << attempt
+	if d > assetRetryMax || d <= 0 {
+		d = assetRetryMax
+	}
+	return d/2 + time.Duration(rand.Int64N(int64(d)/2+1))
+}
+
+// sleepCtx waits d and reports false if ctx ends first.
+func sleepCtx(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
 }
 
 func responseError(resp *http.Response, url string) error {
@@ -452,7 +545,7 @@ func fetch(ctx context.Context, url string, limit int64) ([]byte, error) {
 	defer resp.Body.Close()
 	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading %s: %w", url, err)
 	}
 	if int64(len(data)) > limit {
 		drainBody(resp, maxAssetBytes)
@@ -472,11 +565,15 @@ func download(ctx context.Context, url string, w io.Writer) (string, error) {
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(w, h), io.LimitReader(resp.Body, maxAssetBytes+1))
 	if err != nil {
-		return "", err
+		// A body that ends early or a connection that drops mid-transfer
+		// leaves w holding a partial asset. The caller discards it, and the
+		// error has to say which asset and how far it got: a bare read error
+		// reads the same whether the checksum listing or the binary died.
+		return "", fmt.Errorf("downloading %s after %d bytes: %w", url, n, err)
 	}
 	if n > maxAssetBytes {
 		drainBody(resp, maxAssetBytes)
-		return "", fmt.Errorf("asset exceeds %d bytes", int64(maxAssetBytes))
+		return "", fmt.Errorf("%s exceeds %d bytes", url, int64(maxAssetBytes))
 	}
 	drainBody(resp, maxAssetBytes+1)
 	return hex.EncodeToString(h.Sum(nil)), nil

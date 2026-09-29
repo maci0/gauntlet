@@ -113,6 +113,14 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		case res.TimedOut:
 			lastErr = errors.New(withNote(
 				fmt.Sprintf("%s timed out while suggesting reviews", spec.Label()), out))
+		case res.StreamErr != nil:
+			// A broken pipe leaves a short RELEVANT: list, and a short list
+			// is indistinguishable from a considered one, so the next agent
+			// gets a turn rather than the schedule being quietly narrowed.
+			// Below the cancel and timeout arms: those close the pipes on
+			// purpose, which the reader sees as the same broken pipe.
+			lastErr = fmt.Errorf("%s suggested reviews from a stream that ended early (%v)",
+				spec.Label(), res.StreamErr)
 		case res.ExitCode != 0:
 			lastErr = errors.New(withNote(
 				fmt.Sprintf("%s failed while suggesting reviews (exit %d)", spec.Label(), res.ExitCode), out))

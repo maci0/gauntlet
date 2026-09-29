@@ -209,6 +209,11 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		return false
 	case pr.Canceled:
 		return false
+	case pr.StreamErr != nil:
+		// Below the timeout and cancel arms: those close the pipes on
+		// purpose, which the reader sees as the same broken pipe.
+		note("Conflict step output ended early, the resolution cannot be trusted: %v", pr.StreamErr)
+		return false
 	case pr.ExitCode != 0:
 		note("Conflict step failed: %s exited %d", spec.Label(), pr.ExitCode)
 		return false
