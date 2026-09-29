@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/normalize"
 )
 
@@ -54,14 +55,21 @@ func ParseFileNotes(tail []byte) []FileNote {
 		if path == "" || note == "" {
 			continue
 		}
-		if at, seen := index[path]; seen {
+		// The index is keyed on the composed spelling while the note keeps
+		// the path as the agent printed it. A macOS checkout hands the agent
+		// the decomposed name of a file it created, and the two forms are one
+		// file, so keying on the raw bytes would report it twice. Every other
+		// site that pairs a printed path with a git-reported one composes both
+		// sides for the same reason (see runner's noteKey).
+		key := fuzzy.NFC(path)
+		if at, seen := index[key]; seen {
 			notes[at].Note = note
 			continue
 		}
 		if len(notes) >= fileNotesMax {
 			continue
 		}
-		index[path] = len(notes)
+		index[key] = len(notes)
 		notes = append(notes, FileNote{Path: path, Note: note})
 	}
 	return notes

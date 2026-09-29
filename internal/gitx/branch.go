@@ -14,6 +14,17 @@ import (
 	"github.com/maci0/gauntlet/internal/runx"
 )
 
+// trimLineEnd strips the line terminator git wrote, and nothing else. A
+// refname is a byte string: check-ref-format forbids only ASCII space and
+// control characters, so every byte from 0x80 up is legal in one, and
+// strings.TrimSpace removes the whole unicode.IsSpace set over them. A branch
+// named "release " would come back as "release", which is a different
+// ref, and a sweep that deleted what it had read under that name would
+// delete the wrong branch. Trim the terminator, not the name.
+func trimLineEnd(line string) string {
+	return strings.TrimRight(line, "\r\n")
+}
+
 // CurrentBranch returns the checked-out branch name. A detached HEAD is
 // ("", nil): that is a state, not a failure. Any other git error is returned
 // so callers do not treat a broken repository as detached.
@@ -25,7 +36,7 @@ func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 		}
 		return "", err
 	}
-	return strings.TrimSpace(string(out)), nil
+	return trimLineEnd(string(out)), nil
 }
 
 // Branches lists local branch names, excluding gauntlet's own review
@@ -38,7 +49,7 @@ func (r *Repo) Branches(ctx context.Context) []string {
 	}
 	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
-		name := strings.TrimSpace(line)
+		name := trimLineEnd(line)
 		if name != "" && !strings.HasPrefix(name, "gauntlet/") && !strings.HasPrefix(name, "review/") {
 			names = append(names, name)
 		}
@@ -398,7 +409,7 @@ func (r *Repo) LocalBranchesWithPrefix(ctx context.Context, prefix string) ([]st
 	}
 	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
-		if name := strings.TrimSpace(line); name != "" {
+		if name := trimLineEnd(line); name != "" {
 			names = append(names, name)
 		}
 	}
@@ -407,6 +418,12 @@ func (r *Repo) LocalBranchesWithPrefix(ctx context.Context, prefix string) ([]st
 
 // RemoteBranchesWithPrefix is LocalBranchesWithPrefix against the remote,
 // read via ls-remote so no local ref moves. It returns branch name to tip.
+//
+// The line is cut on the tab separating the object id from the ref rather
+// than split into fields. A refname may hold U+00A0 or any of the other
+// spaces strings.Fields splits on, and a branch named "release "
+// would then read as two fields, fail the arity check, and be
+// dropped from a recovery pass that could not see the layer it had published.
 func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix string) (map[string]string, error) {
 	out, err := r.run(ctx, gitPush, "ls-remote", "--heads", "--", remote,
 		"refs/heads/"+prefix, "refs/heads/"+prefix+"-*")
@@ -415,12 +432,12 @@ func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix stri
 	}
 	tips := make(map[string]string)
 	for line := range strings.SplitSeq(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) != 2 {
+		oid, ref, ok := strings.Cut(trimLineEnd(line), "\t")
+		if !ok {
 			continue
 		}
-		if name, ok := strings.CutPrefix(fields[1], "refs/heads/"); ok {
-			tips[name] = fields[0]
+		if name, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+			tips[name] = oid
 		}
 	}
 	return tips, nil

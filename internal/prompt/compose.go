@@ -159,7 +159,14 @@ const (
 // is refused at the flag rather than quietly rewritten in the prompt. The
 // value is free text wherever a wrapper built the list, and a scope an agent
 // follows is instructions, so the check is the charset.
+//
+// The comparison is against pathEntry, which composes to NFC, so the input
+// is composed first. A shell on macOS hands over the decomposed spelling of a
+// name the filesystem created that way, and tab completion produces it, so
+// the raw form never equalled its own rendering and the entry was refused
+// with a message about line breaks and length that the entry did not have.
 func PathEntrySafe(s string) bool {
+	s = nfc(s)
 	if s == "" || utf8.RuneCountInString(s) > PathEntryMax {
 		return false
 	}
