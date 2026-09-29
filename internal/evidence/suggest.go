@@ -498,7 +498,8 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 	if now == nil {
 		now = time.Now
 	}
-	s := scan(dir, declaredMarks(pool, set), now)
+	marks, declaredBy := declared(pool, set)
+	s := scan(dir, marks, now)
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
 		rank[name] = i
@@ -531,11 +532,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 	// A review can also speak for itself, which is the only way a project's
 	// own prompt is reachable here: the rules above only know built-in names.
 	for _, name := range pool {
-		review, ok := set.Get(name)
-		if !ok {
-			continue
-		}
-		if token, matched := matchDeclared(s, review.Signals()); matched {
+		if token, matched := matchDeclared(s, declaredBy[name]); matched {
 			add(name, "signals it declares ("+token+")", weightStrong)
 		}
 	}
@@ -870,27 +867,36 @@ func markKinds(wanted []markEntry) int {
 	return len(says)
 }
 
-// declaredMarks collects the `mark:` values the pool's reviews declare, in
-// pool order and without repeats, so peek can look for them in the same pass
-// it already makes over the file heads.
-func declaredMarks(pool []string, set prompt.Set) []string {
-	var out []string
+// declared reads the pool's reviews' `Signals:` lines once and returns them
+// two ways: the `mark:` values in pool order and without repeats, which is
+// what peek looks for in the same pass it already makes over the file heads,
+// and every review's full token list, which the scoring loop matches. Reading
+// them once is the point: Signals re-reads the prompt body, and a project
+// prompt is an open and a read per call.
+func declared(pool []string, set prompt.Set) ([]string, map[string][]string) {
+	var marks []string
 	seen := map[string]bool{}
+	byReview := make(map[string][]string, len(pool))
 	for _, name := range pool {
 		rev, ok := set.Get(name)
 		if !ok {
 			continue
 		}
-		for _, token := range rev.Signals() {
+		tokens := rev.Signals()
+		if len(tokens) == 0 {
+			continue
+		}
+		byReview[name] = tokens
+		for _, token := range tokens {
 			kind, value, ok := strings.Cut(token, ":")
 			if !ok || kind != "mark" || value == "" || seen[value] {
 				continue
 			}
 			seen[value] = true
-			out = append(out, value)
+			marks = append(marks, value)
 		}
 	}
-	return out
+	return marks, byReview
 }
 
 // asciiFold appends b lowercased to dst, ASCII-only. Source heads are

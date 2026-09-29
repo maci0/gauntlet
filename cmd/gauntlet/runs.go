@@ -261,20 +261,27 @@ type runsColumn struct {
 	head  string
 	right bool
 	cells []string
+	// w is what the column prints at, measured once from the header and the
+	// cells by newRunsColumns. Measuring per row made the listing quadratic in
+	// --limit: every cell of every column was walked and run through a
+	// grapheme count once for the header and again for each of the rows.
+	w int
 }
 
-// width is what the column prints at: the widest of its header and its cells.
-// The RUN and DIRS cells hold names from the reviewed tree, so the measure is
-// terminal cells (cells), not the byte or rune count the same table used to
-// take. Every other column here is ASCII, so the two differ only on the two
-// that are not.
-func (c runsColumn) width() int {
-	w := cells(c.head)
+// measure records what the column prints at: the widest of its header and its
+// cells. The RUN and DIRS cells hold names from the reviewed tree, so the
+// measure is terminal cells (cells), not the byte or rune count the same table
+// used to take. Every other column here is ASCII, so the two differ only on
+// the two that are not.
+func (c *runsColumn) measure() {
+	c.w = cells(c.head)
 	for _, cell := range c.cells {
-		w = max(w, cells(cell))
+		c.w = max(c.w, cells(cell))
 	}
-	return w
 }
+
+// width is what the column prints at, as measure recorded it.
+func (c runsColumn) width() int { return c.w }
 
 // field pads one cell to the column. The FAILED column is colored, so it pads
 // the number before the escape codes go on: fmt counts a color escape as
@@ -349,6 +356,9 @@ func newRunsColumns(entries []journal.Summary) runsColumns {
 			cols[i].cells = append(cols[i].cells, cell)
 		}
 	}
+	for i := range cols {
+		cols[i].measure()
+	}
 	return cols
 }
 
@@ -358,16 +368,16 @@ const runsGap = "  "
 
 func (cs runsColumns) header() string {
 	out := make([]string, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.headField(c.width()))
+	for i := range cs {
+		out = append(out, cs[i].headField(cs[i].w))
 	}
 	return trimRunsGap(out)
 }
 
 func (cs runsColumns) row(i int, pal palette) string {
 	out := make([]string, 0, len(cs))
-	for _, c := range cs {
-		out = append(out, c.field(i, c.width(), pal))
+	for j := range cs {
+		out = append(out, cs[j].field(i, cs[j].w, pal))
 	}
 	return trimRunsGap(out)
 }
