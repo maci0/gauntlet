@@ -120,6 +120,12 @@ func TestShare(t *testing.T) {
 		{-5, 100, 0},
 		{5, 0, 0}, // no total is no measurement
 		{5, -1, 0},
+		// part*100 leaves one word long before the inputs stop being
+		// plausible, and a wrap is what turned a full share into 0%.
+		{1 << 58, 1, 100},
+		{1 << 62, 1, 100},
+		{1 << 62, math.MaxInt, 50},
+		{100000000000000000, 9000000000000000000, 1},
 	}
 	for _, c := range cases {
 		if got := Share(c.part, c.whole); got != c.want {

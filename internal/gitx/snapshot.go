@@ -36,8 +36,13 @@ func (r *Repo) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, errGitUnavailable
 	}
 	head, err := r.Tip(ctx, "HEAD")
-	if err != nil || !isHex(head) {
+	if err != nil {
 		return Snapshot{}, fmt.Errorf("cannot read HEAD: %w", err)
+	}
+	if !isHex(head) {
+		// Tip returned without an error but not a commit, so there is no err
+		// to wrap: naming what came back is the only thing a reader can act on.
+		return Snapshot{}, fmt.Errorf("cannot read HEAD: %q is not a commit", head)
 	}
 	indexOut, err := r.run(ctx, gitQuick, "write-tree")
 	if err != nil {

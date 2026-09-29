@@ -9,6 +9,7 @@ package humanize
 import (
 	"fmt"
 	"math"
+	"math/bits"
 	"strconv"
 	"strings"
 	"time"
@@ -107,12 +108,27 @@ func Plural(n int, one, many string) string {
 // inside 0-100. whole <= 0 is no measurement and reports 0 rather than
 // dividing by it, and a part above the whole (an agent whose disclosed split
 // does not add up to the total it also reported) reads as 100 rather than
-// past it. The arithmetic is int64 so a 32-bit int cannot wrap the multiply.
+// past it.
+//
+// The multiply is done in two words because part*100 overflows any single
+// word long before the inputs are absurd: a part of 2^58 and a whole of 1
+// wraps to 0, which is how a run that disclosed more thinking than it
+// reported in total printed as 0% rather than as full.
 func Share(part, whole int) int {
 	if whole <= 0 {
 		return 0
 	}
-	return min(100, max(0, int(int64(part)*100/int64(whole))))
+	if part <= 0 {
+		return 0
+	}
+	if part >= whole {
+		return 100
+	}
+	hi, lo := bits.Mul64(uint64(part), 100)
+	// part < whole, so the product is under 100*whole and hi stays below
+	// whole, which is what bits.Div64 requires of its divisor.
+	q, _ := bits.Div64(hi, lo, uint64(whole))
+	return int(q)
 }
 
 // List names a few items and counts the rest, for a message that has to fit
