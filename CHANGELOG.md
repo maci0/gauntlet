@@ -37,6 +37,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - `gauntlet show <run-id>` on a run whose journal holds no events says so on stderr instead of printing nothing. The run was interrupted before its first event reached the disk, and a silent success reads as a replay of a run that did nothing. Stdout still carries the replay and nothing else.
 - A bare `dsh:<model>` pin now reads the provider from the launcher that runs the review. `--bin` replaces the executable after the command is composed, but the provider probe ran whatever `dsh` was on PATH, so the model was pinned against a config the review never loaded; the probe runs the override now.
 - The provider probe is memoized per launcher argv rather than once per process. A `--bin` override, the launcher on PATH, and the `bunx` fallback each read their own config, and one memo answered all three, so a failure probing one launcher was reported as the reason the others could not resolve, and a provider read from one pinned the model of another.
+- The file-signal suggester's churn window is now measured from the run's clock
+  rather than from git's own. `git log --since="90 days ago"` was resolved by
+  git against wall time, so the same tree and the same `--seed` proposed
+  different reviews on a later day, and a replayed run did not reproduce the
+  original's picks. The window is an absolute cutoff now, and the seed the
+  journal prints replays the suggest step along with the schedule.
 
 ### Changed
 

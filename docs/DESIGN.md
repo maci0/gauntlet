@@ -258,7 +258,11 @@ the unit of safe parallelism is **the directory**, not the agent.
   start instant and the monotonic reading, so every reader inside the run
   shares one handle and an NTP step cannot expire or extend `--runtime`;
   a caller that replays a run replaces the handle instead of each reader
-  reaching for the wall clock. The one wait on the review path, the pause
+  reaching for the wall clock. The suggester's churn window is the one place
+  a time decision crosses into an external process, so it is passed the
+  clock rather than left to git's own: a cutoff git resolved for itself
+  would let the date a run happened on decide which reviews it proposed.
+  The one wait on the review path, the pause
   between two attempts of a failed review, is the matching seam
   (`Bus.Sleep`): its length is already a keyed draw from the seed, so with
   the wait injected a replay spends simulated time rather than the backoff
@@ -628,8 +632,12 @@ in milliseconds and for no tokens. What it collects in one pass:
 - **What is missing.** No tests, no documentation, no CI: absence is the
   strongest argument for the review that would fix it, and presence-only rules
   said the opposite.
-- **What is alive.** `git log --since="90 days ago" --name-only` weights a
-  language by whether anyone is still editing it. Without commit history the
+- **What is alive.** A 90-day `git log --name-only` window weights a
+  language by whether anyone is still editing it. The window is an absolute
+  cutoff measured back from the run's clock (`evidence.Reviews`' `now`), not
+  git's relative `"90 days ago"`: git resolves a relative phrase against its
+  own wall clock, which would make the pick a function of the date the run
+  happened on instead of of the tree and the seed. Without commit history the
   weighting is skipped rather than guessed.
 - **What happened here before.** The journal already records each review's outcome
   per directory. A review that has finished here three times without changing

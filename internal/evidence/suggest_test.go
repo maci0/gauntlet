@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"golang.org/x/text/unicode/norm"
 
+	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
@@ -37,12 +39,18 @@ func suggestHome(t *testing.T) {
 	t.Setenv("GAUNTLET_HOME", t.TempDir())
 }
 
+// frozenClock is the instant the suggester's churn window is measured back
+// from. Fixed rather than wall time so a test judges the tree in front of it
+// and not the date it happens to run on: a commit made "now" is inside any
+// 90-day window, and one made long ago is outside any.
+var frozenClock = time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+
 // reviews is Reviews for the cases that are not about its error: the
 // history read is expected to succeed, so an error fails the test rather than
 // passing unnoticed.
 func reviews(t *testing.T, dir string, pool []string, set prompt.Set) []prompt.Suggestion {
 	t.Helper()
-	picked, err := Reviews(dir, pool, set)
+	picked, err := Reviews(dir, pool, set, func() time.Time { return frozenClock })
 	if err != nil {
 		t.Fatalf("Reviews(%s): %v", dir, err)
 	}
@@ -567,11 +575,67 @@ func TestFastSuggestReportsAJournalItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	picked, err := Reviews(dir, []string{"code-review"}, prompt.Set{})
+	picked, err := Reviews(dir, []string{"code-review"}, prompt.Set{}, func() time.Time { return frozenClock })
 	if err == nil {
 		t.Fatal("an unreadable journal was swallowed")
 	}
 	if len(picked) == 0 {
 		t.Fatal("the tree evidence was thrown away with the journal")
 	}
+}
+
+// TestScanChurnWindowReadsTheInjectedClock pins the property the cutoff exists
+// for: the same tree scanned under two different clocks sees the history the
+// caller asked for, not whatever git thinks is recent. The window reaches back
+// from the clock, so a clock a day past the commit still counts it and a clock
+// a year past it does not, and only a cutoff the caller computed can answer
+// both.
+func TestScanChurnWindowReadsTheInjectedClock(t *testing.T) {
+	if !gitx.Available() {
+		t.Skip("git is required to read churn")
+	}
+	dir := tree(t, "main.go\x00package main\n")
+	commit := commitAll(t, dir, "2026-03-01T12:00:00Z")
+
+	after := scan(dir, nil, func() time.Time { return commit.Add(24 * time.Hour) })
+	if !after.churn {
+		t.Fatal("a commit a day old is not churn")
+	}
+	// The window reaches back from the clock, so a clock a year past the
+	// commit puts its cutoff beyond it and the history reads as dormant.
+	before := scan(dir, nil, func() time.Time { return commit.Add(365 * 24 * time.Hour) })
+	if before.churn {
+		t.Fatal("a commit a year before the clock's window is still churn")
+	}
+}
+
+// commitAll makes the tree's single commit carry a stated date, so the test
+// decides where the churn window's edge falls rather than when it happens to
+// run.
+func commitAll(t *testing.T, dir, date string) time.Time {
+	t.Helper()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	git("init", "-q", "-b", "main")
+	git("config", "user.email", "test@example.invalid")
+	git("config", "user.name", "test")
+	git("add", "-A")
+	cmd := exec.Command("git", "commit", "-qm", "init")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(),
+		"GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git commit: %v: %s", err, out)
+	}
+	at, err := time.Parse(time.RFC3339, date)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return at
 }

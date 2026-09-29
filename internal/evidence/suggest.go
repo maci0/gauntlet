@@ -48,8 +48,14 @@ const (
 	scanMaxDepth = 12
 	peekMaxFiles = 2_000
 	peekBytes    = 4 << 10
-	churnWindow  = "90 days ago"
 )
+
+// churnWindow is how far back a commit still counts as evidence that a part
+// of the tree is alive. A duration rather than git's "90 days ago" so the
+// cutoff is an instant on the injected clock: a relative phrase is resolved by
+// git against its own wall clock, which would make the suggestion a function
+// of the date the run happened on rather than of the tree and the seed.
+const churnWindow = 90 * 24 * time.Hour
 
 // Evidence weights. A rule's weight says how much its observation is worth;
 // reviews below minScore are not proposed at all, which is what keeps a single
@@ -483,8 +489,16 @@ func (s scored) topReasons(n int) string {
 // that have already finished here without changing a line several times
 // over. The file evidence stands on its own, so the picks are still worth
 // having; the caller says why the weighting is missing.
-func Reviews(dir string, pool []string, set prompt.Set) ([]prompt.Suggestion, error) {
-	s := scan(dir, declaredMarks(pool, set))
+//
+// now is the clock the churn window is measured back from. Nil means wall
+// time. The caller passes the run's bus clock, so a seeded run replayed later
+// reads the same churn over the same tree and proposes the same reviews
+// instead of a different set because the calendar moved.
+func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([]prompt.Suggestion, error) {
+	if now == nil {
+		now = time.Now
+	}
+	s := scan(dir, declaredMarks(pool, set), now)
 	rank := make(map[string]int, len(pool))
 	for i, name := range pool {
 		rank[name] = i
@@ -596,7 +610,7 @@ func historyWeight(h journal.ReviewHistory) float64 {
 // scan collects what the rules ask about, in one pass over the tree. declared
 // are the `mark:` substrings the reviews in the pool asked for, looked for
 // while the heads are being read anyway.
-func scan(dir string, declared []string) signals {
+func scan(dir string, declared []string, now func() time.Time) signals {
 	s := signals{
 		ext: map[string]int{}, name: map[string]bool{},
 		path: map[string]bool{}, mark: map[string]int{}, hot: map[string]int{},
@@ -618,9 +632,15 @@ func scan(dir string, declared []string) signals {
 	// The same handle already paid for the safe-config overlay on ListFiles;
 	// a second Open would recompute it and rev-parse a baseline this scan
 	// never uses.
+	//
+	// The window is measured back from the run's own clock, so a replay of the
+	// same tree on the same seed sees the same churn: git resolving "90 days
+	// ago" against its wall clock would let the calendar, not the seed, decide
+	// which parts of a tree count as alive.
 	ctx, cancel := context.WithTimeout(context.Background(), churnTimeout)
 	defer cancel()
-	if changed, err := repo.ChangedSince(ctx, churnWindow); err == nil && len(changed) > 0 {
+	cutoff := now().Add(-churnWindow)
+	if changed, err := repo.ChangedSince(ctx, cutoff); err == nil && len(changed) > 0 {
 		s.churn = true
 		for _, rel := range changed {
 			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"time"
 )
 
 // ListFilesAtMost returns the repository's files, relative to its root and in
@@ -51,14 +52,22 @@ func (r *Repo) listFiles(ctx context.Context, limit int, pathspec ...string) ([]
 	return splitNUL(out), nil
 }
 
-// ChangedSince returns the files touched by commits in the given window, as
-// git accepts it for --since ("90 days ago"). It says which parts of a tree
-// are alive: a directory nobody has edited in a quarter is not where the next
-// review should look.
-func (r *Repo) ChangedSince(ctx context.Context, since string) ([]string, error) {
+// ChangedSince returns the files touched by commits at or after cutoff. It
+// says which parts of a tree are alive: a directory nobody has edited in a
+// quarter is not where the next review should look.
+//
+// The window is an instant on the repo's own clock, not a relative phrase.
+// git resolves "--since=90 days ago" against its own wall clock, so two
+// callers an hour apart, or one caller replayed a seeded run on a later day,
+// get different churn over the same tree; the cutoff has to be a value the
+// caller computed from the clock the run is already driving everything else
+// from. r.now() supplies that clock, and the cutoff is carried in UTC so the
+// result does not shift with the machine's zone.
+func (r *Repo) ChangedSince(ctx context.Context, cutoff time.Time) ([]string, error) {
 	if r == nil || !Available() {
 		return nil, errGitUnavailable
 	}
+	since := cutoff.UTC().Format(time.RFC3339)
 	out, err := r.run(ctx, gitSlow, "log", "--since="+since, "--name-only",
 		"--no-renames", "--pretty=format:", "-z")
 	if err != nil {

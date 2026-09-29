@@ -1115,7 +1115,7 @@ func TestNULOutputKeepsSpacesInNames(t *testing.T) {
 	if !slices.Contains(changed, spaced) {
 		t.Fatalf("ChangedFiles renamed the file: %q", changed)
 	}
-	if since, err := r.ChangedSince(ctx, "90 days ago"); err != nil {
+	if since, err := r.ChangedSince(ctx, time.Now().Add(-90*24*time.Hour)); err != nil {
 		t.Fatal(err)
 	} else if !slices.Contains(since, spaced) {
 		t.Fatalf("ChangedSince renamed the file: %q", since)
@@ -1165,7 +1165,7 @@ func TestDiffStat(t *testing.T) {
 func TestChangedSinceNamesRecentWork(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
-	changed, err := r.ChangedSince(ctx, "90 days ago")
+	changed, err := r.ChangedSince(ctx, time.Now().Add(-90*24*time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1174,13 +1174,57 @@ func TestChangedSinceNamesRecentWork(t *testing.T) {
 	}
 	// A window wide enough to cover the whole history still reports it, so a
 	// caller reading "no churn" knows it means no commits, not a parse slip.
-	old, err := r.ChangedSince(ctx, "2000-01-01")
+	old, err := r.ChangedSince(ctx, time.Date(2000, 1, 1, 0, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(old) == 0 {
 		t.Fatal("a window covering the whole history reported no files")
 	}
+}
+
+// TestChangedSinceRespectsTheInjectedClock pins what the absolute cutoff is
+// for: a run that replays under a frozen clock must read the same churn it
+// read the first time. With a relative window git resolves "90 days ago"
+// against its own wall clock, so the same seed on a later day reads a
+// different window over the same tree.
+func TestChangedSinceRespectsTheInjectedClock(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	commit := commitTime(t, r)
+
+	// A cutoff before the commit is inside the window, so the commit's file
+	// is named; a cutoff after it is outside, so nothing is. Both answers come
+	// from the instant passed in, not from when the test happens to run.
+	inside, err := r.ChangedSince(ctx, commit.Add(-time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(inside, "main.go") {
+		t.Fatalf("a cutoff before the only commit missed it: %v", inside)
+	}
+	outside, err := r.ChangedSince(ctx, commit.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(outside) != 0 {
+		t.Fatalf("a cutoff after the only commit reported %v", outside)
+	}
+}
+
+// commitTime is the committer date of HEAD, which is what --since compares
+// against.
+func commitTime(t *testing.T, r *Repo) time.Time {
+	t.Helper()
+	out, err := r.run(context.Background(), gitQuick, "log", "-1", "--format=%cI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	at, err := time.Parse(time.RFC3339, strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("unparseable commit date %q: %v", out, err)
+	}
+	return at
 }
 
 func TestExecGitCapsOutput(t *testing.T) {
