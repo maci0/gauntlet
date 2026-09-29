@@ -285,8 +285,8 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 		// looks whole, and a restored archive is checked by its counts.
 		if st.Truncated > 0 {
 			w.println(pal.yellow(fmt.Sprintf(
-				"  %s ends mid-line: its last events are missing, so it lists as a shorter run",
-				humanize.Plural(st.Truncated, "journal", "journals"))))
+				"  %s mid-line: its last events are missing, so it lists as a shorter run",
+				humanize.Plural(st.Truncated, "journal ends", "journals end"))))
 		}
 	}
 	if usable == 0 && !pinned {

@@ -32,7 +32,7 @@
 package journal
 
 import (
-	"bufio"
+	"bytes"
 	"cmp"
 	"encoding/json"
 	"errors"
@@ -213,7 +213,7 @@ type Journal struct {
 
 	mu  sync.Mutex
 	f   *os.File
-	w   *bufio.Writer
+	w   *lineBuffer
 	enc *json.Encoder
 	err error
 
@@ -285,8 +285,58 @@ func Open(runID string, now time.Time) (*Journal, error) {
 			return nil, err
 		}
 	}
-	w := bufio.NewWriterSize(f, 32<<10)
+	w := newLineBuffer(f)
 	return &Journal{runID: runID, path: path, f: f, w: w, enc: json.NewEncoder(w)}, nil
+}
+
+// journalBufferBytes is how much a journal holds before it writes. It trades
+// syscalls against how much a killed run loses, at loop boundaries.
+const journalBufferBytes = 32 << 10
+
+// lineBuffer batches whole JSONL lines before writing them, so a flush never
+// lands mid-line. bufio.Writer writes whatever fills its buffer, which with a
+// 32 KiB journal buffer cuts a long event in half and leaves the file ending
+// on something other than a newline: the run then reports as a journal cut
+// mid-line while it is still writing, and doctor sends the operator to re-take
+// an archive that was never short.
+type lineBuffer struct {
+	f   *os.File
+	buf []byte
+}
+
+func newLineBuffer(f *os.File) *lineBuffer {
+	return &lineBuffer{f: f, buf: make([]byte, 0, journalBufferBytes)}
+}
+
+// Write takes the bytes json.Encoder produced, a whole value plus its
+// newline, and holds them until there is a full buffer's worth or Flush asks
+// for them. Nothing reaches the file until a line is complete.
+func (l *lineBuffer) Write(p []byte) (int, error) {
+	l.buf = append(l.buf, p...)
+	if len(l.buf) >= journalBufferBytes {
+		return len(p), l.writeThrough(-1)
+	}
+	return len(p), nil
+}
+
+// Flush writes everything held, whole lines and all.
+func (l *lineBuffer) Flush() error { return l.writeThrough(len(l.buf)) }
+
+// writeThrough writes the first n bytes of the buffer and keeps the rest. A
+// negative n holds every complete line, which is what the size-triggered write
+// wants: the tail belongs to a line the encoder has not finished.
+func (l *lineBuffer) writeThrough(n int) error {
+	if n < 0 {
+		n = bytes.LastIndexByte(l.buf, '\n') + 1
+	}
+	if n == 0 {
+		return nil
+	}
+	if _, err := l.f.Write(l.buf[:n]); err != nil {
+		return err
+	}
+	l.buf = l.buf[:copy(l.buf, l.buf[n:])]
+	return nil
 }
 
 // openNoFollow opens an existing file for writing, refusing a symlink in its

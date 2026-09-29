@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -201,6 +202,47 @@ func TestOpenRefusesAJournalSymlink(t *testing.T) {
 	if len(got) != 0 {
 		t.Fatalf("the run wrote through the symlink: %q", got)
 	}
+}
+
+// A journal being written must never end mid-line, or a live run reports as a
+// journal cut short and doctor sends the operator after an archive that was
+// never short. Journaled text well past the write buffer crosses it.
+func TestJournalNeverEndsMidLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	now := time.Now()
+	j, err := Open("whole-line-run", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// One event far longer than the write buffer, so the buffer fills inside a
+	// single line rather than between two.
+	line := strings.Repeat("x", 3*journalBufferBytes)
+	for i := range 3 {
+		j.Write(map[string]string{"ev": "log", "text": line, "n": strconv.Itoa(i)})
+		got, err := os.ReadFile(j.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) == 0 || got[len(got)-1] != '\n' {
+			t.Fatalf("after event %d the journal ends mid-line, on %q", i, lastByte(got))
+		}
+	}
+	if err := j.Close(Summary{Version: "test", Start: now, End: now}); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := Inspect(); err != nil {
+		t.Fatal(err)
+	} else if st.Truncated != 0 {
+		t.Fatalf("a whole-line run reports %d cut journals", st.Truncated)
+	}
+}
+
+func lastByte(b []byte) string {
+	if len(b) == 0 {
+		return "nothing"
+	}
+	return string(b[len(b)-1:])
 }
 
 // A journal that cannot be written must not still look complete: the first
