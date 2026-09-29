@@ -96,7 +96,9 @@ the finished block to paste back, so no cell is transcribed by hand.
   worktree from the previous tip). Those are the only modes, and every one
   keeps the invariant: no flag lets two agents share a tree. The per-review
   and lane checkouts live under `.gauntlet/worktrees` in the reviewed
-  repository, gitignored, and they are the only checkouts a run cuts. The
+  repository, gitignored, and they are the only checkouts a run cuts, apart
+  from the detached base snapshot a stacked run reads prompts from
+  (`AddSnapshotWorktree`, cut in `cmd/gauntlet/stack_preflight.go`). The
   other paths it writes are `.gauntlet.lock` at the reviewed tree's root and
   the journal under `GAUNTLET_HOME` (`~/.gauntlet/runs` by default).
 - **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
