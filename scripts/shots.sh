@@ -37,8 +37,11 @@ work="$root/.scratch/shots"
 rm -rf "$work"
 mkdir -p "$work"
 # `go test` needs a work directory of its own, and the system temp dir is a
-# tmpfs on the machines that run this. Same path the Makefile hands its tests.
-export TMPDIR="${TMPDIR:-$HOME/.cache/gauntlet/test}"
+# tmpfs on the machines that run this. Same path the Makefile hands its tests,
+# and assigned rather than defaulted: an ambient TMPDIR is exported by most
+# Linux shells and by launchd on macOS, so `${TMPDIR:-...}` kept pointing at
+# the tmpfs this line exists to avoid.
+export TMPDIR="$HOME/.cache/gauntlet/test"
 mkdir -p "$TMPDIR"
 
 # Linux boxes usually have `chromium` on PATH; macOS typically has Chromium

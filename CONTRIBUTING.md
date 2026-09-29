@@ -204,15 +204,28 @@ generated, and the command that regenerates them is not `make`:
 
 It needs a Chromium-based browser and ImageMagick on top of `uv`, and the
 scripts job in CI installs only uv, so this is a maintainer task: the
-checked-in PNGs are what a clone gets. The frames it renders come from the
-renderer's own output: `internal/ui/shots_test.go` writes the ANSI frames
-into `.scratch/shots`,
+checked-in PNGs are what a clone gets. It also needs the two faces
+`scripts/shots/render.py` names, DejaVu Sans Mono and MesloLGS Nerd Font
+Mono, because the browser resolves that list and nothing else. macOS ships
+neither, so on a Mac the chain falls through to the generic `monospace`,
+which has no braille and no block elements, and Chromium substitutes those
+glyphs at different advance widths: the picture it writes is a valid render
+of the same frame, and not the one that is checked in. The script cannot
+detect that from the outside, so check before committing:
+
+```sh
+fc-match 'DejaVu Sans Mono'
+fc-match 'MesloLGS Nerd Font Mono'
+```
+
+Each must print the family it was asked for rather than a substitute. The
+frames being rendered come from the renderer's own output:
+`internal/ui/shots_test.go` writes the ANSI frames into `.scratch/shots`,
 `scripts/shots/render.py` exports the SVG from them, and the browser
-rasterizes that because it has the font fallback the box-drawing and
-braille glyphs need. Nothing else writes those files, so a change to the
+rasterizes that. Nothing else writes those files, so a change to the
 dashboard or the launcher that does not regenerate them leaves the README
 showing the old screen. Refresh them in the same change when the screen
-changes shape.
+changes shape, and render them where the faces are.
 
 The file-signal suggester is scored against what agents actually picked in
 past runs, read from the journal:

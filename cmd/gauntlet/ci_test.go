@@ -563,6 +563,50 @@ func TestDistJobCrossCompilesEveryPlatformOnce(t *testing.T) {
 	}
 }
 
+// `artifacts` writes checksums.txt with `sha256sum` where it exists and falls
+// back to `shasum -a 256` where it does not, and verifies it through the same
+// pair. macOS is the only runner that takes the fallback, so a job that runs
+// `artifacts` only under Ubuntu leaves the BSD half of both branches written
+// but never executed, and the release cut by a macOS maintainer is the one
+// that finds out. The coverage has to be pinned, not remembered.
+func TestReproMacosJobRunsTheBSDArtifactBranches(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "ci.yml"))
+	job, ok := workflowJob(text, "repro-macos")
+	if !ok {
+		t.Fatal("ci.yml has no repro-macos job to cover the BSD branches of `make artifacts`")
+	}
+	if !strings.Contains(job, "runs-on: macos-15") {
+		t.Error("repro-macos must run on macos-15; it is the runner that has no sha256sum")
+	}
+	for _, want := range []string{"run: make artifacts VERSION=ci", "run: make smoke VERSION=ci"} {
+		if !strings.Contains(job, want) {
+			t.Errorf("repro-macos must run %q; the BSD half of it is otherwise never executed", want)
+		}
+	}
+}
+
+// workflowJob returns the body of one top-level job block, the lines from its
+// name to the next line at the job's own indent.
+func workflowJob(text, name string) (string, bool) {
+	lines := strings.Split(text, "\n")
+	start := -1
+	for i, line := range lines {
+		if line == "  "+name+":" {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
+		return "", false
+	}
+	for i := start + 1; i < len(lines); i++ {
+		if lines[i] != "" && !strings.HasPrefix(lines[i], "    ") {
+			return strings.Join(lines[start:i], "\n"), true
+		}
+	}
+	return strings.Join(lines[start:], "\n"), true
+}
+
 // The dist job must run the host binary it just built, not only link it.
 // Asking the Makefile for that check is what keeps the job from carrying a
 // second copy of it: `make smoke` resolves the asset through host-artifact and

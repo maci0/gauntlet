@@ -190,13 +190,22 @@ jobs:
   # Ubuntu; this leg is the same claim checked against BSD userland, where a
   # tar flag or a cmp exit code that means the same thing on GNU is the way a
   # reproducible release quietly stops being one.
+  #
+  # `artifacts` and `smoke` run here for the same reason. Both have a GNU and a
+  # BSD branch in the Makefile, and macOS is the only runner that takes the BSD
+  # one: `shasum -a 256` is what writes checksums.txt there, and the
+  # `sha256sum -c || shasum -a 256 -c` fallback is what verifies it. On Ubuntu
+  # the left side of both always answers, so the fallback had never been run by
+  # anything, and a release cut by a macOS maintainer is exactly the one that
+  # would have discovered it.
   repro-macos:
     runs-on: macos-15
-    # The same work the dist job's bound was widened for: eight cold
-    # cross-compiles, two per platform, none of them sharing a build cache.
-    # A timeout that fires half way through reports a failure nobody can
-    # reproduce, since the source and the runner are both unchanged.
-    timeout-minutes: 30
+    # dist's own bound plus the cross-compiles this job's two added steps
+    # bring: eight cold builds for repro, two per platform, plus the four
+    # `artifacts` cross-compiles and the host binary `smoke` runs. A timeout
+    # that fires half way through reports a failure nobody can reproduce,
+    # since the source and the runner are both unchanged.
+    timeout-minutes: 45
     # `make repro` builds and compares this tree's own code and reaches the
     # module proxy and nothing else, so neither token name is in reach of it.
     env:
@@ -211,4 +220,11 @@ jobs:
           # The `go` line in go.mod is a minimum; a release is built with one exact
           # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
           go-version: 1.27.1
+      # The BSD branches of `artifacts` and `smoke`, on the only runner that
+      # takes them. `artifacts` depends on `dist` and both are phony, so this
+      # is the one build the job does and the four cross-compiles are not
+      # repeated ahead of it.
+      - run: make artifacts VERSION=ci
+      - run: make smoke VERSION=ci
+      - run: test -s dist/sbom.json
       - run: make repro
