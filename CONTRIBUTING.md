@@ -20,8 +20,9 @@ it, and it reports all of them before it fails, so one run answers the whole
 question instead of one tool per loop. It exits 0 when nothing is missing. The
 individual checks it folds in also fire on their own, which is why an older Go
 fails `make build` and `make test` directly, and why `make check-scripts` names
-`uvx` and shellcheck itself. The last three are `tar` and `cmp` for `repro`
-and a checksum tool for `artifacts`, which no other target preflights.
+`uvx` and shellcheck itself. The rest no other target preflights: `tar` and
+`cmp` for `repro`, `install` for `make install`, and a checksum tool for
+`artifacts`.
 
 - Go. The minimum version is the `go` line in [go.mod](go.mod); any newer
   toolchain builds, tests, and formats the tree. `make build`, `make check`,

@@ -71,8 +71,15 @@ export TZ := UTC
 # Overriding an exported variable keeps it exported, so every recipe that runs
 # the go command hands it this path, and go refuses to start when its work
 # directory is missing. `test-tmpdir` creates it, and every target that runs
-# go depends on it: on a fresh macOS runner $HOME/.cache does not exist, and
-# `make check` and `make repro` failed there before they depended on it.
+# the test suite depends on it directly: on a fresh macOS runner $HOME/.cache
+# does not exist, and `make check` and `make test` failed there before they
+# depended on it.
+#
+# The preflights must not. `toolchain-min` and `toolchain` read the go version
+# and compare it, which is all they do, yet both declared this dependency, so a
+# machine with no HOME could not build a binary or cross-compile a release
+# artifact and was told the problem was tests. Only the targets that hand
+# TMPDIR to a `go test` name test-tmpdir; `build` and `dist` never do.
 TMPDIR := $(HOME)/.cache/gauntlet/test
 
 # POSIX only, deliberately: killing an agent's whole process tree needs process
@@ -188,7 +195,7 @@ COVER_MIN ?= 74.0
 # instead. It gates the minimum only: the exact release stays `toolchain`,
 # which gates the artifacts a release ships and not the dev loop.
 .PHONY: toolchain-min
-toolchain-min: | test-tmpdir
+toolchain-min:
 toolchain-min:
 	@min=$$(awk '$$1 == "go" { print $$2; exit }' go.mod 2>/dev/null); \
 	if [ -z "$$min" ]; then \
@@ -272,7 +279,7 @@ tidy: ## fail unless go.mod and go.sum are exactly what go mod tidy writes
 # `make dist GO_VERSION=x.y.z` still overrides, which is how a maintainer ships
 # a deliberate toolchain bump without editing this file first.
 .PHONY: toolchain
-toolchain: | test-tmpdir
+toolchain:
 toolchain: ## fail unless the local Go release is the one release artifacts are built with
 	@got="$$($(GO) env GOVERSION)"; want="go$(GO_VERSION)"; \
 		[ "$${got%%-*}" = "$$want" ] || { \
@@ -729,7 +736,10 @@ release-version:
 # preflights them: repro archives the tree with tar and compares the binaries
 # with cmp, and artifacts writes and verifies dist/checksums.txt with one, so a
 # machine missing them learns it from a raw tar or shasum error after the
-# release-path targets have already been read.
+# release-path targets have already been read. `install` belongs here for the
+# same reason and was the one gap left: `make install` writes the binary with
+# it and compares the one it replaces with cmp, and neither was named anywhere
+# but the recipe that needed them.
 .PHONY: doctor
 doctor: ## report every missing prerequisite in one run, with what to install
 	@missing=0; \
@@ -787,6 +797,11 @@ doctor: ## report every missing prerequisite in one run, with what to install
 		ok "tar and cmp (repro archives the tree twice and compares the binaries)"; \
 	else \
 		bad "tar and cmp" "both are in the base system on Linux and macOS; a trimmed container image is the usual gap" "repro"; \
+	fi; \
+	if command -v install >/dev/null 2>&1; then \
+		ok "install (make install writes the binary with it, and cmp keeps the one it replaces)"; \
+	else \
+		bad "install" "coreutils on Linux, part of the base system on macOS; a minimal container image drops it" "install"; \
 	fi; \
 	if command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1; then \
 		ok "sha256sum or shasum (artifacts writes and verifies dist/checksums.txt with it)"; \
