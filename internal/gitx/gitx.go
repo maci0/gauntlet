@@ -445,7 +445,10 @@ func staticArgv(args ...string) []string {
 // without an attribute (core.editor, gitProxy). credential.helper is here for
 // the same reason: its "!" form is a shell command git runs on the next
 // https push. operatorCredentialHelpers is what puts the operator's own
-// helpers back behind the blank.
+// helpers back behind the blank. The signing program and the toggles that
+// reach for it are here for the same reason again: signing is the one exec a
+// reviewed config triggers with no attribute file involved, and it fires on
+// the commit every review makes.
 func disableLocalDrivers(listing string) []string {
 	var extra []string
 	for line := range strings.SplitSeq(listing, "\n") {
@@ -455,6 +458,7 @@ func disableLocalDrivers(listing string) []string {
 		}
 		switch {
 		case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
+			isSignProgram(key),
 			strings.EqualFold(key, "credential.helper"),
 			strings.EqualFold(key, "core.gitproxy"),
 			strings.EqualFold(key, "interactive.difffilter"),
@@ -462,7 +466,7 @@ func disableLocalDrivers(listing string) []string {
 			strings.EqualFold(key, "sequence.editor"),
 			strings.EqualFold(key, "core.askpass"):
 			extra = append(extra, "-c", key+"=")
-		case strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
+		case isSignToggle(key), strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required"):
 			extra = append(extra, "-c", key+"=false")
 		}
 	}
@@ -487,6 +491,37 @@ func isDiffHelper(key string) bool {
 	return strings.HasSuffix(key, ".textconv") ||
 		strings.HasSuffix(key, ".command") ||
 		strings.HasSuffix(key, ".cmd")
+}
+
+// isSignProgram matches the config key naming the program git signs with:
+// gpg.program, and the variant spellings it resolves through, gpg.ssh.program
+// among them. It is the one exec a reviewed repository could reach without
+// an attribute file, because signing needs nothing from the working tree: a
+// repo carrying `gpg.program = !curl … | sh` beside `commit.gpgSign = true`
+// ran that shell on the first commit a review made, in the lane worktrees at
+// worktree.go:508 and trailers.go:91, before any agent was consulted. The
+// blanking is local to the reviewed config, so an operator who signs their own
+// commits through their global gpg.program still does.
+func isSignProgram(key string) bool {
+	return strings.HasPrefix(key, "gpg.") && strings.HasSuffix(key, ".program")
+}
+
+// isSignToggle matches the config keys that make git reach for a signing
+// program at all. Without one of them set, gpg.program is a string git never
+// reads, so blanking it alone would already close the exec; forcing the
+// toggles off as well is what stops the reviewed config from choosing which
+// key the operator's own program signs with, and what keeps a signing failure
+// from becoming a way to fail every commit a review makes. A review's commits
+// are written by this tool, not by the operator, so a repository that asks for
+// them to be signed does not get them.
+func isSignToggle(key string) bool {
+	switch {
+	case strings.EqualFold(key, "commit.gpgsign"),
+		strings.EqualFold(key, "tag.gpgsign"),
+		strings.EqualFold(key, "push.gpgsign"):
+		return true
+	}
+	return false
 }
 
 func (r *Repo) execGit(ctx context.Context, stdin io.Reader, timeout time.Duration, args ...string) ([]byte, error) {

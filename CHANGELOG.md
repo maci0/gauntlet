@@ -26,6 +26,31 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Security
+
+- Blank the signing program and the `commit`/`tag`/`push` `gpgSign` toggles
+  from a reviewed repository's own `.git/config`, the way smudge filters,
+  merge drivers, and credential helpers already are. Signing is the one
+  program a repository config reaches with no attribute file involved, so a
+  repository carrying `gpg.program` beside `commit.gpgSign = true` had that
+  program executed on the first commit a review made. A review's commits are
+  written by the CLI rather than by the operator, so a repository that asks
+  for them to be signed does not get them; an operator's own `gpg.program`
+  through their global config is untouched.
+- Open the run journal and the run index with `O_NOFOLLOW` on the append that
+  reaches an existing file. A `GAUNTLET_HOME` that resolves beside the working
+  directory (no usable `HOME`) puts the state tree inside the reviewed
+  repository, where a committed `.gauntlet/runs/<shard>/<id>.jsonl` symlink
+  would otherwise have received the run's paths, prompt names, and agent
+  output.
+
+### Fixed
+
+- Slug the leaf `worktreeDir` builds its path from, so the guarantee that a
+  checkout stays under `.gauntlet/worktrees` is enforced by the one function
+  that turns a name into a path rather than by each caller's discipline. No
+  caller's own name changes: every one already passes a slugged fragment.
+
 ## 1.28.0
 
 ### Changed

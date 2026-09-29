@@ -43,6 +43,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -256,7 +257,7 @@ func Open(runID string, now time.Time) (*Journal, error) {
 		if !errors.Is(err, fs.ErrExist) {
 			return nil, err
 		}
-		f, err = os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+		f, err = openNoFollow(path, os.O_WRONLY|os.O_APPEND)
 		if err != nil {
 			return nil, err
 		}
@@ -280,6 +281,23 @@ func Open(runID string, now time.Time) (*Journal, error) {
 	}
 	w := bufio.NewWriterSize(f, 32<<10)
 	return &Journal{runID: runID, path: path, f: f, w: w, enc: json.NewEncoder(w)}, nil
+}
+
+// openNoFollow opens an existing file for writing, refusing a symlink in its
+// place. os.OpenFile has no O_NOFOLLOW, and the two appends that reach an
+// already-existing file here are the ones with no O_EXCL to prove the create:
+// the journal for a run id that is already on disk, and the index row. The
+// state root is 0700, but a GAUNTLET_HOME that resolves beside the working
+// directory (no usable HOME) puts it inside the reviewed tree, where a
+// committed .gauntlet/runs/<shard>/<id>.jsonl link would otherwise receive
+// the run's paths, prompt names, and agent output. The lock file and the
+// journals prune probes already carry the flag; these two were the gap.
+func openNoFollow(path string, flag int) (*os.File, error) {
+	fd, err := syscall.Open(path, flag|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	return os.NewFile(uintptr(fd), path), nil
 }
 
 // Write appends one event. A nil Journal is a no-op, so callers never branch.

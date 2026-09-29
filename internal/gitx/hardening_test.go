@@ -386,7 +386,7 @@ func FuzzDisableLocalDrivers(f *testing.F) {
 					t.Fatalf("blanked required-filter key %q, want false", key)
 				}
 			case "false":
-				if !(strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required")) {
+				if !(strings.HasPrefix(key, "filter.") && strings.HasSuffix(key, ".required")) && !isSignToggle(key) {
 					t.Fatalf("set false on %q", key)
 				}
 			default:
@@ -438,6 +438,104 @@ func TestNoLocalCredentialHelperMeansNoReset(t *testing.T) {
 	}
 }
 
+// The scratch path is built by one function, so that function is where a
+// name carrying a traversal or a leading dash has to be refused. Callers pass
+// already-slugged fragments, so slugging here changes none of their paths.
+func TestWorktreeDirSlugItsLeaf(t *testing.T) {
+	r := newRepo(t)
+	root := r.worktreeRootDir()
+	for _, name := range []string{
+		"20260929T054956Z-a8cbf-l1-lane-9-sec-review",
+		"../../escape",
+		"..",
+		"-b",
+		"a/b",
+	} {
+		got := r.worktreeDir(name)
+		rel, err := filepath.Rel(root, got)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			t.Fatalf("worktreeDir(%q) = %q, outside %q", name, got, root)
+		}
+		if strings.HasPrefix(filepath.Base(got), "-") {
+			t.Fatalf("worktreeDir(%q) = %q, a leading dash git reads as an option", name, got)
+		}
+	}
+	// The ordinary name is unchanged, which is what keeps every existing
+	// caller's path and every recovery lookup stable.
+	if got, want := r.worktreeDir("20260929T054956Z-a8cbf-l1-lane-9-sec-review"),
+		filepath.Join(root, "20260929T054956Z-a8cbf-l1-lane-9-sec-review"); got != want {
+		t.Fatalf("worktreeDir slugged an ordinary name: %q, want %q", got, want)
+	}
+}
+
+// Signing is the one program a reviewed config reaches without an attribute
+// file, so a repo carrying both halves of it -- a gpg.program and the toggle
+// that makes git run it -- got arbitrary code execution on the first commit a
+// review made. Drive the real commit path: the planted program writes a file,
+// and the assertion is that the file is never there.
+func TestPlantedSigningProgramDoesNotRunOnCommit(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "pwned")
+	r := newRepo(t)
+	gitIn(t, r.Dir, "config", "gpg.program", "!touch "+marker)
+	gitIn(t, r.Dir, "config", "gpg.ssh.program", "!touch "+marker)
+	gitIn(t, r.Dir, "config", "commit.gpgSign", "true")
+	gitIn(t, r.Dir, "config", "tag.gpgSign", "true")
+	gitIn(t, r.Dir, "config", "push.gpgSign", "true")
+
+	ctx := context.Background()
+	r = Open(r.Dir)
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "lane-0", "run-l1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wt.Dir, "change.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	committed, err := wt.CommitAll(ctx, "test: plant a signing program")
+	if err != nil {
+		t.Fatalf("CommitAll: %v", err)
+	}
+	if !committed {
+		t.Fatal("CommitAll committed nothing")
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatalf("the reviewed repository's signing program ran: %s", marker)
+	}
+}
+
+// The blanking is derived from the reviewed repository's own config listing,
+// so it must cover the signing keys and leave an operator's untouched
+// configuration alone.
+func TestDisableLocalDriversCoversSigningKeys(t *testing.T) {
+	got := disableLocalDrivers(strings.Join([]string{
+		"gpg.program=!touch pwned",
+		"gpg.ssh.program=!touch pwned",
+		"gpg.v2.program=!touch pwned",
+		"commit.gpgsign=true",
+		"Commit.gpgSign=true",
+		"tag.gpgsign=true",
+		"push.gpgsign=true",
+		"gpg.format=openpgp",
+		"user.signingkey=ABCDEF",
+	}, "\n"))
+	want := []string{
+		"-c", "gpg.program=",
+		"-c", "gpg.ssh.program=",
+		"-c", "gpg.v2.program=",
+		"-c", "commit.gpgsign=false",
+		"-c", "Commit.gpgSign=false",
+		"-c", "tag.gpgsign=false",
+		"-c", "push.gpgsign=false",
+	}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("disableLocalDrivers =\n%q\nwant\n%q", got, want)
+	}
+}
+
 func TestCredentialHelperValuesKeepsOrderAndFoldsCase(t *testing.T) {
 	listing := "user.name=x\ncredential.helper=osxkeychain\nCredential.Helper=cache\n"
 	got, files := credentialHelperValues(listing)
@@ -477,6 +575,7 @@ func TestCredentialHelperValuesNamesItsOriginFiles(t *testing.T) {
 func driverKey(key string) bool {
 	switch {
 	case isFilterCommand(key), isMergeDriver(key), isDiffHelper(key),
+		isSignProgram(key), isSignToggle(key),
 		strings.EqualFold(key, "credential.helper"),
 		strings.EqualFold(key, "core.gitproxy"),
 		strings.EqualFold(key, "interactive.difffilter"),

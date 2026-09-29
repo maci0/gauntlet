@@ -164,6 +164,45 @@ func heldIndexLock(t *testing.T) (holder, other *os.File) {
 	return holder, other
 }
 
+// A state root that resolves beside the working directory (no usable HOME)
+// lands inside the reviewed repository, so a journal path there can be a
+// symlink a repo committed. The append that reaches an already-existing file
+// has no O_EXCL to prove the create, so it has to refuse the link itself.
+func TestOpenRefusesAJournalSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	target := filepath.Join(t.TempDir(), "elsewhere")
+	if err := os.WriteFile(target, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Plant the link where Open will look, by opening once to learn the path.
+	now := time.Now()
+	first, err := Open("symlink-run", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := first.path
+	if err := first.Close(Summary{Version: "test", Start: now, End: now}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := Open("symlink-run", now); err == nil {
+		t.Fatal("Open followed a symlink standing where a journal lives")
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("the run wrote through the symlink: %q", got)
+	}
+}
+
 // A journal that cannot be written must not still look complete: the first
 // write error survives to Close, which is where the run reports it.
 func TestWriteErrorSurvivesToClose(t *testing.T) {
