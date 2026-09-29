@@ -328,13 +328,20 @@ func TestShowSaysWhenARunRecordedNoEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out := captureStdout(t, func() {
-		if code := cmdShow(io.Discard, id); code != exitOK {
-			t.Errorf("an empty journal should still replay, exit = %d, want %d", code, exitOK)
-		}
+	var out string
+	_, errs := captureStderrFor(t, func() int {
+		out = captureStdout(t, func() {
+			if code := cmdShow(io.Discard, id); code != exitOK {
+				t.Errorf("an empty journal should still replay, exit = %d, want %d", code, exitOK)
+			}
+		})
+		return 0
 	})
 	if out != "" {
 		t.Errorf("stdout carries the replay and nothing else, got:\n%s", out)
+	}
+	if !strings.Contains(errs.String(), "recorded no events") {
+		t.Errorf("stderr note = %q, want it to say the run recorded no events", errs)
 	}
 }
 

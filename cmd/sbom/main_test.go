@@ -4,22 +4,44 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-// The release passes the built binaries and the tagged version, and gets a
-// document a scanner can read. The running test binary stands in for a
-// release binary: it is a Go binary with build info, and it is the one this
-// test can rely on being present.
-func TestRunWritesCycloneDXDocument(t *testing.T) {
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
+// buildTimeout bounds the one build this test needs.
+const buildTimeout = 5 * time.Minute
+
+// inventoryBinary builds a binary to inventory. A test binary cannot stand
+// in for one: this package links nothing third-party, so its own build info
+// lists zero modules and every assertion over the component set passes
+// vacuously. The CLI is what a release actually ships.
+func inventoryBinary(t *testing.T, pkg, name string) string {
+	t.Helper()
+	if _, err := exec.LookPath("go"); err != nil {
+		t.Skip("the go tool is required to build the binary under inventory")
 	}
+	bin := filepath.Join(t.TempDir(), name)
+	ctx, cancel := context.WithTimeout(t.Context(), buildTimeout)
+	defer cancel()
+	build := exec.CommandContext(ctx, "go", "build", "-o", bin, pkg)
+	build.Dir = filepath.Join("..", "..")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("go build %s: %v\n%s", pkg, err, out)
+	}
+	return bin
+}
+
+// The release passes the built binaries and the tagged version, and gets a
+// document a scanner can read. The CLI stands in for a release binary: it is
+// the program every release ships, and it is the one that links modules.
+func TestRunWritesCycloneDXDocument(t *testing.T) {
+	self := inventoryBinary(t, "./cmd/gauntlet", "gauntlet")
 	out := filepath.Join(t.TempDir(), "sbom.json")
 	if err := run([]string{"-o", out, "-version", "9.9.9", self}); err != nil {
 		t.Fatal(err)
@@ -37,7 +59,12 @@ func TestRunWritesCycloneDXDocument(t *testing.T) {
 			} `json:"component"`
 		} `json:"metadata"`
 		Components []struct {
-			PURL string `json:"purl"`
+			PURL     string `json:"purl"`
+			Licenses []struct {
+				License struct {
+					ID string `json:"id"`
+				} `json:"license"`
+			} `json:"licenses"`
 		} `json:"components"`
 	}
 	if err := json.Unmarshal(body, &doc); err != nil {
@@ -49,9 +76,18 @@ func TestRunWritesCycloneDXDocument(t *testing.T) {
 	if doc.Metadata.Component.Name != "gauntlet" || doc.Metadata.Component.Version != "9.9.9" {
 		t.Errorf("subject is %+v, want gauntlet 9.9.9", doc.Metadata.Component)
 	}
+	// An empty component set satisfies the loop below without running it
+	// once, and a release that ships dist/sbom.json naming no dependency
+	// would still be green. This tool exists to list them.
+	if len(doc.Components) == 0 {
+		t.Fatal("the document lists no components: a release would ship an sbom.json naming nothing")
+	}
 	for _, c := range doc.Components {
 		if !strings.HasPrefix(c.PURL, "pkg:golang/") {
 			t.Errorf("component purl %q is not a Go package URL", c.PURL)
+		}
+		if len(c.Licenses) == 0 {
+			t.Errorf("component %q ships no resolved license; an inventory silent about a module's terms is what this tool exists to prevent", c.PURL)
 		}
 	}
 }

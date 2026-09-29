@@ -1056,6 +1056,14 @@ func TestWordmarkIsTheBrandTeal(t *testing.T) {
 	if cMark.Dark != "#0e96a8" {
 		t.Fatalf("wordmark dark is %q, want the mark's #0e96a8", cMark.Dark)
 	}
+	// Under the Ascii profile (a piped, NO_COLOR run) both sides render as
+	// the bare string and the comparison holds whatever color wordmark picks,
+	// so pin the profile the other color tests pin.
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
 	want := lipgloss.NewStyle().Bold(true).Foreground(cMark).Render("GAUNTLET")
 	if got := wordmark(); got != want {
 		t.Fatalf("wordmark is not the mark teal:\n got %q\nwant %q", got, want)

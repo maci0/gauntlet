@@ -840,13 +840,20 @@ func readLicense(t *testing.T, dir, module string) string {
 // instead of reporting "unknown".
 func licenseKind(body string) string {
 	switch {
-	case strings.Contains(body, "MIT License"), strings.Contains(body, "Permission is hereby granted"):
-		return "MIT"
 	case strings.Contains(body, "Redistribution and use in source and binary forms") &&
 		nonEndorsement.MatchString(body):
 		return "BSD-3-Clause"
 	case strings.Contains(body, "Redistribution and use in source and binary forms"):
 		return "BSD-2-Clause"
+	// A BSD license with the endorsement clause (BSD-4-Clause, AFL-3.0) also
+	// opens with the MIT grant, so the MIT case has to come last and to
+	// refuse a body carrying that clause. Testing it first reported those as
+	// MIT and admitted them to go.mod.
+	case strings.Contains(body, "MIT License"):
+		return "MIT"
+	case strings.Contains(body, "Permission is hereby granted") &&
+		!nonEndorsement.MatchString(body):
+		return "MIT"
 	default:
 		return "unknown"
 	}

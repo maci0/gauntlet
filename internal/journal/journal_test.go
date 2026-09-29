@@ -254,6 +254,12 @@ func TestCloseJoinsJournalAndIndexErrors(t *testing.T) {
 	if !strings.Contains(closeErr.Error(), "append index:") {
 		t.Fatalf("expected close error to mention append index, got: %v", closeErr)
 	}
+	// The write half is set up above and has to survive the join too: Close
+	// taking the index error alone leaves the operator with a directory
+	// complaint and no word about the closed file that actually broke.
+	if !strings.Contains(closeErr.Error(), "file already closed") {
+		t.Fatalf("close error dropped the journal write failure: %v", closeErr)
+	}
 }
 
 func TestHomeHonorsOverride(t *testing.T) {
@@ -1597,6 +1603,9 @@ func TestRecentReportsAnUnwritableIndexWhenReconstructing(t *testing.T) {
 	jB.CloseQuiet()
 
 	idx := indexPath()
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores mode bits, so the index cannot be made unwritable here")
+	}
 	if err := os.Chmod(idx, 0o400); err != nil {
 		t.Fatal(err)
 	}
@@ -1623,6 +1632,9 @@ func TestOpenDoesNotSplitARunWhenListingFails(t *testing.T) {
 	j.CloseQuiet()
 
 	runs := filepath.Join(home, "runs")
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores mode bits, so the runs directory cannot be made unlistable here")
+	}
 	if err := os.Chmod(runs, 0o300); err != nil {
 		t.Fatal(err)
 	}

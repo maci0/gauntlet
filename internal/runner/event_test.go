@@ -179,7 +179,10 @@ func TestAStalledSubscriberDoesNotLockTheBus(t *testing.T) {
 	select {
 	case <-published:
 		t.Fatal("delivery to an unread subscriber did not block")
-	default:
+	case <-time.After(500 * time.Millisecond):
+		// A delivery that returned immediately instead of parking on the
+		// stalled subscriber finishes inside this window, so a non-blocking
+		// Publish is caught here.
 	}
 
 	if _, ok := <-stalled; !ok {

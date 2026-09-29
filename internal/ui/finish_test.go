@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -80,8 +81,8 @@ func TestFinishFollowsQueuedEvents(t *testing.T) {
 	}
 	for i, ev := range queued {
 		m, ok := got[i].(eventMsg)
-		if !ok || m.Kind != ev.Kind || m.Review != ev.Review {
-			t.Fatalf("message %d is %#v, want kind %q review %q", i, got[i], ev.Kind, ev.Review)
+		if !ok || !reflect.DeepEqual(runner.Event(m), ev) {
+			t.Fatalf("message %d is %#v, want exactly %#v", i, got[i], ev)
 		}
 	}
 	if _, ok := got[len(got)-1].(doneMsg); !ok {
@@ -106,11 +107,16 @@ func TestFinishReturnsAfterTheBusCloses(t *testing.T) {
 	}
 	// The marker may still be delivered when the forwarder happened to be in
 	// its select when Finish arrived; a real program is already shut down by
-	// then and drops it. Nothing else may reach it.
+	// then and drops it. Nothing else may reach it, and an empty log only
+	// satisfies the second half vacuously.
 	for i, msg := range prog.seen() {
-		if _, ok := msg.(doneMsg); !ok {
-			t.Fatalf("message %d is %#v after shutdown, want doneMsg or nothing", i, msg)
+		if _, ok := msg.(doneMsg); ok {
+			if i != 0 {
+				t.Fatalf("doneMsg arrived at position %d, want it first if at all", i)
+			}
+			continue
 		}
+		t.Fatalf("message %d is %#v after shutdown, want doneMsg or nothing", i, msg)
 	}
 }
 

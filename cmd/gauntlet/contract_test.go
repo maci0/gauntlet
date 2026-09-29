@@ -122,6 +122,23 @@ func TestEnvVarNamesMatchTheContract(t *testing.T) {
 }
 
 // docs/CLI.md is consumer-facing documentation of the contract surface.
+// mentionsFlag reports whether text spells the long flag on its own. A bare
+// substring search lets a longer flag carry a shorter one: --dirs satisfied
+// --dir, --push-remote satisfied --push, --suggest-agent satisfied --suggest.
+func mentionsFlag(text, name string) bool {
+	for at := 0; ; {
+		i := strings.Index(text[at:], "--"+name)
+		if i < 0 {
+			return false
+		}
+		end := at + i + len(name) + 2
+		if end == len(text) || !strings.ContainsRune("abcdefghijklmnopqrstuvwxyz0123456789-", rune(text[end])) {
+			return true
+		}
+		at = end
+	}
+}
+
 // A flag, environment variable, or exit code missing from docs/CLI.md is an
 // undocumented API or contract drift.
 func TestDocsCLIMatchesTheContract(t *testing.T) {
@@ -134,9 +151,8 @@ func TestDocsCLIMatchesTheContract(t *testing.T) {
 		if len(name) < 2 {
 			continue
 		}
-		needle := "--" + name
-		if !strings.Contains(text, needle) {
-			t.Errorf("docs/CLI.md does not document flag %s; flags are consumer contract API", needle)
+		if !mentionsFlag(text, name) {
+			t.Errorf("docs/CLI.md does not document flag --%s; flags are consumer contract API", name)
 		}
 	}
 	for _, env := range goldenEnvVars {

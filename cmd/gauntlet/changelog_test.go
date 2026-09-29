@@ -306,9 +306,8 @@ func TestChangelogMentionsEveryContractFlag(t *testing.T) {
 		if len(name) < 2 {
 			continue
 		}
-		needle := "--" + name
-		if !strings.Contains(text, needle) {
-			t.Errorf("CHANGELOG.md does not mention %s; flag names are API and land in Unreleased in the same change as the snapshot", needle)
+		if !mentionsFlag(text, name) {
+			t.Errorf("CHANGELOG.md does not mention --%s; flag names are API and land in Unreleased in the same change as the snapshot", name)
 		}
 	}
 }
