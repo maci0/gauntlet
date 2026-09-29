@@ -73,13 +73,22 @@ func TestResumeOriginClamped(t *testing.T) {
 }
 
 func TestDoReloadAbortsWhenStateCannotBeSaved(t *testing.T) {
-	// gauntlethome.StateDir() resolves under GAUNTLET_HOME; make it uncreatable by putting
-	// it under a regular file, so MkdirAll fails with ENOTDIR.
+	// A GAUNTLET_HOME under a regular file cannot be stat-ed, so the root
+	// resolver degrades to ".gauntlet" beside the working directory rather
+	// than refusing. That degraded path is what the handoff is written to, so
+	// the working directory is a temporary one holding a regular file named
+	// .gauntlet: MkdirAll then fails with ENOTDIR, and nothing is written into
+	// this package's own directory.
 	file := filepath.Join(t.TempDir(), "blocker")
 	if err := os.WriteFile(file, []byte("not a directory"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("GAUNTLET_HOME", filepath.Join(file, "home"))
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+	if err := os.WriteFile(filepath.Join(cwd, ".gauntlet"), []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	start := time.Now()
 	runs := []*dirRun{{
