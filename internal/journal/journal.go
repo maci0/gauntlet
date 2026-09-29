@@ -276,6 +276,11 @@ func Open(runID string, now time.Time) (*Journal, error) {
 		// new file's name lives in its directory until that directory is
 		// synced; the contents are synced at Close.
 		if err := gauntlethome.SyncDir(dir); err != nil {
+			// The stream is dropped with the handle: no Journal is returned, so
+			// nothing will ever call closeFileLocked to release it, and a
+			// process that keeps failing here would leave one entry per failed
+			// open in the map for the rest of its life.
+			forgetStream(path)
 			f.Close()
 			return nil, err
 		}

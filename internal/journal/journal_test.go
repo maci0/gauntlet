@@ -1630,6 +1630,31 @@ func TestOpenDoesNotSplitARunWhenListingFails(t *testing.T) {
 	}
 }
 
+// An open journal is held as a stream for exactly its lifetime: Prune skips a
+// stream it cannot take exclusively, and forgetStream is the only thing that
+// takes the entry out again. A release that did not run would leave the run
+// unreadable by a prune for the life of the process.
+func TestOpenHoldsTheStreamUntilTheJournalIsClosed(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	now := time.Date(2026, 8, 25, 13, 30, 0, 0, time.UTC)
+	id := NewRunID(now)
+	j, err := Open(id, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, "runs", shardFromRunID(id), id+".jsonl")
+	if !holdsStream(path) {
+		t.Fatal("an open journal must be held, or a prune renames a live stream aside")
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	j.CloseQuiet()
+	if holdsStream(path) {
+		t.Fatal("closing the journal must release the stream it held")
+	}
+}
+
 // Recovering an in-flight journal writes a reconstructed row; Close then
 // appends the real one. The listing is newest first, so the Close row wins.
 func TestRecentPrefersTheCloseRowOverAReconstructedOne(t *testing.T) {
