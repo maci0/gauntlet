@@ -444,7 +444,11 @@ clean: ## remove build artifacts
 # set per build, so a typo in PLATFORMS produced a correctly named binary for
 # the wrong platform, and the smoke test only ever ran the host's. `go version
 # -m` reads the platform out of the binary itself, so the name and the
-# contents are compared instead of trusted.
+# contents are compared instead of trusted. The microarchitecture level is in
+# the same list: GOAMD64 and GOARM64 are exported above precisely because a
+# `go env -w GOAMD64=v3` left behind once would compile the same source into
+# different bytes, and the compiler records the level it used. The asset name
+# cannot carry it, so the binary is the only place the claim can be checked.
 .PHONY: dist
 dist: | toolchain
 dist: ## build every release platform into dist/
@@ -466,7 +470,12 @@ dist: ## build every release platform into dist/
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		f="$(DIST)/$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		info=$$($(GO) version -m "$$f" 2>/dev/null) || { echo "dist: $$f is missing or not a Go binary" >&2; exit 1; }; \
-		for kv in GOOS=$$goos GOARCH=$$goarch; do \
+		kv="GOOS=$$goos GOARCH=$$goarch"; \
+		case "$$goarch" in \
+			amd64) kv="$$kv GOAMD64=$(GOAMD64)" ;; \
+			arm64) kv="$$kv GOARM64=$(GOARM64)" ;; \
+		esac; \
+		for kv in $$kv; do \
 			key=$${kv%%=*}; want=$${kv#*=}; \
 			got=$$(printf '%s\n' "$$info" | awk -v k="$$key" -v v="$$want" '$$1 == "build" && $$2 == k "=" v { print v }'); \
 			[ "$$got" = "$$want" ] || { echo "dist: $$f does not record $$kv, so it is not the binary its name claims" >&2; exit 1; }; \

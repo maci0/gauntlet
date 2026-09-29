@@ -63,6 +63,7 @@ jobs:
       # root would stop the release it was extracted for.
       - name: Extract this version's CHANGELOG section
         run: |
+          set -eu -o pipefail
           version="${GITHUB_REF_NAME#v}"
           mkdir -p dist
           awk -v ver="$version" '

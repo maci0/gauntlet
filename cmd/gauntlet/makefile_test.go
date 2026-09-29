@@ -942,6 +942,39 @@ func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	}
 }
 
+// The asset name carries the platform and nothing else, so the loop at the
+// end of `make dist` is the only thing that can tell a correctly named binary
+// from the wrong one. It reads the settings out of the binary the compiler
+// stamped there, and the microarchitecture level is part of that: GOAMD64 and
+// GOARM64 are exported precisely so a `go env -w` left behind once cannot
+// change the shipped bytes, and a check that read only GOOS/GOARCH would pass
+// a release built at a different level than the pin names. The comparison has
+// to name the make variables rather than a literal, so raising the pin moves
+// the check with it.
+func TestDistVerifiesTheBuildSettingsInEveryAsset(t *testing.T) {
+	text := makefileText(t)
+	recipe := makefileRecipe(text, "dist")
+	if recipe == "" {
+		t.Fatal("Makefile has no dist recipe")
+	}
+	for _, want := range []string{
+		"$(GO) version -m",
+		`kv="GOOS=$$goos GOARCH=$$goarch"`,
+		"GOAMD64=$(GOAMD64)",
+		"GOARM64=$(GOARM64)",
+		`[ "$$got" = "$$want" ]`,
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make dist missing %q: the built settings are read out of the binary, not trusted from the asset name", want)
+		}
+	}
+	for _, want := range []string{"export GOAMD64 := v1", "export GOARM64 := v8.0"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("Makefile missing %q: without the export the level is whatever the host's go env file says", want)
+		}
+	}
+}
+
 // make clean must sweep dist, build binaries, and scratch files.
 func TestMakefileCleanRemovesScratchAndBinaries(t *testing.T) {
 	text := makefileText(t)

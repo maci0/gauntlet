@@ -608,6 +608,13 @@ func makefileRecipe(makefile, target string) string {
 	if start < 0 {
 		return ""
 	}
+	// A target can declare itself twice, once with its prerequisites and once
+	// with the help text, and the recipe follows both: `dist` is
+	// `dist: | toolchain` and then `dist: ## build every release platform`.
+	// Stopping at the second line would hand back an empty recipe.
+	for start < len(lines) && strings.HasPrefix(lines[start], target+":") {
+		start++
+	}
 	end := len(lines)
 	for i := start; i < len(lines); i++ {
 		if line := lines[i]; line != "" && !strings.HasPrefix(line, "\t") {
