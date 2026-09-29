@@ -486,21 +486,29 @@ func run(argv []string) int {
 		consumers.Go(func() {
 			rep.Consume(reportEvents)
 		})
+		// No explicit stamp, so each line reads the reporter's own clock at the
+		// moment it is written. `now` is one reading taken before planReviews,
+		// which blocks on a real agent for as long as --suggest-timeout allows,
+		// so passing it here dated every header by the start of the suggest
+		// step: a twelve-minute triage wrote a line stamped twelve minutes
+		// early, and a --log file carried its timestamps out of order. The
+		// next line, the seed, is written from the event stream and is stamped
+		// when it happens.
 		if resumed {
-			rep.logf(now, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
+			rep.logf(time.Time{}, "Reloaded into gauntlet %s (run %s, reload #%d, %d loops carried over)",
 				version, runID, prior.Reloads, prior.Loops())
 		}
-		rep.logf(now, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agent.Labels(agents), ", "))
+		rep.logf(time.Time{}, "gauntlet %s, run %s, agents: %s", version, runID, strings.Join(agent.Labels(agents), ", "))
 		if autoDetected {
-			rep.logf(now, "Auto-detected agents (name them with --agents to pin the pool)")
+			rep.logf(time.Time{}, "Auto-detected agents (name them with --agents to pin the pool)")
 		}
 		if opts.jobs > 1 {
-			rep.logf(now, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
+			rep.logf(time.Time{}, "Parallel mode: %d lanes, worktree-isolated and merged back", opts.jobs)
 		} else if opts.stackedPRs {
 			if opts.maxLoops == 1 {
-				rep.logf(now, "Stacked PR mode: sequential reviews in one isolated worktree")
+				rep.logf(time.Time{}, "Stacked PR mode: sequential reviews in one isolated worktree")
 			} else {
-				rep.logf(now, "Stacked PR mode: sequential reviews, new worktree per loop from the previous tip")
+				rep.logf(time.Time{}, "Stacked PR mode: sequential reviews, new worktree per loop from the previous tip")
 			}
 		}
 	}
