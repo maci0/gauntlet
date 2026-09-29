@@ -436,6 +436,12 @@ func (r *Repo) RemoteBranchesWithPrefix(ctx context.Context, remote, prefix stri
 // Worktree.RenameBranch it refuses to overwrite: -m keeps a same-named branch
 // holding real work and reports the failure. It takes wtMu like DeleteBranch:
 // a rename walks the registered worktrees to follow a checked-out branch.
+//
+// A repeat of a rename that already landed succeeds: `from` is gone and `to`
+// is there, which is the state the first call produced, so the recovery that
+// finishes a killed run's rename converges whether it runs once or twice. Only
+// a missing `to` keeps the failure, since that is the rename not having
+// happened.
 func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
 	if r == nil || !Available() {
 		return errGitUnavailable
@@ -448,10 +454,23 @@ func (r *Repo) RenameBranch(ctx context.Context, from, to string) error {
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
+	if r.renamedAlready(ctx, from, to) {
+		return nil
+	}
 	if _, err := r.run(ctx, gitNormal, "branch", "-m", "--", from, to); err != nil {
 		return fmt.Errorf("git branch -m %s %s: %w", from, to, err)
 	}
 	return nil
+}
+
+// renamedAlready reports whether from is gone and to exists, which is what a
+// rename of from to to leaves behind. The caller holds wtMu.
+func (r *Repo) renamedAlready(ctx context.Context, from, to string) bool {
+	if _, err := r.Tip(ctx, "refs/heads/"+from); err == nil {
+		return false // from still exists: the rename has not run
+	}
+	_, err := r.Tip(ctx, "refs/heads/"+to)
+	return err == nil
 }
 
 // FetchRemoteBranchTip downloads the selected remote branch and returns the

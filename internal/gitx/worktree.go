@@ -989,6 +989,10 @@ func isConventionalType(head string) bool {
 // RenameBranch moves the worktree's current branch to a new name, which is
 // how a layer sheds its provisional name once its commit subject is known.
 // The rename happens in the worktree so the checked-out HEAD follows it.
+//
+// A repeat of a rename that already landed succeeds and the handle follows the
+// new name, the same way Repo.RenameBranch converges: from is gone and name is
+// there, which is what the first call produced.
 func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	if w == nil || w.repo == nil || w.Branch == "" || w.Dir == "" {
 		return errors.New("no branch to rename")
@@ -1001,6 +1005,10 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	}
 	w.repo.wtMu.Lock()
 	defer w.repo.wtMu.Unlock()
+	if w.repo.renamedAlready(ctx, w.Branch, name) {
+		w.Branch = name
+		return nil
+	}
 	sub := w.subRepo()
 	// -m, never -M: a same-named branch holding real work is kept, and the
 	// failure is reported, matching reclaimEmptyBranch's rule.

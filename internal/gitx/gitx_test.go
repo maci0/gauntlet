@@ -1584,6 +1584,19 @@ func TestBranchListingByPrefixAndRename(t *testing.T) {
 	if err := r.RenameBranch(ctx, "review/01-sec-review-final", "review/01-sec-reviewer-topic"); err == nil {
 		t.Fatal("rename over an existing branch must fail")
 	}
+	// A repeat of a rename that already landed converges: from is gone, to is
+	// there, and that is the state the first call produced.
+	if err := r.RenameBranch(ctx, "review/01-sec-review-wip-abc123", "review/01-sec-review-final"); err != nil {
+		t.Fatalf("a second rename of the same pair must succeed: %v", err)
+	}
+	tip, err := r.Tip(ctx, "refs/heads/review/01-sec-review-final")
+	if err != nil || tip != base {
+		t.Fatalf("repeat rename moved the branch: tip %q, err %v", tip, err)
+	}
+	// A rename whose target does not exist either way has not happened.
+	if err := r.RenameBranch(ctx, "review/01-sec-review-wip-abc123", "review/01-sec-review-missing"); err == nil {
+		t.Fatal("renaming a branch that does not exist must fail")
+	}
 }
 
 func TestRealPath(t *testing.T) {

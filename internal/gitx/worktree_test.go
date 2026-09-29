@@ -225,6 +225,50 @@ func TestStartBranchTwiceConverges(t *testing.T) {
 	}
 }
 
+func TestRenameBranchTwiceConverges(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "layer-0", "run-l1-stack", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	provisional := "review/01-sec-review-wip-abc123"
+	if err := wt.StartBranch(ctx, provisional, base); err != nil {
+		t.Fatal(err)
+	}
+	final := "review/01-sec-reviewer-topic"
+	if err := wt.RenameBranch(ctx, final); err != nil {
+		t.Fatal(err)
+	}
+	if wt.Branch != final {
+		t.Fatalf("rename left Branch=%q, want %s", wt.Branch, final)
+	}
+
+	// A killed run that already renamed replays the rename: the worktree's
+	// handle still carries the provisional name, and the second call has to
+	// land on the state the first produced instead of failing on a missing
+	// source branch.
+	wt.Branch = provisional
+	if err := wt.RenameBranch(ctx, final); err != nil {
+		t.Fatalf("a repeated rename of the same pair must succeed: %v", err)
+	}
+	if wt.Branch != final {
+		t.Fatalf("repeated rename left Branch=%q, want %s", wt.Branch, final)
+	}
+	if tip, err := r.Tip(ctx, final); err != nil || tip != base {
+		t.Fatalf("repeated rename moved the branch: %q, %v", tip, err)
+	}
+	if _, err := r.Tip(ctx, "refs/heads/"+provisional); err == nil {
+		t.Fatal("provisional branch survived the rename")
+	}
+}
+
 func TestStartBranchRejectsExistingWork(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

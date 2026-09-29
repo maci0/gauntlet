@@ -408,7 +408,9 @@ The invariants are:
    that is already taken locally or on the remote gets the same fragment
    appended, so a rename never lands on a branch that is not its own.
    Existing branches and PRs are checked before an agent starts, which makes
-   hot reload and repeated invocation convergent. A `gh pr create` that fails
+   hot reload and repeated invocation convergent. The rename to that published
+   name converges on its own too: a source branch that is gone with the target
+   in its place is a rename that already landed. A `gh pr create` that fails
    after GitHub accepted it is recovered by that same head/base lookup, so a
    lost response does not open a second PR or stop a published layer.
 6. The worktree is disposable; local and remote branches are durable because
