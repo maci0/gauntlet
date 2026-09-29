@@ -1257,6 +1257,49 @@ func TestThinkGlyphFreezesUnderNoAnimation(t *testing.T) {
 	}
 }
 
+// The motion accommodation has to reach the frame, not only the glyph in it.
+// The dashboard repaints itself ten times a second for as long as the run
+// lasts, and no key stops that (space pauses the feed, the frame keeps
+// moving), so a variable that only held the reasoning glyph still left the
+// screen in motion for hours. Under the same variables the redraw falls back
+// to a slow heartbeat: the frame changes when a review event lands, when a
+// key is pressed, and otherwise a few times a minute (WCAG 2.2.2).
+func TestRedrawRateFollowsTheMotionAccommodation(t *testing.T) {
+	// The standard names are read from the ambient environment, and the case
+	// that expects a moving screen only holds when neither is exported.
+	t.Setenv("NO_MOTION", "")
+	t.Setenv("REDUCED_MOTION", "")
+	t.Setenv("GAUNTLET_NO_ANIMATION", "")
+
+	if got := redrawEvery(); got != tickEvery {
+		t.Fatalf("redraw gap is %v with no variable set, want %v", got, tickEvery)
+	}
+	if motionTickEvery <= tickEvery {
+		t.Fatalf("the still redraw gap %v is not slower than %v", motionTickEvery, tickEvery)
+	}
+
+	for _, env := range []string{envNoAnimation, envNoMotion, envReducedMotion} {
+		t.Setenv(env, "1")
+		if got := redrawEvery(); got != motionTickEvery {
+			t.Fatalf("redraw gap is %v under %s=1, want %v", got, env, motionTickEvery)
+		}
+		t.Setenv(env, "")
+	}
+
+	// The precedence is the documented one and is shared with the glyph: an
+	// explicit false in the project name outranks a desktop session's
+	// REDUCED_MOTION, and an empty one defers to it.
+	t.Setenv(envReducedMotion, "1")
+	t.Setenv(envNoAnimation, "false")
+	if got := redrawEvery(); got != tickEvery {
+		t.Fatalf("redraw gap is %v under GAUNTLET_NO_ANIMATION=false with REDUCED_MOTION=1, want %v", got, tickEvery)
+	}
+	t.Setenv(envNoAnimation, "")
+	if got := redrawEvery(); got != motionTickEvery {
+		t.Fatalf("redraw gap is %v with a blank GAUNTLET_NO_ANIMATION under REDUCED_MOTION=1, want %v", got, motionTickEvery)
+	}
+}
+
 func TestThinkGlyphPreEpochDoesNotPanic(t *testing.T) {
 	// Go's % keeps the dividend's sign: UnixNano before 1970 is negative, so
 	// the frame index used to be -1 and the slice lookup panicked.
@@ -2243,7 +2286,7 @@ func TestHelpOverlayNamesEveryKeyItBinds(t *testing.T) {
 	m := newModel(demoConfig())
 	m.w, m.h, m.help, m.ready = 100, 30, true, true
 	legend := lastLine(stripANSI(m.View()))
-	for _, want := range []string{"q/esc close", "j/k scroll", "pgup/pgdn", "space", "home/end"} {
+	for _, want := range []string{"q/esc close", "j/k scroll", "pgup/pgdn", "space", "home/end", "g/G"} {
 		if !strings.Contains(legend, want) {
 			t.Fatalf("the help overlay's key row does not name %q:\n%s", want, legend)
 		}
@@ -2264,12 +2307,53 @@ func TestHelpOverlayNamesEveryKeyItBinds(t *testing.T) {
 	}
 }
 
+// The overlay's key row names where the reader is: the last page and the
+// first look alike, and a reader paging down has no other way to know the end
+// arrived short of pressing the key once more and seeing nothing move (WCAG
+// 2.4.5). A page that fits the pane whole says nothing, having nothing to be
+// lost by.
+func TestHelpOverlaySaysWhichPageItIs(t *testing.T) {
+	lines := make([]string, 40)
+	for i := range lines {
+		lines[i] = fmt.Sprintf("line %d", i)
+	}
+	const w, h = 100, 10 // a viewport of nine rows under the legend
+	first := stripANSI(lastLine(renderHelpPage(lines, 0, w, h)))
+	if !strings.Contains(first, "page 1/5") {
+		t.Fatalf("the first page does not say where it is: %q", first)
+	}
+	// A pane too narrow for the whole row keeps the keys and drops the
+	// position: the keys are how the reader reaches the next page, and the
+	// position is only how they know they have arrived.
+	narrow := stripANSI(lastLine(renderHelpPage(lines, 0, 40, h)))
+	if strings.Contains(narrow, "page") {
+		t.Fatalf("the page position crowded out a key name: %q", narrow)
+	}
+	if !strings.HasPrefix(narrow, "q/esc close") {
+		t.Fatalf("the position crowded out the closing keys: %q", narrow)
+	}
+	end := scrollHelp(0, "G", lines, w, h)
+	if end == 0 {
+		t.Fatal("G did not scroll the overlay")
+	}
+	last := stripANSI(lastLine(renderHelpPage(lines, end, w, h)))
+	if strings.Contains(last, "page 1/") {
+		t.Fatalf("the bottom of the overlay still reads as the first page: %q", last)
+	}
+	if !strings.Contains(last, "/5") {
+		t.Fatalf("the last page does not name the count of pages: %q", last)
+	}
+	if short := stripANSI(lastLine(renderHelpPage(lines[:4], 0, w, h))); strings.Contains(short, "page") {
+		t.Fatalf("a help page that fits whole still claims a position: %q", short)
+	}
+}
+
 // A pane too narrow for the whole key row loses whole keys rather than half a
 // name: a legend ending in "j/k scrol" advertises a key that does not exist.
 // What it lost is marked, so a row that kept two of four reads as two.
 func TestHelpLegendDropsWholeSegmentsNotHalfNames(t *testing.T) {
 	for _, w := range []int{20, 30, 45, 60, 80, 200} {
-		legend := stripANSI(helpLegend(w))
+		legend := stripANSI(helpLegend(w, ""))
 		if got := lipgloss.Width(legend); w >= len("q/esc close") && got > w {
 			t.Errorf("at %d columns the legend is %d wide: %q", w, got, legend)
 		}
@@ -2281,7 +2365,7 @@ func TestHelpLegendDropsWholeSegmentsNotHalfNames(t *testing.T) {
 		dropped := 0
 		for _, seg := range segs {
 			switch seg {
-			case "q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end":
+			case "q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end, g/G":
 			case "…":
 				dropped++
 				if dropped > 1 {

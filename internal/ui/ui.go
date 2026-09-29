@@ -72,6 +72,26 @@ func (c Config) now() func() time.Time {
 // and cheap enough that the dashboard never competes with the agents for CPU.
 const tickEvery = 100 * time.Millisecond
 
+// motionTickEvery is the redraw gap under a motion accommodation: the frame
+// then changes when a review event lands or a key is pressed, and this slow
+// heartbeat keeps the elapsed clock and the timeout meters honest in between.
+// Ten frames a second is the screen moving for as long as the run lasts, and
+// no key stops it (space pauses the feed, not the frame), which is what
+// WCAG 2.2.2 asks a moving screen to offer. Half a minute is far below the
+// rate at which the eye reads a screen as moving, and a run that prints
+// nothing for that long has nothing new to show anyway.
+const motionTickEvery = 30 * time.Second
+
+// redrawEvery is the gap between unsolicited redraws. The accommodation is
+// read each time a tick is armed rather than once at startup, so a variable
+// exported after the run began still takes effect on the next tick.
+func redrawEvery() time.Duration {
+	if motionOff() {
+		return motionTickEvery
+	}
+	return tickEvery
+}
+
 // feedMax bounds the retained output feed. Memory stays proportional to what
 // can be drawn and scrolled, not to what an agent printed.
 const feedMax = 2000
@@ -428,7 +448,7 @@ type tickMsg time.Time
 type doneMsg struct{}
 
 func tick() tea.Cmd {
-	return tea.Tick(tickEvery, func(t time.Time) tea.Msg { return tickMsg(t) })
+	return tea.Tick(redrawEvery(), func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
 func (m *model) Init() tea.Cmd { return tick() }

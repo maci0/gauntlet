@@ -1147,8 +1147,10 @@ func helpRows(lines []string, w int) []string {
 }
 
 // helpLegendKeys are the segments of the overlay's own key row, in the order
-// they survive a narrowing pane.
-var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end"}
+// they survive a narrowing pane. g and G are named beside home/end because
+// scrollHelp binds them here too: while the overlay is up they move it, the
+// way they move the feed below it.
+var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end, g/G"}
 
 // helpLegend is the overlay's own key row, as whole segments a narrow pane
 // drops from the right. The first survives always: a reader with no way to
@@ -1161,8 +1163,32 @@ var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b",
 // a keyboard user cannot tell from a missing one (WCAG 3.3.2). Fitting whole
 // segments fixes both: what does not fit is a key that was never claimed, not
 // half of one that was, and fitSegments marks what it dropped.
-func helpLegend(w int) string {
-	return styleDim.Render(fitSegments(helpLegendKeys, "  ", w))
+//
+// pos is where the reader is in the help, empty when the whole page fits and
+// there is nothing to be lost by. It is a segment like the key names and sits
+// after them, so a pane too narrow for the whole row is the pane that drops
+// it first: a key the reader has to press outranks knowing which page they
+// are on.
+func helpLegend(w int, pos string) string {
+	segs := helpLegendKeys
+	if pos != "" {
+		segs = append(append([]string{}, segs...), styleFaint.Render(pos))
+	}
+	return styleDim.Render(fitSegments(segs, "  ", w))
+}
+
+// helpPosition names the reader's place in a help page taller than the pane.
+// Without it the last page and the first look alike, and a reader paging down
+// has no way to know they have reached the end short of pressing the key once
+// more and seeing nothing move (WCAG 2.4.5: the reader has to know where they
+// are).
+func helpPosition(start, rows, viewport int) string {
+	if rows <= viewport {
+		return ""
+	}
+	page := start/viewport + 1
+	pages := (rows + viewport - 1) / viewport
+	return fmt.Sprintf("page %d/%d", page, pages)
 }
 
 // renderHelpPage draws the overlay from its scroll position over a wrapped
@@ -1182,7 +1208,7 @@ func renderHelpPage(lines []string, scroll, w, h int) string {
 	for len(out) < viewport {
 		out = append(out, "")
 	}
-	out = append(out, helpLegend(w))
+	out = append(out, helpLegend(w, helpPosition(start, len(rows), viewport)))
 	return clipBlock(out, w, h)
 }
 
