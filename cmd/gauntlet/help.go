@@ -94,7 +94,7 @@ var helpGroups = []flagGroup{
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
 		{"y", "yes", "", "answer yes to confirmation prompts"},
 		{"", "semcode", "", "build a semcode index before the loop"},
-		{"", "keep-runs", "N", fmt.Sprintf("run journals kept under ~/.gauntlet; older ones move to pruned/ at the end of a run, 0 keeps all (default %d)", defaultKeepRuns)},
+		{"", "keep-runs", "N", fmt.Sprintf("run journals kept in the state root (GAUNTLET_HOME, else ~/.gauntlet); older ones move to pruned/ at the end of a run, 0 keeps all (default %d)", defaultKeepRuns)},
 	}},
 	{"Modes", []flagDoc{
 		{"l", "list", "", "list available reviews and sets, then exit"},

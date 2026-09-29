@@ -689,8 +689,9 @@ func TestParseFlagsPaths(t *testing.T) {
 	}
 }
 
-// The seed value must keep the flag package's base-0 uint64 parsing (hex
-// literals and underscores), which the custom Value replaced.
+// The seed value takes hex literals and underscores, and reads a leading zero
+// as decimal: the help says decimal or 0x hex, and a seed that parses as
+// something else is the value every later rerun of that run replays.
 func TestParseFlagsSeedLiterals(t *testing.T) {
 	for _, c := range []struct {
 		v    string
@@ -699,6 +700,9 @@ func TestParseFlagsSeedLiterals(t *testing.T) {
 		{"42", 42},
 		{"0x2a", 42},
 		{"1_000", 1000},
+		{"010", 10},
+		{"08", 8},
+		{"0x010", 16},
 	} {
 		o, err := parseFlags([]string{"--seed", c.v})
 		if err != nil {
@@ -706,6 +710,11 @@ func TestParseFlagsSeedLiterals(t *testing.T) {
 		}
 		if o.seed != c.want {
 			t.Errorf("--seed %q parsed as %d, want %d", c.v, o.seed, c.want)
+		}
+	}
+	for _, v := range []string{"0x", "_42", "42_", "4__2", "0_x2"} {
+		if _, err := parseFlags([]string{"--seed", v}); err == nil {
+			t.Errorf("--seed %q was accepted; want a nonnegative decimal or 0x hex value", v)
 		}
 	}
 }

@@ -195,6 +195,29 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.Duration(n) * unit, nil
 }
 
+// parseSeed reads a --seed value as the help states it: decimal, or a 0x hex
+// literal, with the underscores a Go literal allows between digits. Base 0 is
+// not what the flag means, because it reads a leading zero as octal: --seed 010
+// ran as 8, and --seed 08 was refused with a syntax error rather than the
+// message the flag promises. The seed is the run's replay value, so a number
+// that reads as something else is written to the journal and reproduced by
+// every later rerun.
+func parseSeed(v string) (uint64, error) {
+	digits, base := v, 10
+	if len(v) > 2 && (v[:2] == "0x" || v[:2] == "0X") {
+		digits, base = v[2:], 16
+	}
+	// ParseUint takes underscores only with base 0, and a missing one there
+	// would come back as a syntax error; stripping them keeps 1_000 working
+	// and leaves a malformed placement to the same message.
+	if !strings.HasPrefix(digits, "_") && !strings.HasSuffix(digits, "_") &&
+		!strings.Contains(digits, "__") && !strings.Contains(digits, "_x") &&
+		!strings.Contains(digits, "_X") {
+		digits = strings.ReplaceAll(digits, "_", "")
+	}
+	return strconv.ParseUint(digits, base, 64)
+}
+
 // Flag defaults the documentation quotes. They live here so docs/CLI.md, the
 // help table, and the parser cannot drift apart.
 const (
@@ -363,7 +386,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.IntVar(&o.maxReviews, "max-reviews", 0, "cap reviews per loop, cut after the seeded shuffle; "+
 		"a repeated review fills one slot per listing (0 = unlimited)")
 	fs.Func("seed", "RNG seed for review order and agent picks; recorded in the journal (0 = random)", func(v string) error {
-		n, err := strconv.ParseUint(v, 0, 64)
+		n, err := parseSeed(v)
 		if err != nil {
 			return errors.New("must be a nonnegative integer (decimal or 0x hex)")
 		}
@@ -389,7 +412,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")
 	fs.BoolVar(&o.continueSessions, "continue-sessions", false, "resume each agent's session between reviews")
 	fs.IntVar(&o.keepRuns, "keep-runs", defaultKeepRuns,
-		"how many run journals to keep under ~/.gauntlet; older ones move to pruned/ at the end of a run (0 = keep all)")
+		"how many run journals to keep in the state root; older ones move to pruned/ at the end of a run (0 = keep all)")
 
 	alias("l", "list", func(n string) { fs.BoolVar(&o.list, n, false, "list available reviews and sets, then exit") })
 	fs.BoolVar(&o.dryRun, "dry-run", false, "print the planned schedule, then exit")

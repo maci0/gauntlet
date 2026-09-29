@@ -2968,3 +2968,35 @@ func TestResolveMany(t *testing.T) {
 		t.Error("ResolveMany resolved nonexistent binary")
 	}
 }
+
+// A definition whose executable names an unexported variable has to name the
+// variable where detection reports the agent: the launch path refuses it, so
+// an installed-mark column would send the operator after the wrong thing.
+func TestBinaryErrorNamesTheUnsetVariable(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	_, def, err := ParseAgentCmd("envagent=$AGENT_ROOT/bin/agent -p {prompt}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Register("envagent", def); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("AGENT_ROOT", "/opt/agents")
+	if err := BinaryError("envagent"); err != nil {
+		t.Fatalf("with the variable set: %v", err)
+	}
+	t.Setenv("AGENT_ROOT", "")
+	if err := os.Unsetenv("AGENT_ROOT"); err != nil {
+		t.Fatal(err)
+	}
+	err = BinaryError("envagent")
+	if err == nil {
+		t.Fatal("an executable naming an unset variable reported no error")
+	}
+	if !strings.Contains(err.Error(), "AGENT_ROOT") {
+		t.Errorf("error %q does not name the variable to export", err)
+	}
+	if err := BinaryError(Valid[0]); err != nil {
+		t.Errorf("a built-in agent reported %v, want no error", err)
+	}
+}

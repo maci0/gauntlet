@@ -89,6 +89,14 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 				extra += ": " + def.Note
 			}
 			note = pal.dim("  " + extra)
+			// An executable the definition names through a variable the
+			// operator has not exported expands to nothing, and the launch
+			// path refuses it. The row says which variable, rather than
+			// showing a missing mark beside a definition that reads as
+			// complete.
+			if err := agent.BinaryError(a); err != nil {
+				note = pal.red("  " + err.Error())
+			}
 		}
 		if path := overrides[a]; path != "" {
 			// An override names the executable directly, so it wins over what

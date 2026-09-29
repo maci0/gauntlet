@@ -333,6 +333,30 @@ func Binary(tool string) string {
 	return tool
 }
 
+// BinaryError reports why Binary's answer for a custom agent is not usable:
+// an executable naming a variable the operator has not exported, which the
+// launch path refuses and detection cannot. The reason is kept rather than
+// dropped, because detection has to answer before anything can be refused,
+// and an unexpanded "$AGENT_ROOT/bin/agent" resolves against the working
+// directory to nothing. Without this the agent is reported as an uninstalled
+// CLI, and the operator is told to install one whose real problem is one
+// unset variable. A built-in tool, a name needing no expansion, and one that
+// expanded all report nil.
+func BinaryError(tool string) error {
+	def, ok := CustomDef(tool)
+	if !ok || len(def.Argv) == 0 || !needsExpand(def.Argv[0]) {
+		return nil
+	}
+	expanded, err := gauntlethome.ExpandPath(def.Argv[0])
+	if err != nil {
+		return err
+	}
+	if expanded == "" {
+		return fmt.Errorf("executable %q expanded to nothing", def.Argv[0])
+	}
+	return nil
+}
+
 // Installed lists agents eligible for auto-detection and "mixed", in name
 // order. Discovery is PATH-based: an agent whose binary is not on PATH under
 // its own name must be named explicitly (see --bin).
