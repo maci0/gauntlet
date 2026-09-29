@@ -555,7 +555,7 @@ assigned here.
 | R2 | Self-update integrity rests on TLS and repository ownership; `checksums.txt` authenticates nothing beyond transport consistency, and hot reload execve's the replaced binary automatically. The `sbom.json` every release now ships does not narrow this: it is generated from the binaries it describes, by the same publisher, and `update` does not read it. Neither does the provenance attestation every release now publishes: it records which workflow and commit built each binary, so a reader can check it, but the automatic path still installs what the release page serves. The `<binary>.previous` copy each update leaves behind is the same channel read backwards: the documented rollback renames it into place with nothing checked, and it is the version before the last update, so a rollback also undoes whatever that version fixed | B4 | Named gap, narrowed for a reader checking, not for the automatic path |
 | R3 | A prompt-injected or compromised agent reads every secret its user can: environment-inherited API keys, agent config stores, SSH keys, `~/.netrc` | B2/B5 | Consequence of R1; containerization is the documented answer (DESIGN.md non-goals) |
 | R4 | Confidentiality of reviewed source: agents send code to third-party model APIs over the network | B2 | Inherent to the tool's purpose; users must know it |
-| R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching `@deepseek-ai/dsh` from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap (deliberate feature, unreviewed supply-chain hop) |
+| R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching a package from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap, narrowed: the fallback names one exact version of `@deepseek-ai/dsh` (`DshNpmPackage`, `internal/agent/dsh.go:21-26`), so a run no longer executes whatever the registry serves at the moment of the fetch, and a bump is a reviewed change like any other dependency. What remains is the publisher: the registry resolves the pinned name and no checksum or signature is verified |
 | R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas. `--token-budget` now bounds the tokens the run's own reviews report as one ceiling for the whole run rather than one per directory: a shared tally every directory's runner adds to and a hot reload's predecessor carries, checked before a loop, a review, a lane, a retry or its backoff, and the next stack step (`Tokens`, `internal/runner/stats.go:104-133,346-356`; `budgetExhausted`, `internal/runner/loop.go:223-243`, at `loop.go:262`, `internal/runner/runner.go:340`, `internal/runner/attempt.go:41,556,570`, `internal/runner/stack.go:284`). It is still a scheduling bound, not a spend quota: the counters are agent-reported, the commit and conflict launches are excluded from the sum, it is checked between steps rather than inside one, it stops what starts next rather than what already ran, and a review that under-reports its tokens lowers nothing else; a lane now drops its unstarted queue the moment the usage probe trips, so `--jobs N` cannot spend the window on reviews taken off the queue before the flag was read (`runLane`, `internal/runner/attempt.go:36-64`); the usage limit probe runs isolated from the repository but fails open on errors (`internal/runner/exec.go:119-165`, `internal/runner/usagelimit.go:47-72,93-114`) |
 | R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; a symlink or non-regular destination is refused, the open carries `O_NOFOLLOW` and 0600 with a post-open chmod, and an agent's own stdout is now secret-redacted on the way onto the bus, so the file, the journal, and the scrollback all read the rewritten line (`outputSink`, `internal/runner/attempt.go:705-715`; `runx.RedactSecrets`, `internal/runx/runx.go:128-183`). What is left is the class the redactor does not recognize: a value printed without a credential name and without a published fixed prefix, and the reviewed source an agent quotes, which is the risk as written (`reporter`, `cmd/gauntlet/report.go:183-193`). The parent directory is not confined (`openLogFile`, `cmd/gauntlet/main.go:713-733) |
 | R8 | `--semcode` indexer output carrying file names from a hostile tree reaches the operator's terminal | B1 -> B3 | Closed: both of the indexer's streams pass through `normalize.DisplayWriter`, one writer per stream, flushed after the child exits (`cmd/gauntlet/semcode.go:82-104`, `internal/normalize/display.go:145-243`) |
@@ -1065,10 +1065,13 @@ confirmation (`internal/selfupdate/reload.go:238-267`). Auto-update background
 goroutines are coordinated via context cancellation and WaitGroup on shutdown
 (`cmd/gauntlet/main.go:604-608`). No signed-release mechanism exists. The
 advisory scanner in CI (`vulnscan.yml`) watches the dependency graph, not this
-channel. The `bunx @deepseek-ai/dsh` fallback (and the `--dump-config` probe
+channel. The `bunx` fallback (and the `--dump-config` probe
 that uses the same argv) is a second fetch-and-execute path, from the npm
 registry rather than GitHub releases, with no checksum (`internal/agent/agent.go:594-680,
-`internal/agent/dsh.go:79-118`). The probe is bounded to 4 MiB output via `runx.Bound`
+`internal/agent/dsh.go:79-118`). It fetches one pinned version, so the bytes a
+run executes are the ones this tree names rather than the registry's current
+`latest`, and the publisher of that version is still trusted
+(`DshNpmPackage`, `internal/agent/dsh.go:21-26`). The probe is bounded to 4 MiB output via `runx.Bound`
 (`internal/agent/dsh.go:64,80`) and reclaims process groups via `runx.KillGroup` (`dsh.go:81`).
 Overlay configurations validate provider and model identifiers
 against `dshModelRe` (`internal/agent/dsh.go:131-133`), and overlay keys reject path traversal
@@ -1285,7 +1288,9 @@ technical backstop behind them.
    (`internal/agent/agent.go:594-680). Auto-detection already ignores it (`Installed`
    requires the binary under its own name, `agent.go:321-340`); a
    `dsh:<model>` pin additionally execs the same argv as `--dump-config`
-   (`internal/agent/dsh.go:79-118`). Documentation should say plainly that naming `dsh`
+   (`internal/agent/dsh.go:79-118`). The spec is now pinned to one exact
+   version, so the gap left is the registry's: the publisher is trusted and
+   nothing is checksummed or signed. Documentation should say plainly that naming `dsh`
    without the launcher installs and runs an npm package, including at
    probe time.
 3. **No SECURITY.md.** There is no documented path from "vulnerability

@@ -341,7 +341,7 @@ func TestSuggestToggleTakesTheKeyboardToTheSuggesterRow(t *testing.T) {
 	// drawn on the row it names.
 	pane := stripANSI(p.runPanel(40, len(p.opts)))
 	marked := false
-	for _, ln := range strings.Split(pane, "\n") {
+	for ln := range strings.SplitSeq(pane, "\n") {
 		if strings.Contains(ln, "suggest agent") {
 			marked = strings.Contains(ln, "❯")
 		}

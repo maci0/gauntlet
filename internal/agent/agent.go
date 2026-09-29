@@ -602,15 +602,16 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 	case "dsh":
 		// Permissions come from the headless profile's config; dsh:model pins
 		// the model via a generated --patch overlay. When the launcher is not
-		// on PATH, fall back to bunx, which fetches @deepseek-ai/dsh on first
-		// use; that network fetch is why auto-detection ignores the fallback.
+		// on PATH, fall back to bunx, which fetches the pinned package spec on
+		// first use; that network fetch is why auto-detection ignores the
+		// fallback.
 		base := []string{"dsh"}
 		if opts.Binary == "" && Resolve("dsh") == "" {
 			bunx := Resolve("bunx")
 			if bunx == "" {
 				bunx = "bunx"
 			}
-			base = []string{bunx, "@deepseek-ai/dsh"}
+			base = []string{bunx, DshNpmPackage}
 		} else if opts.Binary != "" {
 			// The override replaces cmd[0] after this returns, so the probe
 			// has to run it too: reading the provider off whatever dsh is on

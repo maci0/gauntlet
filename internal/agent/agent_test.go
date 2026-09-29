@@ -2372,6 +2372,33 @@ func TestBareDshModelReportsAFailedProbe(t *testing.T) {
 	}
 }
 
+// The bunx fallback fetches and executes an npm package. The spec it fetches
+// has to name one version: a bare package name resolves whatever the registry
+// serves at the moment of the fetch, so the code a run runs would be a
+// property of that moment rather than of this tree.
+func TestDshFallbackFetchesOneExactVersion(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	argv, err := BuildCmd(Spec{Tool: "dsh"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(argv) < 2 {
+		t.Fatalf("the fallback argv names no package: %v", argv)
+	}
+	if got := argv[1]; got != DshNpmPackage {
+		t.Errorf("the fallback fetches %q, want the pinned %q", got, DshNpmPackage)
+	}
+	_, version, ok := strings.Cut(DshNpmPackage, "@")
+	if !ok || version == "" {
+		t.Fatalf("%q names no version", DshNpmPackage)
+	}
+	for _, floating := range []string{"latest", "*", "^", "~", ">", "<", "=", " "} {
+		if strings.Contains(version, floating) {
+			t.Errorf("%q is a floating version spec, not an exact one", DshNpmPackage)
+		}
+	}
+}
+
 // A launcher reads its own config, so the memo is keyed by it: a bare
 // dsh:model under one --bin must not be pinned to the provider another
 // launcher on the same PATH names.

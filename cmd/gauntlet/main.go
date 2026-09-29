@@ -742,7 +742,7 @@ func openLogFile(path string) (*os.File, error) {
 
 // missingAgentTool returns the binary a run needs and this machine does not
 // have, or "" when every one of them is launchable. dsh is exempt when bunx
-// can build it, because BuildCmd falls back to bunx @deepseek-ai/dsh.
+// can build it, because BuildCmd falls back to bunx and the pinned dsh spec.
 func missingAgentTool(agents []agent.Spec, bin map[string]string) string {
 	for _, spec := range agents {
 		if bin[spec.Tool] != "" {

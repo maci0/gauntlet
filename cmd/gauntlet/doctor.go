@@ -118,7 +118,7 @@ func doctor(out io.Writer, pal palette, overrides map[string]string, width int) 
 			note = pal.dim("  opt-in: name it with --agents")
 		} else if a == "dsh" && !ok && found["bunx"] != "" {
 			ok = true // launchable, but only when named: bunx fetches on first use
-			note = pal.dim("  via bunx (@deepseek-ai/dsh); name it with --agents")
+			note = pal.dim("  via bunx (" + agent.DshNpmPackage + "); name it with --agents")
 		}
 		if ok {
 			installed++

@@ -20,6 +20,14 @@ import (
 	"github.com/maci0/gauntlet/internal/runx"
 )
 
+// DshNpmPackage is the package the bunx fallback fetches and runs when no dsh
+// launcher is on PATH. The version is exact, and deliberately: an unpinned
+// spec resolves whatever the registry serves at the moment of the fetch and
+// executes it, so the code a run runs would be a property of that moment
+// rather than of this tree. Bumping it is a reviewed change, like every other
+// dependency bump.
+const DshNpmPackage = "@deepseek-ai/dsh@0.1.5-740e203097086e5e"
+
 // dsh has no model flag: the headless profile's agent-default-model plugin
 // decides. A --patch overlay overrides that plugin's config per run, and the
 // override replaces the config object, so it must carry the required provider

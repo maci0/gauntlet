@@ -214,6 +214,14 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   `sbom.LicenseFileNames()`, the same names the inventory reads, so a grant
   filed under a name this gate did not know passed here and stopped the
   release instead.
+- One third-party package is fetched and executed without being linked, so
+  it is in no module table and in no `sbom.json`: naming `dsh` with no
+  launcher on `PATH` runs `bunx` against `agent.DshNpmPackage`, an exact
+  version of the npm package the registry serves. The version is pinned in
+  the source rather than resolved at fetch time, and the same constant is
+  what `gauntlet doctor` prints, so there is one spelling of it; a `dsh:<model>`
+  pin runs that argv as `--dump-config` before the review. What is not
+  verified is the publisher, which is R5 in `docs/THREAT_MODEL.md`.
 - The sqlite driver tracks upstream SQLite closely; when auditing, read the
   `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
   self-constructed queries against agent-owned database files, never SQL
