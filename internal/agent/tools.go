@@ -99,25 +99,21 @@ var ReviewTools = map[string][]string{
 // tools every review is pointed at, then that review's own. The order is the
 // catalog's, so the prompt names them the way doctor does. Git is left out: it
 // is the runner's own tool, and a review is not allowed to run it.
+//
+// No entry is repeated within a list and none of the core names appears in
+// ReviewTools, so the result is the concatenation rather than a merge of two
+// sets. A duplicate here would print a tool twice in one prompt's "If
+// available, use:" line, which reads as a broken catalog.
 func ToolsFor(review string) []string {
-	seen := map[string]bool{}
-	var out []string
-	add := func(n string) {
-		if n != "" && !seen[n] {
-			seen[n] = true
-			out = append(out, n)
-		}
-	}
+	own := ReviewTools[review]
+	out := make([]string, 0, len(CoreTools)+len(own))
 	for _, c := range CoreTools {
 		if c.Name == "git" {
 			continue
 		}
-		add(c.Name)
+		out = append(out, c.Name)
 	}
-	for _, t := range ReviewTools[review] {
-		add(t)
-	}
-	return out
+	return append(out, own...)
 }
 
 // ToolBins expands helper entries into the individual binaries they may need:

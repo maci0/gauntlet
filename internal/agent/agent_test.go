@@ -2649,7 +2649,7 @@ func TestSplitTools(t *testing.T) {
 
 func TestToolsForOrderAndAlts(t *testing.T) {
 	// The core tools come first (git excluded: it is the runner's own tool),
-	// then the review's own helpers in catalog order, duplicates dropped.
+	// then the review's own helpers in catalog order.
 	got := ToolsFor("config-review")
 	want := []string{"rg", "ast-grep|sg", "patchwork", "semcode",
 		"check-jsonschema", "yamllint", "taplo", "dotenv-linter",
@@ -2660,6 +2660,29 @@ func TestToolsForOrderAndAlts(t *testing.T) {
 	if got := ToolsFor("agentrules-review"); slices.Contains(got, "git") {
 		t.Fatalf("git must not be offered to agents: %v", got)
 	}
+}
+
+// ToolsFor concatenates the core tools and a review's own, so the catalog
+// must not repeat an entry within a list or reuse a core name. A repeat would
+// print the same binary twice in one prompt's "If available, use:" line.
+func TestToolsForNeverRepeatsATool(t *testing.T) {
+	for _, review := range slices.Sorted(maps.Keys(ReviewTools)) {
+		got := ToolsFor(review)
+		if dup := firstDuplicate(got); dup != "" {
+			t.Errorf("ToolsFor(%q) offers %q twice: %v", review, dup, got)
+		}
+	}
+}
+
+func firstDuplicate(entries []string) string {
+	seen := make(map[string]bool, len(entries))
+	for _, e := range entries {
+		if seen[e] {
+			return e
+		}
+		seen[e] = true
+	}
+	return ""
 }
 
 func TestCustomAgentBinaryResolutionAndInstalled(t *testing.T) {
