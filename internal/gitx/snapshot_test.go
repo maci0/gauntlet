@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -97,6 +98,58 @@ func assertRestored(t *testing.T, r *Repo, head, main, wip, staged string, wantM
 	}
 	if len(ch.Untracked) != 1 || ch.Untracked[0] != "wip.go" {
 		t.Fatalf("untracked = %v, want [wip.go]", ch.Untracked)
+	}
+}
+
+// A snapshot's trees are unreachable, so a gc that prunes them leaves a
+// snapshot nothing can be restored from. The reset that would throw away the
+// attempt's worktree runs first in the old order, so the operator learned
+// about it after their own files were gone; the check is reported before any
+// step touches the tree.
+func TestRestoreReportsAPrunedSnapshotBeforeTouchingTheTree(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+
+	main := filepath.Join(r.Dir, "main.go")
+	wip := filepath.Join(r.Dir, "wip.go")
+	if err := os.WriteFile(wip, []byte("package wip\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := r.Snapshot(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The attempt's work, as a restore would find it.
+	gitIn(t, r.Dir, "add", "-A")
+	gitIn(t, r.Dir, "commit", "-qm", "agent commit")
+	agentMain := readFile(t, main)
+	head := gitOut(t, r.Dir, "rev-parse", "HEAD")
+
+	gitDir, err := r.gitDir(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loose := filepath.Join(gitDir, "objects", snap.fullTree[:2], snap.fullTree[2:])
+	if err := os.Remove(loose); err != nil {
+		t.Skipf("the snapshot tree is not a loose object here: %v", err)
+	}
+
+	err = r.Restore(ctx, snap)
+	if err == nil {
+		t.Fatal("restoring a snapshot the object store has pruned must fail")
+	}
+	if !strings.Contains(err.Error(), snap.fullTree) {
+		t.Errorf("error does not name the missing tree: %v", err)
+	}
+	if got := gitOut(t, r.Dir, "rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD moved: %s != %s", got, head)
+	}
+	if got := readFile(t, main); got != agentMain {
+		t.Errorf("the tree was reset before the snapshot was checked: %q != %q", got, agentMain)
+	}
+	if _, err := os.Stat(wip); err != nil {
+		t.Errorf("the untracked file the snapshot held is gone: %v", err)
 	}
 }
 

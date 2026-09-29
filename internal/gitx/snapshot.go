@@ -59,12 +59,21 @@ func (r *Repo) Snapshot(ctx context.Context) (Snapshot, error) {
 //
 // Files the attempt created that were not in the snapshot are removed
 // (`git clean -fd`); ignored files stay, matching ResetToBase.
+//
+// The snapshot's objects are verified before the first destructive step, not
+// after: a snapshot's trees are unreferenced, so a gc that pruned them leaves
+// nothing to restore from, and `reset --hard` throws away the working state
+// those objects are the only copy of. Reporting it first leaves the tree as
+// the attempt left it, which is the state the caller has to fall back on.
 func (r *Repo) Restore(ctx context.Context, s Snapshot) error {
 	if r == nil || !Available() {
 		return errGitUnavailable
 	}
 	if !s.Valid() {
 		return errors.New("invalid snapshot")
+	}
+	if err := r.verifySnapshot(ctx, s); err != nil {
+		return err
 	}
 	if _, err := r.run(ctx, gitNormal, "reset", "--hard", s.head, "--"); err != nil {
 		return fmt.Errorf("git reset --hard: %w", err)
@@ -80,6 +89,46 @@ func (r *Repo) Restore(ctx context.Context, s Snapshot) error {
 	}
 	r.Invalidate()
 	return nil
+}
+
+// verifySnapshot reports whether the object store still holds everything the
+// snapshot names. A snapshot records trees no ref points at, so they survive
+// only until a prune drops what is unreachable: gc.expire now, a repack, or a
+// repository whose own gc settings are aggressive. The caller holds no lock
+// and the check is three quick lookups, which is the price of not finding out
+// halfway through a restore.
+func (r *Repo) verifySnapshot(ctx context.Context, s Snapshot) error {
+	for _, o := range []struct{ sha, kind string }{
+		{s.head, "commit"},
+		{s.indexTree, "tree"},
+		{s.fullTree, "tree"},
+	} {
+		ok, err := r.hasObject(ctx, o.sha, o.kind)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("snapshot %s %s is no longer in the object store", o.kind, o.sha)
+		}
+	}
+	return nil
+}
+
+// hasObject reports whether the object store holds sha as a kind, with the
+// three-way answer HasCommit gives: exit 1 is missing, and a git failure of
+// its own is returned rather than read as a missing object, since a store
+// that cannot be searched is not evidence the object is gone.
+func (r *Repo) hasObject(ctx context.Context, sha, kind string) (bool, error) {
+	if !isHex(sha) {
+		return false, nil // never a revision expression or an option
+	}
+	if _, err := r.run(ctx, gitQuick, "rev-parse", "--verify", "--quiet", sha+"^{"+kind+"}"); err == nil {
+		return true, nil
+	} else if exitsWith(err, 1) {
+		return false, nil
+	} else {
+		return false, fmt.Errorf("cannot read snapshot %s %s: %w", kind, sha, err)
+	}
 }
 
 // worktreeTree writes a tree of the current worktree, including untracked
@@ -142,6 +191,13 @@ func (r *Repo) runIndex(ctx context.Context, index string, timeout time.Duration
 	return r.execGitEnv(ctx, nil, []string{"GIT_INDEX_FILE=" + index}, timeout, r.argv(args)...)
 }
 
+// staleSnapshotAge is how old a leftover snapshot index must be before the
+// next snapshot sweeps it. The window that creates one closes when the process
+// does, so anything older belongs to a write that never finished; the age
+// keeps a concurrent run's in-flight index safe, the same rule
+// gauntlethome.StaleTempAge follows.
+const staleSnapshotAge = time.Hour
+
 // sweepStaleSnapshots removes leftover gauntlet-snap-* index files from gitDir
 // that were left behind by a killed or crashed process. now is the repo clock:
 // the sweep runs only where a snapshot is taken, which is the in-place path,
@@ -151,7 +207,7 @@ func sweepStaleSnapshots(gitDir string, now time.Time) {
 	if err != nil {
 		return
 	}
-	cutoff := now.Add(-time.Hour)
+	cutoff := now.Add(-staleSnapshotAge)
 	for _, e := range entries {
 		name := e.Name()
 		if !strings.HasPrefix(name, "gauntlet-snap-") {

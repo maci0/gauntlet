@@ -434,6 +434,7 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 | `state/<id>.json` | hot-reload handoff | ephemeral, deleted and the deletion synced after pickup, so a power cut cannot bring a handoff back and resume a run that already finished; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
 | `<repo>/.gauntlet.lock` | directory lock | persistent inode; holder note cleared on release; do not remove while runs can start |
 | `<repo>/.gauntlet/worktrees/` | isolated checkouts, `0700` | ephemeral; unmerged review branches stay in git |
+| `<repo>` refs under `gauntlet/` and `review/` | reviews that did not land, the only output no copy of `GAUNTLET_HOME` holds | back up the repository's refs: the journal names the branch and none of its contents |
 
 Review output lives in the reviewed repository's git history, not here. A
 run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
@@ -479,6 +480,27 @@ configuration you can afford to lose: an hourly copy gives an RPO of at most
 one hour, for example. The CLI has no RTO guarantee; measure the restore below
 with an archive the size of production and record the result in your own
 incident runbook.
+
+Back up the reviewed repository's git as well, or at least its refs. A copy of
+`GAUNTLET_HOME` is a copy of the record, not of the work: a review that landed
+is in the repository's history, and a review left on an unmerged branch (a
+merge that failed, a conflict the agent did not resolve, an in-place run
+interrupted before it merged) exists nowhere else. The journal names that
+branch and nothing about its contents, so recovering the work means fetching
+it back into a repository, not reading a file. `git bundle create` over the
+refs the run named, or a `git clone --mirror` of the repository, keeps them
+while the machine is gone:
+
+```sh
+git -C /path/to/repo bundle create /path/on/other-storage/repo.bundle --all
+git clone /path/on/other-storage/repo.bundle /path/to/restored-repo
+```
+
+A repository whose objects were already packed elsewhere, or whose reviews all
+landed, needs none of this. What it cannot be is assumed: check
+`git -C /path/to/repo for-each-ref refs/heads/gauntlet refs/heads/review`
+before a machine is retired, since those are the two prefixes a run's refs are
+namespaced under.
 
 Stop running CLI processes before taking the copy so the archive cannot catch
 a journal line halfway through a write. Back up `runs/`, `pruned/`, and
