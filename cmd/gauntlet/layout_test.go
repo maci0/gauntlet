@@ -23,11 +23,11 @@ var allowedInternalImports = map[string][]string{
 	"internal/fuzzy":        {},
 	"internal/gauntlethome": {},
 	"internal/ghx":          {"internal/runx"},
-	"internal/gitx":         {"internal/runx"},
+	"internal/gitx":         {"internal/runx", "internal/safefile"},
 	"internal/humanize":     {},
-	"internal/journal":      {"internal/gauntlethome", "internal/humanize"},
+	"internal/journal":      {"internal/gauntlethome", "internal/humanize", "internal/safefile"},
 	"internal/normalize":    {},
-	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize"},
+	"internal/prompt":       {"internal/fuzzy", "internal/gitx", "internal/humanize", "internal/normalize", "internal/safefile"},
 	"internal/report": {
 		"internal/agent", "internal/envx", "internal/fuzzy", "internal/humanize",
 		"internal/normalize", "internal/prompt", "internal/runner",
@@ -38,6 +38,7 @@ var allowedInternalImports = map[string][]string{
 		"internal/streamjson",
 	},
 	"internal/runx":       {},
+	"internal/safefile":   {},
 	"internal/selfupdate": {"internal/gauntlethome"},
 	"internal/sbom":       {"internal/runx"},
 	"internal/streamjson": {},
@@ -69,6 +70,10 @@ var allowedInternalImports = map[string][]string{
 // runner importing fuzzy is the collation the run's result list and per-tool
 // breakdown are ordered by, the order every other printed list of names in the
 // tool already uses.
+// gitx, journal, and prompt importing safefile is the one guarded open a
+// repository-planted path goes through (a project prompt, a run journal, a
+// shared exclude), so the refusal of a symlink, of a FIFO, and of a missing
+// name is written once rather than three times in three flags.
 // Nothing in internal/ may import ui. A permission no import uses is a
 // hole left open for the next file, and docs/DESIGN.md would describe a
 // dependency that does not exist, so the map has to name only the edges the

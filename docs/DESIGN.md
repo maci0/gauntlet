@@ -52,6 +52,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
 | `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
 | `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), the typo-tolerant match behind every "did you mean" hint, and the collation every printed list of names is ordered by |
+| `internal/safefile` | the one guarded open for a path a repository's contents can plant: `O_NOFOLLOW` plus a regular-file check and a cleared `O_NONBLOCK`, for reading a project prompt, a run journal, and a shared exclude, and for appending to the last of those. Three copies of it had drifted (one dropped the path from its errors, one ignored a failed clear), and the append had no `O_NONBLOCK`, so a FIFO planted where the exclude goes blocked the untracked walk until a writer appeared |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, and

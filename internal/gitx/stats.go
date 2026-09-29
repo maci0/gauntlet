@@ -6,7 +6,6 @@ package gitx
 import (
 	"bytes"
 	"context"
-	"errors"
 	"maps"
 	"math"
 	"os"
@@ -14,8 +13,9 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
-	"syscall"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // Stats are cumulative worktree line changes against a baseline commit.
@@ -188,47 +188,12 @@ func (r *Repo) Invalidate() {
 	r.mu.Unlock()
 }
 
-// errNotRegular is a descriptor that stat says is not a regular file, which a
-// no-follow open still admits when the target itself is a FIFO or a device.
-var errNotRegular = errors.New("not a regular file")
-
-// openRegularFD adopts fd and returns it only if it is a regular file. Both
-// hardened openers below share it: they differ in their flags, not in what
-// they accept afterwards. The descriptor is closed on every error path, so a
-// caller never has to.
-func openRegularFD(fd int, path string) (*os.File, os.FileInfo, error) {
-	f := os.NewFile(uintptr(fd), path)
-	fi, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		f.Close()
-		return nil, nil, errNotRegular
-	}
-	return f, fi, nil
-}
-
-// openRegular opens path read-only, refusing symlinks at open time. A planted
-// symlink (to a FIFO, device, or out-of-tree file) must not be followed, and
-// opening a writer-less FIFO would block forever. O_NONBLOCK is cleared once
-// the descriptor is known to be a regular file. O_CLOEXEC keeps the descriptor
-// out of a child that forks while the read is in flight.
+// openRegular opens path read-only through the one guarded open every
+// repository-planted path in this tree uses. A planted symlink (to a FIFO,
+// device, or out-of-tree file) is refused, and a writer-less FIFO never blocks
+// the walk that reads the untracked set.
 func openRegular(path string) (*os.File, os.FileInfo, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, nil, err
-	}
-	f, fi, err := openRegularFD(fd, path)
-	if err != nil {
-		return nil, nil, err
-	}
-	// O_NONBLOCK was only to refuse a planted FIFO; the line count reads
-	// through this descriptor and must not get EAGAIN. There is nothing to
-	// do if the kernel refuses.
-	_ = syscall.SetNonblock(fd, false)
-	return f, fi, nil
+	return safefile.OpenRead(path)
 }
 
 // openAppendNoFollow opens path for appending, creating it at perm if it does
@@ -236,19 +201,10 @@ func openRegular(path string) (*os.File, os.FileInfo, error) {
 // has no O_NOFOLLOW, and a component the reviewed repository picks can be a
 // link: without the flag the append lands in whatever the link points at.
 func openAppendNoFollow(path string, perm os.FileMode) (*os.File, error) {
-	fd, err := syscall.Open(path,
-		syscall.O_WRONLY|syscall.O_CREAT|syscall.O_APPEND|syscall.O_NOFOLLOW|syscall.O_CLOEXEC,
-		uint32(perm))
-	if err != nil {
-		return nil, err
-	}
 	// A hardlink is a real regular file and a legitimate way to share one
 	// exclude between worktrees, so only a non-regular descriptor is refused.
-	f, _, err := openRegularFD(fd, path)
-	if err != nil {
-		return nil, err
-	}
-	return f, nil
+	f, _, err := safefile.Append(path, perm)
+	return f, err
 }
 
 // pruneLineCounts drops entries that are not in this sample's untracked

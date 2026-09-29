@@ -10,7 +10,6 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -18,13 +17,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/normalize"
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 //go:embed prompts/*.md
@@ -302,35 +301,18 @@ func readNoFollow(path string) (string, error) {
 	return string(data), nil
 }
 
-// openNoFollow opens a regular file, refusing a symlink at the last component
-// and returning immediately on a FIFO or device. Callers that already Lstat'd
-// still open this way: the file can be swapped between the check and the read.
-// O_CLOEXEC keeps the descriptor out of a child that forks while the read is
-// in flight.
+// openNoFollow opens a regular file for reading, refusing a symlink at the last
+// component and returning immediately on a FIFO or device. Callers that already
+// Lstat'd still open this way: the file can be swapped between the check and
+// the read.
+//
+// Every refusal names the file. The open, the stat, the regular-file check,
+// and the clear of O_NONBLOCK each return a bare errno, so without the path a
+// failure reached the operator as "bad file descriptor" with nothing to say
+// which prompt could not be read.
 func openNoFollow(path string) (*os.File, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, &os.PathError{Op: "open", Path: path, Err: err}
-	}
-	f := os.NewFile(uintptr(fd), path)
-	// Every refusal names the file. syscall.SetNonblock returns a bare errno,
-	// so a failure here reached the operator as "bad file descriptor" with
-	// nothing to say which prompt could not be read, the one error of the four
-	// the others all carry a path for.
-	fi, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, &os.PathError{Op: "stat", Path: path, Err: err}
-	}
-	if !fi.Mode().IsRegular() {
-		f.Close()
-		return nil, &os.PathError{Op: "open", Path: path, Err: errors.New("not a regular file")}
-	}
-	if err := syscall.SetNonblock(fd, false); err != nil {
-		f.Close()
-		return nil, &os.PathError{Op: "setnonblock", Path: path, Err: err}
-	}
-	return f, nil
+	f, _, err := safefile.OpenRead(path)
+	return f, err
 }
 
 // nfc is the review-name normalization form. Names are identity: they key

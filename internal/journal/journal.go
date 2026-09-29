@@ -48,6 +48,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/humanize"
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // Home is the root of the state tree, resolved by gauntlethome.Dir:
@@ -366,28 +367,10 @@ func openNoFollow(path string, flag int) (*os.File, error) {
 // planted at the path; the read side needs the same refusal plus a regular-file
 // check, because a directory entry is not the file it points at: a FIFO named
 // after a run id lists as a journal, and opening one for reading blocks until
-// a writer appears, which for a planted node is never. O_NONBLOCK is only to
-// survive that open; it is cleared once the descriptor is known to be regular.
+// a writer appears, which for a planted node is never.
 func openRead(path string) (*os.File, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, &os.PathError{Op: "open", Path: path, Err: err}
-	}
-	f := os.NewFile(uintptr(fd), path)
-	fi, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return nil, &os.PathError{Op: "stat", Path: path, Err: err}
-	}
-	if !fi.Mode().IsRegular() {
-		f.Close()
-		return nil, &os.PathError{Op: "open", Path: path, Err: errors.New("not a regular file")}
-	}
-	if err := syscall.SetNonblock(fd, false); err != nil {
-		f.Close()
-		return nil, &os.PathError{Op: "setnonblock", Path: path, Err: err}
-	}
-	return f, nil
+	f, _, err := safefile.OpenRead(path)
+	return f, err
 }
 
 // Write appends one event. A nil Journal is a no-op, so callers never branch.
