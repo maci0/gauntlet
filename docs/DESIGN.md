@@ -37,8 +37,8 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/agent` | agent specs, PATH resolution, command construction, doctor inventory, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
-| `internal/normalize` | agent output noise reduction and line classification |
-| `internal/gitx` | hardened git invocation, worktree line stats |
+| `internal/normalize` | agent output noise reduction and line classification, and in `display.go` the sanitize, home redaction, and clipping every untrusted string shown to a reader goes through |
+| `internal/gitx` | the repo handle and its baseline (`gitx.go`), hardened git invocation and the safe config overlay (`exec.go`), worktree line stats (`stats.go`), status and diff porcelain parsing (`status.go`), and the tree listing (`list.go`); worktrees, branches, and snapshots in `worktree.go`, `branch.go`, and `snapshot.go` |
 | `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
 | `internal/runx` | process-group kill, WaitDelay, and capped stdout/stderr for every child |
 | `internal/runner` | scheduler, worktrees, timeouts, lock, commit step, events; transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
@@ -50,7 +50,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/sbom` | the CycloneDX inventory of a release, read out of the built binaries' build info |
 | `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
 | `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
-| `internal/fuzzy` | typo-tolerant name matching, behind every "did you mean" hint |
+| `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), and the typo-tolerant match behind every "did you mean" hint |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, and

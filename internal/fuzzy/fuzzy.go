@@ -1,8 +1,11 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package fuzzy matches user-typed names against the accepted set, for
-// "did you mean" hints on typos.
+// Package fuzzy answers the one question a name typed by a person or read off
+// a file asks before it is compared to anything: what is it, in the form two
+// strings can be compared in? NFC and Fold are those forms, and IsASCII is
+// the fast answer that says a value cannot differ from its folded self.
+// Closest is the one fuzzy match, the "did you mean" behind a rejected name.
 package fuzzy
 
 import (
