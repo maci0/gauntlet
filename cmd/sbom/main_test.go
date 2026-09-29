@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,6 +108,59 @@ func TestRunRejectsIncompleteInvocation(t *testing.T) {
 	} {
 		if err := run(args); err == nil {
 			t.Errorf("run(%q) succeeded; a missing flag or a missing binary must fail", args)
+		}
+	}
+}
+
+// -h is a request, not a failure: the usage screen is the answer, so it goes
+// to stdout and the process exits zero. The flag package sent it to stderr
+// behind "flag: help requested" and exited 1, which a make recipe reads as a
+// broken release.
+func TestHelpIsAnAnswerNotAFailure(t *testing.T) {
+	for _, flag := range []string{"-h", "-help"} {
+		if err := run([]string{flag}); err != nil {
+			t.Errorf("run(%q) returned %v; help must succeed", flag, err)
+		}
+	}
+}
+
+// Exit 2 and exit 1 have to mean different things to the release recipe that
+// runs this: a mistyped invocation is the operator's, a run that could not be
+// inventoried is the build's. The usage screen rides along with the former.
+func TestUsageErrorsAreDistinguishedFromFailures(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other")
+	if err := os.WriteFile(other, []byte("x"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "sbom.json")
+	for _, tc := range []struct {
+		name  string
+		args  []string
+		usage bool
+	}{
+		{"unknown flag", []string{"-nope"}, true},
+		{"missing -o", []string{"-version", "1.0.0", self}, true},
+		{"missing -version", []string{"-o", out, self}, true},
+		{"no binaries", []string{"-o", out, "-version", "1.0.0"}, true},
+		{"binary that is not one", []string{"-o", out, "-version", "1.0.0", other}, false},
+	} {
+		err := run(tc.args)
+		var refused usageError
+		if got := errors.As(err, &refused); got != tc.usage {
+			t.Errorf("%s: errors.As(usageError) = %v, want %v (err: %v)", tc.name, got, tc.usage, err)
+			continue
+		}
+		if !tc.usage {
+			continue
+		}
+		for _, want := range []string{"usage: sbom -o FILE -version VERSION", "example:", "-version string", "-o string"} {
+			if !strings.Contains(refused.usage, want) {
+				t.Errorf("%s: the usage screen does not carry %q:\n%s", tc.name, want, refused.usage)
+			}
 		}
 	}
 }
