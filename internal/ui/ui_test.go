@@ -2529,3 +2529,76 @@ func TestHelpNamesEveryReviewWhole(t *testing.T) {
 		}
 	}
 }
+
+// The pause key dies with the run, and the footer stops advertising it in
+// that state. A help page that still describes it names a key a reader can
+// press and see nothing happen, which is the one they cannot tell from a key
+// that is broken.
+func TestHelpDropsTheDeadPauseKeyWhenTheRunIsOver(t *testing.T) {
+	live := stripANSI(strings.Join(newModel(demoConfig()).helpLines(), "\n"))
+	if !strings.Contains(live, "pause the feed") {
+		t.Fatalf("a running dashboard does not document the pause key:\n%s", live)
+	}
+	m := newModel(demoConfig())
+	m.done = true
+	finished := stripANSI(strings.Join(m.helpLines(), "\n"))
+	if strings.Contains(finished, "pause the feed") {
+		t.Fatalf("a finished run still documents the pause key:\n%s", finished)
+	}
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	if m.paused {
+		t.Fatal("space paused a finished run")
+	}
+	if cmd != nil {
+		t.Fatal("space quit a finished run")
+	}
+}
+
+// The fallback's running row is clipped like every other line, and a clip
+// leaves the tail of the lane list unnamed with nothing to say how much. The
+// panel and the grid both count what they dropped, so an agent missing from
+// the one row that names the running work has to read as counted, not gone.
+func TestMinimalViewCountsTheRunningLanesItCannotName(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 200, 20, true
+	active := []string{"claude", "codex", "gemini", "aider", "cline"}
+	for _, a := range active {
+		m.lane(a).review = a + "-review"
+	}
+	line := ""
+	for l := range strings.SplitSeq(stripANSI(m.renderMinimal()), "\n") {
+		if strings.HasPrefix(l, "running:") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatal("the fallback does not report the running lanes")
+	}
+	if n := len(active) - activeSummaryMax; !strings.Contains(line, fmt.Sprintf("(+%d more)", n)) {
+		t.Fatalf("the fallback drops %d lanes without saying so: %q", n, line)
+	}
+	for _, a := range []string{"aider", "cline"} {
+		if strings.Contains(line, a) {
+			t.Fatalf("a lane past the bound is still drawn: %q", line)
+		}
+	}
+}
+
+// The feed title reports a scrollback, so it names the key that ends one. The
+// footer offers esc:live and drops whole segments to fit, and on a narrow
+// terminal it is the first to go; the unmerged count already names its own
+// key this way, and a reported state with no way back out of it is a dead end
+// the reader has to guess at.
+func TestFeedTitleNamesTheWayBackFromAScrollback(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 100, 30, true
+	m.feed = []feedLine{{text: "line1"}, {text: "line2"}, {text: "line3"}}
+	m.scroll = 2
+	title := stripANSI(m.feedTitle(m.w - 4))
+	if !strings.Contains(title, "2 lines back") {
+		t.Fatalf("the feed title does not report the scrollback: %q", title)
+	}
+	if !strings.Contains(title, "esc") {
+		t.Fatalf("the feed title reports a scrollback with no way back: %q", title)
+	}
+}

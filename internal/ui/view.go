@@ -656,7 +656,12 @@ func (m *model) feedTitle(w int) string {
 		segs = append(segs, styleWarn.Render(fmt.Sprintf("%d unmerged, ? lists them", n)))
 	}
 	if m.scroll > 0 {
-		segs = append(segs, styleDim.Render(fmt.Sprintf("%d lines back", m.scroll)))
+		// The unmerged count names the key that lists its branches, and the
+		// footer that offers the way back to live is fitted to the terminal
+		// and drops it first. A title that reports the scrollback without
+		// saying how to leave it is a state the reader has to guess the way
+		// out of, which is the one reading this panel is read for.
+		segs = append(segs, styleDim.Render(fmt.Sprintf("%d lines back, esc to live", m.scroll)))
 	}
 	return fitTitle(segs, w)
 }
@@ -897,7 +902,20 @@ func (m *model) renderMinimal() string {
 		}
 	}
 	if len(active) > 0 {
-		rows = append(rows, styleInfo.Render("running: "+strings.Join(active, ", ")))
+		// The row is clipped to the terminal either way, and a clip cuts the
+		// last name in half with nothing to say how many lanes are behind it.
+		// The panel and the grid both count what they left out, so the
+		// fallback counts too: an agent missing from the only row that names
+		// the running work reads as an agent that is not running it.
+		shown := active
+		if len(shown) > activeSummaryMax {
+			shown = shown[:activeSummaryMax]
+		}
+		line := "running: " + strings.Join(shown, ", ")
+		if n := len(active) - len(shown); n > 0 {
+			line += fmt.Sprintf(" (+%d more)", n)
+		}
+		rows = append(rows, styleInfo.Render(line))
 	}
 	rows = append(rows,
 		// A fallback that only says it is the fallback leaves the reader at a
@@ -919,6 +937,11 @@ func (m *model) renderMinimal() string {
 	}
 	return strings.Join(rows, "\n")
 }
+
+// activeSummaryMax is how many running lanes the small-terminal fallback's one
+// row names before it counts the rest, the way conflictSummary counts the
+// branches its row could not hold.
+const activeSummaryMax = 3
 
 // minimalHeader is the fallback's first row, laid from the left inward: the
 // run state and the clock are what the fallback exists to report, so they are
@@ -999,9 +1022,15 @@ func (m *model) helpLines() []string {
 		// run outright. Naming it here is what keeps it from being a secret.
 		lines = append(lines, "  ctrl+c      stop the run now, killing what is running")
 	}
+	// The pause key dies with the run: nothing arrives to collect any more,
+	// and the footer stops advertising it in the same state. A page still
+	// describing it names a key that does nothing, which is the one a
+	// keyboard user cannot tell from a key that is missing.
+	if !m.done {
+		lines = append(lines, "  space       pause the feed (output collects; reviews keep running)")
+	}
 	lines = append(lines,
 		"  esc         cancel quit confirmation, or reset paused/scrolled feed to live",
-		"  space       pause the feed (output collects; reviews keep running)",
 		"  j / k       scroll the feed (or pgup / pgdn)",
 		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results, errors, and diffs, and back",
