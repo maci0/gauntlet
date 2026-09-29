@@ -231,6 +231,14 @@ flowchart LR
     M -. conflict .-> R[agent resolves<br/>in a scratch checkout]
     R -. merged .-> T2
     R -. unresolved .-> K[branch kept<br/>run exits nonzero]
+    classDef tree fill:#e0f1f4,stroke:#0e96a8,color:#0b4a55
+    classDef work fill:#fdf3d9,stroke:#b8891b,color:#5c4210
+    classDef step fill:#e6f0e6,stroke:#3f7d3f,color:#1f3d1f
+    classDef fail fill:#fbe4e6,stroke:#c0392b,color:#6b1f18
+    class T,T2 tree
+    class S,L0,L1,L2,R work
+    class C,M step
+    class K fail
 ```
 
 `--jobs` counts per directory, so `--dirs a,b,c -j 4` is up to 12 agents at

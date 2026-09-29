@@ -71,8 +71,14 @@ var (
 	// use the dim/value/info styles the launcher already uses.
 	styleMagic = lipgloss.NewStyle().Foreground(cMagenta)
 	// Reasoning is real output, but it is not the answer: lavender keeps it
-	// legible while visibly subordinate to the text the agent actually wrote.
-	styleThink = lipgloss.NewStyle().Foreground(cLavender)
+	// legible while visibly subordinate to the text the agent actually wrote,
+	// and the italic is what marks it as the agent thinking out loud in every
+	// view, so both decisions live here and nowhere else.
+	styleThink = lipgloss.NewStyle().Foreground(cLavender).Italic(true)
+	// A merge conflict is the one tally a run cannot resolve on its own, and
+	// it is the only label in the review tally without a status token of its
+	// own: none of the four status styles means "a branch needs a hand".
+	styleConflict = lipgloss.NewStyle().Foreground(cPeach)
 
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).

@@ -383,6 +383,10 @@ flowchart LR
     B1 -. PR .-> M
     B2 -. PR .-> B1
     B3 -. PR .-> B2
+    classDef tree fill:#e0f1f4,stroke:#0e96a8,color:#0b4a55
+    classDef work fill:#fdf3d9,stroke:#b8891b,color:#5c4210
+    class M tree
+    class B1,B2,B3 work
 ```
 
 The invariants are:
@@ -784,6 +788,13 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
   terminals, a darker pull of the same hue on light), one hue, distinct
   from the Catppuccin teal in the heat ramp and agent rotation.
 - One hue per agent, used for its lane, its rows, and its trace everywhere.
+- Every color on screen is a token in `internal/ui/theme.go`. A view that
+  builds a style at its call site has forked the design system, which is how
+  two views end up drawing the same idea differently.
+- The docs draw the same way: a diagram colors its nodes from this palette
+  (the mark teal for the tree, amber for work in flight, green for a commit
+  or merge, red for a kept branch), never from the Mermaid default theme. A
+  page of unstyled boxes is the one surface where the product has no look.
 - Colors adapt to the terminal's background: Catppuccin Latte on light
   terminals, Mocha on dark ones. The pairs are pinned by test to WCAG 2.2 AA:
   text at 4.5:1 (SC 1.4.3) and instrument strokes such as unlit meter
@@ -794,7 +805,9 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
 - Meters are quantized segments with a visible unlit remainder.
 - A feed line says what it is in its own text wherever its text can: a diff
   carries the sign it was added or removed with, a result line carries
-  `RESULT:`, reasoning is italic. An error the agent reported is the one
+  `RESULT:`, reasoning is the thinking token (lavender and italic) wherever
+  it appears, in the feed and in a lane's share counter alike. An error the
+  agent reported is the one
   kind its text does not identify, so it carries a `!` in the line's own
   style, named in the help overlay beside the review glyphs. Nothing the
   feed or the grid says depends on hue alone, which is what `--no-color`

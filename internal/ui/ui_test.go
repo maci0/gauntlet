@@ -385,6 +385,54 @@ func TestThinkingIsShownAsAShareNotAGuess(t *testing.T) {
 	}
 }
 
+// Reasoning is one decision, not two. The feed line and the lane's share
+// counter are the same token, lavender and italic, so the agent thinking
+// looks the same wherever it is read; the drift pinned here is a style rebuilt
+// inline at one of the two call sites. The review tally is the same rule: a
+// label colored by hand is a label the token set no longer governs.
+func TestReasoningAndTallyLabelsComeFromTheTokenSet(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() { r.SetColorProfile(prev) })
+	r.SetColorProfile(termenv.TrueColor)
+
+	think := sgrPrefix(styleThink, "x")
+	if !strings.Contains(think, ";3") {
+		t.Fatalf("the thinking token no longer marks reasoning italic: %q", think)
+	}
+	if styleConflict.GetForeground() != lipgloss.TerminalColor(cPeach) {
+		t.Fatal("the conflict label drifted off the peach it is documented as")
+	}
+
+	frame := staticFrame(demoConfig(), demoEvents(), 130, 40)
+	if !strings.Contains(frame, styleThink.Render("the caller already validates this")) {
+		t.Fatalf("the feed draws its reasoning line outside the thinking token:\n%q", frame)
+	}
+	m := newModel(demoConfig())
+	m.now = m.cfg.Started.Add(90 * time.Second)
+	for _, ev := range demoEvents() {
+		m.apply(ev)
+	}
+	if !strings.Contains(m.renderLanes(116, 8), think) {
+		t.Fatalf("the lane reasoning share is drawn outside the thinking token:\n%q", m.renderLanes(116, 8))
+	}
+	if !strings.Contains(m.gridTitle(120), styleConflict.Render("conflict")) {
+		t.Fatalf("the review tally draws its conflict label outside the token:\n%q", m.gridTitle(120))
+	}
+}
+
+// sgrPrefix is the escape run a style puts in front of probe, which is what
+// a rendered frame is matched on: the styled text itself is also there in a
+// hand-built style, and only the sequence says which token drew it.
+func sgrPrefix(s lipgloss.Style, probe string) string {
+	rendered := s.Render(probe)
+	before, _, ok := strings.Cut(rendered, probe)
+	if !ok {
+		return rendered
+	}
+	return before
+}
+
 func TestCountersReflectResults(t *testing.T) {
 	m := newModel(demoConfig())
 	m.w, m.h, m.ready = 120, 40, true

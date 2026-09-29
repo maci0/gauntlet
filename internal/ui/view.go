@@ -514,7 +514,7 @@ func (m *model) gridTitle(w int) string {
 		styleOK.Render("pass") + " " + styleValue.Render(fmt.Sprint(c["ok"])),
 		styleBad.Render("fail") + " " + styleValue.Render(fmt.Sprint(c["fail"])),
 		styleWarn.Render("timeout") + " " + styleValue.Render(fmt.Sprint(c["timeout"])),
-		lipgloss.NewStyle().Foreground(cPeach).Render("conflict") + " " + styleValue.Render(fmt.Sprint(c["conflict"])),
+		styleConflict.Render("conflict") + " " + styleValue.Render(fmt.Sprint(c["conflict"])),
 		styleDim.Render("skip") + " " + styleValue.Render(fmt.Sprint(c["skipped"])),
 	}
 	// Interrupted cells carry the ␘ glyph; once any exist, the tally says how
@@ -718,7 +718,7 @@ func lineStyle(k normalize.Kind) lipgloss.Style {
 	case normalize.DiffMeta:
 		return styleMagic
 	case normalize.Thinking:
-		return lipgloss.NewStyle().Foreground(cLavender).Italic(true)
+		return styleThink
 	case normalize.Error:
 		return styleBad
 	case normalize.Result:
