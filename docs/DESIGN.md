@@ -591,7 +591,9 @@ resolving the `go` line, and the targets whose bytes ship (`make dist`, and
 release byte-for-byte means the tag, a clean tree, and that Go release.
 `make repro` proves the rest on every CI run by building twice and
 comparing, for each platform in `PLATFORMS`; the second build strips the
-locale the Makefile pins, so it runs under the host's ambient one.
+locale the Makefile pins, so it runs under the host's ambient one. It compares
+`checksums.txt` and `sbom.json` as well, since a release ships six files and
+the two beside the binaries are built from them.
 
 `PLATFORMS` is four targets and the suite runs on two of them. The `test` job
 is a matrix over `ubuntu-24.04` and `macos-15`, so `linux/arm64` and

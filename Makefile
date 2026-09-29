@@ -618,6 +618,18 @@ artifacts: dist ## write dist/checksums.txt and dist/sbom.json from the built bi
 # binaries `dist` ships, and a reproducibility claim that covers one of four
 # proves nothing about the other three. CI runs it on every push.
 #
+# The two files that sit beside the binaries are compared too, and each copy
+# writes them under the release asset name rather than a bare binary name, so
+# the glob that fills checksums.txt reads the same names here as it does in
+# `artifacts`. A release ships six files, not four: checksums.txt and sbom.json
+# are built from the binaries and read by `gauntlet update` and by a scanner, so
+# a claim covering only the binaries leaves two published artifacts unverified.
+# sbom.json is the interesting one, since its serial number is hashed from what
+# it describes rather than drawn at random and its licenses are resolved out of
+# the module cache: that is a claim about determinism, and this is where it is
+# checked. The stamp is VERSION, the same value `dist` is handed, so the two
+# targets describe the same release.
+#
 # The two copies of a platform build at the same time and the platforms stay
 # in sequence, so a mismatch is still reported next to the platform it belongs
 # to. `set -e` carries the recipe rather than a `&&` chain: `cmd && (build) &`
@@ -639,7 +651,7 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 	@test "$(REPRO_DIR)" != "/.cache/gauntlet/repro" || { echo "HOME is unset; set HOME or REPRO_DIR to a disk-backed directory" >&2; exit 1; }
 	@set -e; \
 		rm -rf "$(REPRO_DIR)"; \
-		mkdir -p "$(REPRO_DIR)/a" "$(REPRO_DIR)/b"; \
+		mkdir -p "$(REPRO_DIR)/a/dist" "$(REPRO_DIR)/b/dist"; \
 		trap 'rm -rf "$(REPRO_DIR)"' EXIT; \
 		git ls-files -z --cached --others --exclude-standard > "$(REPRO_DIR)/src.files" && \
 		tar -cf "$(REPRO_DIR)/src.tar" --null -T "$(REPRO_DIR)/src.files" && \
@@ -648,15 +660,28 @@ repro: ## verify reproducibility: build twice from different paths/locale/TZ, co
 		done; \
 		for target in $(PLATFORMS); do \
 			goos=$${target%/*}; goarch=$${target#*/}; \
+			asset="$(BINARY)_$(VERSION)_$$goos_$$goarch"; \
 			echo "repro: $$target (copy a: LC_ALL=C TZ=UTC, copy b: ambient locale and TZ)"; \
 			(cd "$(REPRO_DIR)/a" && GOCACHE="$(REPRO_DIR)/a.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch TZ=UTC LC_ALL=C \
-				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o dist/$$asset $(CMD)) & \
 			pa=$$!; \
 			(cd "$(REPRO_DIR)/b" && GOCACHE="$(REPRO_DIR)/b.gocache" CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch env -u LC_ALL -u TZ \
-				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)) & \
+				$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o dist/$$asset $(CMD)) & \
 			pb=$$!; \
 			wait $$pa || exit 1; wait $$pb || exit 1; \
-			cmp "$(REPRO_DIR)/a/$(BINARY)" "$(REPRO_DIR)/b/$(BINARY)" || exit 1; \
+			cmp "$(REPRO_DIR)/a/dist/$$asset" "$(REPRO_DIR)/b/dist/$$asset" || exit 1; \
+		done; \
+		for side in a b; do \
+			(cd "$(REPRO_DIR)/$$side/dist" && if command -v sha256sum >/dev/null 2>&1; then \
+				sha256sum $(BINARY)_* > checksums.txt; \
+			else \
+				shasum -a 256 $(BINARY)_* > checksums.txt; \
+			fi) || exit 1; \
+			(cd "$(REPRO_DIR)/$$side" && $(GO) run ./cmd/sbom -o dist/sbom.json -version $(VERSION) dist/$(BINARY)_$(VERSION)_*) \
+				|| exit 1; \
+		done; \
+		for f in checksums.txt sbom.json; do \
+			cmp "$(REPRO_DIR)/a/dist/$$f" "$(REPRO_DIR)/b/dist/$$f" || exit 1; \
 		done; \
 		echo "repro: identical bytes from different paths, locales, and timezones"
 

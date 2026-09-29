@@ -1,5 +1,6 @@
 .scratch/
 .scratch_*
+.scratch-*
 /gauntlet
 dist/
 .gauntlet.lock

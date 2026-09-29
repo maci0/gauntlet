@@ -1154,6 +1154,29 @@ func TestMakefileReproIsolatesBuildCachesAndWorktrees(t *testing.T) {
 	}
 }
 
+// A release ships six files: the four binaries plus the checksums.txt and
+// sbom.json beside them. Both are built from the binaries, `gauntlet update`
+// reads the first, and a scanner reads the second, so a reproducibility check
+// that compares only the binaries leaves two published artifacts unverified.
+// sbom.json is the one with a determinism claim of its own: its serial number
+// is hashed from what it describes, and its licenses are resolved out of the
+// module cache the build filled. The copies have to build under the release
+// asset name, or the glob filling checksums.txt reads names the release never
+// ships and the comparison proves nothing about what it names.
+func TestMakefileReproComparesTheWholeAssetSet(t *testing.T) {
+	recipe := reproRecipe(t, "repro")
+	for _, want := range []string{
+		`asset="$(BINARY)_$(VERSION)_$$goos_$$goarch"`,
+		`sha256sum $(BINARY)_* > checksums.txt`,
+		`$(GO) run ./cmd/sbom -o dist/sbom.json -version $(VERSION) dist/$(BINARY)_$(VERSION)_*`,
+		`for f in checksums.txt sbom.json; do`,
+	} {
+		if !strings.Contains(recipe, want) {
+			t.Errorf("make repro missing %q: a release ships checksums.txt and sbom.json beside the binaries, so the comparison has to cover them", want)
+		}
+	}
+}
+
 // make repro must preflight REPRO_DIR so an unset HOME does not wipe root directories.
 func TestMakefileReproPreflight(t *testing.T) {
 	text := makefileText(t)
