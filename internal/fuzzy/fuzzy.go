@@ -9,7 +9,7 @@
 package fuzzy
 
 import (
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -50,14 +50,19 @@ func NFC(s string) string {
 // "apple" before "Zebra". Root is the order all of them agree on, and it
 // keeps CJK, Cyrillic, and Arabic names ordered among themselves rather than
 // in one block after every Latin one.
+//
+// The order is total, which the collator alone is not: two spellings of one
+// name collate equal ("é" as one code point and as "e" plus a combining
+// accent), and a stable sort leaves such a pair in the order the list
+// arrived in. Several of the lists this orders are built by ranging a map, so
+// arrival order is the map's, which differs between two runs over one tree
+// and puts a name in a different place in each. Comparator breaks the tie by
+// bytes, which is arbitrary but the same arbitrary every time.
 func Sort(names []string) {
 	if len(names) < 2 {
 		return
 	}
-	cmpNames := Comparator()
-	sort.SliceStable(names, func(i, j int) bool {
-		return cmpNames(names[i], names[j]) < 0
-	})
+	slices.SortFunc(names, Comparator())
 }
 
 // Comparator returns the three-way comparison Sort orders by, for a caller
@@ -69,8 +74,19 @@ func Sort(names []string) {
 // The collator carries per-comparison state, so the returned function is not
 // safe to share across goroutines and builds one collator per call. Build it
 // once per sort and reuse it for every comparison the sort makes.
+//
+// A name the collator calls equal falls back to byte order, so the
+// comparison is a total order: a caller that sorts a list built from a map
+// gets the same arrangement on every run rather than one the map's iteration
+// order decided.
 func Comparator() func(a, b string) int {
-	return collate.New(language.Und).CompareString
+	c := collate.New(language.Und)
+	return func(a, b string) int {
+		if v := c.CompareString(a, b); v != 0 {
+			return v
+		}
+		return strings.Compare(a, b)
+	}
 }
 
 // Closest returns the candidate nearest want within a small edit distance,

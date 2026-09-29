@@ -319,6 +319,39 @@ func TestResultsOrderIndependentOfCompletionOrder(t *testing.T) {
 	}
 }
 
+// TestResultsOrderSameNameRowsByBranch pins the case the loop-order tiebreak
+// above does not cover: a review weighted twice in one --jobs run is two
+// concurrent lanes under one name, so neither row is "the later loop" and
+// insertion order is whichever lane the scheduler let finish first. The
+// branch is assigned from the seed when the queue is built, so ordering on it
+// puts the pair the same way on every replay.
+func TestResultsOrderSameNameRowsByBranch(t *testing.T) {
+	rows := []Result{
+		{Review: "aa-review", Status: StatusOK, Branch: "gauntlet/run-l1/lane-1"},
+		{Review: "aa-review", Status: StatusFail, Branch: "gauntlet/run-l1/lane-0", Detail: "lane zero"},
+	}
+	forward, backward := &Stats{Start: time.Now()}, &Stats{Start: time.Now()}
+	for _, r := range rows {
+		forward.Add(r)
+	}
+	for _, r := range slices.Backward(rows) {
+		backward.Add(r)
+	}
+
+	got, want := backward.Results(), forward.Results()
+	if !slices.EqualFunc(got, want, func(a, b Result) bool {
+		return a.Review == b.Review && a.Branch == b.Branch && a.Detail == b.Detail
+	}) {
+		t.Fatalf("lane completion order leaked into the result list:\n%+v\n%+v", got, want)
+	}
+	if got[0].Branch != "gauntlet/run-l1/lane-0" || got[1].Branch != "gauntlet/run-l1/lane-1" {
+		t.Fatalf("same-name rows are not in branch order: %+v", got)
+	}
+	if f := forward.Failures(); len(f) != 1 || f[0].Branch != "gauntlet/run-l1/lane-0" {
+		t.Fatalf("the failure list must order the same way: %+v", f)
+	}
+}
+
 // TestFailuresOrderIndependentOfCompletionOrder pins that the failure list
 // reads by name and then by loop, the way Results does. A review that failed
 // in two loops contributes two rows, each with its own branch and lines, so an

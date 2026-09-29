@@ -5,6 +5,7 @@ package runner
 
 import (
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -291,9 +292,10 @@ func (s *Stats) DetailDropped() int {
 //
 // Lanes finish in whatever order the OS scheduler picks, so insertion order
 // would make a --jobs > 1 run report its reviews, and any list built from
-// them, differently on every replay of the same seed. The sort is stable: the
-// same review can run once per loop, and those are sequential, so keeping
-// insertion order within a name keeps the loops in the order they ran.
+// them, differently on every replay of the same seed. Two rows can carry one
+// name, from a review weighted twice in a loop or run once per loop, and the
+// second of them is the lane that happened to finish first, so byReviewName
+// breaks that tie on the branch rather than leaving it to the scheduler.
 //
 // Name order is the collation every other list of names the tool prints uses,
 // not byte order: a review named by the reviewed tree in its own script or with
@@ -303,9 +305,24 @@ func (s *Stats) Results() []Result {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := append([]Result(nil), s.detail()...)
-	byName := fuzzy.Comparator()
-	slices.SortStableFunc(out, func(a, b Result) int { return byName(a.Review, b.Review) })
+	slices.SortStableFunc(out, byReviewName())
 	return out
+}
+
+// byReviewName orders results by review name, then by the branch the review
+// ran on. The branch is a function of the seed rather than of the run: a lane's
+// reviews are assigned to it when the queue is built, so a weighted review in
+// a --jobs run gets the same branch on every replay. Where a run records no
+// branch the two rows compare equal and the stable sort keeps them in the
+// order they were added, which is the order a sequential run added them in.
+func byReviewName() func(a, b Result) int {
+	byName := fuzzy.Comparator()
+	return func(a, b Result) int {
+		if c := byName(a.Review, b.Review); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Branch, b.Branch)
+	}
 }
 
 // Counts tallies results by status.
@@ -440,9 +457,9 @@ func (s *Stats) ByAgent() []AgentSummary {
 // prompt) is why exit code 1 exists alongside ok and interrupted, and the
 // detailed list must account for every nonzero exit the counts report.
 //
-// Sorted like Results, and stable for the same reason: a review that failed
-// in two loops contributes two rows, each carrying its own branch, exit
-// code, and lines, and an unstable sort would print them in either order.
+// Sorted like Results, on the same key: a review that failed twice
+// contributes two rows, and the branch is what puts the same pair in the same
+// order on every replay of a seeded parallel run.
 //
 // The list covers the results the detail slice still holds, so a run longer
 // than maxDetailResults lists only its recent failures. Every failure is
@@ -461,7 +478,6 @@ func (s *Stats) Failures() []Result {
 			out = append(out, r)
 		}
 	}
-	byName := fuzzy.Comparator()
-	slices.SortStableFunc(out, func(a, b Result) int { return byName(a.Review, b.Review) })
+	slices.SortStableFunc(out, byReviewName())
 	return out
 }

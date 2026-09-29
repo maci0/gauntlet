@@ -361,6 +361,41 @@ func TestSort(t *testing.T) {
 	}
 }
 
+// TestSortIsATotalOrder pins the property the callers that build a list by
+// ranging a map depend on: two spellings of one name collate equal, so the
+// order they come out in cannot be the order they went in. A stable sort
+// alone left the tie where the map put it, and Go randomizes map iteration
+// per range, so the same tree printed its set names, its agent names, and its
+// probe list in a different order on every run.
+func TestSortIsATotalOrder(t *testing.T) {
+	composed := "caf\u00e9"    // one code point
+	decomposed := "cafe\u0301" // e plus a combining acute
+	in := []string{decomposed, "apple", composed, "zebra"}
+
+	first := slices.Clone(in)
+	Sort(first)
+	want := slices.Clone(first)
+	slices.Reverse(first)
+	Sort(first)
+	if !slices.Equal(first, want) {
+		t.Fatalf("order depends on input order: %q then %q", want, first)
+	}
+	// The tie is broken by bytes, which is arbitrary but fixed: the
+	// decomposed spelling starts with a plain "e" and so comes first, and
+	// both still file under c.
+	if decomposedAt, composedAt := slices.Index(want, decomposed), slices.Index(want, composed); decomposedAt > composedAt {
+		t.Fatalf("collation tie not broken by bytes: %q", want)
+	}
+
+	// Comparator is the same order, so a caller sorting its own records gets
+	// it too.
+	less := Comparator()
+	if less(decomposed, composed) >= 0 || less(composed, decomposed) <= 0 {
+		t.Fatalf("Comparator does not order the tied pair: %d vs %d",
+			less(decomposed, composed), less(composed, decomposed))
+	}
+}
+
 // TestComparator pins that a caller sorting its own records by a name field
 // gets the order Sort would give those names, in both directions: a negative
 // result for the name that comes first, and a total order across scripts
