@@ -2,7 +2,7 @@ Summary: maintainability, correctness, consistency, simplicity
 
 You are a senior software engineer. Your task is to perform a deep code quality review of this codebase.
 
-Your goal is to produce a practical, high-signal review focused on maintainability, correctness, consistency, and simplicity.
+Your goal is to keep the code inside one file coherent and provably right: in-module naming and pattern consistency, duplication that has already drifted, logic you can prove wrong from the function body, and type-level contracts. Report a defect only when you can point at the line that makes it wrong.
 
 Review the following:
 
@@ -22,11 +22,8 @@ Review the following:
 
 2. Duplication
 (slop-review owns near-verbatim copy-paste and cosmetic duplication; here own duplicated logic that has drifted: copies that now disagree.)
-- Duplicated code
-- Near-duplicated logic
-- Repeated patterns that should be abstracted
 - Copy-paste code with minor variations that has since diverged
-- Repeated validation, parsing, error handling, or data transformation logic
+- The same validation, parsing, error handling, or data transformation written more than once, where the copies differ
 
 3. Dead or unnecessary code
 (slop-review owns unused parameters, always-true guards, and commented-out blocks; minimalism-review owns project-wide unused-symbol deletion. Here only unused imports and obviously dead locals in a file you already have open. Unused tests: flag, never delete.)
@@ -35,8 +32,6 @@ Review the following:
 
 4. Opportunities to reduce lines of code
 (slop-review owns local verbose constructs and wrappers; minimalism-review owns project-wide necessity proofs. Here only simplify logic in a function you already have open because it is hard to follow.)
-- Places where logic can be simplified
-- Boilerplate that can be removed
 - Repeated branches that can be merged
 - Branches whose bodies are identical (if/else arms, switch cases, ternary sides). Either a condition that was meant to differentiate and does not, or a branch that should not exist
 - Verbose code that can be replaced with clearer, smaller constructs
@@ -44,20 +39,11 @@ Review the following:
 
 5. Refactoring opportunities
 (arch-review owns module-scale separation of concerns. Here own function-scale structure inside one file.)
-- Functions that are too long or do too many things
-- Functions longer than ~70 lines (the scroll discontinuity). Split so the parent owns all branching and mutable state, and helpers are non-branchy and preferably pure
+- Functions longer than ~70 lines (the scroll discontinuity), or short ones branching over several unrelated jobs. Split so the parent owns all branching and mutable state, and helpers are non-branchy and preferably pure
 - Recursion where a bounded loop would make the bound obvious. Recursion hides whether execution is bounded
 - Control flow scattered across helpers. Push `if`s up and `for`s down: one function owns switches and cases; leaves should not care about control flow
 - Compound boolean conditions and `else if` chains that hide cases. Split into nested `if`/`else` trees so every branch is visible; verify that each `if` has a matching `else` that handles or asserts the negative space
 - Invariants stated as negations (`index >= length`) where the positive form (`index < length`) is the natural loop condition
-- Poor separation of concerns
-- Confusing control flow
-- Weak naming
-- Hidden assumptions
-- Tight coupling
-- Data structures that make the code harder to understand
-- Interfaces that could be made clearer or smaller
-- Opportunities to improve expressiveness and readability without changing behavior
 
 6. Code clarity and expressiveness
 - Places where intent is unclear
@@ -134,14 +120,8 @@ Instructions:
 - Do not hunt comment noise, copy-paste style, unused parameters, or visual genericness (slop-review, uislop-review). Do not run a project-wide unused-symbol deletion pass (minimalism-review); unused imports in a file you already have open are in scope.
 - Do not edit review prompts, SKILL.md, or agent rule files (prompt-review, skills-review, agentrules-review). Do not edit THREAT_MODEL.md or SECURITY.md (threat-review). Do not rewrite tests (test-review). System architecture, module boundaries, and subsystem design belong to arch-review and design-review; here own in-module code quality, logic correctness, and local consistency.
 - Be concrete, not generic.
-- Do not praise the code unless necessary for contrast.
 - Prefer fewer, high-value findings over many weak ones.
-- Group similar findings together.
 - Where possible, suggest the smallest effective refactor first.
-- Distinguish between:
-  - confirmed issues
-  - likely issues
-  - potential issues that need verification
 - Do not suggest large abstractions unless they clearly reduce complexity.
 - Avoid recommending refactors that make the code more clever but less obvious.
 - Favor explicit, readable code over abstraction for its own sake.
