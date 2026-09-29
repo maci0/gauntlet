@@ -221,7 +221,7 @@ const detailReclaim = maxDetailResults / 2
 // keepDetail appends to the capped detail ring, dropping the oldest result
 // once it is full. The caller holds s.mu.
 func (s *Stats) keepDetail(r Result) {
-	if s.resultsStart > 0 && len(s.results)-s.resultsStart >= detailReclaim {
+	if s.resultsStart >= detailReclaim {
 		s.results = append(s.results[:0], s.results[s.resultsStart:]...)
 		s.resultsStart = 0
 	}
@@ -260,11 +260,13 @@ func (s *Stats) Seed(results []Result, commitRuns, commitFails int) {
 	} else {
 		kept = append(kept, results...)
 	}
-	s.resultsStart = 0
-	s.results = append(kept, s.results...)
-	if len(s.results) > maxDetailResults {
-		s.results = append([]Result(nil), s.results[len(s.results)-maxDetailResults:]...)
+	merged := append(kept, s.detail()...)
+	if n := len(merged) - maxDetailResults; n > 0 {
+		merged = append([]Result(nil), merged[len(merged)-maxDetailResults:]...)
+		s.detailDropped += n
 	}
+	s.results = merged
+	s.resultsStart = 0
 	s.commitRuns += commitRuns
 	s.commitFails += commitFails
 	s.mu.Unlock()

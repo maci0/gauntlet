@@ -4,6 +4,7 @@
 package runner
 
 import (
+	"fmt"
 	"slices"
 	"sync"
 	"testing"
@@ -28,6 +29,47 @@ func TestSeedPrependsCarriedOverResults(t *testing.T) {
 	if st.CommitRuns() != 1 || st.CommitFails() != 1 {
 		t.Fatalf("carried-over counters lost: runs=%d fails=%d",
 			st.CommitRuns(), st.CommitFails())
+	}
+}
+
+func TestDetailCapKeepsTheMostRecentAndSeedPrependsToThem(t *testing.T) {
+	// Results sorts by review name, so the ring's own order is read through the
+	// accessor that keeps it.
+	detail := func(s *Stats) []Result {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return append([]Result(nil), s.detail()...)
+	}
+
+	st := &Stats{}
+	for i := range MaxDetailResults + 50 {
+		st.Add(Result{Review: fmt.Sprintf("review-%d", i), Status: StatusOK})
+	}
+	got := detail(st)
+	if len(got) != MaxDetailResults {
+		t.Fatalf("detail beyond the cap: %d rows", len(got))
+	}
+	if first := got[0].Review; first != "review-50" {
+		t.Fatalf("the cap must drop the oldest rows: first=%s", first)
+	}
+	if dropped := st.DetailDropped(); dropped != 50 {
+		t.Fatalf("dropped count: %d", dropped)
+	}
+
+	// A seed lands in front of the detail this run already holds, and what the
+	// ring had dropped stays dropped: a dropped row listed and counted twice.
+	// The cap keeps the most recent end of the run, so a carried-over result
+	// first goes when the ring is already full.
+	st.Seed([]Result{{Review: "carried", Status: StatusOK}}, 0, 0)
+	got = detail(st)
+	if len(got) != MaxDetailResults {
+		t.Fatalf("seeded detail beyond the cap: %d rows", len(got))
+	}
+	if first, last := got[0].Review, got[len(got)-1].Review; first != "review-50" || last != "review-2049" {
+		t.Fatalf("seeded detail must be the run's own most recent rows: first=%s last=%s", first, last)
+	}
+	if dropped := st.DetailDropped(); dropped != 51 {
+		t.Fatalf("dropped count after the seed: %d", dropped)
 	}
 }
 

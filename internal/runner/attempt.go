@@ -45,7 +45,7 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 		if !ok {
 			return
 		}
-		// One probe per review this lane actually starts, and none on the way
+		// One probe per attempt this lane actually starts, and none on the way
 		// out: asked first, a lane that is about to stop waits out the probe
 		// anyway, so --jobs N paid for N concurrent probes on every loop's
 		// final turn and again on a cancel, to learn there was nothing to stop.

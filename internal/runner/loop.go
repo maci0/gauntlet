@@ -239,7 +239,7 @@ func (r *Runner) budgetExhausted() string {
 // reads a percentage of a quota shared by every agent on the account, and the
 // review path is the only place that quota is consulted.
 //
-// A retry is where it matters most. The other two loops check the window once
+// A retry is where it matters most. The review loops check the window once
 // per review before they take one off the queue, but a retry starts no new
 // review: it relaunches the one already in hand, up to --retries times and then
 // once per remaining agent in the pool, after a backoff that can be minutes.

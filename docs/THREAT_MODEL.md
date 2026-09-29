@@ -7,7 +7,73 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-30 against commit e333a04. This pass read the eight
+Last reviewed: 2026-09-30 against commit 601c117. This pass read the
+thirty-five commits since e333a04 and entered three surfaces the model had
+never named, plus the control that changes what B5 claims. The first surface
+is the credential redactor every child error now passes through: a rejected
+key is reported by the CLI that rejected it, and that line became an error
+string, a report row, and a journal line. `runx.RedactSecrets`
+(`internal/runx/runx.go:128-175`) rewrites a value assigned to a name that
+says it is a credential (`secretAssignRe`, `runx.go:133-135`, with
+`secretValueMin`, `runx.go:145-148`) and a token carrying a published fixed
+prefix (`secretPrefixRe`, `runx.go:140-142`), and `FirstLine` is the single
+funnel that applies it to child output
+(`runx.go:177-183`). Every launch, `git`, `gh`, the usage probe, the dsh
+probe, and the release inventory already funnelled its first line of child
+output through it (`internal/runner/exec.go:648`,
+`internal/gitx/branch.go:238,245`, `internal/ghx/ghx.go:220,248,271`,
+`internal/runner/usagelimit.go:100,140,149`, `internal/agent/dsh.go:146`,
+`internal/sbom/license.go:135`), so the control needed no new call sites.
+What it does not reach is unchanged and still named below: displayed output,
+the journal's own events, and the `--log` file carry whatever an agent
+printed, and a `NAME: Bearer <opaque token>` line loses only what the value
+class reaches, which stops at the first space.
+The second surface is `gauntlet doctor`'s git row: a `git --version`
+subprocess resolved through the same `PATH` memo a run's first git call uses,
+run with an absolute-only `PATH` and bounded to 256 bytes
+(`internal/gitx/version.go:38-54`), parsed against a floor of 2.24
+(`MinVersion`, `version.go:21`; `BelowFloor`, `version.go:59-70`), where an
+unreadable version is not a pass (`cmd/gauntlet/doctor.go:146-160`). It is
+the one git call this tool makes with no safe-config overlay, deliberately,
+because `--version` reads no repository; what it inherits is R2's assumption
+that the resolved `git` is the operator's. The third surface is the state
+tree read as a whole: `journal.Inspect` reports how many journals end
+without the newline every recorded event ends with, which is what tells a
+whole archive from one cut short, and the count reaches `doctor` and
+`runs --json`
+(`Status.Truncated`, `internal/journal/status.go:31-37`; `Inspect`,
+`internal/journal/status.go:42-90`, reading one byte at each end through the symlink-refusing
+`openRead`, `internal/journal/status.go:113`). It is a report, not a control: the half-line
+such a file ends on is not JSON and every reader drops it, so the count is
+where an operator learns the run replays shorter than it ran.
+
+Four controls those commits added are carried. Journal writes are whole-line,
+so a live run's own event stream no longer reads as cut short while it is
+being appended to (`lineBuffer`, `internal/journal/journal.go:302-330`, at
+the appends `journal.go:260` and `internal/journal/index.go:228`). Token
+billing reads the machine-readable usage envelope rather than the numbers an
+agent printed beside it, so a prose scrape cannot inflate the run's tally
+(`internal/runner/exec.go:250-256,407-416`, with `maxUsage`,
+`exec.go:435-441`), which narrows R6's accounting without narrowing its
+enforcement. The dsh overlay cache is validated by contents before it is
+trusted, so a planted symlink or FIFO at a cache path is rewritten rather
+than read through (`dshPatchHolds`, `internal/agent/dsh.go:221-232`), and a
+failed provider probe expires rather than pinning for the process
+(`internal/agent/dsh.go:127,172`). One wait bound now covers every launched
+child instead of four private constants
+(`runx.WaitGrace`, `internal/runx/runx.go:31`), adopted by git, `gh`, the
+sbom listing, the dsh probe, and the indexer.
+
+Two build-side changes are carried as developer and release surface, not as
+runtime boundaries: `make repro` now runs the release inventory generator and
+a checksum tool inside each copied tree and compares the whole asset set
+(`Makefile:685-723`), which puts the `go list` and module-cache grant reads
+the sbom entry point describes on a second invocation site, and the release
+job resolves an annotated tag to its commit before it builds anything
+(`.github/workflows/release.yml:107-133`). No risk row was added and none
+was closed; R1 through R9 all stand where they stood.
+
+Last reviewed previously: 2026-09-30 against commit e333a04. That pass read the eight
 commits since 1eafdf7 and entered two surfaces the model had never named,
 plus one control the previous pass's own paragraph left out. The first
 surface is `make doctor`, a prerequisite preflight that resolves the Go
@@ -463,7 +529,7 @@ assigned here.
 | R4 | Confidentiality of reviewed source: agents send code to third-party model APIs over the network | B2 | Inherent to the tool's purpose; users must know it |
 | R5 | `dsh` without a launcher on PATH falls back to `bunx`, fetching `@deepseek-ai/dsh` from the npm registry and executing it; a `dsh:<model>` pin also runs that argv as `--dump-config` before the review | B4 | Named gap (deliberate feature, unreviewed supply-chain hop) |
 | R6 | Agent resource consumption or a failed usage probe exhausts host capacity or provider budget | B2 | High when reviewing hostile content: parser caps are not CPU, disk, network, or spend quotas. `--token-budget` now bounds the tokens the run's own reviews report as one ceiling for the whole run rather than one per directory: a shared tally every directory's runner adds to and a hot reload's predecessor carries, checked before a loop, a review, a lane, a retry or its backoff, and the next stack step (`Tokens`, `internal/runner/stats.go:104-133,346-356`; `budgetExhausted`, `internal/runner/loop.go:223-243`, at `loop.go:262`, `internal/runner/runner.go:340`, `internal/runner/attempt.go:41,556,570`, `internal/runner/stack.go:284`). It is still a scheduling bound, not a spend quota: the counters are agent-reported, the commit and conflict launches are excluded from the sum, it is checked between steps rather than inside one, it stops what starts next rather than what already ran, and a review that under-reports its tokens lowers nothing else; a lane now drops its unstarted queue the moment the usage probe trips, so `--jobs N` cannot spend the window on reviews taken off the queue before the flag was read (`runLane`, `internal/runner/attempt.go:36-64`); the usage limit probe runs isolated from the repository but fails open on errors (`internal/runner/exec.go:119-165`, `internal/runner/usagelimit.go:47-72,93-114`) |
-| R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; a symlink or non-regular destination is refused, the open carries `O_NOFOLLOW` and 0600 with a post-open chmod, but content is not secret-redacted and the parent directory is not confined (`openLogFile`, `cmd/gauntlet/main.go:713-733) |
+| R7 | `--log` persists source or credentials quoted in output at an operator-selected path | B3/B6 | Conditional on enabling logging; a symlink or non-regular destination is refused, the open carries `O_NOFOLLOW` and 0600 with a post-open chmod, but the displayed output is not secret-redacted: an agent's own stdout is filtered for escapes, not for credentials, and only the first line of a child's error text goes through `runx.RedactSecrets` (`internal/runx/runx.go:163-183`). The parent directory is not confined (`openLogFile`, `cmd/gauntlet/main.go:713-733) |
 | R8 | `--semcode` indexer output carrying file names from a hostile tree reaches the operator's terminal | B1 -> B3 | Closed: both of the indexer's streams pass through `normalize.DisplayWriter`, one writer per stream, flushed after the child exits (`cmd/gauntlet/semcode.go:82-104`, `internal/normalize/display.go:145-243`) |
 | R9 | The run history is bounded and evicted on every run (`--keep-runs`, default 200), and eviction is ordered by the run ID's timestamp rather than by a protected property of the journal | B6 | Partly closed. Eviction moves the journal to `pruned/` and `gauntlet runs --restore` moves it back, so a wrong bound is recoverable until the same number of newer runs has replaced it; what remains is a run older than that, which no bound distinguishes. The move is confined to real shard directories holding validated run IDs, and the run just finished is the newest row, so a skewing clock or a hostile planted file under `runs/` is what puts evidence out of reach (`internal/journal/retain.go:45-56,78-198`, `internal/journal/quarantine.go`, `internal/journal/index.go:697-740`). An index rebuild now keeps the row the index already holds for a journal it cannot summarize, because the argv, exit code, and elapsed time live on that row alone and nothing reconstructs them afterwards (`rebuildIndex`, `internal/journal/index.go:864-873`), so a corrupt or truncated journal no longer spends the only copy of its own summary |
 
@@ -626,7 +692,13 @@ publication uses that account's Git credentials (`internal/runner/commit.go:102-
   and agent config stores; they leave toward GitHub (only when `GH_TOKEN` or
   `GITHUB_TOKEN` is set, and only on gauntlet's own HTTPS client) and toward
   each agent's model provider. Git stderr is redacted for embedded userinfo
-  credentials before errors are printed or journaled (`internal/gitx/exec.go:327-395`).
+  credentials and for a credential-shaped value before errors are printed or
+  journaled (`internal/gitx/exec.go:327-395`; `runx.RedactUserinfo`,
+  `runx.RedactSecrets`, `internal/runx/runx.go:121-183`, reached through
+  `FirstLine`, which every launch's, git's, `gh`'s, and probe's error text
+  funnels through). What the redaction does not reach is output gauntlet
+  displays: an agent's own stdout is filtered for escapes, not for secrets,
+  and the journal and the `--log` file keep what it printed.
   `gh` and `git push` use whatever credentials those tools already have.
 - **B6, gauntlet <-> local state.** `~/.gauntlet` (or `GAUNTLET_HOME`): the
   JSONL journal, hot-reload handoff files, `agents.json`. This is also the one
@@ -683,6 +755,8 @@ Untrusted inputs with their validation point:
 | `--log FILE` destination | `openLogFile`, `cmd/gauntlet/main.go:713-733; `validateLog`, `flags.go:854-891` | startup rejects an existing directory target; at open an `os.Lstat` refuses a symlink and any non-regular file, the open itself carries `syscall.O_NOFOLLOW` with 0600, and a regular file that survived is chmod'd to 0600 before any output; no parent-directory confinement, no size cap, and no rotation |
 | `--semcode` indexer | `buildSemcodeIndex`/`runIndexer`, `cmd/gauntlet/semcode.go:82-104` | `semcode-index` resolved through `agent.Resolve` (`pathNoCWD`, `internal/agent/agent.go:204-253`), so a planted `./semcode-index` in the tree cannot win; argv-only, no shell; child environment isolated with `runx.AbsPATHEnv()`; 30-minute per-directory cap with a deferred process-group SIGKILL (`runx.Guard`, `runx.KillGroup`); the child's working directory is the reviewed tree, so the tree decides both what it walks and the file names it reports, and each of its streams gets its own `normalize.DisplayWriter` (`cmd/gauntlet/semcode.go:87-96`), which passes every complete line through `Display` and holds an unterminated one until `Flush` after `Run` joins the copy goroutines (`internal/normalize/display.go:145-243`); the held partial line is capped at 1 MiB and released on a rune boundary (`display.go:196-242`) |
 | `doctor` environment report | `envSettingLines`, `cmd/gauntlet/doctor.go:314-336; table `helpEnvVars`, `cmd/gauntlet/help.go:177-189` | reads only the documented names, so nothing the operator did not set for gauntlet is echoed; a variable the table marks secret is reported as `(set)` and never as a value, so a pasted `doctor` transcript carries no token (`doctor.go:313-335`); `GAUNTLET_HOME` is left out because the State line above already names it; nothing here interprets the value, and presence is the only thing reported. A test pins the set: every `os.Getenv`/`os.LookupEnv` name in non-test source is either in the help table or recorded as internal with a reason (`cmd/gauntlet/env_surface_test.go:31-33,35-59`) |
+| `doctor` git version probe | `Version`, `internal/gitx/version.go:38-54`, reported at `cmd/gauntlet/doctor.go:146-160` | a diagnostic subprocess on the operator's machine, resolved through the same `PATH` memo a run's first git call uses so both name the same binary, run with an absolute-only `PATH` (`runx.AbsPATHEnv()`), bounded to 256 bytes (`versionMaxBytes`, `version.go:26-27`), with its own process group and a deadline. It is the one git call this tool makes with no safe-config overlay, deliberately, because `--version` reads no repository; a `git` on the operator's `PATH` is the one R2 already assumes. The line is parsed against a floor of 2.24 (`MinVersion`, `version.go:21`) and an unparseable one is reported as unknown rather than as a pass (`BelowFloor`, `version.go:59-70`); a `git` that exits nonzero but prints a version still has that version read, because the floor check is the point and the exit status is not the claim |
+| `doctor` and `runs --json` state-tree inspection | `Inspect`, `internal/journal/status.go:42-90`; read at `internal/journal/status.go:113`; reported at `cmd/gauntlet/doctor.go:316` and `cmd/gauntlet/runs.go:176` | operator-set on local state this user wrote, and a report rather than a control: the walk counts journals, index rows, rows the two copies disagree about, pruned journals, and journals ending without the newline every event ends with. The last one reads one byte at each end of every journal under `runs/` and the quarantine, through the symlink-refusing `openRead`, so the cost is one bounded open per file and no file is read whole. It is where an operator learns an archive is short: the half-line such a file ends on is not JSON, so every reader drops it and the run replays as a shorter run that looks complete |
 | `dsh --dump-config` probe | `dumpDshConfig`/`dshDefaultProvider`, `internal/agent/dsh.go:112-159` | runs only for a `dsh:<model>` pin; child environment isolated with `runx.AbsPATHEnv()` (`dsh.go:116`); bounded to 4 MiB output via `runx.Bound` (`dsh.go:77,120`); own process group, 120s cap, deferred group SIGKILL via `runx.KillGroup` (`dsh.go:119`); provider parsed with a narrow regex (`dshProviderRe`, `dsh.go:50`); the memo is keyed by the launcher argv, and the argv carries the `--bin` override, so one launcher's config cannot pin another (`dshProbes`, `dsh.go:95-97`, consulted in `dshDefaultProvider`, `dsh.go:146-159`); overlay values charset-restricted before they are quoted into YAML (`dshModelRe`, `agent.go:456`); provider and model validated against `dshModelRe` (`dsh.go:187-205`); overlay key rejects path separators and traversal (`dsh.go:165-184`) |
 | Interactive launcher / picker keyboard input | `cmd/gauntlet/pick.go`, `internal/ui/pick.go`, `internal/ui/ui.go` | navigation keys jump to bounds (`g`/`G` in `internal/ui/pick.go:378-382`); cursor clamped to valid review rows via `clampReviewCursor` (`internal/ui/pick.go:341,445,448,499-510`); Esc/Ctrl-C during filter editing resets typing and clamps cursor (`internal/ui/pick.go:485-490`); empty filter matches block launch, with the reason returned by `blocked` and checked on Enter (`internal/ui/pick_view.go:145-160,263,435-436,523`, `internal/ui/pick.go:356-360`); Enter key terminates completed runs (`internal/ui/ui.go:780-808`) |
 | Planted symlinks/FIFOs in the tree | prompt discovery inspects candidates with `os.Lstat` requiring regular files (`prompt/discover.go:244,278`); prompt reads `prompt.go:278-329`, lock creation `runner/lock.go:53-89`, untracked counting `internal/gitx/stats.go:98-154`, reload handoff `reload.go:188-196` | `O_NOFOLLOW\|O_NONBLOCK` at open time, regular-file stats, size caps; stat errors propagated on open regular files (`internal/gitx/stats.go:169-190`); `LoadState` verifies regular file with `Lstat` (`reload.go:187-196`) |
@@ -1141,8 +1215,12 @@ fails is a warning; the run's own report has already been written
 | Directory traversal or poisoned journal run IDs | run ID length bounded (<= 128), charset-restricted (`[a-zA-Z0-9_.-]`), ".." rejected; date sharding derived from run ID timestamp; journal writes flushed via `Sync()` | `internal/journal/journal.go:154`, `internal/journal/index.go:165,199,899`, `internal/journal/history.go:88-104,173` |
 | History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:45-56,78-198`, `internal/journal/index.go:697-740` |
 | Embedded basic-auth credentials in remote URLs | userinfo stripped from git stderr strings before errors are returned, printed, or journaled | `runx.RedactUserinfo`, `internal/gitx/exec.go:327-395` |
+| A credential a child process printed reaching an error, a report, or the journal | every piece of child output that becomes an error string passes through `FirstLine`, which strips userinfo and then `RedactSecrets`: a value assigned to a name that says it is a credential, and a token carrying a published fixed prefix. The result is idempotent, and a value under eight characters is left alone as a flag or a placeholder. The redaction is bounded by what its value class matches: it stops at the first space, so a `Bearer` scheme line is only caught by the prefix rule | `RedactSecrets`, `internal/runx/runx.go:128-175`; `FirstLine`, `runx.go:177-183`; reached from `internal/runner/exec.go:648`, `internal/gitx/branch.go:238,245`, `internal/ghx/ghx.go:220,248,271`, `internal/runner/usagelimit.go:100,140,149`, `internal/agent/dsh.go:146`, `internal/sbom/license.go:135` |
+| A machine below the git floor, discovered only by a failing command | `doctor` reads `git --version` through the same `PATH` memo a run's first git call uses, bounded to 256 bytes and run with an absolute-only `PATH`, and compares it to a floor of 2.24, the release that introduced `--end-of-options` and `git switch`. An unreadable or unparseable version is reported as unknown, not as a pass | `Version`, `internal/gitx/version.go:38-54`; `BelowFloor`, `version.go:59-70`; `cmd/gauntlet/doctor.go:146-160` |
+| An archive of the run history that is short, read as a whole one | journal writes go out whole-line, and `Inspect` counts the journals that end without the newline every event ends with, through the symlink-refusing reader, on `doctor` and on `runs --json`. It is a report rather than a control: the half-line such a file ends on is not JSON, so every reader drops it and the count is where an operator learns the run replays shorter than it ran | `lineBuffer`, `internal/journal/journal.go:302-330`; `Status.Truncated`, `internal/journal/status.go:31-37`; `Inspect`, `internal/journal/status.go:42-113`; `cmd/gauntlet/doctor.go:316`, `cmd/gauntlet/runs.go:176` |
+| A token figure an agent printed beside its own usage counters | the run's tally reads the machine-readable usage envelope, taking the larger of what the envelope and the live counters report, rather than scraping numbers out of prose, so a model that prints a figure cannot inflate what `--token-budget` is charged | `internal/runner/exec.go:250-256,407-416`; `maxUsage`, `exec.go:435-441` |
 | Known-vulnerable dependencies shipping to users | govulncheck weekly and on dependency changes in CI | `.github/workflows/vulnscan.yml` |
-| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap | `Makefile:701-739`, `cmd/gauntlet/makefile_test.go:1029-1108`, `.gitignore:10` |
+| Local state and secrets in the `make repro` archive | the members come from `git ls-files --cached --others --exclude-standard`, so every `.gitignore` entry is out of it, `.env` is one of them, and tests read `.gitignore` and fail on an entry whose rule no longer bites, so the list cannot drift by forgetting a new build output; the archive lives under `$(HOME)/.cache/gauntlet/repro` and is removed by an exit trap, and the target now also runs the release inventory generator and a checksum tool inside each copy, so the `go list` and module-cache grant reads the sbom row describes have a second invocation site on a developer's machine | `Makefile:701-739`, `cmd/gauntlet/makefile_test.go:1029-1108`, `.gitignore:10` |
 | Silent loss of audit trail | journal as event-bus subscriber, run id + published seed for reproduction; journal failure degrades loudly, not silently | DESIGN.md "Run journal", `journal/` |
 | A wedged peer parking the journal index lock forever | the cross-process index lock is a bounded poll, `LOCK_EX` with `LOCK_NB` retried to a 30s deadline, and the failure names the lock file, so `gauntlet runs`, `gauntlet history`, and the exit-time prune report a held lock instead of waiting on a peer that will never release it. The holder walks the whole journal tree on a rebuild or a prune, so on a long history or a network home the wait is not instant and the bound is not a formality | `lockIndex`, `internal/journal/index.go:56-90`, used at `index.go:88` |
 | Silent loss of a `.git/info/exclude` entry | the append returns its failures, both the write and the close, and the run logs them; a short write counts as a failure, since the next run's substring check would not match a truncated line and would append the same entry again on every run. The exclusion is still best effort in the sense that nothing downstream depends on it, and the run continues | `internal/gitx/worktree.go:91-155`, `internal/runner/runner.go:281-286` |
@@ -1360,7 +1438,20 @@ None of these is demonstrated here; evidence is the cited code paths.
   It does not authenticate agent claims or record every child action; same-user
   agents can alter local evidence. The disclosure and supported-version gaps
   above remain undocumented organizational decisions.
-- Verification scope and baseline: 2026-09-30 against commit e333a04. This
+- Verification scope and baseline: 2026-09-30 against commit 601c117. This
+  pass read the thirty-five commits since e333a04 and entered three surfaces
+  the model had never named: the credential redactor every child error now
+  funnels through, the `git --version` probe behind `doctor`'s git row, and
+  the state-tree inspection that reports an archive cut short. It carried
+  four controls those commits added, the whole-line journal write, the usage
+  envelope the token tally reads, the contents-validated dsh overlay, and the
+  shared child wait bound, plus two build-side changes. It corrected the two
+  claims those commits falsified: B5's and the mitigations map's redaction
+  claims named userinfo alone, which stopped being the whole of it, and R7
+  said the `--log` content is not secret-redacted, which was true of the
+  displayed output and no longer true of a child's first error line. It
+  changed no risk row: R1 through R9 all stand where they stood.
+- Earlier verification scope and baseline: 2026-09-30 against commit e333a04. This
   pass read the eight commits since 1eafdf7. It entered two surfaces the
   model had never named, the `make doctor` prerequisite preflight and the
   release platform and microarchitecture claim, neither of which crosses a
