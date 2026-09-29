@@ -154,8 +154,8 @@ var helpExamples = []struct{ Cmd, Help string }{
 }
 
 var helpExitCodes = []struct{ Code, Meaning string }{
-	{"0", "every review ran and passed"},
-	{"1", "a review failed, timed out, was skipped, or would not merge; a commit step failed"},
+	{"0", "the command did what it was asked: every review ran and passed, or the listing, replay, or report was printed"},
+	{"1", "a review failed, timed out, was skipped, or would not merge; a commit step failed; doctor found no agent to launch; update failed"},
 	{"2", "usage error"},
 	{"75", "another instance holds the lock for that directory"},
 	{"130", "interrupted"},
@@ -187,6 +187,10 @@ var helpEnvVars = []helpEnvVar{
 	{"GH_TOKEN", "same as GITHUB_TOKEN; wins if both are set", true},
 	{"GIT_SSH_COMMAND", "command git uses for SSH; defaults to ssh, so repository-local config cannot replace it", false},
 }
+
+// exitCodeIndent is where a wrapped exit-code meaning starts: the two leading
+// spaces, the four-character code column, and the space after it.
+const exitCodeIndent = 2 + 4 + 1
 
 // printUsage renders the help screen.
 func printUsage(out io.Writer, pal palette, width int) {
@@ -262,7 +266,8 @@ func printUsage(out io.Writer, pal palette, width int) {
 
 	head("exit codes")
 	for _, c := range helpExitCodes {
-		fmt.Fprintf(out, "  %-4s %s\n", c.Code, pal.dim(c.Meaning))
+		fmt.Fprintf(out, "  %-4s %s\n", c.Code,
+			pal.dim(wrapIndent(c.Meaning, width, exitCodeIndent)))
 	}
 
 	head("environment")

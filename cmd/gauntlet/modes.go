@@ -60,9 +60,10 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	// the body may come from a hostile *-review.md, and an escape sequence
 	// planted there (an OSC 52 clipboard overwrite, cursor addressing) would
 	// fire against whoever inspected it here before deciding to run. The
-	// agent still receives the exact bytes; Display strips only what could
-	// drive or spoof the terminal.
-	if _, err := fmt.Fprintln(out, normalize.Display(
+	// agent still receives the exact bytes; Document strips only what could
+	// drive or spoof the terminal, and keeps the line breaks that make the
+	// prompt readable as the document it is.
+	if _, err := fmt.Fprintln(out, normalize.Document(
 		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths))); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot write the prompt: %v\n", err)
 		return exitFail

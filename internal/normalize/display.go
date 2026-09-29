@@ -36,6 +36,22 @@ func Display(s string) string {
 	return Sanitize(s)
 }
 
+// Document is Display for text that is more than one line: every line is
+// sanitized as Display would sanitize it, and the line breaks survive. Display
+// drops them because its callers read one line at a time and a bare LF there is
+// a stray byte; a prompt is a document, and Display's contract would fold the
+// whole thing onto a single line.
+func Document(s string) string {
+	if !strings.Contains(s, "\n") {
+		return Display(s)
+	}
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = Display(line)
+	}
+	return strings.Join(lines, "\n")
+}
+
 // Repair turns every byte that is not valid UTF-8 into U+FFFD, one per byte,
 // leaving every other character alone. It is the repair Sanitize performs,
 // on its own, for text that is compared rather than shown: an agent's printed

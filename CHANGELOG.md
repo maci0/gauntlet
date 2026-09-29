@@ -30,19 +30,23 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - The pull-request gate and the advisory scan can be started by hand from the Actions tab, so a runner-image or package-index incident is answered by re-running the workflow rather than by pushing an empty commit. A manual run no longer cancels the push it repeats: the event is part of each workflow's concurrency group, since both resolve to the same ref.
 
+### Fixed
+
+- `gauntlet --show-prompt REVIEW` prints the prompt as the document it is again. Every line break in it was stripped on the way to the terminal, so a 13 KB prompt arrived as one unbroken line: unreadable, and the one thing the flag exists to show. The stripping itself is unchanged, and still removes what a hostile `*-review.md` could use to drive or spoof a terminal, on either side of a break.
+- `gauntlet show <run-id>` on a pruned run names the command that brings it back. The message was "no journal for run X ... (see: gauntlet runs)", and the listing it pointed at does not hold the run: the id appears only under the quarantine note, and the one line there that carries the command to run is easy to read past. It now says `gauntlet runs --restore <run-id>`. An id that was never written still says `see: gauntlet runs`.
+- `gauntlet show <run-id>` on a run whose journal holds no events says so on stderr instead of printing nothing. The run was interrupted before its first event reached the disk, and a silent success reads as a replay of a run that did nothing. Stdout still carries the replay and nothing else.
+- A bare `dsh:<model>` pin now reads the provider from the launcher that runs the review. `--bin` replaces the executable after the command is composed, but the provider probe ran whatever `dsh` was on PATH, so the model was pinned against a config the review never loaded; the probe runs the override now.
+- The provider probe is memoized per launcher argv rather than once per process. A `--bin` override, the launcher on PATH, and the `bunx` fallback each read their own config, and one memo answered all three, so a failure probing one launcher was reported as the reason the others could not resolve, and a provider read from one pinned the model of another.
+
 ### Changed
 
+- The exit-code table in `--help` and in `docs/CLI.md` now covers the subcommands, not only a run. `gauntlet doctor` has exited 1 when no agent CLI is launchable and `gauntlet update` has exited 1 when the update fails, while the table said 1 meant a review failed, timed out, was skipped, or would not merge, so a script reading it could not tell a broken install from a failed review. Code 0 is worded for the whole command as well, since `runs`, `show`, and `--list` return it without a review ever running.
 - `doctor` names the evidence tools the time and Unicode reviews already
   instruct an agent to reach for: `zdump` for `time-review` and `uconv` for
   `unicode-review` were named in the prompts and missing from the tool
   catalog, so both reviews were reported as having no helper tools and the
   prompt never learned whether the tool was installed.
 - The generated dsh model overlay under the user cache dir is now swept and its in-process table bounded. Nothing removed either: the directory gained a file per provider/model pair for the life of the install, shared by every run, and the table kept one entry per pair a long run pinned. An overlay past 90 days is rewritten identically the next run that wants it, and the table is dropped whole past 256 entries, since a miss costs a stat.
-
-### Fixed
-
-- A bare `dsh:<model>` pin now reads the provider from the launcher that runs the review. `--bin` replaces the executable after the command is composed, but the provider probe ran whatever `dsh` was on PATH, so the model was pinned against a config the review never loaded; the probe runs the override now.
-- The provider probe is memoized per launcher argv rather than once per process. A `--bin` override, the launcher on PATH, and the `bunx` fallback each read their own config, and one memo answered all three, so a failure probing one launcher was reported as the reason the others could not resolve, and a provider read from one pinned the model of another.
 
 ## 1.29.0
 

@@ -68,7 +68,7 @@ func resolveStamped(stamped string, bi *debug.BuildInfo) string {
 // Exit codes, matching the Python original so scripts keep working.
 const (
 	exitOK     = 0
-	exitFail   = 1  // a review failed, timed out, was skipped, would not merge, or a commit step failed
+	exitFail   = 1  // a run failed, or a report (doctor) and an update found nothing usable
 	exitUsage  = 2  // usage error
 	exitLocked = 75 // EX_TEMPFAIL: another instance holds the lock
 )

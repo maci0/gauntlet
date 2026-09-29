@@ -213,8 +213,8 @@ handoff file passed across the exec.)
 
 | Code | Meaning |
 |---|---|
-| 0 | every review ran and passed |
-| 1 | a review failed, timed out, was skipped, or would not merge; a commit step failed |
+| 0 | the command did what it was asked: every review ran and passed, or the listing, replay, or report was printed |
+| 1 | a review failed, timed out, was skipped, or would not merge; a commit step failed; `doctor` found no agent to launch; `update` failed |
 | 2 | usage error |
 | 75 | another instance holds the lock for that directory |
 | 130 | interrupted |

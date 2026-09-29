@@ -439,6 +439,37 @@ func TestDisplayStripsTerminalDrivingBytes(t *testing.T) {
 	}
 }
 
+// Document sanitizes a multi-line prompt the way Display sanitizes a line and
+// keeps the line breaks. --show-prompt prints it, and a prompt folded onto one
+// line is unreadable: the whole point of the flag is the text an agent would
+// receive. What must not survive is unchanged from Display.
+func TestDocumentKeepsLineStructure(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"single line", "one\n", "one\n"},
+		{"blank lines kept", "a\n\nb", "a\n\nb"},
+		{"line structure kept", "a\nb\nc", "a\nb\nc"},
+		// A hostile body must still lose what drives the terminal, on either
+		// side of the break.
+		{"escape across lines", "\x1b[31ma\n\x1b[0mb", "a\nb"},
+		{"control on one line", "a\n\x00b\nc", "a\nb\nc"},
+		{"bidi override on one line", "a\nuser\u202Eevil\nb", "a\nuserevil\nb"},
+		// The carriage return Display folds away stays folded: it is a
+		// same-line overwrite byte, not a line separator here.
+		{"carriage return", "a\nleft\rright", "a\nleftright"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := Document(c.in); got != c.want {
+				t.Fatalf("Document(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
 func TestClipKeepsGraphemesIntact(t *testing.T) {
 	for _, tc := range []struct {
 		name  string

@@ -67,6 +67,41 @@ func TestPruneQuarantinesAndRestore(t *testing.T) {
 	}
 }
 
+// Pruned is what separates "this run is recoverable" from "this run never
+// happened", so a caller that found nothing under runs/ can say which. It must
+// flip exactly at the prune and the restore, and never answer true for an id
+// that was never written.
+func TestPrunedTracksTheQuarantine(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	old, kept := "20260825T090000Z-0001", "20260825T100000Z-0002"
+	record(t, old, base)
+	record(t, kept, base.Add(time.Hour))
+
+	for _, id := range []string{old, kept, "20260825T110000Z-0003", "../escape"} {
+		if Pruned(id) {
+			t.Errorf("Pruned(%q) = true before any prune", id)
+		}
+	}
+
+	if removed, err := Prune(1); err != nil || removed != 1 {
+		t.Fatalf("Prune(1) = %d, %v; want 1, nil", removed, err)
+	}
+	if !Pruned(old) {
+		t.Error("Pruned is false for the run the prune took out")
+	}
+	if Pruned(kept) {
+		t.Error("Pruned is true for a run the listing still holds")
+	}
+
+	if err := Restore(old); err != nil {
+		t.Fatalf("Restore(%s): %v", old, err)
+	}
+	if Pruned(old) {
+		t.Error("Pruned is still true after the restore")
+	}
+}
+
 // The quarantine is bounded by the same keep as the listing, or it is a second
 // unbounded history beside the one Prune exists to bound.
 func TestQuarantineIsBoundedByKeep(t *testing.T) {

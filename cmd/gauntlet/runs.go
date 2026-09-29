@@ -365,10 +365,12 @@ func cmdShow(out io.Writer, runID string) int {
 	bw := bufio.NewWriter(out)
 	defer bw.Flush()
 	var werr error
+	events := 0
 	err := journal.Events(runID, func(ev map[string]any) {
 		if werr != nil {
 			return
 		}
+		events++
 		ts := ""
 		if s, ok := ev["ts"].(string); ok {
 			ts = showTime(s)
@@ -396,11 +398,24 @@ func cmdShow(out io.Writer, runID string) int {
 		// name for --show-prompt: usage error. A journal that exists but
 		// cannot be read is a general failure.
 		if errors.Is(err, journal.ErrNoJournal) {
-			fmt.Fprintf(os.Stderr, "%v (see: gauntlet runs)\n", err)
+			// A pruned journal is not missing, and sending its reader to
+			// gauntlet runs shows the id only under the quarantine note, with
+			// the command that brings it back unsaid. Name it instead.
+			if journal.Pruned(runID) {
+				fmt.Fprintf(os.Stderr, "%v (restore it with: gauntlet runs --restore %s)\n", err, runID)
+			} else {
+				fmt.Fprintf(os.Stderr, "%v (see: gauntlet runs)\n", err)
+			}
 			return exitUsage
 		}
 		fmt.Fprintln(os.Stderr, err)
 		return exitFail
+	}
+	// A run that started and recorded nothing has a journal, so this is not a
+	// miss, and silence reads as a successful replay of an empty run. It says
+	// so on stderr, leaving stdout as the replay and nothing else.
+	if events == 0 {
+		fmt.Fprintf(os.Stderr, "run %s recorded no events: it was interrupted before its first event was written\n", runID)
 	}
 	return exitOK
 }

@@ -113,6 +113,18 @@ func Quarantined() ([]string, error) {
 	return out, nil
 }
 
+// Pruned reports whether runID's journal is waiting in pruned/, which is what
+// makes it restorable. It is the one question a caller that found no journal
+// under runs/ has left: the run is either recoverable or it never happened, and
+// the two want different sentences.
+func Pruned(runID string) bool {
+	if !validRunID(runID) {
+		return false
+	}
+	_, err := os.Stat(quarantinePath(runID))
+	return err == nil
+}
+
 // quarantined is one journal waiting in pruned/.
 type quarantined struct {
 	id   string

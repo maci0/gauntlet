@@ -314,6 +314,30 @@ func TestShowPromptDiscoversInSecondDirectory(t *testing.T) {
 	}
 }
 
+// A journal that exists but holds no events is a run interrupted before its
+// first event reached the disk. Replaying it printed nothing at all, and an
+// empty stdout reads as a successful replay of a run that did nothing. The
+// note goes to stderr, so stdout stays the replay and only the replay.
+func TestShowSaysWhenARunRecordedNoEvents(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	id := "20260825T090000Z-0001"
+	// Opened and never closed: the journal exists and holds no events, which
+	// is the state a run killed before its first event leaves behind.
+	if _, err := journal.Open(id, time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		if code := cmdShow(io.Discard, id); code != exitOK {
+			t.Errorf("an empty journal should still replay, exit = %d, want %d", code, exitOK)
+		}
+	})
+	if out != "" {
+		t.Errorf("stdout carries the replay and nothing else, got:\n%s", out)
+	}
+}
+
 // A run id that names nothing is a bad argument (exit 2), while a journal
 // that exists but cannot be read is a general failure (exit 1). Scripts use
 // the difference to tell "I typed the wrong id" from "gauntlet broke".
@@ -334,6 +358,37 @@ func TestShowExitCodes(t *testing.T) {
 	// be read as JSONL, whatever user the suite runs as.
 	if code := cmdShow(io.Discard, "unreadable"); code != exitFail {
 		t.Errorf("unreadable journal should exit %d, got %d", exitFail, code)
+	}
+}
+
+// A pruned journal is not missing. `gauntlet runs` shows its id only under the
+// quarantine note, so the sentence "no journal for run X" followed by "see:
+// gauntlet runs" sends the reader to a listing that does not hold it. The
+// message has to name the command that brings the run back.
+func TestShowNamesTheRestoreCommandForAPrunedRun(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	start := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	// Two runs, so the prune has something to keep and something to take.
+	pruned, kept := "20260825T090000Z-0001", "20260825T100000Z-0002"
+	for i, id := range []string{pruned, kept} {
+		j, err := journal.Open(id, start.Add(time.Duration(i)*time.Hour))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Close writes the index row the listing, and so the prune, reads.
+		code := 0
+		if err := j.Close(journal.Summary{Version: "test", Start: start, End: start, ExitCode: &code}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if removed, err := journal.Prune(1); err != nil || removed != 1 {
+		t.Fatalf("Prune(1) = %d, %v; want 1, nil", removed, err)
+	}
+
+	got := captureStderr(t, func() int { return cmdShow(io.Discard, pruned) })
+	if !strings.Contains(got, "gauntlet runs --restore "+pruned) {
+		t.Errorf("a pruned run should name the restore command:\n%s", got)
 	}
 }
 
