@@ -164,6 +164,9 @@ func TestComposeYoloSwapsFixingRules(t *testing.T) {
 		if !strings.Contains(text, "Git is read-only for you") {
 			t.Fatal("containment dropped")
 		}
+		if !strings.Contains(text, "process's current directory") {
+			t.Fatal("containment no longer pins the working tree to the current directory")
+		}
 	}
 }
 

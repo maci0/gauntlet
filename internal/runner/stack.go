@@ -237,7 +237,9 @@ func safeTag(tag string) string {
 }
 
 // runLoopStack builds a linear chain in one worktree. A layer becomes the
-// next layer's base only after its branch is pushed and its PR exists.
+// next layer's base only after its branch is pushed. A pull request the
+// head/base lookup cannot see still leaves that commit in the chain, and
+// the pass keeps scheduling: one layer that cannot publish does not end it.
 func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	start := r.stackResumeIndex()
 	parent, parentTip := r.StackHead()
@@ -248,6 +250,38 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 	// continue across --max-loops passes so a later round's first PR does not
 	// read as the first layer of a new stack.
 	published := r.StackPublished()
+	// pushed is a layer this pass put on the remote. dropWorktree is set
+	// only when the pass finishes with every such layer's pull request
+	// confirmed. Anything else — nothing pushed, a commit that never left,
+	// a pull request the lookup cannot see — keeps the checkout, and a
+	// later pass of this run reuses it instead of deleting it. Deleting it
+	// is how a run that published nothing throws away the only directory
+	// the operator can still open.
+	pushed := false
+	dropWorktree := false
+	var wt *gitx.Worktree
+	defer func() {
+		// A hard cancel has no successor, so whatever is still queued is
+		// recorded rather than dropped from the stats, summary, and journal,
+		// the same rule the sequential and parallel loops follow. Every exit
+		// runs through here, so a cancel that lands mid-publication counts its
+		// stranded reviews too; abandonQueue drains the queue, so reaching
+		// this twice is a no-op. A soft stop leaves ctx alone and hands its
+		// queue to the successor instead.
+		if ctx.Err() != nil {
+			r.abandonQueue(loopNo)
+		}
+		if wt == nil {
+			return
+		}
+		if !dropWorktree {
+			r.log("Keeping stack worktree at %s", wt.Dir)
+			return
+		}
+		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
+			r.log("Cannot remove stack worktree: %v", err)
+		}
+	}()
 
 	// A hot-reload successor receives only the unfinished suffix. Walk the
 	// completed prefix to recover the last published branch; an absent branch
@@ -264,37 +298,22 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 				ctx, loopNo, i, r.cfg.Reviews[i], parent, parentTip, stackRecoverPrefix, published+1)
 			if parent != previous {
 				published++
+				pushed = true
 				r.rememberStackHead(parent, parentTip, published)
 			}
 			if err != nil {
 				r.recordStackFailure(ctx, loopNo, r.cfg.Reviews[i],
 					gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, r.cfg.Reviews[i]), parent,
 					"recover completed stack", err)
-				return false
+				if r.stackFailureStops(err) {
+					return false
+				}
 			}
 		}
 	}
 
 	r.setPending(r.cfg.Reviews[start:])
-	var wt *gitx.Worktree
 	var err error
-	defer func() {
-		// A hard cancel has no successor, so whatever is still queued is
-		// recorded rather than dropped from the stats, summary, and journal,
-		// the same rule the sequential and parallel loops follow. Every exit
-		// runs through here, so a cancel that lands mid-publication counts its
-		// stranded reviews too; abandonQueue drains the queue, so reaching
-		// this twice is a no-op. A soft stop leaves ctx alone and hands its
-		// queue to the successor instead.
-		if ctx.Err() != nil {
-			r.abandonQueue(loopNo)
-		}
-		if wt != nil {
-			if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
-				r.log("Cannot remove stack worktree: %v", err)
-			}
-		}
-	}()
 
 	for i := start; i < len(r.cfg.Reviews); i++ {
 		if ctx.Err() != nil || r.soft.Load() {
@@ -303,6 +322,9 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		r.checkUsageLimit(ctx)
 		if r.finish.Load() {
 			r.dropPending()
+			if pushed && !r.holdStackCheckout {
+				dropWorktree = true
+			}
 			return true
 		}
 		if why := r.budgetExhausted(); why != "" {
@@ -320,12 +342,15 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			ctx, loopNo, i, review, parent, parentTip, stackRecoverCurrent, published+1)
 		if parent != previous {
 			published++
+			pushed = true
 			r.rememberStackHead(parent, parentTip, published)
 		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, review,
 				gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, review), parent, "recover stack layer", err)
-			return false
+			if r.stackFailureStops(err) {
+				return false
+			}
 		}
 		if handled {
 			continue
@@ -334,12 +359,21 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		// its topic name only once its commit subject exists.
 		branch := gitx.StackLoopProvisionalBranch(r.stackBaseTip, r.stackPass(loopNo), i, review)
 		if wt == nil {
-			wt, err = r.repo.AddStackWorktree(ctx, branch, r.cfg.RunID, parentTip)
+			wt, err = r.openStackWorktree(ctx, branch, parentTip)
 		} else {
 			err = wt.StartBranch(ctx, branch, parentTip)
 		}
 		if err != nil {
 			r.recordStackFailure(ctx, loopNo, review, branch, parent, "create stack branch", err)
+			return false
+		}
+		// Taken after the checkout exists, so the scratch directory itself
+		// is the baseline. A later reading that differs is a write into the
+		// launch checkout, which this pass does not commit and must not
+		// report as a review that changed nothing.
+		launchBefore, err := r.repo.LaunchTree(ctx)
+		if err != nil {
+			r.recordStackFailure(ctx, loopNo, review, branch, parent, "read the launch checkout", err)
 			return false
 		}
 
@@ -362,7 +396,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 		}
 
 		next, nextTip, done := r.publishStackLayer(ctx, loopNo, i, review, branch, wt, &res,
-			parent, parentTip, published+1)
+			parent, parentTip, published+1, launchBefore)
 		if !done {
 			return false
 		}
@@ -370,18 +404,23 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			continue // a layer that changed nothing leaves the parent where it is
 		}
 		parent, parentTip, published = next, nextTip, published+1
+		pushed = true
 		r.rememberStackHead(parent, parentTip, published)
 	}
 	r.rememberStackHead(parent, parentTip, published)
+	if pushed && !r.holdStackCheckout && ctx.Err() == nil {
+		dropWorktree = true
+	}
 	return ctx.Err() == nil
 }
 
 // publishStackLayer commits a reviewed layer, names it after its commit
 // subject, pushes it, and opens its PR. It returns the published branch and
-// its tip, or an empty branch when the layer changed nothing, or done=false
-// when the stack must stop, with the failure already recorded.
+// its tip, or an empty branch when the layer changed nothing or its push
+// did not land. done is false only when the checkout cannot take another
+// layer. A recorded failure with done true leaves the pass running.
 func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex int, review, branch string,
-	wt *gitx.Worktree, res *Result, parent, parentTip string, layer int) (string, string, bool) {
+	wt *gitx.Worktree, res *Result, parent, parentTip string, layer int, launchBefore string) (string, string, bool) {
 
 	changes, chErr := treeChanges(context.WithoutCancel(ctx), wt.Dir)
 	if chErr != nil {
@@ -394,10 +433,39 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		r.failStackLayer(res, loopNo, review, branch, parent, err)
 		if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
 			r.log("Cannot discard failed stack layer %s: %v", review, err)
+			r.holdStackCheckout = true
+			return "", "", false
 		}
-		return "", "", false
+		return "", "", true
+	}
+	// CommitAll only sees the stack checkout. A review that exited 0 after
+	// writing the launch tree, or after naming files it did not commit, is
+	// not a layer that changed nothing: recording it as one is how a pass
+	// reports every review passed and opens no pull request.
+	if err := r.launchCheckoutChanged(ctx, launchBefore); err != nil {
+		r.failStackLayer(res, loopNo, review, branch, parent, err)
+		if !changed {
+			if err := r.discardEmptyStackLayer(ctx, wt, review); err != nil {
+				return "", "", false
+			}
+			return "", "", true
+		}
+		r.holdStackCheckout = true
+		return "", "", true
 	}
 	if !changed {
+		// A subject with no diff is an idempotent re-run: the file was
+		// already in that state. A per-file note is not. The protocol prints
+		// one only for a file the review changed, and a note with nothing
+		// committed means that edit landed somewhere this pass will not publish.
+		if len(res.FileNotes) > 0 {
+			r.failStackLayer(res, loopNo, review, branch, parent,
+				errors.New("the review reported edits but the stack worktree has nothing to commit"))
+			if err := r.discardEmptyStackLayer(ctx, wt, review); err != nil {
+				return "", "", false
+			}
+			return "", "", true
+		}
 		res.Ins, res.Del, res.HaveLines = 0, 0, true
 		if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
 			r.failStackLayer(res, loopNo, review, branch, parent, err)
@@ -428,19 +496,23 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	}
 	if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
 		r.failStackLayer(res, loopNo, review, branch, parent, fmt.Errorf("push: %w", err))
-		return "", "", false
+		r.holdStackCheckout = true
+		return "", "", true
 	}
-	prURL, err := r.gh.Find(ctx, branch, parent)
+	prURL, err := r.ensurePullRequest(ctx, branch, parent, body)
 	if err != nil {
 		r.failStackLayer(res, loopNo, review, branch, parent, err)
-		return "", "", false
-	}
-	if prURL == "" {
-		prURL, err = r.gh.Create(ctx, branch, parent, body.Title, body.render())
-		if err != nil {
-			r.failStackLayer(res, loopNo, review, branch, parent, err)
+		r.holdStackCheckout = true
+		// The commit is on the remote, so later reviews stack on it. The
+		// missing pull request stays a failed layer until a lookup sees it.
+		tip, tipErr := r.repo.Tip(ctx, "refs/heads/"+branch)
+		if tipErr != nil {
+			// The commit is on the remote, but this pass cannot read it, so
+			// it cannot be the next base. Continuing would branch later
+			// reviews from the previous parent.
 			return "", "", false
 		}
+		return branch, tip, true
 	}
 	res.URL = prURL
 	r.st.Add(*res)
@@ -598,18 +670,20 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	}
 	if !remoteFound {
 		if err := r.repo.PushBranch(ctx, r.cfg.PushRemote, branch); err != nil {
-			return parent, parentTip, false, fmt.Errorf("push: %w", err)
+			// The commit stays local. Later reviews branch from the last
+			// pushed base, and this layer is not run again.
+			return parent, parentTip, true, stackKeep{fmt.Errorf("push: %w", err)}
 		}
 	}
 	prURL, err := r.gh.Find(ctx, branch, parent)
 	if err != nil {
-		return parent, parentTip, false, err
+		return branch, branchTip, true, stackKeep{err}
 	}
 	if prURL == "" {
 		body := r.stackBody(ctx, review, title, r.cfg.Dir, parentTip, branchTip, parent, layer, nil)
-		prURL, err = r.gh.Create(ctx, branch, parent, body.Title, body.render())
+		prURL, err = r.ensurePullRequest(ctx, branch, parent, body)
 		if err != nil {
-			return parent, parentTip, false, err
+			return branch, branchTip, true, stackKeep{err}
 		}
 	}
 	res := Result{
@@ -660,6 +734,88 @@ func (r *Runner) stackNameTaken(ctx context.Context, name string) bool {
 	}
 	_, found, err := r.repo.RemoteBranchTip(ctx, r.stackReadRemote, name)
 	return err != nil || found
+}
+
+// stackKeep is a layer whose commit stays and whose failure must not end
+// the pass. Later reviews still run, and the scratch checkout stays.
+type stackKeep struct{ error }
+
+// stackFailureStops reports whether err ends the pass. A kept layer does
+// not: the checkout is held and the caller schedules the next review.
+func (r *Runner) stackFailureStops(err error) bool {
+	if _, ok := errors.AsType[stackKeep](err); ok {
+		r.holdStackCheckout = true
+		return false
+	}
+	return true
+}
+
+// openStackWorktree returns the pass's scratch checkout. A pass that is
+// holding one reopens that directory; replacing it would delete the commit
+// the operator was told was left on disk.
+func (r *Runner) openStackWorktree(ctx context.Context, branch, parentTip string) (*gitx.Worktree, error) {
+	if r.holdStackCheckout {
+		wt, err := r.repo.AdoptStackWorktree(ctx, r.cfg.RunID)
+		if err != nil {
+			return nil, err
+		}
+		if wt != nil {
+			if err := wt.StartBranch(ctx, branch, parentTip); err != nil {
+				return nil, err
+			}
+			return wt, nil
+		}
+	}
+	return r.repo.AddStackWorktree(ctx, branch, r.cfg.RunID, parentTip)
+}
+
+// ensurePullRequest returns the pull request for branch onto base, creating
+// it when the lookup finds none. A URL printed by create is not enough: the
+// lookup runs again, and an empty result fails the layer. The commit is
+// left where it is; a missing pull request is not a layer that changed nothing.
+func (r *Runner) ensurePullRequest(ctx context.Context, branch, base string, body prBody) (string, error) {
+	if prURL, err := r.gh.Find(ctx, branch, base); err != nil || prURL != "" {
+		return prURL, err
+	}
+	if _, err := r.gh.Create(ctx, branch, base, body.Title, body.render()); err != nil {
+		return "", err
+	}
+	found, err := r.gh.Find(ctx, branch, base)
+	if err != nil {
+		return "", err
+	}
+	if found == "" {
+		return "", fmt.Errorf("pull request for %s onto %s was not created", branch, base)
+	}
+	return found, nil
+}
+
+// launchCheckoutChanged reports whether the launch checkout moved during the
+// review. A read that fails is a change that cannot be ruled out, so the
+// layer stops rather than passing with no pull request.
+func (r *Runner) launchCheckoutChanged(ctx context.Context, before string) error {
+	after, err := r.repo.LaunchTree(ctx)
+	if err != nil {
+		return fmt.Errorf("cannot read the launch checkout: %w", err)
+	}
+	if after != before {
+		return fmt.Errorf("the review edited %s instead of the stack worktree", r.cfg.Dir)
+	}
+	return nil
+}
+
+// discardEmptyStackLayer drops a provisional branch that never got a commit.
+// The checkout directory stays; the caller decides whether the pass removes it.
+// A discard git refuses leaves the checkout on that branch. The caller stops
+// the pass: the next review cannot move the checkout, and an earlier confirmed
+// layer would otherwise be deleted with it.
+func (r *Runner) discardEmptyStackLayer(ctx context.Context, wt *gitx.Worktree, review string) error {
+	if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
+		r.log("Cannot discard failed stack layer %s: %v", review, err)
+		r.holdStackCheckout = true
+		return err
+	}
+	return nil
 }
 
 // stackBody assembles what a layer's PR says about itself: an overview of

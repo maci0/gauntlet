@@ -141,6 +141,23 @@ func (r *Repo) hasObject(ctx context.Context, sha, kind string) (bool, error) {
 // worktreeTree writes a tree of the current worktree, including untracked
 // files and excluding ignored ones, without changing the real index.
 func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
+	return r.snapshotTree(ctx, false)
+}
+
+// LaunchTree is that same tree with this run's scratch removed. A stack
+// checkout lives under .gauntlet inside the launch directory when the run
+// was started from a subdirectory, and a commit there would otherwise
+// change this id. The outside-write check compares two readings: scratch
+// moving must not count, and a file anywhere else must.
+func (r *Repo) LaunchTree(ctx context.Context) (string, error) {
+	return r.snapshotTree(ctx, true)
+}
+
+// snapshotTree writes a tree of the current worktree, including untracked
+// files and excluding ignored ones, without changing the real index.
+// dropScratch removes .gauntlet and .gauntlet.lock from the private index
+// before the tree is written.
+func (r *Repo) snapshotTree(ctx context.Context, dropScratch bool) (string, error) {
 	gitDir, err := r.gitDir(ctx)
 	if err != nil {
 		return "", err
@@ -188,6 +205,14 @@ func (r *Repo) worktreeTree(ctx context.Context) (string, error) {
 	}
 	if _, err := r.runIndex(ctx, tmpName, gitNormal, "add", "-A"); err != nil {
 		return "", fmt.Errorf("cannot snapshot the worktree: %w", err)
+	}
+	if dropScratch {
+		for _, p := range []string{".gauntlet", ".gauntlet.lock"} {
+			if _, err := r.runIndex(ctx, tmpName, gitNormal,
+				"rm", "-r", "--cached", "--ignore-unmatch", "--", p); err != nil {
+				return "", fmt.Errorf("cannot ignore scratch in the launch checkout: %w", err)
+			}
+		}
 	}
 	out, err := r.runIndex(ctx, tmpName, gitQuick, "write-tree")
 	if err != nil {

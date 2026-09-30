@@ -7,8 +7,22 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-30 against commit c2c349e (plus this sandbox change).
-This change adds kernel filesystem write confinement to all agent launches:
+Last reviewed: 2026-09-30 against commit cb9f0a0. This pass checks stacked
+publication. A review that edits the launch checkout, or reports a file edit
+the scratch worktree does not contain, fails that layer instead of passing
+with no pull request. `gh pr create` stdout is confirmed by a second
+head/base lookup. A failed push, or a lookup that cannot see the pull
+request, records the layer as failed, leaves the scratch checkout in place,
+and the pass keeps scheduling later reviews. An unreadable tip after a
+push that landed, or a discard git refuses on an empty layer, stops the
+pass and leaves the checkout. The containment suffix names
+the process current directory as the only checkout; that sentence is
+advisory. The launch-checkout comparison is what catches a write that
+landed outside the scratch checkout, including when `--no-sandbox` leaves
+writes unconfined.
+
+Last reviewed previously: 2026-09-30 against commit c2c349e (plus the sandbox
+change). This change adds kernel filesystem write confinement to all agent launches:
 Landlock on Linux and Seatbelt on macOS. The scheduler itself remains outside
 the sandbox; the policy is inherited by agent children. Setup failures stop
 the launch. Writable grants include the worktree, shared `.git` metadata,
@@ -944,8 +958,15 @@ privilege transition:
   The fetched base commit is pinned for the whole run and carried across a
   hot reload, and project prompts and suggestion signals are read from a
   snapshot worktree of that commit, never from uncommitted files in the
-  checkout. A publication failure stops later reviews, so no agent runs on a
-  branch that does not exist as a usable remote PR base. Stack branch names
+  checkout. A failed push records the layer and later reviews branch from
+  the last base that did push, so no agent runs on a commit that is not on
+  the remote. A push that landed whose pull request the lookup cannot see
+  stays in the chain (`ensurePullRequest`, `launchCheckoutChanged`,
+  `runLoopStack`). An unreadable tip after that push stops the pass rather
+  than branching the next review from the previous base. Adopting a kept
+  checkout compares the registered path after symlink resolution
+  (`worktreeListed`). The scratch checkout is removed only when every changed
+  layer was pushed and that lookup confirmed each pull request. Stack branch names
   are derived from a public base commit, so a pull request is only reused as
   a run's own layer when its head branch lives in the repository gauntlet
   pushes to (`ownsHead` in `internal/ghx/ghx.go:151-172`): a PR opened from
