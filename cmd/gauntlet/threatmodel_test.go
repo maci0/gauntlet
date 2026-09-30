@@ -89,7 +89,7 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 	}{
 		{"release.yml", "git merge-base --is-ancestor HEAD origin/main", 107},
 		{"release.yml", "actions/attest-build-provenance@", 167},
-		{"release.yml", "dist/sbom.json", 191},
+		{"release.yml", "dist/sbom.json", 200},
 		{"release.yml", "set -eu -o pipefail", 64},
 		{"ci.yml", "GITHUB_TOKEN", 48},
 		{"vulnscan.yml", "schedule:", 10},
@@ -101,16 +101,20 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 	var cited []string
 	for _, m := range workflowPointer.FindAllStringSubmatchIndex(doc, -1) {
 		file, span := doc[m[2]:m[3]], doc[m[4]:m[5]]
-		first, last, err := pointerRange(strings.Split(span, ",")[0])
+		spans, err := pointerRanges(span)
 		if err != nil {
 			t.Errorf("docs/THREAT_MODEL.md cites %s:%s: %v", file, span, err)
 			continue
 		}
 		lines := fileLines(t, filepath.Join(dir, file))
-		if last > len(lines) {
-			t.Errorf("docs/THREAT_MODEL.md cites %s:%s, which has %d lines", file, span, len(lines))
-			continue
+		for _, r := range spans {
+			if r.last > len(lines) {
+				t.Errorf("docs/THREAT_MODEL.md cites %s:%d-%d, which has %d lines",
+					file, r.first, r.last, len(lines))
+				continue
+			}
 		}
+		first := spans[0].first
 		key := file + ":" + strconv.Itoa(first)
 		want, known := "", false
 		for _, tc := range cases {
@@ -123,9 +127,18 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 			t.Errorf("docs/THREAT_MODEL.md cites %s and no case names what it points at; add one", key)
 			continue
 		}
-		got := strings.Join(lines[first-1:last], "\n")
-		if !strings.Contains(got, want) {
-			t.Errorf("docs/THREAT_MODEL.md points at %s (%d-%d), which reads %q, not %q", key, first, last, got, want)
+		// Every range the citation names, not just its first: a step the
+		// document points at in its second range is as movable as one in the
+		// first, and checking only the first would leave it unchecked.
+		for _, r := range spans {
+			if r.last > len(lines) {
+				continue
+			}
+			got := strings.Join(lines[r.first-1:r.last], "\n")
+			if !strings.Contains(got, want) {
+				t.Errorf("docs/THREAT_MODEL.md points at %s (%d-%d), which reads %q, not %q",
+					key, r.first, r.last, got, want)
+			}
 		}
 		cited = append(cited, key)
 	}
@@ -195,6 +208,22 @@ func pointerRange(span string) (int, int, error) {
 		return 0, 0, errBadPointer
 	}
 	return lo, hi, nil
+}
+
+type lineRange struct{ first, last int }
+
+// pointerRanges splits a citation's comma-separated spans, so a pointer
+// naming more than one range has all of them checked rather than the first.
+func pointerRanges(span string) ([]lineRange, error) {
+	var out []lineRange
+	for part := range strings.SplitSeq(span, ",") {
+		lo, hi, err := pointerRange(part)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, lineRange{lo, hi})
+	}
+	return out, nil
 }
 
 var errBadPointer = errors.New("line pointer is not a range of positive integers")

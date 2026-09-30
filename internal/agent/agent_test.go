@@ -332,9 +332,6 @@ func TestBuildCmdCrushUsesRunMode(t *testing.T) {
 
 // The runner writes the commit in worktree mode, and only the agent knows
 // what its change was: the subject it prints is what the history will say.
-// The resolver caches what it found, and PATH decides what there is to find:
-// a process that changes PATH (a wrapper adding a directory, a test) must not
-// keep being told an agent is missing because it was missing a moment ago.
 // ParseSubject reads agent output, which is untrusted, and what it returns
 // goes into a commit message. Whatever it is fed, the result must be one line
 // of printable text and nothing longer than a subject line.
@@ -367,6 +364,9 @@ func FuzzParseSubject(f *testing.F) {
 	})
 }
 
+// The resolver caches what it found, and PATH decides what there is to find:
+// a process that changes PATH (a wrapper adding a directory, a test) must not
+// keep being told an agent is missing because it was missing a moment ago.
 func TestResolveFollowsPathChanges(t *testing.T) {
 	dir := t.TempDir()
 	stub := filepath.Join(dir, "pretend-agent")

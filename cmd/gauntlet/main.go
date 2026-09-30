@@ -282,11 +282,8 @@ func run(argv []string) int {
 		// rather than the schedule alone.
 		opts.seed = effectiveSeed(opts.seed, 0, clock)
 	} else {
-		origin = prior.StartedAt
+		origin = resumeOrigin(now, prior)
 		startedAt = resumeStart(now, prior)
-		if origin.IsZero() || origin.After(now) {
-			origin = startedAt
-		}
 		// The interrupted process's seed, so the reviews this one still has to
 		// run draw from the number the journal already recorded.
 		opts.seed = effectiveSeed(opts.seed, prior.Seed, clock)

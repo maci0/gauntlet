@@ -40,13 +40,15 @@ func TestRunIDKeepsTheWholeProcessID(t *testing.T) {
 		{name: "one wrap above low", pid: 0x12340},
 		{name: "two wraps above low", pid: 0x22340},
 	} {
-		id := runIDFor(now, tc.pid)
-		if !strings.HasPrefix(id, stamp) {
-			t.Fatalf("run id %q does not start with the start instant", id)
-		}
-		if !strings.HasSuffix(id, fmt.Sprintf("%x", tc.pid)) {
-			t.Errorf("run id %q does not carry the whole pid %x", id, tc.pid)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			id := runIDFor(now, tc.pid)
+			if !strings.HasPrefix(id, stamp) {
+				t.Fatalf("run id %q does not start with the start instant", id)
+			}
+			if !strings.HasSuffix(id, fmt.Sprintf("%x", tc.pid)) {
+				t.Errorf("run id %q does not carry the whole pid %x", id, tc.pid)
+			}
+		})
 	}
 	if a, b := runIDFor(now, 0x2340), runIDFor(now, 0x12340); a == b {
 		t.Fatalf("pids differing above bit 16 produced the same run id %q", a)
@@ -3101,23 +3103,27 @@ func TestIndexAndJournalReadsRefuseAPlantedFIFO(t *testing.T) {
 	}
 	// A read that blocked would hang the test rather than fail it, so each
 	// answer is taken on its own goroutine and given a deadline.
-	done := make(chan error, 1)
-	go func() {
-		_, err := indexNamesRun("fifo-run")
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if err == nil {
-			t.Fatal("indexNamesRun read a fifo standing where index.jsonl lives")
+	blocked := func(what string, read func() error) {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() { done <- read() }()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatalf("%s read a fifo standing where index.jsonl lives", what)
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatalf("%s blocked on a fifo", what)
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("indexNamesRun blocked on a fifo")
 	}
-	_, err := readAllIndex()
-	if err == nil {
-		t.Fatal("readAllIndex read a fifo standing where index.jsonl lives")
-	}
+	blocked("indexNamesRun", func() error {
+		_, err := indexNamesRun("fifo-run")
+		return err
+	})
+	blocked("readAllIndex", func() error {
+		_, err := readAllIndex()
+		return err
+	})
 }
 
 func TestSummarizeFileRefusesAJournalSymlink(t *testing.T) {

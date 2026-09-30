@@ -366,10 +366,17 @@ func TestListingColumnsLineUpForWideNames(t *testing.T) {
 			rows += line + "\n"
 		}
 	}
+	// Every fixture name has to be on a row of its own. Without this a name
+	// dropped from the listing leaves the surviving rows aligned and the
+	// one-column check still holds.
+	for _, n := range []string{"aaaa-review", "café-review", "日本語-review"} {
+		if !strings.Contains(rows, n) {
+			t.Errorf("%s missing from --list:\n%s", n, rows)
+		}
+	}
 	if got := starts(rows, "[project]"); len(got) != 1 {
 		t.Errorf("--list starts its origin column at %v, want one column:\n%s", keysOf(got), rows)
 	}
-
 }
 
 func keysOf(m map[int]bool) []int {

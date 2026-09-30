@@ -141,6 +141,18 @@ func resumeStart(now time.Time, prior handoff) time.Time {
 	return now.Add(-max(elapsed, 0))
 }
 
+// resumeOrigin is the run's wall-clock start, for the paths that want the
+// instant rather than the monotonic-reconstructable one. A handoff that never
+// wrote a start, or one written before the clock was set back, resolves to
+// the resumed start: an origin in the future would hand the run runtime no
+// clock reading can account for.
+func resumeOrigin(now time.Time, prior handoff) time.Time {
+	if prior.StartedAt.IsZero() || prior.StartedAt.After(now) {
+		return resumeStart(now, prior)
+	}
+	return prior.StartedAt
+}
+
 // effectiveSeed is the run's one RNG seed: what --seed named, else the seed
 // the interrupted process recorded, else a value derived from the clock. It is
 // resolved once per process because two consumers draw from it (the suggest

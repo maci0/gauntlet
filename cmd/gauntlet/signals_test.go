@@ -187,11 +187,22 @@ func TestArmAppliesAnEarlyRequestWithoutAskingTwice(t *testing.T) {
 // A closed channel (such as during test cleanup or teardown) must return cleanly
 // without being misinterpreted as an interrupt or triggering a force-kill.
 func TestInterruptClosedChannelDoesNotForceKill(t *testing.T) {
-	ch, _, _, exited := driveInterrupts(t)
+	ch, ctx, graceful, exited := driveInterrupts(t)
 	close(ch)
+	// Both ways a close can be misread leave state behind: a zero-value
+	// signal is not os.Interrupt, so it would take the terminate stage and
+	// cancel the run's context, or the graceful stage and arm the request.
+	// Give the handler its budget to get there, then require that it did not.
+	time.Sleep(500 * time.Millisecond)
+	if graceful.asking() {
+		t.Error("closing the channel armed the graceful request")
+	}
+	if ctx.Err() != nil {
+		t.Errorf("closing the channel terminated the run: %v", ctx.Err())
+	}
 	select {
 	case code := <-exited:
-		t.Fatalf("closing channel force-killed with code %d", code)
-	case <-time.After(50 * time.Millisecond):
+		t.Fatalf("closing the channel force-killed with code %d", code)
+	default:
 	}
 }

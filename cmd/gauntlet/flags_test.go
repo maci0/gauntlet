@@ -100,6 +100,10 @@ func TestUsageNamesEachSubcommandFlags(t *testing.T) {
 	printUsage(&b, report.Palette{}, 100)
 	got := b.String()
 	for name, flags := range subcommandFlags {
+		// `help` is not in the screen's subcommand column: printUsage lists
+		// every other one, and a row the test could not find would read as a
+		// missing row. It takes no flags of its own, so there is no list to
+		// go stale.
 		if name == "help" {
 			continue
 		}

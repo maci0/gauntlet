@@ -572,7 +572,9 @@ func TestDeleteBranchesMatching(t *testing.T) {
 	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-1")
 	gitIn(t, r.Dir, "branch", "other-branch")
 
-	r.DeleteBranchesMatching(ctx, "gauntlet/run-lane*")
+	if err := r.DeleteBranchesMatching(ctx, "gauntlet/run-lane*"); err != nil {
+		t.Fatalf("a sweep of two matching branches: %v", err)
+	}
 
 	branches := gitOut(t, r.Dir, "branch", "--list", "--format=%(refname:short)")
 	if strings.Contains(branches, "gauntlet/run-lane") {

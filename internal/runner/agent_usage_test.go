@@ -297,16 +297,17 @@ echo "RESULT: no-changes"`,
 			}
 
 			// The rate itself: tokens divided by the span between readings.
-			// Only computable when growth arrived as separate readings.
-			if len(usage) < 2 {
-				return
-			}
-			span := usage[len(usage)-1].Time.Sub(usage[0].Time)
-			if span <= 0 {
-				t.Fatalf("readings carry no time span, so no rate is computable")
-			}
-			if rate := float64(last.Tokens-usage[0].Tokens) / span.Seconds(); rate <= 0 {
-				t.Fatalf("computed rate is %.2f tok/s", rate)
+			// Only computable when growth arrived as separate readings, so it
+			// is the one check the fold-them-in cases skip, not the two below
+			// it: the result total holds for every route.
+			if len(usage) >= 2 {
+				span := usage[len(usage)-1].Time.Sub(usage[0].Time)
+				if span <= 0 {
+					t.Fatalf("readings carry no time span, so no rate is computable")
+				}
+				if rate := float64(last.Tokens-usage[0].Tokens) / span.Seconds(); rate <= 0 {
+					t.Fatalf("computed rate is %.2f tok/s", rate)
+				}
 			}
 
 			// And the result carries the same total the events did.

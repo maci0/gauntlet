@@ -25,7 +25,9 @@ func TestMergeTwiceLandsOnce(t *testing.T) {
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
 
-	commitFix(t, ctx, wt)
+	if !commitFix(t, ctx, wt) {
+		t.Fatal("CommitAll reported no change; the merge below would be a no-op against an unmoved branch")
+	}
 
 	mr := r.Merge(ctx, wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
@@ -61,7 +63,9 @@ func TestMergeIntoTwiceConverges(t *testing.T) {
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
 
-	commitFix(t, ctx, wt)
+	if !commitFix(t, ctx, wt) {
+		t.Fatal("CommitAll reported no change; the merge below would be a no-op against an unmoved branch")
+	}
 
 	mr := r.MergeInto(ctx, "main-line", wt.Branch, "Merge sec-review from gauntlet run run")
 	if !mr.Merged {
@@ -199,7 +203,9 @@ func TestMergeDropsTheCachedSample(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
-	commitFix(t, ctx, wt)
+	if !commitFix(t, ctx, wt) {
+		t.Fatal("CommitAll reported no change; the merge below would be a no-op against an unmoved branch")
+	}
 	if mr := r.Merge(ctx, wt.Branch, "Merge sec-review from run"); !mr.Merged {
 		t.Fatalf("merge failed: %+v", mr)
 	}
