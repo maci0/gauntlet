@@ -1357,6 +1357,27 @@ func TestComposePathsNeutralizeHostileEntries(t *testing.T) {
 	}
 }
 
+// A macOS shell hands over the decomposed spelling of a name the filesystem
+// created that way, and tab completion produces it. pathEntry composes what
+// it renders, so the raw form never equalled its own rendering and the entry
+// was refused for a line break and a length it did not have.
+func TestPathEntrySafeAcceptsDecomposedSpelling(t *testing.T) {
+	// src/cafe + U+0301 + .go, the spelling APFS stores and zsh completes.
+	const decomposed = "src/café.go"
+	if !PathEntrySafe(decomposed) {
+		t.Fatalf("the decomposed spelling of a legal path was refused")
+	}
+	block := pathsNote([]string{decomposed})
+	if !strings.Contains(block, "`"+pathEntry(decomposed)+"`") {
+		t.Fatalf("the entry was not named in composed form:\n%s", block)
+	}
+	// The refusal rules still apply to the composed spelling of the same path,
+	// so composing the input did not open a way around the charset check.
+	if PathEntrySafe("src/`café.go") {
+		t.Fatalf("a backtick survived composition")
+	}
+}
+
 // The scope block is bounded twice: an entry longer than PathEntryMax is not a
 // path, and the block names at most pathsNoteMax entries. The cap counts the
 // entries that survive, not the positions the flag listed, so a file list whose

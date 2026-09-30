@@ -1575,6 +1575,86 @@ func TestBranchesExcludeGauntletNamespaces(t *testing.T) {
 	}
 }
 
+// A refname is a byte string: check-ref-format forbids only ASCII space and
+// control characters, so a no-break space is legal inside one. Trimming it as
+// Unicode whitespace renames the ref, and every reader below is an identity
+// comparison, so the fix is to trim the line terminator git wrote and nothing
+// else.
+func TestBranchNamesKeepNonASCIISpaces(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	// The names differ only by the trailing space rune, so a trim that
+	// treats it as whitespace collapses them onto one branch.
+	const spaced = "release "
+	const inner = "café notes"
+	gitIn(t, r.Dir, "branch", spaced)
+	gitIn(t, r.Dir, "branch", inner)
+
+	names := r.Branches(ctx)
+	for _, want := range []string{spaced, inner} {
+		if !slices.Contains(names, want) {
+			t.Fatalf("branch %q missing from %q", want, names)
+		}
+	}
+	for _, want := range []string{spaced, inner} {
+		if trimmed := strings.TrimSpace(want); trimmed != want && slices.Contains(names, trimmed) {
+			t.Fatalf("refname %q was read as its trimmed form %q", want, trimmed)
+		}
+	}
+
+	local, err := r.LocalBranchesWithPrefix(ctx, spaced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(local, spaced) {
+		t.Fatalf("prefix listing dropped the spaced branch: %q", local)
+	}
+}
+
+// ls-remote separates the object id from the ref with a tab, and a ref may
+// hold a space that strings.Fields would split on, taking a published layer
+// out of a recovery pass that could then not find it.
+func TestRemoteBranchPrefixKeepsNonASCIISpaces(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	const name = "review/01-sec-review- wip"
+	gitIn(t, r.Dir, "branch", name)
+
+	remote := t.TempDir()
+	if out, err := exec.Command("git", "init", "--bare", "-q", remote).CombinedOutput(); err != nil {
+		t.Fatalf("init bare remote: %v: %s", err, out)
+	}
+	gitIn(t, r.Dir, "remote", "add", "origin", remote)
+	gitIn(t, r.Dir, "push", "-q", "origin", name)
+
+	tips, err := r.RemoteBranchesWithPrefix(ctx, "origin", "review/01-sec-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tips[name]; !ok {
+		t.Fatalf("published layer %q missing from %q", name, tips)
+	}
+}
+
+// A sweep that trims a refname collapses the names it listed onto one, so
+// git branch -D is handed the same ref twice and the branch it did list is
+// left behind: a successful sweep that stranded a review branch, which is
+// the outcome DeleteBranchesMatching documents as unacceptable.
+func TestDeleteBranchesMatchingSweepsNonASCIISpaces(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-0 ")
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-0")
+
+	if err := r.DeleteBranchesMatching(ctx, "gauntlet/run-lane-0*"); err != nil {
+		t.Fatal(err)
+	}
+	branches := gitOut(t, r.Dir, "branch", "--list", "--format=%(refname:short)")
+	if strings.Contains(branches, "gauntlet/") {
+		t.Fatalf("a branch the pattern listed survived the sweep:\n%s", branches)
+	}
+}
+
 func TestBranchListingByPrefixAndRename(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

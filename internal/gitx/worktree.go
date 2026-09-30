@@ -783,8 +783,7 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 	}
 	var names []string
 	for line := range strings.SplitSeq(string(out), "\n") {
-		line = strings.TrimRight(line, "\r")
-		name := strings.TrimSpace(line)
+		name := trimLineEnd(line)
 		if name == "" {
 			continue
 		}

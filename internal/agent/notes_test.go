@@ -89,6 +89,26 @@ func TestParseFileNotesEmpty(t *testing.T) {
 	}
 }
 
+// One file has two Unicode spellings, and a review may report it in either.
+// The last note still wins, but the file is listed once: keying the index on
+// the raw bytes gave one file two overview lines in a stacked PR body.
+func TestParseFileNotesUnifiesNormalizationForms(t *testing.T) {
+	tail := "PATH: src/café.go: first note\n" +
+		"PATH: src/café.go: second note\n"
+	notes := ParseFileNotes([]byte(tail))
+	if len(notes) != 1 {
+		t.Fatalf("one file in two spellings gave %d notes: %+v", len(notes), notes)
+	}
+	if notes[0].Note != "second note" {
+		t.Fatalf("note = %q, want the later one", notes[0].Note)
+	}
+	// The path is kept as the agent printed it: this is display text, and
+	// normalizing it is not this function's to do.
+	if notes[0].Path != "src/café.go" {
+		t.Fatalf("path = %q, want the spelling the agent printed", notes[0].Path)
+	}
+}
+
 // FuzzParseFileNotes feeds arbitrary agent output into ParseFileNotes and pins
 // its extraction contract: at most fileNotesMax notes come back, every path is
 // unique with later appearances winning in place, paths and notes are bounded
