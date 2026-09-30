@@ -1,7 +1,7 @@
 // Copyright (C) 2026 Marcel W. Wysocki
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Command gauntlet runs a codebase through 54 specialized review prompts,
+// Command gauntlet runs a codebase through its bundled review prompts,
 // dispatched to whichever AI coding agents are installed.
 package main
 

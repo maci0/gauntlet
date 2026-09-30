@@ -314,6 +314,7 @@ type rawFlags struct {
 	reviews, exclude, agents, bins, dirs listFlag
 	agentCmds, paths                     listFlag
 	suggestAgent                         string
+	restore                              countedString
 	suggest, once, showVersion, help     bool
 }
 
@@ -429,8 +430,8 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("V", "version", func(n string) { fs.BoolVar(&raw.showVersion, n, false, "print the version and exit") })
 	alias("h", "help", func(n string) { fs.BoolVar(&raw.help, n, false, "show this help and exit") })
 	fs.IntVar(&o.runsLimit, "limit", defaultRunsLimit, "runs: how many entries to list")
-	fs.StringVar(&o.restoreRun, "restore", "",
-		"runs: put a pruned run back in the listing by run id")
+	raw.restore.dst = &o.restoreRun
+	fs.Var(&raw.restore, "restore", "runs: put a pruned run back in the listing by run id")
 	fs.BoolVar(&o.json, "json", false,
 		"runs: print the listing as JSON on stdout, and nothing else there")
 
@@ -557,7 +558,18 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	// screen belongs on stdout, where redirection and pipes can capture it.
 	// The `help` word is the same request, and is parsed rather than handled
 	// before flags so `gauntlet --no-color help` still honors --no-color.
+	//
+	// A word after it names the topic. There is one screen, so a known command
+	// prints the same thing `gauntlet help` does, which the SUBCOMMAND FLAGS
+	// section answers. An unknown one is refused rather than swallowed: reading
+	// `gauntlet helo runs` as a plain `gauntlet help` exits 0 over a page of
+	// flags and reports success for a request it never answered.
 	if raw.help || o.command == "help" {
+		for _, arg := range fs.Args() {
+			if err := helpTopic(arg); err != nil {
+				return nil, err
+			}
+		}
 		printUsage(os.Stdout, report.Palette{On: report.ColorEnabled(os.Stdout) && !o.noColor}, o.width)
 		return nil, errHelp
 	}
@@ -588,6 +600,12 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		// nothing about the output format that was asked for.
 		if isFlagSet(fs, "json") && o.command != "runs" {
 			return nil, errors.New("--json requires 'gauntlet runs'")
+		}
+		// A second --restore is a mistake, not a choice: the last one would win
+		// and the id the first named would be restored by nobody. The rule
+		// --bin and --agent-cmd hold themselves to, for the same reason.
+		if o.command == "runs" && raw.restore.n > 1 {
+			return nil, errors.New("--restore given more than once: want one run id")
 		}
 	}
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
@@ -1046,6 +1064,28 @@ func isFlagSet(fs *flag.FlagSet, names ...string) bool {
 	return set
 }
 
+// countedString is a string flag that remembers how many times it was given.
+// The flag package records the last value of a repeated flag and forgets the
+// rest, so a flag whose repetition is a mistake rather than a choice needs its
+// own count: the value is still the last one, so nothing else changes.
+type countedString struct {
+	dst *string
+	n   int
+}
+
+func (c *countedString) String() string {
+	if c.dst == nil {
+		return ""
+	}
+	return *c.dst
+}
+
+func (c *countedString) Set(v string) error {
+	c.n++
+	*c.dst = v
+	return nil
+}
+
 func splitNames(s string) []string {
 	var out []string
 	for p := range strings.SplitSeq(s, ",") {
@@ -1179,6 +1219,22 @@ func unknownCommand(name string) error {
 	}
 	return fmt.Errorf("unknown command: %q%s (try: %s)",
 		name, hint, strings.Join(commandNames, ", "))
+}
+
+// helpTopic refuses a word after `help` or -h that names nothing, with the
+// same shape the first-word unknown command has. The screen covers every
+// command at once, so a known one is answered by it and only a misspelling
+// needs saying.
+func helpTopic(word string) error {
+	if slices.Contains(commandNames, word) {
+		return nil
+	}
+	hint := ""
+	if c := fuzzy.Closest(word, commandNames); c != "" {
+		hint = fmt.Sprintf(" (did you mean %q?)", c)
+	}
+	return fmt.Errorf("no help topic: %q%s (topics: %s)",
+		word, hint, strings.Join(commandNames, ", "))
 }
 
 // flagSpelling matches the flag name in each message the flag package writes

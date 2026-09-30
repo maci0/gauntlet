@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
@@ -202,7 +203,8 @@ func printUsage(out io.Writer, pal report.Palette, width int) {
 
 	fmt.Fprintf(out, "%s %s\n%s\n",
 		pal.Bold("gauntlet"), pal.Dim(version),
-		pal.Dim("Run your codebase through 54 specialized review prompts, dispatched to"))
+		pal.Dim(fmt.Sprintf("Run your codebase through %d specialized review prompts, dispatched to",
+			len(prompt.BundledNames()))))
 	fmt.Fprintln(out, pal.Dim("the AI coding agents you have installed. Fixes land in the working tree."))
 
 	head("usage")

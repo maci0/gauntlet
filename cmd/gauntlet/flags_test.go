@@ -1017,6 +1017,24 @@ func TestHelpSubcommand(t *testing.T) {
 	}
 }
 
+// `gauntlet help runs` is the one screen with the subcommand's own flags
+// marked in it, so a known topic is answered. A misspelled one is a usage
+// error: reading it as a plain `gauntlet help` exits 0 over a page of flags
+// and reports success for a request it never answered.
+func TestHelpRefusesAnUnknownTopic(t *testing.T) {
+	if _, err := parseFlags([]string{"help", "nosuchtopic"}); err == nil ||
+		!strings.Contains(err.Error(), "no help topic") {
+		t.Fatalf("an unknown help topic should be refused, got %v", err)
+	}
+	if _, err := parseFlags([]string{"help", "helo"}); err == nil ||
+		!strings.Contains(err.Error(), `did you mean "help"`) {
+		t.Fatalf("a close miss should suggest the command, got %v", err)
+	}
+	if _, err := parseFlags([]string{"help", "runs"}); err != errHelp {
+		t.Fatalf("a known topic is answered by the screen, got %v", err)
+	}
+}
+
 // `show` peels its run id off either side of the flags, so the question of
 // whether one was given is asked after they parse. A flag left without its
 // value is then reported by the flag package, the same as anywhere else,

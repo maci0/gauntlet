@@ -51,7 +51,8 @@ tree cannot support is refused with its reason on screen rather than composed
 and failed on launch (concurrency above 1 needs no uncommitted changes to tracked files). It needs a
 terminal on stdin and stdout, and takes `-C/--dir`, `--dirs`, and `--prompt-dir` to say
 what it should offer. The launcher composes one run for one tree: `--dirs` with
-several paths uses the first.
+several paths is a usage error (exit 2) rather than a run over the first of
+them, so the run never covers a different set of trees than the ones named.
 
 | Key | Action |
 |---|---|
@@ -152,7 +153,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` stops the run after two presses, and `esc` cancels that armed quit; `s` is the graceful finish. It needs a terminal on stdin and stdout, like `pick`: the dashboard reads keys, and a redirected stdin would hand it end-of-file and quit the run on the first tick. |
 | `-V, --version` | Print the version. |
-| `-h, --help` | Print the help screen, the flags below, and exit 0. `gauntlet help` is the same thing. |
+| `-h, --help` | Print the help screen, the flags below, and exit 0. `gauntlet help` is the same thing, and a command after it selects the topic: `gauntlet help runs` prints the same screen, whose SUBCOMMAND FLAGS section marks the flags `runs` reads. A word naming no command is a usage error (exit 2) rather than a plain `gauntlet help`, so a misspelling cannot exit 0 over a page of flags. |
 
 **Updating**
 
@@ -187,7 +188,7 @@ so it is the version before the last one and no further back.
 | Flag | Default | Purpose |
 |---|---|---|
 | `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
-| `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. |
+| `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. Given twice, it is a usage error too: the last value would otherwise win and the id the first named would be restored by nobody. |
 | `--json` | off | Print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (the state paths, with the home directory shortened to `~`, so a script expands the leading `~` before handing either to a tool), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column), `pruned` (the ids `--restore` takes, all of them rather than the five the table names), and `history` (the state tree behind the rows: `journals`, `rows`, `disagreed`, `pruned`, `truncated`, the counts `gauntlet doctor` prints on its Run history line). Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}`. Errors, including the exit codes, are unchanged. |
 
 ## Environment variables

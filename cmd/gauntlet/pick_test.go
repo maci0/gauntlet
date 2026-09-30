@@ -32,6 +32,26 @@ func TestPickNeedsBothTerminals(t *testing.T) {
 	}
 }
 
+// The launcher composes one run for one tree. A --dirs naming several used to
+// be narrowed to the first without a word, so the run covered a different set
+// of trees than the ones asked for; it is a usage error now, and the message
+// names the count so the reader can see what was dropped.
+func TestPickRefusesSeveralDirectories(t *testing.T) {
+	first := t.TempDir()
+	second := t.TempDir()
+	code := 0
+	got := captureStderr(t, func() int {
+		code = run([]string{"pick", "--dirs", first + "," + second})
+		return code
+	})
+	if code != exitUsage {
+		t.Fatalf("pick with two directories = exit %d, want %d (%s)", code, exitUsage, got)
+	}
+	if !strings.Contains(got, "pick reviews one directory") {
+		t.Fatalf("the refusal should say what pick composes, got %q", got)
+	}
+}
+
 func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	dir, _ := gitRepo(t, "package main\n")
 

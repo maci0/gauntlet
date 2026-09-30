@@ -27,11 +27,20 @@ import (
 // and the same run path as a hand-typed one, so there is no second way to
 // start a run that could drift from the first.
 func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
+	// The launcher composes one run for one tree, so a --dirs that names
+	// several is refused rather than narrowed: taking the first would drop
+	// the rest of the list without a word, and the run the user composed would
+	// cover a different set of trees than the one they named.
+	if len(opts.resolvedDirs) > 1 {
+		fmt.Fprintf(os.Stderr, "pick reviews one directory; --dirs named %d. "+
+			"Run gauntlet once per directory instead.\n", len(opts.resolvedDirs))
+		return exitUsage
+	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
 		fmt.Fprintln(os.Stderr, "pick needs a terminal on stdin and stdout")
 		return exitUsage
 	}
-	dir := opts.resolvedDirs[0] // the launcher composes one run for one tree
+	dir := opts.resolvedDirs[0]
 
 	set, _, err := prompt.Discover(ctx, opts.promptDir, dir)
 	if err != nil {
