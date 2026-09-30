@@ -13,6 +13,7 @@ package runx
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -61,15 +62,18 @@ func (w *Writer) Bytes() []byte  { return w.buf.Bytes() }
 func (w *Writer) String() string { return w.buf.String() }
 
 // KillGroup signals the whole process group, falling back to the process itself
-// when the group is already gone.
-func KillGroup(cmd *exec.Cmd, sig syscall.Signal) {
+// when the group is already gone. It returns the last failure so a caller that
+// reports a clean timeout can tell the difference between a child that died
+// from one nothing managed to signal; a subtree that outlived its kill is not
+// something the caller learns from the exit status.
+func KillGroup(cmd *exec.Cmd, sig syscall.Signal) error {
 	if cmd == nil || cmd.Process == nil || cmd.Process.Pid <= 0 {
-		return
+		return nil
 	}
 	if err := syscall.Kill(-cmd.Process.Pid, sig); err == nil {
-		return
+		return nil
 	}
-	_ = cmd.Process.Signal(sig)
+	return cmd.Process.Signal(sig)
 }
 
 // Outcome classifies a failed run so a deadline kill does not read like a
@@ -92,10 +96,18 @@ func Outcome(ctx context.Context, err error) error {
 
 // Guard puts cmd in its own process group, kills the group on Cancel, and
 // bounds how long Wait may sit on output pipes a grandchild still holds.
+//
+// A cancel that could not signal anything is reported to Wait rather than
+// swallowed: the caller is about to name a timeout, and a tree that survived
+// the kill is the one case where that name would be wrong. A process that
+// exited between the deadline and the signal is not a failure, so
+// os.ErrProcessDone stays nil.
 func Guard(cmd *exec.Cmd, wait time.Duration) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
-		KillGroup(cmd, syscall.SIGKILL)
+		if err := KillGroup(cmd, syscall.SIGKILL); err != nil && !errors.Is(err, os.ErrProcessDone) {
+			return err
+		}
 		return nil
 	}
 	cmd.WaitDelay = wait

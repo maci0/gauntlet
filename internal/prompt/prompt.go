@@ -106,12 +106,19 @@ func descFromBody(body string) string {
 	return ""
 }
 
+// unreadablePrompt stands in for a prompt file that cannot be read. A blank
+// description would be indistinguishable from a prompt that declares no goal,
+// so a review whose bytes never arrived says so instead of taking the place of
+// a subject in the listing, the picker, and the PR scope line. The path is
+// left out: it comes from the reviewed repository.
+const unreadablePrompt = "cannot read this prompt file"
+
 // Desc is the prompt's first "Your goal" line, stripped to its predicate. It
 // is display text from a possibly untrusted file, so it is sanitized.
 func (r Review) Desc() string {
 	body, err := r.Body()
 	if err != nil {
-		return ""
+		return unreadablePrompt
 	}
 	return descFromBody(body)
 }
@@ -142,7 +149,7 @@ const (
 func (r Review) Summary() string {
 	body, err := r.Body()
 	if err != nil {
-		return ""
+		return unreadablePrompt
 	}
 	return summaryFromBody(body)
 }

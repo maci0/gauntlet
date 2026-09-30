@@ -155,9 +155,6 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 		if err != nil {
 			return nil, fmt.Errorf("cannot infer the GitHub repository from %s: %w", cfg.PushRemote, err)
 		}
-		if pushErr != nil {
-			return nil, pushErr
-		}
 		if pushURL != remoteURL {
 			headRepo, _, err := ghx.ParseRemote(pushURL)
 			if err != nil {
@@ -169,6 +166,13 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 				headOwner = ""
 			}
 		}
+	}
+	// An unreadable push URL is refused whatever named the repository. A
+	// --pr-repo run pushes to that URL while recovery and the taken-name
+	// probe read the fetch URL, so continuing here has the stack look absent
+	// and get pushed a second time.
+	if pushErr != nil {
+		return nil, fmt.Errorf("cannot read the push URL of %s: %w", cfg.PushRemote, pushErr)
 	}
 	if host == "" {
 		host = "github.com"

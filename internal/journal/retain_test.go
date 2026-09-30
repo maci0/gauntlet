@@ -224,14 +224,47 @@ func TestJournalThisProcessHoldsIsNotIdle(t *testing.T) {
 	live.Flush()
 	path := journalPath("20260825T090000Z-0001")
 
-	if journalIdle(path) {
-		t.Error("a journal this process has open reads as idle")
+	if idle, err := journalIdle(path); err != nil || idle {
+		t.Errorf("a journal this process has open reads as idle (%v)", err)
 	}
 	if err := live.Close(Summary{Version: "test", Start: base, End: base}); err != nil {
 		t.Fatalf("close: %v", err)
 	}
-	if !journalIdle(path) {
-		t.Error("a journal this process has closed still reads as in progress")
+	if idle, err := journalIdle(path); err != nil || !idle {
+		t.Errorf("a journal this process has closed still reads as in progress (%v)", err)
+	}
+}
+
+// A journal the prune cannot open is not evidence that nobody is writing to
+// it: an EACCES or an exhausted descriptor table looks exactly like a run
+// another gauntlet has open. Moving it out from under that writer costs a
+// run, so the failure keeps the journal and is reported to the caller.
+func TestJournalUnopenableIsNotIdle(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the mode bits this test removes")
+	}
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+
+	j, err := Open("20260825T090000Z-0002", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	j.Flush()
+	path := journalPath("20260825T090000Z-0002")
+	if err := os.Chmod(path, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+
+	idle, err := journalIdle(path)
+	if err != nil {
+		t.Fatalf("an unopenable journal is an error, not silence: %v", err)
+	}
+	if idle {
+		t.Error("a journal that cannot be opened reads as idle")
 	}
 }
 
