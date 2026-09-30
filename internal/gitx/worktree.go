@@ -1068,3 +1068,20 @@ func (w *Worktree) RenameBranch(ctx context.Context, name string) error {
 	w.Branch = name
 	return nil
 }
+
+// CommonDir returns the shared metadata directory, including from a linked
+// worktree. Agents committing there need this directory writable as well.
+func (r *Repo) CommonDir(ctx context.Context) (string, error) {
+	out, err := r.run(ctx, gitQuick, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	path := strings.TrimSpace(string(out))
+	if path == "" {
+		return "", errors.New("git returned an empty common directory")
+	}
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(r.Dir, path)
+	}
+	return filepath.EvalSymlinks(path)
+}

@@ -279,8 +279,9 @@ Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
 
 ## Trust model
 
-Agents run with their permission prompts disabled. That is the point of the
-tool, and it is why the containment rules exist: prompts are read with
+Agents run with filesystem writes sandboxed by default (Landlock on Linux,
+Seatbelt on macOS); their permission prompts are disabled. Containment also
+uses these controls: prompts are read with
 `O_NOFOLLOW` and size-capped, agent binaries resolve on a `PATH` without
 cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath=/dev/null`,
 `diff.external`, `core.pager=cat`, and a reviewed repository's own signing

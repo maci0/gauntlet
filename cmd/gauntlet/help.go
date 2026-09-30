@@ -93,6 +93,8 @@ var helpGroups = []flagGroup{
 		{"", "seed", "N", "RNG seed for review order and agent picks, recorded in the journal (default: random)"},
 		{"c", "commit", "", "after each review, an agent commits the changes"},
 		{"p", "push", "", "like --commit, and pushes"},
+		{"", "no-sandbox", "", "disable kernel filesystem write confinement for trusted runs"},
+		{"", "sandbox-write", "DIR", "allow writes under an additional existing directory (repeatable)"},
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
 		{"y", "yes", "", "answer yes to confirmation prompts"},
 		{"", "semcode", "", "build a semcode index before the loop"},
@@ -177,6 +179,7 @@ type helpEnvVar struct {
 // read by internal packages (gauntlethome, selfupdate); the color names are
 // report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []helpEnvVar{
+	{"TMPDIR", "absolute temporary directory added to sandbox writable roots alongside /tmp; must exist (make test ignores exported TMPDIR)", false},
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json; ~ and $VAR expand, an empty value is the variable unset, and one naming something that is not a directory is refused (default ~/.gauntlet)", false},
 	{"GAUNTLET_NO_ANIMATION", "stop the dashboard moving (reduced motion): the reasoning glyph holds one frame and the screen stops redrawing ten times a second; read first, so set to 0 or false it outranks the two below", false},
 	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},

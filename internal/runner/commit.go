@@ -34,12 +34,14 @@ const commitTailBytes = 64 << 10
 // offer gauntlet makes when --jobs needs a clean tree and the only thing in
 // the way is uncommitted work.
 type CommitOpts struct {
-	Dir     string
-	Agent   agent.Spec
-	Bin     map[string]string
-	Push    bool
-	Yolo    bool
-	Timeout time.Duration
+	NoSandbox    bool
+	SandboxWrite []string
+	Dir          string
+	Agent        agent.Spec
+	Bin          map[string]string
+	Push         bool
+	Yolo         bool
+	Timeout      time.Duration
 	// Out receives the agent's normalized output, so a caller with a terminal
 	// can show the work rather than a silent pause. Nil discards it.
 	Out func(string)
@@ -87,6 +89,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 		}
 	}
 	pr := runProc(ctx, procOpts{
+		Tool: o.Agent.Tool, NoSandbox: o.NoSandbox, SandboxWrite: o.SandboxWrite,
 		Argv: argv, Dir: o.Dir, Timeout: timeout,
 		MaxLinesPerSec: outputRateLimit, Sink: sink,
 	})
@@ -214,6 +217,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	r.log("Running %s step with %s", action, spec.Label())
 	r.st.addCommitRun()
 	pr := runProc(ctx, procOpts{
+		Tool: spec.Tool, NoSandbox: r.cfg.NoSandbox, SandboxWrite: r.cfg.SandboxWrite,
 		Argv: argv, Dir: r.cfg.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
 		Sink: r.outputSink("commit", spec.Label()),

@@ -240,6 +240,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 	for i, d := range runs {
 		wg.Go(func() {
 			picked, spec, err := runner.Suggest(ctx, runner.SuggestConfig{
+				NoSandbox: opts.noSandbox, SandboxWrite: opts.sandboxWrite,
 				// scanDir, not dir: a stacked run's suggestion signals come
 				// from the fetched base snapshot, never the dirty checkout.
 				Dir: d.scanDir(), Set: d.set, Pool: pools[i], Agents: agents, Only: opts.suggestAgent,

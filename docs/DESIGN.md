@@ -23,9 +23,9 @@ also publish its changes as a linear, unmerged PR stack.
 
 ## Non-goals
 
-- Sandboxing the agents. Containment is prompt-level and process-level
-  (new session, no stdin, hard timeout), exactly as in the original. Running
-  untrusted repos still means running them in a container.
+- Restricting agent reads, network access, or resource usage. The default
+  kernel sandbox confines filesystem writes; hostile repositories still need
+  a container for confidentiality and stronger isolation.
 - Reimplementing agent CLIs. The runner is a scheduler and a screen.
 
 ## Package layout
@@ -55,8 +55,8 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/safefile` | the one guarded open for a path a repository's contents can plant: `O_NOFOLLOW` plus a regular-file check and a cleared `O_NONBLOCK`, for reading a project prompt, a run journal, and a shared exclude, and for appending to the last of those. Three copies of it had drifted (one dropped the path from its errors, one ignored a failed clear), and the append had no `O_NONBLOCK`, so a FIFO planted where the exclude goes blocked the untracked walk until a writer appeared |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
-`evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`, `streamjson`, and
-`humanize`; `evidence` imports `fuzzy`, `gitx`, `journal`, and `prompt`, so the
+`gauntlethome`, `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`,
+`streamjson`, and `humanize`; `evidence` imports `fuzzy`, `gitx`, `journal`, and `prompt`, so the
 file-signal suggester reaches the tree, the run history, and the catalog
 without any of them reaching back;
 `gitx`, `ghx`, `agent`, and `sbom` import `runx` for the shared child
@@ -105,7 +105,7 @@ loop runs headless with zero TUI cost. `cmd/gauntlet` pins this graph.
 
 ## External dependencies
 
-Seven direct modules, plus the modules they pull in. The default is no
+Eight direct modules, plus the modules they pull in. The default is no
 new dependency: each row earns its place by doing something the standard
 library cannot, and each was kept small on purpose.
 
@@ -117,6 +117,7 @@ library cannot, and each was kept small on purpose.
 | `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `internal/report`, text truncation in `internal/normalize`, and the cell widths the CLI tests measure in `cmd/gauntlet` |
 | `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
+| `golang.org/x/sys` | Landlock syscalls and ABI constants for filesystem write confinement | `internal/runner` only |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 
 No direct module is imported outside the column above, and no module is
@@ -139,7 +140,6 @@ every row, so an upgrade that changes a license fails before it ships.
 | `muesli/ansi` | ANSI writer the standard renderer emits its updates through | `bubbletea` |
 | `muesli/cancelreader` | interruptible reads so a repaint never eats a keystroke | `bubbletea` |
 | `xo/terminfo` | terminal capability database behind colorprofile's profiles | `charmbracelet/colorprofile` |
-| `golang.org/x/sys` | the `ioctl` and terminal calls the standard library does not wrap | `x/term`, `isatty` |
 | `klauspost/compress` | zstd decoder for dsh concatenated session logs | `toktop/agentusage`; `-tags notoktop` drops it |
 | `modernc.org/sqlite` | crush/opencode keep counters in databases, not transcripts | `toktop`; `TAGS=` builds drop it; pure Go, so `CGO_ENABLED=0` cross-compilation is unaffected |
 | `modernc.org/libc` | the cgo-free libc the pure-Go SQLite driver is built on | `modernc.org/sqlite` |
@@ -896,3 +896,27 @@ name programs, so the port blanks every execution-bearing key it can reach.
   note but keeps the inode: unlinking it could leave
   an opener locking the old inode while another run locks a newly created one.
   Do not remove the file while runs can start.
+
+## Agent filesystem sandbox
+
+Every agent launch (review, suggestion, commit, and conflict resolution) is
+confined by default, using the same native mechanisms as microagent: Linux
+Landlock and macOS Seatbelt. The scheduler stays unrestricted. Linux re-execs
+the running binary into an internal launcher, locks its OS thread, applies
+Landlock and `PR_SET_NO_NEW_PRIVS`, then execs the agent on that thread. macOS
+uses the system `/usr/bin/sandbox-exec` launcher for Seatbelt, retaining cgo-free
+cross-compilation. Agent children inherit the policy. Failure never silently
+launches an unrestricted agent; `--no-sandbox` is an explicit opt-out.
+
+Writes are allowed beneath the active worktree, its shared `.git` metadata,
+`/tmp`, an absolute `TMPDIR`, the selected built-in agent's state directories,
+and repeatable `--sandbox-write DIR` grants. Roots are resolved through
+symlinks, must exist, and must be directories. Standard agent state directories
+are created before confinement. Custom agents and build tools needing external
+cache directories need explicit grants. Nonstandard Git metadata directories
+need a grant too. Reads and network operations remain allowed. Like microagent,
+Linux handles filesystem rights introduced in ABIs 1, 2, 3 and 5 only when
+the kernel supports them; older kernels do not enforce newer rights such as
+truncation or device ioctls. Device exceptions allow stdio (`/dev/null` on
+Linux; `/dev/null`, `/dev/tty`, `/dev/dtracehelper` on macOS); the separate
+session still detaches the agent from the operator's terminal.

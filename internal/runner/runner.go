@@ -19,11 +19,13 @@ import (
 
 // Config describes one review loop over one directory.
 type Config struct {
-	Dir     string // absolute path of the tree under review
-	Set     prompt.Set
-	Reviews []string // scheduled review names, in order, repeats meaning weight
-	Agents  []agent.Spec
-	Bin     map[string]string // agent -> executable override
+	NoSandbox    bool
+	SandboxWrite []string
+	Dir          string // absolute path of the tree under review
+	Set          prompt.Set
+	Reviews      []string // scheduled review names, in order, repeats meaning weight
+	Agents       []agent.Spec
+	Bin          map[string]string // agent -> executable override
 
 	Timeout  time.Duration
 	Jobs     int // 1: sequential, in place. >1: N persistent lane worktrees, then merge

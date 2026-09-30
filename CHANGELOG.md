@@ -26,6 +26,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.31.0
+
+### Added
+
+- Agents now run in a filesystem write sandbox by default: Landlock on Linux and Seatbelt on macOS, inherited by shell commands and MCP children. Sandbox setup failures stop the launch. `--sandbox-write DIR` grants additional writable directories; `--no-sandbox` explicitly disables confinement. An absolute `TMPDIR` is also a writable root. Reads and networking remain available.
+
 ## 1.30.0
 
 ### Added

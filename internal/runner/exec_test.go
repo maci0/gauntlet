@@ -326,7 +326,7 @@ func TestCaptureProcKeepsTheTailOfHugeOutput(t *testing.T) {
 	// them must not cost the suggestion or unbounded memory.
 	bin := fakeAgent(t, t.TempDir(), "agent",
 		`{ head -c 3000000 /dev/zero | tr '\0' 'n'; printf '\nRELEVANT: sec-review: handles secrets\n'; }`)
-	out, res := captureProc(context.Background(), []string{bin}, t.TempDir(), 30*time.Second)
+	out, res := captureProc(context.Background(), procOpts{Argv: []string{bin}, Dir: t.TempDir(), Timeout: 30 * time.Second})
 	if res.Err != nil || res.ExitCode != 0 || res.TimedOut {
 		t.Fatalf("run failed: %+v", res)
 	}

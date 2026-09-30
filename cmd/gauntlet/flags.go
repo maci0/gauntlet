@@ -89,6 +89,8 @@ type options struct {
 	stackedPRs       bool
 	prBase           string
 	pushRemote       string
+	noSandbox        bool
+	sandboxWrite     []string
 	yolo             bool
 	yes              bool
 	semcode          bool
@@ -405,6 +407,14 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.resolveConflicts, "resolve-conflicts", true,
 		"hand a review branch that will not merge to an agent to resolve "+
 			"(--resolve-conflicts=false keeps it for a human)")
+	fs.BoolVar(&o.noSandbox, "no-sandbox", false, "disable kernel filesystem write confinement for trusted runs")
+	fs.Func("sandbox-write", "allow writes under an additional existing directory (repeatable)", func(v string) error {
+		if strings.TrimSpace(v) == "" {
+			return errors.New("directory must not be empty")
+		}
+		o.sandboxWrite = append(o.sandboxWrite, v)
+		return nil
+	})
 	fs.BoolVar(&o.yolo, "yolo", false, "drop the caution rules: bigger, more ambitious changes")
 	alias("y", "yes", func(n string) { fs.BoolVar(&o.yes, n, false, "answer yes to confirmation prompts") })
 	fs.BoolVar(&o.semcode, "semcode", false, "build a semcode index before the loop")

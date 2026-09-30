@@ -134,6 +134,8 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--stacked-prs` | off | Run the selected reviews in their configured order, using one isolated worktree per loop. Every changed review is committed, pushed, and opened as a PR against the preceding changed review. Nothing is merged and the original checkout is untouched. This mode owns commits and pushes, forces `--jobs 1`, and conflicts with `--commit`, `--push`, and `--merge-into`. Default is one loop. `-n N` (or `-n 0` for unlimited) starts each later loop in a fresh worktree cut from the previous loop's last published tip, so already-applied fixes are in the tree and later passes no-op instead of reopening them. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch names; later loops insert the loop number. |
 | `--pr-base BRANCH` | current branch name | Remote base for `--stacked-prs`. Gauntlet fetches `REMOTE/BRANCH` and starts the isolated worktree at that commit; the local branch and checkout do not move or need to match it. Requires `--stacked-prs`. |
 | `--push-remote REMOTE` | `origin` | Remote receiving stack branches and identifying the GitHub PR repository. Gauntlet verifies a dry-run new-branch push before launching an agent. Requires `--stacked-prs`. |
+| `--no-sandbox` | off | Disable the default kernel filesystem write sandbox for trusted runs. Independent of `--yolo`. |
+| `--sandbox-write DIR` | none | Allow writes beneath an additional existing directory; repeatable. Relative paths resolve against each reviewed worktree; `~` and environment variables expand. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
 | `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop. |
@@ -197,6 +199,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 
 | Variable | Effect |
 |---|---|
+| `TMPDIR` | An absolute temporary directory is added to sandbox writable roots alongside `/tmp`; it must exist. Relative values grant nothing. `make test` sets its own scratch directory and ignores an exported value; override it on the make command line. |
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard stops moving. The animated reasoning glyph holds one frame instead of cycling, and the screen stops repainting itself ten times a second: the frame changes when a review reports or a key is pressed, and otherwise every thirty seconds, so the clock and the timeout meters stay honest. The token count beside the glyph keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored, but `GAUNTLET_NO_ANIMATION` is read first: set to one of the five values above it turns the motion back on even when a desktop session exports `REDUCED_MOTION=1`. Left empty it defers to the other two. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
@@ -283,3 +286,27 @@ agent is launched with. An entry that named a built-in before that name shipped
 is the only place it can have come from, and `gauntlet doctor` names the file it
 read. `gauntlet doctor` lists every agent it knows, defined ones included, and
 the file it read them from.
+
+## Filesystem write sandbox
+
+Agents run under Landlock on Linux (kernel 5.13+ with Landlock enabled) and
+Seatbelt on macOS (`/usr/bin/sandbox-exec`), including their shell commands and
+MCP children. A sandbox failure stops the launch; `--no-sandbox` explicitly
+disables it. It does not restrict reads or network access.
+
+Writable roots are the active worktree and shared `.git` metadata, `/tmp`,
+an absolute `TMPDIR`, and the selected agent's usual state directories:
+`~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`, `~/.grok`,
+`~/.gemini/antigravity-cli` (agy),
+`~/.cursor`, `~/.kimi-code`, `~/.microagent`, or `~/.dsh`. For opencode
+and crush, their own subdirectories under `~/.local/share`, `~/.local/state`,
+and `~/.cache` are writable. These state directories are created if missing;
+the rest of the home directory stays read-only.
+
+Custom agents, nonstandard state paths, and external build caches need explicit
+grants, for example `--sandbox-write ~/.cache/go-build`. Grants must already
+exist and name directories, and symlinks are resolved before granting them.
+An agent that writes global configuration outside its state directory needs
+a grant for that configuration's parent directory. Every grant permits writes
+to the entire subtree; grant only what the run needs. Linux kernels with older
+Landlock ABIs cannot enforce newer operations (truncation needs ABI 3).

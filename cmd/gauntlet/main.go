@@ -572,6 +572,7 @@ func run(argv []string) int {
 			}
 		}
 		cfg := runner.Config{
+			NoSandbox: opts.noSandbox, SandboxWrite: opts.sandboxWrite,
 			Dir: d.dir, Set: d.set, Reviews: d.reviews, Agents: agents, Bin: opts.bin,
 			Timeout: opts.timeout, Jobs: opts.jobs, Retries: opts.retries, MaxLoops: maxLoops,
 			MaxReviews: opts.maxReviews,
@@ -1011,6 +1012,7 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	}
 	fmt.Fprintf(out, "Running the commit step with %s...\n", spec.Label())
 	err := runner.CommitNow(ctx, runner.CommitOpts{
+		NoSandbox: opts.noSandbox, SandboxWrite: opts.sandboxWrite,
 		Dir: dir, Agent: spec, Bin: opts.bin, Push: opts.push, Yolo: opts.yolo,
 		Timeout: opts.timeout,
 		Out:     func(line string) { fmt.Fprintln(out, pal.Dim("  "+line)) },

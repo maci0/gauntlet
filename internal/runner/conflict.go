@@ -197,6 +197,7 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 	note("Resolving the %s conflict in %s with %s", review,
 		safePathList(paths, pathListLimit), spec.Label())
 	pr := runProc(ctx, procOpts{
+		Tool: spec.Tool, NoSandbox: r.cfg.NoSandbox, SandboxWrite: r.cfg.SandboxWrite,
 		Argv: argv, Dir: wt.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
 		Sink: r.outputSink(review, spec.Label()),

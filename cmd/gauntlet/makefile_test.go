@@ -266,6 +266,7 @@ func TestMakefileStaticcheckIsPinnedAndScansSelectedTags(t *testing.T) {
 			args := append([]string{"--no-print-directory", "-n", "staticcheck", "GO=go", "STATICCHECK_VERSION=" + pin}, tc.args...)
 			cmd := exec.CommandContext(ctx, "make", args...)
 			cmd.Dir = moduleRoot(t)
+			cmd.Env = cleanMakeEnv()
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("make staticcheck dry run: %v\n%s", err, out)
@@ -660,13 +661,14 @@ func TestMakefileTestFastRefusesToRunEveryPackage(t *testing.T) {
 // MAKEFLAGS: make exports a command-line variable to every recipe, so the
 // documented `make test-pkg PKG=./cmd/gauntlet` reached the nested
 // `make test-pkg` with PKG set, the guard never fired, and the package ran
-// itself until the test binary's timeout killed it.
+// itself until the test binary's timeout killed it. TAGS and MAKEOVERRIDES
+// also go: each nested check must use its own requested build configuration.
 func cleanMakeEnv() []string {
 	var env []string
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		switch key {
-		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL", "PKG", "RUN":
+		case "MAKEFLAGS", "MFLAGS", "MAKELEVEL", "MAKEOVERRIDES", "TAGS", "PKG", "RUN":
 			continue
 		}
 		env = append(env, entry)
@@ -1620,13 +1622,14 @@ func TestMakefileDoctorPreflightsEveryPrerequisite(t *testing.T) {
 		`command -v "$(GO)"`,                           // go on PATH
 		`cc=$$($(GO) env CC)`,                          // the C compiler, as test-cgo reads it
 		`command -v "$$cc"`,                            //
-		"command -v git",                               //
-		"command -v uvx",                               // as check-scripts reads it
-		"command -v shellcheck",                        // as check-scripts reads it
-		`mkdir -p "$(TMPDIR)"`,                         // the test scratch directory test-tmpdir creates
-		"command -v tar",                               // the archive repro cuts twice
-		"command -v cmp",                               // the comparison repro ends on
-		"command -v sha256sum",                         // the checksum artifacts writes and verifies
+		`[ -x /usr/bin/sandbox-exec ]`,
+		"command -v git",        //
+		"command -v uvx",        // as check-scripts reads it
+		"command -v shellcheck", // as check-scripts reads it
+		`mkdir -p "$(TMPDIR)"`,  // the test scratch directory test-tmpdir creates
+		"command -v tar",        // the archive repro cuts twice
+		"command -v cmp",        // the comparison repro ends on
+		"command -v sha256sum",  // the checksum artifacts writes and verifies
 	} {
 		if !strings.Contains(recipe, want) {
 			t.Errorf("make doctor must check %q", want)

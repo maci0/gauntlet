@@ -357,3 +357,6 @@ that test fails until you do, with these instructions. Named sets such as
 `quick` are separate, in `internal/prompt/sets.go`. Files under
 `internal/prompt/rules/` are different: they are the containment text every
 agent runs under, so treat changes there as security-relevant.
+
+On macOS, sandboxed agent tests and runs require the system
+`/usr/bin/sandbox-exec` Seatbelt launcher; `make doctor` checks it.

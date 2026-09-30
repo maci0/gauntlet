@@ -121,9 +121,12 @@ type procResult struct {
 
 // procOpts configures one agent launch.
 type procOpts struct {
-	Argv    []string
-	Dir     string
-	Timeout time.Duration
+	Tool         string
+	NoSandbox    bool
+	SandboxWrite []string
+	Argv         []string
+	Dir          string
+	Timeout      time.Duration
 	// Sink receives normalized output lines. nil discards output (still
 	// drained, so the agent never blocks on a full pipe).
 	Sink func(normalize.Line)
@@ -175,6 +178,13 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if !o.NoSandbox {
+		var err error
+		cmd, err = sandboxCommand(cmd, o)
+		if err != nil {
+			return procResult{ExitCode: -1, Err: err}
+		}
+	}
 
 	// Explicitly owned pipes, not cmd.StdoutPipe: Wait closes the pipes it
 	// created as soon as the process exits, which silently truncates whatever
@@ -664,21 +674,17 @@ const suggestTailBytes = 1 << 20
 // Used for the short helper steps whose output is parsed rather than streamed:
 // today that is the suggest triage. The bound is what makes an output loop in
 // the child a bounded annoyance instead of unbounded memory growth.
-func captureProc(ctx context.Context, argv []string, dir string, timeout time.Duration) (string, procResult) {
+func captureProc(ctx context.Context, o procOpts) (string, procResult) {
 	tail := agent.NewTail(suggestTailBytes)
 	var mu sync.Mutex
-	res := runProc(ctx, procOpts{
-		Argv:    argv,
-		Dir:     dir,
-		Timeout: timeout,
-		Raw:     true,
-		Sink: func(l normalize.Line) {
-			mu.Lock()
-			_, _ = tail.WriteString(l.Text)
-			_, _ = tail.WriteString("\n")
-			mu.Unlock()
-		},
-	})
+	o.Raw = true
+	o.Sink = func(l normalize.Line) {
+		mu.Lock()
+		_, _ = tail.WriteString(l.Text)
+		_, _ = tail.WriteString("\n")
+		mu.Unlock()
+	}
+	res := runProc(ctx, o)
 	mu.Lock()
 	defer mu.Unlock()
 	return string(tail.Bytes()), res

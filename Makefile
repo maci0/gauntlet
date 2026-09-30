@@ -937,6 +937,13 @@ doctor: ## report every missing prerequisite in one run, with what to install
 	else \
 		bad "git" "install git" "every target: the worktrees a run cuts live under .gauntlet/worktrees in the reviewed repository"; \
 	fi; \
+	if [ "$$(uname -s)" = Darwin ]; then \
+		if [ -x /usr/bin/sandbox-exec ]; then \
+			ok "Seatbelt launcher /usr/bin/sandbox-exec"; \
+		else \
+			bad "/usr/bin/sandbox-exec" "restore the macOS system Seatbelt launcher" "run, test, test-pkg, cover, ci, verify"; \
+		fi; \
+	fi; \
 	if command -v uvx >/dev/null 2>&1; then \
 		ok "uvx (uv $$(uv --version 2>/dev/null | awk '{print $$2}'), CI pins $(UV_VERSION))"; \
 	else \

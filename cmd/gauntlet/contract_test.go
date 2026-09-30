@@ -43,12 +43,12 @@ var goldenFlagNames = []string{
 	"j", "jobs", "json", "keep-runs",
 	"l", "limit", "list", "log",
 	"max-loops", "max-reviews", "merge-into",
-	"n", "no-color",
+	"n", "no-color", "no-sandbox",
 	"once", "opencode-db",
 	"p", "paths", "pr-base", "prompt-dir", "push", "push-remote",
 	"q", "quiet",
 	"r", "raw", "resolve-conflicts", "restore", "retries", "reviews", "runtime",
-	"s", "seed", "semcode", "show-prompt", "stacked-prs", "stream", "suggest",
+	"s", "sandbox-write", "seed", "semcode", "show-prompt", "stacked-prs", "stream", "suggest",
 	"suggest-agent", "suggest-timeout",
 	"t", "target-dirs", "timeout", "token-budget", "tui",
 	"update-repo", "usage-cmd", "usage-limit",
@@ -88,6 +88,7 @@ var goldenEnvVars = []string{
 	"NO_MOTION",
 	"REDUCED_MOTION",
 	"TERM",
+	"TMPDIR",
 }
 
 func TestFlagNamesMatchTheContract(t *testing.T) {

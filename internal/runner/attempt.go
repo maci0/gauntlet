@@ -356,6 +356,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 	defer usage.halt()
 
 	pr := runProc(reviewCtx, procOpts{
+		Tool: spec.Tool, NoSandbox: r.cfg.NoSandbox, SandboxWrite: r.cfg.SandboxWrite,
 		Argv:           argv,
 		Dir:            dir,
 		Timeout:        r.cfg.Timeout,

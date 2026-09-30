@@ -18,14 +18,16 @@ import (
 
 // SuggestConfig asks an agent which reviews apply to a repository.
 type SuggestConfig struct {
-	Dir     string
-	Set     prompt.Set
-	Pool    []string     // review names the agent may choose from
-	Agents  []agent.Spec // sampled in random order until one answers
-	Only    *agent.Spec  // --suggest-agent: try just this one
-	Bin     map[string]string
-	Timeout time.Duration
-	Log     func(string, ...any)
+	NoSandbox    bool
+	SandboxWrite []string
+	Dir          string
+	Set          prompt.Set
+	Pool         []string     // review names the agent may choose from
+	Agents       []agent.Spec // sampled in random order until one answers
+	Only         *agent.Spec  // --suggest-agent: try just this one
+	Bin          map[string]string
+	Timeout      time.Duration
+	Log          func(string, ...any)
 	// Seed shuffles the agent try order. The caller resolves the run's
 	// effective seed once (SeedOrClock) and passes the same number to the
 	// schedule, so the seed the journal records replays this step too; zero
@@ -105,7 +107,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		logf("Asking %s which reviews apply here (timeout %s)", spec.Label(),
 			humanize.Duration(cfg.Timeout))
 
-		out, res := captureProc(ctx, argv, cfg.Dir, cfg.Timeout)
+		out, res := captureProc(ctx, procOpts{Argv: argv, Dir: cfg.Dir, Timeout: cfg.Timeout, Tool: spec.Tool, NoSandbox: cfg.NoSandbox, SandboxWrite: cfg.SandboxWrite})
 		switch {
 		case res.Err != nil:
 			lastErr = fmt.Errorf("cannot launch %s to suggest reviews: %w", spec.Label(), res.Err)
