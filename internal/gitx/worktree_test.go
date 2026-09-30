@@ -610,6 +610,34 @@ func TestDeleteBranchesMatchingReportsFailure(t *testing.T) {
 	}
 }
 
+// A batch that deletes most of its names exits nonzero, and the names it
+// already removed are not names anyone can delete again. The report has to
+// name the branch that survived and stay silent about the ones the batch took,
+// or a clean sweep reads as a pile left behind.
+func TestDeleteBranchesMatchingNamesOnlyTheSurvivor(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-0")
+	gitIn(t, r.Dir, "branch", "gauntlet/run-lane-1")
+	gitIn(t, r.Dir, "worktree", "add", "-q", "-b", "gauntlet/run-lane-2", t.TempDir())
+
+	err := r.DeleteBranchesMatching(ctx, "gauntlet/run-lane*")
+	if err == nil {
+		t.Fatal("a sweep that could not delete every match must report the survivor")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "gauntlet/run-lane-2") {
+		t.Fatalf("the report must name the branch that survived, got: %s", msg)
+	}
+	if strings.Contains(msg, "run-lane-0") || strings.Contains(msg, "run-lane-1") {
+		t.Fatalf("the report names branches the sweep deleted, got: %s", msg)
+	}
+	branches := gitOut(t, r.Dir, "branch", "--list", "--format=%(refname:short)")
+	if strings.Contains(branches, "run-lane-0") || strings.Contains(branches, "run-lane-1") {
+		t.Fatalf("the branches the batch could delete are still there, got:\n%s", branches)
+	}
+}
+
 func TestRemoveTwiceConverges(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

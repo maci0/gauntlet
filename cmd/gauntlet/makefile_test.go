@@ -1013,6 +1013,7 @@ func TestDocsPointAtTheMakefileLineTheyName(t *testing.T) {
 		want string
 	}{
 		{name: "GOVULNCHECK_VERSION", want: "GOVULNCHECK_VERSION"},
+		{name: "STATICCHECK_VERSION", want: "STATICCHECK_VERSION"},
 		{name: "make release", want: ".PHONY: release"},
 		{name: "release-version", want: ".PHONY: release-version"},
 		{name: "make repro", want: ".PHONY: repro"},
