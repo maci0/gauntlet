@@ -801,7 +801,7 @@ func allJournals() ([]namedJournal, error) {
 		if c := runIDOrder(b.id, a.id); c != 0 {
 			return c
 		}
-		return journalPreference(a) - journalPreference(b)
+		return journalPreference(a.id, a.path) - journalPreference(b.id, b.path)
 	})
 	deduped := out[:0]
 	for i, j := range out {
@@ -817,11 +817,11 @@ func allJournals() ([]namedJournal, error) {
 }
 
 // journalPreference ranks the copies of one run id: the one in the shard its
-// id names, which is where Open and Restore file a run, ahead of a stray filed
-// beside it.
-func journalPreference(j namedJournal) int {
-	if shard := shardFromRunID(j.id); shard != "" &&
-		filepath.Base(filepath.Dir(j.path)) == shard {
+// id names, which is where Open, Restore, and the prune file a run, ahead of a
+// stray filed beside it.
+func journalPreference(id, path string) int {
+	if shard := shardFromRunID(id); shard != "" &&
+		filepath.Base(filepath.Dir(path)) == shard {
 		return 0
 	}
 	return 1

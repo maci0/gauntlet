@@ -30,6 +30,18 @@ import (
 // the files are: pruned, still readable, one shard per day like runs/.
 func prunedDir() string { return filepath.Join(Home(), "pruned") }
 
+// sortedKeys returns a set's keys in order. The prune walks a set of touched
+// directories and both what it removes and the errors it notes come out in that
+// order, so two runs of the same prune over the same tree report the same thing.
+func sortedKeys(set map[string]struct{}) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 // quarantinePath is where the journal of runID waits after a prune.
 func quarantinePath(runID string) string {
 	return filepath.Join(prunedDir(), shardFromRunID(runID), runID+".jsonl")
@@ -185,7 +197,7 @@ func listQuarantined() ([]quarantined, error) {
 		if c := runIDOrder(b.id, a.id); c != 0 {
 			return c
 		}
-		return quarantinePreference(a) - quarantinePreference(b)
+		return journalPreference(a.id, a.path) - journalPreference(b.id, b.path)
 	})
 	// An id is held once however many files carry it, the rule allJournals
 	// applies to runs/ and for the same reason: the keep window trims by
@@ -199,17 +211,6 @@ func listQuarantined() ([]quarantined, error) {
 		deduped = append(deduped, q)
 	}
 	return deduped, nil
-}
-
-// quarantinePreference ranks the copies of one run id: the one in the shard
-// its id names, which is where quarantine and Restore file a run, ahead of a
-// stray filed beside it. The twin of journalPreference.
-func quarantinePreference(q quarantined) int {
-	if shard := shardFromRunID(q.id); shard != "" &&
-		filepath.Base(filepath.Dir(q.path)) == shard {
-		return 0
-	}
-	return 1
 }
 
 // quarantinedInDir returns the quarantined journals one directory holds.
@@ -316,16 +317,7 @@ func Restore(runID string) error {
 // is no longer there.
 func removeEmptyDirs(touched map[string]struct{}, root string) error {
 	emptied, removedRoot := false, false
-	// A sorted walk, not a map range: several shards can fail to remove at
-	// once, and the error the caller sees would otherwise be whichever one the
-	// map happened to reach first, which differs between two runs of the same
-	// prune over the same tree.
-	dirs := make([]string, 0, len(touched))
-	for dir := range touched {
-		dirs = append(dirs, dir)
-	}
-	slices.Sort(dirs)
-	for _, dir := range dirs {
+	for _, dir := range sortedKeys(touched) {
 		switch err := os.Remove(dir); {
 		case err == nil:
 			emptied = true

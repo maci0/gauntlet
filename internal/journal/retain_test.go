@@ -234,6 +234,7 @@ func TestJournalThisProcessHoldsIsNotIdle(t *testing.T) {
 		t.Error("a journal this process has closed still reads as in progress")
 	}
 }
+
 // Prune fires unattended at the end of every run, so the second execution of
 // the same keep is the normal case, not a retry: a run whose keep the history
 // already satisfies must leave the tree exactly as it found it, and a run that

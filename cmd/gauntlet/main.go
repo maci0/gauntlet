@@ -69,11 +69,20 @@ func resolveStamped(stamped string, bi *debug.BuildInfo) string {
 
 // Exit codes, matching the Python original so scripts keep working.
 const (
-	exitOK     = 0
-	exitFail   = 1  // a run failed, or a report (doctor) and an update found nothing usable
-	exitUsage  = 2  // usage error
-	exitLocked = 75 // EX_TEMPFAIL: another instance holds the lock
+	exitOK          = 0
+	exitFail        = 1  // a run failed, or a report (doctor) and an update found nothing usable
+	exitUsage       = 2  // usage error
+	exitLocked      = 75 // EX_TEMPFAIL: another instance holds the lock
+	exitInterrupted = 128 + int(syscall.SIGINT)
 )
+
+// interrupted reports whether err is ctx's cancellation, which every caller
+// maps to exitInterrupted rather than to a usage error. ctx.Err is read as
+// well because the run's own quit cancels ctx without the err it returns
+// naming the cause.
+func interrupted(ctx context.Context, err error) bool {
+	return errors.Is(err, context.Canceled) || ctx.Err() != nil
+}
 
 // dirRun is one directory's slice of a run.
 type dirRun struct {
@@ -339,8 +348,8 @@ func run(argv []string) int {
 				fmt.Fprintln(stdout, "Aborted.")
 				return exitOK
 			}
-			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				return 128 + int(syscall.SIGINT)
+			if interrupted(ctx, err) {
+				return exitInterrupted
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
@@ -355,8 +364,8 @@ func run(argv []string) int {
 	for _, d := range runs {
 		set, warnings, err := prompt.Discover(ctx, opts.promptDir, d.scanDir())
 		if err != nil {
-			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				return 128 + int(syscall.SIGINT)
+			if interrupted(ctx, err) {
+				return exitInterrupted
 			}
 			if opts.promptDir != "" {
 				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
@@ -392,8 +401,8 @@ func run(argv []string) int {
 		if errors.Is(err, errAborted) {
 			return exitOK
 		}
-		if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-			return 128 + int(syscall.SIGINT)
+		if interrupted(ctx, err) {
+			return exitInterrupted
 		}
 		fmt.Fprintln(os.Stderr, err)
 		if errors.Is(err, errAgentFailed) {
@@ -599,8 +608,8 @@ func run(argv []string) int {
 		}
 		if err != nil {
 			code := exitUsage
-			if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-				code = 128 + int(syscall.SIGINT)
+			if interrupted(ctx, err) {
+				code = exitInterrupted
 			} else {
 				fmt.Fprintln(os.Stderr, err)
 			}
@@ -807,7 +816,7 @@ func wasInterrupted(cancelled, dashboardClosing, ranToEnd bool) bool {
 // exitCode maps the run's outcome onto the documented codes.
 func exitCode(interrupted bool, runs []*dirRun) int {
 	if interrupted {
-		return 128 + int(syscall.SIGINT)
+		return exitInterrupted
 	}
 	for _, d := range runs {
 		if d.stats == nil {
