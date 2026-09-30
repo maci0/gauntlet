@@ -80,7 +80,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	// lanes, not the stale tip from when the loop (or the last review) began.
 	base := wt.Base()
 	if tip, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
-		r.log("Cannot read HEAD before %s, using the lane's previous base: %v", review, err)
+		r.logReview(loopNo, laneIdx, review, "Cannot read HEAD before %s, using the lane's previous base: %v", review, err)
 	} else if tip != "" {
 		base = tip
 	}
@@ -89,7 +89,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	oldBranch := wt.Branch
 	branch := gitx.LaneBranch(tag, gitx.BranchSlug(review))
 	if err := wt.StartBranch(cleanCtx, branch, base); err != nil {
-		r.log("Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
+		r.logReview(loopNo, laneIdx, review, "Cannot start branch for %s in lane %d: %v", review, laneIdx, err)
 		res := Result{Review: review, Agent: r.pickAgent(review, nil),
 			ExitCode: -1, Status: StatusSkipped, Detail: err.Error()}
 		r.publishReviewEnd(res, loopNo, "", "", 1)
@@ -97,7 +97,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	}
 	if oldBranch != "" && oldBranch != branch {
 		if err := r.repo.DeleteBranch(cleanCtx, oldBranch); err != nil {
-			r.log("Cannot delete lane branch %s before %s: %v", oldBranch, review, err)
+			r.logReview(loopNo, laneIdx, review, "Cannot delete lane branch %s before %s: %v", oldBranch, review, err)
 		}
 	}
 
@@ -108,22 +108,22 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		branchToDelete := wt.Branch
 		tip := base
 		if t, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
-			r.log("Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
+			r.logReview(loopNo, laneIdx, review, "Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
 				review, laneIdx, err)
 		} else if t != "" {
 			tip = t
 		}
 		if err := wt.Advance(cleanCtx, tip); err != nil {
-			r.log("Cannot advance lane %d after %s: %v", laneIdx, review, err)
+			r.logReview(loopNo, laneIdx, review, "Cannot advance lane %d after %s: %v", laneIdx, review, err)
 		}
 		if deleteBranch && branchToDelete != "" {
 			if err := r.repo.DeleteBranch(cleanCtx, branchToDelete); err != nil {
-				r.log("Cannot delete review branch %s for %s: %v", branchToDelete, review, err)
+				r.logReview(loopNo, laneIdx, review, "Cannot delete review branch %s for %s: %v", branchToDelete, review, err)
 			}
 		}
 	}
 
-	res := r.runReview(ctx, review, loopNo, wt)
+	res := r.runReview(ctx, review, loopNo, laneIdx, wt)
 	res.Branch = wt.Branch
 
 	if res.Status != StatusOK {
@@ -140,7 +140,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	msg := commitSubject(res.Subject, changes)
 	changed, err := wt.CommitAll(context.WithoutCancel(ctx), msg)
 	if err != nil {
-		r.log("Cannot commit %s worktree: %v", review, err)
+		r.logReview(loopNo, laneIdx, review, "Cannot commit %s worktree: %v", review, err)
 		res.Status = StatusFail
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
@@ -188,9 +188,9 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	switch {
 	case mr.Merged:
 		if resolved {
-			r.log("Merged %s after resolving a conflict%s", review, linesNote(res))
+			r.logReview(loopNo, laneIdx, review, "Merged %s after resolving a conflict%s", review, linesNote(res))
 		} else {
-			r.log("Merged %s%s", review, linesNote(res))
+			r.logReview(loopNo, laneIdx, review, "Merged %s%s", review, linesNote(res))
 		}
 		ev := Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
@@ -204,11 +204,11 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	default:
 		if mr.Conflict {
 			res.Status = StatusConflict
-			r.log("MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
-			r.log("To land it after resolving: %s", conflictHint(wt.Branch, msg))
+			r.logReview(loopNo, laneIdx, review, "MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
+			r.logReview(loopNo, laneIdx, review, "To land it after resolving: %s", conflictHint(wt.Branch, msg))
 		} else {
 			res.Status = StatusFail
-			r.log("MERGE FAILED: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
+			r.logReview(loopNo, laneIdx, review, "MERGE FAILED: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
 		}
 		r.bus.Publish(Event{
 			Kind: EvMerge, Dir: r.cfg.Dir, Review: review, Loop: loopNo,
@@ -221,16 +221,16 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 }
 
 // runReview dispatches one review to one agent. wt is nil for in-place runs.
-func (r *Runner) runReview(ctx context.Context, review string, loopNo int, wt *gitx.Worktree) Result {
+func (r *Runner) runReview(ctx context.Context, review string, loopNo, laneIdx int, wt *gitx.Worktree) Result {
 	if wt == nil && r.repo != nil && r.mayRetry() && gitx.Available() {
 		if snap, err := r.repo.Snapshot(ctx); err != nil {
-			r.log("Warning: cannot snapshot the tree before %s: %v", review, err)
+			r.logReview(loopNo, laneIdx, review, "Warning: cannot snapshot the tree before %s: %v", review, err)
 		} else {
 			r.retrySnap = snap
 			defer func() { r.retrySnap = gitx.Snapshot{} }()
 		}
 	}
-	return r.runReviewExcluding(ctx, review, loopNo, wt, map[agent.Spec]bool{}, 1, 0)
+	return r.runReviewExcluding(ctx, review, loopNo, laneIdx, wt, map[agent.Spec]bool{}, 1, 0)
 }
 
 // mayRetry reports whether a failed launch or nonzero exit can run again:
@@ -263,7 +263,7 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 // counts the retries already made on this agent. They differ once a failed
 // agent is set aside: the next attempt is the next one in the run's sequence,
 // not a restart of it, and both the event stream and the log have to say so.
-func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo int,
+func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, laneIdx int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool, firstAttempt, attempt int) Result {
 
 	spec := r.pickAgent(review, exclude)
@@ -284,12 +284,12 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 
 	rev, ok := r.cfg.Set.Get(review)
 	if !ok {
-		r.log("No such review: %s", review)
+		r.logReview(loopNo, laneIdx, review, "No such review: %s", review)
 		return r.skipped(res, loopNo, lane, "unknown name")
 	}
 	body, err := rev.Body()
 	if err != nil {
-		r.log("Cannot read prompt for %s (%v), skipping", review, err)
+		r.logReview(loopNo, laneIdx, review, "Cannot read prompt for %s (%v), skipping", review, err)
 		return r.skipped(res, loopNo, lane, err.Error())
 	}
 	// Recorded on both of this attempt's events: a prompt edited mid-run makes
@@ -312,11 +312,11 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		Now:      r.bus.Clock(),
 	})
 	if err != nil {
-		r.log("Cannot build command for %s: %v", spec.Label(), err)
+		r.logReview(loopNo, laneIdx, review, "Cannot build command for %s: %v", spec.Label(), err)
 		res.Status = StatusFail
 		res.Detail = err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retryWithDifferentAgent(ctx, review, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retryWithDifferentAgent(ctx, review, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		r.publishReviewEnd(res, loopNo, promptSHA, lane, number)
@@ -327,7 +327,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 	if rev.IsProject() {
 		origin = " [project]"
 	}
-	r.log("Running %s%s with %s (timeout %s)", review, origin, spec.Label(),
+	r.logReview(loopNo, laneIdx, review, "Running %s%s with %s (timeout %s)", review, origin, spec.Label(),
 		humanize.Duration(r.cfg.Timeout))
 	r.bus.Publish(Event{
 		Kind: EvReviewStart, Dir: r.cfg.Dir, Review: review,
@@ -395,26 +395,26 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		// the run, and it is not retried: every attempt at the same launch
 		// costs what the last one did. The reading that stopped it is the
 		// ceiling, not a sum the caller has to add up.
-		r.log("OVER BUDGET: %s with %s after %s: one review spent %d tokens, "+
+		r.logReview(loopNo, laneIdx, review, "OVER BUDGET: %s with %s after %s: one review spent %d tokens, "+
 			"the run's whole budget", review, spec.Label(),
 			humanize.Duration(res.Elapsed), spentTokens)
 		res.Status = StatusFail
 		res.Detail = fmt.Sprintf("stopped at %d tokens, the run's token budget", spentTokens)
 		r.forgetSession(spec)
 	case pr.Canceled:
-		r.log("Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
+		r.logReview(loopNo, laneIdx, review, "Interrupted: %s (%s) after %s", review, spec.Label(), humanize.Duration(res.Elapsed))
 		res.Status = StatusInterrupted
 		r.forgetSession(spec)
 	case pr.TimedOut:
-		r.log("TIMEOUT: %s (%s) after %s", review, spec.Label(), humanize.Duration(r.cfg.Timeout))
+		r.logReview(loopNo, laneIdx, review, "TIMEOUT: %s (%s) after %s", review, spec.Label(), humanize.Duration(r.cfg.Timeout))
 		res.Status = StatusTimeout
 		r.forgetSession(spec)
 	case pr.Err != nil:
-		r.log("FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
+		r.logReview(loopNo, laneIdx, review, "FAILED to launch %s for %s: %v", spec.Label(), review, pr.Err)
 		res.Status = StatusFail
 		res.Detail = pr.Err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
@@ -425,28 +425,28 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo i
 		// finished review. This sits below the cancel and timeout arms
 		// because those close the pipes on purpose, which a reader sees as
 		// the same broken pipe.
-		r.log("LOST OUTPUT: %s (%s) after %s: %v", review, spec.Label(),
+		r.logReview(loopNo, laneIdx, review, "LOST OUTPUT: %s (%s) after %s: %v", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.StreamErr)
 		res.Status = StatusFail
 		res.Detail = withNote("output stream ended early", pr.StreamErr.Error())
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
 	case pr.ExitCode != 0:
-		r.log("FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
+		r.logReview(loopNo, laneIdx, review, "FAILED: %s (%s) after %s, exit %d", review, spec.Label(),
 			humanize.Duration(res.Elapsed), pr.ExitCode)
 		res.Status = StatusFail
 		res.Detail = withNote(fmt.Sprintf("%s exited %d", spec.Label(), pr.ExitCode), pr.Note)
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
 	default:
 		res.Status = StatusOK
-		r.log("Done: %s (%s) in %s%s", review, spec.Label(),
+		r.logReview(loopNo, laneIdx, review, "Done: %s (%s) in %s%s", review, spec.Label(),
 			humanize.Duration(res.Elapsed), linesNote(res))
 	}
 
@@ -605,7 +605,7 @@ const maxBackoffDoublings = 32
 // fallback to another agent still runs, because another CLI may hold another
 // account, and the operator's --usage-limit is the one that stops a run whose
 // agents share one window.
-func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt *gitx.Worktree,
+func (r *Runner) retry(ctx context.Context, review, note string, loopNo, laneIdx int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 
 	if ctx.Err() != nil || r.budgetExhausted() != "" {
@@ -614,21 +614,21 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 	if attempt < r.cfg.Retries && terminalAgentFailure(note) {
 		// Say it rather than skip silently: an operator reading the log has to
 		// be able to tell a decision from a bug.
-		r.log("Not retrying %s with %s: it stopped for a reason another attempt cannot clear (%s)",
+		r.logReview(loopNo, laneIdx, review, "Not retrying %s with %s: it stopped for a reason another attempt cannot clear (%s)",
 			review, failed.Label(), note)
 		attempt = r.cfg.Retries
 	}
 	if attempt < r.cfg.Retries {
 		delay := r.backoff(review, attempt)
-		r.log("Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
+		r.logReview(loopNo, laneIdx, review, "Retrying %s with %s in %s (attempt %d of %d)", review, failed.Label(),
 			humanize.Duration(delay), attempt+2, r.cfg.Retries+1)
 		if !r.sleep(ctx, delay) || r.windowSpent(ctx) {
 			return Result{}, false
 		}
-		if !r.resetForRetry(ctx, review, wt) {
+		if !r.resetForRetry(ctx, review, loopNo, laneIdx, wt) {
 			return Result{}, false
 		}
-		return r.runReviewExcluding(ctx, review, loopNo, wt, exclude, firstAttempt, attempt+1), true
+		return r.runReviewExcluding(ctx, review, loopNo, laneIdx, wt, exclude, firstAttempt, attempt+1), true
 	}
 	next := map[agent.Spec]bool{failed: true}
 	for k := range exclude {
@@ -637,17 +637,17 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 	if len(next) >= len(r.cfg.Agents) {
 		return Result{}, false
 	}
-	r.log("Retrying %s with another agent after %s failed", review, failed.Label())
+	r.logReview(loopNo, laneIdx, review, "Retrying %s with another agent after %s failed", review, failed.Label())
 	if r.windowSpent(ctx) {
 		return Result{}, false
 	}
-	if !r.resetForRetry(ctx, review, wt) {
+	if !r.resetForRetry(ctx, review, loopNo, laneIdx, wt) {
 		return Result{}, false
 	}
 	// The failed agent is set aside, not the attempt sequence: the fallback is
 	// the next try, so a reader sees one continuous run of attempts instead of
 	// a second sequence starting over at one.
-	return r.runReviewExcluding(ctx, review, loopNo, wt, next, firstAttempt+attempt+1, 0), true
+	return r.runReviewExcluding(ctx, review, loopNo, laneIdx, wt, next, firstAttempt+attempt+1, 0), true
 }
 
 // retryWithDifferentAgent hands the review straight to another agent, skipping
@@ -655,9 +655,9 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo int, wt 
 // is a pure function of the prompt and the spec, so a second build of the same
 // pair fails the same way, and only another CLI's flags can change the outcome
 // (a prompt over one CLI's argument limit is under another's).
-func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loopNo int,
+func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loopNo, laneIdx int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
-	return r.retry(ctx, review, "", loopNo, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
+	return r.retry(ctx, review, "", loopNo, laneIdx, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
 }
 
 // resetForRetry rewinds the checkout to what the first attempt saw before the
@@ -666,20 +666,20 @@ func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loo
 // proceed: a checkout that cannot be restored would make every later attempt
 // build on unknown state, so the review fails instead of committing something
 // no rerun could produce.
-func (r *Runner) resetForRetry(ctx context.Context, review string, wt *gitx.Worktree) bool {
+func (r *Runner) resetForRetry(ctx context.Context, review string, loopNo, laneIdx int, wt *gitx.Worktree) bool {
 	if wt != nil {
 		if err := wt.ResetToBase(ctx); err != nil {
-			r.log("Cannot restore the worktree for %s before the retry: %v", review, err)
+			r.logReview(loopNo, laneIdx, review, "Cannot restore the worktree for %s before the retry: %v", review, err)
 			return false
 		}
 		return true
 	}
 	if !r.retrySnap.Valid() {
-		r.log("Cannot retry %s: the tree before the first attempt was not captured", review)
+		r.logReview(loopNo, laneIdx, review, "Cannot retry %s: the tree before the first attempt was not captured", review)
 		return false
 	}
 	if err := r.repo.Restore(ctx, r.retrySnap); err != nil {
-		r.log("Cannot restore the tree for %s before the retry: %v", review, err)
+		r.logReview(loopNo, laneIdx, review, "Cannot restore the tree for %s before the retry: %v", review, err)
 		return false
 	}
 	return true

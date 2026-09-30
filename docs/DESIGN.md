@@ -282,7 +282,14 @@ the unit of safe parallelism is **the directory**, not the agent.
   journal already recorded rather than a fresh one. Stochastic
   choices (shuffle, agent pick, backoff jitter) are keyed draws from the
   seed, not a shared random stream, so a recorded seed replays them even
-  when `--jobs` interleaves lanes. The line-sample debounce reads the same
+  when `--jobs` interleaves lanes.
+  What the lanes publish to each other is not replayable, and cannot be: they
+  publish concurrently, so which lane's event arrives first is the OS
+  scheduler's choice. Every event a lane publishes while running a review
+  therefore carries that review and its 1-based lane number, so a journal
+  reader has a key to put a line back in the same place when it sorts two
+  recordings of one seed. Run-scope narration names no review, because it
+  is about the run rather than one lane's work. The line-sample debounce reads the same
   clock through `gitx.Repo.Now`, wired from the bus, because it decides
   whether a sample is a fresh walk or a cached value and therefore which
   review a diff is attributed to. The clock reaches the display side the

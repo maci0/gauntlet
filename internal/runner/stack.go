@@ -339,7 +339,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			return false
 		}
 
-		res := r.runReview(ctx, review, loopNo, wt)
+		res := r.runReview(ctx, review, loopNo, 0, wt)
 		res.Branch, res.Base = branch, parent
 		if res.Status != StatusOK {
 			// Recorded before anything that can fail below it: a discard that
