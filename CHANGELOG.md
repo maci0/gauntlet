@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.30.0
+
 ### Added
 
 - `--token-budget` now stops the review that reaches it. The ceiling was a scheduling bound: it was read before a loop, a review, and a retry, so it decided what started next and never what was already running, and a single launch an agent kept extending was billed for every turn until its timeout killed it. A review whose own reported tokens reach the whole budget is stopped, the run logs `OVER BUDGET` and starts no successor, and the launch is not retried, since a second attempt at the same review costs what the first one did. The figure that stops work is the provider's own: the machine-readable usage envelope and the session transcript, both written by the provider rather than by the model, so a number the model printed cannot end the review it was printed in. An agent in prose mode (`--stream=false`) reports no such figure and stays bounded by its timeout, as before.
