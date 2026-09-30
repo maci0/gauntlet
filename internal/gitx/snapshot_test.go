@@ -213,3 +213,41 @@ func TestSnapshotCleansStaleIndices(t *testing.T) {
 		}
 	}
 }
+
+// A stack checkout nested under .gauntlet is this run's scratch. Moving it
+// must not look like an edit of the launch checkout, and a file beside it must.
+func TestLaunchTreeIgnoresScratch(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	before, err := r.LaunchTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(r.Dir, ".gauntlet", "worktrees", "stack")
+	if err := os.MkdirAll(scratch, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scratch, "edited.go"), []byte("package edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(r.Dir, ".gauntlet.lock"), []byte("lock\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	afterScratch, err := r.LaunchTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterScratch != before {
+		t.Fatalf("scratch changed the launch tree: %s != %s", afterScratch, before)
+	}
+	if err := os.WriteFile(filepath.Join(r.Dir, "leaked.go"), []byte("package leaked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	afterEdit, err := r.LaunchTree(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterEdit == before {
+		t.Fatal("an edit outside scratch left the launch tree unchanged")
+	}
+}

@@ -187,6 +187,11 @@ type Runner struct {
 	// fetch): the push URL when it differs from the fetch URL, else the
 	// remote name. Pushes keep using the remote name.
 	stackReadRemote string
+	// holdStackCheckout is set when a stacked pass leaves a commit that was
+	// not pushed, or a pull request the head/base lookup cannot see. Later
+	// passes of the same run reuse that checkout instead of deleting it.
+	// Only the stack loop writes it, on the goroutine that owns the run.
+	holdStackCheckout bool
 
 	mu             sync.Mutex // guards sessionStarted, stackHead, stackPublished
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero

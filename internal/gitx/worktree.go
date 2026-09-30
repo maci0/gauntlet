@@ -274,6 +274,36 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 	return r.addBranchWorktree(ctx, r.worktreeDir("stack-"+BranchSlug(tag)), branch, base)
 }
 
+// AdoptStackWorktree reopens the scratch checkout a stacked run left in
+// place. It returns nil when that directory is not there. A directory that
+// is there but is not a registered worktree is an error: the caller must
+// not replace it, because replacing it deletes the checkout.
+func (r *Repo) AdoptStackWorktree(ctx context.Context, tag string) (*Worktree, error) {
+	if err := r.beginWorktreeAdd("git is required for stacked PRs"); err != nil {
+		return nil, err
+	}
+	defer r.wtMu.Unlock()
+	dir := r.worktreeDir("stack-" + BranchSlug(tag))
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("stack worktree %s is not a directory", dir)
+	}
+	out, err := r.run(ctx, gitQuick, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	if !slices.Contains(strings.Split(string(out), "\n"), "worktree "+dir) {
+		return nil, fmt.Errorf("stack worktree %s is not registered", dir)
+	}
+	return newWorktree(r, dir, "", ""), nil
+}
+
 // AddSnapshotWorktree cuts a read-only view of one commit, detached so no
 // branch is created or moved. Stacked runs discover project prompts and
 // compute suggestions from this snapshot of the fetched remote base, never
