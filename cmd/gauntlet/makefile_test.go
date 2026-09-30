@@ -1367,6 +1367,35 @@ func TestMakefileReproComparesTheWholeAssetSet(t *testing.T) {
 	}
 }
 
+// The test scratch directory is a test-only concern, so only the targets that
+// hand TMPDIR to a `go test` may name test-tmpdir. Both toolchain preflights
+// used to, which refused `make build` and `make dist` on a machine with no
+// HOME and told the caller the problem was tests.
+func TestToolchainPreflightsDoNotRequireTheTestScratchDirectory(t *testing.T) {
+	// The prerequisite line is the one that opens a target's rule, the line
+	// that carries its order-only dependencies.
+	dependencies := func(target string) string {
+		text := makefileText(t)
+		for line := range strings.SplitSeq(text, "\n") {
+			if strings.HasPrefix(line, target+":") {
+				return line
+			}
+		}
+		t.Fatalf("Makefile has no rule for %s", target)
+		return ""
+	}
+	for _, target := range []string{"toolchain-min", "toolchain"} {
+		if line := dependencies(target); strings.Contains(line, "test-tmpdir") {
+			t.Errorf("make %s must not depend on test-tmpdir (%s): it runs no test and needs no scratch directory", target, line)
+		}
+	}
+	for _, target := range []string{"test", "test-pkg", "cover", "tidy", "vet"} {
+		if line := dependencies(target); !strings.Contains(line, "test-tmpdir") {
+			t.Errorf("make %s must create the test scratch directory it hands to go (%s)", target, line)
+		}
+	}
+}
+
 // make repro must preflight REPRO_DIR so an unset HOME does not wipe root directories.
 func TestMakefileReproPreflight(t *testing.T) {
 	text := makefileText(t)
