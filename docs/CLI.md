@@ -28,9 +28,9 @@ a usage error (exit 2) rather than parsed and silently dropped, so
 `gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
 the concurrency it was given. (The `-V` flag form of version is the one
 exception: it means "print the version and exit" and wins over scoping, like
-help does.) `--limit`, `--restore`, and `--json` are the three names a bare
-`gauntlet` has no use for, and they say so rather than starting a run that
-ignores them.
+help does.) `--check`, `--limit`, `--restore`, and `--json` are the four names
+a bare `gauntlet` has no use for, and they say so rather than starting a run
+that ignores them.
 
 A subcommand is only read as one when it is the first word, so the flags above
 are the flags that may lead: `gauntlet --json runs` leaves `runs` as a stray
@@ -127,7 +127,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The two are used together or not at all: either alone is a usage error. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
 | `-1, --once` | off | One loop, then stop. Conflicts with `--max-loops`. |
 | `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each a fresh worktree from the previous tip. |
-| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts a nonnegative decimal value or a `0x…` hex literal, with `_` allowed between digits; a leading zero is decimal, not octal, so `--seed 010` is ten. `0` derives one from the clock. A headless run prints the effective seed in its first line, so a run started without `--seed` reports the one that replays it, but only an explicit value replays on its own: a derived seed differs every run. One seed drives the whole run, the suggest step's agent order included, and a hot reload carries it across the exec. |
+| `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts a nonnegative decimal value or a `0x…` hex literal, with `_` allowed between digits; a leading zero is decimal, not octal, so `--seed 010` is ten. `0` derives one from the clock. A headless run prints the effective seed as its first event line, just under the run banner, so a run started without `--seed` reports the one that replays it, but only an explicit value replays on its own: a derived seed differs every run. One seed drives the whole run, the suggest step's agent order included, and a hot reload carries it across the exec. |
 | `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
 | `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. A resolution the agent finished but the merge then refused is kept on its own branch, named in the log with the command to land it, because that commit is the only copy of the resolver's work. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. Untracked files do not block it, matching `--jobs`. A dirty tree, or one whose git status cannot be read, is refused rather than reported as merged. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
@@ -141,9 +141,9 @@ picked up automatically and overrides a bundled prompt of the same name.
 
 **Output and modes**
 
-| Flag | Purpose |
+| Flag or subcommand | Purpose |
 |---|---|
-| `doctor` | Report installed agent CLIs and helper tools, the state root in use, the file agent definitions were read from, and which of the environment variables below this process actually saw. A variable set to empty is reported as `(empty)`, so it is distinguishable from one left unset. `GITHUB_TOKEN` and `GH_TOKEN` are reported as `(set)` and never as values, so a pasted transcript cannot leak one. A state root that is not a directory or cannot be written to is reported, since a run that cannot write it loses the journal. The local branches under `gauntlet/` are reported too: a run deletes a lane branch once its review lands, so what is left is a review whose merge conflicted or failed, whose commits no copy of the state tree holds. Stacked layers under `review/` are not listed, since a stacked run publishes each one as a pull request. Exits 1 if no agent is usable or the state root is unusable. |
+| `doctor` (subcommand) | Report installed agent CLIs and helper tools, the state root in use, the file agent definitions were read from, and which of the environment variables below this process actually saw. A variable set to empty is reported as `(empty)`, so it is distinguishable from one left unset. `GITHUB_TOKEN` and `GH_TOKEN` are reported as `(set)` and never as values, so a pasted transcript cannot leak one. A state root that is not a directory or cannot be written to is reported, since a run that cannot write it loses the journal. The local branches under `gauntlet/` are reported too: a run deletes a lane branch once its review lands, so what is left is a review whose merge conflicted or failed, whose commits no copy of the state tree holds. Stacked layers under `review/` are not listed, since a stacked run publishes each one as a pull request. Exits 1 if no agent is usable or the state root is unusable. |
 | `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. `--list` does not need an agent CLI on PATH; `--dry-run` does, because it names the agents a real run would launch. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the suggest step runs first and really does call an agent (and spend its tokens). `--suggest-agent gauntlet` answers the same question from file signals, for free. |
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. Does not need an agent CLI on PATH. |
 | `--log FILE` | Also write all output to FILE. The file is created if it is not there; a symlink, a directory, a non-regular file, or a parent directory that is missing or is not a directory is a usage error (exit 2). |

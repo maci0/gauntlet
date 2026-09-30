@@ -762,8 +762,8 @@ func (r *Repo) DeleteBranch(ctx context.Context, branch string) error {
 	return nil
 }
 
-// DeleteBranchesMatching deletes every branch matching a glob pattern.
-// Used to sweep review branches that a cancelled lane may have left behind.
+// DeleteBranchesMatching deletes every branch matching a glob pattern. It
+// sweeps the review branches a cancelled lane may have left behind.
 // Prunes stale worktree registrations first so a branch is not rejected as
 // "checked out" in a worktree that was already removed from disk.
 //
@@ -942,9 +942,10 @@ func StackLoopFinalBranch(loop, index int, review, subject string) string {
 	return StackLoopPrefix(loop, index, review) + "-" + topic
 }
 
-// topicSlugMax bounds the topic fragment of a branch name. The subject it is
-// cut from is capped elsewhere at 100 runes; a ref that long stops being
-// something a reviewer can read in a branch list.
+// topicSlugMax bounds the topic fragment of a branch name. The subject a
+// stack branch is named from arrives already clipped to 72 runes by the
+// runner; a ref longer than that stops being something a reviewer can read in
+// a branch list.
 const topicSlugMax = 40
 
 // TopicSlug distills a commit subject into the short topic a stack branch
