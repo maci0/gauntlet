@@ -24,7 +24,7 @@ import (
 // terminal, and never longer than gauntlet itself would write.
 const (
 	noteRunes = 120             // what a holder may say
-	noteLimit = 4*noteRunes + 8 // its worst case in bytes, plus the newline
+	noteLimit = 4*noteRunes + 8 // its worst case in bytes, plus room for the newline
 )
 
 // ErrLocked means another gauntlet holds this directory's lock.

@@ -191,9 +191,9 @@ where the agent keeps its transcripts. `gauntlet doctor` lists them alongside
 the built-ins and says which are unverified.
 
 A transcript root may be inside the reviewed project rather than under `$HOME`:
-`{dir}` in a root expands to the review's working directory. That is how
-clanker is read, since it logs every request to `state/token_stats.jsonl` in
-the repository it runs in.
+`{dir}` in a root expands to the review's working directory. The same
+expansion serves the built-in clanker adapter, which logs every request to
+`state/token_stats.jsonl` in the repository it runs in.
 
 Anyone can add another, without a new binary. In `~/.gauntlet/agents.json`
 (plain JSON: comments and trailing commas are refused at startup):

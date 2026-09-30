@@ -229,10 +229,11 @@ func historyGate(line []byte) bool {
 // no status on older journals). A skip, timeout, failure, or interrupt is not
 // a finished run: counting those as "ran and changed nothing" would demote
 // reviews the operator cancelled or that never launched.
-// Changed comes from either event that carries the review's measured lines:
-// a sequential review's review_end, or the merge event an isolated review's
-// work lands through. A merge that did not land (conflict, failure) carries no
-// counts and changes nothing, exactly like a review that changed nothing.
+// Changed comes from any event that carries the review's measured lines: a
+// sequential review's review_end, or the merge or pull_request event an
+// isolated review's work lands through. A merge that did not land (conflict,
+// failure) carries no counts and changes nothing, exactly like a review that
+// changed nothing.
 //
 // Runs that cannot be read are skipped: this is a convenience log, and a
 // suggestion is not worth failing over. A skipped run is reported alongside the

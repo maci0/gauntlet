@@ -571,9 +571,9 @@ that survived whole and non-zero on one that lost journals. Compare the numbers
 against the machine the copy came from: the same journals, the same pruned runs,
 no disagreement. A tree that cannot be read exits non-zero rather than printing
 zeros, so a failed read is never read as an empty history. `gauntlet doctor`
-prints the same counts on its `Run history` line, but its exit code is about the
-agent inventory: it exits 1 on a fresh machine with no agent CLI installed, and
-that says nothing about the restore.
+prints every count but `rows` on its `Run history` line, and its exit code is
+about the agent inventory: it exits 1 on a fresh machine with no agent CLI
+installed, and that says nothing about the restore.
 
 `disagreed` covers two directions and only one of them is a repair. A journal
 the index does not name is a run that died before its summary row, and the next
