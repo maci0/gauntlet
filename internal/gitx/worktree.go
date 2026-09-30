@@ -298,12 +298,10 @@ func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Work
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "--detach", dir, base); err != nil {
-		r.abortWorktreeAdd(ctx, dir, "")
-		return nil, fmt.Errorf("git worktree add: %w", err)
+		return nil, errors.Join(fmt.Errorf("git worktree add: %w", err), r.abortWorktreeAdd(ctx, dir, ""))
 	}
 	if err := tightenCheckout(dir); err != nil {
-		r.abortWorktreeAdd(ctx, dir, "")
-		return nil, err
+		return nil, errors.Join(err, r.abortWorktreeAdd(ctx, dir, ""))
 	}
 	return newWorktree(r, dir, "", base), nil
 }
@@ -338,12 +336,23 @@ func (r *Repo) removeWorktreeDir(ctx context.Context, dir string) error {
 // A cancel or kill can land after git has registered the worktree and created
 // the branch; both have to go. The caller still holds wtMu, and the context
 // is kept alive so a cancelled add does not skip the cleanup.
-func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) {
+//
+// The failure is returned rather than dropped. A checkout of a possibly
+// private tree that cannot be removed stays in the reviewed repository, and a
+// branch that cannot be deleted stays in its ref list: the caller reports the
+// add that failed, so it is the only place left to say what was left behind.
+func (r *Repo) abortWorktreeAdd(ctx context.Context, dir, branch string) error {
 	cleanCtx := context.WithoutCancel(ctx)
-	_ = r.removeWorktreeDir(cleanCtx, dir)
-	if branch != "" {
-		_, _ = r.run(cleanCtx, gitNormal, "branch", "-D", "--", branch)
+	var errs []error
+	if err := r.removeWorktreeDir(cleanCtx, dir); err != nil {
+		errs = append(errs, fmt.Errorf("cannot remove the partial checkout %s: %w", dir, err))
 	}
+	if branch != "" {
+		if _, err := r.run(cleanCtx, gitNormal, "branch", "-D", "--", branch); err != nil {
+			errs = append(errs, fmt.Errorf("cannot delete the branch %s left by the failed checkout: %w", branch, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // ownerOnly is the mode a scratch directory this package creates under the
@@ -439,12 +448,10 @@ func (r *Repo) addBranchWorktree(ctx context.Context, dir, branch, base string) 
 		return nil, err
 	}
 	if _, err := r.run(ctx, gitSlow, "worktree", "add", "--quiet", "-b", branch, dir, base); err != nil {
-		r.abortWorktreeAdd(ctx, dir, branch)
-		return nil, fmt.Errorf("git worktree add: %w", err)
+		return nil, errors.Join(fmt.Errorf("git worktree add: %w", err), r.abortWorktreeAdd(ctx, dir, branch))
 	}
 	if err := tightenCheckout(dir); err != nil {
-		r.abortWorktreeAdd(ctx, dir, branch)
-		return nil, err
+		return nil, errors.Join(err, r.abortWorktreeAdd(ctx, dir, branch))
 	}
 	return newWorktree(r, dir, branch, base), nil
 }

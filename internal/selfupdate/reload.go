@@ -132,6 +132,15 @@ func (w *Watcher) run(ctx context.Context, ch chan<- string) {
 // read moments after it is written, and one that outlives the retention window
 // belongs to a reload that died between the save and the exec, which nothing
 // will ever pick up again.
+//
+// dir is resolved to an absolute path before anything is written. The caller
+// hands over the state root, which degrades to a relative ".gauntlet" beside
+// the working directory when neither GAUNTLET_HOME nor HOME yields a usable
+// root, and the path returned here becomes GAUNTLET_STATE. LoadState refuses a
+// relative path, so writing one would save the handoff, exec, and then fail in
+// the successor with nothing said: this process has already released its locks
+// and journaled its results by then. Resolving here makes the refusal happen
+// before the exec instead of after it.
 func SaveState(dir, runID string, v any) (string, error) {
 	if dir == "" {
 		return "", errors.New("no usable state directory for the handoff")
@@ -139,6 +148,11 @@ func SaveState(dir, runID string, v any) (string, error) {
 	if runID == "" || runID == "." || strings.ContainsAny(runID, "/\\") || strings.Contains(runID, "..") {
 		return "", errors.New("invalid run id for state")
 	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve the reload state dir %q: %w", dir, err)
+	}
+	dir = abs
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}

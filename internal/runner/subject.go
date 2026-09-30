@@ -63,12 +63,14 @@ func attributesTheModel(s string) bool {
 	return attributionRe.MatchString(s)
 }
 
-func treeChanges(ctx context.Context, dir string) gitx.Changes {
-	ch, err := gitx.Open(dir).Status(ctx, nil)
-	if err != nil {
-		return gitx.Changes{}
-	}
-	return ch
+// treeChanges reads the status of the tree a review worked in. The error is
+// returned rather than folded into an empty result: an empty status is what
+// subjectFromChanges turns into a contentless "chore: update files", and that
+// string becomes a history line, a merge message, and a PR title. A caller
+// that cannot read git has to say so, not publish a subject describing
+// nothing.
+func treeChanges(ctx context.Context, dir string) (gitx.Changes, error) {
+	return gitx.Open(dir).Status(ctx, nil)
 }
 
 func subjectFromChanges(ch gitx.Changes) string {
