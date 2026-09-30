@@ -446,6 +446,8 @@ The invariants are:
    base that did push. A push that landed whose pull request the lookup
    cannot see stays in the chain, so later reviews stack on that commit,
    and the scratch checkout is kept until a lookup confirms the pull request.
+   When that commit's tip cannot be read, the pass stops and the checkout
+   stays: later reviews are not branched from the previous base.
 4. No-change and exhausted agent failures reset and delete their unpublished
    layer, leaving the preceding successful layer as the next base.
 5. A published branch name derives from the review position, the review name,
@@ -475,7 +477,9 @@ The invariants are:
    changed nothing only when the launch checkout is unchanged and the review
    did not report a file edit. A change to the launch checkout, or a file
    note the scratch worktree cannot commit, fails that layer. Later reviews
-   in the pass still run. The launch checkout is left as the review wrote it.
+   in the pass still run, unless discarding the empty branch fails: the pass
+   then stops and the checkout stays. The launch checkout is left as the
+   review wrote it.
 8. After `gh pr create`, the same head/base lookup that recovers a lost
    create response has to see the pull request. A URL on stdout that the
    lookup cannot find fails the layer and keeps the commit. The pass

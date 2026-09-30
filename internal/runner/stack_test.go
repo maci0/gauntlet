@@ -88,6 +88,14 @@ case "$1 $2" in
       printf 'https://github.com/owner/repo/pull/1\n'
       exit 0
     fi
+    # The create prints a URL and then makes the local branch unreadable, so
+    # the tip read after a failed lookup has a real failure to answer.
+    if [ "${GAUNTLET_GH_BREAK_TIP:-}" = 1 ]; then
+      printf 'https://github.com/owner/repo/pull/1\n'
+      ref=$(git rev-parse --git-path "refs/heads/${head##*:}") || exit 0
+      printf 'not-a-sha\n' > "$ref"
+      exit 0
+    fi
     # gh pr create does accept OWNER:BRANCH; the PR records the bare branch
     # name and the owner of the repository the head lives in.
     owner="owner"
@@ -305,6 +313,78 @@ echo 'RESULT: changed=1'`)
 	}
 	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
 		t.Fatalf("worktree removed after a pull request was not created:\n%s", list)
+	}
+}
+
+func TestStackedPRsUnreadableTipAfterPushStopsThePass(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	t.Setenv("GAUNTLET_GH_BREAK_TIP", "1")
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo first > committed.txt; echo 'SUBJECT: fix: add the first layer' ;;
+  *second-review*) echo second > committed.txt; echo 'SUBJECT: fix: add the second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 1 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("later review ran after the pushed tip could not be read: %q", started)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a pull request was recorded:\n%s", state)
+	}
+	branch := gitx.StackLoopFinalBranch(1, 0, "first-review", "fix: add the first layer")
+	if remote := gitOut(t, repo, "ls-remote", "origin", "refs/heads/"+branch); !strings.Contains(remote, "refs/heads/"+branch) {
+		t.Fatalf("pushed layer is not on the remote: %q", remote)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed while its tip could not be read:\n%s", list)
+	}
+}
+
+func TestStackedPRsDiscardFailureStopsAndKeepsWorktree(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrap := t.TempDir()
+	flag := filepath.Join(t.TempDir(), "fail-detach")
+	script := "#!/bin/sh\nif [ -f \"$GAUNTLET_FAIL_DETACH\" ]; then\n  for arg in \"$@\"; do\n    if [ \"$arg\" = \"--detach\" ]; then echo detach refused >&2; exit 1; fi\n  done\nfi\nexec " + gitBin + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(wrap, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_FAIL_DETACH", flag)
+	t.Setenv("PATH", wrap+string(os.PathListSeparator)+os.Getenv("PATH"))
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review", "third-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo published > published.txt; echo 'SUBJECT: fix: add the published layer' ;;
+  *second-review*) touch "$GAUNTLET_FAIL_DETACH"; echo 'PATH: missing.go: claimed a change' ;;
+  *third-review*) echo ran > should-not.txt ;;
+esac
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Fail != 1 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("reviews after a failed discard: %q", started)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after discard failed:\n%s", list)
 	}
 }
 

@@ -298,10 +298,28 @@ func (r *Repo) AdoptStackWorktree(ctx context.Context, tag string) (*Worktree, e
 	if err != nil {
 		return nil, err
 	}
-	if !slices.Contains(strings.Split(string(out), "\n"), "worktree "+dir) {
+	if !worktreeListed(string(out), dir) {
 		return nil, fmt.Errorf("stack worktree %s is not registered", dir)
 	}
 	return newWorktree(r, dir, "", ""), nil
+}
+
+// worktreeListed reports whether porcelain names dir. Git prints the path
+// after resolving symlinks, and quotes it when the spelling needs quoting,
+// so comparing the path this process built misses a checkout that is the
+// same directory.
+func worktreeListed(porcelain, dir string) bool {
+	want := RealPath(dir)
+	for line := range strings.SplitSeq(porcelain, "\n") {
+		rest, ok := strings.CutPrefix(line, "worktree ")
+		if !ok {
+			continue
+		}
+		if RealPath(unquoteC(rest)) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // AddSnapshotWorktree cuts a read-only view of one commit, detached so no

@@ -926,6 +926,32 @@ func TestAddWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 	}
 }
 
+func TestAdoptStackWorktreeFollowsSymlinkedRepo(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := t.TempDir()
+	link := filepath.Join(parent, "repo")
+	if err := os.Symlink(r.Dir, link); err != nil {
+		t.Fatal(err)
+	}
+	linked := Open(link)
+	branch := StackLoopProvisionalBranch(base, 1, 0, "sec-review")
+	if _, err := linked.AddStackWorktree(ctx, branch, "run", base); err != nil {
+		t.Fatal(err)
+	}
+	got, err := linked.AdoptStackWorktree(ctx, "run")
+	if err != nil {
+		t.Fatalf("adopting through the symlink: %v", err)
+	}
+	if got == nil {
+		t.Fatal("symlink checkout was not adopted")
+	}
+}
+
 func TestAddStackWorktreeConvergesOnLeftoverBranch(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

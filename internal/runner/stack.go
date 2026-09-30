@@ -445,7 +445,9 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 	if err := r.launchCheckoutChanged(ctx, launchBefore); err != nil {
 		r.failStackLayer(res, loopNo, review, branch, parent, err)
 		if !changed {
-			r.discardEmptyStackLayer(ctx, wt, review)
+			if err := r.discardEmptyStackLayer(ctx, wt, review); err != nil {
+				return "", "", false
+			}
 			return "", "", true
 		}
 		r.holdStackCheckout = true
@@ -459,7 +461,9 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		if len(res.FileNotes) > 0 {
 			r.failStackLayer(res, loopNo, review, branch, parent,
 				errors.New("the review reported edits but the stack worktree has nothing to commit"))
-			r.discardEmptyStackLayer(ctx, wt, review)
+			if err := r.discardEmptyStackLayer(ctx, wt, review); err != nil {
+				return "", "", false
+			}
 			return "", "", true
 		}
 		res.Ins, res.Del, res.HaveLines = 0, 0, true
@@ -503,7 +507,10 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		// missing pull request stays a failed layer until a lookup sees it.
 		tip, tipErr := r.repo.Tip(ctx, "refs/heads/"+branch)
 		if tipErr != nil {
-			return "", "", true
+			// The commit is on the remote, but this pass cannot read it, so
+			// it cannot be the next base. Continuing would branch later
+			// reviews from the previous parent.
+			return "", "", false
 		}
 		return branch, tip, true
 	}
@@ -799,10 +806,16 @@ func (r *Runner) launchCheckoutChanged(ctx context.Context, before string) error
 
 // discardEmptyStackLayer drops a provisional branch that never got a commit.
 // The checkout directory stays; the caller decides whether the pass removes it.
-func (r *Runner) discardEmptyStackLayer(ctx context.Context, wt *gitx.Worktree, review string) {
+// A discard git refuses leaves the checkout on that branch. The caller stops
+// the pass: the next review cannot move the checkout, and an earlier confirmed
+// layer would otherwise be deleted with it.
+func (r *Runner) discardEmptyStackLayer(ctx context.Context, wt *gitx.Worktree, review string) error {
 	if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
 		r.log("Cannot discard failed stack layer %s: %v", review, err)
+		r.holdStackCheckout = true
+		return err
 	}
+	return nil
 }
 
 // stackBody assembles what a layer's PR says about itself: an overview of

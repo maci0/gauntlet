@@ -13,7 +13,9 @@ the scratch worktree does not contain, fails that layer instead of passing
 with no pull request. `gh pr create` stdout is confirmed by a second
 head/base lookup. A failed push, or a lookup that cannot see the pull
 request, records the layer as failed, leaves the scratch checkout in place,
-and the pass keeps scheduling later reviews. The containment suffix names
+and the pass keeps scheduling later reviews. An unreadable tip after a
+push that landed, or a discard git refuses on an empty layer, stops the
+pass and leaves the checkout. The containment suffix names
 the process current directory as the only checkout; that sentence is
 advisory. The launch-checkout comparison is what catches a write that
 landed outside the scratch checkout, including when `--no-sandbox` leaves
@@ -960,7 +962,10 @@ privilege transition:
   the last base that did push, so no agent runs on a commit that is not on
   the remote. A push that landed whose pull request the lookup cannot see
   stays in the chain (`ensurePullRequest`, `launchCheckoutChanged`,
-  `runLoopStack`). The scratch checkout is removed only when every changed
+  `runLoopStack`). An unreadable tip after that push stops the pass rather
+  than branching the next review from the previous base. Adopting a kept
+  checkout compares the registered path after symlink resolution
+  (`worktreeListed`). The scratch checkout is removed only when every changed
   layer was pushed and that lookup confirmed each pull request. Stack branch names
   are derived from a public base commit, so a pull request is only reused as
   a run's own layer when its head branch lives in the repository gauntlet
