@@ -1019,3 +1019,31 @@ func TestSubRepoIsBuiltWithTheWorktree(t *testing.T) {
 		t.Fatal("a removed worktree must have no checkout handle")
 	}
 }
+
+// A sweep pattern has to reach the branches a lane actually cuts, which live
+// below a slash that sits past the pattern's star. `branch --list` globs a
+// pattern through that separator; `for-each-ref` stops the star at it, so a
+// sweep reading the branch list the other way would list nothing and leave
+// every review branch behind for a person to clear by hand.
+func TestDeleteMergedBranchesMatchingSelectsPastASlash(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitIn(t, r.Dir, "branch", "gauntlet/run-l1-lane0-00/a-review")
+	gitIn(t, r.Dir, "branch", "gauntlet/other-lane0-00/a-review")
+
+	// Both branches are at HEAD, so `branch -d` is willing to remove them.
+	n, err := r.DeleteMergedBranchesMatching(ctx, "gauntlet/run-l1-*")
+	if err != nil {
+		t.Fatalf("sweep of a branch below a slash: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("deleted %d branches, want 1", n)
+	}
+	branches := gitOut(t, r.Dir, "branch", "--list", "--format=%(refname:short)")
+	if strings.Contains(branches, "run-l1-lane0-00") {
+		t.Errorf("the sweep kept the branch its pattern selected: %s", branches)
+	}
+	if !strings.Contains(branches, "gauntlet/other-lane0-00") {
+		t.Errorf("the sweep deleted a branch another run owns: %s", branches)
+	}
+}

@@ -72,11 +72,16 @@ func (r *Repo) Branches(ctx context.Context) []string {
 }
 
 // localRefNames lists the short names of the local branches matching the given
-// ref patterns, one name per line with blanks dropped. Every branch listing in
-// this package reads the same command and splits it the same way, so the
-// spelling of a ref pattern and the shape of a name are decided in one place:
-// a fourth copy is where "the list the run deleted" and "the list the run
-// reports" would start to disagree.
+// ref patterns, one name per line with blanks dropped. Every branch listing
+// that reports names to a person reads the same command and splits it the same
+// way, so the spelling of a ref pattern and the shape of a name are decided in
+// one place: a second copy is where "the list the run deleted" and "the list
+// the run reports" would start to disagree.
+//
+// A sweep is the exception and does not come here: `branch --list` globs a
+// pattern through a slash where for-each-ref's star stops, so a pattern
+// selecting "gauntlet/<run>-lane0-00/a-review" needs that command. See
+// listBranchesMatching.
 func (r *Repo) localRefNames(ctx context.Context, patterns ...string) ([]string, error) {
 	out, err := r.run(ctx, gitQuick, append([]string{
 		"for-each-ref", "--format=%(refname:short)",

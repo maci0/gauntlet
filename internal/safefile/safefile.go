@@ -36,15 +36,7 @@ func OpenRead(path string) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
-	f, fi, err := adoptRegular(fd, path)
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := syscall.SetNonblock(fd, false); err != nil {
-		f.Close()
-		return nil, nil, &os.PathError{Op: "setnonblock", Path: path, Err: err}
-	}
-	return f, fi, nil
+	return adoptRegularBlocking(fd, path)
 }
 
 // Append opens path for appending, creating it at perm if it does not exist,
@@ -63,6 +55,13 @@ func Append(path string, perm os.FileMode) (*os.File, os.FileInfo, error) {
 	if err != nil {
 		return nil, nil, &os.PathError{Op: "open", Path: path, Err: err}
 	}
+	return adoptRegularBlocking(fd, path)
+}
+
+// adoptRegularBlocking is the tail every open here shares: it takes ownership
+// of fd, refuses anything the stat does not call a regular file, and clears
+// the O_NONBLOCK the open needed so the caller cannot see EAGAIN.
+func adoptRegularBlocking(fd int, path string) (*os.File, os.FileInfo, error) {
 	f, fi, err := adoptRegular(fd, path)
 	if err != nil {
 		return nil, nil, err

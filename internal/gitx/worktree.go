@@ -892,6 +892,14 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 // option-shaped pattern from reaching git as an option, which is why a
 // pattern like "--pattern*" lists nothing rather than changing what the
 // sweep does.
+//
+// This reads the branch list with `branch --list` rather than sharing
+// localRefNames' for-each-ref, because the two glob differently and the
+// sweeps need this one's: a sweep pattern like "gauntlet/<run>-*" has to
+// select "gauntlet/<run>-lane0-00/a-review", whose slash lies past the
+// star, and for-each-ref's star stops at a slash, so that branch would
+// survive every sweep the run makes of it. `branch --list` treats the
+// pattern as a path glob and matches through the separator.
 func (r *Repo) DeleteMergedBranchesMatching(ctx context.Context, pattern string) (int, error) {
 	if r == nil || !Available() {
 		return 0, nil
@@ -917,6 +925,9 @@ func (r *Repo) DeleteMergedBranchesMatching(ctx context.Context, pattern string)
 	return len(names) - len(left), nil
 }
 
+// listBranchesMatching is `branch --list` over the pattern, one name per
+// line with blanks dropped. See DeleteMergedBranchesMatching for why this is
+// not localRefNames.
 func (r *Repo) listBranchesMatching(ctx context.Context, pattern string) ([]string, error) {
 	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {
