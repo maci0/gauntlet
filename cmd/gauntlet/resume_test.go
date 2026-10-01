@@ -252,6 +252,85 @@ func TestResumeListsCheckpointsAndRefusesUnknownRuns(t *testing.T) {
 	}
 }
 
+// The checkpoint is rewritten on every progress tick, so saving the same run
+// again is the normal case rather than an edge case: a loop that reports a
+// result and then finishes saves twice, and a run that resumes and crashes
+// again saves once more under the same run id. Each save must leave the state
+// directory holding the one file the last save wrote. A write that appended,
+// or that left the temp it renames from behind, would put a file beside the
+// checkpoint on every tick, and `gauntlet resume` lists whatever ends in .json
+// there, so the leftovers would read as interrupted runs to resume.
+func TestCheckpointSaveIsIdempotentAcrossRepetitions(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	dir := t.TempDir()
+	const runID = "20261001T015123Z-1a2b"
+
+	save := func(loops int) {
+		t.Helper()
+		if err := saveCheckpoint(checkpoint{
+			Handoff: handoff{RunID: runID, Dirs: map[string]dirHandoff{
+				handoffKey(dir): {Loops: loops, Pending: []string{"b-review"}},
+			}},
+			Argv: []string{"--once"}, Cwd: dir, PID: os.Getpid(), Updated: time.Now(),
+		}); err != nil {
+			t.Fatalf("save %d: %v", loops, err)
+		}
+	}
+
+	// Repeated saves of a run whose handoff has not advanced: what a stalled
+	// run's progress ticks do.
+	save(1)
+	save(1)
+	save(1)
+
+	cpDir, err := checkpointDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(cpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	slices.Sort(names)
+	if len(names) != 1 || names[0] != runID+".json" {
+		t.Fatalf("three saves of one checkpoint left %v, want just %s.json", names, runID)
+	}
+
+	// The last save wins rather than the first surviving: a checkpoint a
+	// resume would act on has to be the newest progress, not a replay of an
+	// earlier one.
+	save(4)
+	got, err := readCheckpoint(filepath.Join(cpDir, runID+".json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Handoff.RunID != runID {
+		t.Fatalf("checkpoint records run %q, want %q", got.Handoff.RunID, runID)
+	}
+	for d, dh := range got.Handoff.Dirs {
+		if dh.Loops != 4 || len(dh.Pending) != 1 {
+			t.Fatalf("checkpoint records %s at %+v, want 4 loops and one pending", d, dh)
+		}
+	}
+
+	// dropCheckpoint runs when a run ends, and a run that ends after a
+	// reload leaves the path it dropped once already gone. Twice must be one
+	// removal, not an error the run's own exit would report.
+	if err := dropCheckpoint(runID); err != nil {
+		t.Fatalf("first drop: %v", err)
+	}
+	if err := dropCheckpoint(runID); err != nil {
+		t.Fatalf("a second drop of a dropped checkpoint must succeed, got %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(cpDir, runID+".json")); !os.IsNotExist(err) {
+		t.Fatalf("checkpoint still present after both drops: %v", err)
+	}
+}
+
 // A directory a live gauntlet holds cannot be resumed into: two agents would
 // share the tree.
 func TestResumeRefusesARunWhoseDirectoryIsLocked(t *testing.T) {

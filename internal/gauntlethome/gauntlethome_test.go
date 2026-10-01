@@ -359,6 +359,65 @@ func TestWriteFileAtomicReplacesTheWholeFile(t *testing.T) {
 	}
 }
 
+// The other half of the contract, and the half the callers depend on: writing
+// the same payload again leaves the tree in the state one write leaves. Every
+// caller of this is re-executed in the ordinary course of a run — the reload
+// handoff is written again by a successor that takes the swap to a second
+// safe point, the checkpoint is rewritten after every recorded result, the dsh
+// overlay is rewritten when a second run picks the same provider and model —
+// and a write that appended, accumulated a temp, or left a stale sibling would
+// grow the state tree with every repetition.
+//
+// Replacement is the separate property TestWriteFileAtomicReplacesTheWholeFile
+// covers, and it needs a second payload to be visible; this one needs the same
+// payload twice, which is what an actual repetition looks like.
+func TestWriteFileAtomicReExecutionIsIdempotent(t *testing.T) {
+	const payload = `{"run_id":"20260101T000000Z-a1b2c3d4","loops":3}`
+
+	// Once and twice, compared against each other rather than against a
+	// hand-written expectation: what a second write must not change is
+	// whatever the first one produced.
+	tree := func(writes int) (body string, others []string) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "state.json")
+		for i := 0; i < writes; i++ {
+			if err := WriteFileAtomic(dir, ".state-", path, []byte(payload)); err != nil {
+				t.Fatalf("write %d: %v", i+1, err)
+			}
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, e := range entries {
+			if e.Name() != "state.json" {
+				others = append(others, e.Name())
+			}
+		}
+		return string(got), others
+	}
+
+	once, onceOthers := tree(1)
+	twice, twiceOthers := tree(2)
+	if once != twice {
+		t.Fatalf("a second write changed the file: once %q, twice %q", once, twice)
+	}
+	if once != payload {
+		t.Fatalf("file holds %q, want %q", once, payload)
+	}
+	// The deferred Remove is a no-op only because the rename consumed the
+	// temp; a repetition that did not consume it would leave one per write,
+	// and the state tree is swept for leftovers only by the next write of the
+	// same prefix, a day later.
+	if len(onceOthers) != 0 || len(twiceOthers) != 0 {
+		t.Fatalf("writes left files beside the target: after one %v, after two %v", onceOthers, twiceOthers)
+	}
+}
+
 func TestWriteFileAtomicFailsLoudlyOnAMissingDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
 	err := WriteFileAtomic(dir, ".index-", filepath.Join(dir, "index.json"), []byte("x"))
