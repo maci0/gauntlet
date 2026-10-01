@@ -40,7 +40,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	}
 	dir := opts.resolvedDirs[0]
 
-	set, _, err := prompt.Discover(ctx, opts.promptDir, dir)
+	set, warnings, err := prompt.Discover(ctx, opts.promptDir, dir)
 	if err != nil {
 		if interrupted(ctx, err) {
 			return exitInterrupted
@@ -48,12 +48,31 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		fmt.Fprintln(os.Stderr, err)
 		return exitUsage
 	}
+	// A dropped project prompt is a review the launcher will not offer and the
+	// run will not schedule, and a conflicting duplicate is one of two files
+	// where only one is ever read. main.go prints the same warnings for the
+	// hand-typed path; a launcher that omitted them would let the same tree
+	// report two different review sets depending on which way the run was
+	// started.
+	for _, w := range warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
 	if set.Len() == 0 {
 		fmt.Fprintf(os.Stderr, "No reviews found for %s\n", dir)
 		return exitUsage
 	}
 
-	branch, targets, dirty := treeState(ctx, dir)
+	branch, targets, dirty, err := treeState(ctx, dir)
+	if err != nil {
+		// A git failure and a detached HEAD both leave the launcher with no
+		// branch to name, and the screen renders the first as "this checkout".
+		// An operator composing a run would read that as a tree with nothing to
+		// merge into and nothing uncommitted, when the truth is that git never
+		// answered. Saying so costs one line and keeps the composed run from
+		// being chosen against a repository state nobody could read.
+		fmt.Fprintf(os.Stderr, "cannot read the repository state of %s: %v\n", dir, err)
+		return exitFail
+	}
 	argv, ok, err := ui.Pick(ui.PickConfig{
 		Dir:         dir,
 		PromptDir:   opts.promptDir,
@@ -127,14 +146,24 @@ func pickGroups(set prompt.Set) []ui.PickGroup {
 // refuses. Untracked files do not block --jobs, so they do not block the
 // launcher either. Outside a git repository there is none of it, and the
 // launcher simply does not offer those choices.
-func treeState(ctx context.Context, dir string) (branch string, targets []string, dirty bool) {
+//
+// A git that cannot answer is not a repository with nothing to say.
+// CurrentBranch already goes to some lengths to keep a detached HEAD
+// ("", nil) apart from a broken repository, and this was the one caller that
+// threw the distinction away: a failing git rendered as a branchless, clean
+// checkout, and an operator composing a run would read that as a tree with
+// nothing to merge into and nothing uncommitted. A directory git does not
+// manage is still not a failure — there is no branch to offer — so
+// ErrNotRepository keeps the preflight's answers empty instead of refusing
+// the launcher over a tree that never had git state to read.
+func treeState(ctx context.Context, dir string) (branch string, targets []string, dirty bool, err error) {
 	repo := gitx.Open(dir)
-	if repo == nil {
-		return "", nil, false
-	}
-	branch, err := repo.CurrentBranch(ctx)
+	branch, err = repo.CurrentBranch(ctx)
 	if err != nil {
-		return "", nil, false
+		if gitx.IsNotRepository(err) {
+			return "", nil, false, nil
+		}
+		return "", nil, false, err
 	}
 	for _, b := range repo.Branches(ctx) {
 		if b != branch {
@@ -142,5 +171,8 @@ func treeState(ctx context.Context, dir string) (branch string, targets []string
 		}
 	}
 	ch, err := repo.Status(ctx, nil)
-	return branch, targets, err == nil && len(ch.Tracked) > 0
+	if err != nil {
+		return "", nil, false, err
+	}
+	return branch, targets, len(ch.Tracked) > 0, nil
 }

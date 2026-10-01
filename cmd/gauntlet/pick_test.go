@@ -56,7 +56,9 @@ func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	dir, _ := gitRepo(t, "package main\n")
 
 	ctx := context.Background()
-	if branch, _, dirty := treeState(ctx, dir); dirty {
+	if branch, _, dirty, err := treeState(ctx, dir); err != nil {
+		t.Fatalf("treeState on a clean repo: %v", err)
+	} else if dirty {
 		t.Fatal("a clean tree must not look dirty to the launcher")
 	} else if branch != "main" {
 		t.Fatalf("branch = %q, want %q", branch, "main")
@@ -65,14 +67,18 @@ func TestTreeStateUntrackedDoesNotCountAsDirty(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "scratch.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, dirty := treeState(ctx, dir); dirty {
+	if _, _, dirty, err := treeState(ctx, dir); err != nil {
+		t.Fatalf("treeState with an untracked file: %v", err)
+	} else if dirty {
 		t.Fatal("an untracked file must not block --jobs in the launcher")
 	}
 
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main // edited\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, dirty := treeState(ctx, dir); !dirty {
+	if _, _, dirty, err := treeState(ctx, dir); err != nil {
+		t.Fatalf("treeState with an uncommitted edit: %v", err)
+	} else if !dirty {
 		t.Fatal("an uncommitted tracked edit must still block --jobs in the launcher")
 	}
 }
@@ -83,9 +89,12 @@ func TestTreeStateTargetsAndNonRepo(t *testing.T) {
 	}
 	ctx := context.Background()
 
-	// Non-git directory returns empty branch and no dirty flag.
+	// Non-git directory returns empty branch and no dirty flag: there is no
+	// git state to read, which is a state rather than a failure.
 	nonGit := t.TempDir()
-	if b, targets, dirty := treeState(ctx, nonGit); b != "" || len(targets) != 0 || dirty {
+	if b, targets, dirty, err := treeState(ctx, nonGit); err != nil {
+		t.Fatalf("treeState on non-git dir returned an error: %v", err)
+	} else if b != "" || len(targets) != 0 || dirty {
 		t.Fatalf("treeState on non-git dir: got (%q, %v, %v), want (\"\", nil, false)", b, targets, dirty)
 	}
 
@@ -93,7 +102,10 @@ func TestTreeStateTargetsAndNonRepo(t *testing.T) {
 	run("branch", "feature-1")
 	run("branch", "feature-2")
 
-	branch, targets, dirty := treeState(ctx, dir)
+	branch, targets, dirty, err := treeState(ctx, dir)
+	if err != nil {
+		t.Fatalf("treeState on a clean repo: %v", err)
+	}
 	if branch != "main" || dirty {
 		t.Fatalf("treeState on clean repo: got (%q, %v, %v), want branch main, dirty false", branch, targets, dirty)
 	}

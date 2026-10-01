@@ -27,14 +27,16 @@ func trimLineEnd(line string) string {
 
 // CurrentBranch returns the checked-out branch name. A detached HEAD is
 // ("", nil): that is a state, not a failure. Any other git error is returned
-// so callers do not treat a broken repository as detached.
+// so callers do not treat a broken repository as detached, and a directory git
+// does not manage is ErrNotRepository so a caller can tell that from a query
+// that failed on a tree it does.
 func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
 	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if err != nil {
 		if exitsWith(err, 1) {
 			return "", nil
 		}
-		return "", err
+		return "", classifyNotRepo(err)
 	}
 	return trimLineEnd(string(out)), nil
 }

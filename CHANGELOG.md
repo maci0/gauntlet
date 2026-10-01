@@ -28,6 +28,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `gauntlet pick` reports a repository it could not read instead of showing
+  it as a clean tree. The launcher asked git for the branch, the merge
+  targets, and whether tracked files were dirty, and any failure answered all
+  three as "none of it": the screen then said `this checkout` over a tree
+  nobody had read, so a run composed against it could be planned as branchless
+  and clean when git had simply refused. A failing git is named and the
+  command stops; a directory git does not manage is still the empty answer it
+  always was, since there is no branch there to offer.
+- `gauntlet pick` reports the project prompts prompt discovery dropped. The
+  launcher discarded the warnings a hand-typed run prints, so a project review
+  whose name is not printable text, and one of two files where a name
+  conflicts, silently vanished from the reviews the screen offered and the run
+  went on to schedule.
 - A review scheduled twice is counted twice again in `gauntlet runs`. The
   index row folds a repeated `review_end` into one review so a hot-reload
   successor does not report work its predecessor already counted, and the

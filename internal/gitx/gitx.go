@@ -8,7 +8,9 @@ package gitx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -62,6 +64,43 @@ func Available() bool { return gitPath() != "" }
 // errGitUnavailable is what every entry point returns when git is missing, so
 // a caller can tell "no git" from "git refused" with errors.Is.
 var errGitUnavailable = errors.New("git is not available")
+
+// ErrNotRepository is what a call against a directory git does not manage
+// reports, so a caller can tell "this tree has no branch" from "git broke
+// here" with errors.Is. The two look identical from the outside — no branch
+// name, no merge targets, nothing staged — and a caller that renders them
+// alike tells an operator their repository is clean when nothing was read.
+var ErrNotRepository = errors.New("not a git repository")
+
+// IsNotRepository reports whether err says the tree is not one git manages,
+// rather than that the query failed on one it does.
+func IsNotRepository(err error) bool { return errors.Is(err, ErrNotRepository) }
+
+// classifyNotRepo maps git's "fatal: not a git repository" onto
+// ErrNotRepository, so the answer travels with the tree it describes instead of
+// living only in the message. git says it with exit status 128, which it also
+// uses for a repository whose HEAD cannot be read, so the status alone cannot
+// separate them and git's own wording is the only signal there is.
+//
+// The wording is matched against the error's message rather than
+// ExitError.Stderr, because execGitEnv folds stderr into the message after
+// redacting it (status.go's exitsWith unwraps to the *exec.ExitError for the
+// same reason), which leaves the exit error's own capture empty. A caller that
+// treats an unreadable HEAD alike is no worse off than before; the case this
+// exists for is a git that failed some other way, which keeps its own error.
+func classifyNotRepo(err error) error {
+	if err == nil {
+		return nil
+	}
+	ee, ok := errors.AsType[*exec.ExitError](err)
+	if !ok || ee.ExitCode() != 128 {
+		return err
+	}
+	if strings.Contains(err.Error(), "not a git repository") {
+		return fmt.Errorf("%w: %w", ErrNotRepository, err)
+	}
+	return err
+}
 
 // Repo is a working tree git commands run against.
 type Repo struct {
