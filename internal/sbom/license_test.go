@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/maci0/gauntlet/internal/runx"
 )
 
 // The inventory records the license a module ships under, so the grant a
@@ -98,7 +100,13 @@ func linkedModules(t *testing.T) []Module {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), goListTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "list", "-deps",
+	// The same resolution moduleDirs uses, so a run under an empty PATH
+	// exercises the fallback instead of skipping on a bare-name lookup.
+	goBin := runx.LookPath("go")
+	if goBin == "" {
+		t.Skip("the go toolchain is not on PATH")
+	}
+	cmd := exec.CommandContext(ctx, goBin, "list", "-deps",
 		"-f", "{{with .Module}}{{if .Version}}{{.Path}}{{end}}{{end}}", "./cmd/gauntlet")
 	cmd.Dir = root
 	out, err := cmd.Output()
@@ -167,5 +175,32 @@ func TestResolveLicensesReadsAnOversizedGrantUpToTheCap(t *testing.T) {
 	body, ok = readLicenseFile(head)
 	if !ok || spdxID(body) != "MIT" {
 		t.Errorf("readLicenseFile/spdxID on a padded grant = %q, %v; want MIT", body[:min(len(body), 80)], ok)
+	}
+}
+
+// A release built by a program launchd or systemd started is handed no PATH,
+// and the ambient one is what exec.Command resolves a bare command name
+// against. Resolving the toolchain the way every other subprocess in this
+// tree does, through runx.LookPath over the absolute-only list AbsPATH falls
+// back to, is what keeps the inventory working there: the child already
+// receives that PATH, so a bare name is failed by the parent and reported as
+// a missing toolchain rather than found.
+func TestModuleDirsFindsTheToolchainWithAnEmptyAmbientPath(t *testing.T) {
+	root, err := moduleRoot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The premise, or the test proves nothing: runx has to be able to answer
+	// from its own fallback before this says anything about the old path.
+	t.Setenv("PATH", "")
+	if runx.LookPath("go") == "" {
+		t.Skip("the toolchain is not on the absolute PATH either, so there is nothing to find")
+	}
+	dirs, err := moduleDirs(root, []string{"github.com/maci0/gauntlet"})
+	if err != nil {
+		t.Fatalf("moduleDirs with an empty ambient PATH: %v", err)
+	}
+	if dirs["github.com/maci0/gauntlet"] == "" {
+		t.Errorf("moduleDirs returned %v, want a directory for the module", dirs)
 	}
 }

@@ -50,6 +50,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   names a worktree and a command line from the machine that wrote it.
   `TestBackupRecipeArchivesEveryShapeOfStateTree` runs the block as printed
   against the four shapes a state root takes and reads the archive back.
+- The release inventory resolves the Go toolchain through the same absolute
+  PATH every other child process gets, instead of handing `go list` a bare
+  name for `exec` to look up in the ambient PATH. A release built by a
+  program launchd or systemd started, which is handed no PATH at all, failed
+  to find the toolchain even though the child already received the fallback
+  list that holds it.
 - A `review_end` carrying no status is no longer counted as a pass in
   `gauntlet runs`. The index reconstruction folded an empty status into `ok`
   alongside an explicit one, so an ending cut short, or one written before

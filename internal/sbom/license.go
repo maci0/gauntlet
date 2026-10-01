@@ -124,7 +124,19 @@ func moduleDirs(root string, paths []string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), goListTimeout)
 	defer cancel()
 	args := append([]string{"list", "-m", "-f", "{{.Path}}\t{{.Dir}}"}, paths...)
-	cmd := exec.CommandContext(ctx, "go", args...)
+	// The toolchain is resolved the way every other subprocess in this tree
+	// resolves one, through runx.LookPath over the absolute-only PATH, rather
+	// than handed to exec.Command as a bare name. exec.Command looks a bare
+	// name up in the ambient PATH of this process, so a release built by a
+	// program launchd or systemd started, which is handed none, failed to
+	// find go there even though AbsPATHEnv below would have given the child
+	// the fallback list that does hold it. The error names the missing
+	// toolchain instead of a bare exec.ErrNotFound.
+	goBin := runx.LookPath("go")
+	if goBin == "" {
+		return nil, fmt.Errorf("go: not found on PATH")
+	}
+	cmd := exec.CommandContext(ctx, goBin, args...)
 	cmd.Dir = root
 	cmd.Env = runx.AbsPATHEnv()
 	cmd.Stdin = nil
