@@ -8,11 +8,12 @@ but drops the sqlite driver.
 ## Build and test
 
 - `make doctor`: the whole prerequisite list in one run (Go minimum, C
-  compiler, git, uvx, shellcheck, tar and cmp for `repro`, a checksum tool for
-  `artifacts`, the test scratch directory), reporting every gap before it
-  fails. It is a fold-in of the preflights the other targets already run, not
-  a second opinion about them: a new tool that some target requires has to be
-  checked here in the same change.
+  compiler, git, uvx, shellcheck, tar and cmp for `repro`, `install` for
+  `make install`, a checksum tool for `artifacts`, the test scratch
+  directory, and on macOS the `/usr/bin/sandbox-exec` Seatbelt launcher),
+  reporting every gap before it fails. It is a fold-in of the preflights the
+  other targets already run, not a second opinion about them: a new tool that
+  some target requires has to be checked here in the same change.
 - `make check`: fails unless `go mod tidy -diff` is empty, then checks
   formatting without rewriting; `go fix -diff`, vet, and staticcheck
   under `sqlite`, bare, and `notoktop` tags. Run `make fmt` to fix formatting;
