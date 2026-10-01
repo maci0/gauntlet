@@ -40,6 +40,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `gauntlet pick` no longer draws a frame taller than the terminal. The
+  reviews tree was budgeted the whole height left under the header, command,
+  status, and key line, while the two panes beside it were sized against the
+  same rows, so opening a set drew a frame several rows taller than the
+  screen. The rows that did not fit came off the top, and they were the
+  wordmark, the two pane titles, and the top edge of every frame: the moment a
+  reader opened a set was the moment the screen lost the cues telling them
+  where they were and what the panes held. The three panes now share what the
+  frame has, with the tree keeping its rows and the settings column keeping
+  the count of what it holds back, which it already announced.
 - A `TMPDIR` naming a directory that is not there no longer fails every
   sandboxed review. The platform's temporary directory was read as optional
   and dropped when absent, but the same value was appended again as an

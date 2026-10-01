@@ -578,27 +578,43 @@ const viewChrome = 4
 const panelChrome = 3
 
 // paneHeight returns the visible content height of the given pane.
+//
+// The tree stands beside the two stacked panes, so the tallest of the three
+// sets the pane row and the others are padded to it: the frame is the chrome,
+// one pane row, and the three lines under it, and a tree budgeted the whole
+// free height drew a frame taller than the terminal, where the rows that did
+// not fit came off the top and took the wordmark, the titles, and the frames
+// with them. The right column is capped at half of what is free so the tree
+// keeps the rest: both of its panes scroll and say how much they are holding,
+// while a tree at one row is a picker showing nothing to pick.
 func (p *picker) paneHeight(which pane) int {
-	// The tree stands beside the two stacked panes, so it has the whole frame
-	// to itself; the agent list and the run pane split what the right column
-	// has left after their two frames. Reserving one frame's worth for the
-	// pair is what left rows empty under a full-height run pane, and a
-	// one-row agent list while three rows of screen went unused.
 	free := max(4, p.h-viewChrome)
+	tree := len(p.rows())
+	if p.filterMissed(p.rows()) {
+		tree++ // the fruitless-filter notice needs its own row
+	}
+	// The right column splits what is left between its two panes, and what is
+	// left is what the tree does not use: the agent list takes what it needs
+	// up to half of the column, the run pane keeps the rest, so a long option
+	// list costs the list rows rather than the pane a reader composes the run
+	// in. The tree is the pane the run is composed in, so it is the one that
+	// keeps its rows when the frame is short: a settings list scrolls and its
+	// title says how much of it is held back, while a tree at one row is a
+	// picker showing nothing to pick.
+	//
+	// Without the cap the tree took the whole free height and drew a frame
+	// taller than the terminal, and the rows that did not fit came off the
+	// top, where they took the wordmark, the pane titles, and the frames.
+	column := max(free-tree-2*panelChrome, 2)
+	agents := clampi(len(p.cfg.Agents), 1, max(column/2, 1))
+	run := clampi(len(p.opts), 1, max(column-agents, 1))
 	switch which {
 	case paneReviews:
-		reviewRows := len(p.rows())
-		if p.filterMissed(p.rows()) {
-			reviewRows++ // the fruitless-filter notice needs its own row
-		}
-		return clampi(reviewRows, 1, free)
+		return min(tree, max(free-agents-run-2*panelChrome, 1))
 	case paneAgents:
-		// The agent list takes what it needs, up to half of the column; the
-		// run pane keeps the rest, so a long option list costs the list
-		// rows rather than the pane a reader composes the run in.
-		return clampi(len(p.cfg.Agents), 1, max((free-2*panelChrome)/2, 1))
+		return agents
 	case paneOptions:
-		return clampi(len(p.opts), 1, max(free-2*panelChrome-p.paneHeight(paneAgents), 1))
+		return run
 	default:
 		return 1
 	}

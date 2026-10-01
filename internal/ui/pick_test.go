@@ -2216,6 +2216,56 @@ func TestRightColumnFillsTheFrame(t *testing.T) {
 	}
 }
 
+// The frame is as tall as the terminal, whatever the panes hold. The tree
+// used to take the whole free height, so opening a set drew a frame taller
+// than the screen: the rows that did not fit came off the top, and they were
+// the wordmark, the pane titles, and the top of every frame, so the moment a
+// reader opened a set was the moment the launcher's orientation cues went
+// away. The three panes share what is free, and the column keeps what the
+// tree does not use.
+func TestPickerFrameFitsTheTerminalHeight(t *testing.T) {
+	for _, h := range []int{12, 13, 14, 16, 18, 20, 24, 30, 40} {
+		for _, open := range []bool{false, true} {
+			p := demoPicker()
+			p.Update(tea.WindowSizeMsg{Width: 100, Height: h})
+			p.open[0] = open
+			rows := strings.Split(stripANSI(p.View()), "\n")
+			if len(rows) > h {
+				t.Errorf("h=%d (set %v): the frame is %d rows:\n%s",
+					h, open, len(rows), strings.Join(rows, "\n"))
+			}
+		}
+	}
+}
+
+// The tree is where the run is composed, so a short frame costs the settings
+// column its rows, not the tree's. Both panes in that column scroll and their
+// titles say how many rows they hold back; a tree at one row is a picker with
+// nothing in it to pick. Once the frame is tall enough for both, the tree is
+// whole and the column takes what is left.
+func TestShortFrameCostsTheColumnItsRowsNotTheTree(t *testing.T) {
+	p := demoPicker()
+	p.open[0] = true // the set opened: the tree now wants a row per review
+	want := len(p.rows())
+	// At least three of the four rows a short frame keeps are the tree's, and
+	// the column never loses a pane entirely.
+	for _, h := range []int{16, 18, 20, 24, 30} {
+		p.Update(tea.WindowSizeMsg{Width: 100, Height: h})
+		got := p.paneHeight(paneReviews)
+		if got < min(want, 3) {
+			t.Errorf("h=%d: the tree has %d rows of %d", h, got, want)
+		}
+		for _, which := range []pane{paneAgents, paneOptions} {
+			if n := p.paneHeight(which); n < 1 {
+				t.Errorf("h=%d: %v has no row in the frame", h, which)
+			}
+		}
+	}
+	if got := p.paneHeight(paneReviews); got != want {
+		t.Errorf("a %d-row frame leaves the tree %d of %d rows", p.h, got, want)
+	}
+}
+
 // A pane title that cannot hold every reading drops whole ones and says what
 // went, the way the dashboard's panel titles do. Cutting it instead could end
 // at "none picked: auto-d" and take the count of hidden rows with it: an agent
