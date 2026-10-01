@@ -64,6 +64,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
   The pointers are re-anchored, and one that named the comment above the
   checksums recipe now names the recipe.
+- `make smoke` resolved the asset to execute from `go env GOOS`, which echoes
+  an in-flight cross-compile target from the environment. An exported `GOOS`,
+  or `dist` setting it per target, named a binary that cannot run on the
+  machine executing it, and the release gate refused a healthy release over a
+  file it was never going to run. It resolves from `GOHOSTOS`/`GOHOSTARCH`.
 
 ### Changed
 
