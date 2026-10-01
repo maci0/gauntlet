@@ -17,8 +17,8 @@ import (
 // a ref or path the reviewed repository supplied separate it from the
 // options with `--end-of-options` (git 2.24), and branches are created with
 // `git switch` (2.23), so an older git answers "unknown option" where a broken
-// repository would have answered something else. README states the floor;
-// BelowFloor is how `gauntlet doctor` checks the machine against it.
+// repository would have answered something else. README states the floor,
+// and BelowFloor is how `gauntlet doctor` checks the machine against it.
 const MinVersion = "2.24"
 
 // minVersion is MinVersion as the numbers BelowFloor compares.

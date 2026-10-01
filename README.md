@@ -326,6 +326,11 @@ holds every project on the machine, so it is read only with
 | [docs/IDEAS.md](docs/IDEAS.md) | things deliberately not built yet, and why |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | building, testing, and the checks a pull request runs |
 
+`site/public/` holds the one-page project site (a condensed version of this
+README, deployed from `site/wrangler.jsonc`). It is static HTML with no build
+step and nothing in the Go tree reads it; `cmd/gauntlet/site_test.go` is what
+keeps its color tokens and markup invariants at WCAG 2.2 AA.
+
 ## License
 
 AGPL-3.0-or-later.

@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 // Package safefile is the one open a file whose path a repository's contents
-// can plant goes through: a project prompt, a run journal, an exclude file.
-// Every refusal names the path it refused, because the alternative is an errno
-// that leaves an operator with "bad file descriptor" and nothing to act on.
+// can plant goes through: a project prompt, a run journal, the operator's
+// agents.json, a shared exclude, a conflicted path, and the git index a
+// snapshot copies. Every refusal names the path it refused, because the
+// alternative is an errno that leaves an operator with "bad file descriptor"
+// and nothing to act on.
 package safefile
 
 import (

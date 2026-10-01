@@ -361,5 +361,16 @@ that test fails until you do, with these instructions. Named sets such as
 `internal/prompt/rules/` are different: they are the containment text every
 agent runs under, so treat changes there as security-relevant.
 
+`site/public/` is the one-page project site, a condensed README rendered in a
+browser. It is not part of the build: static HTML, no bundler, deployed with
+`wrangler` from `site/wrangler.jsonc`. Nothing in `internal/` reads it, so a
+change there ships unreviewed except through
+[cmd/gauntlet/site_test.go](cmd/gauntlet/site_test.go), which pins the color
+tokens and the markup invariants WCAG 2.2 AA needs. The logos and the
+dashboard screenshot under `site/public/` are copies of the ones in `assets/`,
+kept beside the page because the site deploys `site/public` alone; update both
+copies in the same change, and regenerate the screenshot with
+`./scripts/shots.sh` as described above.
+
 On macOS, sandboxed agent tests and runs require the system
 `/usr/bin/sandbox-exec` Seatbelt launcher; `make doctor` checks it.
