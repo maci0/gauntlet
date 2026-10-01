@@ -1197,6 +1197,44 @@ func TestStackSetupFailureAfterCancelCountsAsInterrupted(t *testing.T) {
 	}
 }
 
+// A setup failure is recorded into the stats, and the run's summary is written
+// from those stats. The journal has to carry the same outcome: `gauntlet runs`
+// rebuilds a run from its events wherever the index has a hole, so a result
+// with no review_end counts in one reading of the run and not in the other.
+func TestStackSetupFailurePublishesTheReviewEnd(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	cfg := stackConfig(t, repo, []string{"a-review"}, `echo "RESULT: no-changes"`)
+	bus := NewBus()
+	sub := bus.Subscribe(256)
+	done := make(chan []Event, 1)
+	go collect(sub, done)
+	r, err := New(context.Background(), cfg, bus)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r.recordStackFailure(context.Background(), 1, "a-review", "branch", "main",
+		"create stack branch", errors.New("git: fatal"))
+	bus.Close()
+
+	ends := <-done
+	if n := countKind(ends, EvReviewEnd); n != 1 {
+		t.Fatalf("published %d review_end events, want the recorded setup failure journaled", n)
+	}
+	for _, e := range ends {
+		if e.Kind != EvReviewEnd {
+			continue
+		}
+		if e.Review != "a-review" || e.Status != StatusFail || e.Loop != 1 {
+			t.Fatalf("review_end = %+v, want the failed review named on its loop", e)
+		}
+	}
+	if got := r.Stats().Counts(); got.Fail != 1 {
+		t.Fatalf("counts = %+v, want the setup failure recorded once", got)
+	}
+}
+
 // promptSetWithSummaries writes prompts that declare a `Summary:` line, which
 // is what a shipped prompt carries and what a PR body quotes as its scope.
 // promptSet's fixtures declare none, so they exercise only the fallback.

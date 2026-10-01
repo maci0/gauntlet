@@ -923,9 +923,11 @@ func (r *Runner) recordStackFailure(ctx context.Context, loop int, review, branc
 	if ctx.Err() != nil {
 		res.Status = StatusInterrupted
 		r.record(res)
+		r.publishReviewEnd(res, loop, "", "", 1)
 		return
 	}
 	res.Status = StatusFail
 	r.record(res)
+	r.publishReviewEnd(res, loop, "", "", 1)
 	r.publishStackFailure(loop, review, branch, base, detail)
 }

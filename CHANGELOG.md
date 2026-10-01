@@ -40,6 +40,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A `--stacked-prs` run whose layer setup failed no longer counted that review
+  in one reading of the run and not in the other. The failure was recorded
+  into the run's stats, and `writeSummary` builds the run's summary from
+  those stats, but nothing published the matching `review_end`, and
+  `gauntlet runs` rebuilds a run from its event stream wherever the index has
+  a hole. The same run therefore reported the failed review while its index
+  row was intact and lost it once the index was recovered or the run was
+  listed without one. The setup failure is now journaled like every other
+  review outcome, and a canceled setup publishes its interrupted ending too.
 - `gauntlet pick` no longer draws a frame taller than the terminal. The
   reviews tree was budgeted the whole height left under the header, command,
   status, and key line, while the two panes beside it were sized against the
