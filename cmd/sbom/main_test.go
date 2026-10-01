@@ -62,7 +62,11 @@ func TestRunWritesCycloneDXDocument(t *testing.T) {
 			} `json:"component"`
 		} `json:"metadata"`
 		Components []struct {
-			PURL     string `json:"purl"`
+			PURL       string `json:"purl"`
+			Properties []struct {
+				Name  string `json:"name"`
+				Value string `json:"value"`
+			} `json:"properties"`
 			Licenses []struct {
 				License struct {
 					ID string `json:"id"`
@@ -91,6 +95,19 @@ func TestRunWritesCycloneDXDocument(t *testing.T) {
 		}
 		if len(c.Licenses) == 0 {
 			t.Errorf("component %q ships no resolved license; an inventory silent about a module's terms is what this tool exists to prevent", c.PURL)
+		}
+		// The go.sum hash is what lets a scanner check this component
+		// against the graph it would resolve itself, and checkInventory
+		// refuses the document before it is written without one, so a
+		// released sbom.json never names a module no one can account for.
+		hashed := false
+		for _, p := range c.Properties {
+			if p.Name == "go:go.sum" && strings.HasPrefix(p.Value, "h1:") {
+				hashed = true
+			}
+		}
+		if !hashed {
+			t.Errorf("component %q ships no go.sum hash; the inventory cannot be verified against anything", c.PURL)
 		}
 	}
 }
@@ -169,15 +186,15 @@ func TestUsageErrorsAreDistinguishedFromFailures(t *testing.T) {
 // would ship incomplete: every other component is filled from the binary's own
 // build info, and this one is a lookup that can come back empty. The run
 // stopped, so the release that calls it stops too.
-func TestCheckLicensesRefusesAnUnresolvedGrant(t *testing.T) {
+func TestCheckInventoryRefusesAnUnresolvedGrant(t *testing.T) {
 	mods := []sbom.Module{
-		{Path: "example.com/resolved", Version: "v1.0.0", License: "MIT"},
-		{Path: "example.com/silent", Version: "v2.0.0"},
-		{Path: "example.com/also-silent", Version: "v0.1.0"},
+		{Path: "example.com/resolved", Version: "v1.0.0", Sum: "h1:one=", License: "MIT"},
+		{Path: "example.com/silent", Version: "v2.0.0", Sum: "h1:two="},
+		{Path: "example.com/also-silent", Version: "v0.1.0", Sum: "h1:three="},
 	}
-	err := checkLicenses(mods)
+	err := checkInventory(mods)
 	if err == nil {
-		t.Fatal("checkLicenses accepted a module with no resolved license; the release would ship an inventory silent about its terms")
+		t.Fatal("checkInventory accepted a module with no resolved license; the release would ship an inventory silent about its terms")
 	}
 	for _, want := range []string{"example.com/silent v2.0.0", "example.com/also-silent v0.1.0", "2 of 3"} {
 		if !strings.Contains(err.Error(), want) {
@@ -187,8 +204,55 @@ func TestCheckLicensesRefusesAnUnresolvedGrant(t *testing.T) {
 	if strings.Contains(err.Error(), "example.com/resolved") {
 		t.Errorf("error %q names a module whose license was resolved", err)
 	}
-	if err := checkLicenses(mods[:1]); err != nil {
-		t.Errorf("checkLicenses on a fully resolved inventory returned %v", err)
+	if err := checkInventory(mods[:1]); err != nil {
+		t.Errorf("checkInventory on a fully resolved inventory returned %v", err)
+	}
+}
+
+// The grant is half of what an inventory has to say; the go.sum hash is the
+// other. A module reached through a local-path or directory replace resolves
+// a LICENSE like any other, so the grant check passes on it, and sbom.New
+// then writes a component carrying no `go:go.sum` property: an entry a
+// scanner has nothing to verify against, in a document a consumer reads as a
+// complete account of what shipped.
+func TestCheckInventoryRefusesAnUnhashedModule(t *testing.T) {
+	mods := []sbom.Module{
+		{Path: "example.com/hashed", Version: "v1.0.0", Sum: "h1:one=", License: "MIT"},
+		{Path: "example.com/local", Version: "v0.0.0", License: "MIT"},
+	}
+	err := checkInventory(mods)
+	if err == nil {
+		t.Fatal("checkInventory accepted a module with no go.sum hash; the release would ship an inventory a scanner cannot verify")
+	}
+	if !strings.Contains(err.Error(), "example.com/local v0.0.0") {
+		t.Errorf("error %q does not name the unhashed module", err)
+	}
+	if !strings.Contains(err.Error(), "1 of 2") {
+		t.Errorf("error %q does not count the unhashed modules", err)
+	}
+	if strings.Contains(err.Error(), "no license resolved") {
+		t.Errorf("error %q reports a license problem; every module here has one", err)
+	}
+	if strings.Contains(err.Error(), "example.com/hashed") {
+		t.Errorf("error %q names a module whose hash was recorded", err)
+	}
+}
+
+// Both halves fail at once when both are missing, and each is named: a run
+// that reported only the first would send a maintainer to fix the grant and
+// ship the unaccounted module on the next attempt.
+func TestCheckInventoryNamesBothFailures(t *testing.T) {
+	mods := []sbom.Module{
+		{Path: "example.com/bare", Version: "v0.0.0"},
+	}
+	err := checkInventory(mods)
+	if err == nil {
+		t.Fatal("checkInventory accepted a module with neither a license nor a hash")
+	}
+	for _, want := range []string{"no license resolved", "no go.sum hash recorded", "example.com/bare v0.0.0"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not mention %q", err, want)
+		}
 	}
 }
 

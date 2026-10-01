@@ -115,7 +115,7 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	if err := checkLicenses(licensed); err != nil {
+	if err := checkInventory(licensed); err != nil {
 		return err
 	}
 	doc := sbom.New(name, modulePath, *version, licensed)
@@ -160,22 +160,42 @@ func refuse(fs *flag.FlagSet, err error) error {
 	return usageError{err, usageText(fs)}
 }
 
-// checkLicenses fails when a module in the inventory carries no resolved
-// license, naming every one of them. The document is written only after this
-// passes, so a release never ships a CycloneDX file that is silent about the
-// terms of something it links: `make artifacts` runs this command, and the
-// tagged release that calls it, so an unresolvable grant fails the run rather
-// than riding along in a document a consumer reads as complete.
-func checkLicenses(mods []sbom.Module) error {
-	var unresolved []string
+// checkInventory fails when a module in the inventory carries no resolved
+// license or no go.sum hash, naming every one of them. The document is written
+// only after this passes, so a release never ships a CycloneDX file that is
+// silent about the terms or the provenance of something it links: `make
+// artifacts` runs this command, and the tagged release that calls it, so an
+// unresolved grant or an unhashed module fails the run rather than riding
+// along in a document a consumer reads as complete.
+//
+// The hash is the other half of the same claim. Every other field is copied
+// from the binary's own build info and so is as trustworthy as the binary,
+// but a module reached through a local-path or directory replace carries no
+// go.sum entry, and sbom.New then writes a component with no `go:go.sum`
+// property at all: a component in the inventory that no scanner can check
+// against anything. Nothing here says the module is untrustworthy, it says
+// the inventory cannot account for it, which is the gap this refuses.
+func checkInventory(mods []sbom.Module) error {
+	var unlicensed, unhashed []string
 	for _, m := range mods {
 		if m.License == "" {
-			unresolved = append(unresolved, m.Path+" "+m.Version)
+			unlicensed = append(unlicensed, m.Path+" "+m.Version)
+		}
+		if m.Sum == "" {
+			unhashed = append(unhashed, m.Path+" "+m.Version)
 		}
 	}
-	if len(unresolved) == 0 {
+	var problems []string
+	if len(unlicensed) > 0 {
+		problems = append(problems, fmt.Sprintf("no license resolved for %d of %d modules: %s",
+			len(unlicensed), len(mods), strings.Join(unlicensed, ", ")))
+	}
+	if len(unhashed) > 0 {
+		problems = append(problems, fmt.Sprintf("no go.sum hash recorded for %d of %d modules: %s",
+			len(unhashed), len(mods), strings.Join(unhashed, ", ")))
+	}
+	if len(problems) == 0 {
 		return nil
 	}
-	return fmt.Errorf("no license resolved for %d of %d modules: %s",
-		len(unresolved), len(mods), strings.Join(unresolved, ", "))
+	return errors.New(strings.Join(problems, "; "))
 }

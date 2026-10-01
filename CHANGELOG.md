@@ -388,6 +388,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Security
 
+- Every release's `sbom.json` now names a `go.sum` hash for every module it
+  lists, or the release stops. The generator already refused a module whose
+  license it could not read, but a module whose grant it could read and whose
+  hash the binary did not record passed: `buildinfo` leaves the hash empty for
+  any module reached through a local-path or directory `replace`, and the
+  component was then written with no `go:go.sum` property at all. A consumer
+  scanning the inventory had no way to check that entry against anything, and
+  read a document that claimed to account for what shipped. Nothing in the
+  current graph is reached that way, so no released inventory changes; the
+  check is what keeps the next `replace` from reaching a tag quietly.
 - The run journal kept the whole command line, home directory aside. An
   operator defines a wrapper agent by handing its key on the command line,
   because that is where the agent CLIs read it, so `--agent-cmd` and a

@@ -189,10 +189,15 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   the artifact describing the dependency surface adds nothing to it. The
   serial number is derived from the contents rather than drawn at random, so
   a rebuild produces the same document. A module whose license is not
-  resolved is named rather than guessed at, and `cmd/sbom` fails the run
-  before writing the document: `make artifacts` and the release that calls
-  it stop, so no release ships an inventory that says nothing about the
-  terms of a module it links.
+  resolved, or whose `go.sum` hash the binary did not record, is named
+  rather than guessed at or silently carried without its hash, and `cmd/sbom`
+  fails the run before writing the document: `make artifacts` and the
+  release that calls it stop, so no release ships an inventory that says
+  nothing about the terms of a module it links, or lists a component a
+  scanner has no hash to check it against. The hash half is what the
+  `go:go.sum` property exists for: `buildinfo` records no hash for a
+  module reached through a local-path or directory `replace`, so that is
+  the case the check refuses.
 - Every release also publishes a build-provenance attestation per binary
   (`actions/attest-build-provenance`, pinned by commit SHA, over the entries
   in `checksums.txt`), so a consumer can check with `gh attestation verify`
