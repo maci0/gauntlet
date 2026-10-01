@@ -473,6 +473,17 @@ field on any event is unmeasured for the same reason. A `merge` or
 over layers, keyed on the branch the work landed on, so a layer a hot-reload
 successor re-recorded is one diff and not two.
 
+A `review_end` repeated under the same directory, loop, review, and branch is
+counted once only when the repeat is a replay: an ending a hot-reload successor
+wrote after a `run_start` of its own, closing a review its predecessor was
+already interrupted on. A review scheduled twice is weight and runs twice, and
+in place its two passes share every one of those fields, so the process and
+the instant on the ending are what tell them apart: a pass that ran inside the
+process already writing the journal is counted, an ending arriving from a later
+process is that earlier work seen again. A journal carrying neither a
+`run_start` nor an instant has nothing to judge a repeat by and reads every
+repeat as a replay, which under-counts a run rather than inflating it.
+
 `other` counts reviews whose terminal `status` a build does not recognize. It
 exists so a journal written by a newer version still reconciles: every review
 the row counts sits in exactly one of `ok`, `failed`, `skipped`, `conflicts`,

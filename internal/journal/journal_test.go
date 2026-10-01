@@ -1978,6 +1978,96 @@ func TestSummarizeFileCountsAReviewThatEndsTwiceOnce(t *testing.T) {
 	}
 }
 
+// The counterpart of the replay case above, and the one a review scheduled
+// twice depends on. A weighted review is one name on the schedule twice, so
+// one loop runs it twice, and in place the two passes share every field the
+// summary's key is built from: a directory, a loop, a review, and an empty
+// branch. The key alone cannot tell them apart, and folding them together
+// reports a run that did less than it did, with one pass's tokens and lines
+// and failure status missing from the row the budget and the exit code
+// reconcile with.
+func TestSummarizeFileCountsAWeightedReviewTwice(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	at := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(at)
+	j, err := Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": at, "version": "test"})
+	// Both passes sit in one loop of one process, in place, so nothing but
+	// the instant separates them.
+	for i, pass := range []struct {
+		tokens, ins, del int
+	}{{100, 3, 1}, {200, 7, 2}} {
+		ts := at.Add(time.Duration(i) * time.Minute)
+		j.Write(map[string]any{"ev": "review_start", "ts": ts, "dir": "/w",
+			"loop": 1, "review": "sec-review"})
+		j.Write(map[string]any{"ev": "review_end", "ts": ts, "dir": "/w",
+			"loop": 1, "review": "sec-review", "status": "ok",
+			"tokens": pass.tokens, "ins": pass.ins, "del": pass.del})
+	}
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Reviews != 2 || s.OK != 2 {
+		t.Fatalf("a weighted review's two passes were folded into one: %+v", s)
+	}
+	if s.Tokens != 300 {
+		t.Errorf("tokens = %d, want both passes' 300", s.Tokens)
+	}
+	if !s.LinesMeasured || s.Ins != 10 || s.Del != 3 {
+		t.Errorf("lines = +%d -%d measured=%t, want +10 -%d from both passes",
+			s.Ins, s.Del, s.LinesMeasured, 3)
+	}
+}
+
+// The replay guard the weighted pass has to sit beside. A hot reload execs a
+// successor that appends its own run_start to the same journal and re-runs
+// whatever its predecessor was interrupted on, so the key repeats from a
+// process of its own, stamped later than the ending that already claimed it.
+// That is the one repeat that is not a second review, and it has to keep
+// counting once: the run did that review once, and the row the budget and the
+// exit code reconcile with cannot carry it twice.
+func TestSummarizeFileCountsAReplayedEndingOnceAcrossProcesses(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	at := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(at)
+	j, err := Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The predecessor's loop, then the successor's: a run_start between them,
+	// and the ending re-stamped because it is a new launch in a new process.
+	j.Write(map[string]any{"ev": "run_start", "ts": at, "version": "test"})
+	j.Write(map[string]any{"ev": "review_end", "ts": at, "dir": "/w", "loop": 1,
+		"review": "sec-review", "status": "ok", "tokens": 100})
+	j.Write(map[string]any{"ev": "run_start", "ts": at.Add(time.Hour), "version": "test"})
+	j.Write(map[string]any{"ev": "review_end", "ts": at.Add(time.Hour), "dir": "/w",
+		"loop": 1, "review": "sec-review", "status": "ok", "tokens": 100})
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Reviews != 1 || s.OK != 1 {
+		t.Fatalf("a successor's replayed ending was counted as a second review: %+v", s)
+	}
+	if s.Tokens != 100 {
+		t.Errorf("tokens = %d, want the replayed ending's 100 counted once", s.Tokens)
+	}
+}
+
 func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)

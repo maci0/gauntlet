@@ -28,6 +28,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A review scheduled twice is counted twice again in `gauntlet runs`. The
+  index row folds a repeated `review_end` into one review so a hot-reload
+  successor does not report work its predecessor already counted, and the
+  key it folded on is the directory, loop, review, and branch. A weighted
+  review run in place shares all four with its own first pass, so the second
+  pass vanished from the row along with its tokens, its lines, and any
+  failure it recorded. The row is now the statement about the run the
+  runner's own tally already makes, and the replay it still folds is an
+  ending a later process wrote over a review an earlier one was interrupted
+  on. `docs/RUNS.md` states the rule and what a journal with no `run_start`
+  and no timestamp does with it.
 - The launcher's scrolled panes now say how far they are scrolled, and which
   end the rows went. Each pane title carried a count of the rows below the
   fold only, so a list scrolled to its end still read "+N more" while the N
@@ -69,6 +80,21 @@ the journaled event stream in `internal/runner/contract_test.go`.
   or `dist` setting it per target, named a binary that cannot run on the
   machine executing it, and the release gate refused a healthy release over a
   file it was never going to run. It resolves from `GOHOSTOS`/`GOHOSTARCH`.
+
+- Truncating a line cut on a character, not a byte: `normalize.Clip` and
+  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
+  measuring the cut, so what they return is always text. A file name holding
+  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
+  half-written character into a commit subject, a pull request body, or the
+  lock note another run reads, where the terminal and every width measurement
+  downstream have to guess what they are looking at.
+
+- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
+  target had drifted, so a reader following one landed on the wrong recipe: a
+  seven-line recipe added ahead of that target moved each of them, and
+  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
+  The pointers are re-anchored, and one that named the comment above the
+  checksums recipe now names the recipe.
 
 ### Changed
 

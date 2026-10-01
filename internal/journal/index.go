@@ -1017,12 +1017,26 @@ type indexEvent struct {
 	Agents  []string  `json:"agents"`
 }
 
+// claim records which process took a layer key and when, so a later ending
+// under the same key can be read as that claim arriving again or as work of its
+// own. Both fields earn their place: the process is a boundary the journal
+// records, and the instant separates two passes of one process, whose endings
+// carry no field that tells them apart.
+type claim struct {
+	proc int
+	at   time.Time
+}
+
 // layerKey names one published layer by what its merge or pull_request event
 // carries: the directory, the loop, the review, and the branch the work landed
-// on. A branch name is unique to a layer within a run, and a layer's
-// publication can reach the journal twice (a hot-reload successor re-recording
-// a layer its predecessor already published), so a repeated key is the same
-// work counted a second time.
+// on.
+//
+// A branch name is unique to a layer within a run, and a layer's publication
+// can reach the journal twice (a hot-reload successor re-recording a layer its
+// predecessor already published), so a repeated key is the same work counted a
+// second time. The same key names both passes of a review scheduled twice, so
+// an ending that finds the key claimed also reads the claim and tells a replay
+// from a repeat (see summarizeFile).
 type layerKey struct {
 	dir, review, branch string
 	loop                int
@@ -1114,7 +1128,14 @@ func summarizeFile(runID, path string) (Summary, error) {
 	sc.Buffer(make([]byte, 0, 64<<10), 8<<20)
 	seenDir := map[string]bool{}
 	counted := map[layerKey]bool{}
-	ended := map[layerKey]bool{}
+	// ended maps a key to the process and instant of the ending that claimed
+	// it, so a repeat can be read against the one it repeats.
+	ended := map[layerKey]claim{}
+	// proc counts the processes that have written to this journal, one per
+	// run_start. It is the boundary a replayed ending crosses: a hot-reload
+	// successor appends its own run_start before it re-runs what its
+	// predecessor was interrupted on.
+	proc := 0
 	var lastTS time.Time
 	for sc.Scan() {
 		var e indexEvent
@@ -1135,6 +1156,9 @@ func summarizeFile(runID, path string) (Summary, error) {
 		case "loop_end":
 			s.Loops++
 		case "run_start":
+			// A run_start opens a process, and the counter is what tells an
+			// ending a successor re-wrote from one its predecessor wrote.
+			proc++
 			if s.Version == "" {
 				s.Version = e.Version
 			}
@@ -1142,20 +1166,42 @@ func summarizeFile(runID, path string) (Summary, error) {
 				s.Agents = append([]string(nil), e.Agents...)
 			}
 		case "review_end":
-			// A review ends once per loop, so the directory, the loop, the
-			// review, and the lane that ran it name that one execution. A
-			// hot-reload successor restarts loop numbering at 1 and
-			// re-runs what its predecessor was interrupted on, which
-			// repeats every field of this key: counting it twice would
-			// report one review as two, and double its tokens and lines
-			// against the run's budget and its exit code. Unlike a
-			// publication, the key is claimed unconditionally, because a
-			// review that did not finish cleanly still finished.
+			// The directory, the loop, the review, and the lane that ran it
+			// name one execution of a review, and two different things can
+			// arrive under that one name.
+			//
+			// A hot-reload successor restarts loop numbering at 1 and re-runs
+			// what its predecessor was interrupted on, repeating every field
+			// of this key: counting it twice would report one review as two,
+			// and double its tokens and lines against the run's budget and
+			// its exit code. A review scheduled twice is weight, though, and
+			// its second pass is a launch of its own that happens to share
+			// every field of this key with the first.
+			//
+			// The two are told apart by the process that wrote the ending and
+			// by when. A replay is a key an earlier process already claimed:
+			// the successor re-ran what its predecessor was interrupted on, so
+			// the same key arrives again from a process of its own. A weighted
+			// pass is a launch inside the process already running, and a
+			// launch that happened afterwards is stamped later, which is the
+			// only thing that can tell two passes of an in-place review
+			// apart: they share a directory, a loop, a review, and an empty
+			// branch.
+			//
+			// A journal carrying no run_start has no process boundary, so the
+			// instant is all it has, and a line carrying no instant is read as
+			// the replay, which is the reading that never over-counts a run. A
+			// clock coarse enough to stamp two passes alike reads the same
+			// way, which costs one repeat and never a whole run.
+			//
+			// Unlike a publication, the key is claimed unconditionally,
+			// because a review that did not finish cleanly still finished.
 			key := layerKey{dir: e.Dir, review: e.Review, branch: e.Branch, loop: e.Loop}
-			if ended[key] {
+			if had, seen := ended[key]; seen &&
+				(had.proc != proc || !e.TS.After(had.at)) {
 				break
 			}
-			ended[key] = true
+			ended[key] = claim{proc: proc, at: e.TS}
 			s.Reviews++
 			switch e.Status {
 			case "", "ok":
