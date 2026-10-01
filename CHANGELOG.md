@@ -44,6 +44,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
   `Palette` and `Think` were the findings it revealed.
 
+### Fixed
+
+- Truncating a line cut on a character, not a byte: `normalize.Clip` and
+  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
+  measuring the cut, so what they return is always text. A file name holding
+  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
+  half-written character into a commit subject, a pull request body, or the
+  lock note another run reads, where the terminal and every width measurement
+  downstream have to guess what they are looking at.
+
 ### Security
 
 - The run journal kept the whole command line, home directory aside. An

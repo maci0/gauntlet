@@ -533,6 +533,46 @@ func TestTruncateKeepsGraphemesIntact(t *testing.T) {
 	}
 }
 
+// A cut is a cut on a character, and a legal file name on ext4 or APFS is not
+// required to be valid UTF-8: a name holding one raw byte reaches Clip or
+// Truncate from git, a PR path, or a lock note. What comes back goes to a
+// terminal and to lipgloss.Width, and a prefix ending mid-sequence is the one
+// form of these cuts both of those have to guess at, so the repair belongs to
+// the functions rather than to each call site.
+func TestClipAndTruncateRepairInvalidBytes(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input string
+		width int
+		clip  string
+		trunc string
+	}{
+		{"raw byte", "ab\xffcd", 3, "ab�", "ab�…"},
+		{"raw byte at the cut", "ab\xffcdefgh", 3, "ab�", "ab�…"},
+		{"lone continuation", "a\x80bcd", 3, "a�b", "a�b…"},
+		{"two-byte sequence cut short", "ab\xe6\x97", 3, "ab�", "ab�…"},
+		{"cut just past the repair", "\xff\xfe ok", 3, "�� ", "�� …"},
+		{"wide enough for the whole repair", "\xff\xfe ok", 5, "�� ok", "�� ok"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := Clip(tc.input, tc.width)
+			if !utf8.ValidString(got) {
+				t.Errorf("Clip(%q, %d) = %q, which is not valid UTF-8", tc.input, tc.width, got)
+			}
+			if got != tc.clip {
+				t.Errorf("Clip(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.clip)
+			}
+			got = Truncate(tc.input, tc.width)
+			if !utf8.ValidString(got) {
+				t.Errorf("Truncate(%q, %d) = %q, which is not valid UTF-8", tc.input, tc.width, got)
+			}
+			if got != tc.trunc {
+				t.Errorf("Truncate(%q, %d) = %q, want %q", tc.input, tc.width, got, tc.trunc)
+			}
+		})
+	}
+}
+
 func TestNormalizerTruncatesWholeGraphemes(t *testing.T) {
 	n := New(Config{MaxWidth: 3})
 	got := append(n.Push("abe\u0301xyz"), n.Flush()...)

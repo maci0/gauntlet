@@ -84,7 +84,15 @@ func Repair(s string) string {
 // layout measurement: wide characters occupy two terminal cells and a
 // combining mark zero, so display-width cutting lives with the dashboard,
 // which owns the column math.
+//
+// Bytes that are not valid UTF-8 are repaired first, so the result is always
+// text. The cut is on a rune boundary by construction, but the boundary of a
+// decoded U+FFFD is the byte before it, not a rune a reader can be shown: a
+// file name the filesystem holds raw, cut at an unpaired byte, would go out
+// holding the half of a character the terminal and every width measurement
+// downstream have to guess at.
 func Truncate(s string, w int) string {
+	s = Repair(s)
 	if w <= 1 || len(s) <= w {
 		return s
 	}
@@ -256,10 +264,16 @@ func runeBoundary(b []byte, cut int) int {
 // Clip cuts s to at most max code points, without splitting a grapheme
 // cluster (combining marks, emoji sequences, flags) or a UTF-8 sequence,
 // returning the prefix without an ellipsis.
+//
+// Bytes that are not valid UTF-8 are repaired first, for the reason Truncate
+// gives: what comes back is a prefix of text, and a prefix that ends inside a
+// half-written character is the one form of this cut that a terminal and a
+// width measurement both have to guess at.
 func Clip(s string, max int) string {
 	if max <= 0 {
 		return ""
 	}
+	s = Repair(s)
 	if len(s) <= max {
 		return s
 	}
