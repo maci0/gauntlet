@@ -40,6 +40,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `--semcode` without the `semcode-index` helper in PATH is now a usage error
+  where the flag is parsed, beside the agent CLI check and before the locks,
+  rather than one raised after prompt discovery and the suggest step by a run
+  that had already taken its locks. `--dry-run --semcode` warns on stderr
+  beside the schedule instead, since a dry run launches nothing to fail. The
+  help screen's line for the flag names the helper it needs.
+- `gauntlet help <word>` no longer offers a "did you mean" for a word that is
+  nothing like a command: `gauntlet help vers` pointed at `help`, three edits
+  away and nothing the reader half-wrote. The hint now uses the same
+  distance-from-half-the-word rule the flag suggestions use, so a real typo
+  (`helo`, `showw`) still gets one.
 - The project page now keeps its distinctions under a system in high-contrast
   mode. Every color on it is a hardcoded custom property, so a forced-colors
   user got the system palette in place of the page's: the filled Download

@@ -255,6 +255,16 @@ func run(argv []string) int {
 			return exitUsage
 		}
 	}
+	// The indexer --semcode needs is checked here, beside the agent CLIs and
+	// before the locks: a machine without it learns so from the invocation,
+	// rather than from a run that took its locks and then stopped. The check
+	// is the same one buildSemcodeIndex makes, kept beside the flag so the
+	// two cannot disagree about which binary is meant.
+	if opts.semcode && !opts.list && !opts.dryRun && !resumed && agent.Resolve(semcodeIndexer) == "" {
+		fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s "+
+			"(named by --semcode; `gauntlet doctor` reports it)\n", semcodeIndexer)
+		return exitUsage
+	}
 
 	runs := make([]*dirRun, 0, len(dirs))
 	for _, dir := range dirs {
@@ -430,6 +440,13 @@ func run(argv []string) int {
 		if err := dryRun(stdout, pal, runs, agents, opts); err != nil {
 			fmt.Fprintf(os.Stderr, "cannot write dry run: %v\n", err)
 			return exitFail
+		}
+		// A dry run prints what a real run would do, so a flag on it that
+		// this machine cannot honor is said once, beside the schedule it
+		// would have had to build. stderr: the schedule stays on stdout.
+		if opts.semcode && agent.Resolve(semcodeIndexer) == "" {
+			fmt.Fprintf(os.Stderr, "Warning: --semcode needs %s in PATH, which this machine "+
+				"does not have: a real run would stop with exit 2 before its first review\n", semcodeIndexer)
 		}
 		return exitOK
 	}

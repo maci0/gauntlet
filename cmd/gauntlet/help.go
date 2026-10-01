@@ -97,7 +97,7 @@ var helpGroups = []flagGroup{
 		{"", "sandbox-write", "DIR", "allow writes under an additional existing directory (repeatable)"},
 		{"", "yolo", "", "drop the caution rules: bigger, more ambitious changes"},
 		{"y", "yes", "", "answer yes to confirmation prompts"},
-		{"", "semcode", "", "build a semcode index before the loop"},
+		{"", "semcode", "", "build a semcode index before the loop; needs semcode-index in PATH"},
 		{"", "keep-runs", "N", fmt.Sprintf("run journals kept in the state root (GAUNTLET_HOME, else ~/.gauntlet); older ones move to pruned/ at the end of a run, 0 keeps all (default %d)", defaultKeepRuns)},
 	}},
 	{"Modes", []flagDoc{

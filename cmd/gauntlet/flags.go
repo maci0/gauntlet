@@ -1329,7 +1329,7 @@ func helpTopic(word string) error {
 		return nil
 	}
 	hint := ""
-	if c := fuzzy.Closest(word, commandNames); c != "" {
+	if c := fuzzy.ClosestWithin(word, commandNames, typoDistance(word)); c != "" {
 		hint = fmt.Sprintf(" (did you mean %q?)", c)
 	}
 	return fmt.Errorf("no help topic: %q%s (topics: %s)",
@@ -1423,10 +1423,11 @@ func enhanceFlagError(err error, o *options, fs *flag.FlagSet) error {
 	return fmt.Errorf("%s (did you mean %s?)", msg, spellFlag(c))
 }
 
-// typoDistance is how far a flag name may sit from a candidate and still read
-// as a typo of it: half the name, never less than one edit and never more than
-// the fuzzy package's shared ceiling. A flag name is short, so the ceiling on
-// its own would turn "limt" into "--log".
+// typoDistance is how far a name may sit from a candidate and still read as a
+// typo of it: half the name, never less than one edit and never more than the
+// fuzzy package's shared ceiling. A name is short, so the ceiling on its own
+// would turn "limt" into "--log", and it would turn "vers" into "help" -- both
+// guesses at something the reader did not half-write.
 func typoDistance(name string) int {
 	return min(max(utf8.RuneCountInString(name)/2, 1), fuzzy.Limit)
 }

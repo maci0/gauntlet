@@ -28,12 +28,18 @@ import (
 // production always sees 30 minutes.
 var semcodeIndexTimeout = 30 * time.Minute
 
+// semcodeIndexer is the helper --semcode builds the index with. Named once so
+// the check run() makes before taking the locks, the one buildSemcodeIndex
+// makes when it gets there, and the dry-run warning cannot each go looking for
+// a different binary.
+const semcodeIndexer = "semcode-index"
+
 // buildSemcodeIndex runs the indexer once per directory before the loop, so
 // reviews can answer call-graph and type queries from an index.
 func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
-	idx := agent.Resolve("semcode-index")
+	idx := agent.Resolve(semcodeIndexer)
 	if idx == "" {
-		fmt.Fprintln(os.Stderr, "Required tool not found in PATH: semcode-index")
+		fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", semcodeIndexer)
 		return exitUsage
 	}
 	for _, d := range runs {
