@@ -478,7 +478,14 @@ var fastRules = []rule{
 		return s.anyName("pkgbuild", "setup.py", "manifest.in", "control", "flatpak.json", "snapcraft.yaml") || s.count(".spec") > 0 || s.anyPath("debian") || s.anyMark("package")
 	}), []string{"pkg-review"}},
 	{"a public API surface", weightWeak, present(func(s signals) bool {
-		return s.anyMark("library") || s.anyPath("pkg", "lib", "api", "include", "sdk") && s.anyName("lib.rs", "setup.py", "index.d.ts", "py.typed")
+		// Two cases, and they are not one: a review prompt may declare the
+		// mark itself, while an unmarked tree is judged by whether a
+		// library-shaped directory holds a library-shaped entry point.
+		// Go binds && tighter than ||, so the parentheses are what say which
+		// of the two this is.
+		return s.anyMark("library") ||
+			(s.anyPath("pkg", "lib", "api", "include", "sdk") &&
+				s.anyName("lib.rs", "setup.py", "index.d.ts", "py.typed"))
 	}), []string{"sdk-review"}},
 	{"decision or requirement documents", weightStrong, present(func(s signals) bool {
 		if s.anyPath("docs/adr", "docs/decisions", "docs/rfcs", "docs/specs") {

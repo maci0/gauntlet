@@ -397,6 +397,23 @@ func TestFastSuggestRecognizesImportableGoLibraryInterfaces(t *testing.T) {
 			t.Errorf("%q: SDK selection %v, want %v", c.file, got, c.want)
 		}
 	}
+	// A library-shaped path and a library-shaped entry point are two
+	// separate facts, and the rule takes either the declared mark or both of
+	// them. Each half on its own is not the rule.
+	for _, c := range []struct {
+		files []string
+		want  bool
+	}{
+		{[]string{"pkg/setup.py\x00from setuptools import setup\n"}, true},
+		{[]string{"pkg/thing.go\x00package pkg\nfunc Run() {}\n"}, false},
+		{[]string{"src/pkg/lib.rs\x00pub fn new_client() {}\n"}, true},
+		{[]string{"src/setup.py\x00import os\n"}, false},
+	} {
+		got := reviews(t, tree(t, c.files...), []string{"sdk-review"}, prompt.Set{})
+		if (len(got) > 0) != c.want {
+			t.Errorf("%v: SDK selection %v, want %v", c.files, got, c.want)
+		}
+	}
 }
 
 func TestDeclaredMarksStayLiteralBesideStructuredSignals(t *testing.T) {

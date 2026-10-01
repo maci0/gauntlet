@@ -992,6 +992,14 @@ func TestClipKeepsVisibleWidth(t *testing.T) {
 	if got := clip(withCSI, 4); lipgloss.Width(got) != 4 {
 		t.Fatalf("clip with CSI escape produced %d columns, want 4: %q", lipgloss.Width(got), got)
 	}
+	// A styled line cut open has to be closed, and a plain one must not gain a
+	// reset it never turned a style on for.
+	if got := clip("\x1b[31mabcdefghij\x1b[0m", 4); !strings.HasSuffix(got, "\x1b[0m") {
+		t.Errorf("clip left a styled run open: %q", got)
+	}
+	if got := clip("abcdefghij", 4); strings.Contains(got, "\x1b") {
+		t.Errorf("clip appended an escape to plain text: %q", got)
+	}
 }
 
 func TestPadBlockWideCharAlignment(t *testing.T) {

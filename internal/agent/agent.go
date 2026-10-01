@@ -534,13 +534,19 @@ func BuildCmd(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 			cmd = splice(cmd, flagInsertAt(spec.Tool), flags)
 		}
 	}
-	if spec.Tool == "agy" && opts.Timeout > 0 {
-		cmd = splice(cmd, flagInsertAt(spec.Tool),
-			[]string{"--print-timeout", opts.Timeout.String()})
-	}
-	if spec.Tool == "agy" && opts.Dir != "" {
-		cmd = splice(cmd, flagInsertAt(spec.Tool),
-			[]string{"--add-dir", opts.Dir})
+	// agy is the one CLI that is told the run's bound and the tree it works
+	// in rather than deriving either from the process. Both flags land in the
+	// same place, so one test for the tool carries them: a second spelling of
+	// "is this agy" is one a flag added later forgets.
+	if spec.Tool == "agy" {
+		if opts.Timeout > 0 {
+			cmd = splice(cmd, flagInsertAt(spec.Tool),
+				[]string{"--print-timeout", opts.Timeout.String()})
+		}
+		if opts.Dir != "" {
+			cmd = splice(cmd, flagInsertAt(spec.Tool),
+				[]string{"--add-dir", opts.Dir})
+		}
 	}
 	if opts.Binary != "" && len(cmd) > 0 {
 		cmd[0] = opts.Binary

@@ -48,19 +48,27 @@ func clipEllipsis(s string, w int) string {
 
 // clipNarrow is clip for a string already known to be wider than w, so it skips
 // the width measurement clip starts with. A cut never lands inside a grapheme
-// cluster, and an unterminated styled run is closed so the reset cannot leak
-// into whatever is drawn next.
+// cluster, and a styled run left open by the cut is closed so the reset cannot
+// leak into whatever is drawn next. Plain text carries no run to close, so it
+// is returned as it stands: a reset appended to a string that never turned a
+// style on is an escape nobody can see, and one per clipped line is a write
+// spent on nothing.
 func clipNarrow(s string, w int) string {
 	var b strings.Builder
 	visible := 0
+	styled := false
 	for _, tok := range widthTokens(s) {
 		if tok[0] == 0x1b {
 			b.WriteString(tok)
+			styled = true
 			continue
 		}
 		cw := uniseg.StringWidth(tok)
 		if visible+cw > w {
-			return b.String() + "\x1b[0m"
+			if styled {
+				return b.String() + "\x1b[0m"
+			}
+			return b.String()
 		}
 		visible += cw
 		b.WriteString(tok)
