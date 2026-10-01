@@ -72,7 +72,22 @@ func sandboxRoots(o procOpts) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	roots := []string{cwd, "/tmp"}
+	// os.TempDir, not a hardcoded /tmp: it is the platform's own answer
+	// (TMPDIR when that is absolute, /tmp otherwise) rather than an
+	// assumption that one directory exists. The earlier literal also named
+	// the wrong place on macOS, where /tmp is a symlink to the shared
+	// /private/tmp while every process's own temporary directory is the
+	// per-user TMPDIR, so the grant was broader than the run needed. When
+	// the resolved directory is absent the grant is skipped rather than
+	// fatal: a root that is not there is not a write an agent can make, and
+	// refusing the launch over it would strand a run on a host configured
+	// without a system temp directory.
+	roots := []string{cwd}
+	optional := 0
+	if tmp := os.TempDir(); tmp != "" && filepath.IsAbs(tmp) {
+		roots = append(roots, tmp)
+		optional = len(roots) // the temp root, if it resolves, is dropped rather than fatal
+	}
 	// A linked checkout's objects and refs live outside its writable worktree.
 	// Only conventional .git metadata is granted automatically, never an
 	// arbitrary directory named by a repository-controlled gitdir file.
@@ -118,22 +133,32 @@ func sandboxRoots(o procOpts) ([]string, error) {
 		}
 		roots = append(roots, root)
 	}
+	kept := roots[:0]
 	for i, root := range roots {
 		real, err := filepath.EvalSymlinks(root)
 		if err != nil {
+			if i < optional {
+				continue // a temp directory this host does not have; nothing to grant
+			}
 			return nil, fmt.Errorf("sandbox writable root %q: %w", root, err)
 		}
 		info, err := os.Stat(real)
 		if err != nil {
+			if i < optional {
+				continue
+			}
 			return nil, err
 		}
 		if !info.IsDir() {
+			if i < optional {
+				continue
+			}
 			return nil, fmt.Errorf("sandbox writable root %q is not a directory", root)
 		}
-		roots[i] = real
+		kept = append(kept, real)
 	}
-	slices.Sort(roots)
-	return slices.Compact(roots), nil
+	slices.Sort(kept)
+	return slices.Compact(kept), nil
 }
 
 func seatbeltProfile(roots []string) (string, error) {

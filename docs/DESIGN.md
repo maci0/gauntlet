@@ -1006,8 +1006,10 @@ uses the system `/usr/bin/sandbox-exec` launcher for Seatbelt, retaining cgo-fre
 cross-compilation. Agent children inherit the policy. Failure never silently
 launches an unrestricted agent; `--no-sandbox` is an explicit opt-out.
 
-Writes are allowed beneath the active worktree, its shared `.git` metadata,
-`/tmp`, an absolute `TMPDIR`, the selected built-in agent's state directories,
+Writes are allowed beneath the active worktree, its shared `.git` metadata, the
+platform's temporary directory (`os.TempDir`: an absolute `TMPDIR`, `/tmp`
+otherwise, and skipped when absent rather than failing the launch), the selected
+built-in agent's state directories,
 and repeatable `--sandbox-write DIR` grants. Roots are resolved through
 symlinks, must exist, and must be directories. Standard agent state directories
 are created before confinement. Custom agents and build tools needing external

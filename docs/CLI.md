@@ -200,7 +200,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 
 | Variable | Effect |
 |---|---|
-| `TMPDIR` | An absolute temporary directory is added to sandbox writable roots alongside `/tmp`; it must exist. Relative values grant nothing. `make test` sets its own scratch directory and ignores an exported value; override it on the make command line. |
+| `TMPDIR` | An absolute temporary directory is added to sandbox writable roots alongside the platform's own temporary directory (`TMPDIR` when set, `/tmp` otherwise); it must exist. Relative values grant nothing. `make test` sets its own scratch directory and ignores an exported value; override it on the make command line. |
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, crash checkpoints, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard stops moving. The animated reasoning glyph holds one frame instead of cycling, and the screen stops repainting itself ten times a second: the frame changes when a review reports or a key is pressed, and otherwise every thirty seconds, so the clock and the timeout meters stay honest. The token count beside the glyph keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored, but `GAUNTLET_NO_ANIMATION` is read first: set to one of the five values above it turns the motion back on even when a desktop session exports `REDUCED_MOTION=1`. Left empty it defers to the other two. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
@@ -295,8 +295,9 @@ Seatbelt on macOS (`/usr/bin/sandbox-exec`), including their shell commands and
 MCP children. A sandbox failure stops the launch; `--no-sandbox` explicitly
 disables it. It does not restrict reads or network access.
 
-Writable roots are the active worktree and shared `.git` metadata, `/tmp`,
-an absolute `TMPDIR`, and the selected agent's usual state directories:
+Writable roots are the active worktree and shared `.git` metadata, the
+platform's temporary directory (an absolute `TMPDIR`, `/tmp` otherwise; it is
+skipped when the host has none), and the selected agent's usual state directories:
 `~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`, `~/.grok`,
 `~/.gemini/antigravity-cli` (agy),
 `~/.cursor`, `~/.kimi-code`, `~/.microagent`, or `~/.dsh`. For opencode

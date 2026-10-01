@@ -26,6 +26,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Security
+
+- The agent filesystem sandbox granted `/tmp` unconditionally. On macOS that
+  directory is a symlink to the shared, world-writable `/private/tmp`, not the
+  per-user temporary directory the agent writes in, so every sandboxed agent
+  could reach every other user's scratch files. The root is now the platform's
+  own temporary directory (`os.TempDir`, an absolute `TMPDIR` or `/tmp`), an
+  operator-set `TMPDIR` still adds its own directory, and a temporary directory
+  the host does not have is skipped instead of refusing the launch.
+
 ## 1.34.1
 
 ### Fixed
