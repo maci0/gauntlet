@@ -132,11 +132,19 @@ func readCheckpoint(path string) (checkpoint, error) {
 	return cp, nil
 }
 
-// busyDir names a directory of the run that a live gauntlet holds, or ""
-// when none does. The lock is the authority rather than the recorded pid: a
-// pid gets reused, an flock dies with its process. A directory held by some
-// other run blocks a resume just the same, so it is reported the same way.
-func busyDir(cp checkpoint) string {
+// busyDir names a directory of the run that blocks a resume, and why. The lock
+// is the authority rather than the recorded pid: a pid gets reused, an flock
+// dies with its process. A directory held by some other run blocks a resume
+// just the same, so it is reported the same way.
+//
+// A lock this process cannot take for any reason other than someone else
+// holding it is not evidence that no one holds it: the path may be
+// unreadable, planted, or the descriptor table may be full, and a resume that
+// read that as "idle" would launch a second gauntlet into a tree the first
+// still owns. err is that failure, and the caller refuses the resume over it
+// while saying which of the two it is, because the two need different things
+// of the operator.
+func busyDir(cp checkpoint) (string, error) {
 	dirs := make([]string, 0, len(cp.Handoff.Dirs))
 	for dir := range cp.Handoff.Dirs {
 		dirs = append(dirs, dir)
@@ -145,11 +153,14 @@ func busyDir(cp checkpoint) string {
 	for _, dir := range dirs {
 		lock, err := runner.Acquire(runner.LockPath(dir))
 		if errors.Is(err, runner.ErrLocked) {
-			return dir
+			return dir, nil
+		}
+		if err != nil {
+			return dir, err
 		}
 		lock.Release()
 	}
-	return ""
+	return "", nil
 }
 
 // reexec is the exec a resume ends in, a variable so a test can run the
@@ -178,7 +189,12 @@ func cmdResume(out io.Writer, pal report.Palette, runID string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return exitFail
 	}
-	if dir := busyDir(cp); dir != "" {
+	switch dir, lerr := busyDir(cp); {
+	case lerr != nil:
+		fmt.Fprintf(os.Stderr, "run %s cannot resume: cannot tell whether %s is busy: %v\n",
+			runID, normalize.Sanitize(normalize.RedactHome(dir)), lerr)
+		return exitLocked
+	case dir != "":
 		fmt.Fprintf(os.Stderr, "run %s cannot resume: a gauntlet is running in %s\n", runID,
 			normalize.Sanitize(normalize.RedactHome(dir)))
 		return exitLocked
@@ -253,7 +269,11 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 		}
 		slices.Sort(dirs)
 		state := "ready"
-		if busyDir(cp) != "" {
+		switch dir, lerr := busyDir(cp); {
+		case lerr != nil:
+			state = "unknown: cannot read the lock in " +
+				normalize.Sanitize(normalize.RedactHome(dir))
+		case dir != "":
 			state = "busy: a gauntlet holds its directory"
 		}
 		fmt.Fprintf(out, "%s  %s  %s\n", pal.Bold(cp.Handoff.RunID), cp.Updated.Local().Format("2006-01-02 15:04"), state)

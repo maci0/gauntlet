@@ -194,7 +194,16 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	}
 	before, err := r.repo.Tip(ctx, "HEAD")
 	if err != nil {
-		r.log("Warning: could not read HEAD before the commit step: %v", err)
+		// The tip before this step's commit is what tells the trailer strip
+		// whether this step wrote a commit at all. Without it the strip runs
+		// in its "clean HEAD whatever it is" mode and amends a commit this
+		// run never made: the user's own last commit is rewritten under a
+		// step that was only asked to commit uncommitted work, and nothing
+		// reports that history moved. The launch still runs, so the work the
+		// reviews produced is committed either way; only the amend, which
+		// edits existing history rather than adding to it, is skipped.
+		r.log("Cannot read HEAD before the commit step, so its commit will keep "+
+			"whatever attribution the agent wrote: %v", err)
 	}
 	timeout := r.cfg.Timeout
 	if timeout <= 0 || timeout > commitTimeout {
@@ -250,11 +259,22 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		if err := unfinishedCommit(ctx, r.repo, r.cfg.OwnArtifacts); err != nil {
 			r.log("%v", err)
 			status = StatusFail
-		} else if _, err := r.repo.StripAITrailers(ctx, before); err != nil {
-			r.log("Cannot strip AI trailers after the commit step: %v", err)
-			status = StatusFail
+		} else if before != "" {
+			if _, err := r.repo.StripAITrailers(ctx, before); err != nil {
+				r.log("Cannot strip AI trailers after the commit step: %v", err)
+				status = StatusFail
+			} else if r.cfg.Push {
+				if err := pushAfterCommit(ctx, r.repo, r.cfg.Yolo); err != nil {
+					r.log("Push after the commit step failed: %v", err)
+					status = StatusFail
+				}
+			}
 		} else if r.cfg.Push {
-			if err := pushAfterCommit(ctx, r.repo, r.cfg.Yolo); err != nil {
+			// The push is not skipped with the strip: it publishes the work
+			// this step did land, and refusing to publish it would leave a
+			// review's output on this machine with the operator having asked
+			// for it on the remote.
+			if err := r.repo.Push(ctx); err != nil {
 				r.log("Push after the commit step failed: %v", err)
 				status = StatusFail
 			}

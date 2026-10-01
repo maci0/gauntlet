@@ -50,6 +50,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
   where they were and what the panes held. The three panes now share what the
   frame has, with the tree keeping its rows and the settings column keeping
   the count of what it holds back, which it already announced.
+- The commit step no longer amends a commit it did not write when the tip
+  could not be read before the step. The read was a warning and the step
+  continued with an empty tip, which the trailer strip reads as "clean HEAD
+  whatever it is", so a tree whose `HEAD` was unreadable for a moment had
+  whatever commit sat there rewritten under a step that had been asked only to
+  commit uncommitted work. The launch still runs and still commits; only the
+  amend is skipped, and the run says why. `gauntlet --commit` already refused
+  the same read, and the two paths now agree.
+- `gauntlet resume` no longer starts a second run in a tree whose lock it
+  could not read. The check treated anything other than an explicit "held" as
+  "free", so an unreadable lock path, one planted as a directory, or an
+  exhausted descriptor table read as an idle directory and the resume went on
+  to exec a second gauntlet into a directory the first still owned. The
+  failure is now reported separately from a held lock, because the two need
+  different things of the operator, and the listing says `unknown` rather than
+  `ready` for a run in that state.
 - A `TMPDIR` naming a directory that is not there no longer fails every
   sandboxed review. The platform's temporary directory was read as optional
   and dropped when absent, but the same value was appended again as an

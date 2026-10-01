@@ -115,6 +115,15 @@ It widens no permission or credential edge and adds no writer to the state
 root; it re-anchors the B6 citations its change moved. No risk row was added
 and none was closed.
 
+Last reviewed previously: 2026-10-03 against commit 9310f2e. This pass
+tightens that same control rather than adding one: the resume's busy check
+read any lock failure other than an explicit "held" as "free", so a lock path
+the process could not open at all, which no probe in this tree proves is free
+either, let the resume exec a second gauntlet into a directory a live run
+owns. It now refuses over that failure too and says which of the two it is.
+The invariant the surface was admitted under is unchanged and is enforced from
+both sides now. No risk row was added and none was closed.
+
 Last reviewed previously: 2026-09-30 against commit cb9f0a0. This pass checks stacked
 publication. A review that edits the launch checkout, or reports a file edit
 the scratch worktree does not contain, fails that layer instead of passing
