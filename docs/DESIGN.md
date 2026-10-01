@@ -1009,7 +1009,8 @@ launches an unrestricted agent; `--no-sandbox` is an explicit opt-out.
 
 Writes are allowed beneath the active worktree, its shared `.git` metadata, the
 platform's temporary directory (`os.TempDir`: an absolute `TMPDIR`, `/tmp`
-otherwise, and skipped when absent rather than failing the launch), the selected
+otherwise, and skipped when absent rather than failing the launch, as is an
+explicit `TMPDIR` grant naming a directory that is not there), the selected
 built-in agent's state directories,
 and repeatable `--sandbox-write DIR` grants. Roots are resolved through
 symlinks, must exist, and must be directories. Standard agent state directories

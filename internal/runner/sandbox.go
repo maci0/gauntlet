@@ -83,10 +83,16 @@ func sandboxRoots(o procOpts) ([]string, error) {
 	// refusing the launch over it would strand a run on a host configured
 	// without a system temp directory.
 	roots := []string{cwd}
-	optional := 0
+	// optional marks, per root, one that is dropped rather than fatal when it
+	// does not resolve. It is a parallel slice rather than a count of
+	// leading entries: the temp roots sit at indices 1 and 2, with the git
+	// metadata root and every agent-state and --sandbox-write root after them,
+	// and a count would silently widen into those the moment a second
+	// optional root joined the list.
+	optional := []bool{false}
 	if tmp := os.TempDir(); tmp != "" && filepath.IsAbs(tmp) {
 		roots = append(roots, tmp)
-		optional = len(roots) // the temp root, if it resolves, is dropped rather than fatal
+		optional = append(optional, true) // the temp root, if it resolves, is dropped rather than fatal
 	}
 	// A linked checkout's objects and refs live outside its writable worktree.
 	// Only conventional .git metadata is granted automatically, never an
@@ -98,10 +104,20 @@ func sandboxRoots(o procOpts) ([]string, error) {
 		}
 		if filepath.Base(common) == ".git" {
 			roots = append(roots, common)
+			optional = append(optional, false)
 		}
 	}
+	// TMPDIR is named here as well as through os.TempDir() above, because on
+	// a platform whose own temp lookup ignores it this is still the one the
+	// operator set. When os.TempDir() did return the same absolute TMPDIR the
+	// two name the same root, and the sort and compact below collapse them.
+	// Classified optional for the same reason the platform root is: when the
+	// path is absent this grant is dropped rather than fatal, so one missing
+	// directory costs the run that grant instead of refusing the launch, which
+	// is what the second copy of it used to do.
 	if tmp := os.Getenv("TMPDIR"); filepath.IsAbs(tmp) {
 		roots = append(roots, tmp)
+		optional = append(optional, true)
 	}
 	// Agent-owned state is writable; the rest of HOME remains read-only. Custom
 	// agents and nonstandard state/cache locations use --sandbox-write.
@@ -121,6 +137,7 @@ func sandboxRoots(o procOpts) ([]string, error) {
 				return nil, fmt.Errorf("sandbox state directory: %w", err)
 			}
 			roots = append(roots, root)
+			optional = append(optional, false)
 		}
 	}
 	for _, raw := range o.SandboxWrite {
@@ -132,25 +149,26 @@ func sandboxRoots(o procOpts) ([]string, error) {
 			root = filepath.Join(cwd, root)
 		}
 		roots = append(roots, root)
+		optional = append(optional, false)
 	}
 	kept := roots[:0]
 	for i, root := range roots {
 		real, err := filepath.EvalSymlinks(root)
 		if err != nil {
-			if i < optional {
+			if optional[i] {
 				continue // a temp directory this host does not have; nothing to grant
 			}
 			return nil, fmt.Errorf("sandbox writable root %q: %w", root, err)
 		}
 		info, err := os.Stat(real)
 		if err != nil {
-			if i < optional {
+			if optional[i] {
 				continue
 			}
 			return nil, err
 		}
 		if !info.IsDir() {
-			if i < optional {
+			if optional[i] {
 				continue
 			}
 			return nil, fmt.Errorf("sandbox writable root %q is not a directory", root)

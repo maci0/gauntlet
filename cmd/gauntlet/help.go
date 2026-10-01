@@ -180,7 +180,7 @@ type helpEnvVar struct {
 // read by internal packages (gauntlethome, selfupdate); the color names are
 // report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []helpEnvVar{
-	{"TMPDIR", "absolute temporary directory added to sandbox writable roots alongside /tmp; must exist (make test ignores exported TMPDIR)", false},
+	{"TMPDIR", "absolute temporary directory added to sandbox writable roots alongside /tmp; relative values and a directory that does not exist grant nothing (make test ignores exported TMPDIR)", false},
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json; ~ and $VAR expand, an empty value is the variable unset, and one naming something that is not a directory -- or a tilde left unexpanded -- is refused (default ~/.gauntlet)", false},
 	{"GAUNTLET_NO_ANIMATION", "stop the dashboard moving (reduced motion): the reasoning glyph holds one frame and the screen stops redrawing ten times a second; read first, so set to 0 or false it outranks the two below", false},
 	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},

@@ -28,6 +28,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A `TMPDIR` naming a directory that is not there no longer fails every
+  sandboxed review. The platform's temporary directory was read as optional
+  and dropped when absent, but the same value was appended again as an
+  ordinary grant a few lines later, so one missing directory both granted
+  nothing and refused the launch: the second copy decided, and it decided
+  fatally. The grant is now classified per root rather than by a count of
+  leading entries, so both temp roots are skipped when absent while the
+  agent-state and `--sandbox-write` roots after them stay fatal, which is
+  the rule a missing explicit grant still follows.
 - Every Go job caches the module graph. `actions/setup-go` was installed in
   all five Go steps without `cache: true`, so the first `go` command of every
   run downloaded the whole graph from the proxy, where the scripts job already
