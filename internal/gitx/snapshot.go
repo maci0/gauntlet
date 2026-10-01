@@ -179,6 +179,21 @@ func (r *Repo) snapshotTree(ctx context.Context, dropScratch bool) (string, erro
 	}
 	tmpName := tmp.Name()
 	defer os.Remove(tmpName)
+	// One snapshot is taken per review of an in-place run, and the descriptor
+	// outlives the unlink above on any exit that skips its close, so a run over
+	// a tree whose index cannot be opened spends one file descriptor per
+	// review until the process ends. The guard releases whatever the explicit
+	// closes below have not, and is a no-op once one of them has, so their own
+	// results are still what those branches report.
+	closed := false
+	closeTmp := func() error {
+		if closed {
+			return nil
+		}
+		closed = true
+		return tmp.Close()
+	}
+	defer func() { _ = closeTmp() }()
 	// The real index is copied through the descriptor CreateTemp already
 	// holds, and read through O_NOFOLLOW. Reopening tmpName by name after a
 	// close would throw the O_EXCL away and follow a symlink swapped into
@@ -191,13 +206,13 @@ func (r *Repo) snapshotTree(ctx context.Context, dropScratch bool) (string, erro
 		if err != nil {
 			return "", err
 		}
-		if err := tmp.Close(); err != nil {
+		if err := closeTmp(); err != nil {
 			return "", err
 		}
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", err
 	} else {
-		if err := tmp.Close(); err != nil {
+		if err := closeTmp(); err != nil {
 			return "", err
 		}
 		// An empty file is not a valid index; git add will create one.

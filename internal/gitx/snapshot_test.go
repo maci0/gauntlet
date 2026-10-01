@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -250,4 +251,63 @@ func TestLaunchTreeIgnoresScratch(t *testing.T) {
 	if afterEdit == before {
 		t.Fatal("an edit outside scratch left the launch tree unchanged")
 	}
+}
+
+// The private index a snapshot writes is a descriptor this function owns on
+// every exit. A tree whose real index cannot be opened took the branch that
+// returned with the descriptor still held, and one snapshot is taken per
+// review of an in-place run, so that was one leaked descriptor per review for
+// as long as the run lasted. A FIFO planted at .git/index is the refusal that
+// reaches it: safefile.OpenRead answers "not a regular file", which is not the
+// ErrNotExist the empty-index branch is for.
+func TestSnapshotReleasesItsIndexWhenTheRealOneIsRefused(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	gitDir, err := r.gitDir(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(gitDir, "index")); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Mkfifo(filepath.Join(gitDir, "index"), 0o600); err != nil {
+		t.Skipf("cannot plant a FIFO: %v", err)
+	}
+	before, ok := openFDs()
+	if !ok {
+		t.Skip("no /proc or /dev/fd to count descriptors")
+	}
+	// One call would see one descriptor; several make the growth a rate, and
+	// the per-review rate is what the bound is for. worktreeTree is the entry
+	// that reaches snapshotTree with the private index open: Snapshot reads
+	// the real index through git first, so a FIFO there fails before the
+	// private one is ever created.
+	for range 5 {
+		if _, err := r.worktreeTree(ctx); err == nil {
+			t.Fatal("a FIFO in place of the index should fail the worktree tree")
+		}
+	}
+	after, ok := openFDs()
+	if !ok {
+		t.Skip("no /proc or /dev/fd to count descriptors")
+	}
+	if after > before {
+		t.Fatalf("five refused worktree trees leaked %d file descriptors", after-before)
+	}
+}
+
+// openFDs counts this process's open descriptors. Linux exposes them under
+// /proc/self/fd and macOS under /dev/fd; a kernel with neither is skipped
+// rather than failed, since the count is not portable.
+func openFDs() (int, bool) {
+	for _, dir := range []string{"/proc/self/fd", "/dev/fd"} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		// ReadDir holds the directory it is listing, but only the difference
+		// across two calls is read, so that one cancels.
+		return len(entries), true
+	}
+	return 0, false
 }
