@@ -592,17 +592,42 @@ git -C /path/to/repo for-each-ref refs/heads/gauntlet refs/heads/review
 Stop running CLI processes before taking the copy so the archive cannot catch
 a journal line halfway through a write. Back up `runs/`, `pruned/`, and
 `agents.json` to a different failure domain; `index.jsonl`, locks, worktrees, and hot-reload state
-are intentionally excluded because they are derived or ephemeral:
+are intentionally excluded because they are derived or ephemeral. A crash
+checkpoint under `state/checkpoints/` is excluded for a different reason and
+not by accident: it names a directory, a command line, and a lane worktree that
+were on the machine that wrote it, and resuming one restored onto a machine
+that never had them would re-run reviews against a working tree no longer
+there. The journal that records what the killed run had already finished is
+what a restored tree needs; the checkpoint is only meaningful next to the
+machine it was written on.
 
 ```sh
 state=${GAUNTLET_HOME:-"$HOME/.gauntlet"}
-set -- runs
+archive=/path/on/other-storage/gauntlet-state.tgz
+set --
+[ ! -d "$state/runs" ] || set -- "$@" runs
 [ ! -d "$state/pruned" ] || set -- "$@" pruned
 [ ! -f "$state/agents.json" ] || set -- "$@" agents.json
-tar -C "$state" -czf /path/on/other-storage/gauntlet-state.tgz \
-  "$@"
-tar -tzf /path/on/other-storage/gauntlet-state.tgz
+if [ "$#" -gt 0 ]; then
+  tar -C "$state" -czf "$archive" "$@" && tar -tzf "$archive" >/dev/null
+fi
 ```
+
+The guards before `set --` matter, and the `if` with them: a member that does
+not exist makes `tar` exit non-zero without writing an archive, and `tar`
+refuses to create an empty one, so a recipe naming `runs` unconditionally
+fails a backup job on a fresh machine, and an unguarded empty archive fails on
+every machine whose state root holds nothing yet. The first copy of such a
+machine's history would be the one that never happens, and the failure is a
+message in a log nobody reads before the disk it was meant to protect is gone.
+A state tree with nothing in it has nothing to lose, so nothing is written.
+
+The `&&` is the check the archive needs before anyone believes it: a job that
+reports its exit code is enough for `tar`, which exits non-zero on a full disk
+or a truncated write. The listing goes to `/dev/null` because what a restore
+reads is the content, not the table of contents; an archive cut short by a full
+disk otherwise reports success and hands the next operator a file that opens and
+stops.
 
 Protect the destination with credentials and deletion controls independent of
 the machine holding `GAUNTLET_HOME`; another directory on the same disk does
@@ -663,9 +688,18 @@ needs; the commands above prove an archive taken by your job does too.
 `TestRunsJSONCountsARestoredTreeWithoutItsIndex` (`cmd/gauntlet/runs_test.go`)
 is the same tree one level up: the same journals and quarantine with no derived
 index, read through `gauntlet runs --json`, where the counts above are what a
-script checks. Run the commands after changing the archive job or upgrading
-across versions, and periodically with the largest archive, because a backup
-that has only been written has not been proven restorable.
+script checks. The block above itself is executed rather than illustrated:
+`TestBackupRecipeArchivesEveryShapeOfStateTree`
+(`cmd/gauntlet/backuprecipe_test.go`) reads it out of this page and runs it
+against a state tree with nothing in it, one with a listed run, one whose
+history is only in the quarantine, and one with all three members, then reads
+the archive back to check it holds what the tree held. So a change to this
+recipe that would leave a machine unarchived fails the suite instead of the
+first restore.
+
+Run the commands after changing the archive job or upgrading across versions,
+and periodically with the largest archive, because a backup that has only been
+written has not been proven restorable.
 
 ## Updating and hot reload
 

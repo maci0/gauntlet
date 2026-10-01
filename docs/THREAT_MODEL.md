@@ -1348,6 +1348,10 @@ the one helper (`gauntlethome.WriteFileAtomic`,
 `internal/gauntlethome/gauntlethome.go:222-242`), so a partial write is not a
 shape each caller can have differently.
 Journal entry and index writes are flushed with `Sync()` (`internal/journal/index.go:209,432,976`),
+and the directories holding them are recorded rather than merely created
+(`MkdirAllPrivateDurable`, `internal/gauntlethome/gauntlethome.go:143-170`),
+because a synced file inside a directory its parent was never told about is
+still lost to a power cut.
 and Close preserves and joins both file and index errors (`internal/journal/journal.go:421-450`).
 Index mutations take a cross-process `flock` in a sibling file, and the
 acquisition is a bounded poll rather than a blocking `LOCK_EX`

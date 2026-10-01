@@ -153,7 +153,7 @@ func SaveState(dir, runID string, v any) (string, error) {
 		return "", fmt.Errorf("cannot resolve the reload state dir %q: %w", dir, err)
 	}
 	dir = abs
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivateDurable(dir); err != nil {
 		return "", err
 	}
 	// The state dir is gauntlet's own, so every regular file in it is a

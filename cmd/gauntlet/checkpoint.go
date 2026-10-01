@@ -76,7 +76,7 @@ func saveCheckpoint(cp checkpoint) error {
 		return err
 	}
 	dir := filepath.Dir(path)
-	if err := gauntlethome.MkdirAllPrivate(dir); err != nil {
+	if err := gauntlethome.MkdirAllPrivateDurable(dir); err != nil {
 		return err
 	}
 	data, err := json.Marshal(cp)

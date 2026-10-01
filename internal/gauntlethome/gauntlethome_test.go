@@ -609,3 +609,64 @@ func TestMkdirAllPrivateRefusesASymlinkedComponent(t *testing.T) {
 		t.Fatal("MkdirAllPrivate created under a regular file")
 	}
 }
+
+// The durable variant exists for the directories a first run creates: a synced
+// journal inside runs/<shard>/ whose ancestors the filesystem has never been
+// told about is a journal a power cut loses even though every file in it was
+// synced. What can be asserted here is the chain it builds, the refusal it
+// keeps, and that a tree already on disk reports nothing made — the last is
+// what keeps a long-lived state root from paying a sync per existing
+// directory on every append.
+func TestMkdirAllPrivateDurableBuildsTheChainAndKeepsTheRefusal(t *testing.T) {
+	root := t.TempDir()
+	chain := filepath.Join(root, "state", "runs", "2026-08-25")
+	if err := MkdirAllPrivateDurable(chain); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{
+		filepath.Join(root, "state"),
+		filepath.Join(root, "state", "runs"),
+		chain,
+	} {
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Fatalf("%s was not created: %v", p, err)
+		}
+		if fi.Mode().Perm() != 0o700 {
+			t.Errorf("%s mode is %o, want 700", p, fi.Mode().Perm())
+		}
+	}
+	// The leaf is synced, so the directory that would hold a journal cut
+	// short by a power cut is syncable at least.
+	if err := SyncDir(chain); err != nil {
+		t.Fatalf("SyncDir on a directory this process created: %v", err)
+	}
+
+	// The refusal MkdirAllPrivate makes is still made, and nothing outside
+	// the tree is touched by the attempt.
+	outside := filepath.Join(root, "outside")
+	if err := os.Mkdir(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "linked")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := MkdirAllPrivateDurable(filepath.Join(link, "runs")); err == nil {
+		t.Fatal("MkdirAllPrivateDurable created through a symlinked component")
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Fatalf("directory was created outside the state root: %v entries, %v", entries, err)
+	}
+
+	// A tree that already exists is the steady state of every run after the
+	// first: nothing is made, so nothing is synced, and the call is the plain
+	// creation MkdirAllPrivate already was.
+	made, err := mkdirAllPrivate(chain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(made) != 0 {
+		t.Errorf("mkdirAllPrivate reported creating %v on a tree that exists", made)
+	}
+}

@@ -254,7 +254,7 @@ func Open(runID string, now time.Time) (*Journal, error) {
 		path = prev
 	}
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := gauntlethome.MkdirAllPrivateDurable(dir); err != nil {
 		return nil, err
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL|os.O_APPEND, 0o600)

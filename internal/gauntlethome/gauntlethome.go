@@ -101,6 +101,13 @@ func StateDir() string {
 // planted directory also keeps whatever mode it was given. Every existing
 // component is lstat-ed and must be a real directory.
 func MkdirAllPrivate(dir string) error {
+	_, err := mkdirAllPrivate(dir)
+	return err
+}
+
+// mkdirAllPrivate is MkdirAllPrivate, reporting the components it created
+// outermost first, which is what MkdirAllPrivateDurable syncs.
+func mkdirAllPrivate(dir string) ([]string, error) {
 	dir = filepath.Clean(dir)
 	// Top-down, so each component is checked before the one below it is made.
 	var stack []string
@@ -110,6 +117,7 @@ func MkdirAllPrivate(dir string) error {
 			break
 		}
 	}
+	var made []string
 	for _, p := range slices.Backward(stack) {
 
 		fi, err := os.Lstat(p)
@@ -118,17 +126,50 @@ func MkdirAllPrivate(dir string) error {
 			// Lstat never reports a symlink as a directory, so a planted
 			// link lands here as the refusal it is.
 			if !fi.IsDir() {
-				return fmt.Errorf("%s is not a real directory", p)
+				return made, fmt.Errorf("%s is not a real directory", p)
 			}
 			continue
 		case !errors.Is(err, fs.ErrNotExist):
-			return err
+			return made, err
 		}
 		if err := os.Mkdir(p, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
-			return err
+			return made, err
+		}
+		made = append(made, p)
+	}
+	return made, nil
+}
+
+// MkdirAllPrivateDurable is MkdirAllPrivate plus a sync of every directory this
+// call created.
+//
+// A synced file is only half of a durable write: the entries naming it live in
+// the parent directory, and a power cut between the two loses what the caller
+// was told is on disk. MkdirAllPrivate returns having created the components
+// without recording any of them, so a caller that syncs the leaf alone has
+// synced a directory its parent does not yet name: runs/<shard>/ holds a
+// journal whose ancestors a reboot may not know about. The components are
+// synced outermost last, so the chain is recorded from the top down and a cut
+// leaves directories a later run recreates rather than an entry nothing can
+// reach.
+//
+// The sync failures join rather than stopping at the first, so one unwritable
+// component reports instead of the next taking over as the error. A component
+// that already existed is not synced: recording it says nothing about this
+// write, and a state root holding a year of runs would pay a syscall per
+// existing directory on every append.
+func MkdirAllPrivateDurable(dir string) error {
+	made, err := mkdirAllPrivate(dir)
+	if err != nil {
+		return err
+	}
+	var errs []error
+	for _, p := range made {
+		if err := SyncDir(p); err != nil {
+			errs = append(errs, fmt.Errorf("%s: cannot record the directory: %w", p, err))
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 // absolute resolves p against the working directory. If the working directory

@@ -28,6 +28,28 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A state directory a run creates is now recorded by the filesystem, not only
+  made. The journal, the index, the quarantine, the crash checkpoint, and the
+  hot-reload handoff created their directories with `os.MkdirAll` and synced
+  only the leaf, so every synced file above it — a journal under
+  `runs/<shard>/`, `index.jsonl` in a state root installed minutes earlier —
+  was an entry no parent directory had been told about, and a power cut could
+  lose it with every file in it intact. `gauntlethome.MkdirAllPrivateDurable`
+  creates the chain as `MkdirAllPrivate` did, refusing a symlinked component
+  the same way, and syncs each component it created outermost last. A tree
+  that already exists costs no syncs, so a long-lived state root does not pay
+  one per existing directory on every append.
+- The state-tree backup recipe in `docs/RUNS.md` archives a tree that has
+  nothing in it, verifies the archive before reporting success, and is executed
+  by the suite rather than only illustrated. `tar` exits non-zero on a member
+  that is not there and refuses to create an empty archive, so the recipe
+  failed on a fresh machine and on any state root whose history is only in the
+  quarantine: the first copy of that machine's history was the one that never
+  happened. Each member is guarded, the archive is read back before the command
+  reports, and the crash checkpoint is excluded for the reason it should be — it
+  names a worktree and a command line from the machine that wrote it.
+  `TestBackupRecipeArchivesEveryShapeOfStateTree` runs the block as printed
+  against the four shapes a state root takes and reads the archive back.
 - A `review_end` carrying no status is no longer counted as a pass in
   `gauntlet runs`. The index reconstruction folded an empty status into `ok`
   alongside an explicit one, so an ending cut short, or one written before
