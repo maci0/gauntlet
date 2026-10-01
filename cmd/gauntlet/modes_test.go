@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
@@ -363,5 +364,85 @@ func TestConfirmYesYoloAndNonInteractive(t *testing.T) {
 		if !strings.Contains(out.String(), "stdin is not a terminal: proceeding without confirmation.") {
 			t.Fatalf("unexpected output: %s", out.String())
 		}
+	}
+}
+
+// answeredYes is the one answer reader both prompts share, and their defaults
+// are the difference between them: the run plan prints [Y/n] and an empty
+// answer means go, the commit prompt prints [y/N] and an empty answer means do
+// not. It is also what reads a pipe, so a line without a terminator is an
+// answer and EOF is not one. The whole table is pinned here rather than left
+// to the two callers that disagree about the default.
+func TestAnsweredYesReadsOneAnswerAndHonorsItsDefault(t *testing.T) {
+	cases := []struct {
+		name       string
+		in         string
+		defaultYes bool
+		wantYes    bool
+		wantOK     bool
+	}{
+		{"yes accepts either spelling", "y\n", true, true, true},
+		{"yes is case-insensitive", "YES\n", true, true, true},
+		{"no declines", "n\n", true, false, true},
+		{"anything else declines", "maybe\n", true, false, true},
+		{"empty answer takes the yes default", "\n", true, true, true},
+		{"empty answer takes the no default", "\n", false, false, true},
+		{"whitespace is still an empty answer", "  \n", false, false, true},
+		// A pipe closed right after "y" still answered.
+		{"last line without a newline answers", "y", true, true, true},
+		{"EOF with nothing buffered is not an answer", "", true, false, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			yes, ok := answeredYes(bufio.NewReader(strings.NewReader(c.in)), c.defaultYes)
+			if yes != c.wantYes || ok != c.wantOK {
+				t.Fatalf("answeredYes(%q, defaultYes=%t) = (%t, %t), want (%t, %t)",
+					c.in, c.defaultYes, yes, ok, c.wantYes, c.wantOK)
+			}
+		})
+	}
+}
+
+// The commit consent gate is the inverse of the run-plan one. confirm proceeds
+// unattended, because the reviews only read; confirmCommit writes the
+// operator's own history, so a run nobody is watching keeps the refusal. The
+// default is the whole contract here: giving confirmCommit confirm's shape
+// commits somebody's working tree with nobody there to answer.
+func TestConfirmCommitAsksBeforeWritingAnyoneElsesHistory(t *testing.T) {
+	spec := agent.Spec{Tool: "claude"}
+	var out bytes.Buffer
+	// --yes and --yolo are that consent, and --yes is the one named when both
+	// are set, the order assumeFlag uses everywhere else.
+	if !confirmCommit(&out, &options{yes: true}, spec) {
+		t.Fatal("--yes is the consent to commit; it must not be re-asked")
+	}
+	if !strings.Contains(out.String(), "--yes") {
+		t.Fatalf("--yes commit did not say which flag answered it: %s", out.String())
+	}
+	out.Reset()
+	if !confirmCommit(&out, &options{yes: true, yolo: true}, spec) {
+		t.Fatal("--yes with --yolo must still commit")
+	}
+	if strings.Contains(out.String(), "--yolo") {
+		t.Fatalf("--yolo outranks nothing: --yes is the flag to name: %s", out.String())
+	}
+	out.Reset()
+	if !confirmCommit(&out, &options{yolo: true}, spec) {
+		t.Fatal("--yolo is the consent to commit; it must not be re-asked")
+	}
+	if !strings.Contains(out.String(), "--yolo") {
+		t.Fatalf("--yolo commit did not say which flag answered it: %s", out.String())
+	}
+
+	// No terminal, no consent: the tree is left exactly as it was found.
+	out.Reset()
+	if stdinIsTerminal() {
+		t.Skip("stdin is a terminal here, so the unattended refusal cannot be reached")
+	}
+	if confirmCommit(&out, &options{}, spec) {
+		t.Fatalf("an unattended run committed a tree nobody approved:\n%s", out.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("a declined commit prompt still wrote to the run: %q", out.String())
 	}
 }
