@@ -51,6 +51,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
   read of the root goes through, rather than holding its own copy of the rule.
   The two answers had drifted: a value startup accepted could still leave a
   run journaling into a fallback directory with nothing said.
+- `make check-workflow-shell` read a `run:` only where it started a line, so a
+  step written `- run: |` was never linted, and every one of release.yml's
+  four bodies is written that way: the release notes, the tag guard, the smoke
+  test, and the step that publishes the release. shellcheck reported five
+  bodies where the workflows hold nine and said nothing, so the shell that
+  decides whether a tag is published was the shell nobody checked. The
+  extractor now reads the key and the block indicator wherever the step puts
+  them, takes the body's cut from the indent its own first line carries rather
+  than a fixed ten spaces, and refuses a body that came out empty by name,
+  because shellcheck reads a preamble-only script as a clean one. The five
+  bodies it already linted are unchanged. `cmd/gauntlet` holds all three:
+  the two spellings and a two-indent nesting, run through the target's own
+  recipe, and a masked command substitution in one of them failing the lint.
+- The project page test read up to eight parent directories with an index
+  counter `go fix` rewrites to a range, which made `make check` red on every
+  tag set before it got as far as vet.
 - The launcher's scrolled panes now say how far they are scrolled, and which
   end the rows went. Each pane title carried a count of the rows below the
   fold only, so a list scrolled to its end still read "+N more" while the N

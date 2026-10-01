@@ -546,6 +546,18 @@ check-scripts: check-workflow-shell ## ruff, mypy --strict, and yamllint --stric
 # The awk program is one line because a workflow's YAML indentation is the
 # only thing delimiting a body, and a backslash-continued awk function is one
 # more dialect between GNU awk and the BSD one a macOS runner ships.
+#
+# Two things it takes from the YAML rather than the layout, because the two
+# spellings of a step's shell are both common and one of them was missed
+# here. `- run: |` puts the key and the block indicator on one line, and a
+# pattern that only matches a `run:` at the start of a line never sees it: the
+# release notes, the tag guard, the smoke test, and the publish step are all
+# written that way, so the shell that decides whether a release is published
+# was never the shell that got linted. And a body is cut by the indent its own
+# first line carries, read out of the file rather than fixed at ten spaces, so
+# a workflow that indents its steps deeper is still read. A body that came out
+# empty is refused by name, with the file it came from: shellcheck reads a
+# preamble-only script as a clean one, so a missed body is silent otherwise.
 .PHONY: check-workflow-shell
 check-workflow-shell: | test-tmpdir
 check-workflow-shell: ## shellcheck the shell the workflow `run:` steps execute
@@ -557,8 +569,15 @@ check-workflow-shell: ## shellcheck the shell the workflow `run:` steps execute
 	rm -rf "$$dir"; mkdir -p "$$dir"; \
 	for wf in .github/workflows/*.yml; do \
 		stem="$${wf##*/}"; stem="$${stem%.*}"; \
-		awk -v dir="$$dir" -v stem="$$stem" 'function flush() { if (out != "") { print "#!/bin/bash" > out; print "# Generated from a `run:` body in " stem ".yml by `make check-workflow-shell`." > out; print "# The variables it reads (GITHUB_REF_NAME, SHELLCHECK_VERSION) are set by the runner." > out; print "# shellcheck disable=SC2154" > out; print body > out; close(out); out = ""; body = "" } } /^[[:space:]]*run: \|[[:space:]]*$$/ { flush(); n++; out = dir "/" stem "-" n ".sh"; next } out != "" { if ($$0 ~ /^          /) { body = body substr($$0, 11) "\n"; next } if ($$0 ~ /^[[:space:]]*$$/) { body = body "\n"; next } flush() } END { flush() }' "$$wf" || exit 1; \
+		awk -v dir="$$dir" -v stem="$$stem" 'function flush() { if (out != "") { print "#!/bin/bash" > out; print "# Generated from a `run:` body in " stem ".yml by `make check-workflow-shell`." > out; print "# The variables it reads (GITHUB_REF_NAME, SHELLCHECK_VERSION) are set by the runner." > out; print "# shellcheck disable=SC2154" > out; print body > out; close(out); if (body !~ /[^[:space:]]/) print "EMPTY " stem ".yml body " n > "/dev/stderr"; out = ""; body = ""; cut = 0 } } /^[[:space:]]*(-[[:space:]]*)?run:[[:space:]]*\|[[:space:]]*$$/ { flush(); n++; out = dir "/" stem "-" n ".sh"; next } out != "" { if ($$0 ~ /^[[:space:]]*$$/) { if (cut > 0) body = body "\n"; next } match($$0, /^[[:space:]]*/); if (cut == 0) { cut = RLENGTH; body = body substr($$0, cut + 1) "\n"; next } if (RLENGTH >= cut) { body = body substr($$0, cut + 1) "\n"; next } flush() } END { flush() }' "$$wf" 1>"$$dir/.empty" 2>&1 || true; \
+		if [ -s "$$dir/.empty" ]; then \
+			echo "check-workflow-shell: a \`run: |\` body in $$wf was extracted empty, so its shell was never linted:" >&2; \
+			sed 's/^EMPTY /  /' "$$dir/.empty" >&2; \
+			echo "check-workflow-shell: shellcheck reads a preamble-only script as clean, so fix the extractor rather than the body" >&2; \
+			rm -f "$$dir/.empty"; exit 1; \
+		fi; \
 	done; \
+	rm -f "$$dir/.empty"; \
 	set -- "$$dir"/*.sh; \
 	[ -f "$$1" ] || { echo "check-workflow-shell: no \`run:\` body was extracted from .github/workflows; the lint below would cover nothing" >&2; exit 1; }; \
 	echo "check-workflow-shell: linting $$# shell bodies"; \

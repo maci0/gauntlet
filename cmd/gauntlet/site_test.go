@@ -29,7 +29,7 @@ func siteRoot(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("resolving the repository root: %v", err)
 	}
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		if _, err := os.Stat(filepath.Join(dir, "site", "public", "index.html")); err == nil {
 			return filepath.Join(dir, "site", "public")
 		}
