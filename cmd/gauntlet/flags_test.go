@@ -989,8 +989,15 @@ func TestNeedsAgentsSkipsInformationalModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !suggest.needsAgents() {
-		t.Fatal("--list --suggest still launches an agent")
+	if suggest.needsAgents() || suggest.suggestAgent == nil || suggest.suggestAgent.Tool != "gauntlet" {
+		t.Fatal("--list --suggest must default to built-in suggestions without an agent CLI")
+	}
+	external, err := parseFlags([]string{"--list", "--suggest", "--suggest-agent", "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !external.needsAgents() || external.suggestAgent.Tool != "claude" {
+		t.Fatal("an explicit external suggester must require its agent CLI")
 	}
 	local, err := parseFlags([]string{"--list", "--suggest", "--suggest-agent", "gauntlet"})
 	if err != nil {

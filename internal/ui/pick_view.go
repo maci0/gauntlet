@@ -200,7 +200,7 @@ func (p *picker) hint() string {
 			case p.suggestAgent() == p.cfg.FastSuggest && p.cfg.FastSuggest != "":
 				return "gauntlet reads the files for signals instead of asking a model"
 			case p.suggestAgent() == "":
-				return "sample an agent from the installed pool to propose reviews"
+				return "use the CLI default: read the files for signals without a model"
 			default:
 				return fmt.Sprintf("use %s to read the repo and propose reviews", p.suggestAgent())
 			}

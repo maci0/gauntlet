@@ -84,7 +84,7 @@ func tree(t *testing.T, files ...string) string {
 func TestFastSuggestFollowsTheFiles(t *testing.T) {
 	pool := []string{
 		"code-review", "sec-review", "container-review", "db-review",
-		"ux-review", "test-review", "i18n-review", "mobile-review",
+		"ux-review", "test-review", "i18n-review", "mobile-review", "pkg-review",
 	}
 	cases := []struct {
 		name    string
@@ -95,8 +95,8 @@ func TestFastSuggestFollowsTheFiles(t *testing.T) {
 		{
 			name:    "a Go service with tests and a Dockerfile",
 			files:   []string{"main.go", "main_test.go", "Dockerfile"},
-			want:    []string{"code-review", "sec-review", "test-review", "container-review"},
-			notWant: []string{"ux-review", "mobile-review", "db-review"},
+			want:    []string{"code-review", "sec-review", "test-review", "pkg-review"},
+			notWant: []string{"ux-review", "mobile-review", "db-review", "container-review"},
 		},
 		{
 			name:    "a web frontend",
@@ -206,22 +206,214 @@ func TestFastSuggestWeighsHowMuchOfATreeAThingIs(t *testing.T) {
 	}
 }
 
-// What is missing is evidence too: a tree with no tests is the strongest case
-// for the review that would add them, and presence-only rules said the reverse.
+// Missing docs and source-tree tests justify coverage work. Missing tests or
+// CI do not imply input parsing, release contracts, or specifications.
 func TestFastSuggestReadsWhatIsMissing(t *testing.T) {
-	pool := []string{"test-review", "doc-review", "build-review", "code-review"}
-	dir := tree(t, "main.go", "internal/app/app.go")
+	pool := []string{"test-review", "doc-review", "build-review", "code-review", "fuzz-review", "release-review", "specs-review", "dst-review"}
+	dir := tree(t, "main.go", "internal/app/app.go", "Makefile")
 	got := map[string]string{}
 	for _, s := range reviews(t, dir, pool, prompt.Set{}) {
 		got[s.Name] = s.Reason
 	}
-	for _, want := range []string{"test-review", "doc-review", "build-review"} {
+	for _, want := range []string{"doc-review", "build-review", "test-review"} {
 		if got[want] == "" {
 			t.Errorf("%s was not proposed for a tree that has none of it", want)
 		}
 	}
-	if !strings.Contains(got["test-review"], "no tests") {
-		t.Errorf("test-review's evidence was %q, which does not name the absence", got["test-review"])
+	if !strings.Contains(got["doc-review"], "no documentation") {
+		t.Errorf("doc-review's evidence was %q, which does not name the absence", got["doc-review"])
+	}
+	for _, no := range []string{"fuzz-review", "release-review", "specs-review", "dst-review"} {
+		if got[no] != "" {
+			t.Errorf("missing tests/CI proposed %s: %s", no, got[no])
+		}
+	}
+}
+
+func TestFastSuggestSeparatesReviewSubjects(t *testing.T) {
+	pool := []string{"code-review", "perfectionism-review", "agentrules-review", "prompt-review", "skills-review", "container-review", "pkg-review", "infra-review", "cli-review", "ux-review", "api-review", "fuzz-review", "numerics-review", "specs-review"}
+	cases := []struct {
+		name                string
+		files, want, absent []string
+	}{
+		{"instructions", []string{"AGENTS.md"}, []string{"agentrules-review"}, []string{"prompt-review", "skills-review", "code-review", "perfectionism-review"}},
+		{"skill", []string{".claude/skills/example/SKILL.md"}, []string{"skills-review"}, []string{"agentrules-review", "prompt-review", "perfectionism-review"}},
+		{"image", []string{"Dockerfile"}, []string{"pkg-review", "infra-review"}, []string{"container-review"}},
+		{"CLI", []string{"main.py\x00import argparse\np = argparse.ArgumentParser()\n"}, []string{"cli-review", "perfectionism-review"}, []string{"ux-review", "fuzz-review", "numerics-review"}},
+		{"HTTP client", []string{"main.go\x00package main\nimport \"net/http\"\nfunc main(){ http.Get(\"https://example.invalid\") }\n"}, []string{"code-review"}, []string{"api-review"}},
+		{"C utility", []string{"main.c\x00int main(void) { return 0; }\n"}, []string{"code-review", "perfectionism-review"}, []string{"fuzz-review", "numerics-review", "specs-review"}},
+		{"specification", []string{"docs/adr/ADR-001-storage.md"}, []string{"specs-review"}, []string{"code-review", "perfectionism-review"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := map[string]bool{}
+			for _, p := range reviews(t, tree(t, c.files...), pool, prompt.Set{}) {
+				got[p.Name] = true
+			}
+			for _, n := range c.want {
+				if !got[n] {
+					t.Errorf("missing %s", n)
+				}
+			}
+			for _, n := range c.absent {
+				if got[n] {
+					t.Errorf("unrelated %s selected", n)
+				}
+			}
+		})
+	}
+}
+
+func TestFastSuggestIgnoresTrackedDependenciesAndToolchains(t *testing.T) {
+	if !gitx.Available() {
+		t.Skip("git required")
+	}
+	dir := tree(t, "main.go\x00package main\n",
+		"vendor/copy/client.py\x00import fastapi\nimport anthropic\n",
+		"third-party/copy/source.c\x00malloc(10);\n",
+		"MSVC1500/include/windows.h\x00CreateThread();\n",
+		".scratch/example.ts\x00import express from 'express';\n")
+	commitAll(t, dir, "2026-03-01T12:00:00Z")
+	pool := []string{"code-review", "api-review", "llm-review", "resource-review", "concurrency-review"}
+	got := reviews(t, dir, pool, prompt.Set{})
+	if len(got) != 1 || got[0].Name != "code-review" {
+		t.Fatalf("tracked dependencies drove suggestions: %+v", got)
+	}
+}
+
+func TestFastSuggestReadsPackageMetadata(t *testing.T) {
+	dir := tree(t, "src/lib.py\x00def f(): pass\n", "setup.cfg\x00[metadata]\nname=example\n", "pyproject.toml\x00[project]\nname='example'\nversion = '1.0'\n[build-system]\nrequires=['setuptools']\n")
+	got := map[string]bool{}
+	for _, p := range reviews(t, dir, []string{"release-review", "pkg-review", "config-review"}, prompt.Set{}) {
+		got[p.Name] = true
+	}
+	if !got["release-review"] || !got["pkg-review"] || got["config-review"] {
+		t.Fatalf("package metadata was misclassified: %v", got)
+	}
+}
+
+func TestFastSuggestUsesImportDeclarations(t *testing.T) {
+	cases := []struct {
+		name, file, want string
+		absent           []string
+	}{
+		{"Go framework alias", "main.go\x00package main\nimport server \"github.com/gin-gonic/gin\"\nfunc main() {", "api-review", nil},
+		{"Python framework", "main.py\x00from fastapi import FastAPI\napp = FastAPI()\n", "api-review", nil},
+		{"JavaScript framework", "main.js\x00import { Hono } from 'hono';\nconst app = new Hono();\n", "api-review", nil},
+		{"CommonJS provider", "main.js\x00const sdk = require('@anthropic-ai/sdk');\n", "llm-review", nil},
+		{"Rust framework", "main.rs\x00use axum::{Router, routing};\n", "api-review", nil},
+		{"Python cache alias", "main.py\x00import os, redis as cache_client\n", "cache-review", nil},
+		{"Go comment", "main.go\x00package main\n// import \"github.com/gin-gonic/gin\"\n", "code-review", []string{"api-review"}},
+		{"Python docstring", "main.py\x00\"\"\"Example only:\nimport openai\nfrom flask import Flask\n\"\"\"\nprint('hello')\n", "code-review", []string{"api-review", "llm-review"}},
+		{"JavaScript comment", "main.js\x00/* Example only:\nimport openai from 'openai';\n*/\nconst text = 'anthropic';\n", "code-review", []string{"llm-review"}},
+		{"Type-only framework", "main.ts\x00import type { Request } from 'express';\nexport type Input = Request;\n", "code-review", []string{"api-review"}},
+	}
+	pool := []string{"code-review", "api-review", "llm-review", "cache-review"}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := map[string]bool{}
+			for _, p := range reviews(t, tree(t, c.file), pool, prompt.Set{}) {
+				got[p.Name] = true
+			}
+			if !got[c.want] {
+				t.Errorf("missing %s", c.want)
+			}
+			for _, n := range c.absent {
+				if got[n] {
+					t.Errorf("non-import evidence proposed %s", n)
+				}
+			}
+		})
+	}
+}
+
+func TestFastSuggestSeparatesPackageFieldsFromImplementation(t *testing.T) {
+	cases := []struct {
+		name, manifest string
+		want, absent   []string
+	}{
+		{"dependency declarations", `{"description":"fastapi redis openai","dependencies":{"openai":"1","redis":"1","fastify":"1"}}`, []string{"deps-review"}, []string{"api-review", "llm-review", "cache-review", "release-review", "sdk-review"}},
+		{"public exports", `{"version":"1.2.3","exports":{".":"./src/index.js"},"files":["src"],"bin":{"tool":"./src/cli.js"}}`, []string{"sdk-review", "pkg-review", "release-review", "cli-review"}, []string{"api-review", "llm-review"}},
+		{"legacy type entry", `{"typings":"./index.d.ts"}`, []string{"sdk-review"}, []string{"cli-review"}},
+		{"private package", `{"private":true,"types":"./src/index.d.ts","exports":{".":"./src/index.js"}}`, nil, []string{"sdk-review", "release-review"}},
+		{"nested examples", `{"examples":{"version":"1","types":"T","exports":"example","files":["example"]}}`, nil, []string{"sdk-review", "pkg-review", "release-review"}},
+		{"invalid target types", `{"exports":false,"bin":42}`, nil, []string{"sdk-review", "cli-review"}},
+		{"truncated JSON", `{"version":"1","exports":{".":`, nil, []string{"sdk-review", "pkg-review", "release-review"}},
+	}
+	pool := []string{"deps-review", "sdk-review", "pkg-review", "release-review", "cli-review", "api-review", "llm-review", "cache-review"}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := map[string]bool{}
+			for _, p := range reviews(t, tree(t, "package.json\x00"+c.manifest), pool, prompt.Set{}) {
+				got[p.Name] = true
+			}
+			for _, n := range c.want {
+				if !got[n] {
+					t.Errorf("missing %s", n)
+				}
+			}
+			for _, n := range c.absent {
+				if got[n] {
+					t.Errorf("unrelated %s selected", n)
+				}
+			}
+		})
+	}
+}
+
+func TestFastSuggestDistinguishesArtifactVersionsFromLocalVariables(t *testing.T) {
+	for _, c := range []struct {
+		file string
+		want bool
+	}{
+		{"main.go\x00package main\nvar version = \"dev\"\nfunc main() {", true},
+		{"main.go\x00package main\nfunc main() { version := \"1.0\"; _ = version }\n", false},
+		{"main.go\x00package main\n// const version = \"1.0\"\n", false},
+		{"main_test.go\x00package main\nconst version = \"1.0\"\n", false},
+		{"version.py\x00__version__ = '1.2.3'\n", true},
+		{"main.py\x00def f():\n    version = '1.2.3'\n", false},
+		{"version.ts\x00export const VERSION = '1.2.3';\n", true},
+	} {
+		got := reviews(t, tree(t, c.file), []string{"release-review"}, prompt.Set{})
+		if (len(got) > 0) != c.want {
+			t.Errorf("%q: release selection %v, want %v", c.file, got, c.want)
+		}
+	}
+}
+
+func TestFastSuggestRecognizesImportableGoLibraryInterfaces(t *testing.T) {
+	for _, c := range []struct {
+		file string
+		want bool
+	}{
+		{"client.go\x00package client\nfunc NewClient() {}\n", true},
+		{"main.go\x00package main\nfunc Run() {}\n", false},
+		{"internal/client/client.go\x00package client\nfunc NewClient() {}\n", false},
+		{"client_test.go\x00package client\nfunc NewFixture() {}\n", false},
+		{"client.go\x00package client\n// func NewClient() {}\nfunc local() {}\n", false},
+	} {
+		got := reviews(t, tree(t, c.file), []string{"sdk-review"}, prompt.Set{})
+		if (len(got) > 0) != c.want {
+			t.Errorf("%q: SDK selection %v, want %v", c.file, got, c.want)
+		}
+	}
+}
+
+func TestDeclaredMarksStayLiteralBesideStructuredSignals(t *testing.T) {
+	dir := tree(t, "main.go\x00package main\nimport \"github.com/gin-gonic/gin\"\n", "package.json\x00{\"description\":\"rediscover modules\"}\n")
+	promptDir := t.TempDir()
+	for name, body := range map[string]string{
+		"literal-http-review.md":  "Signals: mark:http\n\nInspect literal http.\n",
+		"literal-redis-review.md": "Signals: mark:redis\n\nInspect literal redis.\n",
+	} {
+		if err := os.WriteFile(filepath.Join(promptDir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	set := discover(t, promptDir)
+	got := reviews(t, dir, []string{"literal-http-review", "literal-redis-review"}, set)
+	if len(got) != 1 || got[0].Name != "literal-redis-review" {
+		t.Fatalf("structured subjects replaced literal signals: %+v", got)
 	}
 }
 
@@ -360,10 +552,10 @@ func TestMarkSearchAddsDeclaredWithoutDisturbingTheTable(t *testing.T) {
 	if len(marks) != base {
 		t.Fatal("markSearch wrote into the package-level table")
 	}
-	// A declared value is recorded under its own name: matchDeclared looks it
-	// up by that token, so an entry labelled with anything else never fires.
+	// matchDeclared looks up the literal substring in the mark: namespace,
+	// independently of the built-in capability categories.
 	for i, e := range got[base:] {
-		if e.says != "borrow" && e.says != "comptime" {
+		if e.says != "mark:borrow" && e.says != "mark:comptime" {
 			t.Fatalf("declared entry %d is labelled %q, want the value it was declared with", i, e.says)
 		}
 	}
@@ -374,6 +566,43 @@ func TestMarkSearchAddsDeclaredWithoutDisturbingTheTable(t *testing.T) {
 	if got := markSearch(many); len(got) != base+declaredMarkMax {
 		t.Fatalf("%d declared values became %d entries, want the %d cap",
 			len(many), len(got)-base, declaredMarkMax)
+	}
+}
+
+func TestBuiltinMarksRespectIdentifiers(t *testing.T) {
+	cases := []struct {
+		head, kind string
+		want       bool
+	}{
+		{"plugin.addArg(\"-I\")", "http", false},
+		{"origin.host", "http", false},
+		{"plugin.addArg(); gin.Default()", "http", true},
+		{"http.HandleFunc(\"/\", handler)", "http", true},
+		{"http.ListenAndServeTLS(addr, cert, key, handler)", "http", true},
+		{"rediscover cached details", "cache", false},
+		{"import redis\nredis.Redis()", "cache", true},
+		{"this function recurses", "tui", false},
+		{"#include <ncurses.h>", "tui", true},
+		{"line = file.readline()", "tui", false},
+		{"from rich.console import Console", "tui", false},
+		{"from rich.live import Live", "tui", true},
+		{"readline.createInterface({input: process.stdin})", "tui", true},
+		{"from psycopg2 import connect", "sql", true},
+		{"CreateWindowExW(...)", "gui", true},
+		{"pthread_create(...)", "concurrent", true},
+		{"await Promise.allSettled(tasks)", "concurrent", true},
+		{"redish redis; redis.Redis()", "cache", true},
+		{"红redis", "cache", false},
+	}
+	for _, c := range cases {
+		s := signals{mark: map[string]int{}}
+		markFound(&s, markSearch([]string{"redis"}), asciiFold(nil, []byte(c.head)))
+		if got := s.anyMark(c.kind); got != c.want {
+			t.Errorf("%q: %s = %v, want %v", c.head, c.kind, got, c.want)
+		}
+		if strings.Contains(strings.ToLower(c.head), "redis") && !s.anyMark("mark:redis") {
+			t.Errorf("declared literal redis did not match %q", c.head)
+		}
 	}
 }
 
@@ -525,13 +754,13 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 	dir := t.TempDir()
 	outsideDir := t.TempDir()
 	outside := filepath.Join(outsideDir, "secret.go")
-	if err := os.WriteFile(outside, []byte("package x\nimport \"net/http\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(outside, []byte("package x\nhttp.HandleFunc(\"/\", handler)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "http.go"), []byte("package main\nimport \"net/http\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "http.go"), []byte("package main\nhttp.HandleFunc(\"/\", handler)\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -540,7 +769,7 @@ func TestPeekStaysInsideTheTree(t *testing.T) {
 		t.Fatalf("peek on a readable tree: %v", err)
 	}
 	if in.mark["http"] == 0 {
-		t.Fatal("peek missed an in-tree net/http import")
+		t.Fatal("peek missed an in-tree HTTP handler")
 	}
 
 	if err := os.Symlink(outside, filepath.Join(dir, "evil.go")); err != nil {

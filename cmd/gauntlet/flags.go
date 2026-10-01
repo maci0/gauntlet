@@ -353,9 +353,9 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.Var(&raw.paths, "paths", "scope reviews to these files, directories, or globs, "+
 		"relative to the reviewed directory (comma-separated, repeatable)")
 	alias("s", "suggest", func(n string) {
-		fs.BoolVar(&raw.suggest, n, false, "have an agent pick the reviews, beside any named with --reviews")
+		fs.BoolVar(&raw.suggest, n, false, "pick relevant reviews, beside any named with --reviews")
 	})
-	fs.StringVar(&raw.suggestAgent, "suggest-agent", "",
+	fs.StringVar(&raw.suggestAgent, "suggest-agent", evidence.AgentName,
 		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
 	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout",
 		fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute)))
@@ -970,8 +970,8 @@ func (o *options) usesAgents() bool {
 // needsAgents reports whether this invocation has to find a launchable agent
 // CLI. --list and --show-prompt only read prompts, so they must work on a
 // machine that has not installed one yet; doctor is how you find that out.
-// --list --suggest still launches an agent, unless the file-signal suggester
-// is named, which reads the tree and needs no CLI.
+// --list --suggest uses the built-in file-signal suggester by default and
+// needs a CLI only when an external suggestion agent is explicitly named.
 func (o *options) needsAgents() bool {
 	if o.showPrompt != "" {
 		return false

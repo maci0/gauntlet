@@ -14,8 +14,8 @@ the agent's pick it reproduces (recall) and how much of its own proposal the
 agent shared (precision).
 
 The agent is a reference, not ground truth: it picks differently on different
-days, and some of this suggester's rules (absence of tests, a review that never
-changes anything here) are meant to diverge from it. Read the numbers as
+days, and some of this suggester's rules (missing documentation, a review that
+never changes anything here) are meant to diverge from it. Read the numbers as
 movement between runs of this script, not as a grade.
 
     uv run scripts/suggest-calibrate.py            # build and score

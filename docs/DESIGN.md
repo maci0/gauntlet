@@ -747,22 +747,47 @@ continues to contribute one pass per pick.
 
 ## Choosing reviews without an agent
 
-`--suggest-agent gauntlet` answers the triage question from evidence on disk,
-in milliseconds and for no tokens. What it collects in one pass:
+`--suggest` defaults to `--suggest-agent gauntlet`, answering the triage question from evidence on disk,
+in milliseconds and for no tokens. An explicit `--suggest-agent AGENT` uses a coding agent instead. The launcher leaves this default in effect unless a suggester is chosen. What the built-in step collects in one pass:
 
 - **What the tree is made of**, by count rather than presence. A language earns
   its reviews at three files or a twentieth of the tree, so one stray
   stylesheet in a Go repository is not a frontend.
-- **What the files say inside.** The head of each source file (4 KB, up to
-  2000 files) is searched for a fixed table of markers, one per capability it
-  hints at (`net/http` and `fastapi` for http, `sqlalchemy` and `database/sql`
-  for sql, `prometheus` and `otel` for telemetry, and further ones for clock,
-  concurrency, cache, auth, unsafe, exec, model, cloud, retry, cli, tui,
-  translate, recovery, and numeric). What a codebase imports is a fact about
-  it; a directory name is a guess.
-- **What is missing.** No tests, no documentation, no CI: absence is the
-  strongest argument for the review that would fix it, and presence-only rules
-  said the opposite.
+- **What the files say inside.** Source and selected package/build manifest
+  heads share a budget of 2000 files × 4 KB. Built-in markers respect identifier
+  boundaries, so `plugin.` is not Gin and "rediscover" is not Redis; known API
+  families such as `CreateWindowA` and `psycopg2` keep their prefix matches.
+  Review-declared `mark:` values remain literal substrings. Markers hint at capabilities:
+  HTTP handlers are separate from clients, CLI argument parsing from visual
+  interfaces, and runtime configuration from package metadata. More source
+  languages, native windows, browser DOM code, parsing, file mutation, resource
+  acquisition, and package/version declarations are recognized. Markers can also
+  occur in comments or examples; they are evidence, not semantic proof.
+  Reading a file line or printing with Rich Console alone does not establish
+  an interactive terminal UI; dedicated editors and Rich Live/Layout do.
+  Go import declarations use the standard parser on bounded heads; Python,
+  JavaScript/TypeScript, Rust, and Zig use bounded declaration recognition which
+  skips standalone block comments and docstrings. An import remains a hint of
+  usage, not proof of a reachable call. Complete JSON package heads are decoded
+  for dependency maps, executable entries, versions, files, and public exports;
+  private exports do not establish a public SDK. TOML/INI metadata is recognized
+  by section and key. Description strings and manifest dependencies alone never
+  establish an implemented server, model client, cache, or UI. A truncated JSON
+  object remains unknown. Go root packages with exported functions or types are
+  library evidence, while main packages and tests are excluded. Explicit module
+  version declarations contribute release evidence; local variables do not.
+  Literal declared marks use a separate namespace, so
+  derived capabilities cannot satisfy them.
+- **Which subject exists.** Tests, skills, review prompts, agent instructions,
+  decision documents, libraries, and packaging each have independent predicates.
+  C/C++ alone does not establish fuzzing or numerics; Dockerfiles establish image
+  packaging and build/deployment wiring, while Kubernetes needs its own files.
+  Multi-file source justifies architecture and implementation design. Source
+  justifies the general code-quality reviews; prose justifies slop-review.
+- **What is missing.** Missing documentation in a source tree can justify
+  doc-review. A source tree without tests still justifies test-coverage work, preserving the
+  published behavior. Missing tests or CI do not establish parsing, specification,
+  or release-contract subjects.
 - **What is alive.** A 90-day `git log --name-only` window weights a
   language by whether anyone is still editing it. The window is an absolute
   cutoff measured back from the run's clock (`evidence.Reviews`' `now`), not
@@ -781,8 +806,10 @@ in milliseconds and for no tokens. What it collects in one pass:
 Each rule contributes weight rather than a yes, the reviews are ranked by the
 total, and what does not clear the floor is not proposed. The tree is listed by
 `git ls-files --cached --others --exclude-standard` when there is a repository,
-so tracked files and untracked files the project's ignore rules allow both count
-as source; a plain walk with a skip list is the fallback.
+so tracked and allowed untracked files both contribute evidence. Dependency,
+build, scratch, and versioned MSVC installation directories are excluded in both
+the git listing and the fallback walk. File-content opens remain rooted at the
+reviewed directory and refuse non-regular files.
 
 `scripts/suggest-calibrate.py` scores the result against what agents picked in
 past runs. It is a reference, not ground truth: several of these rules are
