@@ -66,6 +66,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
   failure is now reported separately from a held lock, because the two need
   different things of the operator, and the listing says `unknown` rather than
   `ready` for a run in that state.
+- The human form of `gauntlet runs` printed the state root and the journal
+  directory resolved, where its own `--json` form already shortened both to
+  `~`. A listing is a transcript people paste into an issue or a chat, and a
+  path under `/Users/<account>` names the operator in every copy of it, so the
+  two lines naming the state tree now read `~` the way the JSON rows, the
+  replayed events, and the resume output already do. The index rows on disk
+  keep their resolved paths: the listing and the history matcher resolve
+  against them. A `GAUNTLET_HOME` outside the account's home directory has no
+  account in it and still prints whole.
 - A `TMPDIR` naming a directory that is not there no longer fails every
   sandboxed review. The platform's temporary directory was read as optional
   and dropped when absent, but the same value was appended again as an

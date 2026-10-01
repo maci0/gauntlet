@@ -797,8 +797,41 @@ func TestRunsNamesRecoverableRunsWithAnEmptyListing(t *testing.T) {
 	if !strings.Contains(buf.String(), ids[0]) || !strings.Contains(buf.String(), "gauntlet runs --restore") {
 		t.Fatalf("the recoverable run %s is not named on an empty listing:\n%s", ids[0], buf.String())
 	}
-	if !strings.Contains(diagnostic.String(), filepath.Join(home, "runs")) {
+	// A GAUNTLET_HOME outside the account's home directory has no account in
+	// it, so the path comes out whole: the shortening only takes out a home
+	// prefix, and pretending otherwise would lose a path the reader needs.
+	if want := filepath.Join(home, "runs"); !strings.Contains(diagnostic.String(), want) {
 		t.Fatalf("the journal path is missing from stderr:\n%s", diagnostic.String())
+	}
+}
+
+// A listing is a transcript people paste into an issue or a chat, and the
+// account name is in a resolved path under the operator's home. The JSON form
+// already shortens every path it prints; the human form printed two of the
+// same ones whole, so a pasted listing named the operator where the same
+// listing as JSON did not.
+func TestRunsTableKeepsTheAccountNameOut(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "alice")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("GAUNTLET_HOME", filepath.Join(home, ".gauntlet"))
+
+	var buf bytes.Buffer
+	_, diagnostic := captureStderrFor(t, func() int {
+		return cmdRuns(&buf, report.Palette{}, 10, "", false)
+	})
+	for name, out := range map[string]string{
+		"stdout": buf.String(),
+		"stderr": diagnostic.String(),
+	} {
+		if strings.Contains(out, home) {
+			t.Errorf("%s names the account:\n%s", name, out)
+		}
+	}
+	if !strings.Contains(buf.String(), "No runs recorded yet under ~") {
+		t.Errorf("the empty listing lost its state root, or is not shortened:\n%s", buf.String())
 	}
 }
 

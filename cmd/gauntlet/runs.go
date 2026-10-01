@@ -60,7 +60,7 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 		}
 	}()
 	if len(entries) == 0 {
-		w.Printf("No runs recorded yet under %s\n", journal.Home())
+		w.Printf("No runs recorded yet under %s\n", normalize.RedactHome(journal.Home()))
 	} else {
 		cols := newRunsColumns(entries)
 		w.Println(cols.header())
@@ -77,7 +77,13 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 	// table, so it goes to stderr. The legend above stays on stdout: it heads
 	// the table and a consumer skipping two lines knows where the rows start.
 	// Without this the last line of `gauntlet runs | tail -1` was a path.
-	fmt.Fprintf(os.Stderr, "\nJournals: %s\n", filepath.Join(journal.Home(), "runs"))
+	//
+	// Shortened, like every other path this command prints and like the two
+	// the JSON form carries (see writeRunsJSON): a listing is a transcript
+	// people paste into an issue or a chat, and a resolved path under
+	// /Users/<account> names the operator in every copy of it. "~" is the
+	// spelling the operator reads, and the one a shell expands for them.
+	fmt.Fprintf(os.Stderr, "\nJournals: %s\n", normalize.RedactHome(filepath.Join(journal.Home(), "runs")))
 	// A prune is unattended, so the runs it moved out of the listing are
 	// named where the user reads the listing: a dropped run is recoverable
 	// only by someone who knows it is still on disk. The bound keeps a
@@ -97,7 +103,7 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 		more := ""
 		if len(shown) > listedQuarantined {
 			more = fmt.Sprintf(" and %d more under %s",
-				len(shown)-listedQuarantined, filepath.Join(journal.Home(), "pruned"))
+				len(shown)-listedQuarantined, normalize.RedactHome(filepath.Join(journal.Home(), "pruned")))
 			shown = shown[:listedQuarantined]
 		}
 		w.Printf("%s\n", pal.Dim(fmt.Sprintf(
