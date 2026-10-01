@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/evidence"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
 )
@@ -296,5 +297,46 @@ func TestBuiltinSuggestWeightsAddToManualRepeats(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "(x3)") || !strings.Contains(out.String(), "gauntlet suggests 1 of 1") {
 		t.Fatalf("the preview hides built-in weights:\n%s", out.String())
+	}
+}
+
+// The built-in file-signal suggester is not an agent: it launches nothing, so
+// a tree it finds no signal in is not a failed agent, and saying "agent
+// failed" names a launch that never happened. It is an empty schedule, which
+// is a usage error like every other one, and the message has to say what to do
+// about it.
+func TestBuiltinSuggestWithNoSignalIsAUsageErrorNotAFailedAgent(t *testing.T) {
+	d, opts := suggestFixture(t, "exit 99")
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	// A tree with no source at all: nothing for the signal reader to match.
+	d.dir = t.TempDir()
+	opts.suggestAgent = &agent.Spec{Tool: evidence.AgentName}
+	var out bytes.Buffer
+
+	err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, report.Palette{}, time.Now)
+	if err == nil {
+		t.Fatal("the file-signal suggester picking nothing must be an error, not an empty schedule")
+	}
+	if errors.Is(err, errAgentFailed) {
+		t.Fatalf("a suggester that launched no agent must not be reported as a failed one: %v", err)
+	}
+	for _, want := range []string{"--reviews", "--suggest-agent"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the message does not say what to do (%s): %v", want, err)
+		}
+	}
+}
+
+// The agent step keeps its own exit code: a real CLI that failed to produce
+// suggestions is a run failure (exit 1), not a usage error.
+func TestAgentSuggestFailureIsStillAFailedAgent(t *testing.T) {
+	d, opts := suggestFixture(t, "exit 1")
+	var out bytes.Buffer
+
+	err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, report.Palette{}, time.Now)
+	if !errors.Is(err, errAgentFailed) {
+		t.Fatalf("an agent that fails to suggest must stay a failed agent, got %v", err)
 	}
 }

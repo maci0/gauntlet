@@ -1208,6 +1208,9 @@ func TestParseFlagsRejectsPathsThatAreNotDirectories(t *testing.T) {
 		{"dirs is a file", "not a directory", []string{"--dirs", file}},
 		{"prompt-dir missing", "no such directory", []string{"--prompt-dir", filepath.Join(base, "absent")}},
 		{"prompt-dir is a file", "not a directory", []string{"--prompt-dir", file}},
+		{"sandbox-write missing", "no such file", []string{"--sandbox-write", filepath.Join(base, "absent")}},
+		{"sandbox-write is a file", "not a directory", []string{"--sandbox-write", file}},
+		{"sandbox-write unset var", "unset or empty", []string{"--sandbox-write", "$GAUNTLET_TEST_ABSENT_VAR/x"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := parseFlags(append(tc.args, "--list"))
@@ -1426,4 +1429,30 @@ func FuzzPeelArgs(f *testing.F) {
 			t.Fatalf("peelShowRun(%q) = %q, %q: the words do not account for each other", argv, id, rest)
 		}
 	})
+}
+
+// A --sandbox-write grant is expanded while parsing, so the runner, the
+// per-worktree resolution, and the help screen all read the same string, and
+// a relative grant stays relative: it resolves against each reviewed worktree,
+// which the parser cannot see.
+func TestParseFlagsExpandsSandboxWriteGrants(t *testing.T) {
+	base := t.TempDir()
+	grant := filepath.Join(base, "grant")
+	if err := os.Mkdir(grant, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_TEST_GRANT_ROOT", base)
+
+	o, err := parseFlags([]string{
+		"--list",
+		"--sandbox-write", "$GAUNTLET_TEST_GRANT_ROOT/grant",
+		"--sandbox-write", "./relative",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{grant, "./relative"}
+	if got := strings.Join(o.sandboxWrite, ","); got != strings.Join(want, ",") {
+		t.Fatalf("grants %q, want %q", got, strings.Join(want, ","))
+	}
 }

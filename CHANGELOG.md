@@ -28,6 +28,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The suggest step no longer blames an agent that never ran. The default
+  `--suggest-agent gauntlet` is a file-signal reader, not a CLI: a tree it
+  finds no signal in was wrapped as `agent failed`, which claims a launch and
+  a token spend that never happened, and exited 1 for what is a tree with
+  nothing scheduled. It is a usage error now, as an empty schedule is
+  everywhere else, and the message says to name reviews with `--reviews` or
+  ask a model with `--suggest-agent`. A real agent that fails to suggest is
+  still `agent failed` and still exits 1.
+- `--sandbox-write` refuses a grant that is not an existing directory while
+  parsing, as `--dir`, `--dirs`, `--prompt-dir`, and `--log` already did. A
+  mistyped grant was otherwise discovered once per review, after the lock was
+  taken and the agents launched, and reported as a failed review at exit 1
+  rather than as the usage error at exit 2 the help screen promises. The grant
+  is expanded at parse time too, so `~` and `$VAR` resolve the same way every
+  path flag does; a relative grant still resolves against each reviewed
+  worktree, which only the sandbox builder can see.
 - `gauntlet pick` reports a repository it could not read instead of showing
   it as a clean tree. The launcher asked git for the branch, the merge
   targets, and whether tracked files were dirty, and any failure answered all

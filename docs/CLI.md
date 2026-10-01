@@ -136,7 +136,7 @@ picked up automatically and overrides a bundled prompt of the same name.
 | `--pr-base BRANCH` | current branch name | Remote base for `--stacked-prs`. Gauntlet fetches `REMOTE/BRANCH` and starts the isolated worktree at that commit; the local branch and checkout do not move or need to match it. Requires `--stacked-prs`. |
 | `--push-remote REMOTE` | `origin` | Remote receiving stack branches and identifying the GitHub PR repository. Gauntlet verifies a dry-run new-branch push before launching an agent. Requires `--stacked-prs`. |
 | `--no-sandbox` | off | Disable the default kernel filesystem write sandbox for trusted runs. Independent of `--yolo`. |
-| `--sandbox-write DIR` | none | Allow writes beneath an additional existing directory; repeatable. Relative paths resolve against each reviewed worktree; `~` and environment variables expand. |
+| `--sandbox-write DIR` | none | Allow writes beneath an additional existing directory; repeatable. Relative paths resolve against each reviewed worktree; `~` and environment variables expand. A grant that is not an existing directory is a usage error, reported while parsing, as for the other path flags. |
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
 | `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop. |

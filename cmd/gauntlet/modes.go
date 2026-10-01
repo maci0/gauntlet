@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/agent"
+	"github.com/maci0/gauntlet/internal/evidence"
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -262,6 +263,16 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		if r.err != nil {
 			if errors.Is(r.err, context.Canceled) {
 				return r.err
+			}
+			// "agent failed" is a claim about an agent, and the built-in
+			// file-signal suggester is not one: it launched nothing and spent
+			// nothing, so naming it as the failed party reports a launch that
+			// never happened, and exit 1 for what is a tree the signal read
+			// found nothing in. Only an agent step wraps errAgentFailed, which
+			// main maps to exitFail; the file-signal step falls through to the
+			// usage error every other empty schedule gets.
+			if opts.suggestAgent != nil && opts.suggestAgent.Tool == evidence.AgentName {
+				return fmt.Errorf("%s: %w", d.dir, r.err)
 			}
 			return fmt.Errorf("%w: %s: %w", errAgentFailed, d.dir, r.err)
 		}

@@ -887,6 +887,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		// Nothing is executed in list mode, so a commit step would be a lie.
 		o.commit, o.push = false, false
 	}
+	if err := resolveSandboxWrites(o); err != nil {
+		return nil, err
+	}
 	if isFlagSet(fs, "prompt-dir") {
 		if err := trimFlag(fs, &o.promptDir, "prompt-dir"); err != nil {
 			return nil, err
@@ -1097,6 +1100,43 @@ func trimFlag(fs *flag.FlagSet, dst *string, names ...string) error {
 		return nil
 	}
 	*dst = v
+	return nil
+}
+
+// resolveSandboxWrites validates a --sandbox-write grant and expands it.
+//
+// The runner resolves a relative grant against each reviewed worktree, so only
+// a path that is already absolute once ~ and $VARIABLES expand can be checked
+// here; a relative one is left for the sandbox builder, which knows the
+// worktree. But the help screen and docs/CLI.md both promise the directory
+// exists, and a grant that does not is otherwise discovered once per review,
+// after the lock is taken and the agents have been launched, reported as a
+// failed review (exit 1) rather than as the usage error every other path flag
+// gets. A mistyped grant is a usage error, and the parse is the only place
+// that can still be cheap about it.
+//
+// Expanding here also means the runner, the per-worktree resolution, and the
+// help screen all read the same string.
+func resolveSandboxWrites(o *options) error {
+	for i, raw := range o.sandboxWrite {
+		p, err := gauntlethome.ExpandPath(raw)
+		if err != nil {
+			return fmt.Errorf("--sandbox-write %s: %w", raw, err)
+		}
+		if !filepath.IsAbs(p) {
+			// Resolved against each worktree at launch; the sandbox builder
+			// is the one that can see them.
+			continue
+		}
+		info, err := os.Stat(p)
+		if err != nil {
+			return fmt.Errorf("--sandbox-write %s: %w", p, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("--sandbox-write: not a directory: %s", p)
+		}
+		o.sandboxWrite[i] = p
+	}
 	return nil
 }
 

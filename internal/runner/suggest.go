@@ -66,7 +66,9 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 				"stay at one pass: %v", readErr)
 		}
 		if len(picked) == 0 {
-			return nil, spec, errors.New("no review matched anything in this tree")
+			return nil, spec, errors.New("no review matched anything in this tree " +
+				"(the file-signal suggester found no signal to go on; name reviews with --reviews, " +
+				"or use --suggest-agent to ask a model instead)")
 		}
 		return picked, spec, nil
 	}
