@@ -36,3 +36,32 @@ func TestLandlockSetupFailureDoesNotExecAgent(t *testing.T) {
 		t.Fatalf("agent ran: %v", err)
 	}
 }
+
+// The probe doctor prints and the launch every agent goes through must be one
+// answer: a host the probe calls confined, and a launch that then refuses to
+// build its sandbox roots, leaves an operator told the run is safe when the
+// first agent never starts.
+func TestSandboxSupportAgreesWithTheLaunch(t *testing.T) {
+	detail, ok, err := SandboxSupport()
+	if !ok {
+		// Landlock is a kernel feature and this host may not have it. What
+		// must hold is that the reason names the requirement, since it is the
+		// only place an operator meets one before a run does.
+		if err == nil {
+			t.Fatal("SandboxSupport reported no mechanism and no reason")
+		}
+		t.Logf("this host has no Landlock: %v", err)
+		return
+	}
+	if detail == "" {
+		t.Fatal("SandboxSupport reported the mechanism with no detail")
+	}
+	cmd := exec.Command("/bin/sh", "-c", "true")
+	child, err := confinedCommand(cmd, []string{os.TempDir()}, cmd.Path)
+	if err != nil {
+		t.Fatalf("SandboxSupport reported %q but a launch failed: %v", detail, err)
+	}
+	if len(child.Args) < 2 || child.Args[1] != sandboxExecArg {
+		t.Fatalf("launch did not go through the sandbox re-exec: %v", child.Args)
+	}
+}

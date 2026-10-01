@@ -10,7 +10,7 @@ installed.
 |---|---|
 | `gauntlet [flags]` | review the current directory, looping until stopped |
 | `gauntlet pick` | compose a run on screen, then run it |
-| `gauntlet doctor` | report which agent CLIs and helper tools are installed, whether the state root is usable, what the run history holds: journals on disk, whether the index matches them, journals cut mid-line, and pruned runs still recoverable, and which local `gauntlet/` branches hold a review whose merge did not land |
+| `gauntlet doctor` | report which agent CLIs and helper tools are installed, the git version against the floor every review needs, whether this host can confine an agent's filesystem writes, whether the state root is usable, what the run history holds: journals on disk, whether the index matches them, journals cut mid-line, and pruned runs still recoverable, and which local `gauntlet/` branches hold a review whose merge did not land |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
 | `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |
@@ -294,6 +294,13 @@ Agents run under Landlock on Linux (kernel 5.13+ with Landlock enabled) and
 Seatbelt on macOS (`/usr/bin/sandbox-exec`), including their shell commands and
 MCP children. A sandbox failure stops the launch; `--no-sandbox` explicitly
 disables it. It does not restrict reads or network access.
+
+`gauntlet doctor` reports whether this host can confine a run, and which
+mechanism answered: the Landlock ABI on Linux, the Seatbelt launcher on macOS.
+The check is a capability probe rather than a platform name, so a kernel built
+without `CONFIG_SECURITY_LANDLOCK` and a macOS without its launcher are both
+reported before a run starts rather than by an agent that never launched. A
+host that cannot confine still runs, with `--no-sandbox`.
 
 Writable roots are the active worktree and shared `.git` metadata, the
 platform's temporary directory (an absolute `TMPDIR`, `/tmp` otherwise; it is

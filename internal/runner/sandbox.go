@@ -46,6 +46,18 @@ func init() {
 	os.Exit(125)
 }
 
+// SandboxSupport reports whether this host can confine an agent's filesystem
+// writes: the mechanism it uses, or an empty ok with the reason it cannot. It
+// is a capability probe rather than a GOOS test, because the answer that
+// decides whether a run starts at all is the host's, not its name: the
+// launcher is probed for the file it needs and the kernel is asked whether it
+// knows the syscall. Doctor prints it, since a host without confinement fails
+// every default run at launch with a message no agent output explains.
+//
+// The probe changes nothing: the ABI query creates no ruleset, and stat reads
+// no file's contents.
+func SandboxSupport() (string, bool, error) { return sandboxSupport() }
+
 // sandboxCommand preserves the agent's argv[0] and environment. It does not
 // fall back to an unrestricted launch when the kernel refuses confinement.
 func sandboxCommand(cmd *exec.Cmd, o procOpts) (*exec.Cmd, error) {

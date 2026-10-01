@@ -116,6 +116,12 @@ gauntlet doctor
 gauntlet update
 ```
 
+`doctor` probes the machine rather than the platform name: it reports the git
+version against the floor every review needs, and whether this host can confine
+an agent's filesystem writes (Landlock on Linux, Seatbelt on macOS). A kernel
+without Landlock, or a macOS without its launcher, is named there instead of by
+an agent that never launched; such a host runs with `--no-sandbox`.
+
 Upgrading from the Python version: the flags are the same, `--target-dirs` is
 still accepted, and `pip`/`uv` are no longer involved. Uninstall the old one
 with `uv tool uninstall gauntlet-review` (or `pipx uninstall gauntlet-review`).

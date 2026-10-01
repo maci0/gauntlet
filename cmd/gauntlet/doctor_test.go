@@ -21,6 +21,7 @@ import (
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // Doctor assembles its review catalog from agent.ReviewTools and
@@ -485,6 +486,35 @@ func TestDoctorReportsTheGitVersion(t *testing.T) {
 		t.Fatalf("git %q carries no comparable version", line)
 	} else if below {
 		t.Fatalf("the git on this machine (%s) is older than the floor doctor reports", line)
+	}
+}
+
+// Whether this host can confine an agent's filesystem writes decides whether
+// a default run starts at all: a Linux kernel without Landlock, or a macOS
+// without its Seatbelt launcher, fails every launch with a message no agent
+// output explains. Doctor probes the host and says so, rather than leaving the
+// answer to be discovered by an agent that never started.
+func TestDoctorReportsTheFilesystemSandbox(t *testing.T) {
+	var buf bytes.Buffer
+	doctor(&buf, report.Palette{}, nil, 200)
+	out := buf.String()
+	if !strings.Contains(out, "filesystem sandbox") {
+		t.Fatalf("doctor did not report the filesystem sandbox:\n%s", out)
+	}
+	detail, ok, err := runner.SandboxSupport()
+	if ok {
+		if !strings.Contains(out, detail) {
+			t.Fatalf("doctor reported no detail for the sandbox this host has (%s):\n%s", detail, out)
+		}
+		return
+	}
+	// The host cannot confine, so the line has to name the escape hatch: a
+	// run that cannot start is answered by --no-sandbox, not by a guess.
+	if err == nil {
+		t.Fatal("SandboxSupport reported neither a mechanism nor a reason")
+	}
+	if !strings.Contains(out, "--no-sandbox") {
+		t.Fatalf("doctor did not name --no-sandbox on a host without confinement:\n%s", out)
 	}
 }
 

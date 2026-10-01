@@ -19,6 +19,7 @@ import (
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/report"
+	"github.com/maci0/gauntlet/internal/runner"
 )
 
 // doctor reports which agent CLIs and helper tools are installed. It returns
@@ -159,6 +160,20 @@ func doctor(out io.Writer, pal report.Palette, overrides map[string]string, widt
 					pal.Yellow("no version in "+strconv.Quote(line)))
 			}
 		}
+	}
+
+	// Whether this host can confine an agent's filesystem writes decides
+	// whether a default run starts at all, and the answer is the host's
+	// rather than the binary's: Linux kernels before 5.13, kernels built
+	// without CONFIG_SECURITY_LANDLOCK, and a macOS without its Seatbelt
+	// launcher all fail every launch with a message no agent output
+	// explains. Probed, not inferred from the platform name, and reported
+	// beside the git version because both are floors this run has to clear.
+	if detail, ok, err := runner.SandboxSupport(); err != nil {
+		w.Printf("  %s %-24s %s\n", pal.Red("✗"), "filesystem sandbox",
+			pal.Red("unavailable ("+err.Error()+"); runs need --no-sandbox here"))
+	} else if ok {
+		w.Printf("  %s %-24s %s\n", pal.Green("✓"), "filesystem sandbox", pal.Dim(detail))
 	}
 
 	w.Println()

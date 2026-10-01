@@ -105,3 +105,16 @@ func enforceSandbox(roots []string) error {
 	}
 	return nil
 }
+
+// sandboxSupport probes the kernel for Landlock and reports the ABI it
+// answered with. A kernel too old for the syscall, or one built without
+// CONFIG_SECURITY_LANDLOCK, answers ENOSYS or EOPNOTSUPP here, which is the
+// condition that fails every default run at launch, so it is reported rather
+// than discovered by an agent that never starts.
+func sandboxSupport() (string, bool, error) {
+	abi, err := landlockABI()
+	if err != nil {
+		return "", false, err
+	}
+	return fmt.Sprintf("Landlock ABI %d", abi), true, nil
+}

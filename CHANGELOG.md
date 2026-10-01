@@ -26,6 +26,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- `gauntlet doctor` reports whether this host can confine an agent's filesystem
+  writes, and which mechanism answered: the Landlock ABI on Linux, the
+  `/usr/bin/sandbox-exec` launcher on macOS. The answer is a capability probe
+  rather than a platform name, so a kernel built without
+  `CONFIG_SECURITY_LANDLOCK`, one older than 5.13, and a macOS without its
+  Seatbelt launcher are each reported as what they are instead of being
+  discovered by an agent that never launched. Without it those hosts failed
+  every default run with `landlock unavailable`, which names neither the
+  kernel requirement nor the `--no-sandbox` that is the way past it.
+
 ### Fixed
 
 - A `TMPDIR` naming a directory that is not there no longer fails every
