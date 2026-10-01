@@ -35,6 +35,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
   own temporary directory (`os.TempDir`, an absolute `TMPDIR` or `/tmp`), an
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
   the host does not have is skipped instead of refusing the launch.
+- The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
 
 ## 1.34.1
 

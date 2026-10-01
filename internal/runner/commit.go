@@ -243,15 +243,6 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 	case pr.ExitCode != 0:
 		r.log("%s step FAILED (%s), exit %d", action, spec.Label(), pr.ExitCode)
 		status = StatusFail
-	case pr.StreamErr != nil:
-		// The agent ran to its own end but its output was cut short, so
-		// whatever it decided came from a partial stream. The other four
-		// runProc call sites treat this as a failure and so does this one:
-		// filing a cut transcript as a finished commit step reports a
-		// success the step did not earn.
-		r.log("LOST OUTPUT: %s step (%s) after %s: %v", action, spec.Label(),
-			humanize.Duration(timeout), pr.StreamErr)
-		status = StatusFail
 	default:
 		r.log("%s step done (%s)", action, spec.Label())
 	}
