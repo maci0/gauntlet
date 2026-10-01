@@ -609,9 +609,31 @@ set --
 [ ! -d "$state/pruned" ] || set -- "$@" pruned
 [ ! -f "$state/agents.json" ] || set -- "$@" agents.json
 if [ "$#" -gt 0 ]; then
-  tar -C "$state" -czf "$archive" "$@" && tar -tzf "$archive" >/dev/null
+  partial=$archive.$$.partial
+  trap 'rm -f "$partial"' EXIT HUP INT TERM
+  if tar -C "$state" -czf "$partial" "$@" && tar -tzf "$partial" >/dev/null; then
+    mv -f "$partial" "$archive"
+  else
+    echo "gauntlet: archive not written, $archive left as it was" >&2
+    exit 1
+  fi
 fi
 ```
+
+`tar -czf "$archive"` writes the archive it is about to replace, so a run cut
+by a full disk, a crash, or a `kill` leaves a truncated `.tgz` where the last
+good copy was and the copy that read back five minutes ago is gone. `tar` has
+no output to verify until the output exists, so the `tar -tzf` below cannot
+save the copy it is checking. Building into `$archive.$$.partial` and moving
+it into place only after it reads back means the destination holds either the
+previous archive or the new one, never half of one. The `mv` is a rename
+within one directory, so the archive appears whole; keep the temporary beside
+the archive rather than in `/tmp`, because a rename across filesystems is a
+copy and reintroduces the window this closes. The `$$` is the job's own
+process id: two backup jobs that overlap on one schedule — a timer that fired
+late and the next one starting on time — would otherwise write through the
+same temporary, and the first to finish would rename away a file the second
+was still appending to.
 
 The guards before `set --` matter, and the `if` with them: a member that does
 not exist makes `tar` exit non-zero without writing an archive, and `tar`
@@ -627,7 +649,11 @@ reports its exit code is enough for `tar`, which exits non-zero on a full disk
 or a truncated write. The listing goes to `/dev/null` because what a restore
 reads is the content, not the table of contents; an archive cut short by a full
 disk otherwise reports success and hands the next operator a file that opens and
-stops.
+stops. It runs against the temporary because the temporary is the only copy
+still discardable, and the `mv` is what turns a verified archive into the one
+the next restore reads. The `trap` keeps a failed job from leaving its
+temporary behind, which a later operator would otherwise read as a second copy
+worth restoring.
 
 Protect the destination with credentials and deletion controls independent of
 the machine holding `GAUNTLET_HOME`; another directory on the same disk does

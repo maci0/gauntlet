@@ -56,6 +56,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
   program launchd or systemd started, which is handed no PATH at all, failed
   to find the toolchain even though the child already received the fallback
   list that holds it.
+- The state-tree backup recipe in `docs/RUNS.md` no longer overwrites the last
+  good archive before it has a new one. `tar -czf "$archive"` opens the
+  destination for writing, so a run cut by a full disk, a crash, or a `kill`
+  left a truncated `.tgz` in the one place the previous copy was, and the
+  `tar -tzf` check that follows ran against a file the job had already ruined.
+  The recipe now builds into a temporary named after the archive and the job's
+  own process id beside the destination and renames it into place only once the
+  copy reads back, removes the temporary on any exit, and exits non-zero on
+  failure with the previous archive untouched, so the destination holds the
+  previous copy or the new one and never half of one. The process id matters on
+  its own: one temporary would also let two jobs overlapping on one schedule
+  rename away a file the other was still appending to.
+  `TestBackupRecipeKeepsTheLastGoodArchive` runs a `tar` that writes a cut
+  archive and fails, then reads what the destination holds, and
+  `TestBackupRecipeGivesOverlappingJobsTheirOwnTemporary` starts two at once and
+  reads the directory while both are writing.
 - A `review_end` carrying no status is no longer counted as a pass in
   `gauntlet runs`. The index reconstruction folded an empty status into `ok`
   alongside an explicit one, so an ending cut short, or one written before
