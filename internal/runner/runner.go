@@ -7,6 +7,8 @@ package runner
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -152,8 +154,20 @@ type Config struct {
 	Seed uint64
 
 	// ResumeQueue is the unfinished part of a loop interrupted by a hot
-	// reload. When set, it is the first loop's schedule.
+	// reload or a crash. When set, it is the first loop's schedule.
 	ResumeQueue []string
+
+	// Generation counts the processes that ran this run before this one (hot
+	// reloads and `gauntlet resume`). It keeps lane and review branch names
+	// apart from the ones a killed predecessor left behind: those sit at an
+	// older base or carry commits, and a branch name that already exists
+	// there is refused rather than reused.
+	Generation int
+
+	// OnProgress is called after every recorded result and every finished
+	// loop, from the goroutine that recorded it. It must not block: the
+	// caller reads Unfinished, Loops, and the stats from another goroutine.
+	OnProgress func()
 
 	RunID        string
 	Version      string
@@ -187,6 +201,11 @@ type Runner struct {
 	// fetch): the push URL when it differs from the fetch URL, else the
 	// remote name. Pushes keep using the remote name.
 	stackReadRemote string
+	// holdStackCheckout is set when a stacked pass leaves a commit that was
+	// not pushed, or a pull request the head/base lookup cannot see. Later
+	// passes of the same run reuse that checkout instead of deleting it.
+	// Only the stack loop writes it, on the goroutine that owns the run.
+	holdStackCheckout bool
 
 	mu             sync.Mutex // guards sessionStarted, stackHead, stackPublished
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
@@ -206,7 +225,11 @@ type Runner struct {
 
 	// pending is what the current loop has not started yet, in scheduled
 	// order. A soft stop hands it to the successor, so a reload never re-runs
-	// reviews that already ran in the interrupted loop.
+	// reviews that already ran in the interrupted loop. taken is what was
+	// popped off it and has no recorded result yet, in the order it was taken:
+	// a crash checkpoint counts those as unfinished, since their agent dies
+	// with the process. A name can appear twice (a weighted review).
+	taken     []string
 	pendingMu sync.Mutex
 	pending   []queued
 	// resume is the queue handed over by a previous process; it replaces the
@@ -375,6 +398,7 @@ func (r *Runner) Run(ctx context.Context) {
 		r.loopCount++
 		loops := r.loopCount
 		r.loopMu.Unlock()
+		r.progress()
 
 		ev := Event{
 			Kind: EvLoopEnd, Dir: r.cfg.Dir, Loop: loops,
@@ -427,6 +451,51 @@ func (r *Runner) Pending() []string {
 		out = append(out, q.review)
 	}
 	return out
+}
+
+// Unfinished is what a crash at this moment would leave undone in the current
+// loop: the reviews running now, whose agents die with the process, then the
+// ones not started, in scheduled order. A review whose result is recorded is
+// never in it. Read it before the stats when the two must agree: a review
+// that finishes between the two reads then shows in both and runs again on
+// resume, rather than in neither and being lost.
+func (r *Runner) Unfinished() []string {
+	r.pendingMu.Lock()
+	defer r.pendingMu.Unlock()
+	out := make([]string, 0, len(r.taken)+len(r.pending))
+	out = append(out, r.taken...)
+	for _, q := range r.pending {
+		out = append(out, q.review)
+	}
+	return out
+}
+
+// record files one review's result. The stats come first and the in-flight
+// entry goes second, so a concurrent Unfinished-then-Results read sees the
+// review at least once.
+func (r *Runner) record(res Result) {
+	r.st.Add(res)
+	r.pendingMu.Lock()
+	if i := slices.Index(r.taken, res.Review); i >= 0 {
+		r.taken = slices.Delete(r.taken, i, i+1)
+	}
+	r.pendingMu.Unlock()
+	r.progress()
+}
+
+func (r *Runner) progress() {
+	if r.cfg.OnProgress != nil {
+		r.cfg.OnProgress()
+	}
+}
+
+// laneTag names one loop's lane and review branches. A handed-over run adds
+// its generation, so a resumed process never cuts a branch a killed one left.
+func (r *Runner) laneTag(loopNo int) string {
+	if r.cfg.Generation > 0 {
+		return fmt.Sprintf("%s-g%d-l%d", r.cfg.RunID, r.cfg.Generation, loopNo)
+	}
+	return fmt.Sprintf("%s-l%d", r.cfg.RunID, loopNo)
 }
 
 // StackHead is the last published stacked layer (branch name and tip), or the

@@ -972,6 +972,7 @@ func TestExtraSafeConfigRebuildsAfterConfigChanges(t *testing.T) {
 // .git/config. Watching only the local one would keep asserting a helper the
 // operator has since removed, for every git call left in the run.
 func TestExtraSafeConfigRebuildsAfterGlobalConfigChanges(t *testing.T) {
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	if !Available() {
 		t.Skip("git is required for gitx tests")
 	}

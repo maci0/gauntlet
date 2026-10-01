@@ -439,8 +439,15 @@ The invariants are:
    prompt discovery and suggestion signals read a snapshot of the fetched
    base; agents, staging, commits, and retry resets operate inside the
    scratch worktree.
-3. A layer is not eligible as the next base until its push succeeds and an
-   exact head/base PR exists. Publication failure therefore stops scheduling.
+3. A layer becomes the next base once its push succeeds. The pass keeps
+   scheduling when that push fails, and when the head/base lookup cannot
+   see the pull request. A failed push leaves the commit on its branch,
+   records the layer as failed, and later reviews branch from the last
+   base that did push. A push that landed whose pull request the lookup
+   cannot see stays in the chain, so later reviews stack on that commit,
+   and the scratch checkout is kept until a lookup confirms the pull request.
+   When that commit's tip cannot be read, the pass stops and the checkout
+   stays: later reviews are not branched from the previous base.
 4. No-change and exhausted agent failures reset and delete their unpublished
    layer, leaving the preceding successful layer as the next base.
 5. A published branch name derives from the review position, the review name,
@@ -455,10 +462,28 @@ The invariants are:
    in its place is a rename that already landed. A `gh pr create` that fails
    after GitHub accepted it is recovered by that same head/base lookup, so a
    lost response does not open a second PR or stop a published layer.
-6. The worktree is disposable; local and remote branches are durable because
-   they are the graph open PRs refer to. Nothing in this mode calls merge.
-   A later pass discards the previous worktree and cuts a new one from the
-   last published tip rather than re-fetching `--pr-base`.
+6. The scratch worktree is removed only after the pass has pushed every
+   changed layer and a head/base lookup has confirmed each pull request.
+   A pass that pushed nothing, that has an unpushed commit, or that has a
+   pull request the lookup cannot see, leaves the checkout where it is and
+   logs the path. A later pass of the same run reuses that checkout and
+   branches from the last published tip. When every changed layer was
+   confirmed, a later pass cuts a new worktree from that tip rather than
+   re-fetching `--pr-base`. A later run sweeps scratch at startup, while it
+   holds the lock, the same as any other leftover checkout. Local and remote
+   branches stay either way, because they are the graph open PRs refer to.
+   Nothing in this mode calls merge.
+7. A review that exits cleanly with nothing to commit is a layer that
+   changed nothing only when the launch checkout is unchanged and the review
+   did not report a file edit. A change to the launch checkout, or a file
+   note the scratch worktree cannot commit, fails that layer. Later reviews
+   in the pass still run, unless discarding the empty branch fails: the pass
+   then stops and the checkout stays. The launch checkout is left as the
+   review wrote it.
+8. After `gh pr create`, the same head/base lookup that recovers a lost
+   create response has to see the pull request. A URL on stdout that the
+   lookup cannot find fails the layer and keeps the commit. The pass
+   continues, and the scratch checkout stays until the lookup succeeds.
 
 ### API-level cache reuse across reviews
 
@@ -687,6 +712,23 @@ The result is one run, one run id, one index row, one summary, spanning both
 binaries. What a reload costs is latency: it waits for the reviews in flight,
 which can take up to `--timeout`.
 
+**Resume after a crash** reuses steps 4 and 5. A process killed without a
+word never reaches step 1, so every recorded result and every finished loop
+rewrites `state/checkpoints/<run-id>.json` (`writeCheckpoints` in
+`cmd/gauntlet/main.go`): the same handoff, with the reviews whose agents are
+running counted unfinished (`runner.Unfinished`), plus the argv and working
+directory. Results are recorded before a review leaves the in-flight list and
+the checkpoint reads that list before the results, so a review is never in
+neither. A run that ends on its own deletes the file. `gauntlet resume
+<run-id>` refuses a directory whose lock is held, changes to the recorded
+directory, saves the handoff with its process count raised, and execs this
+binary. The count becomes the runner's `Generation`, which names lane and
+review branches `<run-id>-g<N>-l<loop>` so a successor never reuses a branch
+its killed predecessor left. A `--jobs` successor deletes those leftovers that HEAD
+already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
+any with a commit HEAD lacks. Checkpoints sit in their own directory because
+the handoff writer sweeps every day-old file in `state/`.
+
 ## Agent-assigned review weights
 
 The suggest step asks an agent for expected review value as well as relevance:
@@ -756,6 +798,7 @@ index.jsonl                      one summary line per finished run
 pruned/YYYY-MM-DD/<run-id>.jsonl journals the --keep-runs bound moved out
 .index.lock                      serializes index rebuilds and Close
 state/<run-id>.json              hot-reload handoff, removed after pickup
+state/checkpoints/<run-id>.json  crash checkpoint, removed when the run ends on its own
 ```
 
 Design points:
@@ -826,8 +869,8 @@ Design points:
 - Journaling is never load-bearing for a run in progress: a journal that
   cannot be opened degrades to a warning. A nil journal is a working no-op,
   so no caller branches on it.
-- A hot reload appends to the same file and writes **one** index row, from the
-  successor, covering the whole run.
+- A hot reload or a resume appends to the same file and writes **one** index
+  row, from the successor, covering the whole run.
 - A closed run is **fsync'd**, and so is the directory that holds the index
   after a rebuild renames it into place. Flushing a buffer protects a run from
   a killed process; it does not protect the source of truth from a power cut,

@@ -57,7 +57,7 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 			r.dropPending()
 			return
 		}
-		r.st.Add(r.runLaneReview(ctx, wt, review, loopNo, laneIdx, reviewIdx))
+		r.record(r.runLaneReview(ctx, wt, review, loopNo, laneIdx, reviewIdx))
 	}
 }
 
@@ -74,7 +74,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	}
 
 	cleanCtx := context.WithoutCancel(ctx)
-	tag := fmt.Sprintf("%s-l%d-lane%d-%02d", r.cfg.RunID, loopNo, laneIdx, reviewIdx)
+	tag := fmt.Sprintf("%s-lane%d-%02d", r.laneTag(loopNo), laneIdx, reviewIdx)
 
 	// Start from the latest HEAD so the review sees work merged by other
 	// lanes, not the stale tip from when the loop (or the last review) began.

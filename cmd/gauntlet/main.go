@@ -207,6 +207,8 @@ func run(argv []string) int {
 		return cmdRuns(stdout, pal, opts.runsLimit, opts.restoreRun, opts.json)
 	case "show":
 		return cmdShow(stdout, opts.showRun)
+	case "resume":
+		return cmdResume(stdout, pal, opts.resumeRun)
 	case "version":
 		if _, err := fmt.Fprintf(stdout, "gauntlet %s\n", version); err != nil {
 			fmt.Fprintf(os.Stderr, "cannot write the version: %v\n", err)
@@ -469,7 +471,10 @@ func run(argv []string) int {
 				continue
 			}
 			jrnl.Write(journaledEvent(ev))
-			if ev.Kind == runner.EvLoopEnd {
+			// Flushed per review, not only per loop: a run killed without a
+			// word keeps every review it finished, and `gauntlet resume`
+			// appends the rest of the run to this same file.
+			if ev.Kind == runner.EvLoopEnd || ev.Kind == runner.EvReviewEnd {
 				jrnl.Flush()
 			}
 		}
@@ -555,6 +560,17 @@ func run(argv []string) int {
 	// below, which is what carries a reload's spending into its successor.
 	var runTokens runner.Tokens
 
+	// Every recorded result and finished loop asks for a fresh crash
+	// checkpoint. One slot: a request that finds one already waiting is
+	// covered by it, since the checkpoint is written from current state.
+	progress := make(chan struct{}, 1)
+	onProgress := func() {
+		select {
+		case progress <- struct{}{}:
+		default:
+		}
+	}
+
 	for _, d := range runs {
 		// A reloaded process inherits the same argv, so each directory's loop
 		// budget must be reduced by what it already finished before the swap.
@@ -598,6 +614,7 @@ func run(argv []string) int {
 			Yolo: opts.yolo, Paths: opts.paths, Raw: opts.raw, Quiet: opts.quiet, Stream: opts.stream,
 			ContinueSessions: opts.continueSessions,
 			RunID:            runID, Version: version, OwnArtifacts: ownArtifacts,
+			Generation: prior.Reloads, OnProgress: onProgress,
 		}
 		r, err := runner.New(ctx, cfg, bus)
 		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
@@ -623,6 +640,11 @@ func run(argv []string) int {
 		d.stats.Seed(carried.Results, carried.CommitRuns, carried.CommitFails)
 		d.carriedLoops = carried.Loops
 	}
+
+	var checkpoints sync.WaitGroup
+	checkpoints.Go(func() {
+		writeCheckpoints(progress, runs, runID, origin, startedAt, opts.seed, prior.Reloads, argv, bus)
+	})
 
 	// From here a graceful quit has runners to reach; one that arrived while
 	// they were being built applies now.
@@ -678,6 +700,10 @@ func run(argv []string) int {
 		stop()
 	}
 	workers.Wait()
+	// Every runner has returned, so nothing sends on progress any more; the
+	// last checkpoint is on disk before anything below can exec or exit.
+	close(progress)
+	checkpoints.Wait()
 	stopAuto()
 	autoDone.Wait()
 	bus.Close()
@@ -724,7 +750,50 @@ func run(argv []string) int {
 		code = exitFail
 	}
 	writeSummary(jrnl, origin, runClock(), wall, dirs, agents, runs, code, opts.keepRuns)
+	// The run ended on its own and its index row is written: nothing is left
+	// to resume. A reload never gets here, so its checkpoint stays as the
+	// fallback until the successor writes its own.
+	if err := dropCheckpoint(runID); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
 	return code
+}
+
+// writeCheckpoints rewrites the run's crash checkpoint each time a runner
+// reports progress, until progress closes. A checkpoint that cannot be
+// written costs only the ability to resume after a crash, so the run goes on
+// and says so once.
+func writeCheckpoints(progress <-chan struct{}, runs []*dirRun, runID string, origin, startedAt time.Time,
+	seed uint64, reloads int, argv []string, bus *runner.Bus) {
+
+	cwd, err := os.Getwd()
+	warned := false
+	warn := func(err error) {
+		if !warned {
+			warned = true
+			bus.Publish(runner.Event{Kind: runner.EvLog,
+				Text: fmt.Sprintf("Cannot write the crash checkpoint, so `gauntlet resume` cannot continue this run: %v", err)})
+		}
+	}
+	unfinished := func(d *dirRun) []string {
+		if d.r == nil {
+			return nil
+		}
+		return d.r.Unfinished()
+	}
+	for range progress {
+		if err != nil {
+			warn(err)
+			continue
+		}
+		cp := checkpoint{
+			Handoff: buildHandoff(runID, origin, max(time.Since(startedAt), 0), seed, reloads, runs, unfinished),
+			Argv:    argv, Cwd: cwd, PID: os.Getpid(), Version: version, Updated: time.Now(),
+		}
+		if serr := saveCheckpoint(cp); serr != nil {
+			warn(serr)
+		}
+	}
 }
 
 // openLogFile opens the run's log for append, refusing anything but a regular

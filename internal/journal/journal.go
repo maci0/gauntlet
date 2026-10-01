@@ -235,7 +235,7 @@ type Journal struct {
 // an id prefix with a directory misses by one day for every run in that
 // window. Rendering stays free to convert to local at display time.
 func Open(runID string, now time.Time) (*Journal, error) {
-	if !validRunID(runID) {
+	if !ValidRunID(runID) {
 		return nil, fmt.Errorf("invalid run id: %q", runID)
 	}
 	shard := shardFromRunID(runID)

@@ -7,7 +7,7 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-10-01 against commit cb9f0a0 (plus this suggestion-weight change).
+Last reviewed: 2026-10-01 against commit 2cb8da0 (plus this suggestion-weight change).
 The suggest step can now request repeated passes. Its parser accepts only
 integer weights 0–3 for discovered review names, rejects malformed weights
 before sanitizing the reason, and keeps the first valid mention of each name.
@@ -16,8 +16,33 @@ counts before confirmation. Repository text can still steer which reviews an
 agent chooses and their weights, but agent output cannot schedule more than
 three passes per discovered review. Manual repeats remain operator-controlled.
 
-Last reviewed previously: 2026-09-30 against commit c2c349e (plus this sandbox change).
-This change adds kernel filesystem write confinement to all agent launches:
+Last reviewed previously: 2026-10-01 against commit e8dbf96 (plus the resume change).
+This pass adds one surface to B6, the crash checkpoint `gauntlet resume`
+reads: a file in the state root whose argv the CLI executes, given the
+handoff's controls, and a resume that refuses a directory whose lock is held.
+A resumed `--jobs` run deletes branches an earlier process of the same run
+left, only those HEAD already contains (`git branch -d`), so no commit is
+lost.
+It widens no permission or credential edge and adds no writer to the state
+root; it re-anchors the B6 citations its change moved. No risk row was added
+and none was closed.
+
+Last reviewed previously: 2026-09-30 against commit cb9f0a0. This pass checks stacked
+publication. A review that edits the launch checkout, or reports a file edit
+the scratch worktree does not contain, fails that layer instead of passing
+with no pull request. `gh pr create` stdout is confirmed by a second
+head/base lookup. A failed push, or a lookup that cannot see the pull
+request, records the layer as failed, leaves the scratch checkout in place,
+and the pass keeps scheduling later reviews. An unreadable tip after a
+push that landed, or a discard git refuses on an empty layer, stops the
+pass and leaves the checkout. The containment suffix names
+the process current directory as the only checkout; that sentence is
+advisory. The launch-checkout comparison is what catches a write that
+landed outside the scratch checkout, including when `--no-sandbox` leaves
+writes unconfined.
+
+Last reviewed previously: 2026-09-30 against commit c2c349e (plus the sandbox
+change). This change adds kernel filesystem write confinement to all agent launches:
 Landlock on Linux and Seatbelt on macOS. The scheduler itself remains outside
 the sandbox; the policy is inherited by agent children. Setup failures stop
 the launch. Writable grants include the worktree, shared `.git` metadata,
@@ -806,19 +831,34 @@ publication uses that account's Git credentials (`internal/runner/commit.go:105-
   and the journal and the `--log` file keep what it printed.
   `gh` and `git push` use whatever credentials those tools already have.
 - **B6, gauntlet <-> local state.** `~/.gauntlet` (or `GAUNTLET_HOME`): the
-  JSONL journal, hot-reload handoff files, `agents.json`. This is also the one
+  JSONL journal, hot-reload handoff files, crash checkpoints, `agents.json`. This is also the one
   boundary where the run deletes: `--keep-runs` prunes the history at the end
   of every run (`internal/journal/retain.go:45-56,78-198`). Journal paths are
-  guarded by run ID validation (`validRunID`, `internal/journal/history.go:88-104`)
+  guarded by run ID validation (`ValidRunID`, `internal/journal/history.go:88-104`)
   and date-sharded from run ID timestamps (`shardFromRunID`, `internal/journal/history.go:167`).
   The state tree outlives the run and is the file a backup, a sync, or a
   `runs --json` consumer takes away, so the free text written into it names no
   OS account: the event's text and the index's argv have the home directory
   shortened to `~` on the way to disk and only there (`journaledEvent`,
-  `cmd/gauntlet/main.go:875-883`, `journaledArgs`, `main.go:886-894`,
+  `cmd/gauntlet/main.go:972-977`, `journaledArgs`, `main.go:983-989`,
   `RedactHome`, `internal/normalize/display.go:108-143`).
+  The crash checkpoint is the exception and the second file here whose argv
+  gets executed: `state/checkpoints/<run-id>.json` holds the run's raw argv and
+  working directory, because `gauntlet resume` changes to that directory and
+  execs that command line (`writeCheckpoints`, `cmd/gauntlet/main.go:766-797`;
+  `cmdResume`, `cmd/gauntlet/checkpoint.go:163-214`). It gets the handoff's
+  controls: a run-id-validated name, the working-directory fallback refused
+  (`checkpointDir`, `checkpoint.go:52-57`), a 0700 directory and an atomic,
+  synced write (`saveCheckpoint`, `checkpoint.go:73-90`), and a read that
+  requires a regular file under 16 MiB whose recorded run id matches its name
+  (`readCheckpoint`, `checkpoint.go:105-133`). Anyone who can write the state
+  root can already plant a handoff or `agents.json`, so it adds no new writer;
+  it does make the planted argv run on an explicit `resume` rather than only
+  inside a reload. A resume refuses a directory whose lock is held
+  (`busyDir`, `checkpoint.go:139-153`), so it cannot put a second set of agents
+  in a tree a live run owns. The file lives until the run ends on its own.
   Optional `--log` crosses into a separate operator-selected output path, not
-  necessarily that state directory (`openLogFile`, `cmd/gauntlet/main.go:713-733), validated to
+  necessarily that state directory (`openLogFile`, `cmd/gauntlet/main.go:810-831`), validated to
   not name an existing directory (`validateLog`, `cmd/gauntlet/flags.go:864-901`).
 
 ## Entry points
@@ -953,8 +993,15 @@ privilege transition:
   The fetched base commit is pinned for the whole run and carried across a
   hot reload, and project prompts and suggestion signals are read from a
   snapshot worktree of that commit, never from uncommitted files in the
-  checkout. A publication failure stops later reviews, so no agent runs on a
-  branch that does not exist as a usable remote PR base. Stack branch names
+  checkout. A failed push records the layer and later reviews branch from
+  the last base that did push, so no agent runs on a commit that is not on
+  the remote. A push that landed whose pull request the lookup cannot see
+  stays in the chain (`ensurePullRequest`, `launchCheckoutChanged`,
+  `runLoopStack`). An unreadable tip after that push stops the pass rather
+  than branching the next review from the previous base. Adopting a kept
+  checkout compares the registered path after symlink resolution
+  (`worktreeListed`). The scratch checkout is removed only when every changed
+  layer was pushed and that lookup confirmed each pull request. Stack branch names
   are derived from a public base commit, so a pull request is only reused as
   a run's own layer when its head branch lives in the repository gauntlet
   pushes to (`ownsHead` in `internal/ghx/ghx.go:151-172`): a PR opened from

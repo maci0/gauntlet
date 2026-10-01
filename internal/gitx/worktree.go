@@ -274,6 +274,54 @@ func (r *Repo) AddStackWorktree(ctx context.Context, branch, tag, base string) (
 	return r.addBranchWorktree(ctx, r.worktreeDir("stack-"+BranchSlug(tag)), branch, base)
 }
 
+// AdoptStackWorktree reopens the scratch checkout a stacked run left in
+// place. It returns nil when that directory is not there. A directory that
+// is there but is not a registered worktree is an error: the caller must
+// not replace it, because replacing it deletes the checkout.
+func (r *Repo) AdoptStackWorktree(ctx context.Context, tag string) (*Worktree, error) {
+	if err := r.beginWorktreeAdd("git is required for stacked PRs"); err != nil {
+		return nil, err
+	}
+	defer r.wtMu.Unlock()
+	dir := r.worktreeDir("stack-" + BranchSlug(tag))
+	fi, err := os.Lstat(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if !fi.IsDir() {
+		return nil, fmt.Errorf("stack worktree %s is not a directory", dir)
+	}
+	out, err := r.run(ctx, gitQuick, "worktree", "list", "--porcelain")
+	if err != nil {
+		return nil, err
+	}
+	if !worktreeListed(string(out), dir) {
+		return nil, fmt.Errorf("stack worktree %s is not registered", dir)
+	}
+	return newWorktree(r, dir, "", ""), nil
+}
+
+// worktreeListed reports whether porcelain names dir. Git prints the path
+// after resolving symlinks, and quotes it when the spelling needs quoting,
+// so comparing the path this process built misses a checkout that is the
+// same directory.
+func worktreeListed(porcelain, dir string) bool {
+	want := RealPath(dir)
+	for line := range strings.SplitSeq(porcelain, "\n") {
+		rest, ok := strings.CutPrefix(line, "worktree ")
+		if !ok {
+			continue
+		}
+		if RealPath(unquoteC(rest)) == want {
+			return true
+		}
+	}
+	return false
+}
+
 // AddSnapshotWorktree cuts a read-only view of one commit, detached so no
 // branch is created or moved. Stacked runs discover project prompts and
 // compute suggestions from this snapshot of the fetched remote base, never
@@ -830,6 +878,37 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 // line. The `--` is what keeps an option-shaped pattern from reaching git as
 // an option, which is why a pattern like "--pattern*" lists nothing rather
 // than changing what the sweep does.
+// DeleteMergedBranchesMatching deletes the branches matching pattern that
+// HEAD already contains and keeps every other one, returning how many it
+// deleted. It is the sweep for branches a killed process left: one still at
+// the base it was cut from carries nothing, while one with a commit HEAD lacks
+// is work, and `git branch -d` refuses exactly those. A squash-landed branch
+// is not merged as far as git is concerned, so it is kept too.
+func (r *Repo) DeleteMergedBranchesMatching(ctx context.Context, pattern string) (int, error) {
+	if r == nil || !Available() {
+		return 0, nil
+	}
+	r.PruneWorktrees(ctx)
+	names, err := r.listBranchesMatching(ctx, pattern)
+	if err != nil {
+		return 0, fmt.Errorf("list branches matching %s: %w", pattern, err)
+	}
+	if len(names) == 0 {
+		return 0, nil
+	}
+	r.wtMu.Lock()
+	// The status is not an error to report: -d exits nonzero for every
+	// branch it keeps, and keeping those is the point. The re-list below
+	// is what says how many went.
+	_, _ = r.run(ctx, gitNormal, append([]string{"branch", "-d", "--"}, names...)...)
+	r.wtMu.Unlock()
+	left, err := r.listBranchesMatching(ctx, pattern)
+	if err != nil {
+		return 0, fmt.Errorf("list branches matching %s: %w", pattern, err)
+	}
+	return len(names) - len(left), nil
+}
+
 func (r *Repo) listBranchesMatching(ctx context.Context, pattern string) ([]string, error) {
 	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {

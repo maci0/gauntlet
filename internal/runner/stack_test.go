@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -82,6 +83,20 @@ case "$1 $2" in
       esac
     done
     if [ "${GAUNTLET_GH_FAIL_CREATE:-}" = 1 ]; then echo refused >&2; exit 1; fi
+    # A create that prints a URL and records nothing: the lookup that follows
+    # has to notice the pull request does not exist.
+    if [ "${GAUNTLET_GH_LIE_CREATE:-}" = 1 ]; then
+      printf 'https://github.com/owner/repo/pull/1\n'
+      exit 0
+    fi
+    # The create prints a URL and then makes the local branch unreadable, so
+    # the tip read after a failed lookup has a real failure to answer.
+    if [ "${GAUNTLET_GH_BREAK_TIP:-}" = 1 ]; then
+      printf 'https://github.com/owner/repo/pull/1\n'
+      ref=$(git rev-parse --git-path "refs/heads/${head##*:}") || exit 0
+      printf 'not-a-sha\n' > "$ref"
+      exit 0
+    fi
     # gh pr create does accept OWNER:BRANCH; the PR records the bare branch
     # name and the owner of the repository the head lives in.
     owner="owner"
@@ -258,29 +273,310 @@ echo 'RESULT: changed=1'`)
 	}
 }
 
-func TestStackedPRsPublicationFailureStopsBeforeNextReview(t *testing.T) {
+func TestStackedPRsPublicationFailureContinuesAndKeepsWorktree(t *testing.T) {
 	repo, _ := stackRepo(t)
-	fakeGH(t)
+	_, statePath := fakeGH(t)
 	t.Setenv("GAUNTLET_GH_FAIL_CREATE", "1")
 	marker := filepath.Join(t.TempDir(), "reviews")
 	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
 echo x >> "`+marker+`"
-echo changed > change.txt
+case "$*" in
+  *first-review*) echo first > change.txt ;;
+  *second-review*) echo second > change.txt ;;
+esac
 echo 'RESULT: changed=1'`)
 
 	r := runQuiet(t, cfg)
-	if got := r.Stats().Counts(); got.Fail != 1 {
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
 		t.Fatalf("publication failure counts: %+v", got)
 	}
 	started, _ := os.ReadFile(marker)
-	if strings.Count(string(started), "x") != 1 {
-		t.Fatalf("reviews started after publication failed: %q", started)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after publication failed: %q", started)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
 	b1 := gitx.StackLoopFinalBranch(1, 0, "first-review", "chore: add change.txt")
+	b2 := gitx.StackLoopFinalBranch(1, 1, "second-review", "chore: update change.txt")
 	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b1)
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b2)
+	if got := gitOut(t, repo, "rev-parse", b1+"^"); got != base {
+		t.Fatalf("first layer parent = %s, want main %s", got, base)
+	}
+	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != gitOut(t, repo, "rev-parse", b1) {
+		t.Fatalf("second layer did not stack on the unconfirmed first layer: parent %s", got)
+	}
 	if got := gitOut(t, repo, "rev-parse", "main"); got != base {
 		t.Fatal("publication failure moved the original branch")
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a refused create recorded a pull request:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after a pull request was not created:\n%s", list)
+	}
+}
+
+func TestStackedPRsUnreadableTipAfterPushStopsThePass(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	t.Setenv("GAUNTLET_GH_BREAK_TIP", "1")
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo first > committed.txt; echo 'SUBJECT: fix: add the first layer' ;;
+  *second-review*) echo second > committed.txt; echo 'SUBJECT: fix: add the second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 1 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 1 {
+		t.Fatalf("later review ran after the pushed tip could not be read: %q", started)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a pull request was recorded:\n%s", state)
+	}
+	branch := gitx.StackLoopFinalBranch(1, 0, "first-review", "fix: add the first layer")
+	if remote := gitOut(t, repo, "ls-remote", "origin", "refs/heads/"+branch); !strings.Contains(remote, "refs/heads/"+branch) {
+		t.Fatalf("pushed layer is not on the remote: %q", remote)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed while its tip could not be read:\n%s", list)
+	}
+}
+
+func TestStackedPRsDiscardFailureStopsAndKeepsWorktree(t *testing.T) {
+	repo, _ := stackRepo(t)
+	fakeGH(t)
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrap := t.TempDir()
+	flag := filepath.Join(t.TempDir(), "fail-detach")
+	script := "#!/bin/sh\nif [ -f \"$GAUNTLET_FAIL_DETACH\" ]; then\n  for arg in \"$@\"; do\n    if [ \"$arg\" = \"--detach\" ]; then echo detach refused >&2; exit 1; fi\n  done\nfi\nexec " + gitBin + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(wrap, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GAUNTLET_FAIL_DETACH", flag)
+	t.Setenv("PATH", wrap+string(os.PathListSeparator)+os.Getenv("PATH"))
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review", "third-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo published > published.txt; echo 'SUBJECT: fix: add the published layer' ;;
+  *second-review*) touch "$GAUNTLET_FAIL_DETACH"; echo 'PATH: missing.go: claimed a change' ;;
+  *third-review*) echo ran > should-not.txt ;;
+esac
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Fail != 1 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("reviews after a failed discard: %q", started)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after discard failed:\n%s", list)
+	}
+}
+
+func TestStackedPRsUnconfirmedPullRequestKeepsTheCommit(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	t.Setenv("GAUNTLET_GH_LIE_CREATE", "1")
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+case "$*" in
+  *first-review*) echo first > committed.txt; echo 'SUBJECT: fix: add the first layer' ;;
+  *second-review*) echo second > committed.txt; echo 'SUBJECT: fix: add the second layer' ;;
+esac
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after the pull request was missing: %q", started)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a pull request was recorded:\n%s", state)
+	}
+	base := gitOut(t, repo, "rev-parse", "main")
+	branch := gitx.StackLoopFinalBranch(1, 0, "first-review", "fix: add the first layer")
+	next := gitx.StackLoopFinalBranch(1, 1, "second-review", "fix: add the second layer")
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+branch)
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+next)
+	if got := gitOut(t, repo, "rev-parse", branch+"^"); got != base {
+		t.Fatalf("layer parent = %s, want main %s", got, base)
+	}
+	if got := gitOut(t, repo, "rev-parse", next+"^"); got != gitOut(t, repo, "rev-parse", branch) {
+		t.Fatalf("second layer did not stack on the unconfirmed first layer: parent %s", got)
+	}
+	if files := gitOut(t, repo, "diff", "--name-only", "main.."+branch); files != "committed.txt" {
+		t.Fatalf("unconfirmed layer lost its commit: %q", files)
+	}
+	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", branch); err != nil || !found {
+		t.Fatalf("unconfirmed layer was not pushed: found=%v err=%v", found, err)
+	}
+	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", next); err != nil || !found {
+		t.Fatalf("later layer was not pushed: found=%v err=%v", found, err)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed while its pull request does not exist:\n%s", list)
+	}
+}
+
+func TestStackedPRsNoChangeKeepsWorktree(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	dirty := filepath.Join(repo, "dirty.go")
+	if err := os.WriteFile(dirty, []byte("package dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := stackConfig(t, repo, []string{"empty-review"}, `echo 'RESULT: no-changes'`)
+	cfg.AllowDirtyStack = true
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	body, err := os.ReadFile(dirty)
+	if err != nil || string(body) != "package dirty\n" {
+		t.Fatalf("pre-existing dirt = %q, %v", body, err)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a no-change layer opened a pull request:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed when nothing was pushed:\n%s", list)
+	}
+}
+
+func TestStackedPRsOutsideWriteFailsAndKeepsWorktree(t *testing.T) {
+	repo, _ := stackRepo(t)
+	sub := filepath.Join(repo, "pkg")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "keep.go"), []byte("package pkg\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, repo, "add", "pkg")
+	gitOut(t, repo, "commit", "-qm", "add pkg")
+	gitOut(t, repo, "push", "origin", "main")
+	dirty := filepath.Join(sub, "dirty.go")
+	if err := os.WriteFile(dirty, []byte("package pkg\nfunc dirty() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, statePath := fakeGH(t)
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+printf 'more\n' >> "`+dirty+`"
+echo 'PATH: dirty.go: append a line'
+echo 'SUBJECT: fix: touch the launch tree'
+echo 'RESULT: changed=1'`)
+	cfg.Dir = sub
+	cfg.AllowDirtyStack = true
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after an outside write: %q", started)
+	}
+	body, err := os.ReadFile(dirty)
+	if err != nil || !strings.Contains(string(body), "more") {
+		t.Fatalf("launch checkout lost the outside edit: %q, %v", body, err)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("an outside write opened a pull request:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after an outside write:\n%s", list)
+	}
+}
+
+func TestStackedPRsReportedEditsWithNothingCommittedFail(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
+echo x >> "`+marker+`"
+echo 'PATH: missing.go: claimed a change'
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after a report with no commit: %q", started)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("a report with no commit opened a pull request:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed when nothing was committed:\n%s", list)
+	}
+}
+
+func TestStackedPRsOutsideWriteKeepsTheUnpushedCommit(t *testing.T) {
+	repo, _ := stackRepo(t)
+	_, statePath := fakeGH(t)
+	leaked := filepath.Join(repo, "leaked.go")
+	cfg := stackConfig(t, repo, []string{"first-review"}, `
+echo committed > committed.txt
+printf 'package leaked\n' > "`+leaked+`"
+echo 'PATH: committed.txt: add the layer file'
+echo 'PATH: leaked.go: wrote the launch checkout'
+echo 'SUBJECT: fix: add a layer and leak one'
+echo 'RESULT: changed=1'`)
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 1 || got.OK != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+	body, err := os.ReadFile(leaked)
+	if err != nil || string(body) != "package leaked\n" {
+		t.Fatalf("launch checkout lost the outside edit: %q, %v", body, err)
+	}
+	branch := gitx.StackLoopFinalBranch(1, 0, "first-review", "fix: add a layer and leak one")
+	// The rename happens only after the outside-write check, so the commit
+	// is still on the provisional name. What matters is that it was not
+	// discarded and not pushed.
+	provisional := gitx.StackLoopProvisionalBranch(gitOut(t, repo, "rev-parse", "main"), 1, 0, "first-review")
+	if files := gitOut(t, repo, "diff", "--name-only", "main.."+provisional); files != "committed.txt" {
+		t.Fatalf("unpushed layer = %q, want committed.txt (renamed branch %s)", files, branch)
+	}
+	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", provisional); err != nil || found {
+		t.Fatalf("outside write was pushed: found=%v err=%v", found, err)
+	}
+	state, _ := os.ReadFile(statePath)
+	if strings.TrimSpace(string(state)) != "" {
+		t.Fatalf("outside write opened a pull request:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed with an unpushed commit:\n%s", list)
 	}
 }
 
@@ -332,7 +628,7 @@ echo 'RESULT: changed=1'`)
 	}
 }
 
-func TestStackedPRsCancellationCleansWorktreeAndPublishesNothing(t *testing.T) {
+func TestStackedPRsCancellationKeepsWorktreeAndPublishesNothing(t *testing.T) {
 	repo, _ := stackRepo(t)
 	fakeGH(t)
 	cfg := stackConfig(t, repo, []string{"slow-review"}, `
@@ -350,8 +646,11 @@ sleep 10`)
 	onFirstEvent(bus, EvReviewStart, cancel)
 	r.Run(ctx)
 	bus.Close()
-	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 1 {
-		t.Fatalf("canceled stack worktree survived:\n%s", list)
+	// Nothing was pushed, so the checkout stays. The unpublished branch is
+	// still discarded: a cancel is not a commit, and the next attempt has to
+	// be able to take the name.
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("canceled stack worktree was removed:\n%s", list)
 	}
 	base := gitOut(t, repo, "rev-parse", "main")
 	// The review never committed, so the only name the layer ever had is the
@@ -642,10 +941,9 @@ func TestStackedPRsRecoverStaleWorktreeWithoutTouchingUnrelatedState(t *testing.
 	}
 }
 
-// A rejected push stops the stack: the failure is recorded, the committed
-// branch is kept locally for a human, and no later review starts on a base
-// that never became a usable remote PR head.
-func TestStackedPRsPushFailureStopsTheStack(t *testing.T) {
+// A rejected push records the layer, keeps the commit and the checkout, and
+// the next review still runs from the last base that did push.
+func TestStackedPRsPushFailureContinuesAndKeepsWorktree(t *testing.T) {
 	repo, remote := stackRepo(t)
 	_, statePath := fakeGH(t)
 	if err := os.WriteFile(filepath.Join(remote, "hooks", "pre-receive"),
@@ -655,31 +953,85 @@ func TestStackedPRsPushFailureStopsTheStack(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "reviews")
 	cfg := stackConfig(t, repo, []string{"first-review", "second-review"}, `
 echo x >> "`+marker+`"
-echo changed > changed.txt
+case "$*" in
+  *first-review*) echo first > changed.txt ;;
+  *second-review*) echo second > changed.txt ;;
+esac
 echo 'RESULT: changed=1'`)
 
 	r := runQuiet(t, cfg)
-	if got := r.Stats().Counts(); got.Fail != 1 {
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
 		t.Fatalf("push failure counts: %+v", got)
 	}
 	started, _ := os.ReadFile(marker)
-	if strings.Count(string(started), "x") != 1 {
-		t.Fatalf("a review started after the push failed: %q", started)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after the push failed: %q", started)
 	}
+	base := gitOut(t, repo, "rev-parse", "main")
 	b1 := gitx.StackLoopFinalBranch(1, 0, "first-review", "chore: add changed.txt")
+	b2 := gitx.StackLoopFinalBranch(1, 1, "second-review", "chore: add changed.txt")
 	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b1)
-	if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", b1); err != nil || found {
-		t.Fatalf("rejected push left a remote branch: found=%v err=%v", found, err)
+	gitOut(t, repo, "show-ref", "--verify", "refs/heads/"+b2)
+	if got := gitOut(t, repo, "rev-parse", b1+"^"); got != base {
+		t.Fatalf("rejected layer parent = %s, want main %s", got, base)
+	}
+	if got := gitOut(t, repo, "rev-parse", b2+"^"); got != base {
+		t.Fatalf("later layer stacked on the unpushed commit: parent %s", got)
+	}
+	for _, branch := range []string{b1, b2} {
+		if _, found, err := r.repo.RemoteBranchTip(context.Background(), "origin", branch); err != nil || found {
+			t.Fatalf("rejected push left a remote branch %s: found=%v err=%v", branch, found, err)
+		}
 	}
 	state, _ := os.ReadFile(statePath)
-	if strings.Contains(string(state), b1) {
+	if strings.Contains(string(state), b1) || strings.Contains(string(state), b2) {
 		t.Fatalf("unpushed branch got a PR:\n%s", state)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after a rejected push:\n%s", list)
 	}
 }
 
-// A failed commit stops the stack the same way: recorded, published as a
-// failure, nothing half-made left in the worktree or on the remote.
-func TestStackedPRsCommitFailureStopsTheStack(t *testing.T) {
+// A later pass reuses the checkout a rejected push left behind. Deleting it
+// to cut a fresh one is the loss the keep is there to prevent.
+func TestStackedPRsPushFailureKeepsTheCheckoutForTheNextPass(t *testing.T) {
+	repo, remote := stackRepo(t)
+	fakeGH(t)
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("kept.txt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, repo, "add", ".gitignore")
+	gitOut(t, repo, "commit", "-qm", "ignore the scratch marker")
+	gitOut(t, repo, "push", "-q", "origin", "main")
+	if err := os.WriteFile(filepath.Join(remote, "hooks", "pre-receive"),
+		[]byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "reviews")
+	cfg := stackConfig(t, repo, []string{"first-review"}, `
+echo x >> "`+marker+`"
+if [ -f kept.txt ]; then echo survived >> "`+marker+`"; fi
+echo changed > changed.txt
+echo kept > kept.txt
+echo 'RESULT: changed=1'`)
+	cfg.MaxLoops = 2
+
+	r := runQuiet(t, cfg)
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
+		t.Fatalf("push failure counts: %+v", got)
+	}
+	started, _ := os.ReadFile(marker)
+	if strings.Count(string(started), "x") != 2 || strings.Count(string(started), "survived") != 1 {
+		t.Fatalf("next pass did not reuse the kept checkout:\n%s", started)
+	}
+	if list := gitOut(t, repo, "worktree", "list", "--porcelain"); strings.Count(list, "worktree ") != 2 {
+		t.Fatalf("worktree removed after a rejected push:\n%s", list)
+	}
+}
+
+// A failed commit is recorded and discarded, and the next review still runs.
+// Nothing half-made is left in the worktree or on the remote.
+func TestStackedPRsCommitFailureContinues(t *testing.T) {
 	repo, _ := stackRepo(t)
 	_, statePath := fakeGH(t)
 	// Signing is demanded in the operator's global config (untouched by
@@ -697,12 +1049,12 @@ echo changed > changed.txt
 echo 'RESULT: changed=1'`)
 
 	r := runQuiet(t, cfg)
-	if got := r.Stats().Counts(); got.Fail != 1 {
+	if got := r.Stats().Counts(); got.Fail != 2 || got.OK != 0 {
 		t.Fatalf("commit failure counts: %+v", got)
 	}
 	started, _ := os.ReadFile(marker)
-	if strings.Count(string(started), "x") != 1 {
-		t.Fatalf("a review started after the commit failed: %q", started)
+	if strings.Count(string(started), "x") != 2 {
+		t.Fatalf("later review did not run after the commit failed: %q", started)
 	}
 	state, _ := os.ReadFile(statePath)
 	if strings.Contains(string(state), "pull") {
@@ -1147,6 +1499,9 @@ func TestStackBodyMatchesANoteAgainstARawNonUTF8FileName(t *testing.T) {
 	raw := "bad\xff.txt"
 	f := filepath.Join(repo, raw)
 	if err := os.WriteFile(f, []byte("changed\n"), 0o644); err != nil {
+		if errors.Is(err, syscall.EILSEQ) {
+			t.Skipf("filesystem rejects non-UTF-8 file names: %v", err)
+		}
 		t.Fatalf("writing a file whose name holds a raw byte: %v", err)
 	}
 	gitOut(t, repo, "add", raw)

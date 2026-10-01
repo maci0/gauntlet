@@ -65,6 +65,7 @@ var goldenCommands = []string{
 	"gauntlet update [--check]",
 	"gauntlet runs [--limit N] [--json]",
 	"gauntlet show <run-id>",
+	"gauntlet resume [<run-id>]",
 	"gauntlet version",
 	"gauntlet help",
 }

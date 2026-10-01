@@ -282,6 +282,7 @@ Several ways, and they mean different things:
 | `q` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q AGAIN TO STOP`); any other key disarms, and `esc` cancels an armed one. `q` on the help overlay closes help and does not arm the stop. Before this, a single `q` killed the run immediately. |
 | `--once`, `--max-loops N`, `--runtime DUR`, `--token-budget N` | Planned endings, decided before the run starts. |
 | `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
+| `SIGKILL`, an OOM kill, a crashed desktop session, a power cut | Nothing runs on the way out: the agents die with the process, nothing is committed, and the run gets no index row. Its last checkpoint stays, and `gauntlet resume` continues it (see [Resuming after a crash](#resuming-after-a-crash)). |
 
 The graceful stop is the one to reach for when a loop is halfway through and
 the tree should not be left with uncommitted agent edits: it is the only stop
@@ -344,6 +345,51 @@ here is launched. Its headless JSON stream carries only a coarser
 percentage. Reading the header directly would mean holding the provider
 credential, which is not something this tool does.
 
+## Resuming after a crash
+
+A process killed without a word (an OOM kill, a crashed desktop session, a
+power cut) runs none of the stops above. Its agents die with it and its last
+reviews leave no result. What survives is the run's checkpoint:
+
+```sh
+gauntlet resume              # list the runs a crash cut off
+gauntlet resume <run-id>     # continue one where it stopped
+```
+
+```
+20261001T015123Z-1a2b  2026-10-01 09:51  ready
+  ~/src/beam, 9 unfinished in the current loop, 1 loop done
+  gauntlet -a microagent --tui -j 10 --yolo --push --commit
+
+Continue one with: gauntlet resume <run-id>
+```
+
+- **What a checkpoint is.** The hot-reload handoff, written to
+  `state/checkpoints/<run-id>.json` after every recorded result and every
+  finished loop, plus the command line and the directory the run started in.
+  A run that ends on its own, finished, stopped, or interrupted, deletes it, so
+  one still listed belongs to a process that never got to.
+- **What a resume does.** It changes to the recorded directory and hands
+  over to this binary exactly as a hot reload would: same run id, schedule,
+  seed, start time, and carried results, the command line it was started
+  with, and the loop budget less the loops already finished. The journal and
+  the one index row continue the same run.
+- **What runs again.** The reviews whose agents were running at the kill,
+  then the ones not started. A review with a recorded result never runs
+  twice; one that finished in the instant before the kill may, because the
+  checkpoint counts it unfinished until its result is on disk.
+- **What it will not do.** A directory a gauntlet still holds is refused
+  (exit 75): the listing says `busy`. A `--jobs` run still needs a clean tree,
+  and a tree a kill left mid-merge gets the same commit offer a fresh run
+  does.
+- **Branches.** A resumed run starts its lane and review branch names with
+  `gauntlet/<run-id>-g<N>-l<loop>`, `N` counting the processes before it,
+  so it never collides with what the killed one left. A `--jobs` resume then
+  deletes the leftovers HEAD already contains (a review the kill cut off
+  before anything was committed) and keeps any with a commit HEAD lacks (one
+  between its commit and its merge), which `gauntlet doctor` lists. A hot
+  reload's successor uses the same naming.
+
 ## Run journal
 
 Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):
@@ -355,6 +401,7 @@ Every run is recorded under `~/.gauntlet` (override with `GAUNTLET_HOME`):
   pruned/2026-08-25/                             journals the keep bound moved out
   .index.lock                                    serializes index rebuilds and Close
   state/                                         hot-reload handoff files
+  state/checkpoints/                             crash checkpoints, one per run in progress
   agents.json                                    custom agent definitions, not written by the CLI
 ```
 
@@ -442,14 +489,15 @@ What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 | `.index.lock` | serializes index rebuilds and Close | ephemeral |
 | `agents.json` | custom agent definitions | not written by gauntlet; copy it yourself if you need it after a disk loss |
 | `state/<id>.json` | hot-reload handoff | ephemeral, deleted and the deletion synced after pickup, so a power cut cannot bring a handoff back and resume a run that already finished; a lost one aborts the successor (see [Updating and hot reload](#updating-and-hot-reload)) |
+| `state/checkpoints/<id>.json` | crash checkpoint | rewritten after every recorded result and finished loop, deleted when the run ends on its own; one still on disk is a run `gauntlet resume` can continue |
 | `<repo>/.gauntlet.lock` | directory lock | persistent inode; holder note cleared on release; do not remove while runs can start |
 | `<repo>/.gauntlet/worktrees/` | isolated checkouts, `0700` | ephemeral; unmerged review branches stay in git |
 | `<repo>` refs under `gauntlet/` and `review/` | reviews that did not land, the only output no copy of `GAUNTLET_HOME` holds | back up the repository's refs: the journal names the branch and none of its contents; `gauntlet doctor` lists the `gauntlet/` ones still on disk |
 
 Review output lives in the reviewed repository's git history, not here. A
-run journals at loop boundaries (`Flush` on `loop_end`) into a 32KiB
-buffer, so a killed process can lose the current loop's events still in that
-buffer. The file is fsync'd when the run closes, before the index row is
+run journals into a 32KiB buffer it writes after every review and at loop
+boundaries (`Flush` on `review_end` and `loop_end`), so a killed process
+loses only the events of the reviews it was still running. The file is fsync'd when the run closes, before the index row is
 written, and the state root is fsync'd after a rebuild renames the index or
 after an append creates it, so a power cut cannot lose a row the run reported
 writing, nor leave a listing whose journal is gone. Nothing here is

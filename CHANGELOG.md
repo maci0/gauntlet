@@ -30,6 +30,27 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 - Suggestion agents assign review weights of 1–3 passes per loop based on expected review value. The preview shows repeats, manual review entries add to those weights, and older unweighted suggestions still schedule one pass. Explicit zero weights skip a review; malformed or out-of-range weights are ignored.
 - Documented Linux memory limits for review runs using a systemd scope, including the shared cap across agents and subprocesses, swap control, and possible out-of-memory kills.
+### Fixed
+
+- macOS checks now export the closed Go flags with make 3.81, isolate the credential-helper fixture from system git config, and skip the raw-byte filename fixture only when the filesystem refuses it. The recursive-analysis fixture pins the make command independently of its inherited path.
+- Release builds keep the test scratch directory out of the compiler environment, so a fresh host that exports TMPDIR can build artifacts before running tests.
+
+## 1.32.0
+
+### Added
+
+- `gauntlet resume` continues a run that was killed without a word: an OOM kill, a crashed desktop session, a power cut. Every recorded result and every finished loop now rewrites a checkpoint under `state/checkpoints/`, the hot-reload handoff plus the command line and working directory, with the reviews whose agents were running counted unfinished. A run that ends on its own deletes it. `gauntlet resume` with no id lists the runs that have one and whether a gauntlet still holds their directory; `gauntlet resume <run-id>` changes to the run's directory and hands over to this binary the way a hot reload does, keeping the run id, schedule, seed, results, and loop budget, and running only what the kill left unfinished. A held directory is refused with exit 75.
+
+### Changed
+
+- The run journal is flushed after every review, not only at the end of a loop, so a killed run keeps the events of every review it finished.
+- A run that was handed over (a hot reload or `gauntlet resume`) starts its lane and review branch names with `gauntlet/<run-id>-g<N>-l<loop>`, `N` counting the processes before it. A resumed run keeps its run id, and the branches its killed predecessor left sit at an older base or carry commits, so reusing their names was refused and the loop fell back to reviewing in place. A `--jobs` run that was handed over also deletes the branches an earlier process of the run left that HEAD already contains, with `git branch -d`, so one carrying a commit HEAD lacks is kept.
+- `journal.ValidRunID` is exported, for the checkpoint path.
+
+### Fixed
+
+
+- `--stacked-prs` keeps going when a layer cannot be published. A failed push leaves that commit on its branch, records the layer as failed, and later reviews in the pass still run from the last base that did push. A push that landed whose pull request a head/base lookup cannot see stays in the chain, and the scratch checkout stays on disk until that lookup succeeds; a later pass of the same run reuses it, including when that checkout was reached through a symlink. The checkout is removed only after every changed layer was pushed and confirmed. A review that edits the launch checkout, or reports a file edit the scratch checkout does not contain, fails that layer without ending the pass, and the launch checkout is left as it was written. A URL printed by `gh pr create` is confirmed with a second head/base lookup. A push that landed whose tip cannot be read stops the pass instead of branching the next review from the previous base. A discard git refuses on an empty layer does the same, and the checkout stays.
 
 ## 1.31.0
 

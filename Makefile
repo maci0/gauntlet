@@ -23,7 +23,8 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # -tags, -gcflags, or -ldflags would compile a different program under the same
 # name, which is what -mod=readonly is here to rule out. A command line still
 # wins, so `make test GOFLAGS=-v` is the escape hatch it has always been.
-override export GOFLAGS := -mod=readonly
+override GOFLAGS := -mod=readonly
+export GOFLAGS
 export GOWORK := off
 export GOTOOLCHAIN := local
 export GOAMD64 := v1
@@ -39,7 +40,6 @@ export GOARM64 := v8.0
 # still gets it.
 export GOEXPERIMENT :=
 export GOFIPS140 := off
-
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for
 # agents that print none. `sqlite` is on for the same reason: crush and
@@ -100,20 +100,20 @@ export TZ := UTC
 # exists to avoid, and setting it in the environment was then silently
 # ignored. A command line (`make test TMPDIR=...`) still wins.
 #
-# Overriding an exported variable keeps it exported, so every recipe that runs
-# the go command hands it this path, and go refuses to start when its work
-# directory is missing. `test-tmpdir` creates it, and every target that runs
-# the test suite depends on it directly: on a fresh macOS runner $HOME/.cache
-# does not exist, and `make check` and `make test` failed there before they
-# depended on it.
+# An inherited export would also hand the test scratch path to artifact builds,
+# whose targets never create it. Fresh macOS runners export TMPDIR, so `dist`
+# would fail before compiling anything. Unexport it here; test recipes pass
+# the disk-backed path explicitly after `test-tmpdir` creates it.
 #
-# The preflights must not. `toolchain-min` and `toolchain` read the go version
-# and compare it, which is all they do, yet both declared this dependency, so a
-# machine with no HOME could not build a binary or cross-compile a release
-# artifact and was told the problem was tests. Only the targets that hand
-# TMPDIR to a `go test` name test-tmpdir; `build` and `dist` never do.
+# The preflights must not depend on that scratch directory. They only read
+# the Go version, and a machine with no HOME can still build a binary or
+# cross-compile a release artifact. Only targets running tests create the
+# test scratch directory; build and dist use the compiler's default temp.
+#
+# Keep the test-only path out of every other recipe's environment.
+#
 TMPDIR := $(HOME)/.cache/gauntlet/test
-
+unexport TMPDIR
 # POSIX only, deliberately: killing an agent's whole process tree needs process
 # groups, the directory lock needs flock, prompt reads need O_NOFOLLOW, and hot
 # reload needs execve. Windows has no equivalent that keeps those guarantees.

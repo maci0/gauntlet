@@ -187,9 +187,10 @@ func (c Client) ownsHead(p pull) bool {
 // Head and base are the idempotency key. A create that times out after GitHub
 // accepted it, or that fails because the PR already exists, is recovered by
 // Find: a retry returns the existing URL instead of opening a second PR or
-// failing a layer that is already published. Stdout is trusted when it is
+// failing a layer that is already published. Stdout is returned when it is
 // already a valid PR URL, which is what a kill after gh printed the URL looks
-// like.
+// like. That URL is not evidence the pull request exists; the caller looks
+// it up again.
 func (c Client) Create(ctx context.Context, head, base, title, body string) (string, error) {
 	out, err := c.run(ctx, "pr", "create", "--repo", c.selector(), "--head", c.head(head),
 		"--base", base, "--title", title, "--body", body)
