@@ -32,6 +32,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Security
 
+- The run journal kept the whole command line, home directory aside. An
+  operator defines a wrapper agent by handing its key on the command line,
+  because that is where the agent CLIs read it, so `--agent-cmd` and a
+  credential-bearing remote reached `index.jsonl`, `gauntlet runs --json`, and
+  `gauntlet resume` verbatim, and outlived the run. Credentials are now
+  redacted from a journaled argument, and the redaction covers the shapes a
+  command line uses: the value after a flag that names one, and the userinfo of
+  a URL. The resume checkpoint still holds the real argument, because it is
+  replayed; it is written owner-only and is now shown redacted.
+
 - The agent filesystem sandbox granted `/tmp` unconditionally. On macOS that
   directory is a symlink to the shared, world-writable `/private/tmp`, not the
   per-user temporary directory the agent writes in, so every sandboxed agent

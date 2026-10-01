@@ -124,6 +124,23 @@ func TestRedactSecrets(t *testing.T) {
 		{"--max-tokens=4096", "--max-tokens=4096"},
 		{"GITHUB_TOKEN=<redacted>", "GITHUB_TOKEN=" + Redacted},
 		{"token=x", "token=x"},
+		// A key passed the way a command line passes one: as the value after
+		// the flag, which the assignment rule above cannot see because there
+		// is no "=" to key off.
+		{"myagent --api-key A1b2C3d4E5f6G7h8 -p x", "myagent --api-key " + Redacted + " -p x"},
+		{"gh auth login --password hunter2secret", "gh auth login --password " + Redacted},
+		// The flag names that carry a credential are enumerated, and these are
+		// the ones that must not swallow a value which is none: a bare header
+		// word, a count, and a name that is not on the list.
+		{"curl -H 'authorization: A1b2C3d4E5f6G7h8'", "curl -H 'authorization: A1b2C3d4E5f6G7h8'"},
+		{"--token-budget 1000000", "--token-budget 1000000"},
+		{"--max-tokens 4096", "--max-tokens 4096"},
+		{"--password short", "--password short"},
+		// The userinfo of a URL authenticates whoever wrote the line, and this
+		// function is handed a persisted argv, which is not the single line
+		// FirstLine has already cleaned.
+		{"https://alice:hunter2secret@example.com/repo.git", "https://example.com/repo.git"},
+		{"https://example.com/repo.git", "https://example.com/repo.git"},
 	}
 	for _, c := range cases {
 		if got := RedactSecrets(c.in); got != c.want {

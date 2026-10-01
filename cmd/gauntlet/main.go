@@ -31,6 +31,7 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/maci0/gauntlet/internal/runx"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 	"github.com/maci0/gauntlet/internal/ui"
 )
@@ -980,10 +981,23 @@ func journaledEvent(ev runner.Event) runner.Event {
 // reason: an argument naming a directory, a log file, or an agent binary
 // carries the account name, and the index row is what "gauntlet runs --json"
 // hands out.
+//
+// A credential goes through the same pass. A command line is not only paths:
+// an operator who defines a wrapper agent, or pins a gateway endpoint, hands
+// the key on the command line because that is where the agent CLIs read it
+// (`--agent-cmd 'x=y --key sk-…'`, `--agent-cmd 'x=y --api-key $…'`). That
+// argument is written to index.jsonl and to the resume checkpoint verbatim,
+// printed by "gauntlet runs", echoed by "gauntlet resume" and
+// listCheckpoints, and all of those outlive the run and are read by people who
+// are not the operator. runx.RedactSecrets is the same redaction every child
+// process's output already goes through, for the same reason: a key printed
+// by a tool reaches the journal, and this one is printed by the operator's
+// own shell. RedactHome runs too, since a userinfo-bearing argument carries
+// both an account and a password.
 func journaledArgs(args []string) []string {
 	out := make([]string, len(args))
 	for i, a := range args {
-		out[i] = normalize.RedactHome(a)
+		out[i] = runx.RedactSecrets(normalize.RedactHome(a))
 	}
 	return out
 }

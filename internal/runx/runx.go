@@ -152,6 +152,24 @@ var (
 	secretPrefixRe = regexp.MustCompile(
 		`\b(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{16,}|github_pat_[A-Za-z0-9_]{20,}` +
 			`|glpat-[A-Za-z0-9_-]{16,}|xox[bp]-[A-Za-z0-9-]{16,}|AKIA[0-9A-Z]{16})\b`)
+
+	// secretFlagRe is a credential passed the way a command line passes one:
+	// as the value after a flag whose name says what it carries. The
+	// assignment rule above needs NAME=value, which is the spelling an export
+	// line and a JSON body use, so on a persisted argv it caught "--api-key=…"
+	// and missed "--api-key …" -- the form a shell actually produces, and the
+	// one every agent CLI documents.
+	//
+	// The flag names are enumerated rather than pattern-matched. The open
+	// spelling ("--anything-TOKEN …") is what this file's other patterns use,
+	// and it is wrong here: gauntlet itself has --token-budget, whose value is
+	// a count, and redacting it would cost the run's record its meaning for
+	// nothing. A fixed list of the names that carry a credential cannot pick
+	// up the next budget flag.
+	secretFlagRe = regexp.MustCompile(
+		`(?i)(-{1,2}(?:api[-_]?key|auth[-_]?token|access[-_]?token|bearer[-_]?token|` +
+			`bot[-_]?token|auth|credential|credentials|password|passwd|secret|token))\s+` +
+			`([^\s"']+)`)
 )
 
 // secretValueMin is the shortest value RedactSecrets replaces. A shorter
@@ -164,15 +182,34 @@ const secretValueMin = 8
 const Redacted = "[redacted]"
 
 // RedactSecrets replaces credentials in s: a value assigned to a name that says
-// it is one, and a token recognized by the fixed prefix its issuer gives it.
+// it is one, the value after a flag that names a credential, a token
+// recognized by the fixed prefix its issuer gives it, and the userinfo of a
+// URL.
 //
-// It is for text that came out of a child process. Every launch gauntlet makes
-// runs an agent or a helper with the operator's credentials in its
-// environment, and a rejected key is reported by printing it: the line then
-// reaches an error string, a report, and the run journal, all of which outlive
-// the run and are read by people who are not the operator. RedactUserinfo
-// covers the one shape git prints, and cannot see this one.
+// It is for text that came out of a child process, and for the command line a
+// run journals. Every launch gauntlet makes runs an agent or a helper with the
+// operator's credentials in its environment, and a rejected key is reported by
+// printing it: the line then reaches an error string, a report, and the run
+// journal, all of which outlive the run and are read by people who are not the
+// operator. RedactUserinfo covers the one shape git prints, and cannot see
+// this one.
 func RedactSecrets(s string) string {
+	// A URL carrying a password is a credential whoever wrote the line, and the
+	// text reaching this function is not always the single line FirstLine has
+	// already cleaned: a persisted argv is one argument, not one line. The
+	// userinfo runs to the closing "@", so the scheme, the host, and the path
+	// around it are kept and only the part that authenticates is not.
+	s = userinfoRe.ReplaceAllString(s, "$1")
+	s = secretFlagRe.ReplaceAllStringFunc(s, func(m string) string {
+		g := secretFlagRe.FindStringSubmatchIndex(m)
+		// g[4]:g[5] is the value, the second group; the flag name and the
+		// whitespace between them are kept, so the line reads as the command
+		// it was rather than losing the option that carried the key.
+		if g == nil || g[5]-g[4] < secretValueMin {
+			return m
+		}
+		return m[:g[4]] + Redacted
+	})
 	s = secretAssignRe.ReplaceAllStringFunc(s, func(m string) string {
 		g := secretAssignRe.FindStringSubmatchIndex(m)
 		if g == nil || g[5]-g[4] < secretValueMin {
