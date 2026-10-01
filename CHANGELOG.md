@@ -149,6 +149,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Changed
 
+- The threat model names the `make check-workflow-shell` surface, which extracts every
+  `run: |` body out of `.github/workflows/*.yml` into a shell script and lints it. It is a
+  gate in `make check-scripts`, so it reads this repository's own workflows and runs
+  shellcheck, and the extraction in between is an awk program parsing YAML by indentation
+  rather than a YAML parser: a body it failed to follow would have been linted as nothing.
+  Both of its failure modes already fail the target rather than passing it quietly, and the
+  model says so instead of leaving the reader to find them in the recipe. The model also
+  carries the `GAUNTLET_HOME` value left a tilde, which is refused rather than built as a
+  directory literally named `~` beside the working directory; the launcher's distinction
+  between a git that failed and a tree git does not manage; and the journal summary's
+  telling a replayed review ending apart from a review deliberately run twice. Its
+  `file:line` pointers were re-anchored at the symbols they name, several of which had
+  drifted onto a different function rather than only onto moved lines.
 - `prompt-review` no longer tells an agent that a prompt the loader cannot dispatch is one "a name the runner's name list does not carry": the bundled set is a file glob and a golden list is a test that fails the build, so neither is a dispatch gate, and absence from either is not a defect. The skip conditions the loader actually applies are named instead (skipped directory, wrong suffix, symlink, gitignored file), the review tells an agent how to find the three sources before judging them, the auto-fix line says which bounded edits to make on the spot and which to report, and the tool line points at the loader's own source when the runner's binary is not on PATH.
 - The dashboard's braille charts render each cell's escape sequence once instead of once per cell per frame. A busy frame (eight lanes, a 120-column activity strip) drops from about 5,770 allocations to about 3,505, and the chart itself from 877 to 53, measured by `BenchmarkView` and `BenchmarkChart`; the drawn output is byte-identical, and `--no-color` still drops the table with the color profile.
 - The heat ramp is one table with one set of cut points, so the color a meter
