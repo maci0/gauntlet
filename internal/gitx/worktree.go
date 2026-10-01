@@ -933,13 +933,7 @@ func (r *Repo) listBranchesMatching(ctx context.Context, pattern string) ([]stri
 	if err != nil {
 		return nil, err
 	}
-	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if name := trimLineEnd(line); name != "" {
-			names = append(names, name)
-		}
-	}
-	return names, nil
+	return refNames(out), nil
 }
 
 // PruneWorktrees clears bookkeeping for checkouts that no longer exist, which

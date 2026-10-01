@@ -12,22 +12,29 @@ import (
 	"time"
 )
 
+// seedIndex points GAUNTLET_HOME at a fresh home whose index already holds
+// rows, the state both benchmarks below measure against.
+func seedIndex(b *testing.B, rows int) {
+	b.Helper()
+	home := b.TempDir()
+	b.Setenv("GAUNTLET_HOME", home)
+	var buf strings.Builder
+	for i := range rows {
+		buf.WriteString(`{"run_id":"r` + strconv.Itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
+		buf.WriteString(strconv.Itoa(i))
+		buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
+		b.Fatal(err)
+	}
+}
+
 // BenchmarkAppendIndexLocked measures what a finished run pays to append its
 // summary row, against an index holding runs already recorded.
 func BenchmarkAppendIndexLocked(b *testing.B) {
 	for _, rows := range []int{100, 1000, 10000} {
 		b.Run(label(rows), func(b *testing.B) {
-			home := b.TempDir()
-			b.Setenv("GAUNTLET_HOME", home)
-			var buf strings.Builder
-			for i := range rows {
-				buf.WriteString(`{"run_id":"r` + strconv.Itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
-				buf.WriteString(strconv.Itoa(i))
-				buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
-			}
-			if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
-				b.Fatal(err)
-			}
+			seedIndex(b, rows)
 			now := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
 			b.ReportAllocs()
 			b.ResetTimer()
@@ -57,17 +64,7 @@ func BenchmarkAppendIndexLocked(b *testing.B) {
 func BenchmarkIndexScan(b *testing.B) {
 	for _, rows := range []int{100, 1000, 10000} {
 		b.Run(label(rows), func(b *testing.B) {
-			home := b.TempDir()
-			b.Setenv("GAUNTLET_HOME", home)
-			var buf strings.Builder
-			for i := range rows {
-				buf.WriteString(`{"run_id":"r` + strconv.Itoa(i) + `","path":"/home/u/.gauntlet/runs/2026-08-25/r`)
-				buf.WriteString(strconv.Itoa(i))
-				buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
-			}
-			if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
-				b.Fatal(err)
-			}
+			seedIndex(b, rows)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {

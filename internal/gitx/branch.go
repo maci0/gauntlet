@@ -25,6 +25,19 @@ func trimLineEnd(line string) string {
 	return strings.TrimRight(line, "\r\n")
 }
 
+// refNames reads a listing of refnames one per line, blanks dropped. Both
+// listings that answer a name split them the same way here, so a name read
+// one way cannot be listed the other.
+func refNames(out []byte) []string {
+	var names []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if name := trimLineEnd(line); name != "" {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // CurrentBranch returns the checked-out branch name. A detached HEAD is
 // ("", nil): that is a state, not a failure. Any other git error is returned
 // so callers do not treat a broken repository as detached, and a directory git
@@ -89,13 +102,7 @@ func (r *Repo) localRefNames(ctx context.Context, patterns ...string) ([]string,
 	if err != nil {
 		return nil, err
 	}
-	var names []string
-	for line := range strings.SplitSeq(string(out), "\n") {
-		if name := trimLineEnd(line); name != "" {
-			names = append(names, name)
-		}
-	}
-	return names, nil
+	return refNames(out), nil
 }
 
 // LaneBranches lists the local lane branches still on disk.
