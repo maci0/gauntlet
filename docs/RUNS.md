@@ -484,11 +484,14 @@ process is that earlier work seen again. A journal carrying neither a
 `run_start` nor an instant has nothing to judge a repeat by and reads every
 repeat as a replay, which under-counts a run rather than inflating it.
 
-`other` counts reviews whose terminal `status` a build does not recognize. It
-exists so a journal written by a newer version still reconciles: every review
-the row counts sits in exactly one of `ok`, `failed`, `skipped`, `conflicts`,
-`interrupted`, or `other`, so the FAILED column keeps explaining the run's
-exit code.
+`other` counts reviews whose terminal `status` a build does not recognize, and
+reviews whose ending carries no status at all: an ending cut short, or one
+written before the outcome was named. It exists so a journal written by a
+newer version still reconciles: every review the row counts sits in exactly one
+of `ok`, `failed`, `skipped`, `conflicts`, `interrupted`, or `other`, so the
+FAILED column keeps explaining the run's exit code. An ending with no status is
+never a pass — reading it as one put a review in `ok` that the run never
+recorded passing.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 

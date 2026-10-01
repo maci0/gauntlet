@@ -1204,7 +1204,7 @@ func summarizeFile(runID, path string) (Summary, error) {
 			ended[key] = claim{proc: proc, at: e.TS}
 			s.Reviews++
 			switch e.Status {
-			case "", "ok":
+			case "ok":
 				s.OK++
 			case "fail", "timeout":
 				s.Failed++
@@ -1215,9 +1215,16 @@ func summarizeFile(runID, path string) (Summary, error) {
 			case "interrupted":
 				s.Interrupted++
 			default:
-				// A status this build does not know. It is not a pass: the
-				// switch has to account for every review it counts, or the
-				// FAILED column stops explaining the run's exit code.
+				// A status this build does not know, and a status that is
+				// not there at all: an ending cut short, or one an older
+				// build wrote before it named the outcome. Neither is a
+				// pass. The runner's own tally skips a status it has none
+				// of, and a row claiming the review passed where the run
+				// counted nothing is the one reading that overstates a
+				// result. The switch has to account for every review it
+				// counts, or the FAILED column stops explaining the run's
+				// exit code, so an unreported one lands in `other` beside
+				// the unrecognized ones rather than in `ok`.
 				s.Other++
 			}
 			addCount(&s.Ins, lines(e.Ins))

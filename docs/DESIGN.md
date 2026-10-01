@@ -893,8 +893,9 @@ Design points:
   a listing that a run killed mid-review exited cleanly. The same reasoning
   gives `ins`/`del` a `lines_measured` flag, and the listing prints `n/a`
   rather than `+0/-0` for a run whose lines could not be attributed. An
-  unrecognized terminal status reconciles into `other`, so every review a row
-  counts lands in exactly one bucket and FAILED still explains the exit code. Index rebuilds and Close serialize on a sibling lock so
+  unrecognized terminal status, and a terminal status that is missing
+  altogether, reconcile into `other`, so every review a row counts lands in
+  exactly one bucket and FAILED still explains the exit code. Index rebuilds and Close serialize on a sibling lock so
   a listing cannot overwrite a just-written summary. That lock is polled
   against a caller-supplied clock and pause (`lockIndex`), so a contended
   acquisition gives up after a fixed number of retries rather than after

@@ -2080,6 +2080,8 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	}
 	// One event per review: the summary counts a repeated review_end key
 	// once, so seven events that named the same review would be one review.
+	// The last carries no status at all: an ending cut short, or one written
+	// before the outcome was named. It is not a pass.
 	for i, e := range []map[string]any{
 		{"ev": "review_end", "status": "ok"},
 		{"ev": "review_end", "status": "fail"},
@@ -2099,8 +2101,11 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Reviews != 7 || s.OK != 2 || s.Failed != 2 || s.Skipped != 1 || s.Conflicts != 1 {
+	if s.Reviews != 7 || s.OK != 1 || s.Failed != 2 || s.Skipped != 1 || s.Conflicts != 1 {
 		t.Fatalf("status tally wrong: %+v", s)
+	}
+	if s.Other != 1 {
+		t.Fatalf("a status-less ending was not counted as unrecognized: %+v", s)
 	}
 	data, err := json.Marshal(s)
 	if err != nil {
@@ -2112,6 +2117,52 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	}
 	if string(fields["interrupted"]) != "1" {
 		t.Fatalf("interrupted count missing from recovered summary: %s", data)
+	}
+}
+
+// A review_end with no status is not a pass. The switch used to fold the
+// empty string in beside "ok", so an ending cut short by a power cut, or one
+// written before the outcome was named, put a review in the OK column of
+// `gauntlet runs` that nothing ever recorded passing. Every path that decides
+// a status publishes one, so an empty one reaches the summary only from a
+// journal that is damaged or older than the field; neither is a result. It
+// lands in other with the statuses this build does not recognize, which is
+// what keeps Reviews reconciling against the buckets and stops the row
+// claiming a clean sweep.
+func TestSummarizeFileDoesNotCountAMissingStatusAsAPass(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+
+	at := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+	id := NewRunID(at)
+	j, err := Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]any{"ev": "run_start", "ts": at, "version": "test"})
+	// One real pass beside the ending that never named its outcome, so the
+	// row is two reviews and the FAILED column still explains the second.
+	j.Write(map[string]any{"ev": "review_end", "ts": at, "dir": "/w", "loop": 1,
+		"review": "sec-review", "status": "ok"})
+	j.Write(map[string]any{"ev": "review_end", "ts": at, "dir": "/w", "loop": 1,
+		"review": "cut-review"})
+	j.Flush()
+	j.CloseQuiet()
+
+	s, err := summarizeFile(id, j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.OK != 1 {
+		t.Fatalf("a review_end with no status was counted as a pass: %+v", s)
+	}
+	if s.Other != 1 {
+		t.Fatalf("a review_end with no status did not reconcile into other: %+v", s)
+	}
+	// The invariant the whole switch exists to keep: every review the row
+	// counts sits in exactly one bucket, so FAILED explains the exit code.
+	if s.Reviews != s.OK+s.Failed+s.Skipped+s.Conflicts+s.Interrupted+s.Other {
+		t.Fatalf("the row does not reconcile against its own buckets: %+v", s)
 	}
 }
 

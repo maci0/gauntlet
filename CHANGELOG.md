@@ -28,6 +28,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A `review_end` carrying no status is no longer counted as a pass in
+  `gauntlet runs`. The index reconstruction folded an empty status into `ok`
+  alongside an explicit one, so an ending cut short, or one written before
+  the outcome was named, reported as a review that passed. The runner's own
+  tally skips a status it has none of, and the two disagreed on the same
+  event. A missing status now reconciles into `other` with the statuses a
+  build does not recognize, which keeps every review in exactly one bucket
+  and leaves the FAILED column explaining the exit code.
 - The suggest step no longer blames an agent that never ran. The default
   `--suggest-agent gauntlet` is a file-signal reader, not a CLI: a tree it
   finds no signal in was wrapped as `agent failed`, which claims a launch and
