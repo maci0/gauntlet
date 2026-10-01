@@ -326,21 +326,27 @@ the journaled event stream in `internal/runner/contract_test.go`.
   or `dist` setting it per target, named a binary that cannot run on the
   machine executing it, and the release gate refused a healthy release over a
   file it was never going to run. It resolves from `GOHOSTOS`/`GOHOSTARCH`.
-
-- Truncating a line cut on a character, not a byte: `normalize.Clip` and
-  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
-  measuring the cut, so what they return is always text. A file name holding
-  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
-  half-written character into a commit subject, a pull request body, or the
-  lock note another run reads, where the terminal and every width measurement
-  downstream have to guess what they are looking at.
-
-- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
-  target had drifted, so a reader following one landed on the wrong recipe: a
-  seven-line recipe added ahead of that target moved each of them, and
-  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
-  The pointers are re-anchored, and one that named the comment above the
-  checksums recipe now names the recipe.
+- `make host-artifact` resolves the host platform the same way. An exported
+  `GOOS` or `GOARCH` — a developer testing arm64, or `dist` setting it per
+  target — named a binary that cannot run on the machine asking for it, so the
+  path `make smoke` executes came back as a file that was never built.
+- The dashboard draws its panel frames without measuring every row. The five
+  stacked blocks are each exactly the pane's width, so `lipgloss.JoinVertical`
+  re-measuring all five to find that width, and then every row of them again to
+  pad to it, was a third of the CPU of a busy frame. The four panel titles are
+  padded where the width is already known, so the drawn output is unchanged.
+- A snapshot's index descriptor is closed on every path out of
+  `Repo.snapshotTree`. One snapshot is taken per review of an in-place run, and
+  the descriptor outlived the unlink on any exit that skipped its close, so a
+  run over a tree whose index cannot be opened spent one file descriptor per
+  review until the process exited. The guard is a no-op once an explicit close
+  has run, so those branches still report their own result.
+- The updater's retry jitter is drawn from a keyed hash of the attempt number
+  and a per-process seed rather than from the package-wide generator, which is
+  seeded from OS entropy when it loads: nothing about the sequence one process
+  produced could be reproduced afterwards, so a retry storm after a failed
+  update could not be replayed. The waits are unchanged, and the draw rejects
+  rather than wraps so it stays uniform.
 
 ### Changed
 

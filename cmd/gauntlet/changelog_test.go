@@ -97,6 +97,53 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 	}
 }
 
+// The release workflow dumps a version section verbatim as the GitHub notes,
+// so a bullet pasted twice ships twice: the reader sees one fix announced two
+// ways and cannot tell it is one fix. Two Unreleased entries were duplicated
+// that way and were caught here only by reading. Bullets are compared over
+// their whole block, continuation lines included, so a rewrap reads as a
+// different entry rather than as a hidden duplicate.
+func TestChangelogBulletsAreNotDuplicated(t *testing.T) {
+	text := readChangelog(t)
+	var (
+		section  string
+		current  []string
+		first    int
+		seenBull = map[string]int{}
+	)
+	flush := func() {
+		if len(current) < 2 {
+			return
+		}
+		key := strings.Join(current, "\n")
+		if prev, ok := seenBull[key]; ok {
+			t.Errorf("CHANGELOG.md:%d: this bullet repeats one at line %d, in %s", first, prev, section)
+		}
+		seenBull[key] = first
+	}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		switch {
+		case strings.HasPrefix(line, "## "), strings.HasPrefix(line, "### "):
+			flush()
+			current, first = nil, 0
+			section = line
+		case strings.HasPrefix(line, "- "):
+			flush()
+			first = i + 1
+			current = []string{line}
+		case strings.HasPrefix(line, "  ") && line != "  ":
+			if len(current) > 0 {
+				current = append(current, line)
+			}
+		default:
+			flush()
+			current = nil
+		}
+	}
+	flush()
+}
+
 // A patch release must contain only fixes (or security fixes): new features
 // require a minor bump, and breaking changes require a major bump. A minor
 // release may add features but must not remove or break documented contract
