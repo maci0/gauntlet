@@ -256,14 +256,14 @@ test-fast: ## run one package's tests without the race detector: make test-fast 
 .PHONY: cover
 cover: | toolchain-min test-tmpdir test-cgo
 cover: ## test coverage summary, gated by COVER_MIN
-	@mkdir -p $(DIST)
-	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) $(TESTFLAGS) -coverprofile=$(DIST)/coverage.out ./...
-	@total=$$($(GO) tool cover -func=$(DIST)/coverage.out | awk '/^total:/ {print $$3}'); \
+	@mkdir -p "$(DIST)"
+	TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) $(TESTFLAGS) -coverprofile="$(DIST)/coverage.out" ./...
+	@total=$$($(GO) tool cover -func="$(DIST)/coverage.out" | awk '/^total:/ {print $$3}'); \
 		echo "total coverage: $$total (floor $(COVER_MIN)%)"; \
 		awk -v got="$${total%\%}" -v min="$(COVER_MIN)" 'BEGIN { \
 			if (got + 0 < min + 0) { \
 				printf "coverage fell to %s%%, below the %s%% floor\n", got, min > "/dev/stderr"; exit 1 \
-			} }' 
+			} }'
 
 # The coverage floor, measured where it is enforced: a developer machine with
 # agent CLIs installed runs paths a CI runner skips, so a number taken locally
@@ -608,13 +608,13 @@ install: build ## install into $(BINDIR) (BINDIR defaults to $(HOME)/.local/bin)
 	@# the same way a released one is, unless it is the same binary: a second
 	@# `make install` of an unchanged build would leave nothing to roll back to.
 	@if [ -f "$(BINDIR)/$(BINARY)" ] && ! cmp -s "$(BINARY)" "$(BINDIR)/$(BINARY)"; then cp -p "$(BINDIR)/$(BINARY)" "$(BINDIR)/$(BINARY).previous"; fi
-	install -m 0755 $(BINARY) "$(BINDIR)/$(BINARY)"
+	install -m 0755 "$(BINARY)" "$(BINDIR)/$(BINARY)"
 	@case ":$$PATH:" in *:"$(BINDIR)":*) ;; *) \
 		echo "note: $(BINDIR) is not on PATH; add it so $(BINARY) can be found" >&2 ;; esac
 
 .PHONY: clean
 clean: ## remove build artifacts
-	rm -rf $(DIST) $(BINARY) $(BINARY)_* .scratch
+	rm -rf "$(DIST)" "$(BINARY)" "$(BINARY)"_* .scratch
 
 # A previous dist with a different VERSION or PLATFORMS must not leak into
 # this one: release globs dist/gauntlet_* both into checksums.txt and the
@@ -644,14 +644,14 @@ clean: ## remove build artifacts
 .PHONY: dist
 dist: | toolchain
 dist: ## build every release platform into dist/
-	@mkdir -p $(DIST)
-	@rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json $(DIST)/LICENSE
+	@mkdir -p "$(DIST)"
+	@rm -f "$(DIST)"/$(BINARY)_* "$(DIST)/checksums.txt" "$(DIST)/sbom.json" "$(DIST)/LICENSE"
 	@set -e; pids=; for target in $(PLATFORMS); do \
 		goos=$${target%/*}; goarch=$${target#*/}; \
 		name="$(BINARY)_$(VERSION)_$${goos}_$${goarch}"; \
 		echo "building $$name"; \
 		( CGO_ENABLED=0 GOOS=$$goos GOARCH=$$goarch \
-			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o $(DIST)/$$name $(CMD) ) & \
+			$(GO) build $(GOTAGS) -trimpath -buildvcs=false -ldflags "$(LDFLAGS)" -o "$(DIST)/$$name" $(CMD) ) & \
 		pids="$$pids $$name:$$!"; \
 	done; \
 	status=0; for entry in $$pids; do \
@@ -769,14 +769,14 @@ release: | clean-tree release-version check test dist artifacts ## build every p
 # artifact of it.
 .PHONY: artifacts
 artifacts: dist ## write dist/checksums.txt, dist/sbom.json and dist/LICENSE from the built binaries
-	@install -m 0644 LICENSE $(DIST)/LICENSE
+	@install -m 0644 LICENSE "$(DIST)/LICENSE"
 	@set -e; if command -v sha256sum >/dev/null 2>&1; then \
-		cd $(DIST) && sha256sum $(BINARY)_* > checksums.txt; \
+		cd "$(DIST)" && sha256sum $(BINARY)_* > checksums.txt; \
 	else \
-		cd $(DIST) && shasum -a 256 $(BINARY)_* > checksums.txt; \
+		cd "$(DIST)" && shasum -a 256 $(BINARY)_* > checksums.txt; \
 	fi
-	$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*
-	@cd $(DIST) || exit 1; \
+	$(GO) run ./cmd/sbom -o "$(DIST)/sbom.json" -version $(VERSION) "$(DIST)"/$(BINARY)_*
+	@cd "$(DIST)" || exit 1; \
 	{ sha256sum -c checksums.txt 2>/dev/null || shasum -a 256 -c checksums.txt; } >/dev/null || { \
 		echo "artifacts: $(DIST)/checksums.txt does not match the binaries it names" >&2; \
 		exit 1; \

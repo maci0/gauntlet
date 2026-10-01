@@ -48,21 +48,21 @@ func backupRecipe(t *testing.T) string {
 		t.Fatal("docs/RUNS.md has no backup and restore section")
 	}
 	rest := string(data)[at:]
-	open := strings.Index(rest, "state=${GAUNTLET_HOME")
-	if open < 0 {
+	before, _, ok := strings.Cut(rest, "state=${GAUNTLET_HOME")
+	if !ok {
 		t.Fatal("the backup section documents no state-tree archive recipe")
 	}
 	// The block that holds that line is the one the archive recipe is in.
-	start := strings.LastIndex(rest[:open], "```sh")
+	start := strings.LastIndex(before, "```sh")
 	if start < 0 {
 		t.Fatal("the state-tree recipe is not inside a shell block")
 	}
 	body := rest[start+len("```sh"):]
-	closed := strings.Index(body, "```")
-	if closed < 0 {
+	before0, _, ok0 := strings.Cut(body, "```")
+	if !ok0 {
 		t.Fatal("the state-tree block is not closed")
 	}
-	return strings.TrimSpace(body[:closed])
+	return strings.TrimSpace(before0)
 }
 
 // runBackupRecipe runs the recipe with the two paths it reads pointed at
@@ -354,13 +354,11 @@ func TestBackupRecipeGivesOverlappingJobsTheirOwnTemporary(t *testing.T) {
 	recipe := backupRecipeFor(t, state, archive)
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			cmd := exec.CommandContext(t.Context(), "sh", "-c", recipe)
 			cmd.Env = append(os.Environ(), "GAUNTLET_HOME="+state)
 			cmd.CombinedOutput()
-		}()
+		})
 	}
 
 	// Read the directory repeatedly until both jobs have written their

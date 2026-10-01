@@ -380,7 +380,7 @@ func TestWriteFileAtomicReExecutionIsIdempotent(t *testing.T) {
 	tree := func(writes int) (body string, others []string) {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "state.json")
-		for i := 0; i < writes; i++ {
+		for i := range writes {
 			if err := WriteFileAtomic(dir, ".state-", path, []byte(payload)); err != nil {
 				t.Fatalf("write %d: %v", i+1, err)
 			}

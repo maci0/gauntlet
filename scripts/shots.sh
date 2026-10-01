@@ -19,6 +19,16 @@ export CGO_ENABLED=0
 # into a different binary than the one the README's picture stands for.
 export GOAMD64=v1
 export GOARM64=v8.0
+# The other two toolchain settings the Makefile closes for the same reason.
+# GOEXPERIMENT is recorded in every binary `go version -m` prints, so an
+# ambient `go env -w GOEXPERIMENT=loopvar` compiles the same source into
+# different bytes than the one `make dist` ships, and `dist` checks that
+# field. GOFIPS140 selects a FIPS module for the standard library and is
+# recorded by neither, which is why the Makefile closes it rather than
+# checking it. Empty GOEXPERIMENT is the toolchain's own default set, not
+# "no experiments".
+export GOEXPERIMENT=
+export GOFIPS140=off
 # The PNGs are checked in, so they must not follow the host the maintainer
 # happens to be on. LC_ALL fixes collation, TZ fixes any date the renderer
 # prints. The Makefile pins the same two for everything it runs.

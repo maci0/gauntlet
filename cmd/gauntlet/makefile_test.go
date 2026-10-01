@@ -60,6 +60,75 @@ func TestMakefileHonorsGoSum(t *testing.T) {
 	}
 }
 
+// DIST and BINARY are `:=` but overridable on the command line, and the
+// release path used them unquoted everywhere: `mkdir -p $(DIST)` on a path
+// with a space became `mkdir -p /tmp/gt spaced`, which failed before
+// compiling anything, so a `make dist DIST=...` naming a path a user can
+// actually have never worked. Every recipe that names them quotes them, and
+// the globs keep their `*` outside the quotes, which is what a glob is.
+//
+// Read from a dry run of the recipes rather than from the source text: a
+// quoted and an unquoted spelling differ only in whether the shell would
+// re-split it, and the dry run is what the shell will run.
+//
+// quotedAt reports whether the byte at off in line sits inside a double- or
+// single-quoted span. It walks from the start of the line tracking the open
+// quote, which is enough for the recipes here: none of them escapes a quote or
+// opens one inside an unquoted argument, and one that did would be rewritten by
+// hand rather than machine-checked.
+func quotedAt(line string, off int) bool {
+	var quote byte
+	for i := 0; i < off; i++ {
+		switch c := line[i]; {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '\\':
+			i++
+		}
+	}
+	return quote != 0
+}
+
+func TestArtifactPathsAreQuoted(t *testing.T) {
+	root := moduleRoot(t)
+	const dist = "/tmp/gauntlet repro space"
+	for _, target := range []string{"clean", "dist", "artifacts"} {
+		t.Run(target, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", target, "DIST="+dist)
+			cmd.Dir = root
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make %s dry run: %v\n%s", target, err, out)
+			}
+			text := string(out)
+			if !strings.Contains(text, `"`+dist) {
+				t.Errorf("make %s never names the quoted DIST the caller asked for, so a path with a space word-splits into a different one:\n%s", target, out)
+			}
+			for line := range strings.SplitSeq(text, "\n") {
+				// A message the recipe prints is not an argument the
+				// shell splits; every other use of the path is. So
+				// quote spans are dropped and only what is left can
+				// be an unquoted argument. `cd` and the `[ -s ]`
+				// loop read bare names by design and are named
+				// here so the check says what it skips.
+				if strings.Contains(line, "echo ") {
+					continue
+				}
+				if at := strings.Index(line, "gauntlet repro space"); at >= 0 &&
+					!quotedAt(line, at) {
+					t.Errorf("make %s names DIST unquoted, so the shell re-splits it into a different path: %s", target, line)
+				}
+			}
+		})
+	}
+}
+
 // The compiler is the one build input nothing in the build normalizes: a Go
 // binary records the version that compiled it, and GOTOOLCHAIN=local compiles
 // with whatever is installed. So the exact release is pinned once, in the
@@ -1144,8 +1213,11 @@ func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 	if recipe == "" {
 		t.Fatal("Makefile has no artifacts target: the files beside the binaries are written by the release recipe and nothing else exercises them")
 	}
-	if !strings.Contains(recipe, "$(GO) run ./cmd/sbom -o $(DIST)/sbom.json -version $(VERSION) $(DIST)/$(BINARY)_*") {
-		t.Fatal("make artifacts must write dist/sbom.json from the binaries dist built, through cmd/sbom")
+	// The paths are quoted: DIST is overridable on the command line, so an
+	// unquoted spelling word-splits a path that has a space in it and the
+	// release fails before it compiles anything.
+	if !strings.Contains(recipe, `$(GO) run ./cmd/sbom -o "$(DIST)/sbom.json" -version $(VERSION) "$(DIST)"/$(BINARY)_*`) {
+		t.Fatal("make artifacts must write dist/sbom.json from the binaries dist built, through cmd/sbom, with the paths quoted")
 	}
 	if !strings.Contains(recipe, "$(BINARY)_* > checksums.txt") {
 		t.Fatal("make artifacts must write dist/checksums.txt from the binaries dist built")
@@ -1157,10 +1229,10 @@ func TestMakefileReleaseGeneratesCleanSbom(t *testing.T) {
 		!strings.Contains(recipe, `[ -s "$$f" ]`) {
 		t.Fatal("make artifacts must refuse to report success for a missing or empty checksums.txt, sbom.json or LICENSE; CI checks the first with `test -s`, and no make target reproduced it")
 	}
-	if !strings.Contains(recipe, "install -m 0644 LICENSE $(DIST)/LICENSE") {
+	if !strings.Contains(recipe, `install -m 0644 LICENSE "$(DIST)/LICENSE"`) {
 		t.Fatal("make artifacts must copy LICENSE into dist, so a release ships the grant its binaries are offered under")
 	}
-	if !strings.Contains(text, "rm -f $(DIST)/$(BINARY)_* $(DIST)/checksums.txt $(DIST)/sbom.json $(DIST)/LICENSE") {
+	if !strings.Contains(text, `rm -f "$(DIST)"/$(BINARY)_* "$(DIST)/checksums.txt" "$(DIST)/sbom.json" "$(DIST)/LICENSE"`) {
 		t.Fatal("make dist must remove a previous sbom.json, so a stale inventory cannot ship with new binaries")
 	}
 }
@@ -1198,10 +1270,11 @@ func TestDistVerifiesTheBuildSettingsInEveryAsset(t *testing.T) {
 	}
 }
 
-// make clean must sweep dist, build binaries, and scratch files.
+// make clean must sweep dist, build binaries, and scratch files. The paths
+// are quoted and the glob's `*` stays outside them, which is what a glob is.
 func TestMakefileCleanRemovesScratchAndBinaries(t *testing.T) {
 	text := makefileText(t)
-	if !strings.Contains(text, "rm -rf $(DIST) $(BINARY) $(BINARY)_* .scratch") {
+	if !strings.Contains(text, `rm -rf "$(DIST)" "$(BINARY)" "$(BINARY)"_* .scratch`) {
 		t.Fatal("make clean must remove dist, binaries, and scratch files")
 	}
 }
@@ -1619,6 +1692,28 @@ func TestMaintainerScriptsBuildThroughTheMakefile(t *testing.T) {
 	if want := "-tags " + tags; !strings.Contains(shots, want) {
 		t.Errorf("scripts/shots.sh must build the frames with %q, the Makefile's default tag set", want)
 	}
+
+	// The build environment is the other half of that. shots.sh compiles the
+	// frames itself rather than linking a binary, so every toolchain setting
+	// the Makefile closes is ambient there unless the script closes it too.
+	// GOEXPERIMENT is recorded in every binary `go version -m` prints and
+	// `dist` checks it against the toolchain's own default set, so a
+	// `go env -w GOEXPERIMENT=...` left on a maintainer's machine drew the
+	// checked-in PNGs from a binary no release ships; GOFIPS140 is recorded
+	// by nothing at all, which is why the Makefile closes it rather than
+	// checking it. The values are read from the Makefile, so a pin moved
+	// there is held to the script as well.
+	makefile := makefileText(t)
+	for _, name := range []string{"GOEXPERIMENT", "GOFIPS140", "GOAMD64", "GOARM64"} {
+		pin, ok := makefileExportedPin(makefile, name)
+		if !ok {
+			t.Errorf("Makefile does not export %s with := , so there is no pin to hold shots.sh to", name)
+			continue
+		}
+		if want := "export " + name + "=" + pin; !strings.Contains(shots, want) {
+			t.Errorf("scripts/shots.sh must set %q, the pin the Makefile closes the ambient `go env` file with", want)
+		}
+	}
 }
 
 // makefileDefault reads the default value of a Makefile variable, so a
@@ -1631,6 +1726,22 @@ func makefileDefault(makefile, name string) string {
 		return ""
 	}
 	return m[1]
+}
+
+// makefileExportedPin reads one `export NAME := value` line, which is how the
+// Makefile closes the toolchain settings that would otherwise follow whatever
+// a developer's `go env` file last wrote. `:=` rather than `?=` on purpose:
+// these are build inputs rather than defaults, and the reason GOEXPERIMENT is
+// empty is that an empty value means the toolchain's own default set rather
+// than no experiments, so the empty string is a value to hold something to and
+// not a missing assignment.
+func makefileExportedPin(makefile, name string) (string, bool) {
+	re := regexp.MustCompile(`(?m)^export\s+` + regexp.QuoteMeta(name) + `\s*:=\s*(\S*)$`)
+	m := re.FindStringSubmatch(makefile)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }
 
 // A new machine finds out what it is missing one target at a time otherwise:

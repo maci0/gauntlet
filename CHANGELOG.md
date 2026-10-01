@@ -51,6 +51,21 @@ the journaled event stream in `internal/runner/contract_test.go`.
   away and nothing the reader half-wrote. The hint now uses the same
   distance-from-half-the-word rule the flag suggestions use, so a real typo
   (`helo`, `showw`) still gets one.
+- `make dist`, `make artifacts`, `make cover`, and `make clean` name `$(DIST)`
+  and `$(BINARY)` unquoted, so a `DIST` path containing a space word-split into
+  two arguments and the release path failed at its first `mkdir`, before
+  compiling anything. Both variables are overridable on the command line, so a
+  caller could name a path they actually have and get nothing. The globs that
+  name several assets keep their `*` outside the quotes, which is what a glob
+  is.
+- `scripts/shots.sh` closed `GOAMD64` and `GOARM64` against an ambient
+  `go env` file but left `GOEXPERIMENT` and `GOFIPS140` open. `GOEXPERIMENT` is
+  recorded in every binary `go version -m` prints, and `make dist` checks that
+  field against the toolchain's own default set, so a `go env -w` left on a
+  maintainer's machine drew the checked-in screenshots from a binary no
+  release ships; `GOFIPS140` selects a FIPS module for the standard library and
+  is recorded by nothing at all, which is why the Makefile closes it rather
+  than checking it.
 - The project page now keeps its distinctions under a system in high-contrast
   mode. Every color on it is a hardcoded custom property, so a forced-colors
   user got the system palette in place of the page's: the filled Download
