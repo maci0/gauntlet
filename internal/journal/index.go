@@ -1229,6 +1229,16 @@ func summarizeFile(runID, path string) (Summary, error) {
 			}
 			addCount(&s.Ins, lines(e.Ins))
 			addCount(&s.Del, lines(e.Del))
+			// An isolated review publishes its own diffstat on review_end
+			// *and* on the merge (or pull_request) that landed it: the two
+			// are the same figures under one key. Claim the key here so the
+			// publication below adds nothing for a diff this ending already
+			// counted. A review_end carrying no counts claims none, which is
+			// what keeps the sequential shape, where only the publication
+			// carries them, counted exactly once.
+			if e.Ins != nil {
+				counted[key] = true
+			}
 			addCount(&s.Tokens, e.Tokens)
 		case "merge", "pull_request":
 			// A layer's counts are added once, keyed by the branch its work
@@ -1237,7 +1247,8 @@ func summarizeFile(runID, path string) (Summary, error) {
 			// already published) repeats every field the key is built from,
 			// and summing it twice would report one diff as two and leave the
 			// summary reconciling against nothing. An event carrying no counts
-			// claims none, so it never keeps a counted one out.
+			// claims none, so it never keeps a counted one out, and neither
+			// does one whose review's own ending already carried them.
 			key := layerKey{dir: e.Dir, review: e.Review, branch: e.Branch, loop: e.Loop}
 			if counted[key] {
 				break
