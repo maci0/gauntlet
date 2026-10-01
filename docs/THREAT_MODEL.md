@@ -7,7 +7,16 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-09-30 against commit c2c349e (plus this sandbox change).
+Last reviewed: 2026-10-01 against commit cb9f0a0 (plus this suggestion-weight change).
+The suggest step can now request repeated passes. Its parser accepts only
+integer weights 0–3 for discovered review names, rejects malformed weights
+before sanitizing the reason, and keeps the first valid mention of each name.
+Zero skips a review; omitted weights retain one pass. The preview shows repeat
+counts before confirmation. Repository text can still steer which reviews an
+agent chooses and their weights, but agent output cannot schedule more than
+three passes per discovered review. Manual repeats remain operator-controlled.
+
+Last reviewed previously: 2026-09-30 against commit c2c349e (plus this sandbox change).
 This change adds kernel filesystem write confinement to all agent launches:
 Landlock on Linux and Seatbelt on macOS. The scheduler itself remains outside
 the sandbox; the policy is inherited by agent children. Setup failures stop
@@ -1284,7 +1293,7 @@ fails is a warning; the run's own report has already been written
 | Operator scope text becoming prompt instructions | `--paths` entries are refused at the flag where the operator can see which one it was, unless each is non-empty, at most 200 runes, and free of backticks, controls, `Cf`/`Zl`/`Zp`, and whitespace other than a plain space; the block names at most 20 entries, re-renders each so a surviving entry equals its own rendering, and counts what it dropped, because a scope that reads shorter than the flag is a wider one | `internal/prompt/compose.go:148-245`, `cmd/gauntlet/flags.go:650-664` |
 | A usage limit probe that trips after a lane has already taken a review | the lane re-reads the finish flag the probe set and drops its unstarted queue, so the remaining `--jobs` reviews do not start against a window the run decided was spent | `internal/runner/attempt.go:36-64`, `internal/runner/loop.go:147` |
 | A hostile untracked file name reaching the run journal | every git path a run note prints goes through `safePaths` before the humanize list renders it, the same filter the dirty-tree note and a stack's path list use; the lane's untracked note was the one that did not | `internal/runner/sanitize.go:21-27`, `internal/runner/loop.go:50,54` |
-| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, NFC normalization before truncation, strict suggestion grammar checked against known set, reasons capped to the same budget; the unknown half of a triage answer is capped at 20 names of 200 runes with the remainder counted and reported as truncated, so a confused or hostile agent cannot leave a megabyte of retained strings or a line of log with no end | `compose.go:369-396,317-354` |
+| Injection via suggest catalog | description *and* name sanitize, fence-neutralizing, 200-rune cap, NFC normalization before truncation, strict suggestion grammar checked against known set, reasons capped to the same budget; agent weights are integers 0–3 parsed before reason sanitization, and duplicate names cannot add passes; the unknown half of a triage answer is capped at 20 names of 200 runes with the remainder counted and reported as truncated, so a confused or hostile agent cannot leave a megabyte of retained strings or a line of log with no end | `compose.go:381-414,447-504` |
 | Injection via `Signals:` into the file-signal suggester | known kinds, charset, 12×40-rune caps; `mark:` values search file heads, not executed; a head that could not be read whole is left unscanned, because a partial prefix either declares a mark the file does not carry or hides one past the truncation, and a wrong signal steers which reviews auto-run | `prompt.go:199-232`, `evidence/suggest.go:556-600,716-726` |
 | Terminal-driven or spoofed output, including prompt preview, journal replay, reporter, and dashboard | `Display`/`Sanitize` strip escapes, controls, bidi, and separators, and repair bytes that are not valid UTF-8 so one file name renders the same whatever sits beside it; width cap; rate limit; duplicate collapse; grapheme-preserving truncation; ANSI CSI sequences terminated on standard final characters in token width calculation; usage and sink callbacks serialized | `internal/normalize/display.go:16-43`, `modes.go:65-66`, `runs.go:386`, `internal/report/report.go:147-152`, `internal/ui/ui.go:780-808`, `internal/ui/clip.go:75-117`, `internal/runner/exec.go:45,51,257,284-286,311-317,360-371`, `runner.go:26` |
 | Hostile file names reaching messages or logs | C-quote decoding then sanitization of every git path before a terminal write; CRLF stripped | `internal/gitx/status.go:68,179,223-285`, `internal/runner/sanitize.go:21-27`, `lock.go:22-28`, `conflict.go:130-183` |
@@ -1471,8 +1480,11 @@ the reviewed repository's author:
   the reviews left behind (`cmd/gauntlet/main.go:960-984).
 - **Suggestion gaming.** A planted prompt whose description primes
   `RELEVANT:` output steers which reviews auto-run; the grammar check and
-  known-set filter (`compose.go:372,381-396`) bound it to reviews that exist
-  in the discovered set, including the attacker's own.
+  known-set filter (`compose.go:442-480`) bound it to reviews that exist
+  in the discovered set, including the attacker's own. It can also steer repeat
+  weights and therefore cost; the parser bounds agent-requested repeats to
+  three per review and duplicates cannot increase that cap
+  (`internal/prompt/compose.go:480-501`).
 - **Signals: steering.** A planted `Signals:` line on a project prompt is
   parsed into the file-signal suggester (`prompt.go:199-232`,
   `matchDeclared` in `evidence/suggest.go:556-600`). Charset, count, and length are

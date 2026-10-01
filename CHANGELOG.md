@@ -26,6 +26,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- Suggestion agents assign review weights of 1–3 passes per loop based on expected review value. The preview shows repeats, manual review entries add to those weights, and older unweighted suggestions still schedule one pass. Explicit zero weights skip a review; malformed or out-of-range weights are ignored.
+- Documented Linux memory limits for review runs using a systemd scope, including the shared cap across agents and subprocesses, swap control, and possible out-of-memory kills.
+
 ## 1.31.0
 
 ### Added

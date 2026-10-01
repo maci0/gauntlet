@@ -104,6 +104,22 @@ func TestSuggestAddsWhatWasNamed(t *testing.T) {
 	}
 }
 
+func TestSuggestWeightsAddToManualRepeats(t *testing.T) {
+	d, opts := suggestFixture(t, `echo "RELEVANT: sec-review: weight=3: critical auth"; echo "RELEVANT: doc-review: weight=0: skip"`)
+	opts.reviews, opts.reviewsSet = "sec,doc", true
+	var out bytes.Buffer
+	if err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, report.Palette{}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(d.reviews, ","); got != "sec-review,sec-review,sec-review,sec-review,doc-review" {
+		t.Fatalf("schedule %s, want three suggested passes plus both manual entries", got)
+	}
+	if !strings.Contains(out.String(), "(x3) critical auth") || !strings.Contains(out.String(), "suggests 1 of 2") {
+		t.Fatalf("the preview hides suggested weights:\n%s", out.String())
+	}
+}
+
 // An exit code of 0 with unusable output is as much a failure as a nonzero
 // exit: running everything by accident is the alternative.
 func TestSelectReviewsRefusesAnAgentWithNoSuggestions(t *testing.T) {

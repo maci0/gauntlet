@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>gauntlet</title>
+<meta name="description" content="Run your codebase through 54 specialized review prompts, dispatched to the AI coding agents you already have installed, with fixes applied to the working tree.">
+<link rel="icon" href="mark.svg" type="image/svg+xml">
+<style>
+:root {
+  --bg: #f6f9fa;
+  --fg: #1b2830;
+  --muted: #64798a;
+  --accent: #0e7f8f;
+  --panel: #e8eff2;
+  --line: #d3dee3;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #11191e;
+    --fg: #dce7ec;
+    --muted: #8a9dab;
+    --accent: #2bb7c9;
+    --panel: #1a252c;
+    --line: #2a3a44;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 960px; margin: 0 auto; padding: 48px 16px 64px; }
+header { text-align: center; }
+header img { width: min(420px, 100%); height: auto; }
+.tagline { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 16px auto 28px; }
+.cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.cta a {
+  padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;
+  border: 1px solid var(--accent); color: var(--accent);
+}
+.cta a.primary { background: var(--accent); color: var(--bg); }
+.shot { display: block; width: 100%; height: auto; margin: 48px 0; border-radius: 8px; border: 1px solid var(--line); }
+h2 { font-size: 1.3rem; margin: 48px 0 12px; }
+ul { padding-left: 1.2em; }
+li { margin: 8px 0; }
+a { color: var(--accent); }
+code { font: 0.9em ui-monospace, "SF Mono", Menlo, monospace; }
+pre {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 14px 16px; overflow-x: auto; line-height: 1.5;
+}
+footer { margin-top: 64px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="logo-dark.svg">
+      <img src="logo-light.svg" alt="gauntlet" width="420" height="122">
+    </picture>
+  </h1>
+  <p class="tagline">Run your codebase through the gauntlet: 54 specialized review prompts, dispatched to whichever AI coding agents you have installed, applying fixes directly to the working tree.</p>
+  <div class="cta">
+    <a class="primary" href="https://github.com/maci0/gauntlet/releases/latest">Download</a>
+    <a href="https://github.com/maci0/gauntlet">GitHub</a>
+  </div>
+</header>
+
+<img class="shot" src="dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="2574" height="1564">
+
+<h2>What it does</h2>
+<p>One static binary loops 54 review prompts over your repository, hands each one to an agent CLI you already have installed, and applies what it finds.</p>
+<ul>
+  <li><strong>Isolation in parallel.</strong> <code>--jobs N</code> gives N lane worktrees pulling from a shared queue, each review on its own branch, merged back one at a time.</li>
+  <li><strong>Unmerged review stacks.</strong> <code>--stacked-prs</code> opens each changed review as a child PR of the previous one. The branch in your editor never changes.</li>
+  <li><strong>A dashboard.</strong> <code>--tui</code> puts lanes, throughput, the review grid, and a normalized feed on one screen.</li>
+  <li><strong>Measured, never guessed.</strong> Token counts come from what the agent reports; an agent that reports nothing shows no rate.</li>
+  <li><strong>A record.</strong> Every run is JSONL under <code>~/.gauntlet</code>, replayable with <code>gauntlet show</code>.</li>
+</ul>
+
+<h2>Quick start</h2>
+<pre><code>gauntlet doctor     # which installed agents it can use
+gauntlet pick       # compose a run
+gauntlet -r quick --stacked-prs --pr-base main</code></pre>
+<p>Works with <code>claude</code>, <code>codex</code>, <code>gemini</code>, <code>qwen</code>, <code>cursor-agent</code>, <code>opencode</code>, and more. Linux and macOS. Install steps are in the <a href="https://github.com/maci0/gauntlet#install">README</a>.</p>
+
+<footer>AGPL-3.0-or-later · <a href="https://github.com/maci0/gauntlet">github.com/maci0/gauntlet</a></footer>
+</main>
+</body>
+</html>
