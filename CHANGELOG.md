@@ -41,6 +41,29 @@ the journaled event stream in `internal/runner/contract_test.go`.
   while the filter was still open, although `--reviews` and the agent spec
   parser both name the nearest match. A filter nothing resembles still gets
   the plain sentence, so a suggestion stays an answer rather than noise.
+- The project page was below the contrast floor in both color schemes and had
+  no keyboard focus ring. `--muted` was 4.27:1 and `--accent` 4.46:1 on the
+  light background, under the 4.5:1 a body text color owes (WCAG SC 1.4.3);
+  both are darker now and the dark scheme's `--muted` is lighter. The links
+  had no focus indicator of their own, so every link on the page was tabbed
+  past with nothing on screen to say where the keyboard was (SC 2.4.7), and the
+  quick-start block scrolled sideways at 320px instead of wrapping, taking the
+  page's reflow with it (SC 1.4.10). `cmd/gauntlet` holds the page to the same
+  floors `internal/ui` holds the terminal palette to, so a color edited there
+  now fails the suite.
+- Truncating a line cut on a character, not a byte: `normalize.Clip` and
+  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
+  measuring the cut, so what they return is always text. A file name holding
+  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
+  half-written character into a commit subject, a pull request body, or the
+  lock note another run reads, where the terminal and every width measurement
+  downstream have to guess what they are looking at.
+- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
+  target had drifted, so a reader following one landed on the wrong recipe: a
+  seven-line recipe added ahead of that target moved each of them, and
+  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
+  The pointers are re-anchored, and one that named the comment above the
+  checksums recipe now names the recipe.
 
 ### Changed
 
@@ -60,16 +83,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
   until somebody reports it. Four doc comments over `internal/gitx`'s
   `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
   `Palette` and `Think` were the findings it revealed.
-
-### Fixed
-
-- Truncating a line cut on a character, not a byte: `normalize.Clip` and
-  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
-  measuring the cut, so what they return is always text. A file name holding
-  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
-  half-written character into a commit subject, a pull request body, or the
-  lock note another run reads, where the terminal and every width measurement
-  downstream have to guess what they are looking at.
 
 ### Security
 
@@ -91,15 +104,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
   the host does not have is skipped instead of refusing the launch.
 - The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
-
-### Fixed
-
-- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
-  target had drifted, so a reader following one landed on the wrong recipe: a
-  seven-line recipe added ahead of that target moved each of them, and
-  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
-  The pointers are re-anchored, and one that named the comment above the
-  checksums recipe now names the recipe.
 
 ## 1.34.1
 

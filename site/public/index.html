@@ -10,8 +10,8 @@
 :root {
   --bg: #f6f9fa;
   --fg: #1b2830;
-  --muted: #64798a;
-  --accent: #0e7f8f;
+  --muted: #556a7b;
+  --accent: #0b6c7a;
   --panel: #e8eff2;
   --line: #d3dee3;
   color-scheme: light dark;
@@ -20,7 +20,7 @@
   :root {
     --bg: #11191e;
     --fg: #dce7ec;
-    --muted: #8a9dab;
+    --muted: #9aadba;
     --accent: #2bb7c9;
     --panel: #1a252c;
     --line: #2a3a44;
@@ -47,11 +47,27 @@ header img { width: min(420px, 100%); height: auto; }
 h2 { font-size: 1.3rem; margin: 48px 0 12px; }
 ul { padding-left: 1.2em; }
 li { margin: 8px 0; }
+/* WCAG 2.4.7 Focus Visible: the ring is drawn here rather than left to the
+   user agent, so it is this page's own token against this page's own
+   backgrounds on both color schemes, and it is never removed. :focus-visible
+   keeps it off a mouse press, which the default outline does not. */
+a:focus-visible {
+  outline: 3px solid var(--fg);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.cta a:focus-visible { outline-offset: 3px; }
 a { color: var(--accent); }
 code { font: 0.9em ui-monospace, "SF Mono", Menlo, monospace; }
 pre {
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
-  padding: 14px 16px; overflow-x: auto; line-height: 1.5;
+  padding: 14px 16px; line-height: 1.5;
+  /* WCAG 1.4.10 Reflow: a scroll container inside the page is a horizontal
+     scrollbar for the whole document at 320px, so the block wraps instead of
+     scrolling sideways. pre-wrap keeps the indentation the commands are read
+     by and lets a long token break. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
 }
 footer { margin-top: 64px; color: var(--muted); font-size: 0.9rem; text-align: center; }
 </style>
@@ -72,7 +88,7 @@ footer { margin-top: 64px; color: var(--muted); font-size: 0.9rem; text-align: c
   </div>
 </header>
 
-<img class="shot" src="dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="2574" height="1564">
+<img class="shot" src="dashboard.png" alt="Screenshot of the gauntlet terminal dashboard: an activity chart across the top, one row per agent lane with its live token rate, a grid of the scheduled reviews each with a status glyph, and a normalized output feed" width="2574" height="1564">
 
 <h2>What it does</h2>
 <p>One static binary loops 54 review prompts over your repository, hands each one to an agent CLI you already have installed, and applies what it finds.</p>
