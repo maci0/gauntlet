@@ -22,10 +22,14 @@ func TestUnfinishedCountsTheRunningReviewAndNotTheRecordedOnes(t *testing.T) {
 	set, _ := promptSet(t, "a-review", "b-review", "c-review")
 	gate := t.TempDir()
 	started, release := filepath.Join(gate, "started"), filepath.Join(gate, "release")
+	// Released on the way out too, so a failing assertion cannot leave the
+	// blocked stub agent waiting forever. The stub also stops once the gate
+	// directory is gone, since TempDir removes it right after this runs.
+	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o644) })
 	bin := fakeAgent(t, t.TempDir(), "claude", `
 case "$*" in *b-review*)
   touch '`+started+`'
-  while [ ! -e '`+release+`' ]; do sleep 0.05; done ;;
+  while [ ! -e '`+release+`' ] && [ -d '`+gate+`' ]; do sleep 0.05; done ;;
 esac
 echo "RESULT: no-changes"`)
 

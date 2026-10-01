@@ -32,6 +32,11 @@ func newResumeFixture(t *testing.T) resumeFixture {
 	f.log = filepath.Join(gate, "launches")
 	f.started = filepath.Join(gate, "started")
 	f.release = filepath.Join(gate, "release")
+	// Released on the way out too: a test that fails before releasing the
+	// blocked launch must not leave its stub agent waiting forever. The stub
+	// also stops once the gate directory is gone, since TempDir removes it
+	// right after this runs and a 50ms poll can miss the release file.
+	t.Cleanup(func() { _ = os.WriteFile(f.release, nil, 0o644) })
 	for _, name := range []string{"a-review", "b-review", "c-review"} {
 		body := "Your goal is to test " + name + ".\n"
 		if err := os.WriteFile(filepath.Join(f.promptDir, name+".md"), []byte(body), 0o644); err != nil {
@@ -46,7 +51,7 @@ done
 echo "$name" >> '` + f.log + `'
 if [ "$(wc -l < '` + f.log + `')" -eq 2 ] && [ ! -e '` + f.release + `' ]; then
   touch '` + f.started + `'
-  while [ ! -e '` + f.release + `' ]; do sleep 0.05; done
+  while [ ! -e '` + f.release + `' ] && [ -d '` + gate + `' ]; do sleep 0.05; done
 fi
 echo "RESULT: no-changes"
 `
