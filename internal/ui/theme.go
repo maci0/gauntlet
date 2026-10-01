@@ -81,6 +81,10 @@ var (
 	// own: none of the four status styles means "a branch needs a hand".
 	styleConflict = lipgloss.NewStyle().Foreground(cPeach)
 
+	// panelStyle is the frame panel used to draw and no longer does: it is the
+	// library's own border, padding included, and it is kept as the oracle
+	// TestPanelEqualsLipglossFrame measures the hand-drawn frame against.
+	// Nothing renders with it.
 	panelStyle = lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(cBorder).
@@ -188,25 +192,137 @@ func styled(c lipgloss.TerminalColor, s string) string {
 	return lipgloss.NewStyle().Foreground(c).Render(s)
 }
 
-// panel wraps content in a titled instrument frame, forcing exact inner dimensions.
-// lipgloss Width() is deliberately avoided for the body: its wrapping
-// mishandles densely styled cells like braille charts.
-func panel(title, content string, innerW, innerH int) string {
-	return clipEllipsis(styleTitle.Render(title), innerW+panelBorderColumns) +
-		"\n" + panelStyle.Render(padBlock(content, innerW, innerH))
+// The frame's own glyphs. They are constants -- a NormalBorder in the border
+// tone -- and every one of them is the same escape sequence on every frame of
+// every run, so a frame costs one copy per piece rather than a style
+// resolution. They are built on first use and dropped whenever the profile
+// under them changes, which is what SetMonochrome does: a frame drawn in
+// color and reused under --no-color would leave a border the flag asked to be
+// rid of.
+var frameGlyphs atomic.Pointer[frameParts]
+
+// frameParts is one panel frame's worth of glyphs.
+type frameParts struct {
+	side                   string
+	pad                    string
+	topStart, topEnd       string
+	bottomStart, bottomEnd string
+	// edgeOpen and reset wrap a run of horizontal cells in the border's color
+	// once instead of once per cell. Under a profile that draws no color at
+	// all both are empty and the run is the bare glyphs.
+	edgeOpen, reset string
 }
 
-// padBlock forces content to exactly innerW columns and innerH rows.
+// frameTable is the glyph table for the profile in force, built on first use.
+// Lipgloss detects the terminal's profile once and caches it, so for every run
+// but the one that changed it, this returns the same table.
+func frameTable() *frameParts {
+	if t := frameGlyphs.Load(); t != nil {
+		return t
+	}
+	t := &frameParts{
+		side:        styled(cBorder, "\u2502"),
+		pad:         " ",
+		topStart:    styled(cBorder, "\u250c"),
+		topEnd:      styled(cBorder, "\u2510"),
+		bottomStart: styled(cBorder, "\u2514"),
+		bottomEnd:   styled(cBorder, "\u2518"),
+	}
+	// One horizontal cell is its open sequence, the glyph, and its reset; a
+	// run of them is that open sequence, the glyphs, and one reset. The
+	// rendered cell ends in the reset the style closes with, so the open
+	// sequence is everything before the last one, and a profile that renders
+	// no color at all leaves both empty -- which is why the table is built per
+	// profile rather than once at init.
+	const reset = "\x1b[0m"
+	cell := styled(cBorder, "\u2500")
+	if open, tail, ok := strings.Cut(cell, reset); ok && strings.HasSuffix(open, "\u2500") {
+		t.edgeOpen = strings.TrimSuffix(open, "\u2500")
+		t.reset = tail
+	}
+	frameGlyphs.Store(t)
+	return t
+}
+
+// frameEdge is a run of n horizontal border cells between two corners. The
+// library draws this row a rune at a time, measuring each one as it goes; a
+// border cell is one cell wide and one glyph long whatever the profile under
+// it, so the run is one copy and one wrap.
+func frameEdge(t *frameParts, n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return t.edgeOpen + strings.Repeat("\u2500", n) + t.reset
+}
+
+// frameRow is one row inside a frame: a left glyph, the padding, the content,
+// the padding, a right glyph.
+func frameRow(t *frameParts, row string) string {
+	var b strings.Builder
+	b.Grow(len(t.side) + len(row) + 2*len(t.pad) + len(t.side))
+	b.WriteString(t.side)
+	b.WriteString(t.pad)
+	b.WriteString(row)
+	b.WriteString(t.pad)
+	b.WriteString(t.side)
+	return b.String()
+}
+
+// panel wraps content in a titled instrument frame, forcing exact inner
+// dimensions.
+//
+// The frame is drawn here rather than by lipgloss's border, and the body never
+// reaches lipgloss at all. A border over a block this package has already cut
+// to an exact width re-measures every one of its rows to find the width it
+// was told, and a profile of a busy dashboard put two thirds of a frame's CPU
+// there, at ten frames a second for the life of a run. What is drawn is the
+// frame lipgloss was drawing: a corner, that width of horizontal, a corner,
+// and then a left glyph, the padding, the row, the padding, and a right glyph
+// on every line, each piece in the border's own escape sequence.
+// TestPanelEqualsLipglossFrame holds that against the library's own border,
+// escape for escape; the horizontal edge is the one place the two bytes differ
+// for the same picture, and TestFrameEdgeEqualsLipgloss holds that separately.
+func panel(title, content string, innerW, innerH int) string {
+	f := frameTable()
+	rows := strings.Split(padBlock(content, innerW, innerH), "\n")
+	for i, row := range rows {
+		rows[i] = frameRow(f, row)
+	}
+	// The edge spans the two padding spaces inside the verticals and the
+	// content, which is innerW+2 cells wide with a corner at each end.
+	edge := frameEdge(f, max(innerW+2, 1))
+	// The title is held to the frame's own width and left at whatever length
+	// it is: a panel's title is the text and nothing else, and the two
+	// pickers' panes read it as such. The dashboard, where a short title has to
+	// come out the width of the rows under it, fills it out on the way past.
+	return clipEllipsis(styleTitle.Render(title), innerW+panelBorderColumns) +
+		"\n" + f.topStart + edge + f.topEnd + "\n" +
+		strings.Join(rows, "\n") + "\n" +
+		f.bottomStart + edge + f.bottomEnd
+}
+
+// tabCells is how wide a tab is once a row is drawn. lipgloss expands tabs to
+// four spaces before a style measures anything, and a row carrying one that
+// reached the border intact would be a cell short of the frame it sits in.
+const tabCells = 4
+
+// padBlock forces content to exactly innerW columns and innerH rows. The
+// first two rewrites are the ones lipgloss applies to a style it renders, and
+// they have to stay ahead of the measurement: a \r\n left in a row ends it a
+// cell early, and a tab is one byte that would be counted as one cell where
+// the renderer draws four.
 func padBlock(content string, innerW, innerH int) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\t", strings.Repeat(" ", tabCells))
 	lines := strings.Split(content, "\n")
 	if len(lines) > innerH {
 		lines = lines[:innerH]
 	}
 	for i, ln := range lines {
 		ln = strings.TrimRight(ln, "\r")
-		// One measurement per line. lipgloss.Width walks the text grapheme by
-		// grapheme, and a frame measures every row of every panel twice over
-		// when the width is asked for once here and again inside clip.
+		// One measurement per line. A frame measures every row of every panel
+		// twice over when the width is asked for once here and again inside
+		// clip.
 		w := lipgloss.Width(ln)
 		switch {
 		case innerW <= 0:

@@ -55,19 +55,36 @@ func (m *model) View() string {
 	inner := m.w - 4 // panel border and padding
 	actH, laneH, gridH, feedH := m.sectionHeights()
 
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		m.renderHeader(),
-		panel(m.activityTitle(), chart(m.activity, inner, actH), inner, actH),
-		panel(m.lanesTitle(inner), m.renderLanes(inner, laneH), inner, laneH),
-		panel(m.gridTitle(inner), m.renderGrid(inner, gridH), inner, gridH),
-		panel(m.feedTitle(inner), m.renderFeed(inner, feedH), inner, feedH),
-	)
-
+	// The five blocks are stacked and left-aligned, and every one of them is
+	// exactly m.w cells wide: the header is spread to the pane, and a panel is
+	// a frame around an inner width of pane-4. So the join is a concatenation
+	// and nothing has to be measured to know how wide the frame is.
+	// lipgloss.JoinVertical measured all five blocks to find the width it had
+	// been handed and then every row of them again to pad to it, and a profile
+	// of a busy frame put a third of its CPU there.
+	rows := []string{m.renderHeader()}
+	for _, block := range []struct {
+		title          string
+		content        string
+		innerW, innerH int
+	}{
+		{m.activityTitle(), chart(m.activity, inner, actH), inner, actH},
+		{m.lanesTitle(inner), m.renderLanes(inner, laneH), inner, laneH},
+		{m.gridTitle(inner), m.renderGrid(inner, gridH), inner, gridH},
+		{m.feedTitle(inner), m.renderFeed(inner, feedH), inner, feedH},
+	} {
+		// A panel's title is the text and nothing else, and the two pickers'
+		// panes read it as such, so panel leaves a short one short. Here every
+		// other row is the pane's width, and the join was what filled a title
+		// out to it, so the four titles are filled where the width is known.
+		framed := strings.Split(panel(block.title, block.content, block.innerW, block.innerH), "\n")
+		rows = append(rows, pad(framed[0], m.w))
+		rows = append(rows, framed[1:]...)
+	}
+	content := max(m.h-1, 1)
 	// The frame is exactly h rows: the footer owns the last one, and content
 	// is padded or cut to fit above it. Letting the body decide the height is
 	// how a footer ends up wrapped onto the last content line.
-	rows := strings.Split(body, "\n")
-	content := max(m.h-1, 1)
 	for len(rows) < content {
 		rows = append(rows, "")
 	}
