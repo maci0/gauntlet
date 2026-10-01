@@ -247,6 +247,11 @@ func TestMakefileVulnScansSelectedTags(t *testing.T) {
 // whatever the proxy serves that week, and a green tree would stop meaning
 // the same thing twice. It reads the same TAGS variable vet does, so one of
 // the three shipped configurations can be checked on its own.
+//
+// -checks=all is the other half of that contract. The default set leaves the
+// style and quickfix groups off, so a doc comment that stopped naming the
+// symbol it documents, or a missed simplification, would never fail a run;
+// the tree passes every check the tool carries, so the whole set runs.
 func TestMakefileStaticcheckIsPinnedAndScansSelectedTags(t *testing.T) {
 	pin := makefilePin(makefileText(t), "STATICCHECK_VERSION")
 	if pin == "" {
@@ -257,9 +262,9 @@ func TestMakefileStaticcheckIsPinnedAndScansSelectedTags(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "default", want: "-tags sqlite ./..."},
-		{name: "bare", args: []string{"TAGS="}, want: "./..."},
-		{name: "notoktop", args: []string{"TAGS=notoktop"}, want: "-tags notoktop ./..."},
+		{name: "default", want: "-checks=all -tags sqlite ./..."},
+		{name: "bare", args: []string{"TAGS="}, want: "-checks=all ./..."},
+		{name: "notoktop", args: []string{"TAGS=notoktop"}, want: "-checks=all -tags notoktop ./..."},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)

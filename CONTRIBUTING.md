@@ -139,7 +139,10 @@ locally, that step is green there. A `tidy` diff means go.mod or go.sum no
 longer says what the module graph resolves to, so a require is missing, stale,
 or a leftover: run `go mod tidy` and commit the result. staticcheck is fetched
 at the pinned `STATICCHECK_VERSION` with `go run`, the way `make vuln` fetches
-govulncheck, so there is nothing to install; `make staticcheck TAGS=...` runs
+govulncheck, so there is nothing to install, and it runs with `-checks=all`
+rather than the tool's default set: the tree passes every check the analyzer
+carries, so the style and quickfix groups run too, and a rule a later release
+adds fails the gate instead of staying off. `make staticcheck TAGS=...` runs
 one tag set on its own. The
 pull request template
 ([.github/pull_request_template.md](.github/pull_request_template.md))

@@ -880,16 +880,18 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 	return errors.Join(failed...)
 }
 
-// listBranchesMatching names the local branches the pattern selects, one per
-// line. The `--` is what keeps an option-shaped pattern from reaching git as
-// an option, which is why a pattern like "--pattern*" lists nothing rather
-// than changing what the sweep does.
 // DeleteMergedBranchesMatching deletes the branches matching pattern that
 // HEAD already contains and keeps every other one, returning how many it
 // deleted. It is the sweep for branches a killed process left: one still at
 // the base it was cut from carries nothing, while one with a commit HEAD lacks
 // is work, and `git branch -d` refuses exactly those. A squash-landed branch
 // is not merged as far as git is concerned, so it is kept too.
+//
+// listBranchesMatching, which does the selecting, names the local branches
+// the pattern selects, one per line. The `--` it passes is what keeps an
+// option-shaped pattern from reaching git as an option, which is why a
+// pattern like "--pattern*" lists nothing rather than changing what the
+// sweep does.
 func (r *Repo) DeleteMergedBranchesMatching(ctx context.Context, pattern string) (int, error) {
 	if r == nil || !Available() {
 		return 0, nil

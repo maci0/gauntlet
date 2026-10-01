@@ -30,8 +30,8 @@ import (
 	"github.com/rivo/uniseg"
 )
 
-// ANSI styling for the plain (non-TUI) output. Kept to a handful of codes:
-// this is a log, and the dashboard is where color does real work.
+// Palette is ANSI styling for the plain (non-TUI) output. Kept to a handful
+// of codes: this is a log, and the dashboard is where color does real work.
 type Palette struct{ On bool }
 
 func (p Palette) wrap(code, s string) string {
@@ -43,7 +43,7 @@ func (p Palette) wrap(code, s string) string {
 
 func (p Palette) Bold(s string) string { return p.wrap("1", s) }
 
-// think renders reasoning: dim and italic, so it stays legible but visibly
+// Think renders reasoning: dim and italic, so it stays legible but visibly
 // subordinate to what the agent actually wrote.
 func (p Palette) Think(s string) string  { return p.wrap("2;3", s) }
 func (p Palette) Dim(s string) string    { return p.wrap("2", s) }

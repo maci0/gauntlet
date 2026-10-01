@@ -34,6 +34,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `internal/ui`'s `heatColor` is now a lookup over `heatIndex`, and
   `internal/gitx`'s `openRegular` and `openAppendNoFollow` are gone, their
   call sites reaching `safefile` directly.
+- `make check` runs staticcheck with `-checks=all` instead of the tool's
+  default set. The defaults leave the style and quickfix groups off, so a doc
+  comment that stopped naming the symbol it documents would never have failed
+  a run; the tree passes every check the analyzer carries under all three
+  build-tag configurations, so the whole set is now the gate, and a rule a
+  later staticcheck release adds fails `make check` rather than staying off
+  until somebody reports it. Four doc comments over `internal/gitx`'s
+  `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
+  `Palette` and `Think` were the findings it revealed.
 
 ### Security
 

@@ -343,10 +343,19 @@ vet: ## run go vet
 #
 # The tag set is the caller's, the same variable vet reads, so one of the
 # three shipped configurations can be checked on its own.
+#
+# -checks=all, not the default set: the defaults are simple, static, unused,
+# and quickfix, and the groups left off by them are exactly the ones that
+# catch drift a reviewer reads past. The tree passes every check the tool
+# carries under all three tag sets, so nothing here is aspirational: a rule a
+# later staticcheck adds fails this line rather than sitting off until
+# somebody reports it. Style is the group that keeps a doc comment naming the
+# symbol it documents, the one defect class in Go that compiles and reads
+# fine but sends a reader to the wrong declaration.
 .PHONY: staticcheck
 staticcheck: | test-tmpdir
-staticcheck: ## run staticcheck under $(TAGS)
-	GOFLAGS= $(GO) run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) $(GOTAGS) ./...
+staticcheck: ## run every staticcheck check under $(TAGS)
+	GOFLAGS= $(GO) run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) -checks=all $(GOTAGS) ./...
 
 # go.mod carries the supply chain and go.sum the hashes, and nothing else
 # reads either: -mod=readonly stops a build from rewriting them, and the
