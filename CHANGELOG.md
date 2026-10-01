@@ -26,6 +26,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.34.1
+
+### Fixed
+
+- Built-in suggestions now carry their evidence-based priority into the weighted review schedule instead of leaving every selected review at one pass. Accumulated file evidence and past review outcomes determine 1–3 passes; read failures and reviews that repeatedly finish without changes stay at one. The preview shows repeats, manual entries add to them, and `--max-reviews` still caps the schedule.
+
 ## 1.34.0
 
 ### Changed

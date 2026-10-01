@@ -818,7 +818,7 @@ func TestFastSuggestReportsAJournalItCannotRead(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root opens a 0000 file anyway, so the failure cannot be provoked here")
 	}
-	dir := tree(t, "main.go")
+	dir := tree(t, "main.go\x00package main\n// bcrypt database/sql unsafe.Pointer exec.Command\n")
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)
 	// An index nobody can read: the shape a state tree another account owns,
@@ -827,12 +827,15 @@ func TestFastSuggestReportsAJournalItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	picked, err := Reviews(dir, []string{"code-review"}, prompt.Set{}, func() time.Time { return frozenClock })
+	picked, err := Reviews(dir, []string{"sec-review"}, prompt.Set{}, func() time.Time { return frozenClock })
 	if err == nil {
 		t.Fatal("an unreadable journal was swallowed")
 	}
 	if len(picked) == 0 {
 		t.Fatal("the tree evidence was thrown away with the journal")
+	}
+	if picked[0].Weight != 1 {
+		t.Fatalf("an incomplete read proposed %d passes, want one", picked[0].Weight)
 	}
 }
 
@@ -896,4 +899,55 @@ func commitAll(t *testing.T, dir, date string) time.Time {
 		t.Fatal(err)
 	}
 	return at
+}
+
+// Repeats follow independent evidence, not the number of matching files.
+// Past clean runs and incomplete scans must not spend extra passes.
+func TestFastSuggestPassWeights(t *testing.T) {
+	cases := []struct {
+		name, body                  string
+		runs, changed, copies, want int
+	}{
+		{"basic source", "package main\n", 0, 0, 1, 1},
+		{"one implemented subject", "package main\n// bcrypt\n", 0, 0, 1, 2},
+		{"same subject in many files", "package main\n// bcrypt\n", 0, 0, 20, 2},
+		{"several security-sensitive subjects", "package main\n// bcrypt database/sql unsafe.Pointer exec.Command\n", 0, 0, 1, 3},
+		{"compound evidence", "package main\n// bcrypt database/sql unsafe.Pointer\n", 0, 0, 1, 2},
+		{"productive history", "package main\n// bcrypt database/sql unsafe.Pointer\n", 3, 3, 1, 3},
+		{"unproductive history", "package main\n// bcrypt database/sql unsafe.Pointer exec.Command\n", 3, 0, 1, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			files := make([]string, c.copies)
+			for i := range files {
+				files[i] = fmt.Sprintf("part%d.go\x00%s", i, c.body)
+			}
+			dir := tree(t, files...)
+			if c.runs > 0 {
+				home := t.TempDir()
+				t.Setenv("GAUNTLET_HOME", home)
+				writeHistory(t, home, dir, "sec-review", c.runs, c.changed)
+			}
+			got := reviews(t, dir, []string{"sec-review"}, prompt.Set{})
+			if len(got) != 1 || got[0].Weight != c.want {
+				t.Fatalf("picks %+v, want one security review with %d passes", got, c.want)
+			}
+		})
+	}
+
+	t.Run("failed churn read", func(t *testing.T) {
+		if !gitx.Available() {
+			t.Skip("git is required to provoke an unborn branch")
+		}
+		dir := tree(t, "main.go\x00package main\n// bcrypt database/sql unsafe.Pointer exec.Command\n")
+		cmd := exec.Command("git", "init", "-q", "-b", "main")
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v: %s", err, out)
+		}
+		got, err := Reviews(dir, []string{"sec-review"}, prompt.Set{}, func() time.Time { return frozenClock })
+		if err == nil || len(got) != 1 || got[0].Weight != 1 {
+			t.Fatalf("failed churn read returned %+v, %v; want one pass plus the read error", got, err)
+		}
+	})
 }
