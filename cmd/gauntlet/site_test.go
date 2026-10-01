@@ -85,6 +85,35 @@ func siteStyle(t *testing.T) string {
 	return html[start:end]
 }
 
+// The site's deployment config is a line-oriented file Cloudflare reads and
+// nothing in the build validates, so the two things that make it work are
+// pinned here rather than discovered on a deploy. It is parsed by line, and a
+// last line with no terminating newline is a truncated one to every reader
+// that is not Cloudflare's parser, so the header that matters most, the
+// transport one, is the one a truncated file drops silently. The pattern line
+// is the other: a `_headers` file that never names a path applies to nothing,
+// and the page it was written for then serves with none of these headers.
+func TestSiteHeadersAreTerminatedAndScoped(t *testing.T) {
+	raw := readSiteFile(t, "_headers")
+	if !strings.HasSuffix(raw, "\n") {
+		t.Error("site/public/_headers does not end with a newline; the last header is read as a truncated line and is dropped")
+	}
+	if !strings.Contains(raw, "\n/*\n") {
+		t.Error("site/public/_headers names no path pattern, so the headers apply to no asset and the site serves with none of them")
+	}
+	for _, want := range []string{
+		"Content-Security-Policy:",
+		"Referrer-Policy:",
+		"X-Content-Type-Options: nosniff",
+		"X-Frame-Options: DENY",
+		"Strict-Transport-Security:",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("site/public/_headers is missing %q", want)
+		}
+	}
+}
+
 // channel is one sRGB channel at 0..1, linearized the way WCAG 2.x defines it.
 func channel(v float64) float64 {
 	if v <= 0.03928 {

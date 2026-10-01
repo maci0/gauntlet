@@ -53,6 +53,14 @@ jobs:
           # The `go` line in go.mod is a minimum; a release is built with one exact
           # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
           go-version: 1.27.1
+          # The module cache, keyed on go.sum, so a tag does not re-download
+          # the whole graph before it builds every platform. The cache
+          # carries downloads a previous run verified against go.sum, and
+          # `-mod=readonly` (exported by the Makefile) still refuses a graph
+          # the manifests do not describe, so what a release is built from
+          # does not depend on what the cache held. The bytes themselves are
+          # pinned by the toolchain above, not by what was downloaded.
+          cache: true
 
       # Release notes are this version's CHANGELOG section: consumers read the
       # changelog, not the commit log. A tag without that section is a mistake

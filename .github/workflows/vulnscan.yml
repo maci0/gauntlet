@@ -53,6 +53,9 @@ jobs:
           # The `go` line in go.mod is a minimum; a release is built with one exact
           # compiler, so the pin lives in the Makefile (TestGoVersionPinMatchesCI).
           go-version: 1.27.1
+          # The module cache, keyed on go.sum; the scanner resolves this
+          # module's graph and govulncheck's own before either reports.
+          cache: true
       # The tool is pinned against upstream replacement or an incompatible
       # release; govulncheck still reads the current advisory database.
       - run: make vuln

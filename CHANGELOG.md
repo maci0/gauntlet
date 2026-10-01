@@ -28,6 +28,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- Every Go job caches the module graph. `actions/setup-go` was installed in
+  all five Go steps without `cache: true`, so the first `go` command of every
+  run downloaded the whole graph from the proxy, where the scripts job already
+  cached uv's tools. The cache is keyed on go.sum and holds only downloads a
+  previous run verified against it, and `-mod=readonly` (exported by the
+  Makefile) still refuses a graph the manifests do not describe, so what a job
+  builds does not depend on what the cache carried; the toolchain stays pinned
+  by `go-version`, and `make repro`'s per-copy GOCACHE is untouched.
+- `site/public/_headers` ends with a newline. The file is read line by line by
+  the platform serving the page, and its last line had no terminator, so the
+  header a truncated file drops silently is `Strict-Transport-Security`, the
+  one that outlives a page view. A test now holds the file terminated, holds
+  it naming a path pattern, and holds each header the file is the control for.
 - A state directory a run creates is now recorded by the filesystem, not only
   made. The journal, the index, the quarantine, the crash checkpoint, and the
   hot-reload handoff created their directories with `os.MkdirAll` and synced

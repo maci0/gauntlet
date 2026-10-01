@@ -22,6 +22,57 @@ var (
 	pinnedAction = regexp.MustCompile(`^[A-Za-z0-9._/-]+@[0-9a-f]{40}$`)
 )
 
+// Every Go job compiles this tree, so the first `go` command in it downloads
+// the whole module graph from the proxy. actions/setup-go caches that graph,
+// keyed on go.sum, the way the scripts job already caches uv's tools: a
+// restored cache holds only downloads a previous run verified against go.sum,
+// and -mod=readonly still refuses a graph the manifests do not describe, so
+// what a job builds does not depend on what the cache carried. The toolchain
+// itself stays pinned by go-version, and `make repro` gives each of its two
+// tree copies its own GOCACHE, which this does not touch. Read over every
+// setup-go step, so the next job added is covered.
+func TestGoStepsCacheTheModuleGraph(t *testing.T) {
+	dir := filepath.Join(moduleRoot(t), ".github", "workflows")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var steps int
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".yml") {
+			continue
+		}
+		name := ent.Name()
+		lines := strings.Split(readRepoFile(t, filepath.Join(dir, name)), "\n")
+		for i, line := range lines {
+			if !strings.Contains(line, "uses: actions/setup-go") {
+				continue
+			}
+			steps++
+			// The step's own `with:` block, up to the next step or key, so
+			// the flag is read as belonging to this setup-go and not to
+			// whichever one follows it.
+			cached := false
+			for _, next := range lines[i+1:] {
+				trimmed := strings.TrimSpace(next)
+				if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "uses:") {
+					break
+				}
+				if trimmed == "cache: true" {
+					cached = true
+					break
+				}
+			}
+			if !cached {
+				t.Errorf("%s: actions/setup-go does not cache the module graph; every Go job re-downloads go.sum from the proxy", name)
+			}
+		}
+	}
+	if steps == 0 {
+		t.Fatal("no workflow installs Go")
+	}
+}
+
 // Workflows are the supply-chain and release path. DESIGN.md pins actions by
 // commit SHA and runner images by name; a tag or a -latest image sneaking
 // back in would only be noticed after it had already run.
