@@ -26,6 +26,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- macOS checks now export the closed Go flags with make 3.81, isolate the credential-helper fixture from system git config, and skip the raw-byte filename fixture only when the filesystem refuses it. The recursive-analysis fixture pins the make command independently of its inherited path.
+- Release builds keep the test scratch directory out of the compiler environment, so a fresh host that exports TMPDIR can build artifacts before running tests.
+
 ## 1.32.0
 
 ### Added
@@ -40,7 +45,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
-- macOS checks now export the closed Go flags with make 3.81, isolate the credential-helper fixture from system git config, and skip the raw-byte filename fixture only when the filesystem refuses it. The recursive-analysis fixture pins the make command independently of its inherited path.
 
 - `--stacked-prs` keeps going when a layer cannot be published. A failed push leaves that commit on its branch, records the layer as failed, and later reviews in the pass still run from the last base that did push. A push that landed whose pull request a head/base lookup cannot see stays in the chain, and the scratch checkout stays on disk until that lookup succeeds; a later pass of the same run reuses it, including when that checkout was reached through a symlink. The checkout is removed only after every changed layer was pushed and confirmed. A review that edits the launch checkout, or reports a file edit the scratch checkout does not contain, fails that layer without ending the pass, and the launch checkout is left as it was written. A URL printed by `gh pr create` is confirmed with a second head/base lookup. A push that landed whose tip cannot be read stops the pass instead of branching the next review from the previous base. A discard git refuses on an empty layer does the same, and the checkout stays.
 
