@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1498,6 +1499,9 @@ func TestStackBodyMatchesANoteAgainstARawNonUTF8FileName(t *testing.T) {
 	raw := "bad\xff.txt"
 	f := filepath.Join(repo, raw)
 	if err := os.WriteFile(f, []byte("changed\n"), 0o644); err != nil {
+		if errors.Is(err, syscall.EILSEQ) {
+			t.Skipf("filesystem rejects non-UTF-8 file names: %v", err)
+		}
 		t.Fatalf("writing a file whose name holds a raw byte: %v", err)
 	}
 	gitOut(t, repo, "add", raw)

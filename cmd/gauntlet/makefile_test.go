@@ -342,7 +342,7 @@ func TestMakefileCheckAlwaysAnalyzesShippedTags(t *testing.T) {
 		t.Run("tags="+tags, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", "check", "TAGS="+tags, "GO=go", "GOFMT=gofmt", "GOFILES=.")
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "-n", "check", "TAGS="+tags, "GO=go", "GOFMT=gofmt", "GOFILES=.", "MAKE=make")
 			cmd.Dir = moduleRoot(t)
 			out, err := cmd.CombinedOutput()
 			if err != nil {

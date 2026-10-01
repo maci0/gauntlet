@@ -23,7 +23,8 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # -tags, -gcflags, or -ldflags would compile a different program under the same
 # name, which is what -mod=readonly is here to rule out. A command line still
 # wins, so `make test GOFLAGS=-v` is the escape hatch it has always been.
-override export GOFLAGS := -mod=readonly
+override GOFLAGS := -mod=readonly
+export GOFLAGS
 export GOWORK := off
 export GOTOOLCHAIN := local
 export GOAMD64 := v1
@@ -39,7 +40,6 @@ export GOARM64 := v8.0
 # still gets it.
 export GOEXPERIMENT :=
 export GOFIPS140 := off
-
 # Reading an agent's own session transcript is on by default: it lives in
 # toktop, costs one pure-Go dependency, and is the only source of counts for
 # agents that print none. `sqlite` is on for the same reason: crush and
