@@ -341,6 +341,9 @@ var fastRules = []rule{
 		return s.source > 0 && (hasDocs(s) || hasTests(s) || s.anyMark("cli"))
 	}), []string{"functionality-review"}},
 	{"a test suite", weightNormal, present(hasTests), []string{"test-review"}},
+	{"no tests in the source tree", weightStrong, present(func(s signals) bool {
+		return s.source > 0 && !hasTests(s)
+	}), []string{"test-review"}},
 	{"documentation", weightNormal, present(hasDocs), []string{"doc-review"}},
 	{"no documentation in the tree", weightStrong, absent(hasDocs),
 		[]string{"doc-review"}},
