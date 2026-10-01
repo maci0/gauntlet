@@ -255,6 +255,32 @@ func TestSiteKeepsAKeyboardFocusIndicator(t *testing.T) {
 	}
 }
 
+// TestSiteSurvivesForcedColors holds the page under a system in high-contrast
+// mode. That mode replaces every author color with the system palette, so the
+// fill the primary button is read by and the ring the focus rule draws are two
+// of the colors it discards: without a restatement, the page is a pair of
+// links whose one visual distinction (the filled one) is gone. The button
+// border is kept and the ring is restated in the system highlight, which is
+// what makes the two readable there.
+func TestSiteSurvivesForcedColors(t *testing.T) {
+	block := siteStyle(t)
+	if !strings.Contains(block, "forced-colors: active") {
+		t.Error("the page has no forced-colors rules, so a high-contrast system replaces the button's fill and the focus ring with its own palette and drops the page's only two visual distinctions (SC 1.4.1)")
+	}
+	// The primary button's border is what tells the two links apart once the
+	// fill is gone, so it has to be re-asserted, not left to a color the
+	// system drops.
+	if !regexp.MustCompile(`\.cta a\.primary\s*\{[^}]*border-color`).MatchString(block) {
+		t.Error("the primary button has no border under forced colors, so it is no longer distinguishable from the secondary link")
+	}
+	// The focus ring is drawn in a color, and that color is one of the ones
+	// forced mode replaces, so the ring is restated in a system color rather
+	// than left to resolve against a background the page no longer sets.
+	if !regexp.MustCompile(`a:focus-visible\s*\{[^}]*outline-color`).MatchString(block) {
+		t.Error("the focus ring is not restated in a system color under forced colors, so a high-contrast user has no focus indicator (SC 2.4.7)")
+	}
+}
+
 // TestSiteReflowsWithoutHorizontalScroll holds the page to 320 CSS pixels
 // (SC 1.4.10). A scroll container inside the page is a scrollbar for the whole
 // document there, so the code block wraps rather than scrolling sideways.

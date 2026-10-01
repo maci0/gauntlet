@@ -1536,6 +1536,36 @@ func TestRedrawRateFollowsTheMotionAccommodation(t *testing.T) {
 	}
 }
 
+// TestHelpOverlayNamesTheMotionAccommodation holds the one line that tells a
+// reader how to stop the screen moving. The accommodation is an environment
+// variable read at startup, so the dashboard's own help overlay is the only
+// place a reader on a moving screen can find it: a variable named nowhere on
+// that screen is a barrier they cannot reach. The line is state-aware, so a
+// run that already holds still is answered rather than told to set the
+// variable again.
+func TestHelpOverlayNamesTheMotionAccommodation(t *testing.T) {
+	m := newModel(demoConfig())
+
+	t.Setenv(envNoAnimation, "")
+	t.Setenv(envNoMotion, "")
+	t.Setenv(envReducedMotion, "")
+	help := strings.Join(m.helpLines(), "\n")
+	if !strings.Contains(help, "GAUNTLET_NO_ANIMATION") {
+		t.Error("the help overlay never names the motion accommodation, so a reader who needs a still screen has no route to it (SC 2.2.2)")
+	}
+	if !strings.Contains(help, "motion:") {
+		t.Error("the help overlay has no motion line at all, so the accommodation is not discoverable from the screen that needs it")
+	}
+
+	// Set already: the line says the screen is still rather than instructing a
+	// reader to set a variable the run already has.
+	t.Setenv(envNoAnimation, "1")
+	help = strings.Join(m.helpLines(), "\n")
+	if !strings.Contains(help, "still") {
+		t.Error("with the accommodation set, the help overlay still tells the reader to set it instead of saying the screen is already still")
+	}
+}
+
 func TestThinkGlyphPreEpochDoesNotPanic(t *testing.T) {
 	// Go's % keeps the dividend's sign: UnixNano before 1970 is negative, so
 	// the frame index used to be -1 and the slice lookup panicked.

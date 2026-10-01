@@ -40,6 +40,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The project page now keeps its distinctions under a system in high-contrast
+  mode. Every color on it is a hardcoded custom property, so a forced-colors
+  user got the system palette in place of the page's: the filled Download
+  button lost the fill that told it apart from the GitHub link beside it, and
+  the focus ring lost the color it was drawn in. The button's border is
+  reasserted and the ring is restated in the system highlight, so both survive
+  (SC 1.4.1, 2.4.7).
+- The dashboard's help overlay now names the motion accommodation. The
+  dashboard repaints itself ten times a second and one glyph turns while an
+  agent is reasoning, and stopping that is an environment variable read at
+  startup (`GAUNTLET_NO_ANIMATION`), so a reader who needs a still screen had
+  no route to it from the screen that needed it. The overlay carries one
+  state-aware line naming the variable (SC 2.2.2, 2.3.3).
 - A `--stacked-prs` run whose layer setup failed no longer counted that review
   in one reading of the run and not in the other. The failure was recorded
   into the run's stats, and `writeSummary` builds the run's summary from

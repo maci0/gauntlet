@@ -494,6 +494,22 @@ func motionOff() bool {
 	return false
 }
 
+// motionHelpLine is the help overlay's one line on the motion accommodation.
+// The dashboard repaints itself ten times a second and one glyph turns while
+// an agent is reasoning, and a reader who needs the screen to hold still has
+// no key for it: the accommodation is an environment variable read at startup.
+// The overlay is the one place a reader on a moving screen looks for the way
+// to stop it, and a variable named nowhere on that screen is a barrier they
+// cannot find (SC 2.2.2 Pause, Stop, Hide; SC 2.3.3). It says which state the
+// run is in, so a reader who already set it is answered rather than told to
+// set it again.
+func motionHelpLine() string {
+	if motionOff() {
+		return styleDim.Render("  motion: still (GAUNTLET_NO_ANIMATION is set; the screen stops repainting)")
+	}
+	return styleDim.Render("  motion: set GAUNTLET_NO_ANIMATION=1 to stop the screen repainting ten times a second")
+}
+
 // thinkGlyph animates only while reasoning is actively growing: a still glyph
 // means the agent thought earlier, a turning one means it is thinking now.
 // Under any of the variables motionOff reads, the turning glyph holds one
@@ -1091,6 +1107,7 @@ func (m *model) helpLines() []string {
 		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results, errors, and diffs, and back",
 		"  ?, h        toggle this help",
+		motionHelpLine(),
 		styleDim.Render("  Feed mark: ! an error the agent reported. Every other line kind names itself in its own text."),
 		"",
 		styleDim.Render("  Review glyphs: · pending  ▸ running  ✓ ok  ✗ fail  ⧖ timeout  ⑂ merge conflict  – skipped  ␘ interrupted"),

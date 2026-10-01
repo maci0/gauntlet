@@ -69,6 +69,17 @@ pre {
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
+/* WCAG 1.4.1 Use of Color, and its forced-colors case: a system in
+   high-contrast mode replaces every author color with its own palette, which
+   drops the fill the primary button is read by and the ring the focus rule
+   draws, because both are among the colors it discards. The button keeps a
+   border the system resolves, so the two links stay tellable apart, and the
+   focus rule is restated in the system highlight rather than left to whatever
+   the outline resolves to against a background the page no longer sets. */
+@media (forced-colors: active) {
+  .cta a.primary { border-color: ButtonText; }
+  a:focus-visible { outline-color: Highlight; }
+}
 footer { margin-top: 64px; color: var(--muted); font-size: 0.9rem; text-align: center; }
 </style>
 </head>
