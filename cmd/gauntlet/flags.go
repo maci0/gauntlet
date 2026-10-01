@@ -639,14 +639,16 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return o, nil
 	}
 
-	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
-		exp, err := gauntlethome.ExpandPath(h)
-		if err != nil {
-			return nil, fmt.Errorf("GAUNTLET_HOME: %w", err)
-		}
-		if fi, err := os.Stat(exp); err == nil && !fi.IsDir() {
-			return nil, fmt.Errorf("GAUNTLET_HOME %s: not a directory", exp)
-		}
+	// The state root, validated by the resolver every later read goes
+	// through rather than by a second copy of the rule here. gauntlethome
+	// already knows what "usable" means (GAUNTLET_HOME expanding to a real or
+	// not-yet-existing directory), so asking it is the only way the refusal
+	// below and the root a run then writes to are the same question. A value
+	// the resolver cannot use is a usage error: it names the directory
+	// refusing it, because a mistyped variable must not read as a working
+	// setup that quietly journals somewhere else.
+	if err := checkStateHome(); err != nil {
+		return nil, err
 	}
 
 	if o.usesAgents() {
@@ -921,6 +923,46 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, err
 	}
 	return o, nil
+}
+
+// checkStateHome refuses a GAUNTLET_HOME the state root cannot be built from.
+//
+// gauntlethome.Dir is the resolver every reader of the root goes through, so
+// the check is made by asking it rather than by re-deriving the rule: a second
+// copy of "what counts as usable" is one that answers differently the moment
+// either is edited, and a startup that accepts a value the resolver then
+// refuses is a mistyped variable that reads as a working setup and journals
+// into a fallback directory instead. An unset or whitespace-only value is the
+// variable unset and costs nothing to leave to $HOME; anything set is either
+// usable now or is a usage error naming what it resolved to.
+func checkStateHome() error {
+	h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME"))
+	if h == "" {
+		return nil
+	}
+	exp, err := gauntlethome.ExpandPath(h)
+	if err != nil {
+		return fmt.Errorf("GAUNTLET_HOME: %w", err)
+	}
+	root, ok := gauntlethome.Dir()
+	if ok {
+		return nil
+	}
+	if strings.HasPrefix(exp, "~") {
+		// ExpandPath expands only "~/..." on purpose, leaving a bare "~" (and
+		// another account's "~user") as it was written rather than guessing
+		// whose home was meant. The state root has no reading of that: it
+		// would resolve to a directory literally named "~" beside the tree
+		// under review, so the answer names the spelling that does work.
+		return fmt.Errorf("GAUNTLET_HOME %s: write ~%s to mean your home directory, not a directory called %q",
+			exp, string(os.PathSeparator), exp)
+	}
+	// A root that exists and is not a directory is the common mistype, so it
+	// gets its own message rather than the catch-all.
+	if fi, err := os.Stat(exp); err == nil && !fi.IsDir() {
+		return fmt.Errorf("GAUNTLET_HOME %s: not a directory", exp)
+	}
+	return fmt.Errorf("GAUNTLET_HOME %s: no usable state root; gauntlet would fall back to .gauntlet in the working directory", root)
 }
 
 func validateLog(o *options, fs *flag.FlagSet) error {

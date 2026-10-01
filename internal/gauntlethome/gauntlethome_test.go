@@ -55,6 +55,31 @@ func TestDirExpandsTildeGauntletHome(t *testing.T) {
 	}
 }
 
+// A bare "~" is the one spelling of the home directory ExpandPath refuses to
+// resolve, because for a flag naming a file it might be a directory actually
+// called "~". The state root has no such reading: it resolved the literal
+// string, made it absolute against the working directory, and handed a run a
+// directory named "~" beside the tree under review, which the run then created,
+// journaled into, and reported through doctor as a working setup. "~/..." is
+// the spelling that means home and "~user" names another account's, so both
+// are refused here rather than resolved by guesswork.
+func TestDirRefusesAnUnexpandedTildeHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, value := range []string{"~", "~nosuchuser", "~nosuchuser/state"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", value)
+			got, ok := Dir()
+			if ok {
+				t.Fatalf("GAUNTLET_HOME %q was left unexpanded, so Dir resolved it against the working directory and reported a usable root at %q", value, got)
+			}
+			if got != ".gauntlet" {
+				t.Fatalf("Dir = %q, want the degraded %q", got, ".gauntlet")
+			}
+		})
+	}
+}
+
 func TestDirIgnoresWhitespaceOnlyGauntletHome(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

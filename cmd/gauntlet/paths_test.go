@@ -94,6 +94,29 @@ func TestStateRootAgreement(t *testing.T) {
 	if got := gauntlethome.StateDir(); got != filepath.Join(wantRel, "state") {
 		t.Fatalf("gauntlethome.StateDir = %q, want %q", got, filepath.Join(wantRel, "state"))
 	}
+
+	// A GAUNTLET_HOME left as a tilde resolves to a literal path, and a
+	// literal path beside the working directory is a state root inside the
+	// tree under review. It has to be refused by the startup check, which now
+	// asks the resolver rather than holding its own copy of the rule, and by
+	// both resolvers with it: startup refusing what a run then journals into
+	// is a misconfiguration that reads as a working setup.
+	for _, value := range []string{"~", "~nosuchuser/state"} {
+		t.Setenv("GAUNTLET_HOME", value)
+		if _, ok := gauntlethome.Dir(); ok {
+			t.Errorf("GAUNTLET_HOME %q reported a usable root, so it resolves to a directory named %q beside the tree under review", value, value)
+		}
+		_, err := parseFlags([]string{"--list"})
+		if err == nil {
+			t.Errorf("GAUNTLET_HOME %q was accepted at startup, so a run would journal into a fallback directory with no warning", value)
+			continue
+		}
+		// The message has to name the spelling that works, or it only says the
+		// value was refused.
+		if !strings.Contains(err.Error(), "~"+string(os.PathSeparator)) {
+			t.Errorf("error for GAUNTLET_HOME %q should name the tilde-slash spelling, got %v", value, err)
+		}
+	}
 }
 
 // resolveDirs turns flags into absolute directories. A quoted glob still

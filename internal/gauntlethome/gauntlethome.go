@@ -42,6 +42,19 @@ import (
 func Dir() (string, bool) {
 	if h := strings.TrimSpace(os.Getenv("GAUNTLET_HOME")); h != "" {
 		if exp, err := ExpandPath(h); err == nil && strings.TrimSpace(exp) != "" {
+			// A bare "~" is a value ExpandPath deliberately leaves alone,
+			// because for a flag that names a file it might be a directory
+			// actually called "~". For the state root it cannot be: the
+			// absolute() below would turn it into a literal directory named
+			// "~" beside the working directory, and a run journals, takes
+			// locks and drops handoff files there while `gauntlet doctor`
+			// reports a working setup. The one spelling that means HOME is
+			// GAUNTLET_HOME=~/..., which ExpandPath resolves; "~user" names
+			// another account's home and is refused with it rather than
+			// becoming a directory called that.
+			if strings.HasPrefix(exp, "~") {
+				return ".gauntlet", false
+			}
 			switch fi, err := os.Stat(exp); {
 			case err != nil && !os.IsNotExist(err):
 				return ".gauntlet", false

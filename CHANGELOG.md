@@ -39,6 +39,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   ending a later process wrote over a review an earlier one was interrupted
   on. `docs/RUNS.md` states the rule and what a journal with no `run_start`
   and no timestamp does with it.
+- `GAUNTLET_HOME` set to a bare `~` is refused at startup instead of quietly
+  putting the state tree in a directory called `~`. The tilde expands only as
+  `~/...`; a value left a tilde (a bare `~`, or another account's `~user`) was
+  read as an ordinary path and made absolute against the working directory, so
+  the run journal, the hot-reload handoff and `agents.json` all landed in a
+  directory named `~` inside the repository under review, while `gauntlet
+  doctor` reported a working setup. The refusal names the `~/` spelling that
+  works.
+- The startup check on `GAUNTLET_HOME` now asks the resolver that every later
+  read of the root goes through, rather than holding its own copy of the rule.
+  The two answers had drifted: a value startup accepted could still leave a
+  run journaling into a fallback directory with nothing said.
 - The launcher's scrolled panes now say how far they are scrolled, and which
   end the rows went. Each pane title carried a count of the rows below the
   fold only, so a list scrolled to its end still read "+N more" while the N
