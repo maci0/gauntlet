@@ -339,6 +339,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   until somebody reports it. Four doc comments over `internal/gitx`'s
   `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
   `Palette` and `Think` were the findings it revealed.
+- Two more readers of input from outside the program are fuzzed. The file-signal
+  suggester reads the reviewed tree's own files on the interactive
+  `--suggest-agent` path, with no agent and no tokens spent: Go through
+  `go/parser`, the other languages through a regex import matcher and a
+  line-at-a-time declaration recognizer, and manifests through `encoding/json`
+  and a bounded TOML reader. A tree cannot make it record a category no rule
+  keys on, count one file as two source files, invent a package field out of a
+  manifest that is not valid JSON, or answer the same head two ways, and each of
+  those is asserted rather than left to the absence of a crash. The credential
+  redaction every child's output passes through is fuzzed beside it, on the
+  property that matters there: no token of a published format survives, and a
+  rewrite leaves nothing a second pass would rewrite again.
 
 ### Security
 
