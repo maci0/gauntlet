@@ -644,7 +644,7 @@ func run(argv []string) int {
 
 	var checkpoints sync.WaitGroup
 	checkpoints.Go(func() {
-		writeCheckpoints(progress, runs, runID, origin, startedAt, opts.seed, prior.Reloads, argv, bus)
+		writeCheckpoints(progress, runs, runID, origin, startedAt, opts.seed, prior.Reloads, argv, bus, runClock)
 	})
 
 	// From here a graceful quit has runners to reach; one that arrived while
@@ -716,7 +716,11 @@ func run(argv []string) int {
 	reloadFailed := false
 	if path := reloadPath.Load(); path != nil && *path != "" {
 		jrnl.CloseQuiet()
-		if code := doReload(*path, runID, origin, max(time.Since(startedAt), 0), runs, prior,
+		// The run clock, not a second reading of the process's monotonic
+		// source: the handoff's elapsed has to be the same figure the
+		// checkpoint and the summary carry, or a replayed run records three
+		// slightly different elapsed times for one instant.
+		if code := doReload(*path, runID, origin, max(runClock().Sub(startedAt), 0), runs, prior,
 			opts.seed, argv, stdout); code >= 0 {
 			// The exec failed, or the handoff could not be saved and the
 			// reload was aborted: no successor is coming, so finish the run
@@ -728,7 +732,7 @@ func run(argv []string) int {
 		}
 	}
 
-	wall := max(time.Since(startedAt), 0)
+	wall := max(runClock().Sub(startedAt), 0)
 	switch {
 	case !opts.tui:
 		report.Summary(stdout, pal, reportDirs(runs), wall)
@@ -764,8 +768,15 @@ func run(argv []string) int {
 // reports progress, until progress closes. A checkpoint that cannot be
 // written costs only the ability to resume after a crash, so the run goes on
 // and says so once.
+//
+// now is the run's clock, the one the dashboard and the reporter read, so
+// the stamp and the elapsed the checkpoint records are the same figures the
+// summary will carry. Reading the wall clock here instead left a second clock
+// inside the run: two runs of one seed under one frozen run clock wrote
+// checkpoints whose `updated` and whose handoff elapsed differed, so
+// `gauntlet resume` after a replay was not the state the replay described.
 func writeCheckpoints(progress <-chan struct{}, runs []*dirRun, runID string, origin, startedAt time.Time,
-	seed uint64, reloads int, argv []string, bus *runner.Bus) {
+	seed uint64, reloads int, argv []string, bus *runner.Bus, now func() time.Time) {
 
 	cwd, err := os.Getwd()
 	warned := false
@@ -787,9 +798,13 @@ func writeCheckpoints(progress <-chan struct{}, runs []*dirRun, runID string, or
 			warn(err)
 			continue
 		}
+		// One reading for both fields, as the run id takes one reading: a
+		// stamp and an elapsed either side of a tick would disagree about
+		// when this progress happened.
+		at := now()
 		cp := checkpoint{
-			Handoff: buildHandoff(runID, origin, max(time.Since(startedAt), 0), seed, reloads, runs, unfinished),
-			Argv:    argv, Cwd: cwd, PID: os.Getpid(), Version: version, Updated: time.Now(),
+			Handoff: buildHandoff(runID, origin, max(at.Sub(startedAt), 0), seed, reloads, runs, unfinished),
+			Argv:    argv, Cwd: cwd, PID: os.Getpid(), Version: version, Updated: at,
 		}
 		if serr := saveCheckpoint(cp); serr != nil {
 			warn(serr)

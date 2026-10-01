@@ -53,6 +53,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   startup (`GAUNTLET_NO_ANIMATION`), so a reader who needs a still screen had
   no route to it from the screen that needed it. The overlay carries one
   state-aware line naming the variable (SC 2.2.2, 2.3.3).
+- The crash checkpoint a killed run leaves behind is now stamped and elapsed
+  from the run's own clock, the same handle every other reader inside a run
+  already took from the event bus. It was reading the process's monotonic
+  source on its own, which left the checkpoint as the one artifact of a run
+  that a replay of the same `--seed` could not reproduce: two runs of one tree
+  under one seed wrote identical journals and two different checkpoints. That
+  reaches further than replay, because the two numbers are what `gauntlet
+  resume` acts on: the stamp answers whether the recorded process is still
+  alive, and the elapsed is carried into the successor's start instant, where
+  `--runtime` is measured from it. The hot-reload handoff's elapsed came from
+  the same second reading and is now the run clock's too, so a run's own clock
+  does not reappear at the end of the run as a clock of its own.
 - A `--stacked-prs` run whose layer setup failed no longer counted that review
   in one reading of the run and not in the other. The failure was recorded
   into the run's stats, and `writeSummary` builds the run's summary from

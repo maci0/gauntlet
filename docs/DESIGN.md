@@ -296,7 +296,11 @@ the unit of safe parallelism is **the directory**, not the agent.
   same way (`ui.Config.Now`, `reporter.now`, both handed `bus.Clock()`), so
   the dashboard's first reading, its end-of-run stamp, and a log line the
   bus could not stamp are the run's clock and not a second wall clock
-  beside it. Production sets that clock once, at the bus, from the run's
+  beside it. The same covers what a run hands to its successor: the crash
+  checkpoint's stamp and elapsed, and the handoff's elapsed on a hot reload,
+  are read from that one handle, so the run's own clock does not reappear as a
+  second reading of the process's monotonic source at the end of the run.
+  Production sets that clock once, at the bus, from the run's
   start instant and the monotonic reading, so every reader inside the run
   shares one handle and an NTP step cannot expire or extend `--runtime`;
   a caller that replays a run replaces the handle instead of each reader
@@ -719,7 +723,13 @@ rewrites `state/checkpoints/<run-id>.json` (`writeCheckpoints` in
 running counted unfinished (`runner.Unfinished`), plus the argv and working
 directory. Results are recorded before a review leaves the in-flight list and
 the checkpoint reads that list before the results, so a review is never in
-neither. A run that ends on its own deletes the file. `gauntlet resume
+neither. Both numbers the checkpoint carries, the stamp that answers whether
+the recorded process is still alive and the handoff elapsed a successor folds
+into its own `startedAt` where `--runtime` reads it, come from the run clock
+above, taken as one reading. They used to be read from the process's
+monotonic source here instead, which left the checkpoint the one artifact of a
+run that no replay of the seed could reproduce: two runs under one frozen run
+clock wrote identical journals and two different checkpoints. `gauntlet resume`
 <run-id>` refuses a directory whose lock is held, changes to the recorded
 directory, saves the handoff with its process count raised, and execs this
 binary. The count becomes the runner's `Generation`, which names lane and
