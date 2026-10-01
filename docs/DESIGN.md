@@ -34,7 +34,7 @@ also publish its changes as a linear, unmerged PR stack.
 |---|---|
 | `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), and the per-run preflight steps |
 | `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
-| `internal/agent` | agent specs, the installed-tool inventory doctor and auto-detection read through `runx`'s resolver, command construction, custom definitions from `agents.json` in the state root, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
+| `internal/agent` | agent specs, the installed-tool inventory doctor and auto-detection read through `runx`'s resolver, command construction, custom definitions from `agents.json` in the state root read through `safefile`, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
 | `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
 | `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
 | `internal/normalize` | agent output noise reduction and line classification, and in `display.go` the sanitize, home redaction, and clipping every untrusted string shown to a reader goes through |
@@ -52,7 +52,7 @@ also publish its changes as a linear, unmerged PR stack.
 | `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
 | `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
 | `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), the typo-tolerant match behind every "did you mean" hint, and the collation every printed list of names is ordered by |
-| `internal/safefile` | the one guarded open for a path a repository's contents can plant: `O_NOFOLLOW` plus a regular-file check and a cleared `O_NONBLOCK`, for reading a project prompt, a run journal, and a shared exclude, and for appending to the last of those. Three copies of it had drifted (one dropped the path from its errors, one ignored a failed clear), and the append had no `O_NONBLOCK`, so a FIFO planted where the exclude goes blocked the untracked walk until a writer appeared |
+| `internal/safefile` | the one guarded open for a path a repository's contents can plant: `O_NOFOLLOW` plus a regular-file check and a cleared `O_NONBLOCK`, for reading a project prompt, a run journal, the operator's `agents.json`, and a shared exclude, and for appending to the last of those. Three copies of it had drifted (one dropped the path from its errors, one ignored a failed clear), and the append had no `O_NONBLOCK`, so a FIFO planted where the exclude goes blocked the untracked walk until a writer appeared. `agents.json` joined them because its contents are exec'd as argv and `GAUNTLET_HOME` may point inside the reviewed tree, and because the loader ran before any bound or refusal the other three reads had |
 
 Dependency direction is strictly downward: `runner` imports `agent`,
 `gauntlethome`, `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`,

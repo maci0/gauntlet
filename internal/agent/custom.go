@@ -20,6 +20,7 @@ import (
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // Custom describes an agent gauntlet was not compiled to know about: the argv
@@ -445,6 +446,49 @@ func ParseAgentCmd(s string) (string, Custom, error) {
 	return name, def, nil
 }
 
+// maxCustomFileBytes bounds the definitions file. A definition is a few
+// hundred bytes and agents.json holds a handful, so a legitimate file is
+// kilobytes; anything larger is not a definitions file, and reading it whole
+// would size this process's heap from a file the user never meant to open
+// this way. The bound is the same one prompt.readNoFollow and LoadState put
+// on the other operator-supplied files, so every one of them refuses the same
+// way.
+const maxCustomFileBytes = 4 << 20
+
+// readCustomFile reads the definitions file, refusing a symlink and anything
+// that is not a regular file, and bounding how much of it is read.
+//
+// os.ReadFile follows a symlink and allocates whatever the file holds, and
+// this is the one operator-supplied file that carries executable argv: the
+// definition's Argv is exec'd as-is. CustomFilePath resolves under
+// GAUNTLET_HOME, which gauntlethome.Dir deliberately permits to point inside
+// the reviewed tree, so a repository that ships .gauntlet/agents.json as a
+// link would otherwise have its target's argv registered and run. safefile's
+// guarded open refuses the link at the last component and a FIFO or device in
+// its place, the same refusal prompt.readNoFollow applies for the same reason.
+//
+// A missing file is not an error; the caller has nothing to load. Anything
+// else wrong is reported here, with the path named, because silently running
+// with the wrong agent set is worse than refusing to start.
+func readCustomFile(path string) ([]byte, error) {
+	f, _, err := safefile.OpenRead(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("cannot read agent definitions %s: %w", path, err)
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxCustomFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read agent definitions %s: %w", path, err)
+	}
+	if len(data) > maxCustomFileBytes {
+		return nil, fmt.Errorf("agent definitions %s exceeds %d bytes", path, maxCustomFileBytes)
+	}
+	return data, nil
+}
+
 // LoadCustomFile reads agent definitions from a JSON file, if it exists. The
 // file maps a name to a definition:
 //
@@ -456,11 +500,10 @@ func ParseAgentCmd(s string) (string, Custom, error) {
 // "opt_in") would otherwise be dropped on the floor and quietly change what
 // the definition does.
 func LoadCustomFile(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
+	// A missing file is nil data and no error: there is nothing to load, and
+	// readCustomFile has already said so with the path it would have refused.
+	data, err := readCustomFile(path)
+	if err != nil || data == nil {
 		return err
 	}
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))

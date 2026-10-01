@@ -60,6 +60,20 @@ the journaled event stream in `internal/runner/contract_test.go`.
   header a truncated file drops silently is `Strict-Transport-Security`, the
   one that outlives a page view. A test now holds the file terminated, holds
   it naming a path pattern, and holds each header the file is the control for.
+- The agent definitions file is read the way every other operator-supplied
+  file in the tree is read, instead of through a bare `os.ReadFile`.
+  `agents.json` carries executable argv — the `argv` of a definition is
+  `exec`'d as-is — and `gauntlethome.Dir` deliberately permits `GAUNTLET_HOME`
+  to resolve inside the reviewed tree, so a repository shipping
+  `.gauntlet/agents.json` as a symlink had its target's argv registered and
+  run: `os.ReadFile` follows the link, and nothing bounded how much of it was
+  read. A FIFO planted at that path blocked startup indefinitely waiting for a
+  writer that never comes. `LoadCustomFile` now reads through `safefile.OpenRead`
+  — the guarded open already used for a project prompt, a run journal, and a
+  shared exclude — which refuses a symlink at the last component and a
+  non-regular file in its place, and caps the file at `maxCustomFileBytes` so
+  one oversized path cannot size the process's heap before the run does any
+  work. A file exactly at the bound is still read.
 - A state directory a run creates is now recorded by the filesystem, not only
   made. The journal, the index, the quarantine, the crash checkpoint, and the
   hot-reload handoff created their directories with `os.MkdirAll` and synced

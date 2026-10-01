@@ -4,6 +4,7 @@
 package agent
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -14,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode"
@@ -3223,5 +3225,82 @@ func TestBinaryErrorNamesTheUnsetVariable(t *testing.T) {
 	}
 	if err := BinaryError(Valid[0]); err != nil {
 		t.Errorf("a built-in agent reported %v, want no error", err)
+	}
+}
+
+// agents.json is the one operator-supplied file whose contents are exec'd as
+// argv, and CustomFilePath resolves it under GAUNTLET_HOME, which may point
+// inside the reviewed tree. A symlink planted there must be refused rather
+// than followed, so a repository cannot have its target's argv registered.
+func TestCustomFileRefusesASymlink(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	outside := filepath.Join(dir, "outside.json")
+	body := `{"piclone":{"argv":["piclone","-p","{prompt}"]}}`
+	if err := os.WriteFile(outside, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "agents.json")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	err := LoadCustomFile(link)
+	if err == nil {
+		t.Fatal("a symlinked definitions file was accepted")
+	}
+	if !strings.Contains(err.Error(), link) {
+		t.Errorf("error %q does not name the file it refused", err)
+	}
+	if _, ok := CustomDef("piclone"); ok {
+		t.Error("argv from outside the state root was registered through a symlink")
+	}
+}
+
+// The definitions file is bounded like every other operator-supplied file the
+// tree reads: os.ReadFile sized this process's heap from whatever the path
+// held, and the loader runs before the run does any work.
+func TestCustomFileIsBounded(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	path := filepath.Join(dir, "big.json")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("x"), maxCustomFileBytes+1), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := LoadCustomFile(path)
+	if err == nil {
+		t.Fatalf("a definitions file of %d bytes was accepted", maxCustomFileBytes+1)
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("error %q does not name the bound it refused", err)
+	}
+	// A file exactly at the bound is still read, so the cap is a bound and not
+	// an off-by-one that refuses a file the limit says it accepts: the padding
+	// rides in a note, which the schema allows to be any string.
+	note := `{"piclone":{"argv":["piclone","-p","{prompt}"],"note":"` +
+		strings.Repeat("x", maxCustomFileBytes-len(`{"piclone":{"argv":["piclone","-p","{prompt}"],"note":""}}`)) + `"}}`
+	if len(note) != maxCustomFileBytes {
+		t.Fatalf("fixture is %d bytes, want exactly %d", len(note), maxCustomFileBytes)
+	}
+	if err := os.WriteFile(path, []byte(note), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err != nil {
+		t.Errorf("a file exactly at the bound was not read: %v", err)
+	}
+	if _, ok := CustomDef("piclone"); !ok {
+		t.Error("the file at the bound did not load its definition")
+	}
+}
+
+// A FIFO at the definitions path would block a plain open forever, waiting for
+// a writer that never comes. It is refused rather than waited on.
+func TestCustomFileRefusesAFIFO(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	dir := t.TempDir()
+	if err := syscall.Mkfifo(filepath.Join(dir, "agents.json"), 0o600); err != nil {
+		t.Skipf("no FIFO on this machine: %v", err)
+	}
+	if err := LoadCustomFile(filepath.Join(dir, "agents.json")); err == nil {
+		t.Error("a FIFO at the definitions path was opened")
 	}
 }
