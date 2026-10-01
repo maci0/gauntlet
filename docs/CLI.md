@@ -14,15 +14,16 @@ installed.
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
 | `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |
+| `gauntlet resume [<run-id>]` | with no id, list the runs a crash cut off (an OOM kill, a crashed session, a power cut) and whether each can continue; with one, continue that run where it stopped. See [Resuming after a crash](RUNS.md#resuming-after-a-crash). |
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit`, `--restore`, and `--json`, and `show`, `version`, and `help` take none of their own. `--log` and
+`--limit`, `--restore`, and `--json`, and `show`, `resume`, `version`, and `help` take none of their own. `--log` and
 `--no-color` work everywhere, and may precede the subcommand, so
 `gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
-`show` takes its run id anywhere among the flags: `gauntlet show --no-color RUN`
+`show` and `resume` take their run id anywhere among the flags: `gauntlet show --no-color RUN`
 and `gauntlet show RUN --no-color` are the same. Any other flag is refused with
 a usage error (exit 2) rather than parsed and silently dropped, so
 `gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
@@ -200,7 +201,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | Variable | Effect |
 |---|---|
 | `TMPDIR` | An absolute temporary directory is added to sandbox writable roots alongside `/tmp`; it must exist. Relative values grant nothing. `make test` sets its own scratch directory and ignores an exported value; override it on the make command line. |
-| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
+| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, crash checkpoints, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard stops moving. The animated reasoning glyph holds one frame instead of cycling, and the screen stops repainting itself ten times a second: the frame changes when a review reports or a key is pressed, and otherwise every thirty seconds, so the clock and the timeout meters stay honest. The token count beside the glyph keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored, but `GAUNTLET_NO_ANIMATION` is read first: set to one of the five values above it turns the motion back on even when a desktop session exports `REDUCED_MOTION=1`. Left empty it defers to the other two. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`, and wins when both carry a token. An empty value is ignored rather than counted as set, so `GH_TOKEN=` exported to clear a token does not mask a `GITHUB_TOKEN` the same environment also carries. |
@@ -209,8 +210,8 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | `TERM=dumb` | Disables color; even `CLICOLOR_FORCE` does not override it. Read like the two above, so any case and surrounding space are ignored. |
 | `GIT_SSH_COMMAND` | Optional. The command git uses for SSH. Empty or whitespace-only defaults to `ssh`, which outranks a repository-local `core.sshCommand`; set it to use a different binary or options. |
 
-(`GAUNTLET_STATE` exists too, but only within one hot reload: it names the
-handoff file passed across the exec.)
+(`GAUNTLET_STATE` exists too, but only within one hot reload or `gauntlet
+resume`: it names the handoff file passed across the exec.)
 
 ## Signals
 

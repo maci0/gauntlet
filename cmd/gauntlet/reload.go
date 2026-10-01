@@ -203,25 +203,32 @@ func startReloadWatch(ctx context.Context, opts *options, runs []*dirRun, bus *r
 	return &pending
 }
 
-// doReload hands control to the new binary. It returns a nonnegative exit code
-// only when no exec was attempted, because the handoff could not be saved or
-// the exec itself failed, and the caller should exit normally instead.
-func doReload(path, runID string, start time.Time, elapsed time.Duration, runs []*dirRun, prior handoff,
-	seed uint64, argv []string, out io.Writer) int {
+// buildHandoff captures every directory's progress. unfinished names what each
+// directory still has to run in its current loop: at a reload's quiescent
+// point that is the unstarted queue, while a crash checkpoint also counts the
+// reviews in flight. It is read before the results, which is the order
+// runner.Unfinished needs to never lose a review that finishes in between.
+func buildHandoff(runID string, start time.Time, elapsed time.Duration, seed uint64, reloads int,
+	runs []*dirRun, unfinished func(*dirRun) []string) handoff {
 	h := handoff{
 		RunID: runID, StartedAt: start, Elapsed: elapsed, Seed: seed,
-		Reloads: prior.Reloads + 1,
+		Reloads: reloads,
 		Dirs:    make(map[string]dirHandoff, len(runs)),
 	}
 	for _, d := range runs {
 		if d.stats == nil {
 			continue
 		}
-		loops := d.loops
+		// d.loops is written by the directory's worker as it returns, so a
+		// directory that has a runner is read through the runner: the
+		// checkpoint writer calls this while workers are still running.
+		var loops int
 		if d.r != nil {
 			loops = d.carriedLoops + d.r.Loops()
+		} else {
+			loops = d.loops
 		}
-		pending := carriedPending(d)
+		pending := unfinished(d)
 		dh := dirHandoff{
 			Loops:       loops,
 			Pending:     pending,
@@ -241,6 +248,15 @@ func doReload(path, runID string, start time.Time, elapsed time.Duration, runs [
 		}
 		h.Dirs[handoffKey(d.dir)] = dh
 	}
+	return h
+}
+
+// doReload hands control to the new binary. It returns a nonnegative exit code
+// only when no exec was attempted, because the handoff could not be saved or
+// the exec itself failed, and the caller should exit normally instead.
+func doReload(path, runID string, start time.Time, elapsed time.Duration, runs []*dirRun, prior handoff,
+	seed uint64, argv []string, out io.Writer) int {
+	h := buildHandoff(runID, start, elapsed, seed, prior.Reloads+1, runs, carriedPending)
 	statePath, err := saveHandoff(runID, h)
 	if err != nil {
 		// Without the handoff the successor would start a fresh run: a new

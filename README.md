@@ -44,7 +44,8 @@ to an agent CLI you already have installed, and applies what it finds.
   its session transcript, and its machine-readable mode; an agent that reports
   nothing shows no rate.
 - **A record.** Every run is JSONL under `~/.gauntlet`, replayable with
-  `gauntlet show`.
+  `gauntlet show`. A run an OOM kill or a crash cut off continues with
+  `gauntlet resume`.
 - **Self-updating, hot-reloading.** A running loop takes a new binary between
   reviews without losing its counters.
 

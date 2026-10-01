@@ -283,11 +283,11 @@ func indexNamesRun(runID string) (bool, error) {
 
 // runIDNeedle is how a marshalled row spells the run id, used to skip rows
 // that cannot name this run before they are decoded. A generated id passes
-// validRunID, and that charset is written verbatim, so the needle is exact.
+// ValidRunID, and that charset is written verbatim, so the needle is exact.
 // An id outside it gets no needle: json would escape the raw line and the
 // needle would then be a substring the line does not have.
 func runIDNeedle(runID string) []byte {
-	if !validRunID(runID) {
+	if !ValidRunID(runID) {
 		return nil
 	}
 	return []byte(`"run_id":"` + runID + `"`)
@@ -845,7 +845,7 @@ func journalsInDir(dir string) ([]namedJournal, error) {
 			continue
 		}
 		id := strings.TrimSuffix(f.Name(), ".jsonl")
-		if !validRunID(id) {
+		if !ValidRunID(id) {
 			continue
 		}
 		// A directory carrying a run id and a .jsonl suffix, which is what a

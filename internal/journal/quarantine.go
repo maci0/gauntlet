@@ -140,7 +140,7 @@ func Quarantined() ([]string, error) {
 // under runs/ has left: the run is either recoverable or it never happened, and
 // the two want different sentences.
 func Pruned(runID string) bool {
-	if !validRunID(runID) {
+	if !ValidRunID(runID) {
 		return false
 	}
 	_, err := os.Lstat(quarantinePath(runID))
@@ -229,12 +229,12 @@ func quarantinedInDir(dir string) ([]quarantined, error) {
 			continue
 		}
 		id := strings.TrimSuffix(name, ".jsonl")
-		// The same validRunID the runs/ walk applies, and for the same
+		// The same ValidRunID the runs/ walk applies, and for the same
 		// reason: trimQuarantine unlinks whatever falls outside the keep
 		// window, so a name this package would not open must not count
 		// toward that window either. An unvalidated stem here would take a
 		// keep slot and push a real quarantined run out.
-		if !validRunID(id) {
+		if !ValidRunID(id) {
 			continue
 		}
 		out = append(out, quarantined{id: id, path: filepath.Join(dir, name)})
@@ -254,7 +254,7 @@ var (
 // listing rebuilds its index row from the journal itself. A run that is not
 // quarantined, or is already in the listing, is an error.
 func Restore(runID string) error {
-	if !validRunID(runID) {
+	if !ValidRunID(runID) {
 		return fmt.Errorf("%w: %q", ErrInvalidRunID, runID)
 	}
 	return withIndexLock(func() error {

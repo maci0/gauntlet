@@ -122,6 +122,7 @@ type options struct {
 	runsLimit  int
 	keepRuns   int
 	showRun    string
+	resumeRun  string // resume: the run to continue, "" to list them
 	restoreRun string
 	json       bool
 }
@@ -274,7 +275,7 @@ func parseFlags(argv []string) (*options, error) {
 	}
 
 	fs, raw := buildFlagSet(o)
-	if o.command == "show" {
+	if o.command == "show" || o.command == "resume" {
 		// A run id never starts with '-', so flags are peeled off either side
 		// of it (`show --no-color RUN` and `show RUN --no-color` mean the same
 		// thing). Whether an id was given is decided in finishFlags, after the
@@ -282,7 +283,11 @@ func parseFlags(argv []string) (*options, error) {
 		// `--limt` needs to read, and reporting the missing id instead sends
 		// them looking in the wrong place.
 		id, rest := peelShowRun(fs, argv)
-		o.showRun = id
+		if o.command == "show" {
+			o.showRun = id
+		} else {
+			o.resumeRun = id
+		}
 		argv = rest
 	}
 
@@ -989,6 +994,7 @@ var subcommandFlags = map[string][]string{
 	"update": {"check", "update-repo"},
 	"runs":   {"limit", "restore", "json"},
 	"show":   {},
+	"resume": {},
 	// help is handled in finishFlags before stray-flag checks, so extra
 	// flags are ignored the way they are after --help. The entry exists so
 	// a later check cannot treat `help` as the default run.

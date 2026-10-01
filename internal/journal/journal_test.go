@@ -3013,9 +3013,9 @@ func copyTree(t *testing.T, src, dst string) {
 }
 
 // FuzzRunIDPath covers the run-id boundary: a run id arrives from the command
-// line and is joined into a path under the state tree, so validRunID is the
+// line and is joined into a path under the state tree, so ValidRunID is the
 // only thing between a typed argument and a file the tool opens. The pair
-// assertions are the point: an id validRunID accepts must derive a path that
+// assertions are the point: an id ValidRunID accepts must derive a path that
 // stays under the root and ends in the id itself, and an id it refuses must
 // not be usable to name a file. shardFromRunID is in the same chain, since a
 // shard is the other path segment the id contributes.
@@ -3060,7 +3060,7 @@ func FuzzRunIDPath(f *testing.F) {
 			}
 		}
 
-		valid := validRunID(id)
+		valid := ValidRunID(id)
 		for _, path := range []string{quarantinePath(id), journalPath(id)} {
 			if !valid {
 				continue

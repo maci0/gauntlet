@@ -383,7 +383,7 @@ func (r *Runner) runLoopStack(ctx context.Context, loopNo int) bool {
 			// Recorded before anything that can fail below it: a discard that
 			// breaks must not also erase the failure that led to it, or the
 			// run reports no failed review and exits 0.
-			r.st.Add(res)
+			r.record(res)
 			if err := wt.DiscardCurrent(context.WithoutCancel(ctx)); err != nil {
 				r.publishStackFailure(loopNo, review, branch, parent,
 					fmt.Errorf("discard failed layer: %w", err))
@@ -471,7 +471,7 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 			r.failStackLayer(res, loopNo, review, branch, parent, err)
 			return "", "", false
 		}
-		r.st.Add(*res)
+		r.record(*res)
 		return "", "", true
 	}
 	// The commit exists, so its subject can name the branch. A rename that
@@ -515,7 +515,7 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		return branch, tip, true
 	}
 	res.URL = prURL
-	r.st.Add(*res)
+	r.record(*res)
 	r.publishPullRequest(loopNo, review, branch, parent, prURL, false, *res)
 	branchTip, err := r.repo.Tip(ctx, "refs/heads/"+branch)
 	if err != nil {
@@ -532,7 +532,7 @@ func (r *Runner) publishStackLayer(ctx context.Context, loopNo, scheduleIndex in
 func (r *Runner) failStackLayer(res *Result, loop int, review, branch, base string, err error) {
 	res.Status = StatusFail
 	res.Detail = err.Error()
-	r.st.Add(*res)
+	r.record(*res)
 	r.publishStackFailure(loop, review, branch, base, err)
 }
 
@@ -698,7 +698,7 @@ func (r *Runner) recoverStackLayer(ctx context.Context, loopNo, scheduleIndex in
 		res.Ins, res.Del, res.HaveLines = ins, del, true
 	}
 	if pass == stackRecoverCurrent {
-		r.st.Add(res)
+		r.record(res)
 		r.publishPullRequest(loopNo, review, branch, parent, prURL, true, res)
 	}
 	return branch, branchTip, true, nil
@@ -922,10 +922,10 @@ func (r *Runner) recordStackFailure(ctx context.Context, loop int, review, branc
 	// pull_request failure for a layer nobody attempted.
 	if ctx.Err() != nil {
 		res.Status = StatusInterrupted
-		r.st.Add(res)
+		r.record(res)
 		return
 	}
 	res.Status = StatusFail
-	r.st.Add(res)
+	r.record(res)
 	r.publishStackFailure(loop, review, branch, base, detail)
 }

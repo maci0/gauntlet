@@ -878,6 +878,37 @@ func (r *Repo) DeleteBranchesMatching(ctx context.Context, pattern string) error
 // line. The `--` is what keeps an option-shaped pattern from reaching git as
 // an option, which is why a pattern like "--pattern*" lists nothing rather
 // than changing what the sweep does.
+// DeleteMergedBranchesMatching deletes the branches matching pattern that
+// HEAD already contains and keeps every other one, returning how many it
+// deleted. It is the sweep for branches a killed process left: one still at
+// the base it was cut from carries nothing, while one with a commit HEAD lacks
+// is work, and `git branch -d` refuses exactly those. A squash-landed branch
+// is not merged as far as git is concerned, so it is kept too.
+func (r *Repo) DeleteMergedBranchesMatching(ctx context.Context, pattern string) (int, error) {
+	if r == nil || !Available() {
+		return 0, nil
+	}
+	r.PruneWorktrees(ctx)
+	names, err := r.listBranchesMatching(ctx, pattern)
+	if err != nil {
+		return 0, fmt.Errorf("list branches matching %s: %w", pattern, err)
+	}
+	if len(names) == 0 {
+		return 0, nil
+	}
+	r.wtMu.Lock()
+	// The status is not an error to report: -d exits nonzero for every
+	// branch it keeps, and keeping those is the point. The re-list below
+	// is what says how many went.
+	_, _ = r.run(ctx, gitNormal, append([]string{"branch", "-d", "--"}, names...)...)
+	r.wtMu.Unlock()
+	left, err := r.listBranchesMatching(ctx, pattern)
+	if err != nil {
+		return 0, fmt.Errorf("list branches matching %s: %w", pattern, err)
+	}
+	return len(names) - len(left), nil
+}
+
 func (r *Repo) listBranchesMatching(ctx context.Context, pattern string) ([]string, error) {
 	out, err := r.run(ctx, gitQuick, "branch", "--list", "--format=%(refname:short)", "--", pattern)
 	if err != nil {

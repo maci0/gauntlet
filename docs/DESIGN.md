@@ -712,6 +712,23 @@ The result is one run, one run id, one index row, one summary, spanning both
 binaries. What a reload costs is latency: it waits for the reviews in flight,
 which can take up to `--timeout`.
 
+**Resume after a crash** reuses steps 4 and 5. A process killed without a
+word never reaches step 1, so every recorded result and every finished loop
+rewrites `state/checkpoints/<run-id>.json` (`writeCheckpoints` in
+`cmd/gauntlet/main.go`): the same handoff, with the reviews whose agents are
+running counted unfinished (`runner.Unfinished`), plus the argv and working
+directory. Results are recorded before a review leaves the in-flight list and
+the checkpoint reads that list before the results, so a review is never in
+neither. A run that ends on its own deletes the file. `gauntlet resume
+<run-id>` refuses a directory whose lock is held, changes to the recorded
+directory, saves the handoff with its process count raised, and execs this
+binary. The count becomes the runner's `Generation`, which names lane and
+review branches `<run-id>-g<N>-l<loop>` so a successor never reuses a branch
+its killed predecessor left. A `--jobs` successor deletes those leftovers that HEAD
+already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
+any with a commit HEAD lacks. Checkpoints sit in their own directory because
+the handoff writer sweeps every day-old file in `state/`.
+
 ## Choosing reviews without an agent
 
 `--suggest-agent gauntlet` answers the triage question from evidence on disk,
@@ -765,6 +782,7 @@ index.jsonl                      one summary line per finished run
 pruned/YYYY-MM-DD/<run-id>.jsonl journals the --keep-runs bound moved out
 .index.lock                      serializes index rebuilds and Close
 state/<run-id>.json              hot-reload handoff, removed after pickup
+state/checkpoints/<run-id>.json  crash checkpoint, removed when the run ends on its own
 ```
 
 Design points:
@@ -835,8 +853,8 @@ Design points:
 - Journaling is never load-bearing for a run in progress: a journal that
   cannot be opened degrades to a warning. A nil journal is a working no-op,
   so no caller branches on it.
-- A hot reload appends to the same file and writes **one** index row, from the
-  successor, covering the whole run.
+- A hot reload or a resume appends to the same file and writes **one** index
+  row, from the successor, covering the whole run.
 - A closed run is **fsync'd**, and so is the directory that holds the index
   after a rebuild renames it into place. Flushing a buffer protects a run from
   a killed process; it does not protect the source of truth from a power cut,

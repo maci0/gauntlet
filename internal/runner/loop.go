@@ -57,6 +57,19 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	// process was killed before it could remove, and each entry is a full
 	// copy of the tree.
 	r.repo.SweepWorktreeRoot(ctx)
+	if r.cfg.Generation > 0 {
+		// An earlier process of this run may have been killed between cutting
+		// a review branch and landing it. Its branches that HEAD already
+		// contains carry nothing; one with a commit HEAD lacks is work, and
+		// stays for `gauntlet doctor` to name.
+		n, err := r.repo.DeleteMergedBranchesMatching(ctx, gitx.LaneBranchPrefix+r.cfg.RunID+"-*")
+		switch {
+		case err != nil:
+			r.log("Cannot sweep the branches an earlier process of this run left: %v", err)
+		case n > 0:
+			r.log("Deleted %d branch(es) an earlier process of this run left with nothing on them", n)
+		}
+	}
 	return nil
 }
 
@@ -116,6 +129,7 @@ func (r *Runner) takeNext() (string, bool) {
 	}
 	next := r.pending[0]
 	r.pending = r.pending[1:]
+	r.taken = append(r.taken, next.review)
 	return next.review, true
 }
 
@@ -129,6 +143,7 @@ func (r *Runner) takeNextFor(lane int) (string, bool) {
 	for i, q := range r.pending {
 		if q.lane == lane {
 			r.pending = append(r.pending[:i], r.pending[i+1:]...)
+			r.taken = append(r.taken, q.review)
 			return q.review, true
 		}
 	}
@@ -309,7 +324,7 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 			break
 		}
 		res := r.runReview(ctx, review, loopNo, 0, nil)
-		r.st.Add(res)
+		r.record(res)
 		if ctx.Err() != nil {
 			// The cancel landed while this review ran or right after it; the
 			// rest of the loop's queue dies with this process, so it is
@@ -345,7 +360,7 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		return r.runLoopSequential(ctx, loopNo)
 	}
 
-	tag := fmt.Sprintf("%s-l%d", r.cfg.RunID, loopNo)
+	tag := r.laneTag(loopNo)
 	lanes := make([]*gitx.Worktree, r.cfg.Jobs)
 	for i := range lanes {
 		wt, err := r.repo.AddWorktree(ctx, fmt.Sprintf("lane-%d", i), tag, base)
@@ -437,7 +452,7 @@ func (r *Runner) abandonQueue(loopNo int) {
 			return
 		}
 		res := r.interrupted(review)
-		r.st.Add(res)
+		r.record(res)
 		r.publishReviewEnd(res, loopNo, "", "", 1)
 	}
 }

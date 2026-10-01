@@ -136,6 +136,7 @@ var helpCommands = []struct{ Cmd, Help string }{
 	{"gauntlet update [--check]", "replace this binary with the latest verified release"},
 	{"gauntlet runs [--limit N] [--json]", "list recent runs; rebuilds a missing index from the journals"},
 	{"gauntlet show <run-id>", "replay one run's journal"},
+	{"gauntlet resume [<run-id>]", "list runs a crash cut off, or continue one where it stopped"},
 	{"gauntlet version", "print the version and exit"},
 	{"gauntlet help", "show this help and exit"},
 }
@@ -143,7 +144,7 @@ var helpCommands = []struct{ Cmd, Help string }{
 // commandNames is the subcommand surface, including help. peelSubcommand and
 // the unknown-command hint both read this list, so a new word cannot land in
 // one place and not the other.
-var commandNames = []string{"help", "pick", "doctor", "update", "runs", "show", "version"}
+var commandNames = []string{"help", "pick", "doctor", "update", "runs", "show", "resume", "version"}
 
 var helpExamples = []struct{ Cmd, Help string }{
 	{"gauntlet -a claude --once", "one pass over every review, then stop"},
