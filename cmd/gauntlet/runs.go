@@ -31,11 +31,22 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 	if listErr != nil {
 		fmt.Fprintf(os.Stderr, "run listing is incomplete: %v\n", listErr)
 	}
+	// One read of the state tree for both forms. It is what carries a journal
+	// cut mid-line, and a listing that cannot tell a whole archive from a
+	// short one is the answer a restore cannot be checked against. The JSON
+	// form has always counted it; the table reads the same number here so the
+	// human and machine views cannot disagree about whether the history is
+	// complete.
+	st, stErr := journal.Inspect()
+	if stErr != nil {
+		fmt.Fprintf(os.Stderr, "cannot read the run history: %v\n", stErr)
+		return exitFail
+	}
 	if asJSON {
-		if code := writeRunsJSON(out, entries); code != 0 {
+		if code := writeRunsJSON(out, entries, st); code != 0 {
 			return code
 		}
-		return exitCodeFor(listErr)
+		return exitCodeFor(errors.Join(listErr, truncatedError(st.Truncated)))
 	}
 	bw := bufio.NewWriter(out)
 	w := report.ErrWriter{Out: bw}
@@ -93,7 +104,29 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 			"Pruned, still recoverable (gauntlet runs --restore ID): %s%s",
 			strings.Join(shown, " "), more)))
 	}
-	return exitCodeFor(listErr)
+	// A journal cut mid-line is a silent loss the table cannot show: the run
+	// still lists, and its counts look whole, because the half-line every
+	// reader drops is the only evidence its tail is gone. The listing is where
+	// an operator checks a restored tree against what it remembers, so the
+	// shortfall is named there and reflected in the exit code beside the rows
+	// that did read.
+	if st.Truncated > 0 {
+		w.Printf("%s\n", pal.Yellow(fmt.Sprintf(
+			"%s end mid-line: the last events are missing, so those runs list as shorter than they were",
+			humanize.Plural(st.Truncated, "journal ends", "journals end"))))
+	}
+	return exitCodeFor(errors.Join(listErr, truncatedError(st.Truncated)))
+}
+
+// truncatedError reports a mid-line journal as a listing shortfall, so the exit
+// code says the answer is incomplete the same way it does for a journal that
+// could not be read. Zero cut journals is not a shortfall.
+func truncatedError(n int) error {
+	if n <= 0 {
+		return nil
+	}
+	return fmt.Errorf("%s end mid-line: the last events are missing",
+		humanize.Plural(n, "journal ends", "journals end"))
 }
 
 // exitCodeFor turns a listing that came back short into a failing exit. The
@@ -148,7 +181,11 @@ type historyJSON struct {
 // stdout holds one document and a pipe is never split by a note. An empty
 // listing is an empty array, never a null and never a message on the stream a
 // caller is parsing.
-func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
+//
+// st is the state-tree read cmdRuns already made: one read serves both forms,
+// so the counts in this document and the warning the table prints are read off
+// the same tree at the same instant rather than two walks that can disagree.
+func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) int {
 	// A failed read is not reported as an empty quarantine: a pruned list that
 	// could not be read would read as a claim that nothing is recoverable.
 	pruned, err := journal.Quarantined()
@@ -158,14 +195,6 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary) int {
 	}
 	if pruned == nil {
 		pruned = []string{}
-	}
-	// A tree that cannot be read is reported rather than reported as empty:
-	// zeros in this object would read as a state root holding no history, which
-	// is the one answer a restore must never invent.
-	st, err := journal.Inspect()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot read the run history: %v\n", err)
-		return exitFail
 	}
 	if entries == nil {
 		entries = []journal.Summary{}

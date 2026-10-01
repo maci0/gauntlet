@@ -1091,6 +1091,102 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 	}
 }
 
+// A journal cut mid-line lists as a complete, shorter run: the half-line every
+// reader drops is the only evidence its tail is gone. `gauntlet runs` is where
+// an operator checks a restored tree against what it remembers, so the table
+// names the shortfall and the exit code reports it the way it reports a journal
+// that could not be read at all. Without it the default form is the one view of
+// the history that cannot tell a whole archive from a short one, while
+// `--json` and `doctor` both can.
+func TestRunsTableReportsAJournalCutMidLine(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := "20260102T150405Z-1"
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Start: at, End: at.Add(time.Minute), Dirs: []string{"/tmp/proj"},
+		Loops: 1, Reviews: 1, OK: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// An archive job copied the tree with a run still writing it.
+	path := filepath.Join(home, "runs", "2026-01-02", id+".jsonl")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"ev":"loop_start","loop":2`); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	var buf bytes.Buffer
+	code, _ := captureStderrFor(t, func() int {
+		return cmdRuns(&buf, report.Palette{}, 10, "", false)
+	})
+	// The row is still printed: a listing that names what it missed beats no
+	// listing, the same rule the unreadable journal follows.
+	if !strings.Contains(buf.String(), id) {
+		t.Errorf("the run is missing from the listing:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "mid-line") {
+		t.Errorf("a journal that ends mid-line is not named:\n%s", buf.String())
+	}
+	if code != exitFail {
+		t.Errorf("a listing that came back short should exit %d, got %d", exitFail, code)
+	}
+}
+
+// The document already carried the count; it is the exit code that was the
+// other half of the answer. A script checking whether the history it just read
+// is whole reads the exit code first, and a clean one next to a short archive
+// is the silent failure the count alone does not prevent.
+func TestRunsJSONFailsOnACutJournal(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	at := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := "20260102T150405Z-1"
+	j, err := journal.Open(id, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{Start: at, End: at.Add(time.Minute), Dirs: []string{"/tmp/proj"}}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(home, "runs", "2026-01-02", id+".jsonl")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(`{"ev":"loop_start"`); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	code, got := captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json"})
+	})
+	var doc struct {
+		History struct {
+			Truncated int `json:"truncated"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal([]byte(got), &doc); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, got)
+	}
+	if doc.History.Truncated != 1 {
+		t.Errorf("history reports %d journals cut mid-line, want 1:\n%s", doc.History.Truncated, got)
+	}
+	if code != exitFail {
+		t.Errorf("runs --json exited %d on a short archive, want %d", code, exitFail)
+	}
+}
+
 // --json belongs to `runs` alone, and says so where every other misplaced flag
 // is caught, instead of being parsed by a command that would drop it.
 func TestJSONIsRefusedOutsideRuns(t *testing.T) {
