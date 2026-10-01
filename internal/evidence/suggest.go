@@ -682,6 +682,7 @@ func Reviews(dir string, pool []string, set prompt.Set, now func() time.Time) ([
 		picked = append(picked, prompt.Suggestion{
 			Name:   got.name,
 			Reason: got.topReasons(reasonsShown),
+			Weight: got.passWeight(history[got.name], scanErr == nil && historyErr == nil),
 		})
 	}
 	return picked, errors.Join(scanErr, historyErr)
@@ -1009,6 +1010,24 @@ func openPeek(root *os.Root, rel string) (*os.File, error) {
 	}
 	_ = syscall.SetNonblock(int(f.Fd()), false)
 	return f, nil
+}
+
+// passWeight maps accumulated evidence to repeat priority, not confidence.
+// The cutoffs were calibrated on training projects with ordinal reference
+// weights. Incomplete reads and repeatedly unproductive reviews stay at one.
+// ponytail: evidence cannot establish critical consequences; revisit these
+// cutoffs when held-out repeat-value agreement stops improving.
+func (s scored) passWeight(h journal.ReviewHistory, complete bool) int {
+	switch {
+	case !complete || historyWeight(h) == historyPenalty:
+		return 1
+	case s.score >= 8:
+		return 3
+	case s.score >= 3:
+		return 2
+	default:
+		return 1
+	}
 }
 
 // declaredMarkMax bounds how many review-declared substrings are searched for.

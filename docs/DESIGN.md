@@ -742,13 +742,25 @@ the review, malformed weights are ignored, and the first valid mention of a
 name wins, including zero. Older output without a weight defaults to one pass.
 The preview reports weights before confirmation, then expands them into the
 existing schedule. Manual entries add to that schedule; `--max-reviews` limits
-it with the existing shuffle and truncation rules. The file-signal suggester
-continues to contribute one pass per pick.
+it with the existing shuffle and truncation rules. The file-signal suggester uses the same repeat counts, derived from evidence
+rather than a model judgement.
 
 ## Choosing reviews without an agent
 
 `--suggest` defaults to `--suggest-agent gauntlet`, answering the triage question from evidence on disk,
 in milliseconds and for no tokens. An explicit `--suggest-agent AGENT` uses a coding agent instead. The launcher leaves this default in effect unless a suggester is chosen. What the built-in step collects in one pass:
+
+Selected reviews receive 1–3 passes from the final evidence score: below 3
+is one, 3 to below 8 is two, and 8 or more is three. These fixed cutoffs were
+calibrated on training-project ordinal reference weights and checked against
+held-out weight labels; they are repeat-priority heuristics, not confidence or
+proof of critical consequences. Capability markers contribute once per rule, rather than once per matching
+file. Churn and
+productive history affect the existing score. A review that has finished at
+least three times without changes is capped at one pass; any scan or journal
+read failure also caps repeats at one. Selection and ranking retain the
+existing scores and thresholds. The preview, additive manual repeats and
+`--max-reviews` use the same schedule as model suggestions.
 
 - **What the tree is made of**, by count rather than presence. A language earns
   its reviews at three files or a twentieth of the tree, so one stray

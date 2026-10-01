@@ -272,3 +272,29 @@ func TestSuggestDryRunAndListDoNotAskForConfirmation(t *testing.T) {
 		})
 	}
 }
+
+// Built-in repeat weights use the same additive schedule and cap as model
+// weights. The fake external agent must never run when the default is local.
+func TestBuiltinSuggestWeightsAddToManualRepeats(t *testing.T) {
+	d, opts := suggestFixture(t, "exit 99")
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	if err := os.WriteFile(filepath.Join(d.dir, "main.go"), []byte("package main\n// bcrypt database/sql unsafe.Pointer exec.Command\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := parseFlags([]string{"--suggest", "--reviews", "sec,sec", "--exclude", "doc"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts.suggestAgent, opts.reviews, opts.reviewsSet, opts.exclude = parsed.suggestAgent, parsed.reviews, parsed.reviewsSet, parsed.exclude
+	var out bytes.Buffer
+	if err := planReviews(context.Background(), []*dirRun{d}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, report.Palette{}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(d.reviews, ","); got != "sec-review,sec-review,sec-review,sec-review,sec-review" {
+		t.Fatalf("schedule %s, want three suggested passes plus two manual repeats", got)
+	}
+	if !strings.Contains(out.String(), "(x3)") || !strings.Contains(out.String(), "gauntlet suggests 1 of 1") {
+		t.Fatalf("the preview hides built-in weights:\n%s", out.String())
+	}
+}

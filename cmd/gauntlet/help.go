@@ -61,7 +61,7 @@ var helpGroups = []flagGroup{
 		{"x", "exclude", "LIST", "reviews and/or sets to skip (repeatable)"},
 		{"", "paths", "LIST", "scope reviews to these files, directories, or globs, relative to the reviewed directory; prompt-enforced, the agent keeps the whole tree (repeatable)"},
 		{"", "max-reviews", "N", "cap reviews per loop, cut after the seeded shuffle so --seed replays which N ran; a repeated review fills one slot per listing (0 = unlimited)"},
-		{"s", "suggest", "", "pick relevant reviews from file signals; an explicit --suggest-agent can assign weights (1–3 passes); named reviews are scheduled as well"},
+		{"s", "suggest", "", "pick and weight reviews (1-3 passes); default: file signals; use --suggest-agent for a model; named reviews are scheduled as well"},
 		{"", "suggest-agent", "AGENT", "agent to run the suggest step (default: gauntlet, choosing from file signals with no model)"},
 		{"", "suggest-timeout", "DUR", fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "prompt-dir", "DIR", "use *-review.md files from DIR instead of the embedded set"},

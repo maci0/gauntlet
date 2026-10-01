@@ -60,10 +60,10 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 	if cfg.Only != nil && cfg.Only.Tool == evidence.AgentName {
 		spec := *cfg.Only
 		logf("Reading %s for review signals (no agent)", filepath.Base(cfg.Dir))
-		picked, historyErr := evidence.Reviews(cfg.Dir, cfg.Pool, cfg.Set, cfg.Now)
-		if historyErr != nil {
-			logf("Cannot read this directory's run history, so every review counts "+
-				"as untried here: %v", historyErr)
+		picked, readErr := evidence.Reviews(cfg.Dir, cfg.Pool, cfg.Set, cfg.Now)
+		if readErr != nil {
+			logf("Cannot read complete review evidence or history, so suggested reviews "+
+				"stay at one pass: %v", readErr)
 		}
 		if len(picked) == 0 {
 			return nil, spec, errors.New("no review matched anything in this tree")
