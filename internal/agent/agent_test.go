@@ -3304,3 +3304,61 @@ func TestCustomFileRefusesAFIFO(t *testing.T) {
 		t.Error("a FIFO at the definitions path was opened")
 	}
 }
+
+// A transcript root is an operator-supplied path like any other, and the reader
+// it is handed does not expand $VAR: the reader expands a leading ~ and its own
+// {dir}, nothing else. A root written "$AGENT_HOME/sessions" therefore reached
+// the walk verbatim, named a directory that does not exist, and the agent's
+// live token counts stayed at zero with nothing anywhere reporting why. Every
+// other path this program takes from an operator expands $VAR through
+// ExpandPath, and this is the same rule for the one that did not.
+func TestUsageRootsExpandEnvironmentVariables(t *testing.T) {
+	t.Setenv("GAUNTLET_TEST_ROOT", "/var/agent")
+	home, herr := os.UserHomeDir()
+	if herr != nil {
+		t.Skipf("no home directory on this machine: %v", herr)
+	}
+	u := UsageSpec{Roots: []string{
+		"$GAUNTLET_TEST_ROOT/sessions",
+		"~/.plain/sessions",
+		"/absolute/sessions",
+		"{dir}/.agent/sessions",
+		"$GAUNTLET_TEST_ROOT/{dir}/sessions",
+	}}
+	got, err := u.ResolvedRoots()
+	if err != nil {
+		t.Fatalf("ResolvedRoots: %v", err)
+	}
+	want := []string{
+		"/var/agent/sessions",
+		home + "/.plain/sessions",
+		"/absolute/sessions",
+		"{dir}/.agent/sessions", // the reader substitutes {dir} per poll
+		"/var/agent/{dir}/sessions",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ResolvedRoots()\n got %q\nwant %q", got, want)
+	}
+}
+
+// An unset or empty $VAR in a root is refused at load time, the same answer
+// ExpandPath gives every other path: dropping the variable silently turns
+// "$AGENT_HOME/sessions" into "/sessions", a directory that exists on many
+// machines and belongs to nobody. The validator runs before any definition is
+// registered, so a definitions file carrying one fails to start rather than
+// loading an agent that never reports a token count.
+func TestUsageRootWithUnsetVariableIsRefused(t *testing.T) {
+	t.Setenv("GAUNTLET_TEST_ROOT", "")
+	def := Custom{
+		Argv:  []string{"myagent", "-p", "{prompt}"},
+		Usage: &UsageSpec{Roots: []string{"$GAUNTLET_TEST_ROOT/sessions"}},
+	}
+	t.Cleanup(resetCustom(t))
+	err := Register("envroot", def)
+	if err == nil {
+		t.Fatal("a root with an empty $VAR was accepted")
+	}
+	if !strings.Contains(err.Error(), "GAUNTLET_TEST_ROOT") {
+		t.Errorf("error %q does not name the variable it refused", err)
+	}
+}

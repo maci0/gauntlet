@@ -246,7 +246,13 @@ resume`: it names the handoff file passed across the exec.)
 that asks the CLI for machine-readable output (`--stream`), `continue` is the
 argument list that resumes the agent's last session in this directory under
 `--continue-sessions`, and `usage` says where it keeps session transcripts,
-which is what gives a defined agent live token counts. `usage.cumulative`
+which is what gives a defined agent live token counts. Each `usage.roots` entry
+is expanded the way every other path here is: a leading `~` and any `$VAR`
+resolve, and a `$VAR` that is unset or empty is a usage error rather than an
+empty segment. The reader does not expand variables itself, so a root naming
+one is resolved before it is handed over; `{dir}` is the reader's own
+placeholder for the working directory and is passed through untouched, so a
+root may mix it with a variable (`$AGENT_HOME/{dir}/sessions`). `usage.cumulative`
 switches the reader to subtracting a per-session baseline, for a format whose
 counters only ever grow across the whole file rather than resetting per record;
 `usage.header_cwd` says the working directory appears once at the top of a

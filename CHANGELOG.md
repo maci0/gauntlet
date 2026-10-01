@@ -66,6 +66,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
   release ships; `GOFIPS140` selects a FIPS module for the standard library and
   is recorded by nothing at all, which is why the Makefile closes it rather
   than checking it.
+- `usage.roots` in an agent definition expands `~` and `$VAR` like every other
+  path in the CLI. The session reader expands a leading `~` and its own `{dir}`
+  placeholder and nothing else, so a root written
+  `"$AGENT_HOME/sessions"` was passed through verbatim: the walk looked for a
+  directory literally named `$AGENT_HOME/sessions`, found nothing, and that
+  agent's live token counts stayed at zero with no error anywhere. `--bin`,
+  `--log`, `--dir`, `--prompt-dir`, `--sandbox-write`, and `GAUNTLET_HOME` all
+  resolve through the same `ExpandPath`, and a root naming a variable that is
+  unset or empty is now a startup error naming it rather than a silently
+  dropped segment.
 - The project page now keeps its distinctions under a system in high-contrast
   mode. Every color on it is a hardcoded custom property, so a forced-colors
   user got the system palette in place of the page's: the filled Download

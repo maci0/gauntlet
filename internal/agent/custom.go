@@ -59,8 +59,9 @@ type Custom struct {
 	OptIn bool `json:"opt_in,omitempty"`
 
 	// Usage describes where this agent keeps its session transcripts, so live
-	// token counts work for it. Roots may use ~; records are parsed
-	// generically, so any JSONL carrying recognizable counters works.
+	// token counts work for it. Roots may use ~ and $VAR, expanded by
+	// UsageSpec.ResolvedRoots; records are parsed generically, so any JSONL
+	// carrying recognizable counters works.
 	Usage *UsageSpec `json:"usage,omitempty"`
 
 	// Note is shown by doctor, for definitions that need explaining.
@@ -70,6 +71,10 @@ type Custom struct {
 // UsageSpec locates a defined agent's transcripts. It mirrors the reader's
 // own spec, which the CLI hands it to; keeping it here means the whole
 // definition lives in one JSON object.
+//
+// Roots may name the reader's own {dir} placeholder, which it substitutes with
+// the working directory on every poll and which therefore has to survive
+// ResolvedRoots untouched.
 type UsageSpec struct {
 	Roots      []string `json:"roots"`
 	Suffix     string   `json:"suffix,omitempty"`
@@ -279,7 +284,45 @@ func (u UsageSpec) validate(name string) error {
 			return fmt.Errorf("custom agent %q: usage.suffix cannot contain %s", name, p)
 		}
 	}
+	if _, err := u.ResolvedRoots(); err != nil {
+		return fmt.Errorf("custom agent %q: %w", name, err)
+	}
 	return nil
+}
+
+// ResolvedRoots expands ~ and $VAR in every transcript root, so the caller
+// handing them to the session reader gives it a path it can open.
+//
+// The transcript reader expands a leading ~ itself and substitutes {dir} per
+// working directory, but it does not expand $VAR: a root written
+// "$AGENT_HOME/sessions" reached it verbatim and the walk then looked for a
+// directory literally named that, found nothing, and the agent's live token
+// counts stayed at zero with no error anywhere. Every other operator-supplied
+// path in this program -- --bin, --log, --dir, --prompt-dir,
+// --sandbox-write, GAUNTLET_HOME -- expands $VAR through ExpandPath, so this
+// is the same rule applied to the one path that had none.
+//
+// A root carrying {dir} still has its variables expanded: only the placeholder
+// itself is left alone, since the reader substitutes the working directory on
+// every poll and no expansion turns it into a path. ExpandPath already leaves
+// {dir} in place (it is neither a $VAR nor a leading ~), so the two can be
+// mixed freely: "$AGENT_HOME/{dir}/sessions" resolves the variable and keeps
+// the placeholder.
+//
+// An unset or empty $VAR is an error, the same answer ExpandPath gives every
+// other path: silently dropping the variable would turn "$AGENT_HOME/sessions"
+// into "/sessions", a directory that exists on many machines and belongs to
+// nobody.
+func (u UsageSpec) ResolvedRoots() ([]string, error) {
+	out := make([]string, 0, len(u.Roots))
+	for _, r := range u.Roots {
+		expanded, err := gauntlethome.ExpandPath(r)
+		if err != nil {
+			return nil, fmt.Errorf("usage.roots %s: %w", r, err)
+		}
+		out = append(out, expanded)
+	}
+	return out, nil
 }
 
 // builtinCustom are agents gauntlet ships a definition for rather than code.
