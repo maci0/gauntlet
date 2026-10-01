@@ -56,6 +56,36 @@ func suggestFixture(t *testing.T, agentBody string) (*dirRun, *options) {
 	return d, opts
 }
 
+// The suggest step names the directory it read and says which agent chose
+// what, and both go straight to a terminal from planReviews rather than
+// through a reporter that would sanitize. The directory is the reviewed
+// repository's to name, so its base is cleaned before it reaches the screen.
+func TestSuggestSanitizesTheDirectoryTag(t *testing.T) {
+	// Two runs are what turn a directory into a tag: with one, planReviews
+	// prints no name at all and the hostile component never reaches a line.
+	first, opts := suggestFixture(t, `echo "RELEVANT: doc-review: docs drifted"`)
+	second, _ := suggestFixture(t, `echo "RELEVANT: doc-review: docs drifted"`)
+	// The last component is the reviewed repository's to name, so move one
+	// run's directory under a name carrying an escape sequence and a BEL.
+	second.dir = filepath.Join(filepath.Dir(second.dir), "evil\x1b[31mred\x07")
+	if err := os.MkdirAll(second.dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := planReviews(context.Background(), []*dirRun{first, second}, opts,
+		[]agent.Spec{{Tool: "claude"}}, &out, report.Palette{}, time.Now); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Fatalf("the suggest header passed an escape or a BEL to the terminal: %q", got)
+	}
+	if !strings.Contains(got, "suggests") {
+		t.Fatalf("the suggest header did not print:\n%s", got)
+	}
+}
+
 // The -r suggest flow must turn one agent's RELEVANT lines into exactly that
 // schedule, and report which agent chose it.
 func TestSelectReviewsRunsTheSuggestStep(t *testing.T) {

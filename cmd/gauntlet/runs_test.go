@@ -257,6 +257,39 @@ func TestRunsListsStartAsISOLocal(t *testing.T) {
 	}
 }
 
+// The DIRS column carries a directory name the reviewed repository chose,
+// written straight to a terminal. A name holding an escape sequence would
+// repaint the row and a BEL would beep, so the listing strips it the way the
+// show listing already does for the same journal fields.
+func TestRunsSanitizesTheDirectoryColumn(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	start := time.Date(2026, 1, 2, 15, 4, 5, 0, time.UTC)
+	id := journal.NewRunID(start)
+	j, err := journal.Open(id, start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := j.Close(journal.Summary{
+		Start: start, End: start.Add(90 * time.Second),
+		Dirs: []string{"/tmp/proj\x1b[31mred\x07", "/tmp/other"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	if code := cmdRuns(&buf, report.Palette{}, 10, "", false); code != exitOK {
+		t.Fatalf("listing runs should exit %d, got %d", exitOK, code)
+	}
+	got := buf.String()
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Fatalf("the DIRS column passed an escape or a BEL to the terminal: %q", got)
+	}
+	// The visible half survives, or the row would name a directory nobody
+	// recognizes.
+	if !strings.Contains(got, "proj") || !strings.Contains(got, "other") {
+		t.Fatalf("sanitizing dropped the directory names:\n%s", got)
+	}
+}
+
 // A fall-back prints one local wall clock twice, an hour apart. STARTED has to
 // say which is which, or the listing cannot order two runs that started inside
 // the repeated hour: Europe/Warsaw repeats 02:00-03:00 local on 2026-10-25,

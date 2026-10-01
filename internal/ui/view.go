@@ -364,7 +364,12 @@ func (m *model) renderLanes(w, h int) string {
 				strings.Repeat(" ", elapsedW)
 		}
 
-		prefix := pad(styled(hue, trim(label, nameW)), nameW) + " " + work + "  "
+		// The label is an agent name plus, on a multi-directory run, a directory
+		// name the reviewed repository chose. trim measures and cuts it but does
+		// not clean it, so a label holding an escape sequence or a control
+		// character would reach this screen: sanitize here, where every lane
+		// label is drawn, rather than at each place one is built.
+		prefix := pad(styled(hue, trim(normalize.Sanitize(label), nameW)), nameW) + " " + work + "  "
 		// The counters are built by priority into the room the prefix leaves,
 		// so a narrow pane leaves out the reasoning share whole rather than
 		// cutting its token count to "◌ 11": a number that reads as a
@@ -937,7 +942,10 @@ func (m *model) renderMinimal() string {
 	var active []string
 	for _, label := range m.laneOrd {
 		if l := m.lanes[label]; l != nil && l.review != "" {
-			active = append(active, fmt.Sprintf("%s: %s", label, reviewShort(l.review)))
+			// Same lane label and same reason as the lane row above: the base
+			// of a directory the reviewed repository named.
+			active = append(active, fmt.Sprintf("%s: %s",
+				normalize.Sanitize(label), reviewShort(l.review)))
 		}
 	}
 	if len(active) > 0 {

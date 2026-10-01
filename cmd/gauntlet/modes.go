@@ -231,10 +231,13 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		defer logMu.Unlock()
 		where := ""
 		if len(runs) > 1 {
-			where = " [" + filepath.Base(dir) + "]"
+			where = " [" + normalize.Sanitize(filepath.Base(dir)) + "]"
 		}
+		// The directory tag and the message share one sanitize: both name the
+		// reviewed tree or an agent that read it, and both go straight to a
+		// terminal from here rather than through a reporter that would do it.
 		fmt.Fprintf(out, "[%s]%s %s\n", humanize.Clock(now()), where,
-			fmt.Sprintf(format, a...))
+			normalize.Sanitize(fmt.Sprintf(format, a...)))
 	}
 
 	var wg sync.WaitGroup
@@ -278,7 +281,7 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 		}
 		where := ""
 		if len(runs) > 1 {
-			where = " in " + filepath.Base(d.dir)
+			where = " in " + normalize.Sanitize(filepath.Base(d.dir))
 		}
 		fmt.Fprintf(out, "\n%s suggests %d of %d reviews%s:\n",
 			r.spec.Label(), len(r.picked), len(pools[i]), where)

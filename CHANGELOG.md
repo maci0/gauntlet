@@ -37,6 +37,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
   leading entries, so both temp roots are skipped when absent while the
   agent-state and `--sandbox-write` roots after them stay fatal, which is
   the rule a missing explicit grant still follows.
+- Directory and review names reached a terminal unsanitized on several
+  display paths that did not go through the reporter's log writer: the lane
+  prefix of an agent output line, the `DIRS` column of `gauntlet runs`, the
+  suggest step's per-directory tag and heading, and the dashboard's lane rows
+  and pane titles. A reviewed repository chooses the last component of a
+  directory path and the stem of a project prompt, so a name holding an
+  escape sequence, a BEL, a bidi override, or a zero-width joiner repainted,
+  beeped, or reordered the row it was printed on. Those paths now clean the
+  name where it is built, the way every other untrusted display string in this
+  project already does; the agent output line's own text was already covered.
 - Every Go job caches the module graph. `actions/setup-go` was installed in
   all five Go steps without `cache: true`, so the first `go` command of every
   run downloaded the whole graph from the proxy, where the scripts job already

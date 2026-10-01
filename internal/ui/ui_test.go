@@ -767,6 +767,29 @@ func TestDirLabelCutsBetweenGraphemes(t *testing.T) {
 	}
 }
 
+// The last component of a directory path is the reviewed repository's to
+// name, and dirLabel cuts from the left precisely so that component is what
+// survives. Without a clean first, a name holding an escape sequence or a
+// control character lands on the pane title intact, in every pane that shows
+// a directory. A width too small to show the name must not be the thing that
+// decides: a long hostile name is shown at its full width here.
+func TestDirLabelSanitizesTheName(t *testing.T) {
+	for _, dir := range []string{
+		"/path/to/repo\x1b[31mred\x07",
+		"/path/to/repo\u202eevil",
+		"/path/to/repo\u200bzero",
+	} {
+		got := dirLabel(dir, 40)
+		if strings.ContainsAny(got, "\x1b\a\u202e\u200b") {
+			t.Fatalf("dirLabel passed a control or formatting character through: %q", got)
+		}
+	}
+	// The visible half is what identifies the tree, so it has to survive.
+	if got := dirLabel("/path/to/red", 40); !strings.Contains(got, "red") {
+		t.Fatalf("dirLabel dropped the directory name: %q", got)
+	}
+}
+
 func TestChartDrawsGridWhenEmpty(t *testing.T) {
 	// Absence of signal is information: the baseline must still be visible.
 	got := chart(nil, 10, 2)

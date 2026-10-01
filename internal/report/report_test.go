@@ -179,6 +179,41 @@ func TestReporterLogsTheEventTime(t *testing.T) {
 	}
 }
 
+// The directory tag and the review name are the reviewed repository's to
+// choose: a directory can hold an escape sequence, and a project prompt's
+// stem can hold one too. Both reach an agent-output line through a write that
+// does not go through Logf, the one place that sanitizes, so they are cleaned
+// where the line is built.
+func TestReporterSanitizesTheOutputPrefix(t *testing.T) {
+	var out bytes.Buffer
+	r := &Reporter{Out: &out, MultiDir: true}
+	r.handle(runner.Event{
+		Kind:   runner.EvOutput,
+		Dir:    "/repo/evil\x1b[31mred\x07",
+		Review: "ok-\x1b[2Jreview",
+		Text:   "line",
+	})
+	got := out.String()
+	if strings.ContainsAny(got, "\x1b\x07") {
+		t.Fatalf("the output prefix passed an escape or a BEL to the terminal: %q", got)
+	}
+	if !strings.Contains(got, "line") {
+		t.Fatalf("sanitizing dropped the visible text: %q", got)
+	}
+	// The same fields on a log line are already covered by Logf; both paths
+	// have to answer alike, or the choice of event kind decides what a reader
+	// sees.
+	out.Reset()
+	r.handle(runner.Event{
+		Kind: runner.EvLog,
+		Dir:  "/repo/evil\x1b[31mred\x07",
+		Text: "note",
+	})
+	if strings.ContainsAny(out.String(), "\x1b\x07") {
+		t.Fatalf("the log tag passed an escape or a BEL to the terminal: %q", out.String())
+	}
+}
+
 // TestSummaryAggregatesAcrossDirectories pins the end-of-run block scripts
 // parse: fixed sections, totals merged over directories, the token rate and
 // reasoning floor, and a failure list that says why each review failed.

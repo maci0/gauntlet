@@ -341,9 +341,14 @@ func newRunsColumns(entries []journal.Summary) runsColumns {
 		if d, ok := e.Duration(); ok {
 			dur = humanize.Duration(d)
 		}
+		// The reviewed tree picks these directory names, and the listing
+		// writes them straight to a terminal: a name holding an escape
+		// sequence or a control character would otherwise repaint, beep, or
+		// hide part of the row. RUN needs no such care because ValidRunID
+		// admits only a safe charset.
 		dirs := make([]string, 0, len(e.Dirs))
 		for _, d := range e.Dirs {
-			dirs = append(dirs, filepath.Base(d))
+			dirs = append(dirs, normalize.Sanitize(filepath.Base(d)))
 		}
 		bad := e.Failed + e.Skipped + e.Conflicts + e.Other
 		// A run that reported no tokens says so, rather than showing zero.

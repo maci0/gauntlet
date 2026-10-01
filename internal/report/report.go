@@ -176,9 +176,13 @@ func (r *Reporter) Consume(events <-chan runner.Event) {
 }
 
 func (r *Reporter) handle(ev runner.Event) {
+	// The tag carries a directory name the reviewed repository chose, so it is
+	// sanitized where it is built rather than at each write: EvOutput below
+	// prints it next to a review name without going through Logf, and that
+	// path is where an escape sequence would otherwise reach a terminal.
 	tag := ""
 	if r.MultiDir && ev.Dir != "" {
-		tag = "[" + filepath.Base(ev.Dir) + "] "
+		tag = "[" + normalize.Sanitize(filepath.Base(ev.Dir)) + "] "
 	}
 	switch ev.Kind {
 	case runner.EvRunStart:
@@ -196,7 +200,11 @@ func (r *Reporter) handle(ev runner.Event) {
 		if ev.Repeat > 1 {
 			line = fmt.Sprintf("%s %s", line, r.Pal.Dim(fmt.Sprintf("(x%d)", ev.Repeat)))
 		}
-		prefix := r.Pal.Dim(fmt.Sprintf("%s%s │ ", tag, ev.Review))
+		// The review name is a project prompt's file stem, so it is untrusted
+		// the same way the directory is, and this line bypasses Logf's
+		// sanitize: sanitize it here or a stem holding an escape sequence
+		// draws whatever it names in the reader's terminal.
+		prefix := r.Pal.Dim(fmt.Sprintf("%s%s │ ", tag, normalize.Sanitize(ev.Review)))
 		fmt.Fprintf(r.Out, "%s%s\n", prefix, line)
 	case runner.EvMerge:
 		if ev.Status == runner.StatusConflict {

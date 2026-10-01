@@ -12,6 +12,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/rivo/uniseg"
+
+	"github.com/maci0/gauntlet/internal/normalize"
 )
 
 // Palette: Catppuccin Mocha on dark terminals, Latte on light ones. Every
@@ -155,10 +157,18 @@ func (h *hueMap) get(label string) lipgloss.AdaptiveColor {
 
 // dirLabel is a directory as a person recognizes it: the home prefix as "~",
 // and long paths cut from the left, since the tail is what identifies a tree.
+//
+// The path is sanitized here, before it is shortened or measured: the last
+// component is the reviewed repository's to name, and cutting from the left
+// keeps exactly that component, so a name holding an escape sequence or a
+// control character would land on the screen intact. Every pane title that
+// shows a directory goes through here, which is why it is cleaned here rather
+// than at each caller.
 func dirLabel(dir string, w int) string {
 	if dir == "" || w <= 0 {
 		return ""
 	}
+	dir = normalize.Sanitize(dir)
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		if dir == home {
 			dir = "~"
