@@ -23,7 +23,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
@@ -31,6 +30,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -496,16 +496,59 @@ func transient(err error) bool {
 		errors.Is(err, syscall.EPIPE)
 }
 
+// jitterSeed decorrelates one process's retry waits from every other
+// process's. It is read once, at package load, from the wall clock: that is
+// the one place here consuming entropy is right, because the value decides
+// nothing about what the updater does. Every wait below is then a pure
+// function of this value and the attempt number, so one process's backoff
+// sequence can be reproduced once the value is known. A draw from the
+// package-wide math/rand generator could not be: that generator is seeded
+// from OS entropy when it loads, so nothing about the sequence it produced
+// survives the process. A var so a test can pin it.
+var jitterSeed = uint64(time.Now().UnixNano())
+
+// assetJitter returns a value in [0, n) drawn from jitterSeed and attempt.
+// Words at or above the largest multiple of n are rejected rather than
+// wrapped, so the draw is uniform instead of biased toward the low residues,
+// and each rejection mixes a fresh counter so the loop terminates. n <= 1 is
+// 0.
+func assetJitter(attempt, n int) int64 {
+	if n <= 1 {
+		return 0
+	}
+	ceil := (^uint64(0) / uint64(n)) * uint64(n)
+	// FNV-1a over the attempt number, then splitmix64 over the seed, the key,
+	// and the rejection counter. This is the construction runner/draw.go uses,
+	// kept separate because selfupdate sits below runner in the package graph
+	// and may not import it; a second copy of a hash is cheaper than an edge
+	// that would put the updater above the thing it updates.
+	keyHash := uint64(14695981039346656037)
+	for _, b := range strconv.AppendInt(nil, int64(attempt), 10) {
+		keyHash = (keyHash ^ uint64(b)) * 1099511628211
+	}
+	for i := uint64(0); ; i++ {
+		// splitmix64: the key alone is too structured for the low bits the
+		// modulo takes, and neighbouring attempts would land together.
+		x := (jitterSeed ^ keyHash) + i*0x9e3779b97f4a7c15
+		x = (x ^ x>>30) * 0xbf58476d1ce4e5b9
+		x = (x ^ x>>27) * 0x94d049bb133111eb
+		if v := x ^ (x >> 31); v < ceil {
+			return int64(v % uint64(n))
+		}
+	}
+}
+
 // assetBackoff is the wait before the next asset attempt: doubling from
 // assetRetryBase, capped, and jittered so several installs retrying after the
-// same outage do not come back together. The jitter is drawn from the wall
-// clock, which is enough here: self-update is not a seeded replay.
+// same outage do not come back together. The jitter is decorrelated per
+// process rather than drawn from the process-wide random generator, so two
+// installs still part company while one install's waits stay reproducible.
 func assetBackoff(attempt int) time.Duration {
 	d := assetRetryBase << attempt
 	if d > assetRetryMax || d <= 0 {
 		d = assetRetryMax
 	}
-	return d/2 + time.Duration(rand.Int64N(int64(d)/2+1))
+	return d/2 + time.Duration(assetJitter(attempt, int(d/2)+1))
 }
 
 // sleepCtx waits d and reports false if ctx ends first.
