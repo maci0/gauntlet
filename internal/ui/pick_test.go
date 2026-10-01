@@ -370,6 +370,55 @@ func TestFilterMissIsOneSentenceEverywhereItIsReported(t *testing.T) {
 	}
 }
 
+// A filter one typo from a review says which review it meant. The review tree
+// is the only search this screen has, and "nothing matched" under a word the
+// reader can see the shape of is the dead end --reviews and the agent spec
+// parser both answer with a "did you mean", so the launcher is the odd screen
+// out. The hint while typing matters most: that is the moment the spelling
+// is still being written.
+func TestFilterNearMissNamesTheReviewItMeant(t *testing.T) {
+	p := demoPicker()
+	p.filter = "secreview"
+	if !p.filterMissed(p.rows()) {
+		t.Fatal("the near-miss filter matched a review, so there is nothing to suggest")
+	}
+	// Every surface that reports the miss carries the same suggestion, so a
+	// reader who learns the name from one of them finds the others agree.
+	if got := p.filterMissedMessage(); !strings.Contains(got, "sec-review") {
+		t.Errorf("the shared notice does not name the review: %q", got)
+	}
+	if got := stripANSI(p.reviewPanel(60, p.paneHeight(paneReviews))); !strings.Contains(got, "sec-review") {
+		t.Errorf("the reviews pane does not name the review:\n%s", got)
+	}
+	if got := stripANSI(p.hint()); !strings.Contains(got, "sec-review") {
+		t.Errorf("the status hint does not name the review: %q", got)
+	}
+	// While the filter is still open the same suggestion rides the line that
+	// carries the typed text, which is the only line the reader is watching.
+	p.typing = true
+	if got := stripANSI(p.hint()); !strings.Contains(got, "did you mean") || !strings.Contains(got, "sec-review") {
+		t.Errorf("the typing hint does not offer the near review: %q", got)
+	}
+}
+
+// A filter nothing resembles is not a misspelling of any one review, so the
+// bare sentence stands: a suggestion offered on every fruitless search stops
+// being read as an answer to this one.
+func TestFilterFarMissKeepsTheBareSentence(t *testing.T) {
+	p := demoPicker()
+	p.filter = "zzzzqqqq"
+	if !p.filterMissed(p.rows()) {
+		t.Fatal("the far-miss filter matched a review")
+	}
+	if got := p.filterMissedMessage(); got != filterMissedMsg {
+		t.Errorf("the far miss grew a suggestion: %q", got)
+	}
+	p.typing = true
+	if got := stripANSI(p.hint()); strings.Contains(got, "did you mean") {
+		t.Errorf("the typing hint suggests a review for a filter like this: %q", got)
+	}
+}
+
 // FastSuggest is passed in rather than imported from the runner, so a caller
 // that does not name one must not grow a --suggest-agent gauntlet of its own.
 func TestPickerOmitsFileSignalSuggesterWhenUnset(t *testing.T) {
@@ -2199,6 +2248,64 @@ func TestPaneTitlesDropWholeReadings(t *testing.T) {
 	// Wide enough for everything, the readings are all there.
 	if got := stripANSI(firstLine(p.agentPanel(50, 5))); !strings.Contains(got, "none picked: auto-detect") {
 		t.Errorf("a pane holding every agent does not say what is picked: %q", got)
+	}
+}
+
+// A pane scrolled away from its top says so on both sides. One count of what
+// is below the fold cannot describe a list whose cursor is part way down: the
+// rows already scrolled off the top are hidden too, and "+6 more" under a
+// list whose last row is at the cursor says there is more below when there is
+// none. The dashboard's feed and its help overlay already answer both ways,
+// so the panes are held to the same reading.
+func TestScrolledPaneNamesRowsAboveAndBelow(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		want string
+		keys []string
+	}{{
+		name: "at the top it counts only what is below",
+		want: "+6 more",
+		keys: []string{"home"},
+	}, {
+		name: "at the bottom it counts what it scrolled off",
+		want: "6 above",
+		keys: []string{"G"},
+	}, {
+		name: "in the middle it gives both ends",
+		want: "2 above, 4 more",
+		// Nine options in a three-row pane: the pane scrolls only once the
+		// cursor passes the third row, so four presses leave the slice
+		// starting at the third option with two rows above it.
+		keys: []string{"j", "j", "j", "j"},
+	}} {
+		p := demoPicker()
+		p.w, p.h, p.ready = 100, 14, true
+		p.focus = paneOptions
+		press(p, c.keys...)
+		if got := stripANSI(firstLine(p.runPanel(60, 3))); !strings.Contains(got, c.want) {
+			t.Errorf("%s: title %q does not carry %q", c.name, got, c.want)
+		}
+	}
+	// A pane holding every row carries no count at all, at either end: this
+	// reading is only ever about rows a reader cannot see.
+	p := demoPicker()
+	p.focus = paneOptions
+	if got := stripANSI(firstLine(p.runPanel(60, len(p.opts)))); strings.Contains(got, "more") {
+		t.Errorf("a pane holding every option grew a hidden count: %q", got)
+	}
+	// The other two panes are held to the same reading, and on a machine with
+	// several agents installed the agents pane is the first one to scroll.
+	wide := demoPicker()
+	wide.cfg.Agents = nil
+	for i := range 12 {
+		wide.cfg.Agents = append(wide.cfg.Agents, fmt.Sprintf("agent-%02d", i))
+	}
+	wide.agents = make([]bool, len(wide.cfg.Agents))
+	wide.w, wide.h, wide.ready = 100, 14, true
+	wide.focus = paneAgents
+	press(wide, "G")
+	if got := stripANSI(firstLine(wide.agentPanel(60, 3))); !strings.Contains(got, "9 above") {
+		t.Errorf("the agents title does not say what was scrolled off: %q", got)
 	}
 }
 

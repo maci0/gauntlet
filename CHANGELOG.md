@@ -26,6 +26,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- The launcher's scrolled panes now say how far they are scrolled, and which
+  end the rows went. Each pane title carried a count of the rows below the
+  fold only, so a list scrolled to its end still read "+N more" while the N
+  rows it held were the ones already scrolled off the top. A pane now reports
+  the rows above it, the rows below, or both, and says nothing when it holds
+  everything it has, matching how the dashboard's feed title already reports
+  its scrollback and how the help overlay names a page.
+- The launcher's review filter answers a near miss with the review it meant.
+  Typing a review name one edit away returned "no reviews match this
+  filter" and stopped there, on the status line, in the reviews pane, and
+  while the filter was still open, although `--reviews` and the agent spec
+  parser both name the nearest match. A filter nothing resembles still gets
+  the plain sentence, so a suggestion stays an answer rather than noise.
+
 ### Changed
 
 - `prompt-review` no longer tells an agent that a prompt the loader cannot dispatch is one "a name the runner's name list does not carry": the bundled set is a file glob and a golden list is a test that fails the build, so neither is a dispatch gate, and absence from either is not a defect. The skip conditions the loader actually applies are named instead (skipped directory, wrong suffix, symlink, gitignored file), the review tells an agent how to find the three sources before judging them, the auto-fix line says which bounded edits to make on the spot and which to report, and the tool line points at the loader's own source when the runner's binary is not on PATH.

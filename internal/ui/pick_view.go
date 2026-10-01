@@ -14,11 +14,29 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/maci0/gauntlet/internal/fuzzy"
 )
 
 // filterMissedMsg is what a filter that matched nothing says, in the two
-// places that have room for a sentence: the block line and the hint.
+// places that have room for a sentence: the block line and the hint. It is
+// built by filterMissedMsgFor so a near miss can name the review it meant,
+// the way --reviews and the agent spec parser already answer a mistyped name
+// (see prompt.Set's unknownError and fuzzy.Closest). Telling a reader that
+// nothing matched, when one edit away a review would have, is the search
+// dead end this screen exists to avoid.
 const filterMissedMsg = "no reviews match this filter (esc clears it)"
+
+// filterMissedMsgFor is filterMissedMsg, naming the nearest review when the
+// filter is one typo away from one. Closest returns "" past its edit-distance
+// ceiling, which is exactly the case that wants the bare sentence: a filter
+// nothing resembles is not a misspelling of any one review.
+func filterMissedMsgFor(filter string, known []string) string {
+	if c := fuzzy.Closest(filter, known); c != "" {
+		return fmt.Sprintf("no reviews match %q (did you mean %q?)  esc clears it", filter, c)
+	}
+	return filterMissedMsg
+}
 
 // minPickerW and minPickerH are the smallest terminal the launcher holds: the
 // tree beside two stacked panels, each of them a frame around one row at the
@@ -137,13 +155,20 @@ func (p *picker) renderCommand() string {
 	return clipEllipsis(styleDim.Render("$ ")+styleValue.Render(cmd), p.w)
 }
 
+// filterMissedMessage is filterMissedMsgFor over this run's reviews, so the
+// block line, the reviews pane, and the status line all name the same review
+// for the same filter.
+func (p *picker) filterMissedMessage() string {
+	return filterMissedMsgFor(p.filter, p.knownReviews)
+}
+
 // blocked reports why the composed run would not start, or "" when it would.
 func (p *picker) blocked() string {
 	if why := p.blockReason(); why != "" {
 		return why
 	}
 	if p.filterMissed(p.rows()) {
-		return filterMissedMsg
+		return p.filterMissedMessage()
 	}
 	return ""
 }
@@ -179,13 +204,20 @@ func (p *picker) blockReason() string {
 // than any pane column, so the status line is where one is read whole.
 func (p *picker) hint() string {
 	if p.typing {
+		// The line the reader is watching while they type is the one that has
+		// to carry the near miss: a filter nothing matched is read mid-word,
+		// and a review one edit away is the reason to fix the spelling rather
+		// than clear the search and start over.
 		if p.filterMissed(p.rows()) {
+			if c := fuzzy.Closest(p.filter, p.knownReviews); c != "" {
+				return fmt.Sprintf("filter: %s▏  (did you mean %s?)  ⏎ keep it, esc clear it", p.filter, c)
+			}
 			return "filter: " + p.filter + "▏  (no reviews match)  ⏎ keep it, esc clear it"
 		}
 		return "filter: " + p.filter + "▏  ⏎ keep it, esc clear it"
 	}
 	if p.filterMissed(p.rows()) {
-		return filterMissedMsg
+		return p.filterMissedMessage()
 	}
 	switch p.focus {
 	case paneOptions:
@@ -683,6 +715,33 @@ func (p *picker) window(which pane, n, h int) (from, to int) {
 	return top, min(n, top+h)
 }
 
+// paneHidden names what a scrolled pane is not showing, for the pane title.
+// One count of what is below the fold cannot describe a pane whose cursor is
+// part way down: the rows already scrolled off the top are hidden too, and a
+// title reading "+6 more" under a list whose last row is at the cursor says
+// there is more below when there is none. The dashboard's feed already
+// answers this the same way ("N lines back, esc to live"), and its help
+// overlay names a page ("page 2/5"), so this is the app's own pattern rather
+// than a new one.
+//
+// below is the rows past the slice, above the ones before it. Either side
+// alone is said in the word for it and both together as a range, so a reader
+// never has to work out which end a bare count came from. "" when the pane
+// holds everything, which is the title a pane that fits has always had.
+func paneHidden(from, to, n int) string {
+	above, below := from, n-to
+	switch {
+	case above == 0 && below == 0:
+		return ""
+	case above == 0:
+		return fmt.Sprintf("+%d more", below)
+	case below == 0:
+		return fmt.Sprintf("%d above", above)
+	default:
+		return fmt.Sprintf("%d above, %d more", above, below)
+	}
+}
+
 // filterMissed reports whether the current filter matches nothing: rows then
 // holds only the suggest row, since every surviving match contributes at
 // least its group header. View reserves the notice's row from this, and
@@ -750,7 +809,7 @@ func (p *picker) reviewPanel(w, h int) string {
 	// silence reads as an empty prompt set rather than a search that missed.
 	// The dashboard's feed carries a parallel message for the same reason.
 	if p.filterMissed(rows) {
-		lines = append(lines, styleFaint.Render(filterMissedMsg))
+		lines = append(lines, styleFaint.Render(p.filterMissedMessage()))
 	}
 	// The title is laid as segments, so a pane too narrow for them all drops
 	// whole readings instead of being cut mid-word, and what it dropped is
@@ -759,12 +818,17 @@ func (p *picker) reviewPanel(w, h int) string {
 	// an agent missing from the list then reads as one that does not exist.
 	// The dashboard's panel titles are fitted this way already.
 	segs := []string{"REVIEWS"}
-	if hidden := len(rows) - (to - from); hidden > 0 {
-		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
+	if hidden := paneHidden(from, to, len(rows)); hidden != "" {
+		segs = append(segs, styleDim.Render(hidden))
 	}
 	switch n := p.chosen(); {
 	case p.suggest && n > 0:
-		segs = append(segs, styleInfo.Render(fmt.Sprintf("agent-picked, plus %d also scheduled", n)))
+		// The header says this same state as "agent-picked, N also scheduled",
+		// and it is the header's phrasing: a pane title is the shorter row of
+		// the two, so where both describe the state they read alike rather
+		// than leaving the reader to work out that "plus N" and "N" are one
+		// count told twice.
+		segs = append(segs, styleInfo.Render(fmt.Sprintf("agent-picked, %d also scheduled", n)))
 	case p.suggest:
 		segs = append(segs, styleInfo.Render("chosen by an agent at run time"))
 	case n == 0:
@@ -805,8 +869,8 @@ func (p *picker) agentPanel(w, h int) string {
 			checkbox(p.agents[i])+" "+styled(p.hues.get(label), label), ""))
 	}
 	segs := []string{"AGENTS"}
-	if hidden := len(p.cfg.Agents) - (to - from); hidden > 0 {
-		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
+	if hidden := paneHidden(from, to, len(p.cfg.Agents)); hidden != "" {
+		segs = append(segs, styleDim.Render(hidden))
 	}
 	checked := 0
 	for _, on := range p.agents {
@@ -898,8 +962,8 @@ func (p *picker) runPanel(w, h int) string {
 		lines = append(lines, pickLine(cur, inner, left, right))
 	}
 	segs := []string{"RUN"}
-	if hidden := len(p.opts) - (to - from); hidden > 0 {
-		segs = append(segs, styleDim.Render(fmt.Sprintf("+%d more", hidden)))
+	if hidden := paneHidden(from, to, len(p.opts)); hidden != "" {
+		segs = append(segs, styleDim.Render(hidden))
 	}
 	return panel(paneTitle(segs, inner), strings.Join(lines, "\n"), inner, h)
 }
