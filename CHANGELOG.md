@@ -386,6 +386,20 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Changed
 
+- The threat model names two surfaces added since its last stamp. The first is the
+  filesystem-sandbox capability probe behind the new `doctor` row: it asks the kernel
+  which Landlock ABI answers and stats the Seatbelt launcher, so whether the control
+  that narrows prompt injection exists on this host is answered before a run rather
+  than by the launch that failed. It is recorded as a report, not a control, and it
+  reads one syscall and one fixed absolute path. The second is `--sandbox-write`: what
+  the model records is not that its check moved to parse time, but the ceiling that
+  check does not reach. A grant widens the agent's writable set by a whole subtree and
+  is verified only to name an existing directory, so `docs/CLI.md` and the help screen
+  promise a usage check and nothing more, and the model now says so in the same words.
+  The `--semcode` indexer preflight is entered for the opposite reason: it moved an
+  existing check earlier, beside the flag and before both locks. Nine citations had
+  drifted onto a different function rather than only onto moved lines, so following
+  one read the wrong code; all are re-anchored at the symbols they name.
 - The threat model names the `make check-workflow-shell` surface, which extracts every
   `run: |` body out of `.github/workflows/*.yml` into a shell script and lints it. It is a
   gate in `make check-scripts`, so it reads this repository's own workflows and runs
