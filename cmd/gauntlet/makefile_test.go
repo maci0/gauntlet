@@ -916,6 +916,31 @@ func TestHostArtifactNamesABinaryDistBuilds(t *testing.T) {
 	}
 }
 
+// `go env GOOS` echoes whatever GOOS the caller exported, so a shell that
+// exports it for a scratch cross-build made host-artifact name a binary for
+// another platform. `smoke` runs what it names, so it then refused a healthy
+// release over a file it could never execute. The host is GOHOSTOS/GOHOSTARCH,
+// which no GOOS override moves.
+func TestHostArtifactIgnoresAnExportedGOOS(t *testing.T) {
+	other, otherArch := "darwin", "arm64"
+	if runtime.GOOS == other && runtime.GOARCH == otherArch {
+		other, otherArch = "linux", "arm64"
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "host-artifact", "VERSION=1.2.3", "GO=go")
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = append(cleanMakeEnv(), "GOOS="+other, "GOARCH="+otherArch)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make host-artifact: %v\n%s", err, out)
+	}
+	got := strings.TrimSpace(string(out))
+	if want := filepath.Join("dist", "gauntlet_1.2.3_"+runtime.GOOS+"_"+runtime.GOARCH); got != want {
+		t.Fatalf("make host-artifact under GOOS=%s GOARCH=%s = %q, want the host asset %q", other, otherArch, got, want)
+	}
+}
+
 // The README install snippet names the asset from uname rather than asking
 // the Makefile, because it runs before anything is built. That only works
 // while every platform in PLATFORMS is one the snippet can spell: a release

@@ -662,9 +662,16 @@ dist: ## build every release platform into dist/
 # release workflows used to spell it out again in shell; asking the Makefile
 # means a renamed asset fails one test rather than a job pointing at a file
 # that no longer exists.
+# GOHOSTOS/GOHOSTARCH, not GOOS/GOARCH: `go env GOOS` echoes an in-flight
+# cross-compile target from the environment, so a caller who exports GOOS to
+# make a scratch build for another platform (a Go developer testing arm64, or
+# this Makefile's own dist, which sets it per target) got a path naming a
+# binary that cannot run here, and `smoke` then refused a healthy release over
+# a file it was never going to execute. What `smoke` runs has to be built for
+# the machine it runs on, which is what GOHOST* names.
 .PHONY: host-artifact
 host-artifact: ## print the path dist/ uses for the binary built for this host
-	@echo "$(DIST)/$(BINARY)_$(VERSION)_$$($(GO) env GOOS)_$$($(GO) env GOARCH)"
+	@echo "$(DIST)/$(BINARY)_$(VERSION)_$$($(GO) env GOHOSTOS)_$$($(GO) env GOHOSTARCH)"
 
 # Linking is not running: a host binary that builds and then refuses to start
 # passes dist and fails only where it is used. Both workflows that build one
