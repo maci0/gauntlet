@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	"github.com/maci0/gauntlet/internal/runx"
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // Worktree is a private checkout: its own directory and branch, cut from a
@@ -99,14 +100,16 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
 	// The exclude file itself is as plantable as its directory, so the read
-	// refuses a symlink too: following one would read an arbitrary file's
-	// contents into the substring check below. A missing file is the normal
-	// first-run case, and so is a refused symlink, so the error is dropped
-	// and the text is read as empty either way. The read is capped: an
-	// exclude file belongs in a repository that does not ship one, and an
-	// oversized one is not read whole to look for two short strings.
+	// goes through the one guarded open every repository-planted path in this
+	// tree uses: safefile.OpenRead refuses a symlink, and following one would
+	// read an arbitrary file's contents into the substring check below. A
+	// missing file is the normal first-run case, and so is a refused symlink,
+	// so the error is dropped and the text is read as empty either way. The
+	// read is capped: an exclude file belongs in a repository that does not
+	// ship one, and an oversized one is not read whole to look for two short
+	// strings.
 	var text string
-	if f, fi, err := openRegular(path); err == nil {
+	if f, fi, err := safefile.OpenRead(path); err == nil {
 		if fi.Size() <= maxExcludeBytes {
 			body, _ := io.ReadAll(io.LimitReader(f, maxExcludeBytes))
 			text = string(body)
@@ -131,12 +134,15 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	// path lands elsewhere, `.git/info` can be planted outright, and
 	// `exclude` itself can be a link to any file on the machine. Appending
 	// through any of them writes a line the operator did not ask for, into a
-	// file outside the repository. The directory is re-checked, and the open
-	// carries O_NOFOLLOW so the last component cannot be the link either.
+	// file outside the repository. The directory is re-checked, and
+	// safefile.Append carries O_NOFOLLOW so the last component cannot be the
+	// link either. A hardlink is a real regular file and a legitimate way to
+	// share one exclude between worktrees, so only a non-regular descriptor
+	// is refused.
 	if !realDir(filepath.Dir(path)) {
 		return fmt.Errorf("git exclude directory %s is not a real directory", filepath.Dir(path))
 	}
-	f, err := openAppendNoFollow(path, 0o644)
+	f, _, err := safefile.Append(path, 0o644)
 	if err != nil {
 		return err
 	}
@@ -664,11 +670,11 @@ const maxExcludeBytes = 1 << 20
 //
 // The paths come from `git diff --name-only --diff-filter=U`, so a
 // conflicted name is one the reviewed repository picked, and the agent that
-// was asked to resolve it can leave anything at that name. openRegular, not
-// os.Open: a symlink planted there, or tracked in the checkout, would
+// was asked to resolve it can leave anything at that name. safefile.OpenRead,
+// not os.Open: a symlink planted there, or tracked in the checkout, would
 // otherwise be read out of the tree, up to the scan limit.
 func readScanFile(name string) ([]byte, error) {
-	f, fi, err := openRegular(name)
+	f, fi, err := safefile.OpenRead(name)
 	if err != nil {
 		return nil, err
 	}

@@ -29,6 +29,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 ### Changed
 
 - The dashboard's braille charts render each cell's escape sequence once instead of once per cell per frame. A busy frame (eight lanes, a 120-column activity strip) drops from about 5,770 allocations to about 3,505, and the chart itself from 877 to 53, measured by `BenchmarkView` and `BenchmarkChart`; the drawn output is byte-identical, and `--no-color` still drops the table with the color profile.
+- The heat ramp is one table with one set of cut points, so the color a meter
+  draws and the index the chart's glyph table is keyed by cannot drift apart:
+  `internal/ui`'s `heatColor` is now a lookup over `heatIndex`, and
+  `internal/gitx`'s `openRegular` and `openAppendNoFollow` are gone, their
+  call sites reaching `safefile` directly.
 
 ### Security
 

@@ -897,20 +897,7 @@ func TestDiscoverSkipsSymlinksAndHiddenDirs(t *testing.T) {
 // and state snapshots would otherwise override the bundled set. Discovery must
 // ask git, through the same hardened invocation the rest of the runner uses.
 func TestDiscoverSkipsGitIgnoredPrompts(t *testing.T) {
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Skip("git is required for this test")
-	}
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command(git, args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-	}
-	run("init", "-q")
+	dir := gitRepo(t)
 	write(t, filepath.Join(dir, ".gitignore"), "ignored-dir/\n")
 	write(t, filepath.Join(dir, "kept-review.md"), "Your goal is to stay.\n")
 	nested := filepath.Join(dir, "ignored-dir")
@@ -1037,20 +1024,7 @@ func TestWalkProjectSkipsPromptDir(t *testing.T) {
 // same directory skips the walk does: a tracked prompt in vendor/ is other
 // people's code, and a hidden directory is not a project prompt.
 func TestWalkProjectGitListingHonorsDirectorySkips(t *testing.T) {
-	git, err := exec.LookPath("git")
-	if err != nil {
-		t.Skip("git is required for this test")
-	}
-	dir := t.TempDir()
-	run := func(args ...string) {
-		t.Helper()
-		cmd := exec.Command(git, args...)
-		cmd.Dir = dir
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
-		}
-	}
-	run("init", "-q")
+	dir := gitRepo(t)
 	write(t, filepath.Join(dir, "kept-review.md"), "Your goal is to stay.\n")
 	nested := filepath.Join(dir, "sub")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
@@ -1285,6 +1259,23 @@ func write(t *testing.T, path, body string) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// gitRepo is a temporary directory with one initialized repository in it, for a
+// test that needs the real plumbing rather than a planted directory.
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git is required for this test")
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(git, "init", "-q")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	return dir
 }
 
 // A review is told what this machine has and what it does not: an agent that

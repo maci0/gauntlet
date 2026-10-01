@@ -160,25 +160,29 @@ func Merge(perBinary [][]Module) ([]Module, error) {
 // runs over the same binaries write the same bytes and a rebuilt release
 // produces a comparable inventory.
 func New(name, modulePath, version string, mods []Module) *Document {
+	subjectPURL := purlOf(modulePath, version)
 	subject := Component{
 		Type:    "application",
-		BOMRef:  purlOf(modulePath, version),
+		BOMRef:  subjectPURL,
 		Name:    name,
 		Version: version,
-		PURL:    purlOf(modulePath, version),
+		PURL:    subjectPURL,
 		Licenses: []LicenseChoice{
 			{License: License{ID: subjectLicense}},
 		},
 	}
 	components := make([]Component, 0, len(mods))
 	for _, m := range mods {
+		// CycloneDX carries the major version as the component's version, not
+		// as part of the name or the group, so the /vN goes before the split.
+		path := stripMajorVersion(m.Path)
 		c := Component{
 			Type:    "library",
-			BOMRef:  purl(m),
-			Name:    componentName(m.Path),
-			Group:   componentGroup(m.Path),
+			BOMRef:  purlOf(m.Path, m.Version),
+			Name:    moduleName(path),
+			Group:   moduleGroup(path),
 			Version: m.Version,
-			PURL:    purl(m),
+			PURL:    purlOf(m.Path, m.Version),
 		}
 		if m.Sum != "" {
 			c.Properties = []Property{{Name: sumProperty, Value: m.Sum}}
@@ -237,12 +241,8 @@ func serialNumber(d *Document) string {
 	return "urn:uuid:" + hexed[0:8] + "-" + hexed[8:12] + "-" + hexed[12:16] + "-" + hexed[16:20] + "-" + hexed[20:32]
 }
 
-// purl is the package URL a scanner resolves a Go module by: the module
+// purlOf is the package URL a scanner resolves a Go module by: the module
 // path is the namespace and the name, and the version follows an @.
-func purl(m Module) string {
-	return purlOf(m.Path, m.Version)
-}
-
 func purlOf(path, version string) string {
 	return "pkg:golang/" + path + "@" + version
 }
@@ -250,16 +250,6 @@ func purlOf(path, version string) string {
 // majorVersionSuffix is the /v2 a module path ends in for a major version
 // above 1. The suffix is part of the path, not the name.
 var majorVersionSuffix = regexp.MustCompile(`^v[2-9][0-9]*$`)
-
-// componentName and componentGroup split a module path into the CycloneDX
-// name and group, dropping a major-version suffix from both.
-func componentName(path string) string {
-	return moduleName(stripMajorVersion(path))
-}
-
-func componentGroup(path string) string {
-	return moduleGroup(stripMajorVersion(path))
-}
 
 // stripMajorVersion drops a /vN segment, which CycloneDX carries as the
 // component version rather than the name.
@@ -270,6 +260,8 @@ func stripMajorVersion(path string) string {
 	return path
 }
 
+// moduleName and moduleGroup split a module path into the CycloneDX name and
+// group: the segment after the last slash, and everything before it.
 func moduleName(path string) string {
 	return path[strings.LastIndex(path, "/")+1:]
 }

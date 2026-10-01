@@ -229,51 +229,39 @@ func padBlock(content string, innerW, innerH int) string {
 	return strings.Join(lines, "\n")
 }
 
+// heatSteps is the ramp as an indexed table, cold to hot, so a hot loop can
+// name the color it drew a cell in by index instead of asking lipgloss for a
+// value on every cell of every frame.
+var heatSteps = [...]lipgloss.TerminalColor{cTrack, cTeal, cCyan, cGreen, cYellow, cRed}
+
+// heatBands are the ramp's cut points: the cold end covers everything up to
+// and including the first, and each later entry opens the step above it. One
+// fewer entry than heatSteps has colors; the assertion keeps a color added to
+// one table and not the other a build failure rather than a ramp whose last
+// step never renders.
+var heatBands = [...]float64{0.02, 0.25, 0.5, 0.72, 0.88}
+
+var _ = [1]struct{}{}[len(heatBands)-len(heatSteps)+1]
+
+// heatIndex is the heatSteps index of the step intensity f falls in.
+func heatIndex(f float64) int {
+	if math.IsNaN(f) || f <= heatBands[0] {
+		return 0
+	}
+	for i := 1; i < len(heatBands); i++ {
+		if f < heatBands[i] {
+			return i
+		}
+	}
+	return len(heatSteps) - 1
+}
+
 // heatColor maps 0..1 intensity onto a cold to hot ramp. Reserved for
 // magnitude and health; never used decoratively. The cold end stops at the
 // track tone, not a near-background one: every dot it renders is an
 // instrument stroke and must clear 3:1 (SC 1.4.11).
 func heatColor(f float64) lipgloss.TerminalColor {
-	switch {
-	case math.IsNaN(f) || f <= 0.02:
-		return cTrack
-	case f < 0.25:
-		return cTeal
-	case f < 0.5:
-		return cCyan
-	case f < 0.72:
-		return cGreen
-	case f < 0.88:
-		return cYellow
-	default:
-		return cRed
-	}
-}
-
-// heatSteps is the ramp above as an indexed table, in the order heatColor
-// returns its steps, so a hot loop can name the color it drew a cell in by
-// index. heatIndex walks the same ramp; TestHeatIndexNamesTheRampStep holds
-// the two to each other.
-var heatSteps = [...]lipgloss.TerminalColor{cTrack, cTeal, cCyan, cGreen, cYellow, cRed}
-
-// heatIndex is the heatSteps index of the color heatColor returns for f. The
-// two carry the same ramp, one as a value and one as a position in the table
-// a cell of a chart or a meter renders from without asking lipgloss.
-func heatIndex(f float64) int {
-	switch {
-	case math.IsNaN(f) || f <= 0.02:
-		return 0
-	case f < 0.25:
-		return 1
-	case f < 0.5:
-		return 2
-	case f < 0.72:
-		return 3
-	case f < 0.88:
-		return 4
-	default:
-		return 5
-	}
+	return heatSteps[heatIndex(f)]
 }
 
 // chartGlyphs is every braille cell the chart can draw, rendered once per

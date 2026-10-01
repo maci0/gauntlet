@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // Snapshot is HEAD, the index, and the worktree (including untracked files,
@@ -181,7 +183,7 @@ func (r *Repo) snapshotTree(ctx context.Context, dropScratch bool) (string, erro
 	// holds, and read through O_NOFOLLOW. Reopening tmpName by name after a
 	// close would throw the O_EXCL away and follow a symlink swapped into
 	// the name, and a planted `.git/index` link would be read out of tree.
-	if src, _, err := openRegular(filepath.Join(gitDir, "index")); err == nil {
+	if src, _, err := safefile.OpenRead(filepath.Join(gitDir, "index")); err == nil {
 		_, err = io.Copy(tmp, src)
 		if cerr := src.Close(); err == nil {
 			err = cerr

@@ -785,15 +785,19 @@ func TestChartDrawsGridWhenEmpty(t *testing.T) {
 }
 
 // The chart's glyph table is indexed by ramp step, and every other call site
-// still names the ramp's colors, so the table and heatColor have to answer the
-// same question the same way. A step that drifted would draw a magnitude in a
-// color that means something else.
+// names the ramp by color, so both have to answer the same question the same
+// way. A step that drifted would draw a magnitude in a color that means
+// something else.
 func TestHeatIndexNamesTheRampStep(t *testing.T) {
 	for _, f := range []float64{
 		math.NaN(), 0, 0.02, 0.021, 0.1, 0.249, 0.25, 0.4, 0.5,
 		0.6, 0.72, 0.8, 0.88, 0.9, 1,
 	} {
-		if got, want := heatSteps[heatIndex(f)], heatColor(f); got != want {
+		step := heatIndex(f)
+		if step < 0 || step >= len(heatSteps) {
+			t.Fatalf("heatIndex(%v) = %d, outside the ramp", f, step)
+		}
+		if got, want := heatSteps[step], heatColor(f); got != want {
 			t.Fatalf("heatIndex(%v) = %v, want %v", f, got, want)
 		}
 	}

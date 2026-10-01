@@ -5,6 +5,7 @@ package gitx
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // gitIn runs one git command in dir, failing the test on error.
@@ -871,32 +874,16 @@ func TestExcludeOwnArtifactsRefusesASymlinkedExcludeFile(t *testing.T) {
 	// The refused read must not count as "already excluded" either: the real
 	// file was never read, so a later honest run still finds both entries
 	// missing and appends them.
-	if _, _, err := openRegular(link); err == nil {
-		t.Fatalf("openRegular followed the symlink at %s", link)
+	if _, _, err := safefile.OpenRead(link); err == nil {
+		t.Fatalf("the exclude read followed the symlink at %s", link)
 	}
 }
 
-// openRegular is the reader ExcludeOwnArtifacts now uses, and its refusal is
-// what keeps a planted link from being read at all.
-func TestOpenRegularRefusesASymlink(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "target")
-	if err := os.WriteFile(target, []byte("secret\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(dir, "link")
-	if err := os.Symlink(target, link); err != nil {
-		t.Fatal(err)
-	}
-	if f, _, err := openRegular(link); err == nil {
-		f.Close()
-		t.Fatalf("openRegular followed the symlink at %s", link)
-	}
-}
-
-// openAppendNoFollow is the writer's other half: a link at the final
-// component must be refused even when the parent directory is a real one.
-func TestOpenAppendNoFollowRefusesASymlink(t *testing.T) {
+// Every repository-planted path in this tree is opened through safefile, so a
+// link at the final component has to be refused on both the read and the
+// append, with the target left untouched and a real path at the same name
+// still working: the exclude append is broken for every run otherwise.
+func TestPlantedOpenRefusesASymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "target")
 	if err := os.WriteFile(target, nil, 0o644); err != nil {
@@ -906,19 +893,27 @@ func TestOpenAppendNoFollowRefusesASymlink(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	f, err := openAppendNoFollow(link, 0o644)
-	if err == nil {
-		f.Close()
-		t.Fatalf("openAppendNoFollow followed the symlink at %s", link)
-	}
-	if body, err := os.ReadFile(target); err != nil || len(body) != 0 {
-		t.Fatalf("the planted target was written: %q (%v)", body, err)
+	for _, tc := range []struct {
+		name string
+		open func(string) error
+	}{
+		{"read", func(p string) error { f, _, err := safefile.OpenRead(p); return closeErr(f, err) }},
+		{"append", func(p string) error { f, _, err := safefile.Append(p, 0o600); return closeErr(f, err) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.open(link); err == nil {
+				t.Fatalf("the %s followed the symlink at %s", tc.name, link)
+			}
+			if body, err := os.ReadFile(target); err != nil || len(body) != 0 {
+				t.Fatalf("the planted target was written: %q (%v)", body, err)
+			}
+		})
 	}
 	// The same path as a real file still works, or the exclude append is
 	// broken for every run.
-	f, err = openAppendNoFollow(filepath.Join(dir, "plain"), 0o600)
+	f, _, err := safefile.Append(filepath.Join(dir, "plain"), 0o600)
 	if err != nil {
-		t.Fatalf("openAppendNoFollow on a fresh path: %v", err)
+		t.Fatalf("append on a fresh path: %v", err)
 	}
 	if _, err := f.WriteString("x\n"); err != nil {
 		t.Fatal(err)
@@ -926,6 +921,16 @@ func TestOpenAppendNoFollowRefusesASymlink(t *testing.T) {
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// closeErr closes a descriptor an opener handed back with an error, and folds
+// the close failure in, so a test that only wants the open's verdict does not
+// leak one.
+func closeErr(f *os.File, err error) error {
+	if f == nil {
+		return err
+	}
+	return errors.Join(err, f.Close())
 }
 
 // A review runs with its permissions bypassed and can write .git/config

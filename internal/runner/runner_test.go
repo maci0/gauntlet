@@ -1687,15 +1687,7 @@ echo "RESULT: changed=1"`)
 		t.Fatalf("main-line did not take the work:\n%s",
 			gitOut(t, repo, "log", "--oneline", "--all"))
 	}
-	var merged bool
-	for _, ev := range got {
-		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
-			merged = true
-		}
-	}
-	if !merged {
-		t.Fatal("the merge was not reported on the bus")
-	}
+	assertMerged(t, got, "main-line")
 }
 
 // Untracked files do not block --merge-into. The merge is a scratch checkout
@@ -1724,15 +1716,7 @@ echo "RESULT: changed=1"`)
 		t.Fatalf("main-line did not take the work:\n%s",
 			gitOut(t, repo, "log", "--oneline", "--all"))
 	}
-	var merged bool
-	for _, ev := range got {
-		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
-			merged = true
-		}
-	}
-	if !merged {
-		t.Fatal("the merge was not reported on the bus")
-	}
+	assertMerged(t, got, "main-line")
 	if _, err := os.Stat(filepath.Join(repo, "notes.txt")); err != nil {
 		t.Fatalf("the untracked file should still be in the original tree: %v", err)
 	}
@@ -2179,6 +2163,18 @@ func gitOut(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %s: %v", strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// assertMerged checks that a run reported a successful merge of branch onto
+// the bus, which is the only record a caller has that the merge step ran.
+func assertMerged(t *testing.T, got []Event, branch string) {
+	t.Helper()
+	for _, ev := range got {
+		if ev.Kind == EvMerge && ev.Branch == branch && ev.Status == StatusOK {
+			return
+		}
+	}
+	t.Fatalf("the merge of %s was not reported on the bus", branch)
 }
 
 // softStopHandsOverTheLoop requests a stop partway through a loop and checks
@@ -2928,15 +2924,7 @@ echo "RESULT: changed=1"`)
 		t.Fatalf("the merge step did not run after the budget tripped:\n%s",
 			gitOut(t, repo, "log", "--oneline", "--all"))
 	}
-	var merged bool
-	for _, ev := range got {
-		if ev.Kind == EvMerge && ev.Branch == "main-line" && ev.Status == StatusOK {
-			merged = true
-		}
-	}
-	if !merged {
-		t.Fatal("the merge was not reported on the bus")
-	}
+	assertMerged(t, got, "main-line")
 }
 
 // A command that would not build is a pure function of the prompt and the

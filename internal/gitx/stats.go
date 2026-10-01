@@ -188,25 +188,6 @@ func (r *Repo) Invalidate() {
 	r.mu.Unlock()
 }
 
-// openRegular opens path read-only through the one guarded open every
-// repository-planted path in this tree uses. A planted symlink (to a FIFO,
-// device, or out-of-tree file) is refused, and a writer-less FIFO never blocks
-// the walk that reads the untracked set.
-func openRegular(path string) (*os.File, os.FileInfo, error) {
-	return safefile.OpenRead(path)
-}
-
-// openAppendNoFollow opens path for appending, creating it at perm if it does
-// not exist, and refusing a symlink at the final path component. os.OpenFile
-// has no O_NOFOLLOW, and a component the reviewed repository picks can be a
-// link: without the flag the append lands in whatever the link points at.
-func openAppendNoFollow(path string, perm os.FileMode) (*os.File, error) {
-	// A hardlink is a real regular file and a legitimate way to share one
-	// exclude between worktrees, so only a non-regular descriptor is refused.
-	f, _, err := safefile.Append(path, perm)
-	return f, err
-}
-
 // pruneLineCounts drops entries that are not in this sample's untracked
 // set. Reviews commit or delete files they created; without this those
 // paths occupy the cap forever and later untracked files are never cached.
@@ -243,7 +224,7 @@ func (r *Repo) countLinesCached(path string) int {
 			return e.lines
 		}
 	}
-	f, fi, err := openRegular(path)
+	f, fi, err := safefile.OpenRead(path)
 	if err != nil {
 		delete(r.lineCounts, path)
 		return 0
