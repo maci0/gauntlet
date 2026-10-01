@@ -96,20 +96,31 @@ const (
 // few say why, a full list says nothing.
 const reasonsShown = 3
 
-// skipDirs are never walked when git cannot list the tree: they hold other
-// people's code or this tool's own scratch space, and neither says anything
-// about the project under review. Every key is lowercased and every lookup
-// folds, so a directory is skipped whichever case the volume holds it in.
+// skipDirs are excluded from both git listings and walks: dependency, build,
+// and scratch files do not describe the application's capabilities. Every
+// lookup folds case, so these exclusions also hold on case-sensitive volumes.
 var skipDirs = map[string]bool{
 	".git": true, "node_modules": true, "vendor": true, "dist": true,
 	"build": true, "target": true, ".next": true, ".venv": true,
 	"venv": true, ".gauntlet": true, ".crush": true, "__pycache__": true,
 	".mypy_cache": true, ".pytest_cache": true, ".tox": true, ".idea": true,
+	".deps": true, ".scratch": true, "third-party": true, "third_party": true,
+	"thirdparty": true, "toolchain": true, "toolchains": true,
 }
 
-// sourceExts are the files worth reading the head of. Everything else is
-// counted but not opened: a lockfile or a minified bundle says nothing that
-// its name has not said already.
+// skipDir applies equally to git listings and walks. Versioned MSVC installs
+// contain the compiler's headers and examples, not the application's source.
+func skipDir(name string) bool {
+	name = strings.ToLower(name)
+	if skipDirs[name] {
+		return true
+	}
+	version, msvc := strings.CutPrefix(name, "msvc")
+	return msvc && version != "" && strings.Trim(version, "0123456789") == ""
+}
+
+// sourceExts identify code. Their heads and selected package/build manifests
+// are read; other files contribute only their names and extensions.
 var sourceExts = map[string]bool{
 	".go": true, ".py": true, ".rs": true, ".c": true, ".cc": true, ".cpp": true,
 	".cxx": true, ".h": true, ".hpp": true, ".java": true, ".kt": true, ".swift": true,
@@ -119,26 +130,41 @@ var sourceExts = map[string]bool{
 	".ino": true, ".scad": true, ".asm": true, ".s": true, ".c3": true,
 	".ps1": true, ".bat": true, ".cmd": true, ".m": true, ".mm": true,
 	".scala": true, ".pl": true, ".exs": true, ".jl": true, ".r": true,
+	".zsh": true,
 }
 
-// markEntry is one substring to look for and what finding it says about the
-// code. A review's own `mark:` signal becomes one of these too, searching for
-// itself under its own name.
+var manifestNames = map[string]bool{
+	"package.json": true, "pyproject.toml": true, "cargo.toml": true,
+	"plugin.json": true, "cmakelists.txt": true, "setup.cfg": true,
+	"dockerfile": true, "containerfile": true,
+}
+
+// markEntry is a capability marker. Built-ins bound identifiers; a review's
+// own `mark:` signal searches literally in a separate mark: namespace.
 type markEntry struct {
-	text, says string
+	text, says  string
+	left, right bool // built-in identifier boundaries; declared marks stay literal
 	// needle is text as bytes, set for ASCII marks so peek can search file
 	// heads without allocating a copy per file per mark. Nil means the
 	// haystack has to be folded for a non-ASCII needle.
 	needle []byte
 }
 
-// mark is one built-in substring search. ASCII needles are stored as bytes
+// mark is one built-in boundary-aware search. ASCII needles are stored as bytes
 // once so peek does not allocate a copy per file per mark.
 func mark(text, says string) markEntry {
-	e := markEntry{text: text, says: says}
+	e := markEntry{text: text, says: says,
+		left: identifierByte(text[0]), right: identifierByte(text[len(text)-1]) && !strings.HasSuffix(text, "_")}
 	if fuzzy.IsASCII(text) {
 		e.needle = []byte(text)
 	}
+	return e
+}
+
+// prefixMark recognizes API families such as CreateWindowA and psycopg2.
+func prefixMark(text, says string) markEntry {
+	e := mark(text, says)
+	e.right = false
 	return e
 }
 
@@ -146,53 +172,73 @@ func mark(text, says string) markEntry {
 // on the left are lowercased before the search, so a match is case-insensitive
 // without a regex engine or a second pass over the text.
 var marks = []markEntry{
-	mark("net/http", "http"), mark("http.handle", "http"), mark("fastapi", "http"),
-	mark("flask", "http"), mark("express(", "http"), mark("axum::", "http"), mark("gin.", "http"),
-	mark("database/sql", "sql"), mark("psycopg", "sql"), mark("sqlalchemy", "sql"),
-	mark("sqlite3", "sql"), mark("pg.pool", "sql"), mark("gorm.", "sql"),
+	prefixMark("http.listenandserve", "http"), prefixMark("http.serve", "http"), prefixMark("http.handle", "http"),
+	mark("express(", "http"), mark("axum::", "http"), mark("gin.", "http"),
+	mark("new hono(", "http"), mark("grpc.newserver", "http"), mark("http.server", "http"),
+	mark("database/sql", "sql"), prefixMark("psycopg", "sql"), mark("sqlalchemy", "sql"),
+	prefixMark("sqlite3", "sql"), mark("pg.pool", "sql"), mark("gorm.", "sql"),
 	mark("time.now", "clock"), mark("datetime.now", "clock"), mark("time.sleep", "clock"),
 	mark("utcnow", "clock"), mark("cron", "clock"),
 	mark("go func", "concurrent"), mark("asyncio", "concurrent"), mark("threading.", "concurrent"),
 	mark("sync.mutex", "concurrent"), mark("std::thread", "concurrent"), mark("tokio::", "concurrent"),
 	mark("multiprocessing", "concurrent"), mark("pthread_", "concurrent"),
-	mark("prometheus", "telemetry"), mark("opentelemetry", "telemetry"), mark("otel", "telemetry"),
+	mark("createthread(", "concurrent"), mark("thread::spawn", "concurrent"), mark("promise.all", "concurrent"), mark("promise.allsettled", "concurrent"),
+	prefixMark("prometheus", "telemetry"), prefixMark("opentelemetry", "telemetry"), mark("otel", "telemetry"),
 	mark("logrus", "telemetry"), mark("structlog", "telemetry"),
-	mark("redis", "cache"), mark("memcache", "cache"), mark("lru_cache", "cache"),
+	mark("logger.", "logging"), mark("logging.", "logging"), mark("log.", "logging"),
+	mark("redis.", "cache"), mark("memcache.", "cache"), mark("lru_cache", "cache"),
+	mark("functools.cache", "cache"), mark("cached_property", "cache"), mark("cache.get", "cache"),
 	mark("jwt", "auth"), mark("oauth", "auth"), mark("bcrypt", "auth"), mark("argon2", "auth"),
 	mark("session[", "auth"), mark("set-cookie", "auth"),
 	mark("unsafe.pointer", "unsafe"), mark("ctypes", "unsafe"), mark("eval(", "unsafe"),
 	mark("pickle.loads", "unsafe"), mark("innerhtml", "unsafe"),
 	mark("subprocess", "exec"), mark("exec.command", "exec"), mark("os/exec", "exec"),
-	mark("anthropic", "model"), mark("openai", "model"), mark("completions.create", "model"),
-	mark("ollama", "model"), mark("system_prompt", "model"),
+	mark("anthropic.", "model"), mark("openai.", "model"), mark("completions.create", "model"),
+	mark("chat/completions", "model"), mark("anthropic-version", "model"),
+	mark("ollama.", "model"), mark("system_prompt", "model"),
+	mark("dsh-llm", "model"), mark("llama.cpp", "model"), mark("vllm", "model"),
+	mark("google.genai", "model"), mark("google_genai", "model"), mark("bedrock", "model"),
 	mark("boto3", "cloud"), mark("kubernetes", "cloud"), mark("terraform", "cloud"),
-	mark("idempotenc", "retry"), mark("retry(", "retry"), mark("backoff", "retry"),
+	prefixMark("idempotenc", "retry"), mark("retry(", "retry"), mark("backoff", "retry"),
 	mark("celery", "retry"), mark("sqs", "retry"),
 	mark("argparse", "cli"), mark("click.command", "cli"), mark("cobra.command", "cli"),
 	mark("flag.parse", "cli"), mark("clap::", "cli"), mark("commander", "cli"), mark("yargs", "cli"),
-	mark("bubbletea", "tui"), mark("ratatui", "tui"), mark("curses", "tui"),
-	mark("rich.console", "tui"), mark("blessed", "tui"),
-	mark("createwindow", "gui"), mark("dialogbox", "gui"), mark("wm_paint", "gui"),
+	mark("bubbletea", "tui"), mark("ratatui", "tui"), mark("curses", "tui"), mark("ncurses", "tui"),
+	mark("rich.live", "tui"), mark("rich.layout", "tui"), mark("blessed", "tui"),
+	mark("prompt_toolkit", "tui"), mark("readline/readline.h", "tui"), mark("readline.createinterface", "tui"), mark("linenoise", "tui"),
+	mark("document.queryselector", "dom"), mark("document.createelement", "dom"),
+	mark("getelementbyid(", "dom"), mark("react-dom", "dom"),
+	prefixMark("createwindow", "gui"), prefixMark("dialogbox", "gui"), mark("wm_paint", "gui"),
 	mark("qapplication", "gui"), mark("gtk_", "gui"), mark("imgui", "gui"),
 	mark("system.windows.forms", "gui"), mark("swiftui", "gui"),
-	mark("sys.argv", "cli"), mark("os.args", "cli"), mark("getopt", "cli"),
+	mark("sys.argv", "cli"), mark("os.args", "cli"), mark("getopt", "cli"), mark("getopt_", "cli"),
 	mark("process.argv", "cli"),
+	mark("date.now(", "clock"), mark("new date(", "clock"), mark("settimeout(", "clock"),
+	mark("setinterval(", "clock"), prefixMark("gettickcount", "clock"), mark("std::chrono", "clock"),
+	mark("runtime.goos", "portable"), mark("path/filepath", "portable"),
+	mark("os.path", "portable"), mark("pathlib", "portable"),
+	mark("#ifdef _win32", "portable"), mark("__linux__", "portable"),
+	mark("find_package(", "dependency"), mark("fetchcontent_", "dependency"),
+	mark("apt-get ", "dependency"), mark("apk add ", "dependency"), mark("pip install ", "dependency"),
 	mark("json.loads", "parse"), mark("json.decode", "parse"), mark("json.unmarshal", "parse"),
 	mark("encoding/json", "parse"), mark("serde_json", "parse"), mark("struct.unpack", "parse"),
 	mark("json.parse", "parse"), mark("fread(", "parse"), mark("sscanf(", "parse"),
+	mark("fgets(", "parse"), mark("getline(", "parse"),
 	mark("os.write", "write"), mark("writefile", "write"), mark("write_file", "write"),
 	mark("fwrite(", "write"), mark("write_text(", "write"), mark("write_bytes(", "write"),
 	mark("fetch(", "httpclient"), mark("requests.", "httpclient"), mark("http.client", "httpclient"),
 	mark("http.get", "httpclient"), mark("http.post", "httpclient"), mark("curl", "httpclient"),
 	mark("os.getenv", "config"), mark("os.environ", "config"), mark("process.env", "config"),
 	mark("getenv(", "config"), mark("env::var", "config"), mark("viper.", "config"),
+	mark("export const config", "config"),
 	mark("malloc(", "resource"), mark("calloc(", "resource"), mark("fopen(", "resource"),
-	mark("createfile", "resource"), mark("allocglobal", "resource"),
+	prefixMark("createfile", "resource"), mark("globalalloc", "resource"),
 	mark("oauth", "personal"), mark("user.email", "personal"), mark("user_email", "personal"),
 	mark("analytics", "personal"), mark("telemetry.track", "personal"),
 	mark("gettext", "translate"), mark("i18n", "translate"), mark("usetranslation", "translate"),
 	mark("backup", "recovery"), mark("restore(", "recovery"), mark("failover", "recovery"),
 	mark("numpy", "numeric"), mark("math.", "numeric"), mark("sqrt(", "numeric"),
+	mark("floor(", "numeric"), mark("ceil(", "numeric"), mark("sin(", "numeric"), mark("cos(", "numeric"),
 	mark("decimal(", "numeric"), mark("round(", "numeric"),
 }
 
@@ -280,11 +326,11 @@ func present(fn func(signals) bool) func(signals) float64 {
 }
 
 // absent fires when an observation is missing from a tree that has code in it.
-// Missing tests, missing docs, and missing CI are the strongest arguments for
-// the reviews that would add them, and presence-only rules said the opposite.
+// Only reviews which can act on that gap use it: documentation can be added,
+// but a test-quality review needs existing tests, not their absence.
 func absent(fn func(signals) bool) func(signals) float64 {
 	return func(s signals) float64 {
-		if s.files > 0 && !fn(s) {
+		if s.source > 0 && !fn(s) {
 			return 1
 		}
 		return 0
@@ -345,18 +391,18 @@ var fastRules = []rule{
 		return s.source > 0 && !hasTests(s)
 	}), []string{"test-review"}},
 	{"documentation", weightNormal, present(hasDocs), []string{"doc-review"}},
+	{"prose to read", weightNormal, present(hasDocs), []string{"slop-review"}},
 	{"no documentation in the tree", weightStrong, absent(hasDocs),
 		[]string{"doc-review"}},
 	{"CI workflows", weightNormal, present(hasCI), []string{"infra-review", "build-review"}},
-	{"no CI configuration", weightNormal, absent(hasCI), []string{"build-review"}},
 	{"a linter configuration", weightNormal, present(hasLinter), []string{"lint-review"}},
 	{"a Dockerfile or compose file", weightStrong, present(func(s signals) bool {
 		return s.anyName("dockerfile", "containerfile", "docker-compose.yml", "compose.yaml", "compose.yml")
-	}), []string{"container-review", "pkg-review", "threat-review"}},
+	}), []string{"infra-review", "pkg-review", "threat-review", "build-review"}},
 	{"infrastructure as code", weightStrong, present(func(s signals) bool {
 		return s.count(".tf", ".tfvars") > 0 || s.anyName("ansible.cfg", "playbook.yml") ||
 			s.anyPath("charts", "manifests", "kustomization.yaml")
-	}), []string{"infra-review", "container-review", "dr-review"}},
+	}), []string{"infra-review"}},
 	{"Kubernetes manifests or kustomize files", weightStrong, present(func(s signals) bool {
 		return s.anyName("kustomization.yaml", "kustomization.yml") ||
 			s.anyPath("manifests", "overlays")
@@ -369,7 +415,7 @@ var fastRules = []rule{
 		return s.anyName("chart.yaml") || s.anyPath("charts")
 	}), []string{"helm-review", "container-review"}},
 	{"a build system", weightNormal, present(func(s signals) bool {
-		return s.anyName("makefile", "justfile", "cmakelists.txt", "meson.build", "build.gradle", "pom.xml")
+		return s.anyName("makefile", "justfile", "cmakelists.txt", "meson.build", "build.gradle", "build.gradle.kts", "pom.xml", "build.zig", "go.mod", "cargo.toml") || s.count(".csproj", ".vcxproj", ".sln") > 0
 	}), []string{"build-review"}},
 	{"shell scripts", weightNormal, lang(".sh", ".bash", ".zsh"),
 		[]string{"compat-review", "idempotency-review"}},
@@ -378,13 +424,18 @@ var fastRules = []rule{
 	{"a Rust crate", weightNormal, present(func(s signals) bool { return s.anyName("cargo.toml") }),
 		[]string{"resource-review", "deps-review"}},
 	{"C or C++ sources", weightNormal, lang(".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"),
+		[]string{"build-review"}},
+	{"portability-sensitive source", weightStrong, present(func(s signals) bool { return s.anyMark("portable") }),
 		[]string{"compat-review"}},
 	{"a Python package", weightNormal, present(func(s signals) bool {
 		return s.anyName("pyproject.toml", "requirements.txt", "setup.py")
 	}), []string{"deps-review", "error-review"}},
 	{"a JavaScript or TypeScript package", weightNormal,
 		present(func(s signals) bool { return s.anyName("package.json") }),
-		[]string{"deps-review", "dx-review"}},
+		[]string{"deps-review", "dx-review", "build-review"}},
+	{"dependency manifests", weightNormal, present(func(s signals) bool {
+		return s.anyName("build.zig.zon", "vcpkg.json", "conanfile.py", "conanfile.txt", "composer.json", "gemfile", "pom.xml", "build.gradle", "build.gradle.kts")
+	}), []string{"deps-review"}},
 	{"a web frontend", weightNormal, hasWeb,
 		[]string{"ux-review", "a11y-review", "uislop-review", "webperf-review", "design-review"}},
 	{"mobile sources", weightNormal, lang(".swift", ".kt", ".dart"), []string{"mobile-review"}},
@@ -394,16 +445,20 @@ var fastRules = []rule{
 	{"an API description", weightStrong, present(func(s signals) bool {
 		return s.anyName("openapi.yaml", "openapi.json", "swagger.yaml", "schema.graphql") ||
 			s.count(".proto") > 0
-	}), []string{"api-review", "compat-review", "sdk-review"}},
+	}), []string{"api-review", "compat-review"}},
 	{"configuration files", weightWeak, present(func(s signals) bool {
-		return s.count(".ini", ".conf", ".cfg") > 0 || s.anyName(".env.example", "config.yaml", "config.yml", "config.toml") || s.anyMark("config")
+		for name := range s.name {
+			if strings.HasSuffix(name, ".cfg") && name != "setup.cfg" {
+				return true
+			}
+		}
+		return s.count(".ini", ".conf") > 0 || s.anyName(".env.example", "config.yaml", "config.yml", "config.toml") || s.anyMark("config")
 	}), []string{"config-review"}},
 	{"translation files", weightStrong, present(func(s signals) bool {
-		return s.count(".po", ".pot") > 0 || s.anyPath("locales", "i18n", "translations")
+		return s.count(".po", ".pot") > 0 || s.anyPath("locale", "locales", "i18n", "translations")
 	}), []string{"i18n-review"}},
 	{"agent instruction files", weightStrong, present(func(s signals) bool {
-		return s.anyName("claude.md", "agents.md", "cursor.md", "copilot-instructions.md") ||
-			s.anyPath("prompts", ".claude", ".cursor")
+		return s.anyName("claude.md", "agents.md", ".cursorrules", ".windsurfrules", "copilot-instructions.md")
 	}), []string{"agentrules-review"}},
 	{"review prompts or prompt templates", weightStrong, present(func(s signals) bool {
 		for name := range s.name {
@@ -417,13 +472,13 @@ var fastRules = []rule{
 		return s.anyName("skill.md") || s.anyPath(".claude/skills", ".agents/skills", ".claude/commands")
 	}), []string{"skills-review"}},
 	{"a packaged or released artifact", weightNormal, present(func(s signals) bool {
-		return s.anyName("changelog.md", "pkgbuild", "debian") || s.count(".spec") > 0
+		return s.anyName("changelog.md", "pkgbuild", "debian") || s.count(".spec") > 0 || s.anyMark("release")
 	}), []string{"release-review"}},
 	{"packaging definitions", weightStrong, present(func(s signals) bool {
-		return s.anyName("pkgbuild", "setup.py", "setup.cfg", "manifest.in", "control", "flatpak.json", "snapcraft.yaml") || s.count(".spec") > 0 || s.anyPath("debian")
+		return s.anyName("pkgbuild", "setup.py", "manifest.in", "control", "flatpak.json", "snapcraft.yaml") || s.count(".spec") > 0 || s.anyPath("debian") || s.anyMark("package")
 	}), []string{"pkg-review"}},
 	{"a public API surface", weightWeak, present(func(s signals) bool {
-		return s.anyPath("pkg", "lib", "api", "include", "sdk") && s.anyName("lib.rs", "setup.py", "index.d.ts", "py.typed")
+		return s.anyMark("library") || s.anyPath("pkg", "lib", "api", "include", "sdk") && s.anyName("lib.rs", "setup.py", "index.d.ts", "py.typed")
 	}), []string{"sdk-review"}},
 	{"decision or requirement documents", weightStrong, present(func(s signals) bool {
 		if s.anyPath("docs/adr", "docs/decisions", "docs/rfcs", "docs/specs") {
@@ -449,8 +504,8 @@ var fastRules = []rule{
 
 	// What the files say inside. Directory names are a guess about a codebase;
 	// what it imports is a fact about it.
-	{"HTTP handlers in the source", weightStrong, present(func(s signals) bool { return s.anyMark("http") }),
-		[]string{"api-review", "threat-review", "o11y-review", "perf-review", "fuzz-review", "resource-review"}},
+	{"HTTP handlers or server framework imports", weightStrong, present(func(s signals) bool { return s.anyMark("http") }),
+		[]string{"api-review", "threat-review", "perf-review", "fuzz-review", "resource-review"}},
 	{"database access in the source", weightStrong, present(func(s signals) bool { return s.anyMark("sql") }),
 		[]string{"db-review", "sec-review", "dr-review"}},
 	{"clock and calendar handling", weightStrong, present(func(s signals) bool { return s.anyMark("clock") }),
@@ -458,7 +513,9 @@ var fastRules = []rule{
 	{"threads, goroutines, or async code", weightStrong,
 		present(func(s signals) bool { return s.anyMark("concurrent") }),
 		[]string{"concurrency-review", "resource-review"}},
-	{"metrics or tracing calls", weightStrong, present(func(s signals) bool { return s.anyMark("telemetry") }),
+	{"service logs, metrics or tracing", weightStrong, present(func(s signals) bool {
+		return s.anyMark("http", "concurrent", "gui") && s.anyMark("telemetry", "logging")
+	}),
 		[]string{"o11y-review"}},
 	{"a cache client", weightStrong, present(func(s signals) bool { return s.anyMark("cache") }),
 		[]string{"cache-review", "perf-review"}},
@@ -468,10 +525,10 @@ var fastRules = []rule{
 		[]string{"sec-review"}},
 	{"subprocess execution", weightStrong, present(func(s signals) bool { return s.anyMark("exec") }),
 		[]string{"sec-review", "compat-review"}},
-	{"model or LLM calls", weightStrong, present(func(s signals) bool { return s.anyMark("model") }),
+	{"model SDK imports or calls", weightStrong, present(func(s signals) bool { return s.anyMark("model") }),
 		[]string{"llm-review"}},
 	{"cloud or cluster APIs", weightStrong, present(func(s signals) bool { return s.anyMark("cloud") }),
-		[]string{"infra-review", "dr-review", "config-review"}},
+		[]string{"infra-review", "config-review"}},
 	{"retries, queues, or backoff", weightStrong, present(func(s signals) bool { return s.anyMark("retry") }),
 		[]string{"idempotency-review", "dr-review", "error-review"}},
 	{"translated strings in the source", weightStrong,
@@ -480,12 +537,15 @@ var fastRules = []rule{
 		[]string{"dr-review", "idempotency-review"}},
 	{"floating-point or decimal arithmetic", weightNormal,
 		present(func(s signals) bool { return s.anyMark("numeric") }), []string{"numerics-review"}},
+	{"procedural geometry", weightNormal, lang(".scad"), []string{"numerics-review"}},
 	{"a command line interface", weightStrong, present(func(s signals) bool { return s.anyMark("cli") }),
-		[]string{"cli-review", "ux-review", "dx-review"}},
+		[]string{"cli-review", "threat-review"}},
 	{"a terminal interface", weightStrong, present(func(s signals) bool { return s.anyMark("tui") }),
 		[]string{"ux-review", "design-review", "a11y-review", "uislop-review"}},
 	{"a graphical interface", weightStrong, present(func(s signals) bool { return s.anyMark("gui") || s.count(".xaml", ".qml") > 0 }),
 		[]string{"ux-review", "design-review", "a11y-review", "uislop-review", "resource-review"}},
+	{"browser DOM code", weightStrong, present(func(s signals) bool { return s.anyMark("dom") }),
+		[]string{"ux-review", "a11y-review", "uislop-review", "webperf-review"}},
 	{"input parsing", weightStrong, present(func(s signals) bool { return s.anyMark("parse") }),
 		[]string{"fuzz-review", "threat-review", "unicode-review"}},
 	{"file or network side effects", weightStrong, present(func(s signals) bool { return s.anyMark("write", "httpclient") }),
@@ -494,8 +554,15 @@ var fastRules = []rule{
 		[]string{"resource-review"}},
 	{"personal data handling", weightStrong, present(func(s signals) bool { return s.anyMark("personal") }),
 		[]string{"privacy-review"}},
-	{"concurrent state or persistent storage", weightStrong, present(func(s signals) bool { return s.anyMark("concurrent", "sql", "retry") }),
+	{"concurrent state or queued work", weightStrong, present(func(s signals) bool {
+		return s.anyMark("concurrent") && s.anyMark("sql", "retry", "write")
+	}),
 		[]string{"dst-review"}},
+	{"declared build dependencies", weightNormal, present(func(s signals) bool { return s.anyMark("dependency") }),
+		[]string{"deps-review"}},
+	{"a source tree with a build and contribution surface", weightNormal, present(func(s signals) bool {
+		return s.source >= 2 && (hasCI(s) || hasTests(s) || hasDocs(s)) && s.anyName("makefile", "cmakelists.txt", "go.mod", "cargo.toml", "package.json", "pyproject.toml")
+	}), []string{"dx-review"}},
 }
 
 // isTestFile recognizes the naming conventions test files follow, since a
@@ -636,7 +703,7 @@ func matchDeclared(s signals, declared []string) (string, bool) {
 		case "path":
 			ok = s.path[value]
 		case "mark":
-			ok = s.mark[value] > 0
+			ok = s.mark["mark:"+value] > 0
 		default:
 			ok = false
 		}
@@ -775,6 +842,10 @@ func listTree(ctx context.Context, root string) ([]string, *gitx.Repo, error) {
 	// listing is an answer (a tree with no files in it), not a failure to
 	// answer, and the walk below cannot tell the two apart.
 	if paths, err := repo.ListFilesAtMost(ctx, scanMaxFiles); err == nil {
+		paths = slices.DeleteFunc(paths, func(rel string) bool {
+			parts := strings.Split(filepath.ToSlash(rel), "/")
+			return slices.ContainsFunc(parts[:len(parts)-1], skipDir)
+		})
 		return paths, repo, nil
 	}
 	var out []string
@@ -797,7 +868,7 @@ func listTree(ctx context.Context, root string) ([]string, *gitx.Repo, error) {
 		}
 		if d.IsDir() {
 			if p != root {
-				if skipDirs[strings.ToLower(d.Name())] {
+				if skipDir(d.Name()) {
 					return fs.SkipDir
 				}
 				if strings.Count(filepath.ToSlash(rel), "/")+1 > scanMaxDepth {
@@ -815,13 +886,11 @@ func listTree(ctx context.Context, root string) ([]string, *gitx.Repo, error) {
 	return out, nil, err
 }
 
-// peek reads the head of source files and records what they import and call.
-// Heads only: what a file talks to is declared at the top, and a bounded read
-// keeps this a scan rather than an indexing pass. Opens are rooted at the
-// reviewed tree, so a symlink, FIFO, or path that escapes it is skipped.
+// peek reads source and package/build manifest heads for capability markers.
+// A bounded read keeps this a scan rather than an indexing pass. Opens are
+// rooted at the reviewed tree, so a FIFO or escaping path is skipped.
 //
-// Marks are searched for until every kind has been seen, at which point no
-// later file can change the answer and the scan stops.
+// Imports and package fields share the same file/head budget as literal marks.
 func peek(root string, paths []string, s *signals, declared []string) error {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
@@ -833,16 +902,14 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 	}
 	defer dir.Close()
 	wanted := markSearch(declared)
-	kinds := markKinds(wanted)
 	buf := make([]byte, peekBytes)
 	scratch := make([]byte, peekBytes)
-	seenAll := len(s.mark) == kinds
 	read := 0
 	for _, rel := range paths {
-		if read >= peekMaxFiles || seenAll {
+		if read >= peekMaxFiles {
 			return nil
 		}
-		if !sourceExts[strings.ToLower(filepath.Ext(rel))] {
+		if !sourceExts[strings.ToLower(filepath.Ext(rel))] && !manifestNames[strings.ToLower(filepath.Base(rel))] {
 			continue
 		}
 		f, err := openPeek(dir, rel)
@@ -860,8 +927,14 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 			continue
 		}
 		read++
-		markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
-		seenAll = len(s.mark) == kinds
+		name := strings.ToLower(filepath.Base(rel))
+		if name == "package.json" || name == "plugin.json" || name == "pyproject.toml" || name == "cargo.toml" || name == "setup.cfg" {
+			packageMetadata(s, name, buf[:n])
+			markFound(s, wanted[len(marks):], asciiFold(scratch[:0], buf[:n]))
+		} else {
+			sourceImports(s, rel, buf[:n])
+			markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
+		}
 	}
 	return nil
 }
@@ -878,7 +951,7 @@ func markFound(s *signals, wanted []markEntry, head []byte) {
 		}
 		hit := false
 		if m.needle != nil {
-			hit = bytes.Contains(head, m.needle)
+			hit = containsMark(head, m)
 		} else {
 			// Non-ASCII needles are stored NFC+ToLower by Signals; a macOS
 			// file may hold the NFD spelling, and a capital É survives
@@ -893,6 +966,29 @@ func markFound(s *signals, wanted []markEntry, head []byte) {
 			s.mark[m.says]++
 		}
 	}
+}
+
+func identifierByte(b byte) bool {
+	return b >= 'a' && b <= 'z' || b >= '0' && b <= '9' || b == '_' || b == '$' || b >= 0x80
+}
+
+// containsMark skips identifier fragments such as gin. in plugin. and redis
+// in rediscover, but keeps searching for a later standalone occurrence.
+func containsMark(head []byte, m markEntry) bool {
+	for offset := 0; offset < len(head); {
+		i := bytes.Index(head[offset:], m.needle)
+		if i < 0 {
+			return false
+		}
+		i += offset
+		end := i + len(m.needle)
+		if (!m.left || i == 0 || !identifierByte(head[i-1])) &&
+			(!m.right || end == len(head) || !identifierByte(head[end])) {
+			return true
+		}
+		offset = i + 1
+	}
+	return false
 }
 
 // openPeek opens rel under root for a bounded head read. The root is the
@@ -925,11 +1021,8 @@ const declaredMarkMax = 64
 // markSearch is the built-in table plus the substrings reviews declared with
 // `mark:`.
 //
-// A declared value searches for itself and is recorded under its own name,
-// which is the token matchDeclared then looks up. Without this the mark set
-// only ever held the built-in category labels, so a review's own `mark:` could
-// match only by colliding with one of those -- the documented example,
-// `mark:comptime`, could never fire at all.
+// Declared substrings use their own namespace, so a category derived from an
+// import or package field cannot satisfy a literal mark: declaration.
 func markSearch(declared []string) []markEntry {
 	if len(declared) == 0 {
 		return marks
@@ -947,19 +1040,11 @@ func markSearch(declared []string) []markEntry {
 			break
 		}
 		seen[d] = true
-		out = append(out, mark(d, d))
+		e := mark(d, "mark:"+d)
+		e.left, e.right = false, false
+		out = append(out, e)
 	}
 	return out
-}
-
-// markKinds is how many distinct things the given searches can say, the point
-// at which peek's answer can no longer change.
-func markKinds(wanted []markEntry) int {
-	says := make(map[string]bool, len(wanted))
-	for _, m := range wanted {
-		says[m.says] = true
-	}
-	return len(says)
 }
 
 // declared reads the pool's reviews' `Signals:` lines once and returns them

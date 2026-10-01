@@ -26,6 +26,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.34.0
+
+### Changed
+
+- Suggestions default to the built-in file-signal suggester when `--suggest-agent` is omitted. `--list --suggest` works without an installed agent CLI; an explicit suggestion agent still uses that model. The launcher shows the built-in default.
+- File-signal suggestions follow each review's applicability scope: code-quality reviews recognize more source languages; test, skill, prompt, specification, runtime configuration, UI, API, and packaging reviews require their own evidence. Package/build metadata and native or browser interfaces contribute signals. Dependency, scratch, and bundled compiler trees are excluded even when tracked by git.
+- Built-in capability markers respect identifier boundaries, so `plugin.` does not imply Gin and "rediscover" does not imply Redis. File `readline()` and plain Rich console output no longer imply an interactive terminal UI. Declared `mark:` signals keep their literal substring behavior.
+- File-signal suggestions recognize source import declarations and package fields. Go imports use the standard parser; other supported declaration forms use bounded recognition. Manifest descriptions and dependency names alone no longer establish implementation subjects; public exports, executable entries, package versions, and dependency sections contribute their own evidence. Private package exports do not establish a public SDK, and incomplete JSON is left undecoded. Importable Go root interfaces and explicit module versions contribute SDK and release evidence. Declared literal marks remain separate from derived capability categories.
+
 ## 1.33.0
 
 ### Added

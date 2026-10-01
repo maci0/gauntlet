@@ -230,11 +230,15 @@ func newPicker(cfg PickConfig) *picker {
 	return p
 }
 
-// suggestAgentValues is the --suggest-agent cycle: unset, then the file-signal
+// suggestAgentValues is the --suggest-agent cycle: CLI default, then the file-signal
 // suggester when the caller named one, then every installed agent.
 func suggestAgentValues(cfg PickConfig) []string {
 	out := make([]string, 0, 2+len(cfg.Agents))
-	out = append(out, "from the pool")
+	label := "CLI default"
+	if cfg.FastSuggest != "" {
+		label = cfg.FastSuggest + " (default)"
+	}
+	out = append(out, label)
 	if cfg.FastSuggest != "" {
 		out = append(out, cfg.FastSuggest)
 	}
@@ -1064,8 +1068,8 @@ func (p *picker) pushing() bool {
 	return o != nil && o.on
 }
 
-// suggestAgent is the label chosen for the suggest step, or "" for whichever
-// agent the pool offers.
+// suggestAgent is the explicit label chosen for the suggest step, or "" to
+// leave the CLI's default in effect.
 func (p *picker) suggestAgent() string {
 	o := p.opts[optSuggestAgent]
 	if o.idx == 0 {

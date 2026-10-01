@@ -1388,7 +1388,7 @@ func TestPickHelpExposesFocusedControl(t *testing.T) {
 		{"default cycle", func(p *picker) {
 			p.focus = paneOptions
 			p.cursor[paneOptions] = optSuggestAgent
-		}, []string{"suggest agent: from the pool", "suggest is off"}},
+		}, []string{"suggest agent: gauntlet (default)", "suggest is off"}},
 		{"inert option", func(p *picker) {
 			p.focus = paneOptions
 			p.optByFlag("--stacked-prs").on = true
@@ -1957,6 +1957,9 @@ func TestPickSuggestAgentHint(t *testing.T) {
 	p.suggest = true
 	p.focus = paneOptions
 	p.cursor[paneOptions] = optSuggestAgent
+	if got := p.hint(); !strings.Contains(got, "read the files for signals without a model") {
+		t.Fatalf("default suggest hint must describe built-in suggestions, got %q", got)
+	}
 
 	// FastSuggest agent
 	p.opts[optSuggestAgent].idx = 1
@@ -2123,7 +2126,7 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 		w    int
 		want []string
 	}{
-		{56, []string{"suggest agent (suggest off)", "from the pool"}},
+		{56, []string{"suggest agent (suggest off)", "gauntlet (default)"}},
 		{36, []string{"…"}},
 		{28, []string{"…"}},
 	} {
