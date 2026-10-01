@@ -83,6 +83,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
   until somebody reports it. Four doc comments over `internal/gitx`'s
   `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
   `Palette` and `Think` were the findings it revealed.
+- `docs/THREAT_MODEL.md`'s pointers are held to the code they name, not just
+  to the file they sit in. A citation that spells a Go symbol beside a line
+  range must now reach that symbol's declaration, and forty did not: adding a
+  function above one leaves every line number in bounds, so the pointer kept
+  resolving while naming different code, and a reader checking a control found
+  a function the control does not live in. Four had drifted inside this
+  release. `TestThreatModelGoPointersNameTheSymbol` is the gate.
 
 ### Security
 
@@ -93,8 +100,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `gauntlet resume` verbatim, and outlived the run. Credentials are now
   redacted from a journaled argument, and the redaction covers the shapes a
   command line uses: the value after a flag that names one, and the userinfo of
-  a URL. The resume checkpoint still holds the real argument, because it is
-  replayed; it is written owner-only and is now shown redacted.
+  a URL. A consumer reading `args` from `index.jsonl`, or reading the command
+  line `gauntlet runs` and `gauntlet resume` print, sees `[redacted]` where the
+  key was and the flag that carried it kept, so a row still says which option
+  held the credential; a script matching on a key in `args` matches nothing.
+  The resume checkpoint still holds the real argument, because it is replayed;
+  it is written owner-only, and the command line it is listed with is shown
+  redacted.
 
 - The agent filesystem sandbox granted `/tmp` unconditionally. On macOS that
   directory is a symlink to the shared, world-writable `/private/tmp`, not the
@@ -102,7 +114,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
   could reach every other user's scratch files. The root is now the platform's
   own temporary directory (`os.TempDir`, an absolute `TMPDIR` or `/tmp`), an
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
-  the host does not have is skipped instead of refusing the launch.
+  the host does not have is skipped instead of refusing the launch. An agent
+  that writes the literal `/tmp` on macOS therefore loses that write and needs
+  a grant: set `TMPDIR` to the directory it writes in, or pass
+  `--sandbox-write /tmp` for a run that needs the shared one. Linux is
+  unchanged, its platform temporary directory being `/tmp` itself.
 - The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
 
 ## 1.34.1

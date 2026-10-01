@@ -192,7 +192,7 @@ so it is the version before the last one and no further back.
 |---|---|---|
 | `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
 | `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. Given twice, it is a usage error too: the last value would otherwise win and the id the first named would be restored by nobody. |
-| `--json` | off | Print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (the state paths, with the home directory shortened to `~`, so a script expands the leading `~` before handing either to a tool), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column), `pruned` (the ids `--restore` takes, all of them rather than the five the table names), and `history` (the state tree behind the rows: `journals`, `rows`, `disagreed`, `pruned`, `truncated`, the counts `gauntlet doctor` prints on its Run history line). Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}`. Errors, including the exit codes, are unchanged. |
+| `--json` | off | Print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (the state paths, with the home directory shortened to `~`, so a script expands the leading `~` before handing either to a tool), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column, and an `args` argument a credential was stripped from reading `[redacted]` where the key was, since an operator's `--agent-cmd` names one), `pruned` (the ids `--restore` takes, all of them rather than the five the table names), and `history` (the state tree behind the rows: `journals`, `rows`, `disagreed`, `pruned`, `truncated`, the counts `gauntlet doctor` prints on its Run history line). Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}`. Errors, including the exit codes, are unchanged. |
 
 ## Environment variables
 
@@ -312,6 +312,13 @@ An agent that writes global configuration outside its state directory needs
 a grant for that configuration's parent directory. Every grant permits writes
 to the entire subtree; grant only what the run needs. Linux kernels with older
 Landlock ABIs cannot enforce newer operations (truncation needs ABI 3).
+
+An agent that writes the literal path `/tmp` needs a grant on macOS, where
+that path resolves to the shared `/private/tmp` rather than to the per-user
+temporary directory the run is granted: set `TMPDIR` to the directory the
+agent actually writes in, or pass `--sandbox-write /tmp` for a run that
+genuinely needs the shared one. On Linux, where the platform's temporary
+directory *is* `/tmp`, nothing changes.
 
 ## Memory limits on Linux
 
