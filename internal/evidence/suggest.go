@@ -92,10 +92,6 @@ const (
 	historyGoodRate = 0.5
 )
 
-// archMinFiles is where a codebase is large enough for its shape to be worth
-// reviewing on its own, rather than being one program you read end to end.
-const archMinFiles = 200
-
 // reasonsShown bounds the evidence printed beside a suggestion: the strongest
 // few say why, a full list says nothing.
 const reasonsShown = 3
@@ -120,6 +116,9 @@ var sourceExts = map[string]bool{
 	".rb": true, ".php": true, ".cs": true, ".zig": true, ".ts": true, ".tsx": true,
 	".js": true, ".jsx": true, ".mjs": true, ".vue": true, ".svelte": true,
 	".sh": true, ".bash": true, ".sql": true, ".lua": true, ".dart": true, ".ex": true,
+	".ino": true, ".scad": true, ".asm": true, ".s": true, ".c3": true,
+	".ps1": true, ".bat": true, ".cmd": true, ".m": true, ".mm": true,
+	".scala": true, ".pl": true, ".exs": true, ".jl": true, ".r": true,
 }
 
 // markEntry is one substring to look for and what finding it says about the
@@ -173,23 +172,42 @@ var marks = []markEntry{
 	mark("flag.parse", "cli"), mark("clap::", "cli"), mark("commander", "cli"), mark("yargs", "cli"),
 	mark("bubbletea", "tui"), mark("ratatui", "tui"), mark("curses", "tui"),
 	mark("rich.console", "tui"), mark("blessed", "tui"),
+	mark("createwindow", "gui"), mark("dialogbox", "gui"), mark("wm_paint", "gui"),
+	mark("qapplication", "gui"), mark("gtk_", "gui"), mark("imgui", "gui"),
+	mark("system.windows.forms", "gui"), mark("swiftui", "gui"),
+	mark("sys.argv", "cli"), mark("os.args", "cli"), mark("getopt", "cli"),
+	mark("process.argv", "cli"),
+	mark("json.loads", "parse"), mark("json.decode", "parse"), mark("json.unmarshal", "parse"),
+	mark("encoding/json", "parse"), mark("serde_json", "parse"), mark("struct.unpack", "parse"),
+	mark("json.parse", "parse"), mark("fread(", "parse"), mark("sscanf(", "parse"),
+	mark("os.write", "write"), mark("writefile", "write"), mark("write_file", "write"),
+	mark("fwrite(", "write"), mark("write_text(", "write"), mark("write_bytes(", "write"),
+	mark("fetch(", "httpclient"), mark("requests.", "httpclient"), mark("http.client", "httpclient"),
+	mark("http.get", "httpclient"), mark("http.post", "httpclient"), mark("curl", "httpclient"),
+	mark("os.getenv", "config"), mark("os.environ", "config"), mark("process.env", "config"),
+	mark("getenv(", "config"), mark("env::var", "config"), mark("viper.", "config"),
+	mark("malloc(", "resource"), mark("calloc(", "resource"), mark("fopen(", "resource"),
+	mark("createfile", "resource"), mark("allocglobal", "resource"),
+	mark("oauth", "personal"), mark("user.email", "personal"), mark("user_email", "personal"),
+	mark("analytics", "personal"), mark("telemetry.track", "personal"),
 	mark("gettext", "translate"), mark("i18n", "translate"), mark("usetranslation", "translate"),
 	mark("backup", "recovery"), mark("restore(", "recovery"), mark("failover", "recovery"),
-	mark("float32", "numeric"), mark("float64", "numeric"), mark("numpy", "numeric"),
+	mark("numpy", "numeric"), mark("math.", "numeric"), mark("sqrt(", "numeric"),
 	mark("decimal(", "numeric"), mark("round(", "numeric"),
 }
 
 // signals is what one pass over a tree found. Counts, not booleans: how much
 // of a thing there is decides whether its reviews are worth proposing.
 type signals struct {
-	files int
-	ext   map[string]int
-	name  map[string]bool
-	path  map[string]bool
-	mark  map[string]int
-	hot   map[string]int // extension to files changed inside the churn window
-	churn bool           // the repository reported recent commits
-	tests bool
+	files  int
+	source int
+	ext    map[string]int
+	name   map[string]bool
+	path   map[string]bool
+	mark   map[string]int
+	hot    map[string]int // extension to files changed inside the churn window
+	churn  bool           // the repository reported recent commits
+	tests  bool
 }
 
 func (s signals) count(exts ...string) int {
@@ -316,28 +334,32 @@ var hasWeb = lang(".html", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte")
 var fastRules = []rule{
 	// Every tree with code in it gets these: any code can be wrong, wasteful,
 	// padded, sloppily typed, or carrying a vulnerability.
-	{"source files to read", weightNormal, present(func(s signals) bool { return s.files > 0 }),
+	{"source files to read", weightNormal, present(func(s signals) bool { return s.source > 0 }),
 		[]string{"code-review", "sec-review", "minimalism-review", "slop-review",
-			"lint-review", "functionality-review"}},
-	{"a test suite", weightNormal, present(hasTests), []string{"test-review", "dst-review"}},
-	{"no tests found anywhere in the tree", weightStrong, absent(hasTests),
-		[]string{"test-review", "fuzz-review"}},
+			"lint-review", "perfectionism-review", "error-review", "perf-review"}},
+	{"a documented or tested program", weightNormal, present(func(s signals) bool {
+		return s.source > 0 && (hasDocs(s) || hasTests(s) || s.anyMark("cli"))
+	}), []string{"functionality-review"}},
+	{"a test suite", weightNormal, present(hasTests), []string{"test-review"}},
+	{"no tests in the source tree", weightStrong, present(func(s signals) bool {
+		return s.source > 0 && !hasTests(s)
+	}), []string{"test-review"}},
 	{"documentation", weightNormal, present(hasDocs), []string{"doc-review"}},
 	{"no documentation in the tree", weightStrong, absent(hasDocs),
-		[]string{"doc-review", "specs-review"}},
+		[]string{"doc-review"}},
 	{"CI workflows", weightNormal, present(hasCI), []string{"infra-review", "build-review"}},
-	{"no CI configuration", weightNormal, absent(hasCI), []string{"build-review", "release-review"}},
+	{"no CI configuration", weightNormal, absent(hasCI), []string{"build-review"}},
 	{"a linter configuration", weightNormal, present(hasLinter), []string{"lint-review"}},
 	{"a Dockerfile or compose file", weightStrong, present(func(s signals) bool {
 		return s.anyName("dockerfile", "containerfile", "docker-compose.yml", "compose.yaml", "compose.yml")
-	}), []string{"container-review"}},
+	}), []string{"container-review", "pkg-review", "threat-review"}},
 	{"infrastructure as code", weightStrong, present(func(s signals) bool {
 		return s.count(".tf", ".tfvars") > 0 || s.anyName("ansible.cfg", "playbook.yml") ||
 			s.anyPath("charts", "manifests", "kustomization.yaml")
 	}), []string{"infra-review", "container-review", "dr-review"}},
 	{"Kubernetes manifests or kustomize files", weightStrong, present(func(s signals) bool {
 		return s.anyName("kustomization.yaml", "kustomization.yml") ||
-			s.anyPath("manifests", "overlays", "base")
+			s.anyPath("manifests", "overlays")
 	}), []string{"k8s-review", "container-review"}},
 	{"a GitOps delivery layer", weightStrong, present(func(s signals) bool {
 		return s.anyPath("flux-system", "argocd") ||
@@ -350,13 +372,13 @@ var fastRules = []rule{
 		return s.anyName("makefile", "justfile", "cmakelists.txt", "meson.build", "build.gradle", "pom.xml")
 	}), []string{"build-review"}},
 	{"shell scripts", weightNormal, lang(".sh", ".bash", ".zsh"),
-		[]string{"cli-review", "compat-review"}},
+		[]string{"compat-review", "idempotency-review"}},
 	{"a Go module", weightNormal, present(func(s signals) bool { return s.anyName("go.mod") }),
 		[]string{"error-review", "deps-review"}},
 	{"a Rust crate", weightNormal, present(func(s signals) bool { return s.anyName("cargo.toml") }),
 		[]string{"resource-review", "deps-review"}},
 	{"C or C++ sources", weightNormal, lang(".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"),
-		[]string{"resource-review", "numerics-review", "fuzz-review"}},
+		[]string{"compat-review"}},
 	{"a Python package", weightNormal, present(func(s signals) bool {
 		return s.anyName("pyproject.toml", "requirements.txt", "setup.py")
 	}), []string{"deps-review", "error-review"}},
@@ -374,36 +396,61 @@ var fastRules = []rule{
 			s.count(".proto") > 0
 	}), []string{"api-review", "compat-review", "sdk-review"}},
 	{"configuration files", weightWeak, present(func(s signals) bool {
-		return s.count(".yaml", ".yml", ".toml", ".ini") > 0 || s.anyName(".env.example")
+		return s.count(".ini", ".conf", ".cfg") > 0 || s.anyName(".env.example", "config.yaml", "config.yml", "config.toml") || s.anyMark("config")
 	}), []string{"config-review"}},
 	{"translation files", weightStrong, present(func(s signals) bool {
 		return s.count(".po", ".pot") > 0 || s.anyPath("locales", "i18n", "translations")
 	}), []string{"i18n-review"}},
-	{"agent instructions or prompts", weightStrong, present(func(s signals) bool {
+	{"agent instruction files", weightStrong, present(func(s signals) bool {
 		return s.anyName("claude.md", "agents.md", "cursor.md", "copilot-instructions.md") ||
 			s.anyPath("prompts", ".claude", ".cursor")
-	}), []string{"agentrules-review", "prompt-review", "skills-review"}},
+	}), []string{"agentrules-review"}},
+	{"review prompts or prompt templates", weightStrong, present(func(s signals) bool {
+		for name := range s.name {
+			if strings.HasSuffix(name, "-review.md") {
+				return true
+			}
+		}
+		return s.anyPath("prompts")
+	}), []string{"prompt-review"}},
+	{"skill definitions", weightStrong, present(func(s signals) bool {
+		return s.anyName("skill.md") || s.anyPath(".claude/skills", ".agents/skills", ".claude/commands")
+	}), []string{"skills-review"}},
 	{"a packaged or released artifact", weightNormal, present(func(s signals) bool {
 		return s.anyName("changelog.md", "pkgbuild", "debian") || s.count(".spec") > 0
-	}), []string{"release-review", "pkg-review"}},
+	}), []string{"release-review"}},
+	{"packaging definitions", weightStrong, present(func(s signals) bool {
+		return s.anyName("pkgbuild", "setup.py", "setup.cfg", "manifest.in", "control", "flatpak.json", "snapcraft.yaml") || s.count(".spec") > 0 || s.anyPath("debian")
+	}), []string{"pkg-review"}},
 	{"a public API surface", weightWeak, present(func(s signals) bool {
-		return s.anyPath("pkg", "lib", "api", "include", "sdk")
-	}), []string{"sdk-review", "specs-review"}},
+		return s.anyPath("pkg", "lib", "api", "include", "sdk") && s.anyName("lib.rs", "setup.py", "index.d.ts", "py.typed")
+	}), []string{"sdk-review"}},
+	{"decision or requirement documents", weightStrong, present(func(s signals) bool {
+		if s.anyPath("docs/adr", "docs/decisions", "docs/rfcs", "docs/specs") {
+			return true
+		}
+		for name := range s.name {
+			if strings.HasPrefix(name, "adr-") || strings.HasPrefix(name, "rfc-") || strings.HasSuffix(name, "-adr.md") || strings.HasSuffix(name, ".prd.md") || name == "requirements.md" {
+				return true
+			}
+		}
+		return false
+	}), []string{"specs-review"}},
 	{"compiled code where speed is visible", weightNormal, lang(".c", ".cc", ".cpp", ".rs", ".go", ".zig"),
 		[]string{"perf-review"}},
 	{"benchmarks", weightStrong, present(func(s signals) bool { return s.anyPath("bench", "benchmarks") }),
 		[]string{"perf-review"}},
 	{"secrets or credentials handling", weightStrong, present(func(s signals) bool {
 		return s.anyName(".env", "secrets.yaml") || s.anyPath("secrets", "credentials")
-	}), []string{"sec-review", "privacy-review"}},
-	{"a tree with many parts", weightNormal, present(func(s signals) bool {
-		return s.files >= archMinFiles || s.anyPath("packages", "services", "apps", "crates", "modules", "cmd")
-	}), []string{"arch-review"}},
+	}), []string{"sec-review", "config-review"}},
+	{"a multi-file source tree", weightNormal, present(func(s signals) bool {
+		return s.source >= 2
+	}), []string{"arch-review", "design-review"}},
 
 	// What the files say inside. Directory names are a guess about a codebase;
 	// what it imports is a fact about it.
 	{"HTTP handlers in the source", weightStrong, present(func(s signals) bool { return s.anyMark("http") }),
-		[]string{"api-review", "authz-review", "threat-review", "o11y-review", "perf-review"}},
+		[]string{"api-review", "threat-review", "o11y-review", "perf-review", "fuzz-review", "resource-review"}},
 	{"database access in the source", weightStrong, present(func(s signals) bool { return s.anyMark("sql") }),
 		[]string{"db-review", "sec-review", "dr-review"}},
 	{"clock and calendar handling", weightStrong, present(func(s signals) bool { return s.anyMark("clock") }),
@@ -416,13 +463,13 @@ var fastRules = []rule{
 	{"a cache client", weightStrong, present(func(s signals) bool { return s.anyMark("cache") }),
 		[]string{"cache-review", "perf-review"}},
 	{"authentication code", weightStrong, present(func(s signals) bool { return s.anyMark("auth") }),
-		[]string{"authz-review", "sec-review", "privacy-review", "threat-review"}},
+		[]string{"authz-review", "sec-review", "threat-review"}},
 	{"unsafe or dynamic evaluation", weightStrong, present(func(s signals) bool { return s.anyMark("unsafe") }),
-		[]string{"sec-review", "fuzz-review", "resource-review"}},
+		[]string{"sec-review"}},
 	{"subprocess execution", weightStrong, present(func(s signals) bool { return s.anyMark("exec") }),
 		[]string{"sec-review", "compat-review"}},
 	{"model or LLM calls", weightStrong, present(func(s signals) bool { return s.anyMark("model") }),
-		[]string{"llm-review", "prompt-review", "privacy-review"}},
+		[]string{"llm-review"}},
 	{"cloud or cluster APIs", weightStrong, present(func(s signals) bool { return s.anyMark("cloud") }),
 		[]string{"infra-review", "dr-review", "config-review"}},
 	{"retries, queues, or backoff", weightStrong, present(func(s signals) bool { return s.anyMark("retry") }),
@@ -437,9 +484,18 @@ var fastRules = []rule{
 		[]string{"cli-review", "ux-review", "dx-review"}},
 	{"a terminal interface", weightStrong, present(func(s signals) bool { return s.anyMark("tui") }),
 		[]string{"ux-review", "design-review", "a11y-review", "uislop-review"}},
-	{"user-facing text", weightWeak, present(func(s signals) bool {
-		return s.count(".md", ".txt", ".html") > 0
-	}), []string{"unicode-review"}},
+	{"a graphical interface", weightStrong, present(func(s signals) bool { return s.anyMark("gui") || s.count(".xaml", ".qml") > 0 }),
+		[]string{"ux-review", "design-review", "a11y-review", "uislop-review", "resource-review"}},
+	{"input parsing", weightStrong, present(func(s signals) bool { return s.anyMark("parse") }),
+		[]string{"fuzz-review", "threat-review", "unicode-review"}},
+	{"file or network side effects", weightStrong, present(func(s signals) bool { return s.anyMark("write", "httpclient") }),
+		[]string{"idempotency-review", "threat-review", "unicode-review"}},
+	{"resource acquisition", weightStrong, present(func(s signals) bool { return s.anyMark("resource") }),
+		[]string{"resource-review"}},
+	{"personal data handling", weightStrong, present(func(s signals) bool { return s.anyMark("personal") }),
+		[]string{"privacy-review"}},
+	{"concurrent state or persistent storage", weightStrong, present(func(s signals) bool { return s.anyMark("concurrent", "sql", "retry") }),
+		[]string{"dst-review"}},
 }
 
 // isTestFile recognizes the naming conventions test files follow, since a
@@ -694,6 +750,9 @@ func record(s *signals, rel string) {
 	}
 	if ext := strings.ToLower(path.Ext(base)); ext != "" {
 		s.ext[ext]++
+		if sourceExts[ext] {
+			s.source++
+		}
 	}
 }
 

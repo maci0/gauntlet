@@ -474,7 +474,7 @@ func TestParseSuggestions(t *testing.T) {
 	if len(picked) != 2 {
 		t.Fatalf("got %+v", picked)
 	}
-	if picked[0].Name != "sec-review" || picked[0].Reason != "handles auth" {
+	if picked[0].Name != "sec-review" || picked[0].Reason != "handles auth" || picked[0].Weight != 1 {
 		t.Fatalf("first pick wrong: %+v", picked[0])
 	}
 	if picked[1].Name != "doc-review" {
@@ -485,6 +485,43 @@ func TestParseSuggestions(t *testing.T) {
 	}
 	if dropped != 0 {
 		t.Fatalf("dropped %d unknown names with room for them", dropped)
+	}
+}
+
+func TestParseSuggestionsWeights(t *testing.T) {
+	for _, tc := range []struct {
+		output string
+		weight int
+	}{
+		{"weight=0: skip\nRELEVANT: sec: weight=3: duplicate", 0},
+		{"weight=1: reason", 1},
+		{"weight=2: reason", 2},
+		{"weight=3: reason\nRELEVANT: sec: weight=1: duplicate", 3},
+		{"weight=4: reason", 0},
+		{"weight=4: invalid\nRELEVANT: sec: weight=2: reason", 2},
+		{"weight=-1: reason", 0},
+		{"weight=30: reason", 0},
+		{"weight=03: reason", 0},
+		{"weight=3", 0},
+		{"weight=\x003: reason", 0},
+		{"weight=\u200b3: reason", 0},
+		{"weight=2: \x1breason\x00", 2},
+	} {
+		t.Run(tc.output, func(t *testing.T) {
+			picked, unknown, _ := ParseSuggestions("RELEVANT: sec-review: "+tc.output, []string{"sec-review"})
+			if len(unknown) != 0 {
+				t.Fatalf("unknown: %v", unknown)
+			}
+			if tc.weight == 0 {
+				if len(picked) != 0 {
+					t.Fatalf("invalid or zero weight scheduled: %+v", picked)
+				}
+				return
+			}
+			if len(picked) != 1 || picked[0].Weight != tc.weight || picked[0].Reason != "reason" {
+				t.Fatalf("picked %+v, want weight %d and sanitized reason", picked, tc.weight)
+			}
+		})
 	}
 }
 
@@ -582,6 +619,8 @@ func FuzzParseSuggestions(f *testing.F) {
 	available := []string{"sec-review", "doc-review", "test-review"}
 	seeds := []string{
 		"RELEVANT: sec-review: handles auth",
+		"RELEVANT: sec-review: weight=3: handles auth\nRELEVANT: doc-review: weight=0: skip",
+		"RELEVANT: sec-review: weight=99999999999999999999: excessive",
 		"thinking...\nRELEVANT: sec\nRELEVANT: doc-review",
 		"relevant: test-review: lowercase label",
 		"RELEVANT: nope-review: not available\nRELEVANT: nope: also not",
@@ -610,6 +649,9 @@ func FuzzParseSuggestions(f *testing.F) {
 				t.Fatalf("duplicate pick for %q", s.Name)
 			}
 			seen[s.Name] = true
+			if s.Weight < 1 || s.Weight > 3 {
+				t.Fatalf("unbounded weight for %q: %d", s.Name, s.Weight)
+			}
 			if n := utf8.RuneCountInString(s.Reason); n > catalogDescMax+1 {
 				t.Fatalf("reason for %q is %d runes, want at most %d: %q",
 					s.Name, n, catalogDescMax+1, s.Reason)

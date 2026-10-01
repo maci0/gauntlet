@@ -95,7 +95,7 @@ A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
 | `--paths LIST` | whole tree | Scope every review to these paths, relative to the reviewed directory. An entry may be a single file (`scripts/bolide.py`), a directory (everything under it), or a glob; comma-separated and repeatable. The agent still works from the full repository for context — the scope is prompt-enforced, not mechanical — but is told to report findings on and modify only the listed paths. An explicit empty `--paths` is refused, as is an entry carrying a line break, a backtick, or more than 200 characters: the entries are pasted into the prompt as instructions, so one that is not a path is refused where the operator can see it. |
 | `--max-reviews N` | unlimited | Cap on reviews per loop. The cut happens after the seeded per-loop shuffle, so `--seed` replays exactly which N ran and different loops of one run sample different reviews. A review scheduled twice (weighting) fills two of the N slots when the shuffle places both inside the cut. With `--stacked-prs` each ordered pass is truncated to its first N entries, so at most N PRs per loop. A value at or above the schedule length changes nothing. |
-| `-s, --suggest` | off | An agent inspects the repo and proposes the relevant reviews. It composes with `--reviews` rather than replacing it: anything named there is scheduled as well, and a review the agent also picks is scheduled twice, which is how repeats have always asked for more weight. `--reviews suggest,sec` says the same thing. The step runs before the schedule exists, so it runs under `--list` and `--dry-run` too. |
+| `-s, --suggest` | off | An agent inspects the repo, picks relevant reviews, and assigns each a weight of 1–3 passes per loop according to expected review value. Weight 0 skips a review. The preview shows repeats as `(x2)` or `(x3)`. Anything named with `--reviews` is also scheduled: naming a review once adds one pass to its suggested weight. `--reviews suggest,sec` says the same thing. Older agent output without weights and the file-signal suggester each schedule one pass per pick. The step runs before the schedule exists, so it runs under `--list` and `--dry-run` too. `--max-reviews` caps the resulting schedule, including repeats. |
 | `--suggest-agent AGENT` | from `--agents` | Agent to run the suggest step, or `gauntlet` to choose from file signals instead of asking a model: it costs no tokens and answers in milliseconds. It weighs how much of the tree each language is, reads the head of source files for what they import and call, asks git which files have changed in the last 90 days, counts what is missing (no tests, no docs, no CI) as evidence of its own, and demotes reviews that have finished in this directory several times without changing a line. Reviews are ranked by that evidence and the weakest are not proposed. It still cannot tell a toy HTTP handler from a payment path; an agent can. |
 | `--suggest-timeout DUR` | `30m` | Timeout for the suggest step. |
 | `--prompt-dir DIR` | bundled | Use `*-review.md` files from DIR instead of the embedded set. |
@@ -311,3 +311,26 @@ An agent that writes global configuration outside its state directory needs
 a grant for that configuration's parent directory. Every grant permits writes
 to the entire subtree; grant only what the run needs. Linux kernels with older
 Landlock ABIs cannot enforce newer operations (truncation needs ABI 3).
+
+## Memory limits on Linux
+
+Gauntlet does not impose a memory limit on agents or their subprocesses.
+The filesystem sandbox does not limit memory. On Linux with systemd and the
+cgroup v2 memory controller available to your user manager, wrap the run in
+a transient scope:
+
+```sh
+systemd-run --user --scope \
+  -p MemoryMax=4G -p MemorySwapMax=0 \
+  gauntlet --once -a microagent
+```
+
+`MemoryMax=4G` caps the scope's aggregate memory usage at 4 GiB, including
+Gauntlet, all parallel agents, and their subprocesses. The cap is shared
+across `--jobs`. `MemorySwapMax=0` disables swap for the scope. If memory
+cannot be reclaimed to stay within the cap, the kernel may kill processes
+in the scope, which can fail the run. Adjust `4G` for your workload.
+
+These are `systemd-run` properties; see
+[systemd's memory controls](https://github.com/systemd/systemd/blob/main/man/systemd.resource-control.xml)
+for details.

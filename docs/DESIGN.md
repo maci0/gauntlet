@@ -729,6 +729,22 @@ already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
 any with a commit HEAD lacks. Checkpoints sit in their own directory because
 the handoff writer sweeps every day-old file in `state/`.
 
+## Agent-assigned review weights
+
+The suggest step asks an agent for expected review value as well as relevance:
+1 schedules a useful pass, 2 an important second pass, and 3 three passes for a
+critical area. These are repeat counts per loop, the same weights manual
+repetition already uses. They are not confidence scores. The output protocol is
+`RELEVANT: sec-review: weight=3: critical authentication path`.
+
+The parser accepts only discovered names and integer weights 0–3. Zero skips
+the review, malformed weights are ignored, and the first valid mention of a
+name wins, including zero. Older output without a weight defaults to one pass.
+The preview reports weights before confirmation, then expands them into the
+existing schedule. Manual entries add to that schedule; `--max-reviews` limits
+it with the existing shuffle and truncation rules. The file-signal suggester
+continues to contribute one pass per pick.
+
 ## Choosing reviews without an agent
 
 `--suggest-agent gauntlet` answers the triage question from evidence on disk,

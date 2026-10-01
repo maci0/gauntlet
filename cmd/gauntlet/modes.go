@@ -280,9 +280,12 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 			if reason == "" {
 				reason = "(no reason given)"
 			}
+			if p.Weight > 1 {
+				reason = fmt.Sprintf("(x%d) %s", p.Weight, reason)
+			}
 			fmt.Fprintf(out, "  %s %s\n", report.PadCells(p.Name, col+1), pal.Dim(reason))
+			total += max(1, p.Weight)
 		}
-		total += len(r.picked)
 		// The same exclusions the schedule below applies, and the error is
 		// raised rather than swallowed: a bad --reviews is worth reporting
 		// before consent is asked for, not after it is given.
@@ -307,11 +310,13 @@ func planReviews(ctx context.Context, runs []*dirRun, opts *options, agents []ag
 	for i, d := range runs {
 		var scheduled []string
 		for _, p := range results[i].picked {
-			scheduled = append(scheduled, p.Name)
+			for range max(1, p.Weight) {
+				scheduled = append(scheduled, p.Name)
+			}
 		}
-		// What the person named rides along with what the agent picked, and a
-		// review on both lists lands twice: repeats are weight to the
-		// scheduler, so naming one is how you ask for more of it.
+		// What the person named rides along with what the agent picked, and
+		// manual repeats add to its suggested weight: naming one is how you
+		// ask the scheduler for more of it.
 		scheduled = append(scheduled, results[i].named...)
 		if len(scheduled) == 0 {
 			return fmt.Errorf("%s: the suggest step picked no reviews", d.dir)

@@ -26,6 +26,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.33.0
+
+### Added
+
+- Suggestion agents assign review weights of 1–3 passes per loop based on expected review value. The preview shows repeats, manual review entries add to those weights, and older unweighted suggestions still schedule one pass. Explicit zero weights skip a review; malformed or out-of-range weights are ignored.
+- Documented Linux memory limits for review runs using a systemd scope, including the shared cap across agents and subprocesses, swap control, and possible out-of-memory kills.
+- Added the project website with installation guidance and a dashboard preview.
+
+### Changed
+
+- File-based suggestions recognize more source formats and native GUI code, and use parsing, side effects, resource acquisition and personal-data signals for specialized reviews.
+
 ### Fixed
 
 - macOS checks now export the closed Go flags with make 3.81, isolate the credential-helper fixture from system git config, and skip the raw-byte filename fixture only when the filesystem refuses it. The recursive-analysis fixture pins the make command independently of its inherited path.

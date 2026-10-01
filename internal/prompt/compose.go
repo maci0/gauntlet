@@ -414,10 +414,13 @@ func SuggestPrompt(set Set, names []string) string {
 	return strings.ReplaceAll(rule("suggest.md"), "{reviews}", strings.TrimRight(b.String(), "\n"))
 }
 
-// Suggestion is one review an agent proposed, with its stated reason.
+// Suggestion is one review an agent proposed, with its stated reason and weight.
 type Suggestion struct {
 	Name   string
 	Reason string
+	// Weight is the number of passes requested, bounded to 1–3 for agent
+	// output. Zero means unspecified and keeps the existing one-pass default.
+	Weight int
 }
 
 // Bounds on the half of a triage answer that names reviews nobody has. The
@@ -455,7 +458,7 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 		// The token is agent output and the pool is NFC-normalized at
 		// discovery; an agent that decomposed a name it copied must still
 		// match (see nfc).
-		name, reason := nfc(m[1]), normalize.Truncate(nfc(strings.TrimSpace(sanitize(m[2]))), catalogDescMax)
+		name := nfc(m[1])
 		if !known[name] && known[name+"-review"] {
 			name += "-review"
 		}
@@ -475,10 +478,27 @@ func ParseSuggestions(out string, available []string) (picked []Suggestion, unkn
 			continue
 		}
 		if seen[name] {
-			continue // first mention wins
+			continue // first valid mention wins
+		}
+		weight := 1
+		// An explicit prefix keeps older free-text reasons unambiguous. Parse
+		// before sanitizing: removing a control must not repair a weight into
+		// a valid request. Invalid weights cannot inflate the review schedule.
+		text := strings.TrimSpace(m[2])
+		if strings.HasPrefix(text, "weight=") {
+			token, rest, ok := strings.Cut(text, ":")
+			if !ok || len(token) != len("weight=0") || token[7] < '0' || token[7] > '3' {
+				continue
+			}
+			weight = int(token[7] - '0')
+			text = rest
 		}
 		seen[name] = true
-		picked = append(picked, Suggestion{Name: name, Reason: reason})
+		if weight == 0 {
+			continue
+		}
+		reason := normalize.Truncate(nfc(strings.TrimSpace(sanitize(text))), catalogDescMax)
+		picked = append(picked, Suggestion{Name: name, Reason: reason, Weight: weight})
 	}
 	return picked, unknown, dropped
 }
