@@ -28,6 +28,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Changed
 
+- `prompt-review` no longer tells an agent that a prompt the loader cannot dispatch is one "a name the runner's name list does not carry": the bundled set is a file glob and a golden list is a test that fails the build, so neither is a dispatch gate, and absence from either is not a defect. The skip conditions the loader actually applies are named instead (skipped directory, wrong suffix, symlink, gitignored file), the review tells an agent how to find the three sources before judging them, the auto-fix line says which bounded edits to make on the spot and which to report, and the tool line points at the loader's own source when the runner's binary is not on PATH.
 - The dashboard's braille charts render each cell's escape sequence once instead of once per cell per frame. A busy frame (eight lanes, a 120-column activity strip) drops from about 5,770 allocations to about 3,505, and the chart itself from 877 to 53, measured by `BenchmarkView` and `BenchmarkChart`; the drawn output is byte-identical, and `--no-color` still drops the table with the color profile.
 - The heat ramp is one table with one set of cut points, so the color a meter
   draws and the index the chart's glyph table is keyed by cannot drift apart:
@@ -74,6 +75,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
   the host does not have is skipped instead of refusing the launch.
 - The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
+
+### Fixed
+
+- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
+  target had drifted, so a reader following one landed on the wrong recipe: a
+  seven-line recipe added ahead of that target moved each of them, and
+  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
+  The pointers are re-anchored, and one that named the comment above the
+  checksums recipe now names the recipe.
 
 ## 1.34.1
 

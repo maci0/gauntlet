@@ -8,6 +8,8 @@ First decide if this review applies. Prompts reach an agent from three places, a
 
 Review the following:
 
+Find the subject before judging it: list `*-review.md` under the tree (skipping `vendor`, `dist`, `.git`, `.venv`, and any other directory the loader would skip), then the runner or plugin's own bundled set and whatever `--prompt-dir` the operator passed. A `*-review.md` that no loader walks is itself a finding, not a file to skip.
+
 1. Structure and completeness
 - Missing role/goal opener that tells the agent who it is and what winning looks like
 - Conditional reviews without an applicability gate ("if the repo has no X, print the skip result and stop") so they burn passes on repos they don't fit
@@ -64,7 +66,7 @@ Review the following:
 
 10. Maintenance signals
 - Prompts that drifted from the tooling that dispatches them (renamed flags, changed rules, stale references)
-- Prompts the dispatcher cannot load: a file the loader skips or ignores, or a name the runner's name list does not carry. A curated set may omit a prompt and still dispatch it by name, so absence from a set is not the defect
+- Prompts the dispatcher cannot load: a file the loader skips or ignores (a directory it does not walk, a suffix other than `-review.md`, a symlink, a file gitignored in the reviewed tree). A curated set may omit a prompt and still dispatch it by name, and a test's golden name list is a contract that fails the build, not a dispatch gate: absence from either is not the defect
 - References to files, reviews, or tools that no longer exist
 - Version-sensitive facts (standards, model names, CLI flags) with no way to notice staleness
 
@@ -74,11 +76,12 @@ Instructions:
 - Judge prompts as an agent consumes them, not as a human reads them: every sentence either changes agent behavior or costs attention.
 - Compare each prompt against its siblings before judging it alone; most defects are inconsistencies, not isolated flaws.
 - Fix with the smallest edit: sharpen a bullet, add a fence line, delete a duplicate. Never rewrite a prompt wholesale in one pass.
+- In auto-fix mode, make the same bounded edits on the spot: an inaccurate line in a prompt, a registration whose absence fails a contract test, a reference to a file, review, or tool that is gone. Do not add a review, reformat the set, or settle a disagreement between two prompts; record those as findings.
 - You may modify existing prompt files only where the execution environment permits it; never delete one. Create a new prompt file only as the Missing-prompts rule below directs.
 - Report-shaped sections (`For each finding include`, `Output format`) stay: the runner strips them at compose time so standalone use still has a finding template. Do not delete them.
 - Do not review prompt templates inside application source (llm-review), shipped skills (skills-review), agent rule files (agentrules-review), general documentation (doc-review), or PRDs/ADRs/RFCs (specs-review).
 - Test factual claims (tool names, flags, standards) before flagging them; a wrong correction is worse than the original.
-- If available, use: the review runner's own evidence over assumption. Its review listing (`--list`, or the loader's name test) settles whether a prompt is dispatchable and under which name; its help output settles what a flag does. Read the composition code when a claim is about what the agent actually receives, since a prompt's standalone text and its composed text differ. Never install tools.
+- If available, use: the review runner's own evidence over assumption. `gauntlet --list` settles whether a prompt is dispatchable and under which name, and `gauntlet --help` settles what a flag does; where the binary is not on PATH, read the loader's own source instead (`Discover`/`BundledNames` for what it walks and accepts, `Compose` for what an agent actually receives, since a prompt's standalone text and its composed text differ). Never install tools.
 - Prefer fewer, high-value findings and leave well-constructed prompts alone: a prompt set re-litigated wholesale every pass is churn, not review.
 
 Missing prompts this repository warrants
