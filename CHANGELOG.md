@@ -28,6 +28,31 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
+  target had drifted, so a reader following one landed on the wrong recipe: a
+  seven-line recipe added ahead of that target moved each of them, and
+  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
+  The pointers are re-anchored, and one that named the comment above the
+  checksums recipe now names the recipe.
+- Truncating a line cut on a character, not a byte: `normalize.Clip` and
+  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
+  measuring the cut, so what they return is always text. A file name holding
+  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
+  half-written character into a commit subject, a pull request body, or the
+  lock note another run reads, where the terminal and every width measurement
+  downstream have to guess what they are looking at.
+- Two runs reaching the same repository at once no longer write gauntlet's
+  scratch exclusions twice. Deciding which entries `.git/info/exclude` is
+  missing and appending them was one read-modify-write, so two writers could
+  both read the file before either appended, both decide the same entries are
+  missing, and both write them; every later run kept the duplicates, because
+  its presence check stops at the first match. `--dirs` builds a repository
+  handle per directory and two of those can be two checkouts of one
+  repository, and a second gauntlet on the same clone is a separate process.
+  The whole check-then-act now runs under one exclusive lock on a sibling
+  file beside the exclude file, which carries the same planted-path refusals
+  the append already had. A single run's behavior is unchanged: it wrote each
+  entry once before and does now.
 - The launcher's scrolled panes now say how far they are scrolled, and which
   end the rows went. Each pane title carried a count of the rows below the
   fold only, so a list scrolled to its end still read "+N more" while the N
@@ -61,16 +86,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `MinVersion` and `DeleteMergedBranchesMatching` and `internal/report`'s
   `Palette` and `Think` were the findings it revealed.
 
-### Fixed
-
-- Truncating a line cut on a character, not a byte: `normalize.Clip` and
-  `normalize.Truncate` now repair bytes that are not valid UTF-8 before
-  measuring the cut, so what they return is always text. A file name holding
-  one raw byte is legal on ext4 and APFS, and a cut landing next to it put a
-  half-written character into a commit subject, a pull request body, or the
-  lock note another run reads, where the terminal and every width measurement
-  downstream have to guess what they are looking at.
-
 ### Security
 
 - The run journal kept the whole command line, home directory aside. An
@@ -91,15 +106,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
   the host does not have is skipped instead of refusing the launch.
 - The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
-
-### Fixed
-
-- Every `Makefile:` line reference in `docs/THREAT_MODEL.md` past the release
-  target had drifted, so a reader following one landed on the wrong recipe: a
-  seven-line recipe added ahead of that target moved each of them, and
-  `TestDocsPointAtTheMakefileLineTheyName` was red for every pointer it checks.
-  The pointers are re-anchored, and one that named the comment above the
-  checksums recipe now names the recipe.
 
 ## 1.34.1
 

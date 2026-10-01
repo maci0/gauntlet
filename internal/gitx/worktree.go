@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 
 	"github.com/maci0/gauntlet/internal/runx"
 	"github.com/maci0/gauntlet/internal/safefile"
@@ -89,6 +90,16 @@ const conflictMarker = "<<<<<<<"
 // status output. A short write is a failure, though, not a success: the next
 // run's entry check would not match a truncated line and would append the
 // same entry again on every run.
+//
+// Deciding what is missing and appending it is one read-modify-write, and two
+// writers can reach it at once: --dirs builds a Repo per directory, two
+// directories can be two checkouts of one repository sharing a single
+// .git/info/exclude, and a second gauntlet on the same clone is a separate
+// process entirely. Two writers that both read the file before either appends
+// both decide the same entries are missing and both append them, so the
+// exclusion is written twice, and every later run keeps the duplicates because
+// its presence check stops at the first match. The whole check-then-act runs
+// under one exclusive lock on a sibling file for that reason.
 func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	out, err := r.run(ctx, gitQuick, "rev-parse", "--git-common-dir")
 	if err != nil {
@@ -99,6 +110,25 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 		gitDir = filepath.Join(r.Dir, gitDir)
 	}
 	path := filepath.Join(gitDir, "info", "exclude")
+	// MkdirAll and the open both follow a symlink at any component, and the
+	// reviewed tree picks gitDir: `.git` can be a symlink or a gitfile whose
+	// path lands elsewhere, and `.git/info` can be planted outright. The
+	// directory is re-checked before anything is written under it, and the
+	// append itself carries O_NOFOLLOW so the last component cannot be the
+	// link either. A hardlink is a real regular file and a legitimate way to
+	// share one exclude between worktrees, so only a non-regular descriptor
+	// is refused.
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if !realDir(filepath.Dir(path)) {
+		return fmt.Errorf("git exclude directory %s is not a real directory", filepath.Dir(path))
+	}
+	unlock, err := lockExclude(path)
+	if err != nil {
+		return err
+	}
+	defer unlock()
 	// The exclude file itself is as plantable as its directory, so the read
 	// goes through the one guarded open every repository-planted path in this
 	// tree uses: safefile.OpenRead refuses a symlink, and following one would
@@ -126,22 +156,6 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	if len(missing) == 0 {
 		return nil
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	// MkdirAll and the open both follow a symlink at any component, and the
-	// reviewed tree picks gitDir: `.git` can be a symlink or a gitfile whose
-	// path lands elsewhere, `.git/info` can be planted outright, and
-	// `exclude` itself can be a link to any file on the machine. Appending
-	// through any of them writes a line the operator did not ask for, into a
-	// file outside the repository. The directory is re-checked, and
-	// safefile.Append carries O_NOFOLLOW so the last component cannot be the
-	// link either. A hardlink is a real regular file and a legitimate way to
-	// share one exclude between worktrees, so only a non-regular descriptor
-	// is refused.
-	if !realDir(filepath.Dir(path)) {
-		return fmt.Errorf("git exclude directory %s is not a real directory", filepath.Dir(path))
-	}
 	f, _, err := safefile.Append(path, 0o644)
 	if err != nil {
 		return err
@@ -155,6 +169,50 @@ func (r *Repo) ExcludeOwnArtifacts(ctx context.Context) error {
 	// The close is where a full disk surfaces on an append that buffered, so
 	// both failures are reported rather than the first one alone.
 	return errors.Join(writeErr, f.Close())
+}
+
+// lockExclude takes an exclusive lock on a file beside the exclude file and
+// returns the function that releases it. It is the read-modify-write guard
+// ExcludeOwnArtifacts holds across its check and its append.
+//
+// The lock is a sibling of the exclude file rather than the exclude file
+// itself, so taking it does not create or truncate the file whose contents are
+// being decided. It is opened O_NOFOLLOW and refused unless it is a regular
+// file, the same planted-path rule every repository-chosen file here follows:
+// the reviewed tree picks .git, and a lock path it controls could otherwise
+// make a run block on a FIFO forever. The name is gauntlet's own, so an
+// exclude file it writes is not a lock.
+//
+// A filesystem that cannot flock takes no lock, exactly as the journal's
+// writer lock does: the append is still the same, only the mutual exclusion
+// between two writers is lost on such a mount.
+func lockExclude(path string) (func(), error) {
+	lock := path + ".lock"
+	fd, err := syscall.Open(lock,
+		syscall.O_RDWR|syscall.O_CREAT|syscall.O_NOFOLLOW|syscall.O_NONBLOCK|syscall.O_CLOEXEC, 0o600)
+	if err != nil {
+		return nil, fmt.Errorf("cannot open exclude lock %s: %w", lock, err)
+	}
+	var st syscall.Stat_t
+	if err := syscall.Fstat(fd, &st); err != nil {
+		syscall.Close(fd)
+		return nil, err
+	}
+	if st.Mode&syscall.S_IFMT != syscall.S_IFREG {
+		syscall.Close(fd)
+		return nil, fmt.Errorf("exclude lock %s is not a regular file", lock)
+	}
+	// Best effort, like the run lock: the file is 0600 when this call creates
+	// it, and a lock this account does not own cannot be retightened anyway.
+	_ = syscall.Fchmod(fd, 0o600)
+	if err := syscall.Flock(fd, syscall.LOCK_EX); err != nil {
+		syscall.Close(fd)
+		return nil, fmt.Errorf("cannot lock %s: %w", lock, err)
+	}
+	return func() {
+		_ = syscall.Flock(fd, syscall.LOCK_UN)
+		_ = syscall.Close(fd)
+	}, nil
 }
 
 // excludedEntries is the set of patterns an exclude file actually applies.
