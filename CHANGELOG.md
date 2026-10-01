@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.32.0
+
 ### Added
 
 - `gauntlet resume` continues a run that was killed without a word: an OOM kill, a crashed desktop session, a power cut. Every recorded result and every finished loop now rewrites a checkpoint under `state/checkpoints/`, the hot-reload handoff plus the command line and working directory, with the reviews whose agents were running counted unfinished. A run that ends on its own deletes it. `gauntlet resume` with no id lists the runs that have one and whether a gauntlet still holds their directory; `gauntlet resume <run-id>` changes to the run's directory and hands over to this binary the way a hot reload does, keeping the run id, schedule, seed, results, and loop budget, and running only what the kill left unfinished. A held directory is refused with exit 75.
