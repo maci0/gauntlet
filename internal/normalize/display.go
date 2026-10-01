@@ -133,10 +133,14 @@ func RedactHome(s string) string {
 		b.WriteString(s[:i])
 		rest := s[i+len(home):]
 		// A partial component is somebody else's path that merely starts with
-		// the same bytes.
+		// the same bytes. It is left whole and the scan resumes past it:
+		// emitting one byte of home and rewinding the cursor to i+1 dropped
+		// the rest of the match, so the account name stayed in the output
+		// ("/home/alice and /home/alice/x" kept its first occurrence) and the
+		// search could no longer see a later one.
 		if rest != "" && rest[0] != os.PathSeparator {
-			b.WriteString(home[:1])
-			s = s[i+1:]
+			b.WriteString(home)
+			s = rest
 			continue
 		}
 		b.WriteString("~")

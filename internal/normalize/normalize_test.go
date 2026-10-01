@@ -977,6 +977,15 @@ func TestRedactHome(t *testing.T) {
 		{"partial component", home + "backup/x", home + "backup/x"},
 		{"unrelated", "/srv/app.log", "/srv/app.log"},
 		{"empty", "", ""},
+		// A match not followed by a separator is somebody else's bytes, but
+		// the rest of the line is still this operator's own paths and has to be
+		// rewritten. The partial-component branch used to emit one byte of home
+		// and rewind the cursor to i+1, so the remainder of the match was
+		// rescanned, never matched, and the account name stayed in the line.
+		{"partial then whole", "see " + home + " and " + home + "/x", "see " + home + " and ~/x"},
+		{"partial then bare", home + "backup and " + home, home + "backup and ~"},
+		{"partial twice", home + "backup " + home + "backup2", home + "backup " + home + "backup2"},
+		{"whole then partial", "src " + home + "/a " + home + "backup", "src ~/a " + home + "backup"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := RedactHome(tt.in); got != tt.want {

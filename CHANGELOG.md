@@ -41,6 +41,16 @@ the journaled event stream in `internal/runner/contract_test.go`.
   whose name is not printable text, and one of two files where a name
   conflicts, silently vanished from the reviews the screen offered and the run
   went on to schedule.
+- A home directory followed by something other than a separator no longer
+  survives redaction. `RedactHome` kept a home occurrence whose next byte was
+  not a path separator, which is right for `/home/alicebackup` but wrong for
+  any line where the operator's home is followed by a space: the partial
+  branch emitted one byte of the path and resumed scanning inside the match, so
+  the rest of it was never matched and the account name stayed in the text
+  (`"see /home/alice and /home/alice/src"` kept its first occurrence verbatim).
+  A journal line or an argv that named the home directory twice kept the name
+  the rewrite exists to remove. A partial match is now left whole and the scan
+  resumes past it.
 - A review scheduled twice is counted twice again in `gauntlet runs`. The
   index row folds a repeated `review_end` into one review so a hot-reload
   successor does not report work its predecessor already counted, and the
