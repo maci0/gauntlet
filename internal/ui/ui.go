@@ -32,6 +32,10 @@ import (
 // would silence the plain reporter yet leave the TUI fully colored.
 func SetMonochrome() {
 	lipgloss.SetColorProfile(termenv.Ascii)
+	// The chart's glyphs are rendered once against the profile they were
+	// drawn under, so a table built in color would outlive this call and
+	// leave escapes on the screen the flag asked to be plain.
+	chartGlyphs.Store(nil)
 }
 
 // Config describes the run the dashboard is watching.

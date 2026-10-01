@@ -784,6 +784,76 @@ func TestChartDrawsGridWhenEmpty(t *testing.T) {
 	}
 }
 
+// The chart's glyph table is indexed by ramp step, and every other call site
+// still names the ramp's colors, so the table and heatColor have to answer the
+// same question the same way. A step that drifted would draw a magnitude in a
+// color that means something else.
+func TestHeatIndexNamesTheRampStep(t *testing.T) {
+	for _, f := range []float64{
+		math.NaN(), 0, 0.02, 0.021, 0.1, 0.249, 0.25, 0.4, 0.5,
+		0.6, 0.72, 0.8, 0.88, 0.9, 1,
+	} {
+		if got, want := heatSteps[heatIndex(f)], heatColor(f); got != want {
+			t.Fatalf("heatIndex(%v) = %v, want %v", f, got, want)
+		}
+	}
+	// The unlit baseline is stroked in the track, which is the ramp's cold
+	// end, so the table's extra row has to be that same step.
+	if track := chartGlyphTable()[len(heatSteps)]; track[brailleSuffix[1]] != chartGlyphTable()[0][brailleSuffix[1]] {
+		t.Fatal("the unlit baseline is not drawn in the ramp's cold end")
+	}
+}
+
+// The table is rendered once and reused for the process, so what a cell writes
+// has to be what asking lipgloss for the same glyph in the same color
+// produces. A drift is a dashboard whose charts changed color without
+// anything about the run changing.
+func TestChartGlyphsMatchARenderedGlyph(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() {
+		r.SetColorProfile(prev)
+		chartGlyphs.Store(nil)
+	})
+	r.SetColorProfile(termenv.ANSI256)
+	chartGlyphs.Store(nil)
+
+	table := chartGlyphTable()
+	for i, c := range heatSteps {
+		for _, pattern := range brailleSuffix {
+			glyph := string(rune(0x2800 + pattern))
+			if got, want := table[i][pattern], styled(c, glyph); got != want {
+				t.Fatalf("chart glyph for step %d is %q, want %q", i, got, want)
+			}
+		}
+	}
+}
+
+// --no-color has to reach the glyphs too, and they are rendered once: a table
+// built before the flag would leave the charts the one thing still colored.
+func TestSetMonochromeRebuildsChartGlyphs(t *testing.T) {
+	r := lipgloss.DefaultRenderer()
+	prev := r.ColorProfile()
+	t.Cleanup(func() {
+		r.SetColorProfile(prev)
+		chartGlyphs.Store(nil)
+	})
+	r.SetColorProfile(termenv.TrueColor)
+	chartGlyphs.Store(nil)
+
+	chartGlyphTable() // the table a frame would have drawn with
+	SetMonochrome()
+
+	for step, row := range chartGlyphTable() {
+		for pattern, glyph := range row {
+			if strings.Contains(glyph, "\x1b[") {
+				t.Fatalf("step %d, pattern %#x is still styled after --no-color: %q",
+					step, pattern, glyph)
+			}
+		}
+	}
+}
+
 func TestMeterShowsUnlitRemainder(t *testing.T) {
 	got := stripANSI(meter(0.5, 10, cGreen))
 	if strings.Count(got, "▰") != 5 || strings.Count(got, "▱") != 5 {

@@ -36,11 +36,11 @@ var brailleSuffix = func() (t [5]int) {
 	return t
 }()
 
-// dot is one rendered chart cell: the color it was drawn in and the glyph that
-// color produces. A cell holding an empty color is the one thing that means
+// dot is one rendered chart cell: the step of the ramp it was drawn in and the
+// glyph that step produces. A cell holding no step is the one thing that means
 // "not drawn yet".
 type dot struct {
-	col   lipgloss.TerminalColor
+	step  int
 	glyph string
 }
 
@@ -57,6 +57,8 @@ func chart(vals []float64, w, h int) string {
 	}
 	cols, peak := tailCols(vals, w)
 	dotH := h * 4
+	// One lookup of the glyph table for the whole chart, not one per cell.
+	glyphs := chartGlyphTable()
 
 	// A braille cell is eight dots, so a rendered glyph for one is fixed once
 	// the color is known. The table is a local array rather than a map: chart
@@ -74,26 +76,28 @@ func chart(vals []float64, w, h int) string {
 			// that bound to the cell's last.
 			lit := 4 - clampi(int(math.Ceil(float64(dotH-cy*4)-level)), 0, 4)
 			pattern := brailleSuffix[lit]
-			var col lipgloss.TerminalColor
+			// step is the index of the color this cell is drawn in: the heat
+			// ramp's for data, the track for the unlit baseline.
+			var step int
 			switch {
 			case pattern == 0 && cy == h-1:
 				// Unlit baseline grid: dim, several times fainter than data,
 				// but still a readable stroke (3:1), not near-invisible.
 				pattern, lit = brailleSuffix[1], 1
-				col = cTrack
+				step = len(heatSteps)
 			case pattern == 0:
 				rows[cy].WriteByte(' ')
 				continue
 			default:
-				col = heatColor(frac)
+				step = heatIndex(frac)
 			}
 			d := &cache[lit]
-			if d.col != col {
+			if d.step != step {
 				// One pattern can be drawn in two colors: data at the heat
-				// ramp, or the unlit baseline stroke. The color is stored beside
+				// ramp, or the unlit baseline stroke. The step is stored beside
 				// the glyph so a second one replaces it rather than serving the
 				// first.
-				*d = dot{col: col, glyph: styled(col, string(rune(0x2800+pattern)))}
+				*d = dot{step: step, glyph: glyphs[step][pattern]}
 			}
 			rows[cy].WriteString(d.glyph)
 		}

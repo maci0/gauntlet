@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/rivo/uniseg"
@@ -247,6 +248,67 @@ func heatColor(f float64) lipgloss.TerminalColor {
 	default:
 		return cRed
 	}
+}
+
+// heatSteps is the ramp above as an indexed table, in the order heatColor
+// returns its steps, so a hot loop can name the color it drew a cell in by
+// index. heatIndex walks the same ramp; TestHeatIndexNamesTheRampStep holds
+// the two to each other.
+var heatSteps = [...]lipgloss.TerminalColor{cTrack, cTeal, cCyan, cGreen, cYellow, cRed}
+
+// heatIndex is the heatSteps index of the color heatColor returns for f. The
+// two carry the same ramp, one as a value and one as a position in the table
+// a cell of a chart or a meter renders from without asking lipgloss.
+func heatIndex(f float64) int {
+	switch {
+	case math.IsNaN(f) || f <= 0.02:
+		return 0
+	case f < 0.25:
+		return 1
+	case f < 0.5:
+		return 2
+	case f < 0.72:
+		return 3
+	case f < 0.88:
+		return 4
+	default:
+		return 5
+	}
+}
+
+// chartGlyphs is every braille cell the chart can draw, rendered once per
+// color it draws one in: the heat ramp's steps in table order, and the dim
+// track an unlit baseline is stroked with. A chart is drawn once per lane plus
+// once for the activity strip on every one of the dashboard's ten frames a
+// second, so a cell that asked lipgloss for its escape sequence would re-parse
+// the color and re-convert it against the terminal profile for each of the few
+// hundred cells a frame holds. Indexed by step, not by color: lipgloss's
+// colors are interface values, and a map keyed on one would hash a string per
+// lookup and allocate the interface twice.
+//
+// The table is dropped whenever the profile under it changes, which is what
+// SetMonochrome does: a table rendered in color and reused after --no-color
+// would leave a dashboard with color the operator asked to be rid of.
+var chartGlyphs atomic.Pointer[[len(heatSteps) + 1]map[int]string]
+
+// chartGlyphTable is the glyph table for the profile in force, built on first
+// use. Lipgloss detects the terminal's profile once and caches it, so for
+// every run but the one that changed it, this returns the same table.
+func chartGlyphTable() [len(heatSteps) + 1]map[int]string {
+	if t := chartGlyphs.Load(); t != nil {
+		return *t
+	}
+	var t [len(heatSteps) + 1]map[int]string
+	for i, c := range heatSteps {
+		row := make(map[int]string, len(brailleSuffix))
+		for _, pattern := range brailleSuffix {
+			row[pattern] = styled(c, string(rune(0x2800+pattern)))
+		}
+		t[i] = row
+	}
+	t[len(heatSteps)] = t[0] // the unlit baseline is the track, the ramp's cold end
+	chartGlyphs.Store(&t)
+	return t
 }
 
 // wordmark is the name in the path-arrow teal of assets/mark.svg, one hue.
