@@ -71,6 +71,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `make test`, `test-pkg`, and `test-fast` reported success on a test scratch
+  directory that cannot be written to, over a run that never happened. The
+  directory is created with `mkdir -p`, which answers for a path that already
+  exists and is not writable; the go command then failed with a permission
+  error inside the build, the status file the recipe reads was never written,
+  and the comparison against it was a shell usage error rather than a verdict,
+  so the recipe exited 0. `test-tmpdir` and `make doctor` now probe the
+  directory by writing a file, and name the path and the `TMPDIR` override
+  when it is not writable.
 - `sec-review` skips a repository it cannot say anything about. It is the one
   member of `quick` with no applicability gate, so a documentation-only tree
   spent a full pass and returned findings invented from configuration files. It

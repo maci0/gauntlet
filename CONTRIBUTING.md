@@ -112,7 +112,12 @@ the prompt discovery tests would otherwise see their own fixtures as
 ignored. The Makefile points `TMPDIR` at `~/.cache/gauntlet/test` for that
 reason; leave it alone unless you know better. An exported `TMPDIR` in your
 shell is ignored on purpose, since the usual one is the tmpfs this avoids;
-override it on the command line (`make test TMPDIR=...`) instead.
+point TMPDIR somewhere else on the make command line
+(`make test TMPDIR=...`) when you need to. A read-only home, a cache directory
+another user left behind, or a sandbox that denies the write all leave a
+directory that exists and cannot be written to, which is what `test-tmpdir`
+and `make doctor` probe for: the test targets refuse it there, with the path
+and the override, rather than failing later inside the go command.
 
 ## Checks a pull request must pass
 

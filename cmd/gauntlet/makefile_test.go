@@ -1816,3 +1816,65 @@ func TestMakefileDoctorPreflightsEveryPrerequisite(t *testing.T) {
 // makefileRecipe, which deps_test.go owns, reads the lines of one target
 // without its rule line; the doctor test above is its second caller, which is
 // what keeps that helper from drifting to one caller's shape.
+
+// A scratch directory that cannot be written to used to reach the loop as a
+// green run: `mkdir -p` succeeds on an existing read-only directory, go test
+// fails with a permission error the preflight never saw, the status file the
+// recipe reads is never written, and `[ "" -ne 0 ]` is a usage error that
+// leaves the recipe exiting 0. Every test target has to refuse it up front and
+// say which path and which knob, and the failure has to be a failure.
+func TestUnwritableTestScratchDirectoryFailsTheTestTargets(t *testing.T) {
+	root := moduleRoot(t)
+	if os.Getuid() == 0 {
+		t.Skip("root writes into a directory with mode 555")
+	}
+	scratch := filepath.Join(t.TempDir(), "read-only")
+	if err := os.MkdirAll(scratch, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(scratch, 0o755) })
+
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	for _, target := range []string{"test-tmpdir", "doctor"} {
+		t.Run(target, func(t *testing.T) {
+			cmd := exec.CommandContext(ctx, "make", "--no-print-directory", target, "TMPDIR="+scratch)
+			cmd.Dir = root
+			cmd.Env = cleanMakeEnv()
+			out, err := cmd.CombinedOutput()
+			if err == nil {
+				t.Fatalf("make %s with an unwritable TMPDIR reported success:\n%s", target, out)
+			}
+			if !strings.Contains(string(out), "writable") {
+				t.Errorf("make %s must say the scratch directory is not writable:\n%s", target, out)
+			}
+			if !strings.Contains(string(out), scratch) {
+				t.Errorf("make %s must print the path it could not write to:\n%s", target, out)
+			}
+		})
+	}
+
+	// The full target has to fail for the same reason, not run a suite and
+	// exit 0 over a status file that was never written.
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-fast",
+		"PKG=./internal/humanize", "RUN=TestDuration", "TMPDIR="+scratch)
+	cmd.Dir = root
+	cmd.Env = cleanMakeEnv()
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("make test-fast with an unwritable TMPDIR reported success:\n%s", out)
+	}
+}
+
+// A writable scratch directory is the normal case, and the probe must not
+// narrow it: it creates and removes its own file and leaves the run alone.
+func TestWritableTestScratchDirectoryStillPasses(t *testing.T) {
+	scratch := filepath.Join(t.TempDir(), "scratch")
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "test-tmpdir", "TMPDIR="+scratch)
+	cmd.Dir = moduleRoot(t)
+	cmd.Env = cleanMakeEnv()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("make test-tmpdir with a writable TMPDIR: %v\n%s", err, out)
+	}
+}

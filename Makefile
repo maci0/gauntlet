@@ -180,11 +180,24 @@ TESTFLAGS ?= -race -shuffle=on
 # tee keeps the per-package lines streaming; the status file carries go test's
 # own exit code, which a pipeline would drop, because this Makefile is POSIX sh
 # and has no pipefail.
+#
+# A scratch directory nothing can write to is not a test failure but the worst
+# one: the status file is never written, `cat` answers with an empty string,
+# `[ "" -ne 0 ]` is a usage error rather than a comparison, and the recipe ends
+# green over a run that never happened. So an unreadable status file is a
+# failure of its own, named as one, and it is `case` rather than a test because
+# the missing arithmetic is the whole defect.
 define RUN_TESTS
 	@log="$(TMPDIR)/test.$$$$.log"; \
 	{ TMPDIR="$(TMPDIR)" CGO_ENABLED=1 $(GO) test $(GOTAGS) $(TESTFLAGS) -run '$(RUN)' $(1) 2>&1; \
 	echo $$? >"$$log.status"; } | tee "$$log"; \
-	rc=$$(cat "$$log.status"); \
+	rc=$$(cat "$$log.status" 2>/dev/null) || rc=""; \
+	case "$$rc" in \
+		''|*[!0-9]*) \
+			echo "test: the test scratch directory $(TMPDIR) is not writable, so this run reported nothing to check" >&2; \
+			echo "test: point TMPDIR at a disk-backed directory you own, on the make command line: make $(1) TMPDIR=/path/to/scratch" >&2; \
+			rm -f "$$log" "$$log.status"; exit 1 ;; \
+	esac; \
 	if [ "$$rc" -ne 0 ]; then rm -f "$$log" "$$log.status"; exit "$$rc"; fi; \
 	if [ -n "$(RUN)" ] && ! awk '/^ok / && $$0 !~ /no tests to run/ { ran = 1 } END { exit !ran }' "$$log"; then \
 		echo "test: no test matches RUN='$(RUN)'; go test reports success when a -run pattern selects nothing" >&2; \
@@ -313,6 +326,20 @@ toolchain-min:
 test-tmpdir:
 	@test "$(TMPDIR)" != "/.cache/gauntlet/test" || { echo "HOME is unset; set HOME or TMPDIR to a disk-backed directory. Tests must not use tmpfs or a gitignored path inside this repo" >&2; exit 1; }
 	@mkdir -p "$(TMPDIR)"
+# `mkdir -p` reports success on a directory that already exists and cannot be
+# written to, which is how a read-only home, a stale root-owned cache from a
+# previous user, or a sandbox policy reaches the loop: every `go test` then
+# fails inside the go command with a permission error naming no target, and the
+# status file the test recipe reads is never written at all. The probe writes
+# and removes its own file, so the check is the operation the recipes go on to
+# perform rather than a second opinion about it.
+	@probe="$(TMPDIR)/.writable.$$$$"; \
+	if ! (umask 077 && : >"$$probe") 2>/dev/null; then \
+		echo "test-tmpdir: $(TMPDIR) is not writable; every test target hands that path to go test" >&2; \
+		echo "test-tmpdir: point TMPDIR at a disk-backed directory you own: make test TMPDIR=/path/to/scratch" >&2; \
+		exit 1; \
+	fi; \
+	rm -f "$$probe"
 
 .PHONY: test-cgo
 test-cgo:
@@ -926,6 +953,10 @@ release-version:
 # ones toolchain-min and check-scripts already use, so the three cannot report
 # three different answers about one machine.
 #
+# The scratch directory is probed by writing a file, not by `mkdir -p`, which
+# answers for a directory that exists and cannot be written to: the one case
+# where every test target is about to fail and the preflight said ok.
+#
 # tar, cmp, and a checksum tool are the other three, and no other target
 # preflights them: repro archives the tree with tar and compares the binaries
 # with cmp, and artifacts writes and verifies dist/checksums.txt with one, so a
@@ -989,10 +1020,11 @@ doctor: ## report every missing prerequisite in one run, with what to install
 	else \
 		bad "shellcheck" "macOS: brew install shellcheck; Linux: your package manager ships it as shellcheck" "check-scripts, verify"; \
 	fi; \
-	if mkdir -p "$(TMPDIR)" 2>/dev/null; then \
-		ok "test scratch directory $(TMPDIR)"; \
+	probe="$(TMPDIR)/.doctor-writable.$$$$"; \
+	if mkdir -p "$(TMPDIR)" 2>/dev/null && (umask 077 && : >"$$probe") 2>/dev/null; then \
+		rm -f "$$probe"; ok "test scratch directory $(TMPDIR)"; \
 	else \
-		bad "a writable disk-backed test scratch directory" "set TMPDIR on the make command line; tests must not use a tmpfs or an ignored path inside this repository" "test, test-pkg, cover, ci, verify"; \
+		bad "a writable disk-backed test scratch directory ($(TMPDIR))" "set TMPDIR on the make command line; tests must not use a tmpfs or an ignored path inside this repository" "test, test-pkg, cover, ci, verify"; \
 	fi; \
 	if command -v tar >/dev/null 2>&1 && command -v cmp >/dev/null 2>&1; then \
 		ok "tar and cmp (repro archives the tree twice and compares the binaries)"; \
