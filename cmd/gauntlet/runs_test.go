@@ -338,10 +338,11 @@ func TestRunsPrintsJournalLocationOnStderr(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("listing exited %d", code)
 	}
-	if !strings.Contains(note.String(), journal.Home()) {
+	want := normalize.RedactHome(filepath.Join(journal.Home(), "runs"))
+	if !strings.Contains(note.String(), want) {
 		t.Fatalf("stderr should name the journal directory, got %q", note.String())
 	}
-	if strings.Contains(table.String(), journal.Home()) {
+	if strings.Contains(table.String(), want) {
 		t.Fatalf("the journal path belongs on stderr, not in the table:\n%s", table.String())
 	}
 }
@@ -797,10 +798,8 @@ func TestRunsNamesRecoverableRunsWithAnEmptyListing(t *testing.T) {
 	if !strings.Contains(buf.String(), ids[0]) || !strings.Contains(buf.String(), "gauntlet runs --restore") {
 		t.Fatalf("the recoverable run %s is not named on an empty listing:\n%s", ids[0], buf.String())
 	}
-	// A GAUNTLET_HOME outside the account's home directory has no account in
-	// it, so the path comes out whole: the shortening only takes out a home
-	// prefix, and pretending otherwise would lose a path the reader needs.
-	if want := filepath.Join(home, "runs"); !strings.Contains(diagnostic.String(), want) {
+	// The listing shortens the journal path when under the user's home.
+	if want := normalize.RedactHome(filepath.Join(home, "runs")); !strings.Contains(diagnostic.String(), want) {
 		t.Fatalf("the journal path is missing from stderr:\n%s", diagnostic.String())
 	}
 }
