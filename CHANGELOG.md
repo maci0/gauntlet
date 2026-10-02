@@ -41,6 +41,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `gauntlet resume` with no run id printed each interrupted run's last write as
+  local wall clock with no zone, so on a fall-back transition two runs an hour
+  apart listed under the same timestamp: in Europe/Warsaw on 2026-10-25 a
+  checkpoint written at 00:30 UTC and one at 01:30 UTC are both `2026-10-25
+  02:30`. The stamp carries the offset now, which is what tells the two readings
+  apart, matching the `gauntlet runs` STARTED column and every log line.
+
 - The state-tree restore recipe in `docs/RUNS.md` no longer reports success over
   a restore that did not happen. The block had no `set -e`, so a shell ran every
   command and returned the last one's status: an extraction into a directory

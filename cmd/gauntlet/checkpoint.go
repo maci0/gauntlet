@@ -286,7 +286,7 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 		case dir != "":
 			state = "busy: a gauntlet holds its directory"
 		}
-		fmt.Fprintf(out, "%s  %s  %s\n", pal.Bold(cp.Handoff.RunID), cp.Updated.Local().Format("2006-01-02 15:04"), state)
+		fmt.Fprintf(out, "%s  %s  %s\n", pal.Bold(cp.Handoff.RunID), startCell(cp.Updated, time.Local), state)
 		fmt.Fprintf(out, "  %s, %d unfinished in the current loop, %s done\n",
 			normalize.Sanitize(strings.Join(dirs, ", ")), left, humanize.Plural(cp.Handoff.Loops(), "loop", "loops"))
 		fmt.Fprintf(out, "  gauntlet %s\n", normalize.Sanitize(strings.Join(journaledArgs(cp.Argv), " ")))
