@@ -26,8 +26,39 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Changed
+
+- `gauntlet runs --json` gained an `agents` count on its `history` object: how
+  many custom agent definitions the state tree holds. It is the one member of
+  the documented state-tree archive that the other counts said nothing about,
+  so a restored tree whose `agents.json` was lost listed its history, replayed
+  its runs, and reviewed with the built-in agents from the next run on, with
+  nothing reporting a definition gone. A `history` object compared across two
+  trees now covers every member the archive carries. A definitions file that
+  cannot be parsed is an error and a non-zero exit, not a zero count: a tree
+  whose definitions were lost and a tree whose copy of them is corrupt need
+  opposite responses. Zero is the ordinary answer.
+
 ### Fixed
 
+- The state-tree restore recipe in `docs/RUNS.md` no longer reports success over
+  a restore that did not happen. The block had no `set -e`, so a shell ran every
+  command and returned the last one's status: an extraction into a directory
+  that could not be created, or a listing that failed, was followed by two more
+  commands and an exit code of zero. Its `mkdir` was also a plain one, so a
+  drill repeated after an upgrade stopped on its first command for a reason
+  that had nothing to do with the archive, and its placeholder variable was
+  spelled `run-id`, which a shell refuses to assign. The block now sets `-e`,
+  creates the restore directory idempotently, and names its two variables so a
+  shell accepts them. It is executed rather than illustrated now too:
+  `TestRestoreRecipeReadsBackAnArchiveTheBackupRecipeWrote`
+  (`cmd/gauntlet/restorerecipe_test.go`) archives a state tree with the
+  documented backup recipe, extracts it with the documented restore block, and
+  runs the binary against the extracted tree, comparing its `history` counts
+  against the tree the copy came from and repeating the block into the same
+  directory. Every command in a restore exits zero on a tree with nothing in
+  it, so the counts are the only thing that distinguishes a restore that
+  worked from one that extracted a file and lost the history in it.
 - The startup sweep that reclaims the checkout directories a killed run left
   under `.gauntlet/worktrees` no longer drops the failures it meets. Each entry
   there is a full copy of the reviewed repository, which may be private, so a

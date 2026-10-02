@@ -678,22 +678,40 @@ Protect the destination with credentials and deletion controls independent of
 the machine holding `GAUNTLET_HOME`; another directory on the same disk does
 not protect against instance loss or malicious deletion.
 
-Restore into an empty directory first rather than overwriting live state:
+Restore into an empty directory first rather than overwriting live state. Set
+`restore` to a directory that does not exist yet, and `run` to one run id the
+listing below prints:
 
 ```sh
-mkdir /path/to/empty-restore
-tar -C /path/to/empty-restore -xzf /path/on/other-storage/gauntlet-state.tgz
-GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --limit 10
-GAUNTLET_HOME=/path/to/empty-restore gauntlet show <run-id>
-GAUNTLET_HOME=/path/to/empty-restore gauntlet runs --json
+set -e                          # every command has to succeed, not just the last
+restore=/path/to/empty-restore
+run=<run-id from the listing>   # no hyphen: a shell variable name takes none
+mkdir -p "$restore"             # -p, so a re-run over an earlier drill is not a failure
+tar -C "$restore" -xzf /path/on/other-storage/gauntlet-state.tgz
+GAUNTLET_HOME="$restore" gauntlet runs --limit 10
+GAUNTLET_HOME="$restore" gauntlet show "$run"
+GAUNTLET_HOME="$restore" gauntlet runs --json
 ```
+
+The `set -e` is what makes the block a drill rather than a list. Without it a
+shell runs every command and reports the last one's status, so an extraction
+into a directory that could not be created, or a listing that failed, is
+followed by two more commands and then a success: the operator reads an exit
+code of zero over a restore that did not happen. With it, the first failure
+stops the block and the drill is recorded as failed.
+
+The `mkdir -p` matters for the same reason: a plain `mkdir` fails on the second
+drill into the same path, and a restore that stops for a reason that has
+nothing to do with the archive teaches an operator to ignore the stop. Point
+it at a new directory each time, or keep the `-p` and read the counts below
+instead of trusting that the directory was empty when you started.
 
 The first command proves the derived index can be rebuilt; the second proves a
 journal can be read end to end. The third answers "is what survived complete",
 on its `history` object:
 
 ```json
-"history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12, "truncated": 0 }
+"history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12, "truncated": 0, "agents": 2 }
 ```
 
 `journals` is the irreplaceable count, the event streams the index is derived
@@ -701,11 +719,20 @@ from; `rows` is what the index answered with; `disagreed` is the runs the two
 copies tell apart, which a listing repairs and which is therefore 0 on a tree
 that survived whole and non-zero on one that lost journals. Compare the numbers
 against the machine the copy came from: the same journals, the same pruned runs,
-no disagreement. A tree that cannot be read exits non-zero rather than printing
-zeros, so a failed read is never read as an empty history. `gauntlet doctor`
-prints every count but `rows` on its `Run history` line, and its exit code is
-about the agent inventory: it exits 1 on a fresh machine with no agent CLI
-installed, and that says nothing about the restore.
+no disagreement, the same `agents`. A tree that cannot be read exits non-zero
+rather than printing zeros, so a failed read is never read as an empty history.
+`gauntlet doctor` prints every count but `rows` on its `Run history` line, and
+its exit code is about the agent inventory: it exits 1 on a fresh machine with
+no agent CLI installed, and that says nothing about the restore.
+
+`agents` is how many custom agent definitions the tree holds, and it is the one
+archived member the counts above say nothing about. Every other member of the
+archive is journals, so a copy that lost them is a hole the numbers report; a
+copy that lost `agents.json` is a tree that runs, lists its history, replays
+its runs, and reviews with the built-in agents from the next run on, with
+nothing anywhere saying a definition is gone. Compare it across the two trees
+for the same reason as the rest. Zero is the ordinary answer and is what a
+fresh install reports.
 
 `disagreed` covers two directions and only one of them is a repair. A journal
 the index does not name is a run that died before its summary row, and the next
@@ -741,6 +768,20 @@ history is only in the quarantine, and one with all three members, then reads
 the archive back to check it holds what the tree held. So a change to this
 recipe that would leave a machine unarchived fails the suite instead of the
 first restore.
+
+The restore block is executed rather than illustrated too, and against an
+archive the block above wrote rather than one this repository built:
+`TestRestoreRecipeReadsBackAnArchiveTheBackupRecipeWrote`
+(`cmd/gauntlet/restorerecipe_test.go`) takes a state tree with a listed run and a
+quarantined one, archives it with the recipe printed above, extracts the result
+with the commands printed here, and then runs the binary the package under test
+is built from against the extracted tree for each of the three commands. It
+compares the restored tree's `history` counts against the tree the copy was
+taken from, so a restore that extracted a file and lost the history in it fails
+even though every command exited zero, and it runs the whole block a second
+time into the same directory, so a restore that only works once fails here
+rather than during an incident. So a change to either block that leaves a
+restore impossible fails the suite rather than at the first restore.
 
 Run the commands after changing the archive job or upgrading across versions,
 and periodically with the largest archive, because a backup that has only been

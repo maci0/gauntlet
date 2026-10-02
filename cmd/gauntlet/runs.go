@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
 	"github.com/maci0/gauntlet/internal/normalize"
@@ -174,12 +175,22 @@ type runsJSON struct {
 // what `gauntlet doctor` prints on its Run history line, carried here because
 // a restore is checked against the tree rather than against the exit code of the
 // run that wrote it, and doctor's exit code is about the agent inventory.
+//
+// Agents is the last member the documented archive carries, and it is here
+// because every other one is counted: a tree restored without it runs, lists
+// its history, and reads as whole, but the custom agent definitions it held are
+// gone and the next run silently reviews with the built-in agents instead. It
+// is a count rather than a path because the document is the one an archive job
+// carries off the machine, and a resolved path under /home names the operator
+// in every copy. Zero is the ordinary answer and is what a fresh install
+// reports: nothing about the shape of this object is a finding on its own.
 type historyJSON struct {
 	Journals  int `json:"journals"`
 	Rows      int `json:"rows"`
 	Disagreed int `json:"disagreed"`
 	Pruned    int `json:"pruned"`
 	Truncated int `json:"truncated"`
+	Agents    int `json:"agents"`
 }
 
 // writeRunsJSON prints the index for a consumer, and prints nothing else: the
@@ -215,6 +226,19 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) 
 	// shortened the same way (see redactSummaryPaths): the index keeps them
 	// resolved because the listing and the history matcher resolve against
 	// them, and nothing here does.
+	//
+	// The definitions file is read from the tree this document reports on, not
+	// from this process's own state root, and it is counted rather than
+	// named: the count is what a restore compares across two trees without
+	// carrying a resolved path off the machine. A file that cannot be parsed
+	// is an error rather than a zero, because a corrupt definitions file is
+	// not a tree that had no agents, it is an archive whose copy of them
+	// cannot be read, and the two need opposite responses.
+	definitions, defErr := agent.DefinitionsOnDisk(filepath.Join(journal.Home(), "agents.json"))
+	if defErr != nil {
+		fmt.Fprintf(os.Stderr, "cannot read the agent definitions: %v\n", defErr)
+		return exitFail
+	}
 	doc := runsJSON{
 		Home:     normalize.RedactHome(journal.Home()),
 		Journals: normalize.RedactHome(filepath.Join(journal.Home(), "runs")),
@@ -226,6 +250,7 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) 
 			Disagreed: st.Disagreed,
 			Pruned:    st.Pruned,
 			Truncated: st.Truncated,
+			Agents:    definitions,
 		},
 	}
 	enc := json.NewEncoder(out)

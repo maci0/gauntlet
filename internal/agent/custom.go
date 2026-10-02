@@ -654,6 +654,38 @@ func CustomFilePath() string {
 	return filepath.Join(root, "agents.json")
 }
 
+// DefinitionsOnDisk reports how many definitions the file at path holds.
+//
+// This is the file as an archive carried it, not the registry: a restored
+// tree whose agents.json was lost reads here as zero definitions while the
+// process keeps running the agents it registered at startup, and the next run
+// quietly reviews with the built-ins. Counting the file is what makes that
+// visible, which is why nothing here consults `custom`.
+//
+// path is an argument rather than CustomFilePath() so a caller checking a
+// restored tree reads the tree it was told about rather than whatever this
+// process's own state root resolved to. The count is the file's top-level
+// entries and nothing more: it answers "did this archive carry the definitions
+// it was supposed to", which is a question about the copy. Whether each
+// definition is one this build can run is LoadCustomFile's question, and a
+// file that cannot be parsed at all is reported as an error beside the count so
+// a corrupt copy is not read as a tree with no agents.
+func DefinitionsOnDisk(path string) (int, error) {
+	data, err := readCustomFile(path)
+	if err != nil || data == nil {
+		return 0, err
+	}
+	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
+	var defs map[string]json.RawMessage
+	if err := unmarshalStrict(data, &defs); err != nil {
+		return 0, fmt.Errorf("%s: %w", path, err)
+	}
+	if defs == nil {
+		return 0, fmt.Errorf("%s: agent definitions must be a JSON object, not null", path)
+	}
+	return len(defs), nil
+}
+
 // buildCustom expands a custom definition into an argv.
 func buildCustom(def Custom, spec Spec, prompt string, opts BuildOpts) []string {
 	// One replacer over every placeholder, rather than a chain that stops at
