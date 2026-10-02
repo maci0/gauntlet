@@ -52,6 +52,27 @@ the journaled event stream in `internal/runner/contract_test.go`.
   people who are not the operator. The scheme is required, as the header
   grammar is, so `authorization: required` in a status line and a challenge
   naming only its scheme still read as they were written.
+- Branch, worktree, and directory names now keep a review or commit subject
+  written in any script. Both slugs kept only `[a-zA-Z0-9_-]` and replaced
+  every other rune with a hyphen, which erased a reviewed repository's
+  non-Latin review names rather than transliterating them: `日本語-review`,
+  `тест-review`, and `مراجعة` all slugged to the placeholder `review`, so
+  three unrelated reviews took one lane branch, one worktree directory, and
+  one merge scratch directory, and one review's work was checked out under
+  another's name. A git ref is UTF-8 and `check-ref-format` forbids a fixed
+  set of ASCII metacharacters rather than non-ASCII text, so a letter or digit
+  in any script is now kept. The topic slug of a stacked layer had the same
+  limit and distilled a non-Latin commit subject to nothing, so the layer
+  never shed its provisional `-wip-` name and the published branch a reader
+  opened kept the internal name. Both compose to NFC first, so the
+  decomposed spelling a macOS filesystem hands out names one branch rather
+  than two, and the topic's byte budget is now charged per byte written, so a
+  two-byte letter cannot carry a ref fragment past its limit.
+- `gauntlet resume` with no run id orders each entry's directory list by
+  collation rather than by byte value, so a checkout whose name is written in
+  a script with case (`Ökonto`, `Ärchi`) prints where the operator reads it
+  instead of after every plain capital. This is the ordering every other
+  printed list of names in the tool already used.
 - `--semcode` without the `semcode-index` helper in PATH is now a usage error
   where the flag is parsed, beside the agent CLI check and before the locks,
   rather than one raised after prompt discovery and the suggest step by a run

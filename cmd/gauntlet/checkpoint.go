@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gauntlethome"
 	"github.com/maci0/gauntlet/internal/humanize"
 	"github.com/maci0/gauntlet/internal/journal"
@@ -270,7 +271,13 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 			left += len(dh.Pending)
 			dirs = append(dirs, normalize.RedactHome(d))
 		}
-		slices.Sort(dirs)
+		// Collation, not byte order: this list is printed, and the directory
+		// names come from the reviewed tree, so a checkout called "Ökonto"
+		// has to file under O where the operator looks for it rather than at
+		// the end of the list after every capital. This is the one ordering
+		// every other printed list of names in the tool uses; see
+		// internal/fuzzy for why.
+		fuzzy.Sort(dirs)
 		state := "ready"
 		switch dir, lerr := busyDir(cp); {
 		case lerr != nil:
