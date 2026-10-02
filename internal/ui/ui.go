@@ -249,6 +249,12 @@ type model struct {
 	agentTime time.Duration
 	ins, del  int
 	haveLines bool
+	// outputSeen says an agent has printed something this run. The activity
+	// marker draws n/a until the first line, which stands for a rate nothing
+	// has been measured against: right for a run that has not started, and a
+	// "nothing to read here" where a run that printed lines and then went
+	// quiet is saying it sampled zero.
+	outputSeen bool
 	// conflicts is the unmerged branches this run left for a human, newest
 	// last and bounded at maxConflicts, with conflictsDropped counting what
 	// the bound left out.
@@ -703,6 +709,7 @@ func (m *model) apply(ev runner.Event) {
 	case runner.EvLog:
 		m.pushFeed(feedLine{text: ev.Text, kind: logKind(ev.Text), review: "runner"})
 	case runner.EvOutput:
+		m.outputSeen = true
 		m.pendingRate++
 		if l := m.lane(m.laneKey(ev)); l != nil {
 			l.pending++

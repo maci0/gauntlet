@@ -1238,6 +1238,7 @@ func TestThemeClearsWCAGContrastFloors(t *testing.T) {
 func TestActivityTitleClearsContrastFloors(t *testing.T) {
 	const darkBase, lightBase = "#1e1e2e", "#eff1f5"
 	m := newModel(demoConfig())
+	m.outputSeen = true // a run that has printed: the marker reads its samples
 	for _, rate := range []float64{0, 0.1, 0.5, 1.0, 10.0, 50.0} {
 		m.activity = []float64{rate}
 		title := m.activityTitle()

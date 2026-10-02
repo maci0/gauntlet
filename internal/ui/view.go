@@ -101,7 +101,12 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 	act = clampi(free/5, 3, 8)
 	cols := max(m.gridCols(), 1)
 	gridRows := (len(m.order) + cols - 1) / cols
-	grid = clampi(gridRows, 1, max(free-act-lanes-3, 1))
+	// A "+N more" row is a row: it stands in for cells the panel could not
+	// draw, so it is measured with the names and its own slot is taken out of
+	// the budget. Without it the panel was one row short of the names it
+	// holds, and the run's last review went missing with the count that said
+	// so left off the pane.
+	grid = clampi(gridRows+boolInt(len(m.order) > 0), 1, max(free-act-lanes-3, 1))
 	feed = free - act - lanes - grid
 	if feed < 3 {
 		take := 3 - feed
@@ -254,13 +259,25 @@ func logKind(text string) normalize.Kind {
 func (m *model) activityTitle() string {
 	// The current-value marker at the live edge is the eye anchor. A rate of
 	// zero is a measurement; no samples yet is not, and the two must not look
-	// the same.
+	// the same. A run that has printed and then gone quiet has the former, so
+	// the marker has to stop saying n/a the moment the first line lands: a
+	// silent chart under a run that is visibly working is the one reading
+	// that cannot be reconciled with the feed beside it, and n/a is a claim
+	// that nothing was ever measured.
 	value := "n/a"
 	cur := 0.0
-	if len(m.activity) > 0 {
-		cur = m.activity[len(m.activity)-1]
-		value = fmtRate(cur)
-		if cur <= 0 {
+	if m.outputSeen {
+		if len(m.activity) > 0 {
+			cur = m.activity[len(m.activity)-1]
+			value = fmtRate(cur)
+			if cur <= 0 {
+				value = "0"
+			}
+		} else {
+			// Output has arrived and the sampler has not filled a slot yet:
+			// the run a frame old, or one whose first second held no line.
+			// Zero is the honest reading for both, and the empty chart below
+			// already says no history has been drawn.
 			value = "0"
 		}
 	}
@@ -668,9 +685,14 @@ func (m *model) renderGrid(w, h int) string {
 // answer.
 func (m *model) visibleFeed() []feedLine {
 	var feed []feedLine
+	// A view shorter than the feed it was taken from is stale: lines arrived
+	// that this filter drops, so the cache holds none of them. The filter
+	// marking them "widen" is a claim about what the panel shows, and a
+	// narrowed feed whose kept lines are all gone must say so rather than
+	// report matches next to the lines that do not match.
 	if m.filter == feedAll {
 		feed = m.feed
-	} else if !m.feedDirty {
+	} else if !m.feedDirty && len(m.feedView) <= len(m.feed) {
 		feed = m.feedView
 	} else {
 		m.feedView = m.feedView[:0]
@@ -952,8 +974,16 @@ func (m *model) renderMinimal() string {
 		m.minimalHeader(stateTxt, stateStyle),
 		tally.String(),
 	}
+	// A branch left for a human is work that has to be done, and the fallback
+	// is what a reader in a small terminal is looking at, so the branches
+	// come before the running work. It names the review and the branch to
+	// merge, in the order a person acts in them, and the count comes first
+	// for the same reason the feed title leads with it: it is what says
+	// there is anything to do at all. The full list and the key that shows it
+	// are a panel this screen does not draw, so nothing else on it says so.
 	if len(m.conflicts) > 0 {
-		rows = append(rows, styleWarn.Render("unmerged: "+m.conflictSummary()))
+		rows = append(rows, styleWarn.Render(fmt.Sprintf("unmerged: %d, %s",
+			m.conflictTotal(), m.conflictNames())))
 	}
 	var active []string
 	for _, label := range m.laneOrd {
@@ -1002,7 +1032,7 @@ func (m *model) renderMinimal() string {
 }
 
 // activeSummaryMax is how many running lanes the small-terminal fallback's one
-// row names before it counts the rest, the way conflictSummary counts the
+// row names before it counts the rest, the way conflictNames counts the
 // branches its row could not hold.
 const activeSummaryMax = 3
 
@@ -1161,22 +1191,6 @@ func (m *model) reviewLines() []string {
 // fallback's one line names before it counts the rest instead.
 const conflictSummaryMax = 3
 
-// conflictSummary is the one-line form the small-terminal fallback draws: the
-// most recent branches, and how many the bound left out. The count leads
-// because the row is clipped at the terminal's width, and a count at the end
-// is the part that gets cut.
-func (m *model) conflictSummary() string {
-	shown := m.conflicts
-	if len(shown) > conflictSummaryMax {
-		shown = shown[len(shown)-conflictSummaryMax:]
-	}
-	out := strings.Join(shown, ", ")
-	if m.conflictsDropped > 0 {
-		out = fmt.Sprintf("%d older, %s", m.conflictsDropped, out)
-	}
-	return out
-}
-
 // footerKeys is the key legend for the full footer and the small-terminal
 // fallback. Labels follow the current state so a paused feed says resume, a
 // finished run says close, and a dead action (finish after the run ended) is
@@ -1254,6 +1268,13 @@ func helpRows(lines []string, w int) []string {
 // way they move the feed below it.
 var helpLegendKeys = []string{"q/esc close", "j/k scroll", "pgup/pgdn, space/b", "home/end, g/G"}
 
+// helpLegendKeyRow is helpLegendKeys as one string, for a key row too narrow
+// to lay out as segments. It names every key the segments list, so a reader
+// on a phone-width terminal is left with fewer of them and not with keys that
+// work and are unmentioned: the segments exist to drop whole names, and on a
+// row too narrow for one of them there is nothing left to drop.
+const helpLegendKeyRow = "q/esc close  j/k scroll  pgup/pgdn  space/b  home/end  g/G"
+
 // helpLegend is the overlay's own key row, as whole segments a narrow pane
 // drops from the right. The first survives always: a reader with no way to
 // close the overlay is stuck in it.
@@ -1277,7 +1298,15 @@ func helpLegend(w int, pos string) string {
 	if pos != "" {
 		segs = append(append([]string{}, segs...), styleFaint.Render(pos))
 	}
-	return styleDim.Render(fitSegments(segs, "  ", w))
+	row := fitSegments(segs, "  ", w)
+	if w > 0 && lipgloss.Width(row) == 0 {
+		// Too narrow for a single segment, so fitting dropped every one of
+		// them and left the reader with nothing but the fit marker. The keys
+		// still work, so they are laid out as one row: a clipped list of them
+		// beats none.
+		row = helpLegendKeyRow
+	}
+	return styleDim.Render(clipEllipsis(row, w))
 }
 
 // helpPosition names the reader's place in a help page taller than the pane.
@@ -1392,4 +1421,44 @@ func trim(s string, w int) string {
 
 func clampi(v, lo, hi int) int {
 	return min(max(v, lo), hi)
+}
+
+// boolInt is a bool as a count, for the section budgets above.
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// conflictTotal is every branch the run left for a human, the bounded list
+// and what it dropped.
+func (m *model) conflictTotal() int {
+	return len(m.conflicts) + m.conflictsDropped
+}
+
+// conflictNames is the newest branches, one per review, as a person would
+// read them: which review left work behind and which branch carries it. The
+// feed title counts the branches and the help overlay lists them all; a
+// reader in a small terminal gets the first one of each, which is the pair
+// they need to go and merge one.
+func (m *model) conflictNames() string {
+	shown := m.conflicts
+	if len(shown) > conflictSummaryMax {
+		shown = shown[len(shown)-conflictSummaryMax:]
+	}
+	out := make([]string, 0, len(shown))
+	for _, c := range shown {
+		review, branch, ok := strings.Cut(c, " (")
+		if !ok {
+			out = append(out, c)
+			continue
+		}
+		out = append(out, fmt.Sprintf("%s (%s)", reviewShort(review), strings.TrimSuffix(branch, ")")))
+	}
+	line := strings.Join(out, ", ")
+	if m.conflictsDropped > 0 {
+		line = fmt.Sprintf("%d older, %s", m.conflictsDropped, line)
+	}
+	return line
 }

@@ -260,12 +260,27 @@ func (p *picker) hint() string {
 			}
 			return "space takes the whole set, →/← open and close it"
 		default:
-			if d := strings.TrimSpace(r.review.Desc); d != "" {
+			if d := p.rowDescription(r); d != "" {
 				return d
 			}
 			return "space takes this review on its own"
 		}
 	}
+}
+
+// rowDescription is what the status line says about the row under the
+// cursor. A description already in the pane is shown there in full, so
+// repeating it here is where it gets cut short: a line that ends in "the
+// caller…" and names what a review is looking for about two thirds of the
+// way through. This is the only line with room for a whole sentence, so a
+// description narrower than the pane is repeated whole and a wider one is
+// trimmed to the screen rather than to the pane.
+func (p *picker) rowDescription(r row) string {
+	d := strings.TrimSpace(r.review.Desc)
+	if d == "" || p.w <= 0 {
+		return d
+	}
+	return clipEllipsis(d, p.w)
 }
 
 // renderStatus is the line under the command: what is blocking a launch if
@@ -618,6 +633,14 @@ func (p *picker) focusedLines() []string {
 			detail = fmt.Sprintf("%s: %s; %d of %d selected", g.Name, state, p.groupOn(r.group), len(g.Reviews))
 		case rowReview:
 			detail = reviewLabel(r.review) + ": " + selection(p.selected[r.review.Name])
+			// The description in full, here where it has room. On the status
+			// line it is the one line a description competes for, and a
+			// description longer than the terminal is cut on a word boundary:
+			// the launcher is the screen people use at a default width, so the
+			// end of a description is text a reader there can only get here.
+			if d := strings.TrimSpace(r.review.Desc); d != "" {
+				detail += ": " + d
+			}
 		}
 	case paneAgents:
 		if len(p.cfg.Agents) == 0 {

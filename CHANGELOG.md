@@ -47,7 +47,44 @@ the journaled event stream in `internal/runner/contract_test.go`.
   checkpoint written at 00:30 UTC and one at 01:30 UTC are both `2026-10-25
   02:30`. The stamp carries the offset now, which is what tells the two readings
   apart, matching the `gauntlet runs` STARTED column and every log line.
-
+- The dashboard's feed filter no longer draws lines it is there to hide. A
+  filtered feed is cached between frames, and the cached view was taken as
+  still valid whatever the feed had collected since, so a run whose first
+  result arrived after `f` showed the narration the filter drops, under a
+  `f:widen` key line and no notice that the filter had found nothing. The
+  cache is now a view only of a feed it could have been taken from whole.
+- The dashboard's activity marker no longer reads `n/a` for a run that has
+  printed output. `n/a` means no rate has been measured yet, which is true
+  of a run that has not started and not of one whose lanes carry tokens and
+  whose feed has lines: the chart drew flat and the marker said the run had
+  never produced anything, next to a feed full of what it had. The marker
+  reads `0`, a measurement, from the first line of output on.
+- The review grid no longer drops its last review without saying so. The row
+  carrying the `+N more` cell was measured out of the panel budget, so a run
+  whose reviews exactly filled the panel drew one cell fewer than it had room
+  for and named no count: a review scheduled by the run was missing from the
+  only panel that lists them, with nothing reporting it. The count's row is
+  part of the budget now.
+- The launcher reads a review's description in full on its status line. The
+  line repeated the description the reviews pane already shows clipped to the
+  pane, so the one line with room for a sentence was the one drawing the
+  shortest copy of it: what a review looks for ended mid-clause, and a
+  description longer than the terminal had no page to read in full. It is
+  trimmed to the terminal now, and the help overlay's focused-control line
+  carries it whole, which is what that overlay's state view is for.
+- The small-terminal dashboard no longer lists the branches left for a human
+  to merge without saying how many there are, and it marks the list as cut
+  when it is. A terminal under 60 columns has no help overlay to read, so the
+  `?` the feed title points at was a key that did nothing there, and a
+  conflict past the eighth was a branch nobody could find. The fallback names
+  the review and its branch first and counts the rest, the way the feed title
+  does.
+- The help overlay's key row names its keys on a terminal too narrow for one
+  of them. Fitted as whole segments, a row narrower than the shortest segment
+  dropped all of them and left a reader with a fill marker where the keys
+  were: a page of help whose keys all work and none of which are named reads
+  as a page whose keys are broken. Such a row lays the same keys out as a
+  single string, cut with the same marker.
 - The state-tree restore recipe in `docs/RUNS.md` no longer reports success over
   a restore that did not happen. The block had no `set -e`, so a shell ran every
   command and returned the last one's status: an extraction into a directory
