@@ -26,6 +26,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.35.0
+
 ### Added
 
 - `gauntlet doctor` reports whether this host can confine an agent's filesystem
@@ -517,6 +519,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
   scheme. `cmd/gauntlet/site_test.go` pins the mark, the terminal token, and the
   page's accent together, so a palette that drifts is a failed suite rather than
   a page nobody notices.
+
 ### Security
 
 - Every release's `sbom.json` now names a `go.sum` hash for every module it
