@@ -579,11 +579,17 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	// section answers. An unknown one is refused rather than swallowed: reading
 	// `gauntlet helo runs` as a plain `gauntlet help` exits 0 over a page of
 	// flags and reports success for a request it never answered.
+	//
+	// The leftovers are walked as flags, not read as topic words. The flag
+	// package stops at the first positional, so `help runs --limit 5` leaves
+	// ["--limit" "5"] behind it, and both the flag and its value were parsed
+	// and honored before the screen was asked for. Reading them as topics
+	// refused a request the screen answers -- "no help topic: \"--limit\"",
+	// then "no help topic: \"5\"" -- and made --help the one flag whose
+	// presence turned a trailing flag into an error.
 	if raw.help || o.command == "help" {
-		for _, arg := range fs.Args() {
-			if err := helpTopic(arg); err != nil {
-				return nil, err
-			}
+		if err := checkHelpTopics(fs); err != nil {
+			return nil, err
 		}
 		printUsage(os.Stdout, report.Palette{On: report.ColorEnabled(os.Stdout) && !o.noColor}, o.width)
 		return nil, errHelp
@@ -1318,6 +1324,33 @@ func unknownCommand(name string) error {
 	}
 	return fmt.Errorf("unknown command: %q%s (try: %s)",
 		name, hint, strings.Join(commandNames, ", "))
+}
+
+// checkHelpTopics refuses a leftover word after `help` or -h that names no
+// topic, reading the leftovers the way the parser reads argv: a token that is
+// a flag is one, and a flag that wants a value owns the token after it. Every
+// other word is a topic, and a misspelled one is refused.
+//
+// A flag left without its value (`help --log`) never arrives: the flag package
+// reports it from Parse, the way it does for every other command. What reaches
+// here is a flag parsed to its end and the words after it.
+func checkHelpTopics(fs *flag.FlagSet) error {
+	args := fs.Args()
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" || len(arg) < 2 || arg[0] != '-' {
+			if err := helpTopic(arg); err != nil {
+				return err
+			}
+			continue
+		}
+		name := strings.TrimLeft(arg, "-")
+		name, _, attached := strings.Cut(name, "=")
+		if takesNextArg(fs, name, attached) {
+			i++
+		}
+	}
+	return nil
 }
 
 // helpTopic refuses a word after `help` or -h that names nothing, with the

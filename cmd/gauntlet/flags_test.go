@@ -1041,6 +1041,24 @@ func TestHelpRefusesAnUnknownTopic(t *testing.T) {
 		!strings.Contains(err.Error(), `did you mean "help"`) {
 		t.Fatalf("a close miss should suggest the command, got %v", err)
 	}
+	// A flag after the topic is a flag, not a misspelled topic: it
+	// parsed, and reading it as a topic refused a request the screen
+	// answers. `runs --help extra` stays a refusal: `extra` is a word
+	// nobody spells, and the topic rule is what catches it.
+	for _, argv := range [][]string{
+		{"help", "runs", "--limit", "5"},
+		{"help", "runs", "-q"},
+		{"help", "--json"},
+		{"help", "doctor", "--bin", "claude=/bin/true"},
+	} {
+		if _, err := parseFlags(argv); err != errHelp {
+			t.Errorf("%v should print help, got %v", argv, err)
+		}
+	}
+	if _, err := parseFlags([]string{"runs", "--help", "extra"}); err == nil ||
+		!strings.Contains(err.Error(), "no help topic") {
+		t.Errorf("a misspelled topic after --help should still be refused, got %v", err)
+	}
 	if _, err := parseFlags([]string{"help", "runs"}); err != errHelp {
 		t.Fatalf("a known topic is answered by the screen, got %v", err)
 	}

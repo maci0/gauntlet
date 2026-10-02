@@ -36,6 +36,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   sequential or `--jobs` run now reports what it could not remove, and a
   `--stacked-prs` run reports it as a warning on stderr rather than refusing to
   stack over a directory nothing will free on its own.
+- `gauntlet help` no longer reads a flag after the topic as a misspelled
+  topic. `gauntlet help runs --limit 5` exited 2 with
+  `no help topic: "--limit"`, and again with `no help topic: "5"`, for a
+  screen it prints. A token that is a flag is one, and a flag that wants a
+  value owns the token after it, so both are skipped; a word nobody spells is
+  still refused, as `gauntlet help helo` is.
 
 ## 1.35.0
 
