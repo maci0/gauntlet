@@ -28,6 +28,25 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The threat model describes the surface the project actually has again. Two
+  entries written on a review branch were absent from the merged document: the
+  published project site, which is the only surface here a browser reaches over
+  the network with no operator present, and the ceiling on `--sandbox-write`,
+  which the document described more weakly than the code implements. The model
+  named no network-facing boundary at all, so a reader auditing what this
+  project exposes to the internet found nothing. A new boundary, B7, records
+  the site: static assets, a header block as the whole of the server-side
+  posture a reader can verify from this tree, and a publishing credential that
+  lives in a hosting account the repository does not hold. The sandbox entry
+  now names what does bound a grant, that a relative grant resolves per
+  worktree and every grant is symlink-resolved at launch, alongside the
+  whole-subtree width and the parse-time existence check the flag really
+  promises.
+- A claim in the threat model that contradicted the code is corrected. It
+  recorded that a credential in an `Authorization` header reaches an error
+  string, a report, and the journal only when its value happens to carry a
+  recognized token prefix. A fourth redaction rule now matches the header by
+  name and scheme, so the model names it and no longer understates the control.
 - The startup sweep that reclaims the checkout directories a killed run left
   under `.gauntlet/worktrees` no longer drops the failures it meets. Each entry
   there is a full copy of the reviewed repository, which may be private, so a

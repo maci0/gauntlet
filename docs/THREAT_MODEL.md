@@ -7,7 +7,61 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-10-03 against commit b0fa5d3.
+Last reviewed: 2026-10-04 against commit 31b5621.
+That pass found the one kind of drift the mechanical checks cannot see: a
+boundary that a merge dropped on the floor. The published project site and
+the `--sandbox-write` ceiling were both written into this document on a review
+branch and both were absent from the merged text, so the model described a
+smaller surface than the repository ships. A conflict resolution that keeps one
+side of a rewritten region is exactly the failure this catches: the tree held
+`site/public`, `site/wrangler.jsonc`, and a test asserting the header block,
+while the model named no network-facing surface at all. Both are entered
+again below, B7 is new, and the sandbox ceiling is stated next to the flag
+that carries it. The reason a mechanical pass missed it is worth recording:
+`cmd/gauntlet/threatmodel_test.go` verifies that every pointer resolves and
+reaches the symbol it names, which is a property of each citation in the file
+that is present, not a property of the document's coverage, and no test can
+assert that a row exists. A second mechanical pass re-anchored the Go symbol
+pointers against the current tree after the site work landed.
+Three claims were brought forward from code changes rather than rewrites.
+`RedactSecrets` now recognizes a credential in an `Authorization` header,
+which the value class cannot reach because the scheme sits between the name
+and the value and the value carries no recognizable prefix
+(`secretAuthRe`, `internal/runx/runx.go:192-196`); the mitigations row saying
+that such a line is caught only by the prefix rule was the false claim in this
+document, and it is corrected rather than carried. Two repository-planted
+reads changed from an `os.Lstat` plus a separate `os.Open` to a guarded open
+carrying `O_NOFOLLOW` into the open itself, closing a race the tree could win
+by swapping a symlink into the name between the two syscalls: the reload
+handoff a successor resumes from (`LoadState`,
+`internal/selfupdate/reload.go:205-217`) and the crash checkpoint whose argv
+`gauntlet resume` executes (`readCheckpoint`, `cmd/gauntlet/checkpoint.go:105-118`).
+The third is a reporting control rather than a refusal: the startup sweep that
+reclaims checkout directories left by a killed run collects every removal it
+could not complete and returns it, because each entry is a full copy of a
+possibly private tree and a failure that was discarded left that copy on disk
+with nothing saying so (`SweepWorktreeRoot`, `internal/gitx/worktree.go:1032-1075`).
+A sequential run fails on it and a `--stacked-prs` run reports it as a warning,
+because a directory nothing will free is not a reason to refuse the run.
+Two collision fixes in the same range change what a planted name can reach
+rather than what it can escape. Branch and worktree slugs keep a letter or
+digit in any script instead of replacing every non-ASCII rune with a hyphen,
+which had mapped three unrelated non-Latin reviews to one branch and one
+worktree directory, and each now composes to NFC first (`BranchSlug`,
+`internal/gitx/worktree.go:1131-1148`), so one review's work can no longer be
+checked out under another's name. The `.git/info/exclude` read-modify-write
+runs under one exclusive `flock` on a sibling lock file, so two gauntlet
+processes on one clone cannot both append the same entry
+(`lockExclude`, `internal/gitx/worktree.go:193-216`). Nothing here needed a
+new boundary: both are B1 and B2 shapes, entered as controls rather than
+surfaces.
+Not claimed in this pass: the slug fix is a collision fix, not a
+confinement one. A name that keeps non-Latin text still passes
+`check-ref-format` because a git ref is UTF-8, and the emoji-range and
+control-character handling is unchanged from what `BranchSlug` already did by
+replacement, so nothing an attacker can plant through a review name is newly
+executable.
+Last reviewed previously: 2026-10-03 against commit b0fa5d3.
 That pass read the thirty commits since 5501524 and the larger part of the diff
 is re-anchoring rather than new claims. Nine citations had not merely shifted
 line numbers: they named a symbol and sat somewhere else in the file, so a
@@ -833,6 +887,12 @@ No server authentication boundary is claimed here: the operator's OS account
 supplies child-process authority (`internal/runner/exec.go:169-173`), and
 publication uses that account's Git credentials (`internal/runner/commit.go:105-113`).
 
+The one network-facing surface this project has is the published site, and it
+carries no risk row because it has no application logic to attack (B7). What
+sits behind it is a hosting account outside this repository, which is a fact
+about the deploy rather than about the code, so it is recorded at that
+boundary and deliberately not ranked among these rows.
+
 ## Assets
 
 - **Working-tree integrity** of the reviewed repository. Agents edit it in
@@ -923,7 +983,18 @@ publication uses that account's Git credentials (`internal/runner/commit.go:105-
   nor the flag that is the way past it. A grant widens the writable set by a
   whole subtree and is checked only for existing at parse time
   (`resolveSandboxWrites`, `cmd/gauntlet/flags.go:1120-1141`), so the flag's
-  documented promise is a usage check and not a least-privilege one.
+  documented promise is a usage check and not a least-privilege one: the
+  ceiling is named here so a reader does not infer a narrowing the code does
+  not do. Two things do bound it, both at launch rather than at the flag. A
+  relative grant is resolved against each worktree where the worktree is
+  known, so it cannot name one fixed tree for a run that cuts several, and
+  every grant is `EvalSymlinks`-resolved and refused unless the result is a
+  directory, so a symlink planted at the grant path after the parse-time check
+  cannot widen the policy (`sandboxRoots`,
+  `internal/runner/sandbox.go:82-185`). What survives that is still a
+  whole-subtree grant, and the two temp roots are classified optional: when
+  they do not resolve the grant is dropped and the run continues rather than
+  the launch being refused (`internal/runner/sandbox.go:105-110,128-136,166-185`).
   Reads and network remain allowed; the advisory fence still governs actions
   inside writable roots and operations outside filesystem write control.
 - **B3, agents <-> user terminal, dashboard, journal.** Agent output is
@@ -1004,7 +1075,12 @@ publication uses that account's Git credentials (`internal/runner/commit.go:105-
   journaled (`internal/gitx/exec.go:327-395`; `runx.RedactUserinfo`,
   `runx.RedactSecrets`, `internal/runx/runx.go:121-183`, reached through
   `FirstLine`, which every launch's, git's, `gh`'s, and probe's error text
-  funnels through). What the redaction does not reach is output gauntlet
+  funnels through. The header rule is the one added after that claim was
+  written: an `Authorization` value is whatever the issuer minted, so no
+  fixed prefix recognizes it, and the scheme sits between the name and the
+  value, which is where the assignment rule's key would be
+  (`secretAuthRe`, `internal/runx/runx.go:192-196`). What the redaction
+  still does not reach is output gauntlet
   displays: an agent's own stdout is filtered for escapes, not for secrets,
   and the journal and the `--log` file keep what it printed.
   `gh` and `git push` use whatever credentials those tools already have.
@@ -1039,6 +1115,29 @@ publication uses that account's Git credentials (`internal/runner/commit.go:105-
   necessarily that state directory (`openLogFile`, `cmd/gauntlet/main.go:825-846`), validated to
   not name an existing directory (`validateLog`, `cmd/gauntlet/flags.go:968-1005`).
 
+- **B7, the internet <-> the published site.** The one boundary in this
+  document whose far side is not the operator. `gauntlet.rocks` serves
+  `site/public` through Cloudflare Workers Static Assets, bound by
+  `site/wrangler.jsonc:1-7`. Nothing in this repository handles a request:
+  the assets are static files with no query parameter, no form, and no
+  script, so the classes that dominate everywhere else in this document
+  (injection, path traversal, deserialization, resource exhaustion against a
+  parser) do not arise here. What crosses the boundary is a request and an
+  asset, and what stands between them is the header block
+  (`site/public/_headers:6-11`) plus the hosting account, which is outside
+  this tree. The boundary is named because a security owner asking what this
+  project exposes to the internet should find the answer here rather than by
+  reading the deploy: the domain, the absence of any application logic on it,
+  and the fact that the credential able to publish over the name lives in a
+  Cloudflare account this repository does not hold. Compromise of that
+  account, or of a maintainer's session into it, stands outside the tree the
+  same way B4's release publisher does, and nothing in CI gates what gets
+  published: no workflow or Makefile target runs `wrangler`, so a deploy is a
+  manual action whose result no test in this repository inspects. The
+  screenshot the site carries (`site/public/dashboard.png`) is a captured
+  frame of a run's dashboard and so can show whatever that run displayed; it
+  is regenerated by `scripts/shots.sh` and reviewed as an ordinary image
+  change, which is a human check rather than a control.
 ## Entry points
 
 Untrusted inputs with their validation point:
@@ -1093,6 +1192,7 @@ Untrusted inputs with their validation point:
 | Developer build surface: make doctor prerequisite preflight | `Makefile:937-1016` | a contributor convenience that reads the machine, not the reviewed tree, so it crosses no boundary B1 does not already cross. It resolves the Go toolchain, the C compiler, `git`, `uvx`, `shellcheck`, `tar`, `cmp`, and either `sha256sum` or `shasum` on the developer's own `PATH` and runs each one's `--version`, which is executable resolution and execution of whatever `PATH` names, the same thing `make test` and `make check` then do; it creates the test scratch directory and nothing else, reads no repository content, and prints no environment value. Every gap is reported with its install advice and the targets that need it, and the exit status is 1 when any is missing, so one run answers the whole list instead of one tool at a time. It is not a security control and a passing run certifies nothing the pinned versions do not |
 | Developer build surface: `make check-scripts` extracts and lints the workflow shell | `check-workflow-shell`, `Makefile:562-584`, run as a prerequisite of `check-scripts` (`Makefile:503`); the extraction the recipe depends on is held by `TestWorkflowShellExtractorCoversEveryRunBody` (`cmd/gauntlet/workflowshell_test.go:29-95`) and `TestWorkflowShellLintRefusesAnEmptyBody` (`workflowshell_test.go:97-199`) | a contributor and CI gate on this repository's own workflows, not a path a reviewed repository reaches, and it reads nothing but `.github/workflows/*.yml`. The awk body is the sharp edge: it parses YAML by indentation rather than by a YAML parser, so a `run: |` block it cannot follow would silently lint nothing. Two conditions close that, and both fail the target rather than pass it quietly: an extraction that produces an empty script writes a marker the recipe reads and exits 1 on (`Makefile:573-578`), and a run that finds no `run: |` body at all refuses to invoke shellcheck over an empty glob (`Makefile:581-584`). Every generated script is written under `$(TMPDIR)/workflow-shell`, which `test-tmpdir` places off this repository so the extraction cannot see its own output as repository content. The tool it runs, shellcheck, is the one CI cannot install a pinned copy of, so its version is a drift warning rather than a lock; the four workflow variables the extracted bodies read (`GITHUB_REF_NAME`, `SHELLCHECK_VERSION`, and the two the preamble names) are silenced with a scoped `SC2154` rather than left to a global disable |
 | Release build surface: make smoke executes the artifact dist built | `smoke`, `Makefile:680-690`; the asset name it resolves, `host-artifact`, `Makefile:672-674`; run on every push at `.github/workflows/ci.yml:205` and on the macOS runner at `ci.yml:254`, and gating the release at `.github/workflows/release.yml:159` | the one release target that runs the binary rather than reading it, so it is the first place a replaced or misnamed asset is executed rather than described. It is a developer and CI gate on this repository's own artifacts, not a path a reviewed repository reaches, and it crosses no boundary B1 does not already cross: the path comes from this Makefile's own `DIST`/`BINARY`/`VERSION`, and the file at it is the one `dist` just wrote. What it does is execute that file with the contributor's or runner's own authority and no confinement, which is R2's assumption applied to this repository's own build output rather than to a reviewed tree: whoever can write `dist/` between the build and the run gets code execution on the machine that runs it. The check it performs is a version string, so it proves the binary starts and identifies itself and nothing about what it contains, which is the same limit `make dist`'s platform check carries. The asset name resolves from `GOHOSTOS`/`GOHOSTARCH` rather than `GOOS`/`GOARCH` (`Makefile:674`), which is what makes the executed file the one built for the machine running it: `go env GOOS` echoes an in-flight cross-compile target from the environment, so an exported `GOOS`, or this Makefile's own `dist` setting it per target, named a binary that cannot run here and the target refused a healthy release over a file it was never going to execute. Before the change the gate could pass without running anything |
+| Published project site (`gauntlet.rocks`, Cloudflare Workers Static Assets) | served from `site/public`, bound by `site/wrangler.jsonc`; response headers are the only server-side control, pinned by `TestSiteHeadersAreTerminatedAndScoped` (`cmd/gauntlet/site_test.go:228-249`) | the one surface here a browser reaches over the network with no operator present, and the only entry point in this table whose inputs are not operator-supplied, since a visitor's request is not something gauntlet parses at all. It is static: `index.html`, three SVGs, and a screenshot. There is no handler, no query parameter, no form, and no script, so the injectable-input class does not arise and the header block is what stands between a visitor and the assets: CSP `default-src 'none'` with `style-src 'unsafe-inline'`, `img-src 'self'`, `base-uri 'none'`, `form-action 'none'`, `frame-ancestors 'none'`, `Referrer-Policy: no-referrer`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and HSTS with `includeSubDomains` (`site/public/_headers:6-11`). Two of those hold only because the file ends in a newline and names a path pattern, which is why the test asserts both rather than trusting the file: a truncated last line drops the transport header, and a headers file naming no path applies to nothing. What nothing here checks is the deploy itself. `site/wrangler.jsonc` pins the custom domain and the asset directory, while the credential that can publish over `gauntlet.rocks` lives in a Cloudflare account rather than in this tree, so the repository holds no control over what the domain serves and the header block is the whole of the server-side posture a reader can verify from here. The residual risk is the asset content: the screenshot is a captured dashboard frame and carries whatever the run it was taken from showed, and nothing in the release path reviews or re-captures it before deploy |
 | `doctor` filesystem-sandbox capability probe | `SandboxSupport` (`internal/runner/sandbox.go:59`), backing `sandboxSupport` on each platform (`internal/runner/sandbox_linux.go:109-120`, `internal/runner/sandbox_darwin.go:32-42`); reported at `cmd/gauntlet/doctor.go:165-178` | a report rather than a control, and named because it decides whether the default sandbox exists on this host, which is R1's floor. On Linux it asks the kernel through `landlockABI` for the ABI that answers, so a kernel older than 5.13 and one built without `CONFIG_SECURITY_LANDLOCK` are each reported as what they are rather than inferred from the running binary's platform name; on macOS it stats `/usr/bin/sandbox-exec` for presence and an execute bit, because that file is what confines the agent and a darwin build without it has no confinement to report. Nothing it reads is untrusted: one syscall and one fixed absolute path. The error text it prints carries no tree data, and reaches the terminal through the doctor's own writer (`internal/normalize/display.go`) |
 ## Threats per boundary
 
@@ -1567,7 +1667,7 @@ fails is a warning; the run's own report has already been written
 | Directory traversal or poisoned journal run IDs | run ID length bounded (<= 128), charset-restricted (`[a-zA-Z0-9_.-]`), ".." rejected; date sharding derived from run ID timestamp; journal writes flushed via `Sync()` | `internal/journal/journal.go:154`, `internal/journal/index.go:209,432,976`, `internal/journal/history.go:88-104,173` |
 | History prune reaching outside the state tree | the walk yields only real shard directories and only `<id>.jsonl` names that pass `validRunID`; the index row is rewritten before its journal is unlinked, under the index lock, with a 4 MiB line cap; `keep <= 0` deletes nothing | `internal/journal/retain.go:45-56,78-198`, `internal/journal/index.go:697-740` |
 | Embedded basic-auth credentials in remote URLs | userinfo stripped from git stderr strings before errors are returned, printed, or journaled | `runx.RedactUserinfo`, `internal/gitx/exec.go:327-395` |
-| A credential a child process printed reaching an error, a report, or the journal | every piece of child output that becomes an error string passes through `FirstLine`, which strips userinfo and then `RedactSecrets`: a value assigned to a name that says it is a credential, and a token carrying a published fixed prefix. The result is idempotent, and a value under eight characters is left alone as a flag or a placeholder. The redaction is bounded by what its value class matches: it stops at the first space, so a `Bearer` scheme line is only caught by the prefix rule | `RedactSecrets`, `internal/runx/runx.go:206-256`; `FirstLine`, `runx.go:258-264`; reached from `internal/runner/exec.go:697`, `internal/gitx/branch.go:298,305`, `internal/ghx/ghx.go:220,248,271`, `internal/runner/usagelimit.go:100,140,149`, `internal/agent/dsh.go:146`, `internal/sbom/license.go:135` |
+| A credential a child process printed reaching an error, a report, or the journal | every piece of child output that becomes an error string passes through `FirstLine`, which strips userinfo and then `RedactSecrets`: a value assigned to a name that says it is a credential, the value of an `Authorization` header, and a token carrying a published fixed prefix. The result is idempotent, and a value under eight characters is left alone as a flag or a placeholder. The header rule requires a scheme, which is what the grammar says, so `authorization: required` in a status line and `Authorization: Negotiate` naming only a challenge's scheme read as they were written; it is a rule over the line rather than a shape match, so a header printed across two lines is not reached | `RedactSecrets`, `internal/runx/runx.go:206-259`, with `secretAuthRe` declared at `runx.go:192-196`; `FirstLine`, `runx.go:261-264`; reached from `internal/runner/exec.go:697`, `internal/gitx/branch.go:298,305`, `internal/ghx/ghx.go:220,248,271`, `internal/runner/usagelimit.go:100,140,149`, `internal/agent/dsh.go:146`, `internal/sbom/license.go:135` |
 | A machine below the git floor, discovered only by a failing command | `doctor` reads `git --version` through the same `PATH` memo a run's first git call uses, bounded to 256 bytes and run with an absolute-only `PATH`, and compares it to a floor of 2.24, the release that introduced `--end-of-options` and `git switch`. An unreadable or unparseable version is reported as unknown, not as a pass | `Version`, `internal/gitx/version.go:39-55`; `BelowFloor`, `version.go:61-70`; `cmd/gauntlet/doctor.go:147-162` |
 | An archive of the run history that is short, read as a whole one | journal writes go out whole-line, and `Inspect` counts the journals that end without the newline every event ends with, through the symlink-refusing reader, on `doctor` and on `runs --json`. It is a report rather than a control: the half-line such a file ends on is not JSON, so every reader drops it and the count is where an operator learns the run replays shorter than it ran | `lineBuffer`, `internal/journal/journal.go:302-330`; `Status.Truncated`, `internal/journal/status.go:31-37`; `Inspect`, `internal/journal/status.go:42-97` (`truncated`, `internal/journal/status.go:115-130`); `cmd/gauntlet/doctor.go:314`, `cmd/gauntlet/runs.go:40` |
 | A failed backup run destroying the archive it was replacing | the recipe builds into a temporary named after the archive and the job's own process id beside the destination and renames it into place only after `tar -tzf` reads the copy back, so the destination holds the previous archive or the new one and never half of one, and a job that fails exits non-zero with the previous copy untouched. `tar -czf "$archive"` alone truncates the destination before the first byte of the new archive lands, which loses the only good copy to a full disk or a `kill`, and one temporary would also let two overlapping jobs rename a file the other is still appending to. The checks are the failing and overlapping jobs the suite runs against that recipe | `docs/RUNS.md` "Backup and restore"; `TestBackupRecipeKeepsTheLastGoodArchive`, `cmd/gauntlet/backuprecipe_test.go:193-280` |
@@ -1801,7 +1901,24 @@ None of these is demonstrated here; evidence is the cited code paths.
   It does not authenticate agent claims or record every child action; same-user
   agents can alter local evidence. The disclosure and supported-version gaps
   above remain undocumented organizational decisions.
-- Verification scope and baseline: 2026-10-02 against commit 6ac563c. This
+- Verification scope and baseline: 2026-10-04 against commit 31b5621. This
+  pass read the twenty-three commits since b0fa5d3 and found the one class of
+  drift the pointer checks cannot see: a row deleted by a merge. The published
+  project site and the `--sandbox-write` ceiling had both been entered on a
+  review branch and were absent from the merged text, so the document named no
+  network-facing surface for a repository that ships one and repeated a
+  weaker sandbox claim than the code makes. B7 is new, the site row is back in
+  the entry-point table, and the ceiling is restated beside the flag. The
+  `Authorization` redaction row was a false claim against current code and is
+  corrected. R1 through R9 all stand where they stood: nothing in this range
+  added, removed, or widened a boundary.
+  `TestThreatModelPointersResolve`
+  (`cmd/gauntlet/threatmodel_test.go:31-67`) verifies that each pointer
+  present resolves to the symbol it names, which is a property of the citations
+  in the file, not of its coverage, so a deleted row passes it. That gap is the
+  reason this pass read the merged document against the tree rather than only
+  re-anchoring it.
+- Earlier verification scope and baseline: 2026-10-02 against commit 6ac563c. This
   pass read the four commits since 3a78719 and entered one surface the model
   had not named, `make smoke`, the release target that executes the asset
   `dist` built. It carried the two display cuts that repair invalid UTF-8
