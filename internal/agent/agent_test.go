@@ -1536,6 +1536,36 @@ func TestParseAgentCmd(t *testing.T) {
 	}
 }
 
+// TestParseAgentCmdComposesName pins the normalization ParseAgentCmd applies
+// before handing a name back.
+//
+// The caller folds what it gets to notice a duplicate --agent-cmd, and folds
+// it as text. A decomposed name folded as text never meets its composed twin,
+// so a --agent-cmd written one way and one written the other both survived
+// the duplicate check and arrived at Register as two spellings of a single
+// name. The loser was refused with "is already defined as X", quoting two
+// names that print identically and naming case as the difference, which is
+// neither the difference nor actionable.
+func TestParseAgentCmdComposesName(t *testing.T) {
+	const nfd = "cafe\u0301-agent" // e + COMBINING ACUTE, as a macOS volume spells it
+	const nfc = "caf\u00e9-agent"
+
+	decomposed, _, err := ParseAgentCmd(nfd + "=x {prompt}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, _, err := ParseAgentCmd(nfc + "=x {prompt}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Byte equality is the whole of what the caller's fold needs, and it is
+	// what this asserts: a text fold of a name that is already byte-equal
+	// cannot miss its twin.
+	if decomposed != composed {
+		t.Fatalf("ParseAgentCmd returned two spellings of one name: %q and %q", decomposed, composed)
+	}
+}
+
 // FuzzParseAgentCmd tests the --agent-cmd CLI parser against arbitrary input.
 // It must never panic, must require NAME=ARGV syntax with valid name characters
 // and a {prompt} placeholder, and must round-trip valid definitions.

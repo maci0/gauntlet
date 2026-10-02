@@ -1132,6 +1132,25 @@ func TestAgentCmdDuplicateDefinitions(t *testing.T) {
 	}
 }
 
+// TestAgentCmdDuplicateDefinitionsNormalization pins the duplicate check
+// against the spelling the name arrives in.
+//
+// The check folds each parsed name as text, so it finds a repeat only when
+// the two spellings agree byte for byte below the fold. A name composed
+// one way and the same name composed the other way did not agree, both
+// passed, and the second reached the registry, where it was refused for
+// colliding with the first with a message quoting two names that print
+// identically. The pair here is that pair, spelled out.
+func TestAgentCmdDuplicateDefinitionsNormalization(t *testing.T) {
+	_, err := parseFlags([]string{
+		"--agent-cmd", "caf\u0065\u0301-agent=x {prompt}",
+		"--agent-cmd", "caf\u00e9-agent=y {prompt}",
+	})
+	if err == nil || !strings.Contains(err.Error(), "given twice for") {
+		t.Fatalf("two spellings of one name should refuse as duplicates, got %v", err)
+	}
+}
+
 func TestShorthandValuesMayBeGluedOn(t *testing.T) {
 	o, err := parseFlags([]string{"-j3", "-r", "sec", "-t45m", "-C.", "-n2"})
 	if err != nil {

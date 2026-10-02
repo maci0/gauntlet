@@ -482,6 +482,16 @@ func ParseAgentCmd(s string) (string, Custom, error) {
 	if !ok || name == "" || strings.TrimSpace(rest) == "" {
 		return "", Custom{}, fmt.Errorf("expected NAME=ARGV, got %q", s)
 	}
+	// Compose before returning, for the reason Register does it before storing.
+	// The caller folds the name it gets back to notice a duplicate --agent-cmd,
+	// and folds it as text; a decomposed spelling folded as text never meets its
+	// composed twin. So the name spelled café (e plus a combining acute) and the
+	// same name spelled with the precomposed é both reached Register as two
+	// spellings of one name, and the loser was refused for colliding with the
+	// first, by a message quoting two names that print identically. Returning the
+	// composed form leaves every fold downstream agreeing on the one spelling the
+	// registry is keyed by.
+	name = fuzzy.NFC(name)
 	def := Custom{Argv: strings.Fields(rest)}
 	if err := def.validate(name); err != nil {
 		return "", Custom{}, err

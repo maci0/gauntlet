@@ -80,6 +80,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
   so the recipe exited 0. `test-tmpdir` and `make doctor` now probe the
   directory by writing a file, and name the path and the `TMPDIR` override
   when it is not writable.
+- `--agent-cmd` composes the name it parses before handing it back. The
+  duplicate check folds the returned name as text, and a decomposed spelling
+  never meets its composed twin that way, so the same agent named both ways
+  passed the check and reached the registry as two names. The second was
+  refused with a message quoting two names that print identically and blaming
+  case, which is neither the difference nor actionable; it is now the
+  "given twice" error the flag documents.
 - `sec-review` skips a repository it cannot say anything about. It is the one
   member of `quick` with no applicability gate, so a documentation-only tree
   spent a full pass and returned findings invented from configuration files. It
