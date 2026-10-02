@@ -1185,10 +1185,7 @@ func TopicSlug(subject string) string {
 			// what lands in refs/heads. A rune that does not fit ends the
 			// topic, which is what the ASCII-only loop did for every rune past
 			// the budget.
-			size := utf8.RuneLen(r)
-			if size < 1 {
-				size = 1
-			}
+			size := max(utf8.RuneLen(r), 1)
 			need := size
 			if pending {
 				need += 1

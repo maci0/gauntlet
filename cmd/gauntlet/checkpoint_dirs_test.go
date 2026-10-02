@@ -57,7 +57,7 @@ func TestListCheckpointsOrdersDirsByCollation(t *testing.T) {
 
 	// The printed line is the one carrying every directory, comma-joined.
 	var printed string
-	for _, line := range strings.Split(sb.String(), "\n") {
+	for line := range strings.SplitSeq(sb.String(), "\n") {
 		if strings.Contains(line, filepath.Join(root, "apple")) {
 			printed = line
 			break
@@ -67,7 +67,7 @@ func TestListCheckpointsOrdersDirsByCollation(t *testing.T) {
 		t.Fatalf("no listing line naming the directories:\n%s", sb.String())
 	}
 	got := make([]string, 0, len(dirs))
-	for _, cell := range strings.Split(printed, ",") {
+	for cell := range strings.SplitSeq(printed, ",") {
 		cell = strings.TrimSpace(cell)
 		// The clause after the last name is "N unfinished in the current
 		// loop, ...", not a path.
