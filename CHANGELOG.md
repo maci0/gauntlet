@@ -484,6 +484,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   operator-set `TMPDIR` still adds its own directory, and a temporary directory
   the host does not have is skipped instead of refusing the launch.
 - The project site is served with a Content-Security-Policy that allows only its own styles and images, plus `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy`, and HSTS, through a `_headers` file Cloudflare Workers Static Assets applies to every asset.
+- The reload handoff and the crash checkpoint were read by checking a path's
+  type with `os.Lstat` and then opening the name with `os.Open`. Those are two
+  syscalls, and a reviewed repository that can reach the name — which it can
+  whenever `GAUNTLET_HOME` points inside the tree — could put a symlink there
+  between them, and `os.Open` follows one. What was read that way was then
+  unmarshalled into the state the successor resumes from: the handoff's
+  counters and unfinished review queue, and the argv `gauntlet resume`
+  executes. Both now open through the one guarded open the other
+  repository-planted paths already use, which carries `O_NOFOLLOW` into the
+  open itself and refuses a FIFO or a device in the same place. A planted node
+  at either name was refused by the type check it already had, so what changes
+  is the window between the two calls, and no visible behavior.
 
 ## 1.34.1
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
+	"github.com/maci0/gauntlet/internal/safefile"
 )
 
 // stateEnv names the handoff file passed to the reloaded process.
@@ -201,14 +202,16 @@ func LoadState(v any) (ok bool, err error) {
 	if path != filepath.Clean(path) || strings.Contains(path, "..") {
 		return false, fmt.Errorf("reload handoff %s: path is not clean", path)
 	}
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return false, fmt.Errorf("reload handoff %s: %w", path, err)
-	}
-	if !fi.Mode().IsRegular() {
-		return false, fmt.Errorf("reload handoff %s: not a regular file", path)
-	}
-	f, err := os.Open(path)
+	// safefile.OpenRead, not os.Lstat followed by os.Open: an Lstat says the
+	// handoff is a regular file at the moment it looked, and the open that
+	// follows is a separate syscall the reviewed repository can lose a race
+	// against by swapping a symlink into the name. os.Open follows it, so a
+	// blob from outside the tree would be unmarshalled into the state a
+	// successor resumes from. The guarded open carries O_NOFOLLOW into the
+	// open itself and refuses a FIFO or a device in the same place. A refusal
+	// leaves the file where it is, as before: LoadState drops only what it
+	// read.
+	f, _, err := safefile.OpenRead(path)
 	if err != nil {
 		return false, fmt.Errorf("reload handoff %s: %w", path, err)
 	}

@@ -21,6 +21,7 @@ import (
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/runner"
+	"github.com/maci0/gauntlet/internal/safefile"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
 
@@ -102,18 +103,20 @@ func dropCheckpoint(runID string) error {
 
 // readCheckpoint loads one checkpoint, refusing anything but a regular file
 // whose recorded run id is the one its name says.
+//
+// safefile.OpenRead, not os.Lstat followed by os.Open: an Lstat says a
+// checkpoint is a regular file at the moment it looked, and the open that
+// follows is a separate syscall the reviewed repository can lose a race
+// against by swapping in a symlink. os.Open follows it, so the contents
+// outside the tree would be read as the argv `gauntlet resume` executes. The
+// guarded open carries O_NOFOLLOW into the open itself and refuses a FIFO or
+// device in the same place, which is the rule every other repository-planted
+// read in this tree already follows.
 func readCheckpoint(path string) (checkpoint, error) {
 	var cp checkpoint
-	fi, err := os.Lstat(path)
+	f, _, err := safefile.OpenRead(path)
 	if err != nil {
-		return cp, err
-	}
-	if !fi.Mode().IsRegular() {
-		return cp, fmt.Errorf("checkpoint %s: not a regular file", path)
-	}
-	f, err := os.Open(path)
-	if err != nil {
-		return cp, err
+		return cp, fmt.Errorf("checkpoint %s: %w", path, err)
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxCheckpointBytes+1))
 	_ = f.Close()

@@ -39,7 +39,7 @@ var allowedInternalImports = map[string][]string{
 	},
 	"internal/runx":       {},
 	"internal/safefile":   {},
-	"internal/selfupdate": {"internal/gauntlethome"},
+	"internal/selfupdate": {"internal/gauntlethome", "internal/safefile"},
 	"internal/sbom":       {"internal/runx"},
 	"internal/streamjson": {},
 	"internal/ui":         {"internal/envx", "internal/fuzzy", "internal/humanize", "internal/normalize", "internal/runner"},
@@ -76,6 +76,11 @@ var allowedInternalImports = map[string][]string{
 // FIFO, and of a missing name is written once rather than four times in four
 // flags. agent takes the edge for agents.json alone: the definitions there are
 // exec'd as argv, and GAUNTLET_HOME may point inside the reviewed tree.
+// selfupdate takes it for the reload handoff, for the same reason agent does:
+// the path is named by the environment, GAUNTLET_HOME may point inside the
+// reviewed tree, and the blob holds the state a successor resumes from.
+// cmd/gauntlet reads the crash checkpoint through it as well, which declares no
+// edge: the composition root may import any internal package.
 // Nothing in internal/ may import ui. A permission no import uses is a
 // hole left open for the next file, and docs/DESIGN.md would describe a
 // dependency that does not exist, so the map has to name only the edges the

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -262,6 +263,74 @@ func TestLoadStateRejectsNonRegularOrNonJSON(t *testing.T) {
 	t.Setenv(stateEnv, bigFile)
 	if _, err := LoadState(&v); err == nil || !strings.Contains(err.Error(), "exceeds") {
 		t.Fatalf("LoadState accepted oversized file: %v", err)
+	}
+}
+
+// A symlink pointing at a well-formed handoff must be refused on the link
+// itself: the blob it names is the state a successor resumes from, and
+// GAUNTLET_HOME may point inside the reviewed tree, so following it would let
+// the tree choose the counters the next process starts with. The refusal also
+// leaves the target alone, and populates nothing. A static link was refused
+// before the guarded open too; what that open adds is refusing it when the
+// name is swapped between the type check and the read, which cannot be pinned
+// by a test that plants one link and waits.
+func TestLoadStateRefusesSymlinkToAValidHandoff(t *testing.T) {
+	dir := t.TempDir()
+	body, err := json.Marshal(handoffBlob{Loops: 9, Pending: []string{"sec-review"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "planted.json")
+	if err := os.WriteFile(target, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "run-1.json")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(stateEnv, link)
+
+	var v handoffBlob
+	ok, err := LoadState(&v)
+	if err == nil {
+		t.Fatalf("LoadState read through a symlink: ok=%v blob=%+v", ok, v)
+	}
+	if ok {
+		t.Fatal("LoadState reported success after refusing a symlink")
+	}
+	if v.Loops != 0 {
+		t.Fatalf("a refused handoff must not populate the state, got %+v", v)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("the target of a refused symlink must survive: %v", err)
+	}
+}
+
+// A FIFO in the handoff's place is the other end of the same refusal: the
+// guarded open clears O_NONBLOCK only once the descriptor is known to be
+// regular, so the read cannot block forever on a planted node waiting for a
+// writer that never comes.
+func TestLoadStateRefusesFIFOWithoutBlocking(t *testing.T) {
+	dir := t.TempDir()
+	fifo := filepath.Join(dir, "run-1.json")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("cannot create a FIFO here: %v", err)
+	}
+	t.Setenv(stateEnv, fifo)
+
+	done := make(chan error, 1)
+	go func() {
+		var v handoffBlob
+		_, err := LoadState(&v)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("LoadState read a FIFO as a handoff")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("LoadState blocked on a FIFO in the handoff's place")
 	}
 }
 
