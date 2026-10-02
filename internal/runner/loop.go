@@ -55,8 +55,13 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	// The run lock on this directory is held, so nothing under the worktree
 	// root belongs to a live run: whatever is in it is scratch a previous
 	// process was killed before it could remove, and each entry is a full
-	// copy of the tree.
-	r.repo.SweepWorktreeRoot(ctx)
+	// copy of the tree. What the sweep could not remove is named: a copy of
+	// a private tree left on disk with nothing saying so is the failure this
+	// sweep exists to prevent, and the run that swept it is the only one that
+	// can still see it.
+	if err := r.repo.SweepWorktreeRoot(ctx); err != nil {
+		r.log("Warning: %v", err)
+	}
 	if r.cfg.Generation > 0 {
 		// An earlier process of this run may have been killed between cutting
 		// a review branch and landing it. Its branches that HEAD already

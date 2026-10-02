@@ -87,6 +87,11 @@ type StackPrep struct {
 	// workflow pushes there, and git's read operations follow the fetch URL),
 	// the remote name otherwise.
 	ReadRemote string
+	// Warnings are what the preflight proved about the tree rather than the
+	// stack: they name something an operator has to act on, such as a checkout
+	// under the worktree root that a startup sweep could not remove, and the
+	// caller prints them without failing the run.
+	Warnings []string
 }
 
 // PrepareStack validates every local and remote precondition of a stacked
@@ -211,9 +216,17 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 	}
 	// The run lock is held for this directory by the time a stack is prepared,
 	// so the worktree root holds nothing a live run is using: whatever is left
-	// in it is scratch a killed process never removed.
-	repo.SweepWorktreeRoot(ctx)
-	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh, ReadRemote: readRemote}, nil
+	// in it is scratch a killed process never removed, and each entry is a
+	// full copy of the tree. A copy this could not remove is carried back as
+	// a warning rather than an error: the preflight it sits behind is about
+	// the stack, and refusing to stack over an undeletable leftover would
+	// strand the run on a directory nothing will free on its own.
+	var sweepWarnings []string
+	if err := repo.SweepWorktreeRoot(ctx); err != nil {
+		sweepWarnings = append(sweepWarnings, err.Error())
+	}
+	return &StackPrep{Base: base, BaseTip: baseTip, GH: gh, ReadRemote: readRemote,
+		Warnings: sweepWarnings}, nil
 }
 
 // Lengths of the abbreviated commit ids a generated branch or probe name

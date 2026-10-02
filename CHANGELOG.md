@@ -26,6 +26,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- The startup sweep that reclaims the checkout directories a killed run left
+  under `.gauntlet/worktrees` no longer drops the failures it meets. Each entry
+  there is a full copy of the reviewed repository, which may be private, so a
+  removal that failed left that copy on disk with nothing anywhere saying so:
+  the sweep, both call sites, and the signature all discarded the error. A
+  sequential or `--jobs` run now reports what it could not remove, and a
+  `--stacked-prs` run reports it as a warning on stderr rather than refusing to
+  stack over a directory nothing will free on its own.
+
 ## 1.35.0
 
 ### Added

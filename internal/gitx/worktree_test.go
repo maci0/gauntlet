@@ -856,7 +856,9 @@ func TestSweepWorktreeRootReclaimsKilledRun(t *testing.T) {
 		t.Fatalf("CleanWorktreeRoot removed a root holding checkouts: %v", err)
 	}
 
-	r.SweepWorktreeRoot(ctx)
+	if err := r.SweepWorktreeRoot(ctx); err != nil {
+		t.Fatalf("SweepWorktreeRoot over reclaimable checkouts: %v", err)
+	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		entries, _ := os.ReadDir(root)
 		t.Fatalf("SweepWorktreeRoot left %d entries under %s: %v", len(entries), root, err)
@@ -891,7 +893,9 @@ func TestSweepWorktreeRootLeavesSymlink(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	r.SweepWorktreeRoot(ctx)
+	if err := r.SweepWorktreeRoot(ctx); err != nil {
+		t.Fatalf("SweepWorktreeRoot with a planted symlink: %v", err)
+	}
 	if _, err := os.Stat(canary); err != nil {
 		t.Fatalf("SweepWorktreeRoot followed a symlink out of the root and deleted %s: %v", canary, err)
 	}
@@ -922,7 +926,9 @@ func TestSweepWorktreeRootRefusesSymlinkedRoot(t *testing.T) {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
-	r.SweepWorktreeRoot(ctx)
+	if err := r.SweepWorktreeRoot(ctx); err == nil {
+		t.Fatal("SweepWorktreeRoot on a symlinked root: want the refusal reported, got nil")
+	}
 	if _, err := os.Stat(canary); err != nil {
 		t.Fatalf("SweepWorktreeRoot followed a symlinked root and deleted %s: %v", canary, err)
 	}
@@ -936,12 +942,47 @@ func TestSweepWorktreeRootMissingRoot(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()
 	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
-	r.SweepWorktreeRoot(ctx)
+	if err := r.SweepWorktreeRoot(ctx); err != nil {
+		t.Fatalf("SweepWorktreeRoot with no root yet: %v", err)
+	}
 	if _, err := os.Stat(root); !os.IsNotExist(err) {
 		t.Fatalf("SweepWorktreeRoot created the missing root %s: %v", root, err)
 	}
 	if _, err := os.Stat(filepath.Dir(root)); !os.IsNotExist(err) {
 		t.Fatalf("SweepWorktreeRoot created the missing parent %s: %v", filepath.Dir(root), err)
+	}
+}
+
+// What the sweep could not remove is reported, not dropped. Every entry under
+// the root is a full copy of the reviewed repository, which may be private,
+// and the sweep runs unattended at startup: a removal that failed on a busy
+// mount or a permission bit leaves that copy on disk, and the run that swept
+// it is the only place left to say so.
+func TestSweepWorktreeRootReportsWhatItCouldNotRemove(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores the directory mode the removal needs")
+	}
+	r := newRepo(t)
+	ctx := context.Background()
+	root := filepath.Join(r.Dir, filepath.FromSlash(worktreeRoot))
+	stuck := filepath.Join(root, "run-l1-lane-0")
+	if err := os.MkdirAll(stuck, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A parent this run may not write is what makes git's removal of the
+	// checkout fail on an ordinary account: the directory entry cannot be
+	// unlinked out of a read-only directory.
+	if err := os.Chmod(root, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(root, 0o700) })
+
+	err := r.SweepWorktreeRoot(ctx)
+	if err == nil {
+		t.Fatal("SweepWorktreeRoot on an unremovable checkout: want it reported, got nil")
+	}
+	if !strings.Contains(err.Error(), stuck) {
+		t.Fatalf("SweepWorktreeRoot error does not name the checkout it left behind: %v", err)
 	}
 }
 

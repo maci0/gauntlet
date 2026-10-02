@@ -51,6 +51,9 @@ func stackPreflight(ctx context.Context, d *dirRun, opts *options, carried dirHa
 	if err != nil {
 		return err
 	}
+	for _, w := range prep.Warnings {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
+	}
 	d.prep = prep
 	d.repo = gitx.Open(d.dir)
 	snap, err := d.repo.AddSnapshotWorktree(ctx, runID, prep.BaseTip)

@@ -1021,9 +1021,17 @@ func (r *Repo) PruneWorktrees(ctx context.Context) {
 // cuts a checkout, so nothing under the root is in use here. Call it at
 // startup only. DeleteBranchesMatching also prunes, mid-run, while the lanes
 // are live, and sweeping there would delete the checkouts in flight.
-func (r *Repo) SweepWorktreeRoot(ctx context.Context) {
+//
+// What it could not remove is returned rather than dropped. Every entry here is
+// a full copy of the reviewed tree, which may be private, and the sweep runs
+// unattended at startup precisely when nothing is watching: a removal that
+// failed on a permission bit or a busy mount left that copy behind, and the
+// only place left to say so is the run that swept. Every failure is collected
+// rather than the first, because one unreadable root is the common case and it
+// would otherwise hide the entries behind it.
+func (r *Repo) SweepWorktreeRoot(ctx context.Context) error {
 	if r == nil || !Available() {
-		return
+		return nil
 	}
 	r.wtMu.Lock()
 	defer r.wtMu.Unlock()
@@ -1031,25 +1039,58 @@ func (r *Repo) SweepWorktreeRoot(ctx context.Context) {
 	// symlink would otherwise make ReadDir list, and the loop below delete,
 	// whatever it points at.
 	if err := r.ensureWorktreeRoot(); err != nil {
-		return
+		return err
 	}
 	root := r.worktreeRootDir()
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return // no root yet, or unreadable: nothing of ours to sweep
+		// No root yet is not a failure: a run that cut no checkout has
+		// nothing of ours to sweep. Anything else is a root that exists and
+		// cannot be listed, so whatever it holds was never examined.
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("cannot read the worktree root %s: %w", root, err)
 	}
+	var errs []error
 	for _, e := range entries {
 		// IsDir is false for a symlink, whatever it points at, so a link
 		// planted in the reviewed tree is left alone rather than followed.
 		if !e.IsDir() {
 			continue
 		}
-		_ = r.removeWorktreeDir(ctx, filepath.Join(root, e.Name()))
+		if err := r.removeWorktreeDir(ctx, filepath.Join(root, e.Name())); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	// The root itself goes with its last entry. Failing means something is
-	// still in it, which is the same signal CleanWorktreeRoot acts on.
-	_ = os.Remove(root)
-	_ = os.Remove(filepath.Dir(root))
+	// The root itself goes with its last entry. A root that survives because
+	// an entry above did not go is already named by that entry, and the
+	// parent is still wanted for everything else a run keeps there, so only
+	// a root that is empty and still there is a failure of this sweep: it
+	// holds nothing to preserve and something is stopping its removal.
+	if err := os.Remove(root); err == nil {
+		// The parent went with the root only if it held nothing else, which
+		// is the case CleanWorktreeRoot acts on and not one to report: a
+		// .gauntlet that still has the run's state in it is supposed to be
+		// there. A failure with the root already gone means the parent
+		// holds something this sweep has no business naming.
+		_ = os.Remove(filepath.Dir(root))
+	} else if !os.IsNotExist(err) && len(errs) == 0 {
+		if empty, lerr := isEmptyDir(root); lerr == nil && empty {
+			errs = append(errs, fmt.Errorf("cannot remove the empty worktree root %s: %w", root, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// isEmptyDir reports whether dir holds nothing, and whether it could be told.
+// A root that survived because an entry was kept is not a leftover of its own.
+func isEmptyDir(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	return len(entries) == 0, nil
 }
 
 // CleanWorktreeRoot removes the per-review checkout directory when nothing is
