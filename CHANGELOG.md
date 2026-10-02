@@ -53,6 +53,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Changed
 
+- `docs/DESIGN.md` now documents the optional `--semcode` index: a flag
+  `docs/CLI.md` has documented since it shipped, with the design map silent on
+  what it does, when it runs, why a reload inherits its predecessor's index
+  instead of rebuilding, and why its build fails the run rather than quietly
+  degrading the reviews that asked for it.
 - `gauntlet runs --json` gained an `agents` count on its `history` object: how
   many custom agent definitions the state tree holds. It is the one member of
   the documented state-tree archive that the other counts said nothing about,

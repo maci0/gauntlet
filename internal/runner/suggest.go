@@ -16,7 +16,8 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
-// SuggestConfig asks an agent which reviews apply to a repository.
+// SuggestConfig asks which reviews apply to a repository, either by an agent
+// or, with Only naming internal/evidence, off the tree's own files.
 type SuggestConfig struct {
 	NoSandbox    bool
 	SandboxWrite []string
@@ -39,7 +40,8 @@ type SuggestConfig struct {
 	Now func() time.Time
 }
 
-// Suggest runs the triage step and returns the reviews the agent picked.
+// Suggest runs the triage step and returns the reviews it picked: the
+// agent's, or the file-signal suggester's when Only names internal/evidence.
 //
 // An exit code of 0 with unusable output is as much a failure as a nonzero
 // exit: the next agent is tried rather than giving up, because the alternative

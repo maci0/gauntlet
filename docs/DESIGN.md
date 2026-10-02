@@ -756,6 +756,29 @@ already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
 any with a commit HEAD lacks. Checkpoints sit in their own directory because
 the handoff writer sweeps every day-old file in `state/`.
 
+## The optional semantic index
+
+Some reviews answer call-graph and type questions that a plain text search
+cannot. For those, `--semcode` builds a semantic index with the `semcode-index`
+helper before the loop starts. It is a precondition of the run rather than a
+review of its own: it runs once per directory ahead of every review, and a build
+that fails fails the run instead of quietly degrading the reviews that asked for
+the index.
+
+`cmd/gauntlet/semcode.go` names the helper once (`semcodeIndexer`), so the
+preflight in `main.go`, the one build the run reaches, and the dry-run warning
+cannot each go looking for a different binary. The preflight only resolves it,
+and only for a run that would build one, which is why a machine without the
+helper is refused with a usage error before any lock is taken; the build itself
+runs after the locks, because a reload inherits the index its predecessor built
+rather than spending another half hour on the same tree. That build is capped by
+a timeout of its own rather than by the run's `--timeout`: the indexer walks
+the whole tree before the first review starts, so it is not one review's budget.
+Its output is not parsed or stored, only filtered for the terminal through the
+same display pass as every other child, because it reports the reviewed tree's
+own file names. A dry run launches nothing that could fail, so
+`--dry-run --semcode` warns beside the schedule instead.
+
 ## Agent-assigned review weights
 
 The suggest step asks an agent for expected review value as well as relevance:

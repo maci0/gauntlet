@@ -172,10 +172,10 @@ func PrepareStack(ctx context.Context, cfg Config) (*StackPrep, error) {
 			}
 		}
 	}
-	// An unreadable push URL is refused whatever named the repository. A
-	// --pr-repo run pushes to that URL while recovery and the taken-name
-	// probe read the fetch URL, so continuing here has the stack look absent
-	// and get pushed a second time.
+	// An unreadable push URL is refused whatever named the repository. The
+	// stack pushes to it while recovery and the taken-name probe read the
+	// fetch URL, so continuing here has the stack look absent and get pushed
+	// a second time.
 	if pushErr != nil {
 		return nil, fmt.Errorf("cannot read the push URL of %s: %w", cfg.PushRemote, pushErr)
 	}
