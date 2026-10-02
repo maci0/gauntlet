@@ -1072,6 +1072,7 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 			Disagreed int `json:"disagreed"`
 			Pruned    int `json:"pruned"`
 			Truncated int `json:"truncated"`
+			Agents    int `json:"agents"`
 		} `json:"history"`
 	}
 	if err := json.Unmarshal([]byte(got), &doc); err != nil {
@@ -1093,6 +1094,14 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 	// a run cut off mid-line is still a run, and still has its index row.
 	if h.Truncated != 0 {
 		t.Errorf("history reports %d journals cut mid-line, want none:\n%s", h.Truncated, got)
+	}
+	// The archive holds no agents.json, so the count is zero. The member is
+	// present either way, which is the point: a document that dropped it would
+	// leave a restore script comparing two trees on a set the count no longer
+	// covers, and the definitions it lost are the one member nothing else
+	// reports.
+	if h.Agents != 0 {
+		t.Errorf("history reports %d agent definitions on a tree with no agents.json, want 0:\n%s", h.Agents, got)
 	}
 	shard := filepath.Join(home, "runs", "2026-01-02")
 	entry, err := os.ReadDir(shard)

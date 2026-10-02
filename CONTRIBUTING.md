@@ -274,7 +274,11 @@ next change has somewhere to land. Do not rename it in place:
 `Unreleased`, so a tree without one fails the suite the release job runs. The
 number in the heading follows from what the section holds:
 `TestChangelogSemVerBumps` rejects an `### Added` in a patch and a `### Removed`
-anywhere but a major release, `## Unreleased` included. Commit that, then:
+anywhere but a major release, `## Unreleased` included. It also rejects a
+`### Changed` in a patch that announces a raised minimum Go version, which is
+the one `Changed` entry that breaks a consumer who only built from source; that
+one wants a minor. 1.12.2 shipped it in a patch and is named in the test as the
+exception it is. Commit that, then:
 
 ```sh
 ver=X.Y.Z                            # the version that heading now names

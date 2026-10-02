@@ -224,6 +224,40 @@ func TestValidateChangelogSemVerCases(t *testing.T) {
 				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
 			wantErr: "major release 2.0.1 must reset minor and patch to 0",
 		},
+		{
+			name: "patch release raises the minimum Go version",
+			content: "## Unreleased\n\n" +
+				"## 1.22.1\n\n### Changed\n- Source builds and `go install` need Go 1.28.\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "raises the minimum Go version",
+		},
+		{
+			name: "minor release may raise the minimum Go version",
+			content: "## Unreleased\n\n" +
+				"## 1.23.0\n\n### Changed\n- Source builds and `go install` need Go 1.28.\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "",
+		},
+		{
+			name: "unreleased may raise the minimum Go version",
+			content: "## Unreleased\n\n### Changed\n- Source builds need Go 1.28.\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "",
+		},
+		{
+			name: "a patch fix that only names a Go version is not a raise",
+			content: "## Unreleased\n\n" +
+				"## 1.22.1\n\n### Fixed\n- A Go 1.27 binary crashed on a tree with no index.\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "",
+		},
+		{
+			name: "the 1.12.2 raise is a documented exception",
+			content: "## Unreleased\n\n" +
+				"## 1.12.2\n\n### Changed\n- Source builds and `go install` need Go 1.27.\n\n" +
+				"## 1.12.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,6 +288,8 @@ func validateChangelogSemVer(text string) []string {
 		currentVer *changelogVersion
 		prevVer    *changelogVersion
 		groups     []string
+		changed    []string
+		inChanged  bool
 		lineNum    int
 	)
 	check := func(ver *changelogVersion, groups []string, line int) {
@@ -310,11 +346,18 @@ func validateChangelogSemVer(text string) []string {
 		n := i + 1
 		switch {
 		case strings.HasPrefix(line, "### "):
-			groups = append(groups, strings.TrimPrefix(line, "### "))
+			group := strings.TrimPrefix(line, "### ")
+			groups = append(groups, group)
+			if group == "Changed" {
+				inChanged = true
+			}
 		case strings.HasPrefix(line, "## "):
 			title := strings.TrimPrefix(line, "## ")
 			check(currentVer, groups, lineNum)
-			groups = nil
+			if inChanged {
+				errs = append(errs, toolchainRaiseErrors(lineNum, currentVer, changed)...)
+			}
+			groups, changed, inChanged = nil, nil, false
 			lineNum = n
 			if title == "Unreleased" {
 				currentVer = nil
@@ -326,9 +369,70 @@ func validateChangelogSemVer(text string) []string {
 			} else {
 				currentVer = nil
 			}
+		case inChanged && strings.HasPrefix(line, "- "):
+			changed = append(changed, line)
 		}
 	}
 	check(currentVer, groups, lineNum)
+	if inChanged {
+		errs = append(errs, toolchainRaiseErrors(lineNum, currentVer, changed)...)
+	}
+	return errs
+}
+
+// A minimum toolchain raise is the one `Changed` a patch release may not carry.
+// Every other behavior change a patch makes is invisible to a consumer who
+// is on it; raising the Go a source build needs stops a build that worked an
+// hour earlier, on a machine nobody upgraded anything on, and the failure is
+// the toolchain's rather than this tool's. 1.12.2 shipped that way and is
+// listed here as the exception that motivated the rule, the way 1.0.1 and
+// 1.0.2 are: a change in what a build needs is an addition to what is
+// supported, which is a minor.
+//
+// The wording is matched rather than the meaning: a bullet has to say a
+// minimum moved up, in the words this file has used for it since 1.12.2. A
+// release note that raises the floor in other words is not caught here, and
+// the alternative — reading every Changed bullet for intent — is a judgement
+// a test cannot make.
+var changelogToolchainRaises = []string{
+	"need Go ",
+	"needs Go ",
+	"require Go ",
+	"requires Go ",
+	"minimum Go ",
+	"Go minimum",
+}
+
+// toolchainRaiseErrors reports every Changed bullet in a patch release that
+// announces a raised minimum Go version. A nil ver is `## Unreleased`, which
+// may hold anything: the number is chosen at release time, when the section is
+// renamed, and that is where the question is asked.
+func toolchainRaiseErrors(line int, ver *changelogVersion, changed []string) []string {
+	if ver == nil {
+		return nil
+	}
+	// The documented historical exceptions, as in validateChangelogSemVer,
+	// plus 1.12.2, which shipped "Source builds and `go install` need Go 1.27"
+	// in a patch. It is listed rather than left silent: the entry is what the
+	// rule below was written for, and rewriting a released section would put
+	// notes under a version nobody received.
+	if *ver == "1.0.1" || *ver == "1.0.2" || *ver == "1.12.2" {
+		return nil
+	}
+	if _, _, patch := ver.numbers(); patch == 0 {
+		return nil
+	}
+	var errs []string
+	for _, bullet := range changed {
+		for _, phrase := range changelogToolchainRaises {
+			if strings.Contains(bullet, phrase) {
+				errs = append(errs, fmt.Sprintf(
+					"line %d: patch release %s raises the minimum Go version in a ### Changed entry; a source build that worked stops working, so that is a minor release",
+					line, *ver))
+				break
+			}
+		}
+	}
 	return errs
 }
 

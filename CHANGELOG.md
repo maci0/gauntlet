@@ -10,6 +10,14 @@ for a major version; new flags and other additions may land in a minor. While
 the project was 0.x, other behavior changes could land in a minor instead and
 were listed under Changed.
 
+One `Changed` entry is an addition rather than a behavior change and so
+belongs in a minor even though it is not one: raising the Go a source build
+needs. A consumer who installed a binary is unaffected, but a consumer who
+builds from source loses a build that worked, on a machine they installed
+nothing on, with the failure coming from the toolchain rather than from this
+tool. 1.12.2 shipped such an entry in a patch and is the documented exception
+the check names.
+
 There is no Go API in this contract, because no other program can import
 anything in this module: every package is under `internal/`, and the ones
 outside it, `cmd/gauntlet` and `cmd/sbom`, are `package main`. Signatures under `internal/`
@@ -25,6 +33,23 @@ and set names in `internal/prompt/contract_test.go`, and the `ev` values of
 the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
+
+### Added
+
+- The changelog is checked for the one `Changed` entry that breaks a consumer
+  who did not upgrade anything. Raising the Go a source build needs is an
+  addition to what is supported rather than a behavior change, and it stops a
+  `go build` that worked on a machine that installed nothing, with a failure
+  that names the toolchain instead of this tool. 1.12.2 shipped such an entry
+  in a patch; `TestChangelogSemVerBumps` now refuses one and names 1.12.2 as
+  the exception, so the same line cannot ship again under a new number.
+- `TestDocsCLIDocumentsEveryHistoryCount` reads the `history` object out of
+  `docs/CLI.md` and the JSON tags out of `historyJSON` and refuses a tree where
+  the two disagree, in either direction. The `agents` count above landed with a
+  changelog entry and a `docs/RUNS.md` example while the sentence in
+  `docs/CLI.md` kept naming five members, so the shape a restore script is
+  written from was not the shape a restore reads; a member added to one without
+  the other now fails the suite rather than the first restore.
 
 ### Changed
 
