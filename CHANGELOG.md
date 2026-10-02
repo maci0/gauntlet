@@ -71,6 +71,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `--usage-cmd` works on a host whose locale writes numbers its own way. The
+  probe is the operator's own command and runs with the ambient environment, so
+  its answer arrives in the host's number format: `de_DE`, `fr_FR`, and the rest
+  of the comma-decimal locales print `85,5` and put the percent sign after a
+  space, one of them a narrow no-break space. The answer was read with
+  `strconv.ParseFloat`, which only takes the C form, so on such a host every
+  probe failed to parse, the failure was reported as an ignored usage limit, and
+  the run spent the very window `--usage-limit` exists to stop. The separators
+  are now read as the locale wrote them, groups and all, while a field that is
+  not a single number in any of those forms ("usage: 42", "1,2,3", "NaN") is
+  still refused exactly as before.
 - `gauntlet resume` with no run id printed each interrupted run's last write as
   local wall clock with no zone, so on a fall-back transition two runs an hour
   apart listed under the same timestamp: in Europe/Warsaw on 2026-10-25 a

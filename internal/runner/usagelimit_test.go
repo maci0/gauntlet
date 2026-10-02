@@ -91,6 +91,25 @@ func TestParseUsagePercent(t *testing.T) {
 		{in: "0", want: 0},
 		{in: "100", want: 100},
 		{in: "100.0", want: 100},
+		// A probe is the operator's own command and runs under the ambient
+		// locale, so its answer arrives in the host's number format. de_DE
+		// and fr_FR write the decimal point as a comma and put the percent
+		// sign after a space; reading those as English is what made every
+		// probe fail there and left the run with no limit at all.
+		{in: "85,5", want: 85.5},
+		{in: "85,5 %", want: 85.5},
+		{in: "85,5\u202f%", want: 85.5}, // fr_FR: narrow no-break space
+		{in: "85,5\u00a0%", want: 85.5}, // de_DE: no-break space
+		{in: "100,0", want: 100},
+		// A single mark followed by three digits is read as a decimal
+		// separator, so a de_DE "1.500" is 1.5% rather than 1500%. Both
+		// readings are figures no run acts on differently, and the narrow one
+		// is the safe one: it leaves the review going instead of ending it.
+		{in: "1.500", want: 1.5},
+		{in: "1,500", want: 1.5},
+		// Still not a single number, however it is punctuated.
+		{in: "1,2,3", bad: true},
+		{in: "85,5%er", bad: true},
 		// A pipeline that narrates before printing the figure: the answer is
 		// the last line, not the first.
 		{in: "probing...\n77\n", want: 77},

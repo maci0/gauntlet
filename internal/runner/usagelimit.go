@@ -20,6 +20,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/maci0/gauntlet/internal/runx"
 )
@@ -131,11 +133,14 @@ func parseUsagePercent(s string) (float64, error) {
 	if i := strings.LastIndexByte(strings.TrimRight(field, "\n"), '\n'); i >= 0 {
 		field = strings.TrimSpace(field[i+1:])
 	}
-	field = strings.TrimSpace(strings.TrimSuffix(field, "%"))
+	// The percent sign is written after a space in half the locales, and
+	// fr_FR writes a narrow no-break space there, which TrimSpace (ASCII
+	// spaces only) does not drop.
+	field = strings.TrimSpace(strings.TrimSuffix(strings.TrimRightFunc(field, unicode.IsSpace), "%"))
 	if field == "" {
 		return 0, errors.New("probe printed no percentage")
 	}
-	pct, err := strconv.ParseFloat(field, 64)
+	pct, err := parseLocaleFloat(field)
 	if err != nil {
 		return 0, fmt.Errorf("probe printed %q, want a percentage", runx.FirstLine(field))
 	}
@@ -152,4 +157,141 @@ func parseUsagePercent(s string) (float64, error) {
 		return 0, fmt.Errorf("probe printed %g, outside 0-100", pct)
 	}
 	return pct, nil
+}
+
+// parseLocaleFloat reads a number a probe wrote in its own locale. The probe is
+// the operator's own command and runs with the ambient environment, so its
+// answer carries the host's number formatting, not the C one: de_DE and fr_FR
+// write the decimal point as a comma and group with a period or a no-break
+// space ("85,5", "1.234,5", "1 234,5"). strconv.ParseFloat reads the C form
+// only and refuses all three, so on such a host every probe failed to parse,
+// the limit was reported as ignored, and the run went on to spend the very
+// window --usage-limit exists to stop.
+//
+// Only the separators are rewritten, and only for a field that is a single
+// decimal number in one of those forms: the digits either side of the decimal
+// separator are read, and every other mark has to sit between three-digit
+// groups. "1,2,3" and "1,23" are therefore left to ParseFloat and fail as they
+// did before, so a probe's error message cannot become a figure, and a field
+// already in the C form parses to the value it always did.
+func parseLocaleFloat(field string) (float64, error) {
+	body, sign, exponent, ok := localeNumberParts(field)
+	if !ok {
+		return strconv.ParseFloat(field, 64)
+	}
+	// Whichever of the marks comes last is the decimal one: "1.234,5" is one
+	// and a bit, "1,234.5" is a thousand and a bit. With only one present it
+	// is the decimal separator in every locale that writes one, so "85,5" and
+	// "85.5" both read as eighty-five and a half. The caller's range check
+	// bounds the rest: "1.500" read as 1.5 rather than 1500 is not a figure a
+	// run can act on, and a 1500% window is not one either.
+	whole, frac, mark := splitDecimal(body)
+	if !mark {
+		// No decimal separator: every mark in the whole part has to be a
+		// grouping one, so "1 234" is a number and "1 23" is not.
+		if !grouped(whole) {
+			return strconv.ParseFloat(field, 64)
+		}
+		return strconv.ParseFloat(sign+stripGrouping(whole)+exponent, 64)
+	}
+	// A mark inside the fraction is a thousands separator in no locale: the
+	// digits after the decimal point are written as they are.
+	if strings.ContainsFunc(frac, isGroupMark) || !grouped(whole) {
+		return strconv.ParseFloat(field, 64)
+	}
+	return strconv.ParseFloat(sign+stripGrouping(whole)+"."+stripGrouping(frac)+exponent, 64)
+}
+
+// splitDecimal cuts body at the last mark a locale writes in it, and reports
+// whether there was one. Each side is validated by the caller.
+func splitDecimal(body string) (whole, frac string, found bool) {
+	// A group space is several bytes, so the marks are walked as runes rather
+	// than as bytes.
+	last, size := -1, 0
+	for i, r := range body {
+		if isGroupMark(r) {
+			last, size = i, utf8.RuneLen(r)
+		}
+	}
+	if last < 0 {
+		return body, "", false
+	}
+	return body[:last], body[last+size:], true
+}
+
+// grouped reports whether every mark in s sits between three-digit groups,
+// which is how a locale writes them: "1,234,567" and "1 234 567" are numbers,
+// "1,23" is text that happens to contain a comma.
+func grouped(s string) bool {
+	for {
+		i := strings.IndexFunc(s, isGroupMark)
+		if i < 0 {
+			return true
+		}
+		_, w := utf8.DecodeRuneInString(s[i:])
+		s = s[i+w:]
+		if len(s) < 3 || !allDigits(s[:3]) {
+			return false
+		}
+		s = s[3:]
+	}
+}
+
+// allDigits reports whether s is ASCII digits, which is what a group of three
+// has to be for the mark before it to be a thousands separator.
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// localeNumberParts splits a signed decimal number whose digits may be grouped
+// with ".", "," or a no-break space into its sign, digit body, and exponent.
+// false means field is not such a number and the caller must not touch it.
+//
+// The exponent comes off first: "1,5E3" is 1.5e3, and the comma there is the
+// decimal separator rather than a grouping mark, so the caller has to be
+// looking at the mantissa alone when it decides which mark that is.
+func localeNumberParts(field string) (body, sign, exponent string, ok bool) {
+	if field == "" {
+		return "", "", "", false
+	}
+	switch field[0] {
+	case '+', '-':
+		sign, field = field[:1], field[1:]
+	}
+	if i := strings.LastIndexAny(field, "eE"); i >= 0 {
+		field, exponent = field[:i], field[i:]
+	}
+	if field == "" {
+		return "", "", "", false
+	}
+	for _, r := range field {
+		if !(r >= '0' && r <= '9') && !isGroupMark(r) {
+			return "", "", "", false
+		}
+	}
+	return field, sign, exponent, true
+}
+
+// stripGrouping drops the thousands separators a locale writes and keeps the
+// digits, so what is left is the form ParseFloat reads.
+func stripGrouping(s string) string {
+	return strings.Map(func(r rune) rune {
+		if isGroupMark(r) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+// isGroupMark reports whether r is a mark a locale puts between digit groups
+// or between the whole and the fraction: ".", ",", and the no-break space fr
+// and ru group with, the narrow no-break space that separates "85" from "%" in
+// "85 %", and the thin space a few locales use.
+func isGroupMark(r rune) bool {
+	return r == '.' || r == ',' || r == ' ' || r == 0x00a0 || r == 0x202f || r == 0x2009
 }
