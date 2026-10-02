@@ -85,6 +85,138 @@ func siteStyle(t *testing.T) string {
 	return html[start:end]
 }
 
+// The site and the terminal are one product with one hue. The mark
+// (assets/mark.svg) draws its arrow in a teal and its chevrons in a slate, the
+// dashboard's wordmark is that teal as cMark in internal/ui/theme.go, and the
+// page's --accent is the same ink pulled one step per surface until it clears
+// the text floor. Nothing generated the page's palette from the mark: it was
+// three different teals, and nothing in the build compared them. This holds the
+// three together, so a page that stops looking like this product, or a mark
+// recolored without the page following, fails rather than drifting.
+const (
+	markInk    = "#0e96a8"
+	markSlate  = "#64798a"
+	uiMarkLine = `cMark = adaptive("#0b7988", "#0e96a8")`
+)
+
+// siteValue is a hex color's value, the brightest channel at 0..1. Two colors
+// of one hue pulled apart are separated by this and nothing else.
+func siteValue(hexv string) float64 {
+	r, g, b := siteRGB(hexv)
+	return math.Max(r, math.Max(g, b))
+}
+
+// TestSiteAccentIsTheMarkInk pins the page's accent to the mark, per scheme.
+// Both are the same hue pulled until the token clears the floor on the surface
+// it is read on, so the comparison is on hue rather than on the exact hex: a
+// pulled token is the mark, and a token pulled until it is a different color
+// is a second palette.
+func TestSiteAccentIsTheMarkInk(t *testing.T) {
+	theme := siteTheme(t)
+	pair, ok := theme["accent"]
+	if !ok {
+		t.Fatal("--accent is not declared on the page")
+	}
+	for i, scheme := range []string{"light", "dark"} {
+		accent := pair[i]
+		hue := siteHue(accent)
+		if d := math.Abs(hue - siteHue(markInk)); d > 1.0 {
+			t.Errorf("--accent %s-scheme %s is hue %.1f, want the mark's hue %.1f (the page has a second palette)",
+				scheme, accent, hue, siteHue(markInk))
+		}
+	}
+	// Each scheme pulls the ink the one way that surface needs: the light
+	// accent darker, the dark one lighter. A pair that pulls the same way, or
+	// not at all, is a mechanical inversion of a light token rather than a
+	// variant drawn for the surface it is on, and the two schemes read as one
+	// color swapped rather than as the same hue tuned twice.
+	light, dark := siteValue(pair[0]), siteValue(pair[1])
+	if light >= dark {
+		t.Errorf("--accent is %s / %s: the light scheme has to be the ink pulled darker than the dark scheme's, since a dark surface needs more of it",
+			pair[0], pair[1])
+	}
+	// The dark accent sits within a step of the mark as drawn. The mark ink
+	// itself clears 5:1 on the page but 4.42:1 on the panel, and the panel is
+	// where the code block is, so the page's dark accent is one step up from
+	// the logo rather than a color of its own.
+	if d := math.Abs(dark - siteValue(markInk)); d > 0.12 {
+		t.Errorf("the dark --accent %s is %.2f in value, more than a step from the mark ink %s at %.2f: the page has left the mark behind",
+			pair[1], dark, markInk, siteValue(markInk))
+	}
+}
+
+// TestTheTerminalWordmarkIsTheMarkInk holds the dashboard's wordmark to the
+// same mark the page and the logo draw. cMark is the one token in the terminal
+// palette that names a brand color rather than a Catppuccin tone, and a hand
+// edit to it would leave the screens, the mark, and the site in three hues.
+func TestTheTerminalWordmarkIsTheMarkInk(t *testing.T) {
+	theme := readRepoFile(t, filepath.Join(moduleRoot(t), "internal", "ui", "theme.go"))
+	if !strings.Contains(theme, uiMarkLine) {
+		t.Errorf("internal/ui/theme.go no longer declares %s; the wordmark has drifted from assets/mark.svg", uiMarkLine)
+	}
+	mark := readRepoFile(t, filepath.Join(moduleRoot(t), "assets", "mark.svg"))
+	if !strings.Contains(mark, markInk) {
+		t.Errorf("assets/mark.svg no longer draws its arrow in %s, so the wordmark and the page follow a color nothing ships", markInk)
+	}
+}
+
+// TestTheSiteCarriesTheMonospaceWordmark holds the page's type to the two
+// faces the product ships: the proportional stack the README body is set in
+// and the monospace the wordmark is drawn in (assets/logo-*.svg). Every
+// accent, every command, and every panel title is the CLI's own vocabulary,
+// so they are set in the CLI's own face. The check is that the page sets a
+// mono stack at all, and that it is the one the logo names: a page with one
+// system-ui declaration for the whole page is the interchangeable default.
+func TestTheSiteCarriesTheMonospaceWordmark(t *testing.T) {
+	block := siteStyle(t)
+	if !strings.Contains(block, "--mono:") {
+		t.Fatal("the page declares no --mono token, so nothing is set in the face the wordmark is drawn in")
+	}
+	logo := readRepoFile(t, filepath.Join(moduleRoot(t), "assets", "logo-light.svg"))
+	if !strings.Contains(logo, "ui-monospace") {
+		t.Fatal("assets/logo-light.svg no longer sets the wordmark in a monospace stack, so the page's --mono has no authority")
+	}
+	// The token is declared once and consumed by name. A second monospace
+	// stack spelled out beside it is the drift this catches: two faces, one
+	// from the logo and one invented.
+	if n := strings.Count(block, "ui-monospace"); n != 1 {
+		t.Errorf("the style sheet spells out a monospace stack %d times; declare it once as --mono and use the token", n)
+	}
+	// A page with a type scale has more than one size in it, and the body
+	// carries one of them rather than the browser default.
+	sizes := regexp.MustCompile(`font-size:\s*([0-9.]+)rem`).FindAllStringSubmatch(block, -1)
+	if len(sizes) < 2 {
+		t.Errorf("the page has %d rem type sizes; a scale needs at least the body and one step above it", len(sizes))
+	}
+}
+
+// TestSiteKeepsALeftEdge holds the page to the one decision its layout makes:
+// the running text hangs from a single left edge, under the wordmark, at a
+// capped measure. A centered column of evenly padded sections is the shape
+// every generated page has, and nothing in the build stops the page becoming
+// one.
+func TestSiteKeepsALeftEdge(t *testing.T) {
+	block := siteStyle(t)
+	// The running text is capped at a measure rather than left at the column's
+	// width, which at 960px is a line too long to read.
+	if !strings.Contains(block, "--measure:") {
+		t.Error("the page declares no --measure token, so its line length is whatever the column happens to be")
+	}
+	// Centered running text is the other half of the same default.
+	if hit := regexp.MustCompile(`(?s)\.(?:tagline|p)\s*\{[^}]*text-align:\s*center`).FindString(block); hit != "" {
+		t.Errorf("running text is centered: %q", hit)
+	}
+	if strings.Contains(block, "margin: 0 auto") && !strings.Contains(block, "main { max-width") {
+		t.Error("the page centers blocks without a stated column")
+	}
+	// A wordmark 420px wide over body text at a 62ch measure reads as an
+	// unbalanced banner, so the logo stays at the column's own width.
+	html := readSiteFile(t, "index.html")
+	if !strings.Contains(html, `<header>`) {
+		t.Error("the header is gone")
+	}
+}
+
 // The site's deployment config is a line-oriented file Cloudflare reads and
 // nothing in the build validates, so the two things that make it work are
 // pinned here rather than discovered on a deploy. It is parsed by line, and a
@@ -111,6 +243,38 @@ func TestSiteHeadersAreTerminatedAndScoped(t *testing.T) {
 		if !strings.Contains(raw, want) {
 			t.Errorf("site/public/_headers is missing %q", want)
 		}
+	}
+}
+
+// siteRGB is a hex color's channels at 0..1. siteToken only matches six-digit
+// hex, so the parse cannot fail; a byte that would not parse reads as zero.
+func siteRGB(hexv string) (float64, float64, float64) {
+	h := strings.TrimPrefix(hexv, "#")
+	v := func(i int) float64 {
+		n, _ := strconv.ParseUint(h[i:i+2], 16, 8)
+		return float64(n) / 255
+	}
+	return v(0), v(2), v(4)
+}
+
+// siteHue is a hex color's hue in degrees, 0..360. An achromatic color has no
+// hue and reads as -1, so a token edited to gray is one no longer carrying
+// the mark's hue and cannot pass a comparison by coincidence.
+func siteHue(hexv string) float64 {
+	r, g, b := siteRGB(hexv)
+	maxc := math.Max(r, math.Max(g, b))
+	minc := math.Min(r, math.Min(g, b))
+	d := maxc - minc
+	if d == 0 {
+		return -1
+	}
+	switch maxc {
+	case r:
+		return math.Mod(60*math.Mod((g-b)/d, 6), 360)
+	case g:
+		return 60 * ((b-r)/d + 2)
+	default:
+		return 60 * ((r-g)/d + 4)
 	}
 }
 

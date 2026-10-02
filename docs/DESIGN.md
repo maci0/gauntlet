@@ -957,6 +957,13 @@ Follows the TMOG dashboard rules: a cockpit, not a report.
   (the mark teal for the tree, amber for work in flight, green for a commit
   or merge, red for a kept branch), never from the Mermaid default theme. A
   page of unstyled boxes is the one surface where the product has no look.
+- The project site (`site/public`) is the same palette in a browser:
+  `--accent` is the mark's arrow teal pulled one step per surface until it
+  clears the 4.5:1 text floor on the page, on the panel, and inverted as the
+  primary button's fill, and the neutrals are the mark's chevron slate. It is
+  not a second palette chosen next to this one: it is this one, in CSS, and
+  `cmd/gauntlet/site_test.go` pins the mark, `cMark`, and `--accent` together so
+  a hue edited in one of the three fails the suite instead of drifting.
 - Colors adapt to the terminal's background: Catppuccin Latte on light
   terminals, Mocha on dark ones. The pairs are pinned by test to WCAG 2.2 AA:
   text at 4.5:1 (SC 1.4.3) and instrument strokes such as unlit meter

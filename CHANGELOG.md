@@ -454,6 +454,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
   property that matters there: no token of a published format survives, and a
   rewrite leaves nothing a second pass would rewrite again.
 
+- The project site stops carrying a palette of its own. `--accent` is the arrow
+  teal of `assets/mark.svg` (`#0e96a8`) pulled one step per surface until it
+  clears the same 4.5:1 floor the terminal palette is held to, so the page, the
+  wordmark in `internal/ui/theme.go`, and the logo are one hue. The page's type
+  gains the monospace the wordmark is drawn in for the section heads, the
+  commands, and the footer, a `--measure` caps the line length the column width
+  left open, and the running text hangs from the wordmark's left edge instead of
+  centering. The page also states its own name in a link preview, using the
+  dashboard the binary draws rather than a generated card, and a theme color per
+  scheme. `cmd/gauntlet/site_test.go` pins the mark, the terminal token, and the
+  page's accent together, so a palette that drifts is a failed suite rather than
+  a page nobody notices.
+
 ### Security
 
 - Every release's `sbom.json` now names a `go.sum` hash for every module it

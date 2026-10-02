@@ -6,14 +6,33 @@
 <title>gauntlet</title>
 <meta name="description" content="Run your codebase through 54 specialized review prompts, dispatched to the AI coding agents you already have installed, with fixes applied to the working tree.">
 <link rel="icon" href="mark.svg" type="image/svg+xml">
+<meta property="og:type" content="website">
+<meta property="og:title" content="gauntlet">
+<meta property="og:description" content="54 specialized review prompts, dispatched to the AI coding agents you already have installed, applying fixes to the working tree.">
+<!-- The preview is the dashboard the binary actually draws, not a generated
+     card: a link preview showing this product's own screen is the identity
+     asset a stock template never has. -->
+<meta property="og:image" content="https://gauntlet.rocks/dashboard.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#f6f9fa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#11191e" media="(prefers-color-scheme: dark)">
+<!-- One hue, and it is the mark's. --accent is the arrow teal of
+     assets/mark.svg (#0e96a8) pulled one step per surface until it clears the
+     4.5:1 text floor on the page, on the panel, and inverted as the primary
+     button's fill. The neutrals are the chevron slate of the same mark. The
+     dashboard's own terminal tokens are cMark in internal/ui/theme.go, and
+     site_test.go pins all three together, so a page that stops being this
+     product fails the suite. -->
 <style>
 :root {
   --bg: #f6f9fa;
   --fg: #1b2830;
   --muted: #556a7b;
-  --accent: #0b6c7a;
+  --accent: #0b7684;
   --panel: #e8eff2;
   --line: #d3dee3;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  --measure: 62ch;
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -21,7 +40,7 @@
     --bg: #11191e;
     --fg: #dce7ec;
     --muted: #9aadba;
-    --accent: #2bb7c9;
+    --accent: #0f9bad;
     --panel: #1a252c;
     --line: #2a3a44;
   }
@@ -33,20 +52,41 @@ body {
   color: var(--fg);
   font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
 }
-main { max-width: 960px; margin: 0 auto; padding: 48px 16px 64px; }
-header { text-align: center; }
-header img { width: min(420px, 100%); height: auto; }
-.tagline { font-size: 1.2rem; color: var(--muted); max-width: 640px; margin: 16px auto 28px; }
-.cta { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+main { max-width: 960px; margin: 0 auto; padding: 56px 16px 72px; }
+/* The h1 wraps the wordmark and nothing else: it carries no text of its own,
+   so its default size only sets a line box the mark then sits on. Zeroing the
+   margins is the whole fix; the font size stays, because the alt text of an
+   image that fails to load is the one thing this heading would render. */
+h1 { margin: 0 0 24px; }
+header img { width: min(420px, 100%); height: auto; display: block; }
+/* The wordmark is monospace in the mark itself, and the running text hangs
+   from its left edge: a centered column of even sections is the shape any
+   generated page has, and this one reads as a left edge the eye returns to.
+   --measure caps the line length the way the terminal caps its panel width. */
+.tagline {
+  font-size: 1.15rem; line-height: 1.5; color: var(--muted);
+  max-width: var(--measure); margin: 20px 0 28px;
+}
+.cta { display: flex; gap: 10px; flex-wrap: wrap; }
 .cta a {
-  padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;
+  padding: 10px 20px; border-radius: 4px; text-decoration: none; font-weight: 600;
   border: 1px solid var(--accent); color: var(--accent);
 }
 .cta a.primary { background: var(--accent); color: var(--bg); }
-.shot { display: block; width: 100%; height: auto; margin: 48px 0; border-radius: 8px; border: 1px solid var(--line); }
-h2 { font-size: 1.3rem; margin: 48px 0 12px; }
-ul { padding-left: 1.2em; }
-li { margin: 8px 0; }
+.shot { display: block; width: 100%; height: auto; margin: 48px 0; border: 1px solid var(--line); }
+/* Section heads are the lane panel titles in the terminal: small, dimmed, and
+   the vocabulary beside them is the command vocabulary the CLI is read in, so
+   it is set in the same mono the wordmark is. The scale has three steps, not
+   one: the wordmark, the section head, and the body it introduces. */
+h2 {
+  font-family: var(--mono); font-size: 0.95rem; font-weight: 700;
+  letter-spacing: 0.02em; text-transform: uppercase;
+  color: var(--muted); margin: 56px 0 16px;
+}
+h2::before { content: "// "; color: var(--accent); }
+p { max-width: var(--measure); }
+ul { padding-left: 1.2em; max-width: var(--measure); }
+li { margin: 10px 0; }
 /* WCAG 2.4.7 Focus Visible: the ring is drawn here rather than left to the
    user agent, so it is this page's own token against this page's own
    backgrounds on both color schemes, and it is never removed. :focus-visible
@@ -58,7 +98,7 @@ a:focus-visible {
 }
 .cta a:focus-visible { outline-offset: 3px; }
 a { color: var(--accent); }
-code { font: 0.9em ui-monospace, "SF Mono", Menlo, monospace; }
+code { font: 0.9em var(--mono); }
 pre {
   background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
   padding: 14px 16px; line-height: 1.5;
@@ -80,7 +120,10 @@ pre {
   .cta a.primary { border-color: ButtonText; }
   a:focus-visible { outline-color: Highlight; }
 }
-footer { margin-top: 64px; color: var(--muted); font-size: 0.9rem; text-align: center; }
+footer {
+  margin-top: 72px; padding-top: 20px; border-top: 1px solid var(--line);
+  color: var(--muted); font-family: var(--mono); font-size: 0.85rem;
+}
 </style>
 </head>
 <body>
