@@ -46,6 +46,7 @@ Review the following:
 - Feature detection done by OS name where a capability probe would be correct (and vice versa)
 - Dead platform branches for targets no longer supported, still maintained at cost
 - Platform-specific dependencies pulled in unconditionally
+- A report on either conditional above without the shape that makes it checkable: the `#elif` / `else` / provider block a claimed platform takes, and what that block gets wrong
 
 7. Claim vs coverage
 - Platforms named in README/package metadata but absent from CI, so support is asserted and never tested
