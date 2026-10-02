@@ -368,12 +368,17 @@ Continue one with: gauntlet resume <run-id>
   `state/checkpoints/<run-id>.json` after every recorded result and every
   finished loop, plus the command line and the directory the run started in.
   A run that ends on its own, finished, stopped, or interrupted, deletes it, so
-  one still listed belongs to a process that never got to.
+  one still listed belongs to a process that never got to. It is the one copy
+  of the command line that keeps its credentials, because `gauntlet resume`
+  execs it; it is written owner-only, and the listing prints it redacted.
 - **What a resume does.** It changes to the recorded directory and hands
   over to this binary exactly as a hot reload would: same run id, schedule,
   seed, start time, and carried results, the command line it was started
   with, and the loop budget less the loops already finished. The journal and
-  the one index row continue the same run.
+  the one index row continue the same run. The line it prints and the listing
+  both redact a credential the run was started with, so a command shown as
+  `gauntlet --agent-cmd 'agent=cli --api-key [redacted]'` is what the resume
+  will actually execute.
 - **What runs again.** The reviews whose agents were running at the kill,
   then the ones not started. A review with a recorded result never runs
   twice; one that finished in the instant before the kill may, because the
@@ -417,7 +422,21 @@ Events are one JSON object per line (`run_start`, `loop_start`,
 narration in `text`). The `text` field and the `args` on an index row are
 written with the home directory shortened to `~`, because git errors and path
 errors reach them carrying the absolute path of the reviewed tree, and this
-is the copy that leaves the machine. `gauntlet runs --json` shortens its `home`
+is the copy that leaves the machine.
+
+An `args` argument is stripped of credentials before it is written: a value
+assigned to a name that says it is one, the value after a flag that names one
+(`--agent-cmd 'agent=cli --api-key sk-…'`, the spelling the agent CLIs
+document), a token carrying a published fixed prefix, and the userinfo of a
+URL all read `[redacted]`. The flag name and the rest of the argument are
+kept, so a row still says which option carried the key. An operator who
+defines a wrapper agent is defining a credential on the command line, and
+this copy outlives the run, so what is kept on disk and what `gauntlet runs`
+prints are both redacted. The resume checkpoint is the exception: it holds the
+real command line, because `gauntlet resume` execs it, and it is written
+owner-only. A script that reads `args` therefore sees `[redacted]` where the
+key was, and a value under eight characters is left alone as a flag or a
+placeholder. `gauntlet runs --json` shortens its `home`
 and `journals` fields the same way: they are facts about the install rather
 than about any run, so nothing matches on them, and a resolved path under
 `/home/<account>` would put the account name in every copy a script or an

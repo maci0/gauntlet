@@ -155,6 +155,89 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 	}
 }
 
+// goDeclaration is a top-level func, type, var, or const line, the first thing
+// a `path:span` citation can name that the citation is about.
+var goDeclaration = regexp.MustCompile(`^(?:func (?:\([^)]*\) )?|type |var |const )(\w+)`)
+
+// goSymbolPointer is a citation that names the Go identifier it points at: a
+// backticked symbol immediately followed by a backticked Go path and line span
+// (`journaledArgs`, `cmd/gauntlet/main.go:997-1003`). Every one of them is
+// checked against where that symbol is declared, which is the claim the
+// pointer makes and the one a line range alone cannot hold.
+var goSymbolPointer = regexp.MustCompile("`(\\w+)`,?\\s*`([\\w./-]+\\.go):([\\d,-]+)`")
+
+// A pointer that fits the file is a range, not the right one. Adding a
+// function above the one a citation names leaves every number in bounds, so
+// the citation silently starts naming different code and the control it
+// documents reads as checked when nothing checked it: four citations here
+// named wasInterrupted, exitCode, and isTerminal after `journaledEvent` and
+// `journaledArgs` moved. A range therefore has to reach the declaration of
+// the symbol it is written next to. The document's convention is to point at
+// the declaration and its doc comment, so both the first line of the comment
+// and the declaration line count.
+func TestThreatModelGoPointersNameTheSymbol(t *testing.T) {
+	root := moduleRoot(t)
+	lines := fileLines(t, filepath.Join(root, "docs", "THREAT_MODEL.md"))
+	qualified := qualifiedPointers(lines)
+	checked := 0
+	for i, text := range lines {
+		for _, m := range goSymbolPointer.FindAllStringSubmatch(text, -1) {
+			symbol, path, span := m[1], m[2], m[3]
+			full := path
+			if filepath.Dir(path) == "." {
+				p, ok := qualified[filepath.Base(path)]
+				if !ok {
+					t.Fatalf("docs/THREAT_MODEL.md:%d: %s is ambiguous and ambiguousNames does not say which", i+1, path)
+				}
+				full = p
+			}
+			src := fileLines(t, filepath.Join(root, full))
+			var declared []int
+			for n, line := range src {
+				if d := goDeclaration.FindStringSubmatch(line); d != nil && d[1] == symbol {
+					declared = append(declared, n+1)
+				}
+			}
+			if len(declared) == 0 {
+				continue // not a symbol of that file: the walk is best effort
+			}
+			spans, err := pointerRanges(span)
+			if err != nil {
+				t.Errorf("docs/THREAT_MODEL.md:%d: cites %s:%s: %v", i+1, full, span, err)
+				continue
+			}
+			checked++
+			if !spansReach(spans, src, declared) {
+				t.Errorf("docs/THREAT_MODEL.md:%d: %s is cited as %s:%s, which reaches none of its declarations (%v)",
+					i+1, symbol, full, span, declared)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no Go symbol pointer was found in docs/THREAT_MODEL.md; the walk is broken, not the document")
+	}
+}
+
+// spansReach reports whether any cited range reaches any of the declaration
+// lines, counting the doc comment directly above a declaration as part of it.
+func spansReach(spans []lineRange, src []string, declared []int) bool {
+	for _, d := range declared {
+		start := d
+		for start > 1 && strings.HasPrefix(src[start-2], "//") {
+			start--
+		}
+		for _, s := range spans {
+			if s.first <= d && d <= s.last {
+				return true
+			}
+			if s.first <= start && start <= s.last {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // qualifiedPointers maps a file name to the one path the document spells with
 // a directory. A bare name is ambiguous where two packages hold the same file
 // name and the document qualifies both, so ambiguousNames says which one the
