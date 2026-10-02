@@ -71,6 +71,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The release job verified the checksums of what it was about to publish with
+  bare `sha256sum -c checksums.txt`, the one checksum verification in this tree
+  that assumed GNU coreutils is present. `make artifacts` writes
+  `checksums.txt` with `sha256sum` where it exists and `shasum -a 256` where it
+  does not, and the README install reads it with that same pair; the release
+  step named neither fallback, so a maintainer reproducing a tag by hand on
+  macOS got `sha256sum: command not found` over a release whose checksums were
+  fine, and the attestation step then described bytes no check had read. It
+  branches on the same pair, inside a subshell that carries the verifier's exit
+  status, so a corrupted cross-compile still fails the tag before anything is
+  uploaded.
 - `make test`, `test-pkg`, and `test-fast` reported success on a test scratch
   directory that cannot be written to, over a run that never happened. The
   directory is created with `mkdir -p`, which answers for a path that already

@@ -1064,3 +1064,49 @@ func TestReleaseSmokeTestsSbom(t *testing.T) {
 		t.Fatal("release job must publish sbom.json beside the binaries and checksums.txt")
 	}
 }
+
+// The release job is the last gate before bytes reach a consumer, so the
+// checksum verification it runs has to be the one this repository actually
+// writes. `make artifacts` writes checksums.txt with sha256sum where it exists
+// and shasum -a 256 where it does not, and the README install reads it with
+// the same pair; the smoke step named bare `sha256sum -c checksums.txt`, so
+// the one check standing between a release and an attestation was the only
+// verification in the tree that could not run on a host without GNU coreutils.
+// On the ubuntu runner it happens to hold, which is why it went on holding:
+// nothing in the tree executes it anywhere else.
+//
+// The subshell matters as much as the fallback. A `(cd dist && verify)` whose
+// status the next line discards reports success over checksums that never
+// matched, and the attest step then signs the binaries nothing checked.
+func TestReleaseVerifiesChecksumsWithTheSamePairItWritesThem(t *testing.T) {
+	text := readRepoFile(t, filepath.Join(moduleRoot(t), ".github", "workflows", "release.yml"))
+	_, step, ok := strings.Cut(text, "- name: Smoke-test what would be published\n")
+	if !ok {
+		t.Fatal("release.yml has no smoke-test step")
+	}
+	// The step's own body, not the rest of the file: the guard's shell runs gh
+	// and git, and a fallback named in a comment elsewhere would pass a plain
+	// Contains.
+	body := step
+	if end := strings.Index(body, "\n      - name: "); end >= 0 {
+		body = body[:end]
+	}
+	for _, want := range []string{
+		"command -v sha256sum",
+		"sha256sum -c checksums.txt",
+		"shasum -a 256 -c checksums.txt",
+		"cd dist || exit 1",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("release smoke test missing %q; it must read checksums.txt the way `make artifacts` writes it", want)
+		}
+	}
+	// The guarded call has to sit between the `command -v` test and its else. A
+	// `sha256sum -c checksums.txt` outside that branch is the defect: it runs
+	// whatever coreutils happens to be there, and a host without it stops the
+	// release over checksums that are fine.
+	guarded := regexp.MustCompile(`(?s)if command -v sha256sum[^\n]*\n[^\n]*sha256sum -c checksums\.txt[^\n]*\n\s*else`)
+	if !guarded.MatchString(body) {
+		t.Error("release smoke test must call sha256sum -c checksums.txt inside the command -v branch, or a host without coreutils cannot run it")
+	}
+}

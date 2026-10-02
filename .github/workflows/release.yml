@@ -157,7 +157,22 @@ jobs:
       - name: Smoke-test what would be published
         run: |
           make smoke VERSION="${GITHUB_REF_NAME#v}"
-          (cd dist && sha256sum -c checksums.txt)
+          # The pair `make artifacts` and the README install branch on:
+          # sha256sum where coreutils provides it, shasum -a 256 where only
+          # perl does. Naming GNU sha256sum alone verified nothing extra (make
+          # artifacts already ran this pair with the fallback) and read as
+          # "command not found" to a maintainer reproducing the tag by hand on
+          # macOS, over checksums that are fine. The subshell is what carries
+          # the verifier's exit status: a bare `(cd dist && verify) || true`
+          # would attest binaries nothing had checked.
+          (
+            cd dist || exit 1
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum -c checksums.txt || exit 1
+            else
+              shasum -a 256 -c checksums.txt || exit 1
+            fi
+          )
           test -s dist/sbom.json
 
       # A checksum says which bytes this release shipped; it says nothing
