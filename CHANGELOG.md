@@ -78,6 +78,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   read "since 2025-10-17" when the cutoff handed to git was
   2025-10-16T23:30:00Z. The date is rendered in UTC now, beside the cutoff the
   read used.
+- A `gauntlet pick` row that cannot apply in the current mode drew its reason
+  glued to its label, so the label and the value beside it had to share one
+  column budget and both were cut: a terminal one step above the narrow
+  fallback read `suggest agent …` beside `gauntlet (defaul…`, naming neither
+  the option nor the state that made it unavailable. The reason takes the
+  value's place, whole, and the label keeps its columns. Rows that do apply
+  are unchanged, so a chosen value still reads on the row that carries it.
+- The command preview under the panes was cut at a column, which could leave
+  `--sugge…` on screen: not a flag the CLI accepts, and not obviously a cut
+  either, on the one line a reader copies. It now drops whole arguments and
+  marks where it stopped, so every name left on the line is one the composed
+  run really carries.
 - The release job verified the checksums of what it was about to publish with
   bare `sha256sum -c checksums.txt`, the one checksum verification in this tree
   that assumed GNU coreutils is present. `make artifacts` writes

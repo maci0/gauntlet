@@ -5,6 +5,7 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -1764,6 +1765,43 @@ func TestPickEscClearsKeptFilterInsteadOfQuitting(t *testing.T) {
 	}
 }
 
+// The command preview is the one line on the screen a reader copies. Cut at a
+// column, it ended on "--sugge…", which is not a flag the CLI accepts and so
+// reads as a typo rather than as a cut. It drops whole arguments instead, and
+// every name left on the line is one the composed run really carries.
+func TestPickCommandPreviewCutsOnAFlag(t *testing.T) {
+	for _, w := range []int{52, 64, 80, 120} {
+		p := demoPicker()
+		p.w, p.h, p.ready = w, 30, true
+		p.suggest = true
+		p.optByFlag("--suggest-agent").idx = 2 // claude
+		got := stripANSI(p.renderCommand())
+		if !strings.HasPrefix(got, "$ gauntlet ") {
+			t.Errorf("width %d: the preview is not a command: %q", w, got)
+		}
+		for _, tok := range strings.Fields(got) {
+			switch tok {
+			case "…", "...", "$", "gauntlet":
+				continue
+			}
+			if tok = strings.TrimSuffix(tok, "…"); !slices.Contains(p.argv(), tok) {
+				t.Errorf("width %d: %q is not an argument of the run: %q", w, tok, p.argv())
+			}
+		}
+		if w >= 120 && !strings.Contains(got, "--suggest-agent claude") {
+			t.Errorf("a preview with room for the whole command lost it: %q", got)
+		}
+		// Either the whole command is on the line, or the line says it stops.
+		whole := "$ gauntlet " + strings.Join(p.argv(), " ")
+		if got != whole && !strings.HasSuffix(got, "…") {
+			t.Errorf("width %d: a cut preview does not say it is cut: %q", w, got)
+		}
+		if lipgloss.Width(got) > w {
+			t.Errorf("width %d: the preview is %d columns: %q", w, lipgloss.Width(got), got)
+		}
+	}
+}
+
 func TestPickFrameFitsTerminal(t *testing.T) {
 	for _, width := range []int{50, 80, 160} {
 		p := demoPicker()
@@ -2164,20 +2202,22 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 		t.Errorf("a title that fits was cut: %q", whole)
 	}
 
-	// The same for a run-pane row: a pane wide enough for the longest label
-	// and a short value holds it whole, and a narrower one keeps the label and
-	// marks the value. The longest label is the suggest agent's, which is why
-	// it carries a reason: a row drawn dim for a state it never names is a
-	// state only the faintness says (SC 1.4.1), so the words are part of the
-	// label and the pane has to budget for them.
+	// The same for a run-pane row. A row that cannot apply in the current mode
+	// says so in words beside its label, and the words are the reading the
+	// row keeps: the label and the reason are one name of the state, and the
+	// value beside them is a choice the row cannot act on until the state
+	// changes (SC 1.4.1: a dim state has to be named, not carried by
+	// faintness). So the note takes the value's column, and a row too narrow
+	// for both keeps the label and marks the note, the way every other cut in
+	// this package is marked.
 	p := demoPicker()
 	for _, c := range []struct {
 		w    int
 		want []string
 	}{
-		{56, []string{"suggest agent (suggest off)", "gauntlet (default)"}},
-		{36, []string{"…"}},
-		{28, []string{"…"}},
+		{56, []string{"suggest agent", "(suggest off)"}},
+		{36, []string{"suggest agent", "(suggest off)"}},
+		{28, []string{"suggest agent", "…"}},
 	} {
 		rows := strings.Split(stripANSI(p.runPanel(c.w, p.paneHeight(paneOptions))), "\n")
 		var row string
@@ -2190,6 +2230,16 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 			if !strings.Contains(row, want) {
 				t.Errorf("a %d column run pane did not carry %q:\n%s", c.w, want, row)
 			}
+		}
+	}
+	// A row that does apply keeps its value: the note is the reason a row is
+	// dim, and there is no note to show, so the value is what the row carries
+	// and a value wide enough for the pane is never marked as cut.
+	live := demoPicker()
+	live.suggest = true
+	for _, r := range strings.Split(stripANSI(live.runPanel(56, live.paneHeight(paneOptions))), "\n") {
+		if strings.Contains(r, "suggest agent") && !strings.Contains(r, "gauntlet (default)") {
+			t.Fatalf("an applicable suggest row lost its value:\n%s", r)
 		}
 	}
 }

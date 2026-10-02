@@ -150,9 +150,29 @@ func (p *picker) renderHeader() string {
 	return spread(strings.Join(left, "  "), right, p.w)
 }
 
+// renderCommand is the command this screen composes, at rest. It is cut on a
+// token boundary rather than at a column: a cut that lands inside a flag
+// leaves "--sugge…" on screen, which is not a flag, and a reader cannot tell
+// from it whether the composed run carries that option at all. Dropping whole
+// arguments keeps every name on the line one the CLI would accept, and the
+// marker says the line stops there.
 func (p *picker) renderCommand() string {
-	cmd := "gauntlet " + strings.Join(p.argv(), " ")
-	return clipEllipsis(styleDim.Render("$ ")+styleValue.Render(cmd), p.w)
+	const prompt = "$ "
+	argv := p.argv()
+	// Width past the prompt, minus a column so the marker never fuses with the
+	// last argument kept.
+	room := p.w - lipgloss.Width(prompt) - 1
+	used := len("gauntlet")
+	for i, arg := range argv {
+		if used+1+len(arg) > room {
+			kept := styleDim.Render(prompt) + styleValue.Render("gauntlet "+strings.Join(argv[:i], " "))
+			// The loop stopped a column short of the width, so the marker
+			// fits without the line having to cut the argument it kept.
+			return kept + styleDim.Render("…")
+		}
+		used += 1 + len(arg)
+	}
+	return clipEllipsis(styleDim.Render(prompt)+styleValue.Render("gauntlet "+strings.Join(argv, " ")), p.w)
 }
 
 // filterMissedMessage is filterMissedMsgFor over this run's reviews, so the
@@ -934,8 +954,8 @@ func (p *picker) runPanel(w, h int) string {
 				right = value
 			}
 			if inert {
-				left = styleFaint.Render("  " + o.label + note)
-				right = styleFaint.Render(fmt.Sprint(o.n) + fmt.Sprintf("/%d cpu", p.cfg.CPUs))
+				left, right = inertRow("  "+o.label, note,
+					fmt.Sprint(o.n)+fmt.Sprintf("/%d cpu", p.cfg.CPUs))
 			}
 		case optCycle:
 			// A cycle row that cannot apply yet is drawn inert: the suggest
@@ -949,8 +969,7 @@ func (p *picker) runPanel(w, h int) string {
 			left = "  " + o.label
 			switch {
 			case !applies:
-				left = styleFaint.Render("  " + o.label + note)
-				right = styleFaint.Render(value)
+				left, right = inertRow("  "+o.label, note, value)
 			case o.idx == 0:
 				right = styleDim.Render(value)
 			default:
@@ -963,7 +982,10 @@ func (p *picker) runPanel(w, h int) string {
 				if o.on {
 					mark = "[x] "
 				}
-				left = styleFaint.Render(mark + o.label + note)
+				// The marked label is the one reading that keeps its columns,
+				// so it goes in where inertRow puts a label and the note
+				// takes the value's place beside it.
+				left, right = inertRow(mark+o.label, note, "")
 			}
 		}
 		if right != "" {
@@ -971,9 +993,22 @@ func (p *picker) runPanel(w, h int) string {
 			// that fits in half the row and cuts the other with the marker.
 			// Cutting both in half left "suggest ag" beside "from the poo",
 			// which reads as two options rather than as one row.
+			//
+			// A row carrying a note is the one exception: the note names a
+			// state the value cannot act on until the state changes, so it
+			// takes the value's place and the label keeps its columns. Half a
+			// label is a name of nothing, and a row cut that way read as
+			// "suggest agent …" beside "gauntlet (defaul…", naming neither the
+			// option nor the reason it is unavailable.
 			bodyW := inner - 2
 			lw, rw := lipgloss.Width(left), lipgloss.Width(right)
-			if lw+rw+1 > bodyW {
+			if strings.TrimSpace(note) != "" {
+				if lw+1 > bodyW {
+					left, right = clipEllipsis(left, bodyW), ""
+				} else if lw+rw+1 > bodyW {
+					right = clipEllipsis(right, max(bodyW-lw-1, 1))
+				}
+			} else if lw+rw+1 > bodyW {
 				if lw <= bodyW/2 {
 					right = clipEllipsis(right, max(bodyW-lw-1, 1))
 				} else {
@@ -989,6 +1024,25 @@ func (p *picker) runPanel(w, h int) string {
 		segs = append(segs, styleDim.Render(hidden))
 	}
 	return panel(paneTitle(segs, inner), strings.Join(lines, "\n"), inner, h)
+}
+
+// inertRow lays a run-pane row that cannot apply in the current mode.
+//
+// The note is why the row is dim, and it is a whole reading in its own right:
+// appending it to the label made the label compete with the value for a row
+// the right column is already too narrow for, and a row that then had to cut
+// both read as "suggest agent …" beside "gauntlet (defaul…", naming neither
+// the option nor the reason it is unavailable. So the note takes the value's
+// place, whole. Only a row with no note falls back to drawing the value, dim
+// like the label, which is what a stacked row's own ceiling produces.
+//
+// left is the row's label as its own kind already laid it out, so the two
+// spaces a count or a cycle row indents by stay on the row that has them.
+func inertRow(left, note, value string) (string, string) {
+	if note = strings.TrimSpace(note); note != "" {
+		return styleFaint.Render(left), styleFaint.Render(note)
+	}
+	return styleFaint.Render(left), styleFaint.Render(value)
 }
 
 // reviewLabel is a review's name as the pane shows it: the -review suffix is
