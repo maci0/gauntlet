@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -348,6 +349,30 @@ func TestAbsPATHEnv(t *testing.T) {
 	want := "/usr/bin:/bin"
 	if got != want {
 		t.Fatalf("PATH in AbsPATHEnv = %q, want %q", got, want)
+	}
+}
+
+func TestEnvInNamesTheChildDirectory(t *testing.T) {
+	const stale = "/somewhere/else"
+	t.Setenv("PWD", stale)
+	dir := t.TempDir()
+	var named []string
+	for _, kv := range EnvIn(dir) {
+		if pwd, ok := strings.CutPrefix(kv, "PWD="); ok {
+			named = append(named, pwd)
+		}
+	}
+	if !slices.Equal(named, []string{dir}) {
+		t.Fatalf("PWD entries = %q, want exactly [%s]", named, dir)
+	}
+	var kept []string
+	for _, kv := range EnvIn("") {
+		if pwd, ok := strings.CutPrefix(kv, "PWD="); ok {
+			kept = append(kept, pwd)
+		}
+	}
+	if !slices.Equal(kept, []string{stale}) {
+		t.Fatalf("EnvIn(\"\") PWD entries = %q, want the inherited %s", kept, stale)
 	}
 }
 

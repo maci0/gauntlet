@@ -562,6 +562,43 @@ func TestRunProcPreCanceledContext(t *testing.T) {
 	}
 }
 
+// An agent launched with an explicit environment keeps the runner's PWD
+// unless the launch names the directory the child runs in. os/exec rewrites
+// PWD only when Env is nil, and a runtime that resolves its project from PWD
+// before getcwd then edits the checkout the run was started from. The child
+// here is env itself: a shell repairs a stale PWD and would hide the bug.
+func TestAgentPWDNamesItsWorkingDirectory(t *testing.T) {
+	envBin, err := exec.LookPath("env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PWD", t.TempDir())
+	for _, noSandbox := range []bool{false, true} {
+		t.Run(fmt.Sprintf("NoSandbox=%v", noSandbox), func(t *testing.T) {
+			dir := t.TempDir()
+			var got []string
+			res := runProc(context.Background(), procOpts{
+				Argv:      []string{envBin},
+				Dir:       dir,
+				NoSandbox: noSandbox,
+				Raw:       true,
+				Timeout:   30 * time.Second,
+				Sink: func(l normalize.Line) {
+					if name, value, ok := strings.Cut(l.Text, "="); ok && name == "PWD" {
+						got = append(got, value)
+					}
+				},
+			})
+			if res.Err != nil || res.ExitCode != 0 {
+				t.Fatalf("run failed: %+v", res)
+			}
+			if len(got) != 1 || got[0] != dir {
+				t.Fatalf("PWD = %q, want [%s]", got, dir)
+			}
+		})
+	}
+}
+
 func TestRunProcCanceledDuringExecution(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	bin := fakeAgent(t, t.TempDir(), "agent", "sleep 10")
