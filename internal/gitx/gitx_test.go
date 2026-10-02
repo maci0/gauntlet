@@ -696,6 +696,58 @@ func TestExcludeOwnArtifactsIsIdempotent(t *testing.T) {
 	}
 }
 
+// Two writers reach the exclusion at once: --dirs builds a Repo per directory,
+// two of those can be two checkouts of one repository sharing a single
+// .git/info/exclude, and a second gauntlet on the same clone is a separate
+// process. Deciding what is missing and appending it is one read-modify-write,
+// so without a lock across it both writers read the file before either writes,
+// both decide the same entries are missing, and the exclusion lands twice.
+//
+// Many writers against a freshly-removed exclude widen the read-to-append
+// window enough that the collision is not left to scheduling luck, so this
+// asserts the invariant rather than one lucky interleaving.
+func TestExcludeOwnArtifactsWritesOnceUnderConcurrentWriters(t *testing.T) {
+	r := newRepo(t)
+	exclude := filepath.Join(r.Dir, ".git", "info", "exclude")
+
+	const writers = 8
+	for round := range 3 {
+		if err := os.Remove(exclude); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		var wg sync.WaitGroup
+		errs := make([]error, writers)
+		start := make(chan struct{})
+		for i := range writers {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				// A separate Repo object per writer, as --dirs builds one per
+				// directory: nothing but the file on disk is shared.
+				errs[i] = Open(r.Dir).ExcludeOwnArtifacts(context.Background())
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		for i, err := range errs {
+			if err != nil {
+				t.Fatalf("round %d writer %d: %v", round, i, err)
+			}
+		}
+
+		body, err := os.ReadFile(exclude)
+		if err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		for _, entry := range []string{"/" + worktreeRoot + "/", "/" + LockName} {
+			if n := strings.Count(string(body), entry); n != 1 {
+				t.Fatalf("round %d: %q written %d times:\n%s", round, entry, n, body)
+			}
+		}
+	}
+}
+
 // CheckIgnore must report exactly the paths git's exclude rules match. Exit 1
 // (none ignored) is a normal answer, not an error, and outside a repository
 // nothing counts as ignored.

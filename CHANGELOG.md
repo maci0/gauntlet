@@ -333,6 +333,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - The project page test read up to eight parent directories with an index
   counter `go fix` rewrites to a range, which made `make check` red on every
   tag set before it got as far as vet.
+- Two runs reaching the same repository at once no longer write gauntlet's
+  scratch exclusions twice. Deciding which entries `.git/info/exclude` is
+  missing and appending them was one read-modify-write, so two writers could
+  both read the file before either appended, both decide the same entries are
+  missing, and both write them; every later run kept the duplicates, because
+  its presence check stops at the first match. `--dirs` builds a repository
+  handle per directory and two of those can be two checkouts of one
+  repository, and a second gauntlet on the same clone is a separate process.
+  The whole check-then-act now runs under one exclusive lock on a sibling
+  file beside the exclude file, which carries the same planted-path refusals
+  the append already had. A single run's behavior is unchanged: it wrote each
+  entry once before and does now.
 - The launcher's scrolled panes now say how far they are scrolled, and which
   end the rows went. Each pane title carried a count of the rows below the
   fold only, so a list scrolled to its end still read "+N more" while the N
@@ -466,7 +478,6 @@ the journaled event stream in `internal/runner/contract_test.go`.
   scheme. `cmd/gauntlet/site_test.go` pins the mark, the terminal token, and the
   page's accent together, so a palette that drifts is a failed suite rather than
   a page nobody notices.
-
 ### Security
 
 - Every release's `sbom.json` now names a `go.sum` hash for every module it
