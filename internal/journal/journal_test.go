@@ -2227,6 +2227,55 @@ func TestSummarizeFileTakesIsolatedLinesFromPullRequest(t *testing.T) {
 	}
 }
 
+// An isolated review publishes its own diffstat on review_end *and* on the
+// merge (or pull_request) that landed it, both under the same
+// {dir, review, branch, loop} key: publishReviewEnd and publishMerge (and
+// publishPullRequest) attach the same res.Ins/res.Del. The two are separate
+// tallies in summarizeFile — the review case adds unconditionally, the
+// publication case adds under its own `counted` map — so the same diff is
+// summed once per event and a --jobs run reports twice the lines it changed.
+// The publications exist for the sequential shape, where review_end carries
+// none, so the fix is to let review_end's own figures claim the key and a
+// publication that repeats them add nothing.
+func TestSummarizeFileCountsAnIsolatedDiffOnceWhenBothEventsCarryIt(t *testing.T) {
+	for _, tc := range []struct{ name, ev string }{
+		{"merge", "merge"},
+		{"pull_request", "pull_request"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("GAUNTLET_HOME", home)
+
+			now := time.Date(2026, 8, 25, 13, 15, 0, 0, time.UTC)
+			id := NewRunID(now)
+			j, err := Open(id, now)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ins, del := 7, 2
+			// Exactly what the runner writes for one isolated review that
+			// changed something and merged cleanly.
+			j.Write(map[string]any{"ev": "review_end", "dir": "/w", "loop": 1,
+				"review": "sec-review", "branch": "rev-1", "status": "ok",
+				"ins": ins, "del": del})
+			j.Write(map[string]any{"ev": tc.ev, "dir": "/w", "loop": 1,
+				"review": "sec-review", "branch": "rev-1", "status": "ok",
+				"ins": ins, "del": del})
+			j.Flush()
+			j.CloseQuiet()
+
+			s, err := summarizeFile(id, j.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if s.Ins != ins || s.Del != del {
+				t.Fatalf("an isolated diff was counted more than once: ins=%d del=%d, want %d/%d: %+v",
+					s.Ins, s.Del, ins, del, s)
+			}
+		})
+	}
+}
+
 func TestHistorySurvivesADeletedIndex(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GAUNTLET_HOME", home)

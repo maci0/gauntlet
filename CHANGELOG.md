@@ -246,7 +246,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `TestBackupRecipeKeepsTheLastGoodArchive` runs a `tar` that writes a cut
   archive and fails, then reads what the destination holds, and
   `TestBackupRecipeGivesOverlappingJobsTheirOwnTemporary` starts two at once and
-  reads the directory while both are writing.
+- An isolated review's line counts are no longer counted twice when the run
+  index is rebuilt from the journals. `--jobs N` and `--stacked-prs` publish a
+  review's diffstat twice under one key: on the `review_end` that carries the
+  outcome and on the `merge` or `pull_request` that landed it. The index
+  reconstruction tallied the two shapes independently, so any run whose row
+  was rebuilt after a crash, a missing index, or a tail repair reported twice
+  the lines it changed, while the row the runner wrote at close was correct.
+  The two disagreed about the same run, and the journals are the source of
+  truth. `History` already suppressed the second count; the index now does the
+  same, and a review's own ending claims its key so the publication adds
+  nothing for a diff already counted. Sequential runs, where only the
+  publication carries the figures, are unchanged.
 - A `review_end` carrying no status is no longer counted as a pass in
   `gauntlet runs`. The index reconstruction folded an empty status into `ok`
   alongside an explicit one, so an ending cut short, or one written before
