@@ -71,6 +71,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `sec-review` skips a repository it cannot say anything about. It is the one
+  member of `quick` with no applicability gate, so a documentation-only tree
+  spent a full pass and returned findings invented from configuration files. It
+  now carries the same gate its siblings do, on the same condition
+  `threat-review` already uses.
+- `numerics-review` no longer reads as if it reviewed daylight saving time.
+  Its closing note asked for tests covering "DST-style numeric edges", a phrase
+  borrowed from `dst-review`, where DST is deterministic simulation; inside a
+  review about floating-point and integer arithmetic an agent reads it as
+  daylight saving time, which `time-review` owns, and looks for timezone edges
+  that are not this review's subject.
 - `--usage-cmd` works on a host whose locale writes numbers its own way. The
   probe is the operator's own command and runs with the ambient environment, so
   its answer arrives in the host's number format: `de_DE`, `fr_FR`, and the rest
