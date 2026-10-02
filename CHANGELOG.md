@@ -71,6 +71,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The suggester reported which day a churn read failed in the host's own time
+  zone while asking git about the window in UTC, so on any machine not set to
+  UTC the error named a different day than the one git was actually read
+  against: a run at 00:30 in Europe/Warsaw was told the history could not be
+  read "since 2025-10-17" when the cutoff handed to git was
+  2025-10-16T23:30:00Z. The date is rendered in UTC now, beside the cutoff the
+  read used.
 - The release job verified the checksums of what it was about to publish with
   bare `sha256sum -c checksums.txt`, the one checksum verification in this tree
   that assumed GNU coreutils is present. `make artifacts` writes

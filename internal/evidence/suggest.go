@@ -781,8 +781,17 @@ func scan(dir string, declared []string, now func() time.Time) (signals, error) 
 		// A read that failed leaves churn off, and churn off weights every
 		// dormant area as live. That is a silent change to the suggestion
 		// set, so it is reported rather than absorbed.
+		//
+		// The date is rendered in UTC because that is the zone the instant
+		// goes to git in (ChangedSince carries the cutoff as
+		// cutoff.UTC().Format(RFC3339)), and one message must not describe a
+		// window in a second zone than the one the read actually used: the
+		// run clock carries the host's zone, so a cutoff an hour ahead of
+		// UTC in Europe/Warsaw printed 2025-10-17 while git was asked about
+		// 2025-10-16T23:30:00Z, and the operator who ran the suggester to
+		// see which day was read was sent after the wrong one.
 		churnErr = fmt.Errorf("cannot read which files changed since %s: %w",
-			cutoff.Format(time.DateOnly), churnErr)
+			cutoff.UTC().Format(time.DateOnly), churnErr)
 	case len(changed) > 0:
 		s.churn = true
 		for _, rel := range changed {

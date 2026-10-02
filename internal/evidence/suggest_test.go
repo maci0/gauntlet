@@ -872,6 +872,62 @@ func TestScanChurnWindowReadsTheInjectedClock(t *testing.T) {
 	}
 }
 
+// The churn read is reported in the zone the read used. ChangedSince hands git
+// the cutoff as cutoff.UTC().Format(RFC3339), so a message rendering it in the
+// host's own zone names a different day than the one git was asked about on
+// every run whose clock is not UTC: at 00:30 in Europe/Warsaw the operator is
+// told the window started 2025-10-17 while the log reads back from
+// 2025-10-16T23:30:00Z, and a zone further east (Pacific/Kiritimati) names the
+// wrong day the other way.
+func TestScanChurnErrorNamesTheWindowInUTC(t *testing.T) {
+	if !gitx.Available() {
+		t.Skip("git is required to read churn")
+	}
+	// An uncommitted tree: git ls-files answers, so the scan reaches the
+	// churn read, and git log has no commit to answer with. That is the
+	// failure whose message carries the cutoff.
+	dir := tree(t, "main.go\x00package main\n")
+
+	// HEAD on a branch that holds no commit. ls-files reads the index and
+	// answers regardless, so listTree still hands back a repo handle, and
+	// git log is the read that fails.
+	init := exec.Command("git", "init", "-q", "-b", "main")
+	init.Dir = dir
+	if out, err := init.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref: refs/heads/absent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// A zone an hour ahead of UTC, so its local date and the UTC date of the
+	// same instant differ. 2026-01-15 00:30 in Europe/Warsaw is
+	// 2026-01-14T23:30:00Z, and the 90-day window puts the cutoff a day
+	// earlier again.
+	warsaw, err := time.LoadLocation("Europe/Warsaw")
+	if err != nil {
+		t.Skipf("no zone database: %v", err)
+	}
+	now := time.Date(2026, 1, 15, 0, 30, 0, 0, warsaw)
+	cutoff := now.Add(-churnWindow)
+	local := cutoff.Format(time.DateOnly)
+	want := cutoff.UTC().Format(time.DateOnly)
+	if local == want {
+		t.Skip("this zone's cutoff falls on the same day as its UTC reading")
+	}
+
+	_, err = scan(dir, nil, func() time.Time { return now })
+	if err == nil {
+		t.Fatal("an unreadable history was reported as a dormant tree")
+	}
+	if !strings.Contains(err.Error(), "since "+want+":") {
+		t.Fatalf("churn error %q does not name the window in UTC (%s)", err, want)
+	}
+	if strings.Contains(err.Error(), "since "+local+":") {
+		t.Fatalf("churn error %q names the local day %s, not the UTC one %s", err, local, want)
+	}
+}
+
 // commitAll makes the tree's single commit carry a stated date, so the test
 // decides where the churn window's edge falls rather than when it happens to
 // run.
