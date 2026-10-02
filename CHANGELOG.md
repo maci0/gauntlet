@@ -90,6 +90,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
   either, on the one line a reader copies. It now drops whole arguments and
   marks where it stopped, so every name left on the line is one the composed
   run really carries.
+- The release guard read the 200 most recent published releases and called the
+  newest of them the newest release. The guard compares the tag being cut
+  against `tail -1` of that listing, so once a repository has more releases
+  than the listing holds, the ceiling stops being the newest one: a tag older
+  than what is actually published passes the check, is published as
+  `releases/latest` — which every consumer resolves — and the immutable-release
+  rule then refuses to put it right. This repository has cut 80 releases, so
+  200 left less than two releases of headroom. The listing now names 400, five
+  times what has been cut and far under the API's 1000-per-page ceiling, and
+  `TestReleaseTagGuardReadsTheWholePublishedSet` fails the suite if the bound
+  ever drops back under twice the published count.
 - The release job verified the checksums of what it was about to publish with
   bare `sha256sum -c checksums.txt`, the one checksum verification in this tree
   that assumed GNU coreutils is present. `make artifacts` writes

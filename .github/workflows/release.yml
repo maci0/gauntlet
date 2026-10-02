@@ -123,7 +123,15 @@ jobs:
           # 1.26.0), so a release candidate is publishable and a stale
           # candidate is not, which is the same order a consumer's updater
           # resolves releases/latest in.
-          latest="$(gh release list --limit 200 --json tagName --jq '.[].tagName' \
+          # 400, not the 200 this used to ask for: the guard is only as good as the
+          # published set it compares against, and 200 left this repository
+          # under two releases of headroom over the 80 it has cut. A truncated
+          # listing names an old tag as the newest one, and the guard then
+          # publishes over it. 400 is five times what has been cut and far
+          # under the API's 1000-per-page ceiling, so it is headroom rather
+          # than a guess at the current count
+          # (TestReleaseTagGuardReadsTheWholePublishedSet).
+          latest="$(gh release list --limit 400 --json tagName --jq '.[].tagName' \
             | sed 's/^v//; s/+.*//' | sort -V | tail -1)"
           # An empty latest (the first release) leaves the empty line first and
           # the tag last, so only a tag below an existing release fails.
