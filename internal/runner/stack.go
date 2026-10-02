@@ -542,13 +542,13 @@ func (r *Runner) stackResumeIndex() int {
 	if len(r.resume) == 0 {
 		return 0
 	}
-	start := len(r.cfg.Reviews) - len(r.resume)
-	if start >= 0 && slices.Equal(r.cfg.Reviews[start:], r.resume) {
-		r.resume = nil
-		return start
+	// A queue that is not a suffix belongs to a different schedule.
+	start := 0
+	if i := len(r.cfg.Reviews) - len(r.resume); i >= 0 && slices.Equal(r.cfg.Reviews[i:], r.resume) {
+		start = i
 	}
 	r.resume = nil
-	return 0
+	return start
 }
 
 // stackRecoverPass says which walk is asking about a layer.
