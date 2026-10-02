@@ -80,6 +80,26 @@ func FuzzRedactSecrets(f *testing.F) {
 		"AKIA" + strings.Repeat("A", 12),
 		"ghp_" + strings.Repeat("A", 15),
 		"ghp_" + strings.Repeat("A", 16),
+		// The Authorization header, with the scheme that separates the name
+		// from the value, with the shapes on either side of that scheme, and
+		// with the field name in the places a value must not be taken from.
+		"Authorization: Bearer 8f3a9c1d7e5b2a4f6c8d0e1b",
+		"Authorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l",
+		"proxy-authorization: Bearer tok_0123456789abcdef",
+		"Authorization: Bearer short",
+		"Authorization: Bearer",
+		"Authorization: Negotiate",
+		"authorization: required",
+		"see docs/AUTHORIZATION.md for the rules",
+		"Authorization: Bearer sk-ant-api03-AbCdEf0123456789",
+		// The half-runs a scheme-optional rule would have gone wrong on: a
+		// scheme with no value behind it, a value with no scheme, and a name
+		// with neither, plus the runs of repeated headers that are where a
+		// backtracking shape shows up as time rather than as output.
+		"Authorization:Bearer:8f3a9c1d7e5b2a4f6c8d0e1b",
+		"Authorization 8f3a9c1d7e5b2a4f6c8d0e1b",
+		strings.Repeat("Authorization: Bearer ", 32) + strings.Repeat("A", 64),
+		strings.Repeat("Authorization: ", 64),
 	}
 	for _, s := range seeds {
 		f.Add(s)

@@ -170,6 +170,28 @@ var (
 		`(?i)(-{1,2}(?:api[-_]?key|auth[-_]?token|access[-_]?token|bearer[-_]?token|` +
 			`bot[-_]?token|auth|credential|credentials|password|passwd|secret|token))\s+` +
 			`([^\s"']+)`)
+
+	// secretAuthRe is a credential in the one spelling the header carries it:
+	// a name, a scheme, and an opaque value. The value of an Authorization
+	// header is whatever the issuer minted -- a JWT, a session id, an opaque
+	// random string -- so secretPrefixRe cannot recognize it by shape and
+	// secretAssignRe cannot reach it, because the scheme sits between the
+	// name and the value ("Authorization: Bearer <token>"). The header name is
+	// the only thing that says what it is, and a rejected request is reported
+	// by printing the request, which is the line that reaches an error string,
+	// a report, and the run journal.
+	//
+	// The scheme is required, which is what the grammar says: a header's value
+	// is `auth-scheme [ 1*SP ( token68 / #auth-param ) ]`, so there is no
+	// spelling that carries a credential without one. Requiring it is also
+	// what keeps a bare word from being taken for one -- "authorization:
+	// required" in a status line and "Authorization: Negotiate" naming the
+	// scheme of a challenge are both left whole. A scheme with no value after
+	// it does not match either, so a challenge that names only its scheme
+	// reads as it was written.
+	secretAuthRe = regexp.MustCompile(
+		`(?i)\b((?:proxy-)?authorization)\s*[:=]\s*` +
+			`[A-Za-z][A-Za-z0-9+._-]{0,15}\s+([^\s"',;]+)`)
 )
 
 // secretValueMin is the shortest value RedactSecrets replaces. A shorter
@@ -182,9 +204,9 @@ const secretValueMin = 8
 const Redacted = "[redacted]"
 
 // RedactSecrets replaces credentials in s: a value assigned to a name that says
-// it is one, the value after a flag that names a credential, a token
-// recognized by the fixed prefix its issuer gives it, and the userinfo of a
-// URL.
+// it is one, the value after a flag that names a credential, the value of an
+// Authorization header, a token recognized by the fixed prefix its issuer
+// gives it, and the userinfo of a URL.
 //
 // It is for text that came out of a child process, and for the command line a
 // run journals. Every launch gauntlet makes runs an agent or a helper with the
@@ -219,6 +241,16 @@ func RedactSecrets(s string) string {
 		// quotes): this rewrites a credential out of the line, not the line's
 		// shape.
 		return m[:g[4]] + Redacted + m[g[6]:g[7]]
+	})
+	s = secretAuthRe.ReplaceAllStringFunc(s, func(m string) string {
+		g := secretAuthRe.FindStringSubmatchIndex(m)
+		// g[4]:g[5] is the credential, the second group; the header name and
+		// the scheme in front of it are kept, so the line still reads as the
+		// request that was rejected rather than as a bare "[redacted]".
+		if g == nil || g[5]-g[4] < secretValueMin {
+			return m
+		}
+		return m[:g[4]] + Redacted
 	})
 	return secretPrefixRe.ReplaceAllString(s, Redacted)
 }

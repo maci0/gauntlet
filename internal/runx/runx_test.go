@@ -136,6 +136,33 @@ func TestRedactSecrets(t *testing.T) {
 		{"--token-budget 1000000", "--token-budget 1000000"},
 		{"--max-tokens 4096", "--max-tokens 4096"},
 		{"--password short", "--password short"},
+		// The credential in an Authorization header. Its value is whatever the
+		// issuer minted, so no prefix recognizes it, and the scheme sits
+		// between the name and the value, which is what the assignment rule
+		// keys off. This is the line a rejected request is reported with, and
+		// it outlives the run in the journal.
+		{
+			"curl: (22) 401: request failed: Authorization: Bearer 8f3a9c1d7e5b2a4f6c8d0e1b",
+			"curl: (22) 401: request failed: Authorization: Bearer " + Redacted,
+		},
+		{
+			"Authorization: Basic YWxhZGRpbjpvcGVuc2VzYW1l",
+			"Authorization: Basic " + Redacted,
+		},
+		{
+			"proxy-authorization: Bearer tok_0123456789abcdef",
+			"proxy-authorization: Bearer " + Redacted,
+		},
+		// The grammar requires the scheme, so none of these carries a
+		// credential and each reads as it was written: a status line naming
+		// the field, a challenge naming only its scheme, a scheme with no
+		// value behind it, and a filename that ends in the field's name.
+		{"authorization: required", "authorization: required"},
+		{"Authorization: Negotiate", "Authorization: Negotiate"},
+		{"Authorization: Bearer", "Authorization: Bearer"},
+		{"Authorization: Bearer short", "Authorization: Bearer short"},
+		{"retry: authorization is missing", "retry: authorization is missing"},
+		{"see docs/AUTHORIZATION.md", "see docs/AUTHORIZATION.md"},
 		// The userinfo of a URL authenticates whoever wrote the line, and this
 		// function is handed a persisted argv, which is not the single line
 		// FirstLine has already cleaned.

@@ -40,6 +40,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A credential in an `Authorization` header now reaches a redaction that
+  recognizes it. `RedactSecrets` caught a value assigned to a name saying it was
+  a secret, a value behind a flag saying so, a token matching its issuer's
+  published prefix, and URL userinfo, and missed the fourth shape a rejected
+  request is reported in: `Authorization: Bearer <token>`. The value there is
+  whatever the issuer minted, so no prefix recognizes it, and the scheme sits
+  between the name and the value, which is the assignment rule's key. An agent
+  CLI printing the request it made puts that token into an error string, a
+  report, and the run journal, all of which outlive the run and are read by
+  people who are not the operator. The scheme is required, as the header
+  grammar is, so `authorization: required` in a status line and a challenge
+  naming only its scheme still read as they were written.
 - `--semcode` without the `semcode-index` helper in PATH is now a usage error
   where the flag is parsed, beside the agent CLI check and before the locks,
   rather than one raised after prompt discovery and the suggest step by a run
