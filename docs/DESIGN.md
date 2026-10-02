@@ -88,7 +88,9 @@ uses it for unknown commands and flags too. `runner` imports it for the same
 reason: the run's own result list, failure list, and per-tool breakdown are
 keyed by a review name and a `tool:model` label, both of which the reviewed
 tree and the operator's own configuration name, and `fuzzy.Comparator` is what
-orders records by such a field the way `fuzzy.Sort` orders a bare list.
+orders records by such a field the way `fuzzy.Sort` orders a bare list. The
+resume listing's directory names are the same case: a reviewed tree names its
+checkouts, and one called "Ökonto" has to print where the operator reads it.
 `journal` imports `humanize`, so
 the one reader of the persisted `elapsed_s` field is the one that renders it,
 and the run listing, the headless reporter, and the dashboard cannot disagree
@@ -117,7 +119,7 @@ library cannot, and each was kept small on purpose.
 | `muesli/termenv` | color-profile control for `--no-color`; lipgloss v1's profile API takes a termenv profile, so setting it means importing the type | `internal/ui.SetMonochrome` only |
 | `maci0/toktop` | transcript token counts for agents that print none | `usage_toktop.go` in `internal/runner` and `transcript_toktop.go` in `cmd/gauntlet` only; build tag `-tags notoktop` drops both |
 | `rivo/uniseg` | grapheme-cluster width, truncation, and segmentation so CJK and emoji remain intact and aligned | display paths in `internal/ui`, the plain reporter in `internal/report`, text truncation in `internal/normalize`, and the cell widths the CLI tests measure in `cmd/gauntlet` |
-| `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/prompt`, `internal/runner`, `internal/ui` |
+| `golang.org/x/text` | NFC normalization under fuzzy matching, prompt-name handling, the picker's filter, the file-signal suggester, git ref and branch slugs, and the reload handoff's directory key | `cmd/gauntlet`, `internal/evidence`, `internal/fuzzy`, `internal/gitx`, `internal/prompt`, `internal/runner`, `internal/ui` |
 | `golang.org/x/sys` | Landlock syscalls and ABI constants for filesystem write confinement | `internal/runner` only |
 | `golang.org/x/term` | terminal detection and size before the TUI starts | `cmd/gauntlet` only |
 
@@ -462,7 +464,16 @@ The invariants are:
    layer, leaving the preceding successful layer as the next base.
 5. A published branch name derives from the review position, the review name,
    (after the first `--max-loops` pass) the pass number, and a topic slug taken
-   from the layer's commit subject. The provisional `-wip-` branch a layer
+   from the layer's commit subject. Both slugs keep a letter or a digit in
+   any script and replace what is left with a hyphen, because a git ref is
+   UTF-8 and `check-ref-format` forbids a fixed set of ASCII metacharacters
+   rather than non-ASCII text: erasing a review named in the reviewed
+   repository's own script would have given unrelated reviews one branch, one
+   worktree, and one merge scratch directory. They compose to NFC first, so
+   the decomposed spelling a macOS filesystem hands out names one branch
+   rather than two, and the topic's byte budget is charged per byte written,
+   so a two-byte letter cannot carry the fragment past its limit. The
+   provisional `-wip-` branch a layer
    starts on carries a fragment of the base object id, and a published name
    that is already taken locally or on the remote gets the same fragment
    appended, so a rename never lands on a branch that is not its own.

@@ -14,6 +14,10 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 
 	"github.com/maci0/gauntlet/internal/runx"
 	"github.com/maci0/gauntlet/internal/safefile"
@@ -1003,11 +1007,35 @@ func (r *Repo) CleanWorktreeRoot() {
 }
 
 // BranchSlug keeps a review name safe for a git ref.
+//
+// A git ref is UTF-8, not ASCII: check-ref-format forbids a fixed set of
+// ASCII metacharacters and nothing else, so a review name the reviewed
+// repository writes in Japanese, Korean, Arabic, Cyrillic, or Greek belongs
+// in the ref whole. Mapping every rune outside [a-zA-Z0-9_-] to a hyphen, as
+// this did, did not merely transliterate those names: it erased them. A
+// review stem "日本語-review" slugged to "review", and so did "тест-review"
+// and "مراجعة-review", so three unrelated reviews in one tree took the same
+// lane branch, the same worktree directory, and the same merge scratch
+// directory. The operator saw one review's work under another review's name.
+//
+// So the rule is now: keep a rune that is a letter or a digit in any script,
+// keep '-' and '_', and replace everything else with a hyphen. Letters and
+// digits are the two categories no reader can mistake for a ref separator,
+// and the ASCII set is a subset of them, so an ASCII name slugs exactly as
+// before and every existing branch and worktree directory is recoverable.
+//
+// NFC first, for the same reason a subject is composed before it is cut: a
+// macOS filesystem hands out the decomposed spelling of a name it created
+// that way, and "café" as one code point and as "e" plus a combining accent
+// are one review with two refs. ValidateBranchName and check-ref-format are
+// left to refuse whatever survives that is still not a legal ref.
 func BranchSlug(s string) string {
 	var b strings.Builder
-	for _, r := range s {
+	for _, r := range norm.NFC.String(s) {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '-', r == '_',
+			unicode.IsLetter(r), unicode.IsDigit(r):
 			b.WriteRune(r)
 		default:
 			b.WriteByte('-')
@@ -1073,20 +1101,39 @@ const topicSlugMax = 40
 // name carries. The conventional-commit type and scope repeat what the
 // review stem already says, so they are dropped; what remains is lowercased
 // and reduced to hyphenated words, cut at a word boundary. The output is
-// always a valid ref fragment: lowercase alphanumerics and single interior
-// hyphens carry none of the sequences check-ref-format refuses.
+// always a valid ref fragment: letters and digits in any script, plus single
+// interior hyphens, carry none of the sequences check-ref-format refuses.
+//
+// Letters and digits rather than [a-z0-9], for the reason BranchSlug gives:
+// a repository whose history is in Japanese or Russian writes its subjects
+// that way, and a hardcoded ASCII class returned "" for every one of them, so
+// the layer shed no provisional name and the branch a reader opened stayed
+// the "wip" one the recovery pass is meant to rename away. ToLower is
+// Unicode's, not bytes.ToLower's, so it is the real lowercase of a Greek,
+// Cyrillic, or Turkish letter.
 func TopicSlug(subject string) string {
 	if head, rest, ok := strings.Cut(subject, ":"); ok && isConventionalType(head) {
 		subject = rest
 	}
 	var b strings.Builder
 	pending := false // a hyphen is owed only between words
-	for _, r := range strings.ToLower(subject) {
+	for _, r := range strings.ToLower(norm.NFC.String(subject)) {
 		switch {
-		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
-			need := 1
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', unicode.IsLetter(r), unicode.IsDigit(r):
+			// The budget is on the bytes of the ref fragment, so a rune is
+			// measured by what it costs rather than counted as one. Charging
+			// every rune one unit let a subject of two-byte Cyrillic overshoot
+			// topicSlugMax by the number of such runes, and the fragment is
+			// what lands in refs/heads. A rune that does not fit ends the
+			// topic, which is what the ASCII-only loop did for every rune past
+			// the budget.
+			size := utf8.RuneLen(r)
+			if size < 1 {
+				size = 1
+			}
+			need := size
 			if pending {
-				need = 2
+				need += 1
 			}
 			if b.Len()+need > topicSlugMax {
 				return b.String()
@@ -1108,19 +1155,25 @@ func TopicSlug(subject string) string {
 // isConventionalType recognizes the "type" or "type(scope)!" head of a
 // conventional-commit subject, so TopicSlug drops it rather than spending the
 // topic's budget repeating what the branch prefix already says.
+//
+// The character test accepts a letter or digit in any script, for the reason
+// TopicSlug does. Restricted to ASCII it read a Japanese or Russian subject
+// as a subject with no conventional head, so the type stayed in the topic and
+// the branch carried "修正:" where the branch prefix already named the review.
 func isConventionalType(head string) bool {
 	// conventionalTypeMax bounds what may be read as a type. A longer prefix is
 	// prose that happens to precede a colon, and dropping its first word would
 	// cut the subject, not a type.
 	const conventionalTypeMax = 30
 	head = strings.TrimSpace(head)
-	if head == "" || len(head) > conventionalTypeMax {
+	if head == "" || utf8.RuneCountInString(head) > conventionalTypeMax {
 		return false
 	}
 	for _, r := range head {
 		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '(', r == ')', r == '-', r == '_', r == '!':
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			unicode.IsLetter(r), unicode.IsDigit(r),
+			r == '(', r == ')', r == '-', r == '_', r == '!':
 		default:
 			return false
 		}

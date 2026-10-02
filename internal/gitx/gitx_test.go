@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"testing"
 	"time"
+	"unicode"
 )
 
 func TestPorcelainPath(t *testing.T) {
@@ -169,12 +170,31 @@ func TestBranchSlug(t *testing.T) {
 		"--xx--":     "xx",
 		"***":        "review", // an all-mangled name must still be a valid ref
 		"":           "review",
-		"unicodeéé":  "unicode",
+		// A review the reviewed repository names in its own script keeps that
+		// script. Erased, "日本語-review" and "тест-review" both slugged to
+		// "review" and took the same lane branch, the same worktree
+		// directory, and the same merge scratch directory, so one review's
+		// work was checked out under another review's name. These are the
+		// names that collided; they must stay apart.
+		"unicodeéé":   "unicodeéé",
+		"日本語-review":  "日本語-review",
+		"тест-review": "тест-review",
+		"مراجعة":      "مراجعة",
+		// Punctuation git refuses is still replaced, in a name that is
+		// otherwise non-ASCII, or the name would be mangled differently from
+		// the ASCII case for no reason.
+		"日本語. review": "日本語--review",
+		// The same name composed and decomposed is one review, so it is one
+		// ref: a macOS filesystem hands out the second spelling.
+		"café-review": "café-review",
 	}
 	for in, want := range cases {
 		if got := BranchSlug(in); got != want {
 			t.Errorf("BranchSlug(%q) = %q, want %q", in, got, want)
 		}
+	}
+	if a, b := BranchSlug("日本語-review"), BranchSlug("한국어-review"); a == b {
+		t.Errorf("two non-Latin review names collided on ref fragment %q", a)
 	}
 }
 
@@ -1528,6 +1548,16 @@ func FuzzTopicSlug(f *testing.F) {
 		"fix: 123-456",
 		"refactor(core): update /path/to/file",
 		"\x00\x1f\t\n",
+		// A subject in the reviewed repository's own script, and one in a
+		// conventional-commit head that is itself non-Latin. Both were
+		// reduced to an empty topic by the ASCII-only class, so a stacked
+		// layer never shed its provisional "-wip-" name.
+		"fix: 検索の速度を上げます",
+		"修正: 検索処理を追加",
+		"исправить: ускорить поиск",
+		"إصلاح: تسريع البحث",
+		"café: résumé parsing",
+		"fix: café naïve", // NFD, as a macOS filesystem hands it out
 	}
 	for _, s := range seeds {
 		f.Add(s)
@@ -1547,7 +1577,10 @@ func FuzzTopicSlug(f *testing.F) {
 			t.Fatalf("TopicSlug(%q) has consecutive hyphens: %q", subject, topic)
 		}
 		for _, r := range topic {
-			if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-') {
+			// A letter or a digit in any script, or a hyphen. Not [a-z0-9]:
+			// a subject the repository writes in Japanese or Russian is not
+			// prose the tool refuses to name a branch after.
+			if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-') {
 				t.Fatalf("TopicSlug(%q) contains invalid character %q: %q", subject, r, topic)
 			}
 		}
@@ -1577,7 +1610,7 @@ func FuzzTopicSlug(f *testing.F) {
 			t.Fatalf("BranchSlug(%q) has leading or trailing hyphen: %q", subject, bSlug)
 		}
 		for _, r := range bSlug {
-			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_') {
 				t.Fatalf("BranchSlug(%q) contains invalid character %q: %q", subject, r, bSlug)
 			}
 		}
