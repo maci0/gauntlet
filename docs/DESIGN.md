@@ -1,6 +1,6 @@
 # gauntlet design
 
-The Go implementation of gauntlet: run 54 specialized review prompts through installed
+The Go implementation of gauntlet: run 55 specialized review prompts through installed
 AI coding agents, which apply fixes directly to the working tree.
 
 The Python original is a single 2700-line sequential script. This port keeps
@@ -838,6 +838,15 @@ existing scores and thresholds. The preview, additive manual repeats and
   object remains unknown. Go root packages with exported functions or types are
   library evidence, while main packages and tests are excluded. Explicit module
   version declarations contribute release evidence; local variables do not.
+  DDD has its own implementation signals: aggregate roots, value objects,
+  domain events/services, and bounded contexts, including tactical file naming
+  conventions. Guarded operations on business concepts and constrained value
+  construction also justify `ddd-review` without prescribed DDD names. A
+  bounded lexical pass masks common comments and quoted text, excludes tests,
+  fixtures, and examples, and requires corroborating behavior for a generic
+  `domain` directory. CRUD models, DNS names, repository classes, manifest
+  descriptions, and generic state machines alone do not establish the subject.
+  These are hints of domain behavior, not proof of a business invariant.
   Literal declared marks use a separate namespace, so
   derived capabilities cannot satisfy them.
 - **Which subject exists.** Tests, skills, review prompts, agent instructions,

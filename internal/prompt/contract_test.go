@@ -27,7 +27,7 @@ var goldenReviewNames = []string{
 	"a11y-review", "agentrules-review", "api-review", "arch-review",
 	"authz-review", "build-review", "cache-review", "cli-review",
 	"code-review", "compat-review", "concurrency-review", "config-review",
-	"container-review", "db-review", "deps-review", "design-review",
+	"container-review", "db-review", "ddd-review", "deps-review", "design-review",
 	"doc-review", "dr-review", "dst-review", "dx-review", "error-review",
 	"functionality-review", "fuzz-review", "gitops-review", "helm-review",
 	"i18n-review", "idempotency-review", "infra-review", "k8s-review",

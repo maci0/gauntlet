@@ -40,7 +40,7 @@ var Sets = map[string][]string{
 	"backend": {
 		"api-review", "db-review", "error-review", "concurrency-review",
 		"idempotency-review", "o11y-review", "perf-review", "dst-review",
-		"authz-review", "cache-review", "dr-review",
+		"authz-review", "cache-review", "dr-review", "ddd-review",
 	},
 	// Kubernetes manifests, kustomize, Helm charts, and the Argo CD / Flux
 	// delivery layer, plus the existing reviews that share that ground.

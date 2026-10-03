@@ -442,6 +442,12 @@ var fastRules = []rule{
 	{"SQL or migrations", weightNormal, present(func(s signals) bool {
 		return s.count(".sql") > 0 || s.anyPath("migrations", "migrate")
 	}), []string{"db-review", "dr-review"}},
+	{"DDD model building blocks in source", weightStrong, present(func(s signals) bool {
+		return s.anyMark("ddd_model")
+	}), []string{"ddd-review"}},
+	{"guarded domain operations in source", weightStrong, present(func(s signals) bool {
+		return s.anyMark("ddd_behavior")
+	}), []string{"ddd-review"}},
 	{"an API description", weightStrong, present(func(s signals) bool {
 		return s.anyName("openapi.yaml", "openapi.json", "swagger.yaml", "schema.graphql") ||
 			s.count(".proto") > 0
@@ -950,6 +956,7 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 			markFound(s, wanted[len(marks):], asciiFold(scratch[:0], buf[:n]))
 		} else {
 			sourceImports(s, rel, buf[:n])
+			domainSignals(s, rel, buf[:n])
 			markFound(s, wanted, asciiFold(scratch[:0], buf[:n]))
 		}
 	}

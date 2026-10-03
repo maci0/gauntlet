@@ -41,6 +41,7 @@ var builtinMarkKeys = map[string]bool{
 // assertion; a new subject is a deliberate edit here too.
 var structuredMarkKeys = map[string]bool{
 	"library": true, "package": true, "release": true,
+	"ddd_model": true, "ddd_behavior": true,
 }
 
 // freshSignals is one scanner's starting state: the maps record fills from a
@@ -64,6 +65,7 @@ func scanHead(name string, head []byte) signals {
 		packageMetadata(&s, base, head)
 	default:
 		sourceImports(&s, name, head)
+		domainSignals(&s, name, head)
 	}
 	markFound(&s, markSearch(nil), asciiFold(nil, head))
 	return s
@@ -116,6 +118,9 @@ func FuzzScanFileSignals(f *testing.F) {
 		{"main.go", "package main\nimport \"github.com/gin-gonic/gin\"\n"},
 		{"main.go", "package main\nimport (\n\t\"net/http\"\n\t\"os/exec\"\n)\nfunc main() { http.ListenAndServe() }"},
 		{"client.go", "package client\nimport \"database/sql\"\nfunc NewClient() {}\n"},
+		{"domain/order.go", "package domain\ntype Order struct { Status int }\nfunc (o *Order) Approve() { if o.Status == 0 { o.Status = 1 } }\n"},
+		{"order.py", "class Order(AggregateRoot):\n    pass\n"},
+		{"notes.ts", "/* class AggregateRoot {} */\nconst example = 'class ValueObject {}';\n"},
 		{"main.go", "package main\nvar version = \"1.0\"\n"},
 		{"main_test.go", "package main\nconst version = \"1.0\"\n"},
 		{"main.go", "package main\n/* import \"gin\" */\n"},

@@ -24,7 +24,7 @@ var CoreTools = []struct{ Name, Purpose string }{
 // Listed so doctor's review set matches --list instead of silently omitting
 // them.
 var ReviewsWithoutTools = []string{
-	"agentrules-review", "cache-review", "design-review", "dr-review",
+	"agentrules-review", "cache-review", "ddd-review", "design-review", "dr-review",
 	"dst-review", "dx-review", "functionality-review", "numerics-review",
 	"perfectionism-review", "prompt-review", "skills-review", "specs-review",
 	"threat-review", "uislop-review",

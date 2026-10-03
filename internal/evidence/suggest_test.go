@@ -153,6 +153,56 @@ func TestFastSuggestStaysInThePool(t *testing.T) {
 	}
 }
 
+func TestFastSuggestDDDNeedsDomainImplementation(t *testing.T) {
+	cases := []struct {
+		name, file, body string
+		want             bool
+	}{
+		{"Java aggregate", "Order.java", "class Order extends AggregateRoot { void approve() {} }", true},
+		{"aggregate without root suffix", "order.ts", "export class Order extends Aggregate<OrderId> {}", true},
+		{"tactical file convention", "money.value-object.ts", "export class Money { readonly amount: number; }", true},
+		{"CSharp value object", "Money.cs", "public record Money : ValueObject { public decimal Amount; }", true},
+		{"Python domain event", "events.py", "class OrderApproved(DomainEvent):\n    pass\n", true},
+		{"TypeScript bounded context", "sales.ts", "export class SalesBoundedContext {}", true},
+		{"Go ledger without DDD names", "ledger.go", "package ledger\ntype Account struct { Balance int }\nfunc (a *Account) Withdraw(n int) error { if n > a.Balance { return ErrInsufficient } ; a.Balance -= n; return nil }", true},
+		{"functional domain", "checkout.ts", "export const approveOrder = (order: Order) => { if (order.status !== Status.Pending) throw new Error(); return { ...order, status: Status.Approved }; };", true},
+		{"Rust domain behavior", "wallet.rs", "pub fn debit(wallet: Wallet, n: i64) { if wallet.balance < n { panic!(); } }", true},
+		{"domain validation", "src/domain/email.py", "class Email:\n    def validate(self):\n        if not self.valid: raise InvalidEmail()\n", true},
+		{"unfamiliar domain vocabulary", "domain/lending.py", "class Patron:\n    def borrow(self, book):\n        if self.status == SUSPENDED: raise BorrowingForbidden()\n        self.loans.append(book)\n", true},
+		{"domain aggregate annotation", "lending/Patron.java", "@Aggregate\nclass Patron { }", true},
+		{"business rule contract", "rules.cs", "public interface IBusinessRule { bool IsBroken(); }", true},
+		{"constrained value constructor", "money.go", "package finance\ntype Money struct { Cents int }\nfunc NewMoney(cents int) (Money, error) { if cents < 0 { return Money{}, ErrNegative }; return Money{cents}, nil }", true},
+		{"unrelated constructor", "client.go", "package client\ntype Order struct { ID int }\nfunc NewClient() *Client { if configured { return cached }; return nil }", false},
+		{"rendering quantities", "viewport.ts", "const quantity = points.length; export function newViewport() { if (quantity > 0) return buildView(); }", false},
+		{"plain CRUD", "src/domain/customer.py", "class CustomerRepository:\n    def get(self, id):\n        if id is None: return None\n        return self.db.find(id)\n", false},
+		{"DNS domain", "src/domain/dns.go", "package domain\nfunc Lookup(host string) string { if host == \"\" { return \"\" }; return host }", false},
+		{"a repository name", "user_repository.ts", "export class UserRepository { save(user: User) { return this.db.insert(user); } }", false},
+		{"a state machine alone", "process.py", "class Process:\n    def transition(self):\n        if self.state == STOPPED: self.state = RUNNING\n", false},
+		{"numerical aggregation", "stats.py", "def aggregate(values):\n    if not values: return 0\n    return sum(values)\n", false},
+		{"a data transfer object", "order.ts", "export interface Order { id: string; status: string; }", false},
+		{"similar identifier fragments", "billing.py", "class Billing:\n    def fields(self):\n        if self.account: return self.credits + self.settled\n", false},
+		{"capability strings with code", "request.ts", "class Request { send() { const grant_type = 'account'; if (grant_type) return grant_type; } }", false},
+		{"quoted examples", "main.ts", "/* class AggregateRoot {} */\nexport const sample = `class ValueObject {}`;\nexport const message = 'class DomainEvent {}';\n", false},
+		{"Python docstring", "main.py", "\"\"\"class AggregateRoot:\n    pass\n\"\"\"\nclass Example: pass\n", false},
+		{"test only", "OrderTest.java", "class OrderTest extends AggregateRoot {}", false},
+		{"nested fixture", "testdata/domain/order.go", "package domain\ntype AggregateRoot struct{}", false},
+		{"vendor implementation", "vendor/domain/order.py", "class Order(AggregateRoot): pass", false},
+		{"documentation only", "ddd.md", "class Order(AggregateRoot): pass", false},
+		{"manifest only", "package.json", `{"description":"AggregateRoot ValueObject DomainEvent","dependencies":{"ddd-framework":"1"}}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			picked := reviews(t, tree(t, c.file+"\x00"+c.body), []string{"ddd-review"}, prompt.Set{})
+			if (len(picked) > 0) != c.want {
+				t.Fatalf("DDD applicability = %v, want %v; picks: %+v", len(picked) > 0, c.want, picked)
+			}
+			if c.want && (picked[0].Weight != 1 || !strings.Contains(picked[0].Reason, "source")) {
+				t.Fatalf("one domain signal should justify one pass with source evidence: %+v", picked)
+			}
+		})
+	}
+}
+
 // An empty directory justifies nothing, and says so by proposing nothing
 // rather than falling back to everything.
 func TestFastSuggestProposesNothingForAnEmptyTree(t *testing.T) {

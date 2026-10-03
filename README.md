@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <em>Run your codebase through the gauntlet: 54 specialized review prompts,
+  <em>Run your codebase through the gauntlet: 55 specialized review prompts,
   dispatched to whichever AI coding agents you have installed, applying fixes
   directly to the working tree.</em>
 </p>
@@ -23,7 +23,7 @@
   <img src="assets/dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="900">
 </p>
 
-One static binary loops 54 review prompts over your repository, hands each one
+One static binary loops 55 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
 - **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
@@ -166,6 +166,7 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 | `config-review` | precedence, validation, secrets in the wrong place |
 | `container-review` | probes, graceful shutdown, image hygiene on Kubernetes |
 | `db-review` | schema, queries, migrations, data integrity |
+| `ddd-review` | bounded contexts, domain language, aggregates, tactical DDD |
 | `deps-review` | necessity, supply-chain risk, maintenance burden |
 | `design-review` | tradeoffs, alternatives, data modeling, fit to scale |
 | `doc-review` | docs and comments that disagree with the code |

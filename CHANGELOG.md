@@ -34,6 +34,23 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- `ddd-review` reviews strategic and tactical domain-driven design: ubiquitous
+  language, bounded contexts, aggregates and invariants, entities, value objects,
+  domain services, repositories, and domain events. Included in the `backend`
+  set, it skips projects without meaningful domain behavior and favors concrete
+  modeling fixes over adding patterns for their own sake.
+
+### Changed
+
+- The built-in file-signal suggester recognizes DDD model building blocks,
+  guarded domain operations, and constrained value construction when selecting
+  `ddd-review`. It combines source identifiers and behavior rather than
+  treating a database, repository class, or `domain` directory as sufficient
+  evidence, and ignores comments, quoted examples, manifests, and test fixtures
+  for these signals.
+
 ## 1.36.0
 
 ### Added
