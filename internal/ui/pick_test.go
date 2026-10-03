@@ -1779,7 +1779,7 @@ func TestPickCommandPreviewCutsOnAFlag(t *testing.T) {
 		if !strings.HasPrefix(got, "$ gauntlet ") {
 			t.Errorf("width %d: the preview is not a command: %q", w, got)
 		}
-		for _, tok := range strings.Fields(got) {
+		for tok := range strings.FieldsSeq(got) {
 			switch tok {
 			case "…", "...", "$", "gauntlet":
 				continue
@@ -2237,7 +2237,7 @@ func TestNarrowPanesMarkCutText(t *testing.T) {
 	// and a value wide enough for the pane is never marked as cut.
 	live := demoPicker()
 	live.suggest = true
-	for _, r := range strings.Split(stripANSI(live.runPanel(56, live.paneHeight(paneOptions))), "\n") {
+	for r := range strings.SplitSeq(stripANSI(live.runPanel(56, live.paneHeight(paneOptions))), "\n") {
 		if strings.Contains(r, "suggest agent") && !strings.Contains(r, "gauntlet (default)") {
 			t.Fatalf("an applicable suggest row lost its value:\n%s", r)
 		}

@@ -43,12 +43,12 @@ func TestDocsCLIDocumentsEveryHistoryCount(t *testing.T) {
 	}
 
 	var members []string
-	typ := reflect.TypeOf(historyJSON{})
-	for i := range typ.NumField() {
-		name, _, _ := strings.Cut(typ.Field(i).Tag.Get("json"), ",")
+	typ := reflect.TypeFor[historyJSON]()
+	for field := range typ.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		if name == "" || name == "-" {
 			t.Errorf("historyJSON.%s carries no JSON name, so a consumer cannot read it",
-				typ.Field(i).Name)
+				field.Name)
 			continue
 		}
 		members = append(members, name)
