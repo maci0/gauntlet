@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.36.0
+
 ### Added
 
 - The git half of the backup drill in `docs/RUNS.md` was documented and never
