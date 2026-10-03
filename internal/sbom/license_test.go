@@ -186,8 +186,11 @@ func TestResolveLicensesReadsAnOversizedGrantUpToTheCap(t *testing.T) {
 // receives that PATH, so a bare name is failed by the parent and reported as
 // a missing toolchain rather than found.
 func TestModuleDirsFindsTheToolchainWithAnEmptyAmbientPath(t *testing.T) {
-	root, err := moduleRoot()
-	if err != nil {
+	// The fallback may find a host compiler older than the one running this
+	// suite. A minimal module isolates executable discovery from our Go floor.
+	root := t.TempDir()
+	const module = "example.com/empty-path"
+	if err := os.WriteFile(root+"/go.mod", []byte("module "+module+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// The premise, or the test proves nothing: runx has to be able to answer
@@ -196,11 +199,11 @@ func TestModuleDirsFindsTheToolchainWithAnEmptyAmbientPath(t *testing.T) {
 	if runx.LookPath("go") == "" {
 		t.Skip("the toolchain is not on the absolute PATH either, so there is nothing to find")
 	}
-	dirs, err := moduleDirs(root, []string{"github.com/maci0/gauntlet"})
+	dirs, err := moduleDirs(root, []string{module})
 	if err != nil {
 		t.Fatalf("moduleDirs with an empty ambient PATH: %v", err)
 	}
-	if dirs["github.com/maci0/gauntlet"] == "" {
+	if dirs[module] == "" {
 		t.Errorf("moduleDirs returned %v, want a directory for the module", dirs)
 	}
 }

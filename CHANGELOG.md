@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.37.0
+
 ### Added
 
 - `ddd-review` reviews strategic and tactical domain-driven design: ubiquitous
@@ -50,6 +52,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
   treating a database, repository class, or `domain` directory as sufficient
   evidence, and ignores comments, quoted examples, manifests, and test fixtures
   for these signals.
+
+### Fixed
+
+- Release and CI tests tolerate hosts whose default Go installation is older
+  than the selected compiler. The empty-PATH SBOM check uses a minimal module
+  to test executable discovery, and the macOS directory-display check uses
+  its controlled echo fixture without requiring a hostile directory name to
+  be a valid sandbox root.
 
 ## 1.36.0
 

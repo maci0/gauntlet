@@ -65,6 +65,9 @@ func TestSuggestSanitizesTheDirectoryTag(t *testing.T) {
 	// prints no name at all and the hostile component never reaches a line.
 	first, opts := suggestFixture(t, `echo "RELEVANT: doc-review: docs drifted"`)
 	second, _ := suggestFixture(t, `echo "RELEVANT: doc-review: docs drifted"`)
+	// The controlled echo fixture checks terminal display. Seatbelt correctly
+	// refuses the hostile directory below as a sandbox root on macOS.
+	opts.noSandbox = true
 	// The last component is the reviewed repository's to name, so move one
 	// run's directory under a name carrying an escape sequence and a BEL.
 	second.dir = filepath.Join(filepath.Dir(second.dir), "evil\x1b[31mred\x07")

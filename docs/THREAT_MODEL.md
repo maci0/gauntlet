@@ -7,8 +7,8 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-10-03 against commit b02ca8d.
-This pass also covers the working-tree DDD detection change: the lexical
+Last reviewed: 2026-10-03 against commit 7bcf42e.
+This pass also covers the DDD detection change: the lexical
 recognizer consumes the source heads the suggester already reads, under the
 same 2000-file and 4 KiB-per-head budgets and rooted regular-file opens. It
 adds no subprocess or network access. Common comments and quoted text, tests,
