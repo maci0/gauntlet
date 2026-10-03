@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/report"
 )
 
@@ -55,10 +56,11 @@ func TestListCheckpointsOrdersDirsByCollation(t *testing.T) {
 		t.Fatalf("listCheckpoints = %d:\n%s", code, sb.String())
 	}
 
+	displayRoot := normalize.RedactHome(root)
 	// The printed line is the one carrying every directory, comma-joined.
 	var printed string
 	for line := range strings.SplitSeq(sb.String(), "\n") {
-		if strings.Contains(line, filepath.Join(root, "apple")) {
+		if strings.Contains(line, filepath.Join(displayRoot, "apple")) {
 			printed = line
 			break
 		}
@@ -71,7 +73,7 @@ func TestListCheckpointsOrdersDirsByCollation(t *testing.T) {
 		cell = strings.TrimSpace(cell)
 		// The clause after the last name is "N unfinished in the current
 		// loop, ...", not a path.
-		if !strings.HasPrefix(cell, root) {
+		if !strings.HasPrefix(cell, displayRoot) {
 			break
 		}
 		got = append(got, cell)
@@ -81,17 +83,17 @@ func TestListCheckpointsOrdersDirsByCollation(t *testing.T) {
 	}
 	// Every name survives the listing whole: the path is printed, not a slug.
 	for _, d := range dirs {
-		if !slices.Contains(got, d) {
+		if !slices.Contains(got, normalize.RedactHome(d)) {
 			t.Errorf("listing lost %q, printed:\n%s", d, printed)
 		}
 	}
 	// The accented capitals are the discriminator: byte order puts every one
 	// of them after "Zebra", and collation files each under the letter a
 	// reader of that name looks for.
-	if i, j := indexOf(got, filepath.Join(root, "Ärchi")), indexOf(got, filepath.Join(root, "Zebra")); i > j {
+	if i, j := indexOf(got, filepath.Join(displayRoot, "Ärchi")), indexOf(got, filepath.Join(displayRoot, "Zebra")); i > j {
 		t.Errorf("Ärchi printed at %d, after Zebra at %d; the list is not collated:\n%s", i, j, printed)
 	}
-	if i, j := indexOf(got, filepath.Join(root, "apple")), indexOf(got, filepath.Join(root, "Ökonomie")); i > j {
+	if i, j := indexOf(got, filepath.Join(displayRoot, "apple")), indexOf(got, filepath.Join(displayRoot, "Ökonomie")); i > j {
 		t.Errorf("apple printed at %d, after Ökonomie at %d; the list is not collated:\n%s", i, j, printed)
 	}
 }
