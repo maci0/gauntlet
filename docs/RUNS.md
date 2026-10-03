@@ -590,12 +590,53 @@ interrupted before it merged) exists nowhere else. The journal names that
 branch and nothing about its contents, so recovering the work means fetching
 it back into a repository, not reading a file. `git bundle create` over the
 refs the run named, or a `git clone --mirror` of the repository, keeps them
-while the machine is gone:
+while the machine is gone. The first command is the one a scheduled job runs;
+the two after it are the restore:
 
 ```sh
+set -e
 git -C /path/to/repo bundle create /path/on/other-storage/repo.bundle --all
 git clone /path/on/other-storage/repo.bundle /path/to/restored-repo
+git -C /path/to/restored-repo fetch origin \
+  'refs/heads/gauntlet/*:refs/heads/gauntlet/*' \
+  'refs/heads/review/*:refs/heads/review/*'
 ```
+
+`git clone` is not the last step. It materializes every ref it fetched under
+`refs/remotes/origin/`, and a review the runner reads back is read from a local
+`refs/heads/gauntlet/` branch (`gitx.LaneBranches`, which is what `gauntlet
+doctor` prints). Left as the clone writes them, a restored review sits at
+`refs/remotes/origin/gauntlet/...`: the commits are in the repository and no
+local branch names them, so doctor cannot list them and the next run's merge
+step cannot find them. The `fetch` writes both namespaces the runner creates
+back onto local branches, which is what turns a recovered commit into work a
+run can pick up. It is safe to repeat, and it is a fast-forward-only mapping,
+so it never rewrites a branch that has moved on.
+
+`--all` is what makes the bundle hold those refs at all: it expands to the
+local heads and tags, which on a repository with no remote is exactly the
+`gauntlet/` and `review/` branches above. Naming the branches instead
+(`git bundle create <file> refs/heads/gauntlet/...`) also works and copies
+less.
+
+`git clone` is the one command in the block that cannot run twice over the
+same path: it refuses a destination that exists and is not empty, so a second
+drill fails on a condition with nothing to do with the bundle. Point
+`/path/to/restored-repo` at a new directory each time, as the state-tree
+restore below does, rather than reading the refusal as a broken backup. The
+`bundle create` beside it overwrites the bundle it names, so the destination
+holds the previous bundle or the new one and a failed run leaves the last good
+copy in place; that is git's own temp-and-rename, not something the block adds.
+
+The block is executed rather than illustrated, against a repository holding an
+unlanded review: `TestBundleRecipeRestoresUnlandedReviewsAsLocalBranches`
+(`cmd/gauntlet/bundlerecipe_test.go`) reads it out of this page, runs it, and
+fails unless the restored repository holds the review on a local branch at the
+commit it was taken from, with its content intact — the shape the next run
+needs, which a clone alone does not produce.
+`TestBundleRecipeRunsTwiceOverTheSamePaths` runs the whole block a second time,
+so a recipe that only works once fails the suite rather than the first
+scheduled copy after it.
 
 A repository whose objects were already packed elsewhere, or whose reviews all
 landed, needs none of this. What it cannot be is assumed: `gauntlet doctor`

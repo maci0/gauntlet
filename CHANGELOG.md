@@ -36,6 +36,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Added
 
+- The git half of the backup drill in `docs/RUNS.md` was documented and never
+  run. The state-tree archive beside it is executed against every shape a
+  state root takes, but the bundle recipe is the only backup protecting
+  irreplaceable work: a review left on an unmerged lane branch is a commit in
+  the reviewed repository, not state-tree state, and no copy of `GAUNTLET_HOME`
+  holds it. `TestBundleRecipeRestoresUnlandedReviewsAsLocalBranches` reads the
+  block out of the page, runs it against a repository holding an unlanded
+  review, and fails unless the restored repository holds it on a local branch
+  at the commit it was taken from, with its content intact.
+  `TestBundleRecipeRunsTwiceOverTheSamePaths` runs the whole block twice, so a
+  recipe that only works once fails the suite rather than the first scheduled
+  copy after it.
 - The changelog is checked for the one `Changed` entry that breaks a consumer
   who did not upgrade anything. Raising the Go a source build needs is an
   addition to what is supported rather than a behavior change, and it stops a
@@ -71,6 +83,18 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The git-bundle restore in `docs/RUNS.md` recovered an unlanded review and
+  left it unusable. `git clone <bundle>` materializes every ref it fetched
+  under `refs/remotes/origin/`, while a review the runner reads back is read
+  from a local `refs/heads/gauntlet/` branch, so the restored commits sat in
+  the repository under a name no local branch carried: `gauntlet doctor` could
+  not list them and the next run's merge step could not find them. The
+  documented block now fetches the `gauntlet/` and `review/` namespaces back
+  onto local branches after the clone, and says why a clone alone is not the
+  last step. Running the block also showed it could not be run twice over the
+  same restore path, because `git clone` refuses a destination that exists and
+  is not empty; the page now says to point the restore at a new directory each
+  time, as the state-tree restore beside it already did.
 - The suggester reported which day a churn read failed in the host's own time
   zone while asking git about the window in UTC, so on any machine not set to
   UTC the error named a different day than the one git was actually read
