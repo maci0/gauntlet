@@ -26,8 +26,8 @@ github.com/klauspost/compress v1.20.1 h1:T7kKElXUMXrUJ2E9QhQhxFtcK5rPyLdsGZvdbLM
 github.com/klauspost/compress v1.20.1/go.mod h1:LUdAzn7YLVvxLpc7y3V1m40wESHTgc1422pwwBSKYuI=
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
-github.com/maci0/toktop v0.21.0 h1:1PNxgO8oln5d5pzgLiJ9AXMWx6ORfaBh+VczihZR6oY=
-github.com/maci0/toktop v0.21.0/go.mod h1:roH2P5W7PzRGIq73bP1zKyPIshrI3wjVF1u8UGxXNIA=
+github.com/maci0/toktop v0.23.0 h1:ofd0dPfEQAzRxJh/ctuYFJIP5V16FLDIYjtcGiv1JSM=
+github.com/maci0/toktop v0.23.0/go.mod h1:roH2P5W7PzRGIq73bP1zKyPIshrI3wjVF1u8UGxXNIA=
 github.com/mattn/go-isatty v0.0.24 h1:tGZZoVgT/KiqK1c8ocVLeDS8BSWMRd47J3Lbz7vsReI=
 github.com/mattn/go-isatty v0.0.24/go.mod h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=
 github.com/mattn/go-localereader v0.0.1 h1:ygSAOl7ZXTx4RdPYinUpg6W99U8jWvWi9Ye2JC/oIi4=
