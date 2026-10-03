@@ -145,7 +145,7 @@ var dumpDshConfig = func(base []string) (string, error) {
 	argv := append(append([]string{}, base...), "--profile", "headless", "--dump-config")
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = os.TempDir()
-	cmd.Env = runx.AbsPATHEnv()
+	cmd.Env = runx.EnvIn(cmd.Dir)
 	cmd.Stdin = nil
 	out, errOut := runx.Bound(cmd, dshDumpMaxBytes, runx.WaitGrace)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)

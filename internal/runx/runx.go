@@ -349,6 +349,29 @@ func AbsPATHEnv() []string {
 	return out
 }
 
+// EnvIn is AbsPATHEnv for a child whose working directory is dir, with PWD
+// naming dir. os/exec updates PWD itself only when Cmd.Env is nil, so a child
+// handed an explicit environment inherits this process's PWD, and a runtime
+// that resolves its project from PWD before getcwd (opencode does) then works
+// in the operator's checkout instead of the worktree it was launched in. A dir
+// that cannot be made absolute drops PWD, which leaves the child on getcwd.
+func EnvIn(dir string) []string {
+	env := AbsPATHEnv()
+	if dir == "" {
+		return env
+	}
+	out := env[:0]
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "PWD=") {
+			out = append(out, kv)
+		}
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		out = append(out, "PWD="+abs)
+	}
+	return out
+}
+
 // executable reports whether path names a regular file with an execute bit,
 // which is the one definition of "runnable" every candidate here answers to.
 func executable(path string) bool {

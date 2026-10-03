@@ -271,6 +271,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
   screen it prints. A token that is a flag is one, and a flag that wants a
   value owns the token after it, so both are skipped; a word nobody spells is
   still refused, as `gauntlet help helo` is.
+- An agent launched in a worktree inherited the runner's PWD, which names the
+  checkout the run was started from, because the agent's environment is built
+  explicitly and os/exec only rewrites PWD for an inherited one. opencode
+  resolves its project from PWD before the real working directory, so in a
+  `--stacked-prs` or `--jobs` run it edited the operator's checkout instead of
+  its worktree; the sandbox refused every write, and the run committed nothing
+  and opened no pull requests. Every agent launch, and the usage and dsh
+  probes, now sets PWD to the directory the child runs in.
 
 ## 1.35.0
 

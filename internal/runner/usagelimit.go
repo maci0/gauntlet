@@ -91,7 +91,7 @@ func probeUsage(ctx context.Context, argv []string) (float64, error) {
 	bin := resolveProbe(argv[0])
 	cmd := exec.CommandContext(ctx, bin, argv[1:]...)
 	cmd.Dir = os.TempDir()
-	cmd.Env = runx.AbsPATHEnv()
+	cmd.Env = runx.EnvIn(cmd.Dir)
 	cmd.Stdin = nil
 	// Own process group and an explicit group kill, like every other
 	// subprocess here: a probe that forks must not outlive its own timeout.

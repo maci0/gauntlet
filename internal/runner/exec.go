@@ -175,7 +175,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	}
 	cmd := exec.Command(o.Argv[0], o.Argv[1:]...)
 	cmd.Dir = o.Dir
-	cmd.Env = runx.AbsPATHEnv()
+	cmd.Env = runx.EnvIn(o.Dir)
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if !o.NoSandbox {
