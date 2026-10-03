@@ -34,6 +34,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.37.1
+
+### Changed
+
+- Maintenance rebuild after running `go fix` across the `sqlite`, bare, and
+  `notoktop` build configurations. The source was already current; no rewrites
+  were required.
+
 ## 1.37.0
 
 ### Added
