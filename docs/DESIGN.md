@@ -847,6 +847,15 @@ existing scores and thresholds. The preview, additive manual repeats and
   `domain` directory. CRUD models, DNS names, repository classes, manifest
   descriptions, and generic state machines alone do not establish the subject.
   These are hints of domain behavior, not proof of a business invariant.
+  TDD selection requires production source, documentation or test contract
+  evidence, and an existing runner. Go modules and Rust crates supply native
+  runners; test-framework imports, configured package test scripts, pytest
+  sections, Deno test tasks, and recognized Makefile/justfile commands supply
+  other evidence. Comments, quoted examples, fixture trees, dependency names,
+  and echoed commands cannot establish this subject. The same bounded head
+  budget and rooted file opens apply, and commands are inspected, never run.
+  A suggestion does not prove a runner is installed or that a bug exists; the
+  review checks both before attempting a fix.
   Literal declared marks use a separate namespace, so
   derived capabilities cannot satisfy them.
 - **Which subject exists.** Tests, skills, review prompts, agent instructions,

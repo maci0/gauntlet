@@ -35,13 +35,14 @@ var builtinMarkKeys = map[string]bool{
 }
 
 // structuredMarkKeys are the categories the structured readers record: the
-// import subjects in imports.go, plus the four package-field facts a manifest
+// import subjects in imports.go, package-field facts, and TDD prerequisites a
 // head establishes. They are listed rather than derived so this harness does
 // not inherit a widening of the subject table as a widening of its own
 // assertion; a new subject is a deliberate edit here too.
 var structuredMarkKeys = map[string]bool{
 	"library": true, "package": true, "release": true,
 	"ddd_model": true, "ddd_behavior": true,
+	"test_runner": true, "test_production": true, "test_contract": true,
 }
 
 // freshSignals is one scanner's starting state: the maps record fills from a
@@ -60,12 +61,15 @@ func freshSignals() signals {
 func scanHead(name string, head []byte) signals {
 	s := freshSignals()
 	record(&s, name)
+	testSignals(&s, name, head)
 	switch base := strings.ToLower(filepath.Base(name)); base {
 	case "package.json", "plugin.json", "pyproject.toml", "cargo.toml", "setup.cfg":
-		packageMetadata(&s, base, head)
+		packageMetadata(&s, name, head)
 	default:
-		sourceImports(&s, name, head)
-		domainSignals(&s, name, head)
+		if !testConfig(base) {
+			sourceImports(&s, name, head)
+			domainSignals(&s, name, head)
+		}
 	}
 	markFound(&s, markSearch(nil), asciiFold(nil, head))
 	return s
@@ -100,7 +104,7 @@ func knownMark(key string) bool {
 	return strings.HasPrefix(key, "mark:")
 }
 
-// FuzzScanFileSignals drives record, sourceImports, packageMetadata, and
+// FuzzScanFileSignals drives record, testSignals, sourceImports, packageMetadata, and
 // markFound with a file name and a head of bytes a reviewed tree controls.
 //
 // The fuzzer proves the scanners do not crash; the assertions are what make a
@@ -115,6 +119,12 @@ func knownMark(key string) bool {
 func FuzzScanFileSignals(f *testing.F) {
 	type seed struct{ name, body string }
 	seeds := []seed{
+		{"Makefile", "test:\n\tpython3 -m unittest discover\n"},
+		{"pytest.ini", "[pytest]\ntestpaths = tests\n"},
+		{"deno.json", `{"tasks":{"test":"deno test"}}`},
+		{"package.json", `{"scripts":{"test":"echo node --test"}}`},
+		{"package.json", `{"scripts":{"test":"CI=1 vitest run"}}`},
+		{"testdata/test_sum.py", "import unittest\n"},
 		{"main.go", "package main\nimport \"github.com/gin-gonic/gin\"\n"},
 		{"main.go", "package main\nimport (\n\t\"net/http\"\n\t\"os/exec\"\n)\nfunc main() { http.ListenAndServe() }"},
 		{"client.go", "package client\nimport \"database/sql\"\nfunc NewClient() {}\n"},

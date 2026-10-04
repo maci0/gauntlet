@@ -280,6 +280,46 @@ func TestFastSuggestReadsWhatIsMissing(t *testing.T) {
 	}
 }
 
+// TDD needs a production path, contract evidence, and an existing way to run
+// its regression test. Test-shaped names and dependency mentions are not enough.
+func TestFastSuggestTDDNeedsRunnableProduction(t *testing.T) {
+	cases := []struct {
+		name  string
+		files []string
+		want  bool
+	}{
+		{"native Go without tests", []string{"go.mod\x00module example.org/sum\n", "sum.go\x00package sum\nfunc Add(a, b int) int { return a + b }\n", "README.md\x00Add returns the sum."}, true},
+		{"Go without contract", []string{"go.mod\x00module example.org/sum\n", "sum.go\x00package sum\nfunc Add(a, b int) int { return a + b }\n"}, false},
+		{"test-only Go", []string{"go.mod\x00module example.org/tests\n", "sum_test.go\x00package sum\nimport \"testing\"\nfunc TestSum(t *testing.T) { t.Fatal(1+2) }", "README.md"}, false},
+		{"Go fixture", []string{"go.mod", "testdata/sum.go\x00package sum\nfunc Add(a, b int) int { return a + b }\n", "README.md"}, false},
+		{"Go comment", []string{"go.mod", "sum.go\x00// package sum\n// func Add(a, b int) int { return a + b }\n", "README.md"}, false},
+		{"native Rust", []string{"Cargo.toml\x00[package]\nname = \"sum\"\n", "src/lib.rs\x00pub fn add(a: i32, b: i32) -> i32 { a + b }", "README.md"}, true},
+		{"Python unittest", []string{"sum.py\x00def add(a,b): return a+b\n", "tests/test_sum.py\x00import unittest\nclass SumTest(unittest.TestCase):\n    def test_add(self): self.assertEqual(1+2, 3)"}, true},
+		{"Python without runner", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "tests/README.md"}, false},
+		{"commented import", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "tests/test_sum.py\x00# import pytest\n"}, false},
+		{"configured pytest", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "pyproject.toml\x00[tool.pytest.ini_options]\ntestpaths = [\"tests\"]"}, true},
+		{"configured JavaScript", []string{"sum.js\x00export function add(a,b) { return a+b; }", "README.md", "package.json\x00{\"scripts\":{\"test\":\"vitest run\"}}"}, true},
+		{"echoed command", []string{"sum.js\x00export function add(a,b) { return a+b; }", "README.md", "package.json\x00{\"scripts\":{\"test\":\"echo node --test\"}}"}, false},
+		{"dependency only", []string{"sum.js\x00export function add(a,b) { return a+b; }", "README.md", "package.json\x00{\"devDependencies\":{\"vitest\":\"1.0.0\"}}"}, false},
+		{"fixture import", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "testdata/test_sum.py\x00import pytest\n"}, false},
+		{"fixture config", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "fixtures/pyproject.toml\x00[tool.pytest.ini_options]\n"}, false},
+		{"fixture Go module", []string{"sum.go\x00package sum\nfunc Add(a,b int) int { return a+b }", "README.md", "testdata/go.mod\x00module example.org/fixture\n"}, false},
+		{"application test flag", []string{"sum.js\x00export function add(a,b) { return a+b; }", "README.md", "package.json\x00{\"scripts\":{\"test\":\"node app.js --test\"}}"}, false},
+		{"ordinary test suffix", []string{"go.mod\x00module example.org/sum\n", "latest.go\x00package sum\nfunc Add(a,b int) int { return a+b }", "README.md"}, true},
+		{"Makefile runner", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "Makefile\x00test:\n\tpython3 -m unittest discover\n"}, true},
+		{"commented Makefile runner", []string{"sum.py\x00def add(a,b): return a+b\n", "README.md", "Makefile\x00# test:\n#\tpython3 -m unittest discover\n"}, false},
+		{"test-only JavaScript", []string{"tests/sum.test.js\x00import {test, expect} from \"vitest\";\ntest(\"sum\", () => expect(1+2).toBe(3));", "README.md"}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := reviews(t, tree(t, c.files...), []string{"tdd-review"}, prompt.Set{})
+			if (len(got) > 0) != c.want {
+				t.Fatalf("TDD applicability = %v, want %v; picks: %v", len(got) > 0, c.want, got)
+			}
+		})
+	}
+}
+
 func TestFastSuggestSeparatesReviewSubjects(t *testing.T) {
 	pool := []string{"code-review", "perfectionism-review", "agentrules-review", "prompt-review", "skills-review", "container-review", "pkg-review", "infra-review", "cli-review", "ux-review", "api-review", "fuzz-review", "numerics-review", "specs-review"}
 	cases := []struct {

@@ -27,7 +27,7 @@ var ReviewsWithoutTools = []string{
 	"agentrules-review", "cache-review", "ddd-review", "design-review", "dr-review",
 	"dst-review", "dx-review", "functionality-review", "numerics-review",
 	"perfectionism-review", "prompt-review", "skills-review", "specs-review",
-	"threat-review", "uislop-review",
+	"tdd-review", "threat-review", "uislop-review",
 }
 
 // RecommendedTools are worth installing on any machine: language-agnostic and

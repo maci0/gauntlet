@@ -245,15 +245,17 @@ var marks = []markEntry{
 // signals is what one pass over a tree found. Counts, not booleans: how much
 // of a thing there is decides whether its reviews are worth proposing.
 type signals struct {
-	files  int
-	source int
-	ext    map[string]int
-	name   map[string]bool
-	path   map[string]bool
-	mark   map[string]int
-	hot    map[string]int // extension to files changed inside the churn window
-	churn  bool           // the repository reported recent commits
-	tests  bool
+	files     int
+	source    int
+	ext       map[string]int
+	name      map[string]bool
+	path      map[string]bool
+	mark      map[string]int
+	hot       map[string]int // extension to files changed inside the churn window
+	churn     bool           // the repository reported recent commits
+	tests     bool
+	goTests   bool // a Go module outside fixtures supplies the native runner
+	rustTests bool // a Rust crate outside fixtures supplies the native runner
 }
 
 func (s signals) count(exts ...string) int {
@@ -387,6 +389,9 @@ var fastRules = []rule{
 		return s.source > 0 && (hasDocs(s) || hasTests(s) || s.anyMark("cli"))
 	}), []string{"functionality-review"}},
 	{"a test suite", weightNormal, present(hasTests), []string{"test-review"}},
+	{"production code with a test runner and contract evidence", weightStrong, present(func(s signals) bool {
+		return s.anyMark("test_production") && s.anyMark("test_runner") && (hasDocs(s) || s.anyMark("test_contract"))
+	}), []string{"tdd-review"}},
 	{"no tests in the source tree", weightStrong, present(func(s signals) bool {
 		return s.source > 0 && !hasTests(s)
 	}), []string{"test-review"}},
@@ -829,6 +834,10 @@ func record(s *signals, rel string) {
 	rel = nfcPath(rel)
 	lower := strings.ToLower(rel)
 	base := path.Base(lower)
+	if !testFixture(rel) {
+		s.goTests = s.goTests || base == "go.mod"
+		s.rustTests = s.rustTests || base == "cargo.toml"
+	}
 	if isTestFile(base) {
 		s.tests = true
 	}
@@ -932,7 +941,10 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 		if read >= peekMaxFiles {
 			return nil
 		}
-		if !sourceExts[strings.ToLower(filepath.Ext(rel))] && !manifestNames[strings.ToLower(filepath.Base(rel))] {
+		name := strings.ToLower(filepath.Base(rel))
+		config := testConfig(name)
+		legacy := sourceExts[strings.ToLower(filepath.Ext(rel))] || manifestNames[name]
+		if !legacy && !config {
 			continue
 		}
 		f, err := openPeek(dir, rel)
@@ -950,9 +962,12 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 			continue
 		}
 		read++
-		name := strings.ToLower(filepath.Base(rel))
+		testSignals(s, rel, buf[:n])
+		if !legacy {
+			continue
+		}
 		if name == "package.json" || name == "plugin.json" || name == "pyproject.toml" || name == "cargo.toml" || name == "setup.cfg" {
-			packageMetadata(s, name, buf[:n])
+			packageMetadata(s, rel, buf[:n])
 			markFound(s, wanted[len(marks):], asciiFold(scratch[:0], buf[:n]))
 		} else {
 			sourceImports(s, rel, buf[:n])

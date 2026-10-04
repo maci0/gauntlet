@@ -104,6 +104,12 @@ Sets: `all`, `project`, `quick`, `standard`, `security`, `frontend`,
 `backend`, `agents`, `shipping`, `gitops`. A `*-review.md` file in the reviewed tree is
 picked up automatically and overrides a bundled prompt of the same name.
 
+TDD suggestions require production source, contract evidence, and an existing
+test runner. Native Go/Rust modules, framework imports, and recognized test
+configuration or commands can establish the runner; dependency names and
+placeholder scripts cannot. The review verifies that the runner actually works
+before changing code.
+
 **Choosing agents**
 
 | Flag | Default | Purpose |

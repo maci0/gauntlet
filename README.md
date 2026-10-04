@@ -200,6 +200,7 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 | `skills-review` | does the skill fire, teach, and stay cheap when loaded |
 | `slop-review` | machine-written noise: dead code, restating comments |
 | `specs-review` | requirements and decision records the code contradicts |
+| `tdd-review` | concrete bugs fixed through red, green, refactor |
 | `test-review` | tests that give false confidence or miss real bugs |
 | `threat-review` | attack surface, trust boundaries, a living threat model |
 | `time-review` | DST, leap days, wall-clock durations, cron that misfires |

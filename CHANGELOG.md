@@ -34,6 +34,24 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.38.0
+
+### Added
+
+- `tdd-review` fixes concrete behavioral bugs through a verified
+  red–green–refactor cycle: observe a failing regression test before changing
+  production code, make the smallest fix, then verify the relevant suite.
+  Included in the `standard` set, it skips ambiguous contracts and unavailable
+  test runners rather than claiming an unobserved red or green result.
+
+### Changed
+
+- The file-signal suggester selects `tdd-review` when production source has
+  contract evidence and an existing test runner: native Go/Rust modules,
+  test-framework imports, or recognized test configuration and commands.
+  Dependency mentions, echoed commands, comments, and fixtures do not establish
+  a runner, and test-only repositories do not establish production behavior.
+
 ## 1.37.1
 
 ### Changed

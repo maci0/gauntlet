@@ -17,6 +17,9 @@ import (
 // An actual source import is stronger evidence than a dependency declaration.
 // Manifests never establish an implemented HTTP, model, cache, or UI subject.
 var importSubjects = map[string]string{
+	"pytest": "test_runner", "unittest": "test_runner",
+	"node:test": "test_runner", "bun:test": "test_runner",
+	"vitest": "test_runner", "@jest/globals": "test_runner", "mocha": "test_runner",
 	"fastapi": "http", "flask": "http", "starlette": "http",
 	"django.http": "http", "django.urls": "http",
 	"express": "http", "fastify": "http", "hono": "http",
@@ -42,9 +45,12 @@ var importSubjects = map[string]string{
 var moduleImport = regexp.MustCompile(`(?m)^\s*(?:import\s+(?:[\w{},*\s$]+\s+from\s+)?["']([^"']+)["']|(?:const|let|var)\s+[^=\n]+\s*=\s*(?:await\s+)?(?:require|@?import)\(\s*["']([^"']+)["']\s*\)|(?:use|extern\s+crate)\s+([a-zA-Z_]\w*))`)
 var moduleVersion = regexp.MustCompile(`(?m)^(?:__version__\s*=|export\s+const\s+(?:VERSION|version)\s*=)\s*["'][^"'\r\n]+["']`)
 
-func imported(s *signals, module string) {
+func imported(s *signals, rel, module string) {
 	for name, subject := range importSubjects {
 		if module == name || strings.HasPrefix(module, name+".") || strings.HasPrefix(module, name+"/") {
+			if subject == "test_runner" && testFixture(rel) {
+				continue
+			}
 			s.mark[subject] = 1
 		}
 	}
@@ -59,7 +65,7 @@ func sourceImports(s *signals, rel string, head []byte) {
 		if file != nil {
 			for _, spec := range file.Imports {
 				if module, err := strconv.Unquote(spec.Path.Value); err == nil {
-					imported(s, module)
+					imported(s, rel, module)
 				}
 			}
 			if !isTestFile(filepath.Base(rel)) {
@@ -135,11 +141,11 @@ func sourceImports(s *signals, rel string, head []byte) {
 			}
 			fields := strings.Fields(trim)
 			if len(fields) >= 3 && fields[0] == "from" && fields[2] == "import" {
-				imported(s, fields[1])
+				imported(s, rel, fields[1])
 			} else if len(fields) >= 2 && fields[0] == "import" {
 				for module := range strings.SplitSeq(strings.TrimPrefix(trim, "import"), ",") {
 					if parts := strings.Fields(module); len(parts) > 0 {
-						imported(s, parts[0])
+						imported(s, rel, parts[0])
 					}
 				}
 			}
@@ -157,7 +163,7 @@ func sourceImports(s *signals, rel string, head []byte) {
 		}
 		for _, module := range match[1:] {
 			if module != "" {
-				imported(s, module)
+				imported(s, rel, module)
 			}
 		}
 	}
@@ -174,7 +180,8 @@ func packageTarget(raw json.RawMessage) bool {
 
 // packageMetadata decodes complete JSON heads and recognizes bounded TOML/INI
 // section declarations. A truncated JSON manifest supplies no invented fields.
-func packageMetadata(s *signals, name string, head []byte) {
+func packageMetadata(s *signals, rel string, head []byte) {
+	name := strings.ToLower(filepath.Base(rel))
 	switch name {
 	case "package.json", "plugin.json":
 		var pkg struct {
@@ -189,9 +196,13 @@ func packageMetadata(s *signals, name string, head []byte) {
 			DevDependencies      map[string]string
 			PeerDependencies     map[string]string
 			OptionalDependencies map[string]string
+			Scripts              map[string]string
 		}
 		if json.Unmarshal(head, &pkg) != nil {
 			return
+		}
+		if !testFixture(rel) && testCommand(pkg.Scripts["test"]) {
+			s.mark["test_runner"] = 1
 		}
 		if pkg.Version != "" {
 			s.mark["release"] = 1
@@ -214,6 +225,9 @@ func packageMetadata(s *signals, name string, head []byte) {
 			line = strings.TrimSpace(line)
 			if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
 				section = line
+				if !testFixture(rel) && (section == "[tool.pytest.ini_options]" || section == "[tool:pytest]") {
+					s.mark["test_runner"] = 1
+				}
 				if section == "[build-system]" || section == "[metadata]" {
 					s.mark["package"] = 1
 				}

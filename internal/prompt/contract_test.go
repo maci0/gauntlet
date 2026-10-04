@@ -37,7 +37,7 @@ var goldenReviewNames = []string{
 	"pkg-review", "privacy-review",
 	"prompt-review", "release-review", "resource-review", "sdk-review",
 	"sec-review", "skills-review", "slop-review", "specs-review",
-	"test-review", "threat-review", "time-review", "uislop-review",
+	"tdd-review", "test-review", "threat-review", "time-review", "uislop-review",
 	"unicode-review", "ux-review", "webperf-review",
 }
 
