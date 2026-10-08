@@ -62,6 +62,11 @@ type Config struct {
 	// OnFinish is the graceful quit: stop starting reviews, let the ones
 	// running land their work, then end the run. Nil disables the key.
 	OnFinish func()
+
+	// OnRerun is called when the operator confirms a rerun. The dashboard
+	// then closes, and the caller starts this process over with the same
+	// arguments once the run has stopped. Nil disables the key.
+	OnRerun func()
 }
 
 // now is the configured clock, or wall time, so every read in this package
@@ -241,6 +246,7 @@ type model struct {
 	done       bool
 	reloading  bool
 	quitArmed  bool // q/esc was pressed once; a second press stops the run
+	rerunArmed bool // r was pressed; y starts the same command again, n declines
 
 	loop      int
 	counts    map[string]int
@@ -499,6 +505,22 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		key := msg.String()
+		// The rerun ask owns the screen the way the help overlay does: a key
+		// that also pauses or stops would answer a question the reader has
+		// not decided. y starts the same command again, n and esc decline,
+		// and ctrl+c declines too so it cannot begin a finish by accident.
+		if m.rerunArmed {
+			switch key {
+			case "y", "Y":
+				if m.cfg.OnRerun != nil {
+					m.cfg.OnRerun()
+				}
+				return m, tea.Quit
+			case "n", "N", "esc", "ctrl+c":
+				m.rerunArmed = false
+			}
+			return m, nil
+		}
 		switch key {
 		case "q":
 			// q while the run is live is a hard stop. One press arms it so an
@@ -586,6 +608,13 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?", "h":
 			m.help = !m.help
 			m.helpScroll = 0
+		case "r":
+			// One press asks. The same command starts again only on y, so a
+			// stray r cannot stop the reviews that are running.
+			if m.cfg.OnRerun != nil {
+				m.quitArmed = false
+				m.rerunArmed = true
+			}
 		}
 	}
 	return m, nil

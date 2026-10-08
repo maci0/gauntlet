@@ -279,6 +279,7 @@ you do:
 | `space` | pause the feed; output keeps collecting and reviews keep running |
 | `j` / `k` | scroll the feed |
 | `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |
+| `r` | ask whether to run this same command again; on a finished run `y` starts it over, on a run still going `y` stops it first, and `n` or `esc` declines |
 | `f` | narrow the feed to results, errors, and diffs, and back |
 | `g` / `G`, `home` / `end` | jump to oldest / newest |
 | `?` | help (`q` / `esc` / `ctrl+c` close it), and the list of unmerged branches |

@@ -213,6 +213,14 @@ func (m *model) renderHeader() string {
 // fallback, so both views tell the run's state the same way.
 func (m *model) stateLabel() (string, lipgloss.Style) {
 	switch {
+	case m.rerunArmed:
+		// A finished run is the ordinary case: the same command, again. A run
+		// that is still going stops on the way there, and the header says so
+		// before y is pressed.
+		if m.done {
+			return "● RUN THIS AGAIN?", styleWarn
+		}
+		return "● STOP AND RUN AGAIN?", styleWarn
 	case m.quitArmed:
 		// "again" is the word the state was missing: the key that set it is
 		// the one that has to be pressed a second time, which the launcher's
@@ -1136,6 +1144,14 @@ func (m *model) helpLines() []string {
 		"  j / k       scroll the feed (or pgup / pgdn)",
 		"  g / G       jump to oldest / newest (home / end)",
 		"  f           narrow the feed to results, errors, and diffs, and back",
+	)
+	// The key exists only when a rerun can be started. Naming it otherwise
+	// describes a control the reader can press and see nothing happen.
+	if m.cfg.OnRerun != nil {
+		lines = append(lines,
+			"  r           run this same command again (y confirms; a run still going stops first; n or esc stays)")
+	}
+	lines = append(lines,
 		"  ?, h        toggle this help",
 		motionHelpLine(),
 		styleDim.Render("  Feed mark: ! an error the agent reported. Every other line kind names itself in its own text."),
@@ -1196,6 +1212,9 @@ const conflictSummaryMax = 3
 // finished run says close, and a dead action (finish after the run ended) is
 // not advertised. scrollable is false on the fallback, which has no feed.
 func (m *model) footerKeys(scrollable bool) []keyHint {
+	if m.rerunArmed {
+		return []keyHint{{"y", "run again"}, {"n", "cancel"}}
+	}
 	if m.quitArmed {
 		return []keyHint{
 			{"q", "stop now"}, {"esc", "cancel"}, {"?", "help"},
@@ -1233,6 +1252,9 @@ func (m *model) footerKeys(scrollable bool) []keyHint {
 	}
 	if !m.done && !m.finishing && m.cfg.OnFinish != nil {
 		keys = append(keys, keyHint{"s", "finish"})
+	}
+	if m.cfg.OnRerun != nil {
+		keys = append(keys, keyHint{"r", "again"})
 	}
 	if scrollable {
 		f := "filter"

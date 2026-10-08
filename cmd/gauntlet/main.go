@@ -499,6 +499,11 @@ func run(argv []string) int {
 	})
 
 	var dash *ui.Dashboard
+	// rerun is set from the dashboard, on the program's goroutine, and read
+	// here after that program has returned. A confirmed rerun replaces this
+	// process with the same arguments once the run has stopped and its lock
+	// is gone.
+	var rerun atomic.Bool
 	if opts.tui {
 		dash = ui.New(ui.Config{
 			Version:    version,
@@ -517,6 +522,7 @@ func run(argv []string) int {
 			Now: bus.Clock(),
 			// `s` on the dashboard is the same request SIGQUIT makes.
 			OnFinish: func() { graceful.request(nil) },
+			OnRerun:  func() { rerun.Store(true) },
 		}, bus.Subscribe(4096))
 		// Every exit below, including the failures between here and Run that
 		// never reach it, has to leave the event forwarder. It parks on the
@@ -711,6 +717,12 @@ func run(argv []string) int {
 		if err := dash.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "dashboard error: %v\n", err)
 		}
+		// The alt screen is gone and the runners may still be stopping. Say
+		// why the dashboard left before that wait, which is otherwise a blank
+		// terminal until the same command comes back.
+		if rerun.Load() {
+			fmt.Fprintf(stdout, "Running this command again.\n")
+		}
 		// Settle the ending before the cancel below: that cancel is this
 		// process letting go of the context now the dashboard is gone, and a
 		// run that finished would then exit 130 for closing its own screen.
@@ -729,9 +741,10 @@ func run(argv []string) int {
 
 	// A pending reload takes over before anything final is printed: the
 	// successor continues this run, and it writes the one summary that covers
-	// all of it.
+	// all of it. A confirmed rerun is a new run with the same arguments, so
+	// the reload does not get to carry this one forward instead.
 	reloadFailed := false
-	if path := reloadPath.Load(); path != nil && *path != "" {
+	if path := reloadPath.Load(); !rerun.Load() && path != nil && *path != "" {
 		jrnl.CloseQuiet()
 		// The run clock, not a second reading of the process's monotonic
 		// source: the handoff's elapsed has to be the same figure the
@@ -757,8 +770,9 @@ func run(argv []string) int {
 		report.Summary(logWriter, report.Palette{}, reportDirs(runs), wall)
 	}
 	// The dashboard cleared itself on the way out, so a terminal-only run
-	// leaves nothing behind: point at the journal before exiting.
-	if opts.tui {
+	// leaves nothing behind: point at the journal before exiting. A rerun
+	// already said it is starting the same command again.
+	if opts.tui && !rerun.Load() {
 		fmt.Fprintf(stdout, "Run %s saved. Replay it with: gauntlet show %s\n", runID, runID)
 	}
 
@@ -777,6 +791,21 @@ func run(argv []string) int {
 	// fallback until the successor writes its own.
 	if err := dropCheckpoint(runID); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: %v\n", err)
+	}
+	// The summary and the checkpoint are settled, so a successor is a new run
+	// and `gauntlet resume` does not offer this one. Locks go before the exec:
+	// the successor takes them, and an exec that fails still leaves.
+	if rerun.Load() {
+		releaseAll(runs)
+		exe, err := os.Executable()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Rerun failed: %v\n", err)
+			return code
+		}
+		if err := reexec(exe, "", argv); err != nil {
+			fmt.Fprintf(os.Stderr, "Rerun failed: %v\n", err)
+			return code
+		}
 	}
 	return code
 }

@@ -2068,6 +2068,102 @@ func TestQuitClosesImmediatelyWhenDone(t *testing.T) {
 	}
 }
 
+// r asks before it starts the same command again. y is the only yes; n and
+// esc decline, and any other key leaves the question up so it cannot also
+// pause the feed or stop the run.
+func TestRerunAsksYesOrNo(t *testing.T) {
+	key := func(m *model, k string) tea.Cmd {
+		t.Helper()
+		_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(k)})
+		return cmd
+	}
+
+	plain := newModel(demoConfig())
+	plain.w, plain.h, plain.ready = 100, 30, true
+	if cmd := key(plain, "r"); cmd != nil || plain.rerunArmed {
+		t.Fatal("r without a rerun callback changed the dashboard")
+	}
+	if strings.Contains(stripANSI(plain.View()), "r:again") {
+		t.Fatal("the footer advertises a rerun that cannot be started")
+	}
+	if strings.Contains(stripANSI(strings.Join(plain.helpLines(), "\n")), "run this same command again") {
+		t.Fatal("help names a rerun key the dashboard does not have")
+	}
+
+	var asked int
+	cfg := demoConfig()
+	cfg.OnRerun = func() { asked++ }
+	m := newModel(cfg)
+	m.w, m.h, m.ready = 100, 30, true
+	if !strings.Contains(lastLine(stripANSI(m.View())), "r:again") {
+		t.Fatalf("the footer does not offer running again:\n%s", lastLine(stripANSI(m.View())))
+	}
+	if !strings.Contains(stripANSI(strings.Join(m.helpLines(), "\n")), "run this same command again") {
+		t.Fatal("help does not say what r does")
+	}
+
+	m.help = true
+	key(m, "r")
+	if m.rerunArmed {
+		t.Fatal("r while help is open asked to rerun")
+	}
+	m.help = false
+
+	if cmd := key(m, "r"); cmd != nil || !m.rerunArmed || asked != 0 {
+		t.Fatalf("r did not ask: armed=%t asked=%d cmd=%v", m.rerunArmed, asked, cmd != nil)
+	}
+	got := stripANSI(m.View())
+	if !strings.Contains(got, "STOP AND RUN AGAIN?") {
+		t.Fatalf("the header does not ask:\n%s", got)
+	}
+	footer := lastLine(got)
+	if !strings.Contains(footer, "y:run again") || !strings.Contains(footer, "n:cancel") {
+		t.Fatalf("the footer does not offer the choice:\n%s", footer)
+	}
+	if strings.Contains(footer, "q:quit") || strings.Contains(footer, "r:again") {
+		t.Fatalf("the question still advertises the dashboard keys:\n%s", footer)
+	}
+
+	key(m, " ")
+	if !m.rerunArmed || m.paused {
+		t.Fatal("a key other than yes or no left the question or paused the feed")
+	}
+	key(m, "n")
+	if m.rerunArmed || asked != 0 {
+		t.Fatal("n started a rerun or left the question up")
+	}
+
+	key(m, "r")
+	key(m, "esc")
+	if m.rerunArmed || asked != 0 {
+		t.Fatal("esc did not decline the rerun")
+	}
+
+	key(m, "r")
+	m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	if m.rerunArmed || m.finishing || asked != 0 {
+		t.Fatal("ctrl+c during the question started a finish or a rerun")
+	}
+
+	if cmd := key(m, "r"); cmd != nil {
+		t.Fatal("r itself started the rerun")
+	}
+	if cmd := key(m, "y"); cmd == nil || asked != 1 || !m.rerunArmed {
+		t.Fatalf("y did not start the rerun: asked=%d armed=%t cmd=%v", asked, m.rerunArmed, cmd != nil)
+	}
+
+	m = newModel(cfg)
+	m.w, m.h, m.ready = 100, 30, true
+	m.done = true
+	key(m, "r")
+	if got := stripANSI(m.View()); !strings.Contains(got, "RUN THIS AGAIN?") || strings.Contains(got, "STOP AND RUN AGAIN?") {
+		t.Fatalf("a finished run does not ask to run this again:\n%s", got)
+	}
+	if cmd := key(m, "Y"); cmd == nil || asked != 2 {
+		t.Fatalf("Y on a finished run did not start the rerun: asked=%d cmd=%v", asked, cmd != nil)
+	}
+}
+
 // Pressing esc while quit is armed cancels the arming without killing the run.
 func TestEscCancelsQuitArming(t *testing.T) {
 	m := newModel(demoConfig())

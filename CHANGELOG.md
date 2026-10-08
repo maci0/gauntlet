@@ -34,6 +34,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- The dashboard can run the same command again after it finishes, and while
+  it is still going. `r` asks first. On a finished run the question is run
+  this again; on a run still going it says the run stops first. `y` starts
+  this binary with the arguments it was given, and `n` or `esc` leaves the
+  run where it is.
+
 ## 1.38.0
 
 ### Added
