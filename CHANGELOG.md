@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.39.0
+
 ### Added
 
 - The dashboard can run the same command again after it finishes, and while

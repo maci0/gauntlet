@@ -60,7 +60,7 @@ func enforceSandbox(roots []string) error {
 	}
 	handled := landlockAccess(abi)
 	// Only the first eight bytes: older ABIs do not know the network/scope fields.
-	attr := unix.LandlockRulesetAttr{Access_fs: handled}
+	attr := unix.LandlockRulesetAttr{Handled_access_fs: handled}
 	fd, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, uintptr(unsafe.Pointer(&attr)), 8, 0)
 	if errno != 0 {
 		return fmt.Errorf("landlock ruleset: %w", errno)
