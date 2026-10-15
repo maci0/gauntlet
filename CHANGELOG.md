@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.40.0
+
 ### Added
 
 - `gauntlet schema` prints a clispec 0.3 description of the command

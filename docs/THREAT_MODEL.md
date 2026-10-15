@@ -7,8 +7,19 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-10-14 against commit 9d3843f.
-This pass covers TDD applicability detection. Selected test configuration
+Last reviewed: 2026-10-15 against commit 7ea1c59.
+This pass covers structured command output. `schema` prints a local
+description of the command and takes no network, no config, and no state
+root. `--output` is global; `auto` stays text, including when piped, and an
+explicit value wins. A JSON failure appends one error object as the last
+line of stderr, after the prose, and text mode stays human prose. The runs
+document keeps HTML escaping on. Review output in JSON is one sanitized
+text record per line, and the log file keeps the human bytes. A command
+that needs a terminal exits instead of waiting. An established confirmation
+that already proceeds without a terminal is left as it was and named in the
+description rather than given a new refusal. No new exit code was added.
+
+This pass also covers TDD applicability detection. Selected test configuration
 heads now share the existing 2000-file and 4 KiB-per-head limits and rooted
 regular-file opens. Commands are recognized as text and never executed; no
 subprocess, dependency installation, or network access is added. Fixture trees,
