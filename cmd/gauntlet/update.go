@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -75,7 +76,25 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		return exitFail
 	}
 	if !rel.NewerThan(version) {
+		if opts.wantsJSON() {
+			return writeUpdateJSON(out, version, rel.TagName, false, rel.HTMLURL, "")
+		}
 		return writeStatus(out, "gauntlet %s is current (latest release: %s)\n", version, rel.TagName)
+	}
+	if opts.wantsJSON() {
+		if opts.checkOnly {
+			return writeUpdateJSON(out, version, rel.TagName, false, rel.HTMLURL, "")
+		}
+		path, err := selfupdate.Apply(ctx, rel)
+		if err != nil {
+			if interrupted(ctx, err) {
+				return exitInterrupted
+			}
+			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
+			noteExit("failed", err.Error(), "")
+			return exitFail
+		}
+		return writeUpdateJSON(out, version, rel.TagName, true, rel.HTMLURL, path)
 	}
 	if code := writeStatus(out, "New release: %s (running %s)\n", pal.Bold(rel.TagName), version); code != exitOK {
 		return code
@@ -92,6 +111,27 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		return exitFail
 	}
 	return writeStatus(out, "Installed %s to %s\n", rel.TagName, path)
+}
+
+// writeUpdateJSON prints what an update found. changed is false when the
+// binary is already current and when --check refused to install. latest is
+// the tag the human line names.
+func writeUpdateJSON(out io.Writer, current, latest string, changed bool, url, installedTo string) int {
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(struct {
+		Current     string `json:"current"`
+		Latest      string `json:"latest"`
+		Changed     bool   `json:"changed"`
+		URL         string `json:"url"`
+		InstalledTo string `json:"installed_to"`
+	}{current, latest, changed, url, installedTo}); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
+		noteExit("failed", "cannot write update status", "")
+		return exitFail
+	}
+	return exitOK
 }
 
 // writeStatus writes one line of what the update found and returns the exit

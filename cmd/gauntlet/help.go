@@ -108,6 +108,8 @@ var helpGroups = []flagGroup{
 		{"h", "help", "", "show this help and exit"},
 	}},
 	{"Output", []flagDoc{
+		{"o", "output", "FORMAT", "output format: auto, text, or json; auto stays text, including when piped"},
+		{"", "json", "", "alias of --output json"},
 		{"", "tui", "", "live dashboard: lanes, activity chart, review grid, feed"},
 		{"q", "quiet", "", "discard agent output"},
 		{"", "raw", "", "echo agent output verbatim instead of normalizing it"},
@@ -124,19 +126,22 @@ var helpGroups = []flagGroup{
 	}},
 	{"History", []flagDoc{
 		{"", "limit", "N", fmt.Sprintf("runs: how many entries to list (default %d)", defaultRunsLimit)},
+		{"", "offset", "N", "runs: skip this many newest entries before the page (default 0)"},
 		{"", "restore", "RUN-ID", "runs: put a pruned run back in the listing"},
-		{"", "json", "", "runs: print the listing as JSON on stdout, for scripts and dashboards"},
+		{"", "fields", "LIST", "runs: keep these fields of each run when the output is JSON"},
 	}},
 }
 
 var helpCommands = []struct{ Cmd, Help string }{
 	{"gauntlet [flags]", "review the current directory, looping until stopped"},
+	{"gauntlet review", "named form of a bare gauntlet"},
 	{"gauntlet pick", "compose a run on screen: reviews, agents, concurrency"},
 	{"gauntlet doctor", "report which agent CLIs and helper tools are installed"},
 	{"gauntlet update [--check]", "replace this binary with the latest verified release"},
 	{"gauntlet runs [--limit N] [--json]", "list recent runs; rebuilds a missing index from the journals"},
 	{"gauntlet show <run-id>", "replay one run's journal"},
 	{"gauntlet resume [<run-id>]", "list runs a crash cut off, or continue one where it stopped"},
+	{"gauntlet schema [command]", "print the clispec description of this command"},
 	{"gauntlet version", "print the version and exit"},
 	{"gauntlet help", "show this help and exit"},
 }
@@ -144,7 +149,9 @@ var helpCommands = []struct{ Cmd, Help string }{
 // commandNames is the subcommand surface, including help. peelSubcommand and
 // the unknown-command hint both read this list, so a new word cannot land in
 // one place and not the other.
-var commandNames = []string{"help", "pick", "doctor", "update", "runs", "show", "resume", "version"}
+var commandNames = []string{
+	"help", "review", "pick", "doctor", "update", "runs", "show", "resume", "schema", "version",
+}
 
 var helpExamples = []struct{ Cmd, Help string }{
 	{"gauntlet -a claude --once", "one pass over every review, then stop"},
@@ -238,7 +245,9 @@ func printUsage(out io.Writer, pal report.Palette, width int) {
 			continue
 		}
 		own := spellFlags(takes[name])
-		if own == "" {
+		if name == "review" {
+			own = "same flags as gauntlet with no subcommand"
+		} else if own == "" {
 			own = "none"
 		}
 		fmt.Fprintf(out, "  %-*s  %s\n", subCol, name, pal.Dim(own))
@@ -247,7 +256,7 @@ func printUsage(out io.Writer, pal report.Palette, width int) {
 	// subcommand's own flags follow it. Wrapped like the rest, so it stays
 	// readable on a narrow terminal.
 	fmt.Fprintf(out, "  %s\n", pal.Dim(report.WrapIndent(
-		"--log and --no-color work with every command, and may precede it; "+
+		"--output, --json, --log, and --no-color work with every command, and may precede it; "+
 			"every other flag belongs after the subcommand it is for", width, 2)))
 
 	// One column width across every group, so the help text lines up down the

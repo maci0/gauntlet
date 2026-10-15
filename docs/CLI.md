@@ -9,34 +9,40 @@ installed.
 | Command | What it does |
 |---|---|
 | `gauntlet [flags]` | review the current directory, looping until stopped |
+| `gauntlet review` | named form of a bare `gauntlet`; the same flags and the same run |
 | `gauntlet pick` | compose a run on screen, then run it |
 | `gauntlet doctor` | report which agent CLIs and helper tools are installed, the git version against the floor every review needs, whether this host can confine an agent's filesystem writes, whether the state root is usable, what the run history holds: journals on disk, whether the index matches them, journals cut mid-line, and pruned runs still recoverable, and which local `gauntlet/` branches hold a review whose merge did not land |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
 | `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet resume [<run-id>]` | with no id, list the runs a crash cut off (an OOM kill, a crashed session, a power cut) and whether each can continue; with one, continue that run where it stopped. See [Resuming after a crash](RUNS.md#resuming-after-a-crash). |
+| `gauntlet schema [command]` | print the clispec description of this command. No network, no config, and no state root. A command path keeps that command and the top-level fields. The description follows [the CLI Spec](https://clispec.dev) v0.3, which is a candidate and not a conformance badge. |
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
 `-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
 `--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit`, `--restore`, and `--json`, and `show`, `resume`, `version`, and `help` take none of their own. `--log` and
-`--no-color` work everywhere, and may precede the subcommand, so
-`gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color`.
+`--limit`, `--offset`, `--restore`, and `--fields`, and `show`, `resume`,
+`schema`, `version`, and `help` take none of their own. `review` takes the
+same flags as a bare `gauntlet`. `--output`, `--json`, `--log`, and
+`--no-color` work on every command, and may precede the subcommand, so
+`gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color` and
+`gauntlet --json runs` is `runs` with JSON. `schema` takes a command path and
+no flags of its own.
 `show` and `resume` take their run id anywhere among the flags: `gauntlet show --no-color RUN`
 and `gauntlet show RUN --no-color` are the same. Any other flag is refused with
 a usage error (exit 2) rather than parsed and silently dropped, so
 `gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
 the concurrency it was given. (The `-V` flag form of version is the one
 exception: it means "print the version and exit" and wins over scoping, like
-help does.) `--check`, `--limit`, `--restore`, and `--json` are the four names
-a bare `gauntlet` has no use for, and they say so rather than starting a run
-that ignores them.
+help does.) `--check` belongs to `update`. `--limit`, `--offset`, `--restore`,
+and `--fields` belong to `runs`. A bare `gauntlet` has no use for those and
+says so rather than starting a run that ignores them.
 
-A subcommand is only read as one when it is the first word, so the flags above
-are the flags that may lead: `gauntlet --json runs` leaves `runs` as a stray
-argument and says so, rather than starting the default run. A flag name the
-command does not take is reported with a "did you mean" drawn from the flags
+A subcommand is only read as one when it is the first word, or after the
+global flags above. A flag that is not global ends the search: `gauntlet --limit 3 runs`
+leaves `runs` as a stray argument and says so, rather than starting the default run.
+A flag name the command does not take is reported with a "did you mean" drawn from the flags
 that command does take, so a typo on a subcommand is never pointed at a flag
 the next invocation would refuse.
 
@@ -148,6 +154,12 @@ before changing code.
 | `--semcode` | off | Build a semcode index before the loop, with the `semcode-index` helper; `gauntlet doctor` reports whether this machine has it. Without it a run stops with a usage error before it takes the locks, and `--dry-run` says so beside the schedule. |
 | `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` leave the listing, along with the day directories they emptied. The index row is dropped with the journal, so the listing never names a run whose journal is gone. The journal itself is moved to `pruned/`, not deleted, and the quarantine is bounded by the same `N`, so a run stays recoverable until `N` newer runs have replaced it: see [Backing up and restoring the state tree](RUNS.md#backup-and-restore). A journal a run still has open is never pruned, so a run sharing `GAUNTLET_HOME` with a longer one is not moved out of the listing while it is writing. `0` keeps every run. |
 
+**Format**
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `-o, --output FORMAT` | `auto` | Select `auto`, `text`, or `json`. `auto` stays text on a terminal and when piped, so an existing script that reads the human listing keeps doing so. An explicit value wins, and `--json` is that flag's `json` value on every command. JSON on a failure appends one error object as the last line of stderr. Text mode stays the human prose. The description `gauntlet schema` prints follows [the CLI Spec](https://clispec.dev) v0.3, a candidate, and is not a conformance badge. |
+
 **Output and modes**
 
 | Flag or subcommand | Purpose |
@@ -197,8 +209,10 @@ so it is the version before the last one and no further back.
 | Flag | Default | Purpose |
 |---|---|---|
 | `--limit N` | `20` | How many past runs to list in `gauntlet runs`. At least 1. |
+| `--offset N` | `0` | Skip this many newest runs before the page. The table and the JSON document list the same page. An offset past the end prints no rows: the table says the page is empty, and the JSON document carries an empty list with `truncated` false. |
 | `--restore RUN-ID` | none | Put a pruned run back in the listing, by the id `gauntlet runs` names under "Pruned, still recoverable". The journal moves out of `pruned/` and its index row is written again, so `gauntlet show RUN-ID` replays it. A run that is not pruned, or is already listed, is a usage error (exit 2) rather than a silent no-op. Given twice, it is a usage error too: the last value would otherwise win and the id the first named would be restored by nobody. |
-| `--json` | off | Print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (the state paths, with the home directory shortened to `~`, so a script expands the leading `~` before handing either to a tool), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column, and an `args` argument a credential was stripped from reading `[redacted]` where the key was, since an operator's `--agent-cmd` names one), `pruned` (the ids `--restore` takes, all of them rather than the five the table names), and `history` (the state tree behind the rows: `journals`, `rows`, `disagreed`, `pruned`, `truncated`, and `agents`, how many custom agent definitions `GAUNTLET_HOME/agents.json` holds, so a restored tree can be checked against the copy it came from; every count but `rows` is one `gauntlet doctor` prints on its Run history line). Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}`. Errors are unchanged, including the exit codes, with one exception: an `agents.json` that cannot be parsed is reported on stderr and exits 1 rather than counting as zero definitions, so a corrupt copy of the file is not read as a tree that had none. |
+| `--fields LIST` | none | With JSON output, keep these fields of each run. Names are the keys of a `runs` record. An unknown name is a usage error (exit 2), and an empty value is refused. The flag does not apply to the error envelope. A field the row left out stays absent. |
+| `--json` | off | Alias of `--output json`. On `gauntlet runs`, print the listing as one JSON object on stdout, for a script or a dashboard: `home` and `journals` (the state paths, with the home directory shortened to `~`, so a script expands the leading `~` before handing either to a tool), `runs` (the index rows, each the same fields the journal wrote, with every count a number rather than a humanized column, and an `args` argument a credential was stripped from reading `[redacted]` where the key was, since an operator's `--agent-cmd` names one), `pruned` (the ids `--restore` takes, all of them rather than the five the table names), and `history` (the state tree behind the rows: `journals`, `rows`, `disagreed`, `pruned`, `truncated`, and `agents`, how many custom agent definitions `GAUNTLET_HOME/agents.json` holds, so a restored tree can be checked against the copy it came from; every count but `rows` is one `gauntlet doctor` prints on its Run history line). The same object also carries `items` (the same records as `runs`, narrowed by `--fields` when that flag is set), `total`, `offset`, `limit`, and `truncated` for the page. `history.truncated` counts journals cut mid-line and is not the page flag. Nothing else is written to stdout, and the table's legend and column layout are left behind, so a pipe carries the document alone. An empty listing is `{"runs": [], ...}`, not a message. With `--restore` it prints `{"restored": "RUN-ID"}` and does not add the page fields. Errors are unchanged, including the exit codes, with one exception: an `agents.json` that cannot be parsed is reported on stderr and exits 1 rather than counting as zero definitions, so a corrupt copy of the file is not read as a tree that had none. |
 
 ## Environment variables
 
@@ -236,6 +250,13 @@ resume`: it names the handoff file passed across the exec.)
 | 2 | usage error |
 | 75 | another instance holds the lock for that directory |
 | 130 | interrupted |
+
+`usage`, `tty_required`, and `confirmation_required` share exit 2. `failed` and
+`internal` share exit 1. `locked` is 75 and may be retried. `interrupted` is
+130. Two kinds may share a code. A code is not both an error and a successful
+outcome. When the output is JSON, a failure appends `{"error":{"kind","message"}}`
+as the last line of stderr, after the human prose. Text mode prints the prose
+alone.
 
 ## Defining an agent gauntlet does not ship
 

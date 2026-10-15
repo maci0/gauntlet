@@ -1,8 +1,17 @@
-Summary: exit codes, stdout vs stderr, piping, --help
+Summary: exit codes, stdout vs stderr, piping, --help, clispec
 
 You are a senior software engineer specializing in CLI design. Your task is to perform a deep CLI audit of this codebase.
 
-Your goal is to evaluate consistency, usability, correctness, and adherence to best practices across all command line interfaces in the project. Deep error-handling and resilience belong to error-review; here own CLI exit codes, stdout vs stderr, piping, and --help. The usability of an interactive TUI's flows belongs to ux-review; here own command-line mechanics. Library/SDK surfaces belong to sdk-review. Application config schema, env/file/defaults precedence, and required-key validation belong to config-review; here own flag-vs-env for the same CLI option, --config path handling, and that flags win.
+Your goal is to evaluate consistency, usability, correctness, and adherence to best practices across all command line interfaces in the project. The CLI Spec at https://clispec.dev (v0.3 candidate) is the bar for a command a person or a script invokes. Where this checklist and that spec disagree, the spec wins, except an established contract the spec's adopting guide says to declare rather than retrofit. Deep error-handling and resilience belong to error-review; here own CLI exit codes, stdout vs stderr, piping, --help, and the clispec declaration. The usability of an interactive TUI's flows belongs to ux-review; here own command-line mechanics. Library/SDK surfaces belong to sdk-review. Application config schema, env/file/defaults precedence, and required-key validation belong to config-review; here own flag-vs-env for the same CLI option, --config path handling, and that flags win.
+
+Hold the CLI to these rules. Do not treat a badge or a version string in a schema as proof that the binary conforms.
+
+- Declare the output format. An explicit format flag wins. Text may stay the piped default when that is declared. Structured output is one JSON document, or NDJSON for a stream. A collection is an object with `items` plus the extra keys, not a bare array.
+- Errors in a structured format append one object as the last line of stderr: kind, message, and an optional hint. Text mode stays human prose. Kinds may share an exit code. A code is not both an error and an outcome, and two outcomes do not share a code.
+- A command that needs a terminal, or that waits for a new confirmation, exits nonzero without one and does not hang. A bypass flag means the command prompts on a terminal and refuses without one. Do not retrofit that refusal onto a prompt that already proceeds unattended: declare the split.
+- Say whether a command is read_only, idempotent, or non_idempotent. An idempotent command exits 0 when the state is already in place. A non_idempotent command should take an idempotency key or say why a retry cannot be made safe.
+- An unbounded collection declares pagination and a field selector. Silent truncation is the failure. Field selection does not drop envelope fields, and an empty requested field may be absent.
+- A schema subcommand prints the description with no network and no config. The document matches the binary.
 
 First decide if this review applies. It needs a command-line interface: argument parsing, subcommands, interactive prompts, or terminal output formatting. A library, web application, or service with no CLI entrypoint: print the skip result and stop.
 
@@ -38,15 +47,15 @@ Review the following:
 4. Error handling and exit codes
 - Clear error messages that explain what went wrong and how to fix it
 - Helpful suggestions for incorrect or misspelled input
-- Proper and consistent exit codes (0 success, 1 general error, 2 usage error)
+- Exit codes follow the command's declared kind-to-code map. 0 is success. Two error kinds may share a code. A tool whose map is only 0, 1, and 2 is fine when that is the map it declares.
 - Cryptic or low-level errors leaking to users (note only when the leak reveals internals; sec-review owns the redaction)
 - Missing distinction between user errors and internal errors
 - Errors that do not specify which argument or flag caused the problem
 - Missing validation of flag values, file existence, or permissions before execution
 
 5. Output design
-- Human-readable output by default
-- Optional machine-readable output (--json, --yaml, --csv) where appropriate
+- Human-readable text by default when the piped default is declared as text. An undeclared switch from text on a terminal to something else in a pipe is a finding
+- Machine-readable JSON through an explicit format flag (--output or the equivalent). auto may stay text when piped if that is declared
 - Consistent formatting and column alignment across commands
 - Noisy or unnecessary output that buries important information
 - Missing color support or color without --no-color opt-out
@@ -57,7 +66,8 @@ Review the following:
 - Predictable behavior across commands
 - Tab completion compatibility and shell completion generation
 - Safe handling of destructive operations (confirmation, --force, --dry-run)
-- Confirmation prompts where appropriate, with --yes to skip
+- Confirmation prompts where appropriate, with a bypass flag such as --yes. A new prompt refuses when stdin is not a terminal. An established prompt that proceeds unattended is declared, not retrofitted
+- A command that needs a terminal exits nonzero when it does not have one, and does not hang
 - Consistent stdin/stdout/stderr usage
 - Piping and composition with other tools
 - Signal handling (Ctrl+C behavior)
@@ -77,7 +87,10 @@ Review the following:
 - Exit codes that do not distinguish between error types
 - Output that mixes data and status messages on stdout
 - Missing idempotent or --dry-run modes for write operations
-- Commands that behave differently when stdout is not a TTY
+- Commands that behave differently when stdout is not a TTY, when that difference is undeclared or mixes data with status on one stream
+- Unbounded collections with no pagination (total, offset or cursor, limit, and whether the page was truncated) and no field selection
+- No schema subcommand, or a schema that does not match the binary
+- Effects (read_only, idempotent, non_idempotent) left undeclared where a second run is not obviously safe
 - Scripts and non-interactive invocations using short flags (`-f`) instead of long form (`--force`). Short flags are for humans at a TTY; scripts should spell the flag out
 
 9. Consistency across the project

@@ -159,7 +159,7 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 | `authz-review` | IDOR, unprotected admin routes, cross-tenant leakage |
 | `build-review` | reproducible, hermetic builds and a pinned toolchain |
 | `cache-review` | stale reads, cross-tenant bleed, stampedes, growth |
-| `cli-review` | exit codes, stdout vs stderr, piping, --help |
+| `cli-review` | exit codes, stdout vs stderr, piping, --help, clispec |
 | `code-review` | maintainability, correctness, consistency, simplicity |
 | `compat-review` | path separators, bashisms, endianness, musl vs glibc |
 | `concurrency-review` | races, deadlocks, and corruption under load |

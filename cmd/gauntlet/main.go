@@ -126,16 +126,40 @@ func (d *dirRun) scanDir() string {
 	return d.dir
 }
 
-func run(argv []string) int {
+func run(argv []string) (code int) {
+	resetExit()
+	defer func() { writeExitEnvelope(code) }()
+	var feed *ndjsonText
+	defer func() {
+		if feed != nil {
+			_ = feed.Flush()
+		}
+	}()
+
 	opts, err := parseFlags(argv)
 	if err != nil {
 		if errors.Is(err, errHelp) {
 			return exitOK
 		}
-		if _, ok := errors.AsType[parseError](err); !ok {
-			fmt.Fprintln(os.Stderr, err)
+		if jsonRequested(argv) {
+			exitState.json = true
 		}
+		var pe parseError
+		if errors.As(err, &pe) {
+			kind := pe.kind
+			if kind == "" {
+				kind = "usage"
+			}
+			noteExit(kind, pe.Error(), pe.hint)
+			return exitUsage
+		}
+		fmt.Fprintln(os.Stderr, err)
+		noteExit("usage", err.Error(), "")
 		return exitUsage
+	}
+	if opts.wantsJSON() {
+		opts.noColor = true
+		exitState.json = true
 	}
 
 	// Every stream this process prints goes here, and three goroutines write
@@ -145,7 +169,15 @@ func run(argv []string) int {
 	// per file would not do that: a multi-writer's Write is a loop, and the
 	// second file would then be free to interleave inside the first one's
 	// line.
+	//
+	// JSON on the review path turns each existing line into one record. The
+	// wrapper sits on the console side of the tee, so the log file keeps the
+	// human bytes.
 	out := io.Writer(os.Stdout)
+	if opts.wantsJSON() && (opts.command == "" || opts.command == "review") {
+		feed = &ndjsonText{dst: os.Stdout}
+		out = feed
+	}
 	pal := report.Palette{On: report.ColorEnabled(os.Stdout) && !opts.noColor}
 
 	// The launcher and the dashboard draw through lipgloss, which sees
@@ -174,7 +206,9 @@ func run(argv []string) int {
 		// only the console stream goes through stdout's wrapper. The file's own
 		// wrapper also covers the copy the console stream makes of every line,
 		// so the log holds whole lines whichever way they arrived.
-		logWriter, out = report.LogWriters(os.Stdout, f)
+		// out may already be the NDJSON wrapper. The log keeps the
+		// human bytes; the wrapper turns them into records on the console.
+		logWriter, out = report.LogWriters(out, f)
 		pal.On = false // escape codes would land in the file too
 	}
 	stdout := io.Writer(&report.Serialized{W: out})
@@ -201,18 +235,24 @@ func run(argv []string) int {
 	case "pick":
 		return cmdPick(ctx, stdout, opts)
 	case "doctor":
-		return doctor(stdout, pal, opts.bin, opts.width)
+		return doctorAt(stdout, pal, opts.bin, opts.width, opts.wantsJSON())
 	case "update":
 		return cmdUpdate(ctx, stdout, pal, opts)
 	case "runs":
-		return cmdRuns(stdout, pal, opts.runsLimit, opts.restoreRun, opts.json)
+		return cmdRunsAt(stdout, pal, opts.runsLimit, opts.runsOffset, opts.fields, opts.restoreRun, opts.wantsJSON())
 	case "show":
-		return cmdShow(stdout, opts.showRun)
+		return cmdShowAt(stdout, opts.showRun, opts.wantsJSON())
 	case "resume":
-		return cmdResume(stdout, pal, opts.resumeRun)
+		return cmdResumeAt(stdout, pal, opts.resumeRun, opts.wantsJSON())
+	case "schema":
+		return cmdSchema(stdout, opts.schemaArgs)
 	case "version":
+		if opts.wantsJSON() {
+			return writeVersionJSON(stdout)
+		}
 		if _, err := fmt.Fprintf(stdout, "gauntlet %s\n", version); err != nil {
 			fmt.Fprintf(os.Stderr, "cannot write the version: %v\n", err)
+			noteExit("failed", "cannot write the version", "")
 			return exitFail
 		}
 		return exitOK
@@ -321,8 +361,10 @@ func run(argv []string) int {
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				if errors.Is(err, runner.ErrLocked) {
+					noteExit("locked", err.Error(), "")
 					return exitLocked
 				}
+				noteExit("failed", err.Error(), "")
 				return exitFail
 			}
 			d.lock = lock
@@ -363,6 +405,11 @@ func run(argv []string) int {
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
+				if strings.Contains(err.Error(), "--yes") {
+					noteExit("confirmation_required", err.Error(), "Pass --yes or --yolo.")
+				} else {
+					noteExit("usage", err.Error(), "")
+				}
 				return exitUsage
 			}
 		}
@@ -781,7 +828,7 @@ func run(argv []string) int {
 	if dash == nil {
 		interrupted = ctx.Err() != nil
 	}
-	code := exitCode(interrupted, runs)
+	code = exitCode(interrupted, runs)
 	if reloadFailed {
 		code = exitFail
 	}

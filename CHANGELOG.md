@@ -34,6 +34,25 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Added
+
+- `gauntlet schema` prints a clispec 0.3 description of the command
+  (https://clispec.dev). `gauntlet review` is the named form of a bare
+  `gauntlet`. `--output`/`-o` selects `auto`, `text`, or `json`; `auto` stays
+  text, including when piped, and `--json` is that flag's `json` value on
+  every command. JSON failures append one error object as the last line of
+  stderr. `runs` JSON also carries `items`, `total`, `offset`, `limit`, and
+  `truncated`, and `--offset` pages the listing. `--fields` keeps named fields
+  of each run when the output is JSON.
+
+### Changed
+
+- `cli-review` audits a command line against clispec (https://clispec.dev).
+  The idempotency, error, UX, and specs reviews point at the same rules where
+  they meet a CLI.
+- `gauntlet --json <command>` is accepted. It used to be a usage error because
+  `--json` belonged only to `gauntlet runs`.
+
 ## 1.39.0
 
 ### Added

@@ -35,13 +35,19 @@ import (
 var errHelp = errors.New("help requested")
 
 // parseError marks a failure whose message and usage screen have already been
-// written to stderr by reportUsage. run must not print either again.
-type parseError struct{ err error }
+// written to stderr by reportUsage. run must not print either again. kind and
+// hint are copied onto the JSON error envelope when the caller asked for JSON.
+type parseError struct {
+	err  error
+	kind string
+	hint string
+}
 
 func (e parseError) Error() string { return e.err.Error() }
+func (e parseError) Unwrap() error { return e.err }
 
 type options struct {
-	command string // "", help, pick, doctor, update, runs, show, version
+	command string // "", help, review, pick, doctor, update, runs, show, resume, schema, version
 
 	// selection
 	reviews    string
@@ -107,6 +113,8 @@ type options struct {
 	tui        bool
 	noColor    bool
 	width      int
+	// output is auto, text, or json. auto stays text, including when piped.
+	output string
 
 	// opencode is the one agent that neither prints counters nor keeps a
 	// JSONL transcript, so its tokens are only visible in its database.
@@ -120,10 +128,13 @@ type options struct {
 
 	// history
 	runsLimit  int
+	runsOffset int
 	keepRuns   int
 	showRun    string
 	resumeRun  string // resume: the run to continue, "" to list them
 	restoreRun string
+	fields     []string
+	schemaArgs []string
 	json       bool
 }
 
@@ -134,7 +145,15 @@ type options struct {
 func reportUsage(o *options, err error) error {
 	fmt.Fprintln(os.Stderr, err)
 	printUsage(os.Stderr, report.Palette{On: report.ColorEnabled(os.Stderr) && !o.noColor}, o.width)
-	return parseError{err}
+	pe := parseError{err: err, kind: "usage"}
+	var flagged flaggedError
+	if errors.As(err, &flagged) {
+		if flagged.kind != "" {
+			pe.kind = flagged.kind
+		}
+		pe.hint = flagged.hint
+	}
+	return pe
 }
 
 // listFlag collects a repeatable, comma-separated flag.
@@ -319,7 +338,7 @@ func parseFlags(argv []string) (*options, error) {
 // options: repeatable lists, and the shorthands that rewrite other fields.
 type rawFlags struct {
 	reviews, exclude, agents, bins, dirs listFlag
-	agentCmds, paths                     listFlag
+	agentCmds, paths, fields             listFlag
 	suggestAgent                         string
 	restore                              countedString
 	suggest, once, showVersion, help     bool
@@ -444,11 +463,16 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.BoolVar(&o.checkOnly, "check", false, "update: report the latest release without installing")
 	alias("V", "version", func(n string) { fs.BoolVar(&raw.showVersion, n, false, "print the version and exit") })
 	alias("h", "help", func(n string) { fs.BoolVar(&raw.help, n, false, "show this help and exit") })
+	alias("o", "output", func(n string) {
+		fs.StringVar(&o.output, n, "auto",
+			"output format: auto, text, or json (auto stays text, including when piped)")
+	})
+	fs.BoolVar(&o.json, "json", false, "alias of --output json")
 	fs.IntVar(&o.runsLimit, "limit", defaultRunsLimit, "runs: how many entries to list")
+	fs.IntVar(&o.runsOffset, "offset", 0, "runs: skip this many newest entries before the page")
 	raw.restore.dst = &o.restoreRun
 	fs.Var(&raw.restore, "restore", "runs: put a pruned run back in the listing by run id")
-	fs.BoolVar(&o.json, "json", false,
-		"runs: print the listing as JSON on stdout, and nothing else there")
+	fs.Var(&raw.fields, "fields", "runs: keep these fields of each run when the output is JSON")
 
 	return fs, raw
 }
@@ -563,6 +587,25 @@ func resolveUsage(o *options, fs *flag.FlagSet) error {
 	return nil
 }
 
+// validateOutput resolves --output and --json. An explicit format wins.
+// auto stays text, including when the output is a pipe. --json is the json
+// value of --output, and the two disagree only when both name a format.
+func validateOutput(o *options, fs *flag.FlagSet) error {
+	switch o.output {
+	case "auto", "text", "json":
+	default:
+		return fmt.Errorf("--output %q: want auto, text, or json", o.output)
+	}
+	if o.json && isFlagSet(fs, "output", "o") && o.output != "json" {
+		return fmt.Errorf("--json conflicts with --output %s", o.output)
+	}
+	if o.json || o.output == "json" {
+		o.output = "json"
+		o.json = true
+	}
+	return nil
+}
+
 // finishFlags turns parsed values into validated options.
 func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) {
 	reviews, exclude, agents := raw.reviews, raw.exclude, raw.agents
@@ -595,38 +638,60 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, errHelp
 	}
 
-	if fs.NArg() > 0 {
+	// schema takes one optional command path. Every other command takes none:
+	// a leftover word is the subcommand that a non-global flag hid.
+	if o.command == "schema" {
+		if fs.NArg() > 1 {
+			return nil, misplacedArgument(fs.Arg(1))
+		}
+		o.schemaArgs = append([]string(nil), fs.Args()...)
+	} else if fs.NArg() > 0 {
 		return nil, misplacedArgument(fs.Arg(0))
 	}
 	if showVersion {
 		o.command = "version"
 	}
+	if err := validateOutput(o, fs); err != nil {
+		return nil, err
+	}
 
-	// Version wins over scoping, as help does above. Otherwise a flag that
-	// belongs to one subcommand must not be swallowed silently by another:
-	// `gauntlet --limit 5` would otherwise start an unlimited run while
-	// pretending to honor it.
-	if o.command != "version" {
+	// Version and schema win over scoping, as help does above: neither reads
+	// the state root. Otherwise a flag that belongs to one subcommand must
+	// not be swallowed silently by another: `gauntlet --limit 5` would
+	// otherwise start an unlimited run while pretending to honor it.
+	if o.command != "version" && o.command != "schema" {
 		if isFlagSet(fs, "check") && o.command != "update" {
 			return nil, errors.New("--check requires 'gauntlet update'")
 		}
 		if isFlagSet(fs, "limit") && o.command != "runs" {
 			return nil, errors.New("--limit requires 'gauntlet runs'")
 		}
+		if isFlagSet(fs, "offset") && o.command != "runs" {
+			return nil, errors.New("--offset requires 'gauntlet runs'")
+		}
 		if isFlagSet(fs, "restore") && o.command != "runs" {
 			return nil, errors.New("--restore requires 'gauntlet runs'")
 		}
-		// The default run reads every flag and drops the ones it has no use
-		// for, so a stray --json there would start a full review and say
-		// nothing about the output format that was asked for.
-		if isFlagSet(fs, "json") && o.command != "runs" {
-			return nil, errors.New("--json requires 'gauntlet runs'")
+		if isFlagSet(fs, "fields") && o.command != "runs" {
+			return nil, errors.New("--fields requires 'gauntlet runs'")
 		}
 		// A second --restore is a mistake, not a choice: the last one would win
 		// and the id the first named would be restored by nobody. The rule
 		// --bin and --agent-cmd hold themselves to, for the same reason.
 		if o.command == "runs" && raw.restore.n > 1 {
 			return nil, errors.New("--restore given more than once: want one run id")
+		}
+		if o.command == "runs" && isFlagSet(fs, "fields") {
+			if !o.wantsJSON() {
+				return nil, errors.New("--fields requires --json or --output json")
+			}
+			if len(raw.fields) == 0 {
+				return nil, errors.New("--fields is empty")
+			}
+			if err := checkSummaryFields(raw.fields); err != nil {
+				return nil, err
+			}
+			o.fields = append([]string(nil), raw.fields...)
 		}
 	}
 	if err := rejectStrayFlags(o, fs, raw.showVersion); err != nil {
@@ -638,7 +703,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.command == "show" && o.showRun == "" {
 		return nil, errors.New("show needs a run id (see: gauntlet runs)")
 	}
-	if o.command == "version" {
+	if o.command == "version" || o.command == "schema" {
 		if err := validateLog(o, fs); err != nil {
 			return nil, err
 		}
@@ -855,9 +920,16 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, errors.New("--dirs conflicts with --dir")
 	}
 	// Zero or negative would crash the index reader or report runs that exist
-	// as absent.
+	// as absent. The offset is added to the limit before the index is read,
+	// so a sum that does not fit in an int is a bad flag rather than a wrap.
 	if o.runsLimit < 1 {
 		return nil, errors.New("--limit must be >= 1")
+	}
+	if o.runsOffset < 0 {
+		return nil, errors.New("--offset must be >= 0")
+	}
+	if o.runsOffset > math.MaxInt-o.runsLimit {
+		return nil, errors.New("--offset is too large")
 	}
 
 	// Checked in declaration order, not map order, so the error names the
@@ -882,12 +954,19 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	if o.tui && len(active) > 0 {
 		return nil, fmt.Errorf("--tui conflicts with %s", active[0])
 	}
+	if o.tui && o.wantsJSON() {
+		return nil, errors.New("--tui conflicts with --output json")
+	}
 	if o.tui && (!term.IsTerminal(int(os.Stdout.Fd())) || !stdinIsTerminal()) {
 		// Both, the same gate cmdPick applies. A dashboard reads keys from
 		// stdin, so a redirected one hands it EOF and the run quits on the
 		// first tick: the reviews in flight die with nothing said on the way
 		// out, which is the opposite of what --tui was asked for.
-		return nil, errors.New("--tui needs a terminal on stdin and stdout; drop it to get plain log output")
+		return nil, flaggedError{
+			error: errors.New("--tui needs a terminal on stdin and stdout; drop it to get plain log output"),
+			kind:  "tty_required",
+			hint:  "Drop --tui for plain log output.",
+		}
 	}
 	if o.list {
 		// Nothing is executed in list mode, so a commit step would be a lie.
@@ -1015,7 +1094,7 @@ func validateLog(o *options, fs *flag.FlagSet) error {
 
 // usesAgents reports whether this command can launch or inspect agent definitions.
 func (o *options) usesAgents() bool {
-	return o.command == "" || o.command == "pick" || o.command == "doctor"
+	return o.command == "" || o.command == "review" || o.command == "pick" || o.command == "doctor"
 }
 
 // needsAgents reports whether this invocation has to find a launchable agent
@@ -1043,9 +1122,10 @@ var subcommandFlags = map[string][]string{
 	"pick":   {"C", "dir", "dirs", "target-dirs", "prompt-dir"},
 	"doctor": {"agent-cmd", "bin"},
 	"update": {"check", "update-repo"},
-	"runs":   {"limit", "restore", "json"},
+	"runs":   {"limit", "offset", "restore", "fields", "json"},
 	"show":   {},
 	"resume": {},
+	"schema": {},
 	// help is handled in finishFlags before stray-flag checks, so extra
 	// flags are ignored the way they are after --help. The entry exists so
 	// a later check cannot treat `help` as the default run.
@@ -1055,9 +1135,9 @@ var subcommandFlags = map[string][]string{
 	"version": {},
 }
 
-// globalFlags are honored no matter the command: help, version, color, and
-// the output tee, which run() wires up before dispatching anywhere.
-var globalFlags = []string{"h", "help", "V", "version", "log", "no-color"}
+// globalFlags are honored no matter the command: help, version, color, the
+// output format, and the output tee, which run() wires up before dispatching.
+var globalFlags = []string{"h", "help", "V", "version", "log", "no-color", "o", "output", "json"}
 
 // rejectStrayFlags refuses a flag a named subcommand would parse and then
 // drop: `gauntlet runs --jobs 4` must fail loudly rather than print its
@@ -1467,9 +1547,9 @@ func typoDistance(name string) int {
 
 // misplacedArgument explains a stray word left where a subcommand should have
 // been read. A subcommand is only one when it is the first word, so a flag
-// that is not global ends the search and `gauntlet --json runs` arrives here
-// with "runs" as a leftover. Naming the leftover alone points the reader at
-// the wrong end of the line, so the order is what the message says.
+// that is not global ends the search and `gauntlet --limit 3 runs` arrives
+// here with "runs" as a leftover. Naming the leftover alone points the reader
+// at the wrong end of the line, so the order is what the message says.
 func misplacedArgument(word string) error {
 	if !slices.Contains(commandNames, word) {
 		return fmt.Errorf("unexpected argument: %q (see: gauntlet help)", word)

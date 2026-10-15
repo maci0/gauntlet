@@ -36,6 +36,8 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
 		fmt.Fprintln(os.Stderr, "pick needs a terminal on stdin and stdout")
+		noteExit("tty_required", "pick needs a terminal on stdin and stdout",
+			"Run gauntlet with flags instead of pick.")
 		return exitUsage
 	}
 	dir := opts.resolvedDirs[0]

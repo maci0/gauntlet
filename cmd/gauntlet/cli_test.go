@@ -170,23 +170,34 @@ func TestShowReportsTheFlagBeforeTheMissingRunID(t *testing.T) {
 // default run then sees are almost always that word, and naming it as a stray
 // argument points at the wrong end of the line.
 func TestStraySubcommandSaysWhereItBelongs(t *testing.T) {
-	for _, argv := range [][]string{{"--json", "runs"}, {"--limit", "3", "update"}, {"--json", "doctor"}} {
-		got, reported := captureParseStderr(t, argv)
-		if !reported {
-			t.Errorf("%v: error not marked as already reported", argv)
+	// --limit is not global, so the command word is left where a flag ended
+	// the search. The message names the order.
+	got, reported := captureParseStderr(t, []string{"--limit", "3", "update"})
+	if !reported {
+		t.Fatal("error not marked as already reported")
+	}
+	msg, _, _ := strings.Cut(got, "\n")
+	if !strings.Contains(msg, "flags go after") {
+		t.Fatalf("message %q does not name the order", msg)
+	}
+	// --json is global, so the word after it is the command.
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	for _, argv := range [][]string{{"--json", "runs"}, {"--json", "doctor"}} {
+		opts, err := parseFlags(argv)
+		if err != nil {
+			t.Errorf("%v: %v", argv, err)
 			continue
 		}
-		msg, _, _ := strings.Cut(got, "\n")
-		if !strings.Contains(msg, "flags go after") {
-			t.Errorf("%v: message %q does not name the order", argv, msg)
+		if opts.command != argv[1] || !opts.wantsJSON() {
+			t.Errorf("%v: command %q json %v", argv, opts.command, opts.wantsJSON())
 		}
 	}
-	// A word that is not a subcommand keeps the plain refusal: the order is
-	// not what is wrong with it.
-	got, _ := captureParseStderr(t, []string{"--json", "bogus"})
-	if msg, _, _ := strings.Cut(got, "\n"); !strings.Contains(msg, `unexpected argument: "bogus"`) ||
-		strings.Contains(msg, "flags go after") {
-		t.Errorf("message for a non-subcommand word is %q", msg)
+	// A word that is not a command is an unknown command, not a leftover
+	// argument: the global flag already gave the parser a place to read it.
+	_, err := parseFlags([]string{"--json", "bogus"})
+	if err == nil || !strings.Contains(err.Error(), "unknown command") ||
+		strings.Contains(err.Error(), "flags go after") {
+		t.Fatalf("message for a non-command word is %v", err)
 	}
 }
 

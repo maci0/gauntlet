@@ -176,8 +176,16 @@ var reexec = selfupdate.Reexec
 // schedule, seed, and carried results, in the directory the run started in,
 // with the command line it was started with.
 func cmdResume(out io.Writer, pal report.Palette, runID string) int {
+	return cmdResumeAt(out, pal, runID, false)
+}
+
+// cmdResumeAt lists interrupted runs, or continues one. With JSON and no id
+// the list is one document. With JSON and an id, one object is written
+// before the process is replaced; a failed reexec leaves that object on
+// stdout and the error on stderr.
+func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) int {
 	if runID == "" {
-		return listCheckpoints(out, pal)
+		return listCheckpointsAt(out, pal, asJSON)
 	}
 	path, err := checkpointPath(runID)
 	if err != nil {
@@ -216,10 +224,40 @@ func cmdResume(out io.Writer, pal report.Palette, runID string) int {
 	}
 	exe, err := os.Executable()
 	if err == nil {
-		fmt.Fprintf(out, "Resuming run %s in %s: gauntlet %s\n", runID,
-			normalize.Sanitize(normalize.RedactHome(cp.Cwd)),
-			normalize.Sanitize(strings.Join(journaledArgs(cp.Argv), " ")))
-		err = reexec(exe, statePath, cp.Argv)
+		if asJSON {
+			argv := journaledArgs(cp.Argv)
+			for i, a := range argv {
+				argv[i] = normalize.Sanitize(a)
+			}
+			if argv == nil {
+				argv = []string{}
+			}
+			enc := json.NewEncoder(out)
+			enc.SetIndent("", "  ")
+			enc.SetEscapeHTML(false)
+			err = enc.Encode(struct {
+				RunID   string   `json:"run_id"`
+				Cwd     string   `json:"cwd"`
+				Argv    []string `json:"argv"`
+				Changed bool     `json:"changed"`
+			}{
+				RunID:   runID,
+				Cwd:     normalize.Sanitize(normalize.RedactHome(cp.Cwd)),
+				Argv:    argv,
+				Changed: true,
+			})
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "run %s cannot resume: %v\n", runID, err)
+				noteExit("failed", "cannot write the resume", "")
+				return exitFail
+			}
+			err = reexec(exe, statePath, cp.Argv)
+		} else {
+			fmt.Fprintf(out, "Resuming run %s in %s: gauntlet %s\n", runID,
+				normalize.Sanitize(normalize.RedactHome(cp.Cwd)),
+				normalize.Sanitize(strings.Join(journaledArgs(cp.Argv), " ")))
+			err = reexec(exe, statePath, cp.Argv)
+		}
 	}
 	if err != nil {
 		// No successor will read the handoff, and one left behind would be
@@ -236,6 +274,10 @@ func cmdResume(out io.Writer, pal report.Palette, runID string) int {
 // listCheckpoints prints every run with a checkpoint, newest first, and the
 // command that continues it.
 func listCheckpoints(out io.Writer, pal report.Palette) int {
+	return listCheckpointsAt(out, pal, false)
+}
+
+func listCheckpointsAt(out io.Writer, pal report.Palette, asJSON bool) int {
 	dir, err := checkpointDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -260,10 +302,20 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 		cps = append(cps, cp)
 	}
 	if len(cps) == 0 {
+		if asJSON {
+			return writeResumeList(out, nil)
+		}
 		fmt.Fprintln(out, "No interrupted runs to resume.")
 		return exitOK
 	}
 	slices.SortFunc(cps, func(a, b checkpoint) int { return b.Updated.Compare(a.Updated) })
+	if asJSON {
+		items := make([]resumeItem, 0, len(cps))
+		for _, cp := range cps {
+			items = append(items, resumeItemFrom(cp))
+		}
+		return writeResumeList(out, items)
+	}
 	for _, cp := range cps {
 		left := 0
 		dirs := make([]string, 0, len(cp.Handoff.Dirs))
@@ -292,5 +344,68 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 		fmt.Fprintf(out, "  gauntlet %s\n", normalize.Sanitize(strings.Join(journaledArgs(cp.Argv), " ")))
 	}
 	fmt.Fprintln(out, "\nContinue one with: gauntlet resume <run-id>")
+	return exitOK
+}
+
+// resumeItem is one interrupted run in the JSON list. The state strings are
+// the ones the text listing prints.
+type resumeItem struct {
+	RunID   string    `json:"run_id"`
+	Updated time.Time `json:"updated"`
+	State   string    `json:"state"`
+	Dirs    []string  `json:"dirs"`
+	Pending int       `json:"pending"`
+	Loops   int       `json:"loops"`
+	Argv    []string  `json:"argv"`
+}
+
+func resumeItemFrom(cp checkpoint) resumeItem {
+	pending := 0
+	dirs := make([]string, 0, len(cp.Handoff.Dirs))
+	for d, dh := range cp.Handoff.Dirs {
+		pending += len(dh.Pending)
+		dirs = append(dirs, normalize.Sanitize(normalize.RedactHome(d)))
+	}
+	fuzzy.Sort(dirs)
+	state := "ready"
+	switch dir, lerr := busyDir(cp); {
+	case lerr != nil:
+		state = "unknown: cannot read the lock in " +
+			normalize.Sanitize(normalize.RedactHome(dir))
+	case dir != "":
+		state = "busy: a gauntlet holds its directory"
+	}
+	argv := journaledArgs(cp.Argv)
+	for i, a := range argv {
+		argv[i] = normalize.Sanitize(a)
+	}
+	if argv == nil {
+		argv = []string{}
+	}
+	return resumeItem{
+		RunID:   cp.Handoff.RunID,
+		Updated: cp.Updated,
+		State:   state,
+		Dirs:    dirs,
+		Pending: pending,
+		Loops:   cp.Handoff.Loops(),
+		Argv:    argv,
+	}
+}
+
+func writeResumeList(out io.Writer, items []resumeItem) int {
+	if items == nil {
+		items = []resumeItem{}
+	}
+	enc := json.NewEncoder(out)
+	enc.SetIndent("", "  ")
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(struct {
+		Items []resumeItem `json:"items"`
+	}{items}); err != nil {
+		fmt.Fprintf(os.Stderr, "cannot write the resume list: %v\n", err)
+		noteExit("failed", "cannot write the resume list", "")
+		return exitFail
+	}
 	return exitOK
 }

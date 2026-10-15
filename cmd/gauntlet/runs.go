@@ -25,26 +25,38 @@ import (
 // cmdRuns lists recent runs from ~/.gauntlet/index.jsonl. A run id restores a
 // pruned run, which is a different job from listing and happens instead of it.
 func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSON bool) (code int) {
+	return cmdRunsAt(out, pal, limit, 0, nil, restore, asJSON)
+}
+
+// cmdRunsAt is cmdRuns with a page offset and a field projection. Offset 0
+// and no fields is the listing cmdRuns has always printed.
+func cmdRunsAt(out io.Writer, pal report.Palette, limit, offset int, fields []string, restore string, asJSON bool) (code int) {
 	if restore != "" {
 		return restoreRun(out, pal, restore, asJSON)
 	}
-	entries, listErr := journal.Recent(limit)
-	if listErr != nil {
-		fmt.Fprintf(os.Stderr, "run listing is incomplete: %v\n", listErr)
-	}
-	// One read of the state tree for both forms. It is what carries a journal
-	// cut mid-line, and a listing that cannot tell a whole archive from a
-	// short one is the answer a restore cannot be checked against. The JSON
-	// form has always counted it; the table reads the same number here so the
-	// human and machine views cannot disagree about whether the history is
-	// complete.
+	// The first read sizes the page. Recent rebuilds a missing index while it
+	// reads, so the history a restore compares is a second read, after that
+	// rebuild. A journal cut mid-line is on the second read, and a listing
+	// that cannot tell a whole archive from a short one is the answer a
+	// restore cannot be checked against. The JSON form has always counted it;
+	// the table reads the same number so the two views cannot disagree about
+	// whether the history is complete.
 	st, stErr := journal.Inspect()
 	if stErr != nil {
 		fmt.Fprintf(os.Stderr, "cannot read the run history: %v\n", stErr)
 		return exitFail
 	}
+	entries, total, listErr := pageRuns(limit, offset, st)
+	if again, err := journal.Inspect(); err != nil {
+		listErr = errors.Join(listErr, err)
+	} else {
+		st = again
+	}
+	if listErr != nil {
+		fmt.Fprintf(os.Stderr, "run listing is incomplete: %v\n", listErr)
+	}
 	if asJSON {
-		if code := writeRunsJSON(out, entries, st); code != 0 {
+		if code := writeRunsJSON(out, entries, st, offset, limit, total, fields); code != 0 {
 			return code
 		}
 		return exitCodeFor(errors.Join(listErr, truncatedError(st.Truncated)))
@@ -61,7 +73,11 @@ func cmdRuns(out io.Writer, pal report.Palette, limit int, restore string, asJSO
 		}
 	}()
 	if len(entries) == 0 {
-		w.Printf("No runs recorded yet under %s\n", normalize.RedactHome(journal.Home()))
+		if offset > 0 {
+			w.Printf("No runs in this page.\n")
+		} else {
+			w.Printf("No runs recorded yet under %s\n", normalize.RedactHome(journal.Home()))
+		}
 	} else {
 		cols := newRunsColumns(entries)
 		w.Println(cols.header())
@@ -151,6 +167,40 @@ func exitCodeFor(err error) int {
 // counts the rest.
 const listedQuarantined = 5
 
+// pageRuns returns one page of the newest runs. Offset 0 reads the newest
+// limit, which is the listing this command has always printed. A later page
+// reads only the rows it needs, and never more than the tree holds. total is
+// the journal count when the tree has journals, and the index row count
+// otherwise. An offset past that end is an empty page.
+func pageRuns(limit, offset int, st journal.Status) (entries []journal.Summary, total int, err error) {
+	total = st.Journals
+	if total == 0 {
+		total = st.Rows
+	}
+	if offset > 0 && offset >= total {
+		return []journal.Summary{}, total, nil
+	}
+	n := limit
+	if offset > 0 {
+		n = offset + limit
+		if n > total {
+			n = total
+		}
+	}
+	entries, err = journal.Recent(n)
+	if offset > 0 {
+		if len(entries) > offset {
+			entries = entries[offset:]
+		} else {
+			entries = nil
+		}
+		if len(entries) > limit {
+			entries = entries[:limit]
+		}
+	}
+	return entries, total, err
+}
+
 // runsJSON is what `gauntlet runs --json` prints. The table is for a person:
 // fixed columns, a legend line above them, and a dim note whose width follows
 // the terminal. A script wants the same facts under stable names and nothing
@@ -161,11 +211,16 @@ const listedQuarantined = 5
 // are the exception to "as journaled": they are not run data, and they carry
 // the home directory shortened to "~" (see writeRunsJSON).
 type runsJSON struct {
-	Home     string            `json:"home"`
-	Journals string            `json:"journals"`
-	Runs     []journal.Summary `json:"runs"`
-	Pruned   []string          `json:"pruned"`
-	History  historyJSON       `json:"history"`
+	Home      string      `json:"home"`
+	Journals  string      `json:"journals"`
+	Runs      any         `json:"runs"`
+	Pruned    []string    `json:"pruned"`
+	History   historyJSON `json:"history"`
+	Items     any         `json:"items"`
+	Total     int         `json:"total"`
+	Offset    int         `json:"offset"`
+	Limit     int         `json:"limit"`
+	Truncated bool        `json:"truncated"`
 }
 
 // historyJSON is what the state tree holds behind those rows: the journals the
@@ -199,10 +254,10 @@ type historyJSON struct {
 // listing is an empty array, never a null and never a message on the stream a
 // caller is parsing.
 //
-// st is the state-tree read cmdRuns already made: one read serves both forms,
-// so the counts in this document and the warning the table prints are read off
-// the same tree at the same instant rather than two walks that can disagree.
-func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) int {
+// st is the tree after the listing rebuilt a missing index. total was sized
+// from the read before that rebuild, so a page already taken is not resized.
+// The counts here and the table's warning are that second read.
+func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status, offset, limit, total int, fields []string) int {
 	// A failed read is not reported as an empty quarantine: a pruned list that
 	// could not be read would read as a claim that nothing is recoverable.
 	pruned, err := journal.Quarantined()
@@ -239,10 +294,20 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) 
 		fmt.Fprintf(os.Stderr, "cannot read the agent definitions: %v\n", defErr)
 		return exitFail
 	}
+	rows := redactSummaryPaths(entries)
+	var records any = rows
+	if len(fields) > 0 {
+		projected, perr := projectSummaries(rows, fields)
+		if perr != nil {
+			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", perr)
+			return exitFail
+		}
+		records = projected
+	}
 	doc := runsJSON{
 		Home:     normalize.RedactHome(journal.Home()),
 		Journals: normalize.RedactHome(filepath.Join(journal.Home(), "runs")),
-		Runs:     redactSummaryPaths(entries),
+		Runs:     records,
 		Pruned:   pruned,
 		History: historyJSON{
 			Journals:  st.Journals,
@@ -252,6 +317,11 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status) 
 			Truncated: st.Truncated,
 			Agents:    definitions,
 		},
+		Items:     records,
+		Total:     total,
+		Offset:    offset,
+		Limit:     limit,
+		Truncated: offset+len(entries) < total,
 	}
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
@@ -288,6 +358,35 @@ func redactSummaryPaths(entries []journal.Summary) []journal.Summary {
 		out[i] = e
 	}
 	return out
+}
+
+// projectSummaries keeps the named keys of each row. Marshaling first is what
+// preserves omitempty: a requested field the row left out stays absent, and
+// the keys are the ones a consumer of the unprojected document already reads.
+func projectSummaries(entries []journal.Summary, fields []string) ([]any, error) {
+	want := map[string]bool{}
+	for _, f := range fields {
+		want[f] = true
+	}
+	out := make([]any, 0, len(entries))
+	for _, e := range entries {
+		raw, err := json.Marshal(e)
+		if err != nil {
+			return nil, err
+		}
+		var obj map[string]any
+		if err := json.Unmarshal(raw, &obj); err != nil {
+			return nil, err
+		}
+		kept := map[string]any{}
+		for k, v := range obj {
+			if want[k] {
+				kept[k] = v
+			}
+		}
+		out = append(out, kept)
+	}
+	return out, nil
 }
 
 // restoreRun puts a pruned journal back in the listing and says so plainly:
@@ -495,6 +594,14 @@ func showTime(s string) string {
 
 // cmdShow replays one run's journal as readable lines.
 func cmdShow(out io.Writer, runID string) int {
+	return cmdShowAt(out, runID, false)
+}
+
+// cmdShowAt replays one run. Text mode is a timestamp, the event kind, and
+// the remaining fields. JSON mode is one object per event, including ts and
+// ev. The encoder keeps HTML escaping on: a journaled directory name reaches
+// a terminal through this line, and the encoder is what quotes it.
+func cmdShowAt(out io.Writer, runID string, asJSON bool) int {
 	// One event in memory at a time: a long run's journal can be far larger
 	// than the screen it is being replayed onto.
 	bw := bufio.NewWriter(out)
@@ -506,13 +613,6 @@ func cmdShow(out io.Writer, runID string) int {
 			return
 		}
 		events++
-		ts := ""
-		if s, ok := ev["ts"].(string); ok {
-			ts = showTime(s)
-		}
-		kind, _ := ev["ev"].(string)
-		delete(ev, "ts")
-		delete(ev, "ev")
 		// The event carries the reviewed tree's absolute path because the run
 		// matches its own locks and index rows against it. A replay is a copy
 		// people paste into an issue or a chat, and a resolved path under
@@ -521,6 +621,25 @@ func cmdShow(out io.Writer, runID string) int {
 		if dir, ok := ev["dir"].(string); ok {
 			ev["dir"] = normalize.RedactHome(dir)
 		}
+		if asJSON {
+			rest, merr := json.Marshal(ev)
+			if merr != nil {
+				werr = merr
+				return
+			}
+			// json.Marshal escapes controls. Sanitize strips bidi and the
+			// other formatting characters the encoder leaves in place, and a
+			// compact JSON line has no tab for it to widen.
+			_, werr = fmt.Fprintln(bw, normalize.Sanitize(string(rest)))
+			return
+		}
+		ts := ""
+		if s, ok := ev["ts"].(string); ok {
+			ts = showTime(s)
+		}
+		kind, _ := ev["ev"].(string)
+		delete(ev, "ts")
+		delete(ev, "ev")
 		rest, _ := json.Marshal(ev)
 		// The journal records events verbatim, and event text can carry
 		// fragments of a hostile repository (git error output, merge-conflict

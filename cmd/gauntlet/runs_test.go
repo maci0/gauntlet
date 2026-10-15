@@ -1228,17 +1228,18 @@ func TestRunsJSONFailsOnACutJournal(t *testing.T) {
 	}
 }
 
-// --json belongs to `runs` alone, and says so where every other misplaced flag
-// is caught, instead of being parsed by a command that would drop it.
-func TestJSONIsRefusedOutsideRuns(t *testing.T) {
-	for _, argv := range [][]string{{"doctor", "--json"}, {"--json"}} {
-		_, err := parseFlags(argv)
-		if err == nil {
-			t.Errorf("%v: --json should be refused outside 'gauntlet runs'", argv)
+// --json is an alias of --output json on every command, including a bare
+// gauntlet. It used to be refused outside `gauntlet runs`.
+func TestJSONSelectsOutputOnEveryCommand(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	for _, argv := range [][]string{{"doctor", "--json"}, {"--json"}, {"version", "-o", "json"}} {
+		opts, err := parseFlags(argv)
+		if err != nil {
+			t.Errorf("%v: %v", argv, err)
 			continue
 		}
-		if !strings.Contains(err.Error(), "--json") {
-			t.Errorf("%v: the error should name the flag, got %q", argv, err)
+		if !opts.wantsJSON() || opts.output != "json" {
+			t.Errorf("%v: output %q, want json", argv, opts.output)
 		}
 	}
 }
