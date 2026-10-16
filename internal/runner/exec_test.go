@@ -389,6 +389,7 @@ func TestRunProcDoesNotSinkAfterReturn(t *testing.T) {
 
 	var seen, late atomic.Int64
 	var finished atomic.Bool
+	before := runtime.NumGoroutine()
 	res := runProc(context.Background(), procOpts{
 		Argv:    []string{bin},
 		Timeout: 500 * time.Millisecond,
@@ -407,10 +408,23 @@ func TestRunProcDoesNotSinkAfterReturn(t *testing.T) {
 	if seen.Load() == 0 {
 		t.Fatal("sink never ran")
 	}
-	time.Sleep(300 * time.Millisecond)
-	if n := late.Load(); n > 0 {
-		t.Fatalf("sink ran %d times after runProc returned", n)
+	// runProc joins its pumps before returning. A line that still reached the
+	// sink is one of those pumps, so once the goroutine count is back where
+	// it started, nothing is left that could call it. A fixed sleep after the
+	// return spends that time when the pumps have already exited, and on a
+	// loaded host can end before a late line is delivered.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if n := late.Load(); n > 0 {
+			t.Fatalf("sink ran %d times after runProc returned", n)
+		}
+		if runtime.NumGoroutine() <= before {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
+	t.Fatalf("pump goroutines outlived runProc: %d goroutines now, %d before",
+		runtime.NumGoroutine(), before)
 }
 
 // An agent must run in its own session, not just its own process group. A

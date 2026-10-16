@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/gauntlethome"
@@ -455,6 +456,12 @@ func replace(t *testing.T, path, body string) {
 }
 
 func TestWatchReportsAReplacedBinary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		testWatchReportsAReplacedBinary(t)
+	})
+}
+
+func testWatchReportsAReplacedBinary(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gauntlet")
 	if err := os.WriteFile(path, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
@@ -462,11 +469,13 @@ func TestWatchReportsAReplacedBinary(t *testing.T) {
 	ch := watchFile(t, t.Context(), path)
 
 	// Untouched for a few ticks first: a watcher that fired on the file it
-	// started from would reload in a loop forever.
+	// started from would reload in a loop forever. Sleep returns once the
+	// watcher is parked again, so those ticks have already happened.
+	synctest.Sleep(100 * time.Millisecond)
 	select {
 	case p, ok := <-ch:
 		t.Fatalf("watcher fired with no change to the binary: %q (open=%t)", p, ok)
-	case <-time.After(100 * time.Millisecond):
+	default:
 	}
 
 	replace(t, path, "new binary, longer")
@@ -494,6 +503,12 @@ func TestWatchReportsAReplacedBinary(t *testing.T) {
 }
 
 func TestWatchIgnoresAMissingBinary(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		testWatchIgnoresAMissingBinary(t)
+	})
+}
+
+func testWatchIgnoresAMissingBinary(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "gauntlet")
 	if err := os.WriteFile(path, []byte("old binary"), 0o755); err != nil {
 		t.Fatal(err)
@@ -502,14 +517,16 @@ func TestWatchIgnoresAMissingBinary(t *testing.T) {
 
 	// A self-update that removes the target before renaming into place is a
 	// rename caught mid-flight, not a deletion the operator asked for. It must
-	// not fire a reload on a half-written file.
+	// not fire a reload on a half-written file. The pause is ticks with the
+	// watcher parked between them.
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
+	synctest.Sleep(100 * time.Millisecond)
 	select {
 	case p, ok := <-ch:
 		t.Fatalf("watcher reported a change for a missing binary: %q (open=%t)", p, ok)
-	case <-time.After(100 * time.Millisecond):
+	default:
 	}
 
 	// The file coming back is the change worth reporting.

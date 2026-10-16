@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -52,14 +53,20 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 // finishes and lands its work, whichever agent CLI is running it -- the second
 // terminates the running reviews, the third force-kills the process.
 func TestInterruptIsStagedGracefulThenStopThenKill(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		testInterruptIsStagedGracefulThenStopThenKill(t)
+	})
+}
+
+func testInterruptIsStagedGracefulThenStopThenKill(t *testing.T) {
 	ch, ctx, graceful, exited := driveInterrupts(t)
 
 	ch <- os.Interrupt
 	waitFor(t, "the first Ctrl-C asking for the graceful quit", graceful.asking)
 	// The graceful quit must not have terminated anything: the whole point is
-	// that the review in flight keeps running. Give the handler room to have
-	// gotten it wrong before checking.
-	time.Sleep(20 * time.Millisecond)
+	// that the review in flight keeps running. Wait until the handler is
+	// parked again, so a cancel it still owed us has landed before the check.
+	synctest.Wait()
 	if ctx.Err() != nil {
 		t.Fatal("the first Ctrl-C terminated the run instead of draining it")
 	}
@@ -187,22 +194,25 @@ func TestArmAppliesAnEarlyRequestWithoutAskingTwice(t *testing.T) {
 // A closed channel (such as during test cleanup or teardown) must return cleanly
 // without being misinterpreted as an interrupt or triggering a force-kill.
 func TestInterruptClosedChannelDoesNotForceKill(t *testing.T) {
-	ch, ctx, graceful, exited := driveInterrupts(t)
-	close(ch)
-	// Both ways a close can be misread leave state behind: a zero-value
-	// signal is not os.Interrupt, so it would take the terminate stage and
-	// cancel the run's context, or the graceful stage and arm the request.
-	// Give the handler its budget to get there, then require that it did not.
-	time.Sleep(500 * time.Millisecond)
-	if graceful.asking() {
-		t.Error("closing the channel armed the graceful request")
-	}
-	if ctx.Err() != nil {
-		t.Errorf("closing the channel terminated the run: %v", ctx.Err())
-	}
-	select {
-	case code := <-exited:
-		t.Fatalf("closing the channel force-killed with code %d", code)
-	default:
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ch, ctx, graceful, exited := driveInterrupts(t)
+		close(ch)
+		// Both ways a close can be misread leave state behind: a zero-value
+		// signal is not os.Interrupt, so it would take the terminate stage and
+		// cancel the run's context, or the graceful stage and arm the request.
+		// The handler has returned, or is parked, before this continues, so
+		// the check does not depend on how long the host takes to schedule it.
+		synctest.Wait()
+		if graceful.asking() {
+			t.Error("closing the channel armed the graceful request")
+		}
+		if ctx.Err() != nil {
+			t.Errorf("closing the channel terminated the run: %v", ctx.Err())
+		}
+		select {
+		case code := <-exited:
+			t.Fatalf("closing the channel force-killed with code %d", code)
+		default:
+		}
+	})
 }

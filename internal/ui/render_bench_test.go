@@ -76,9 +76,14 @@ func mNow() time.Time {
 
 // BenchmarkView measures one frame of the dashboard at the size a real
 // terminal gives it, which is where the render path runs ten times a second
-// for the life of a run.
+// for the life of a run. The first frame rebuilds the grid order and the
+// filtered feed; timing from the second keeps one iteration's cost from
+// depending on how many the timer asks for.
 func BenchmarkView(b *testing.B) {
 	m := renderModel(b)
+	if m.View() == "" {
+		b.Fatal("empty frame")
+	}
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {

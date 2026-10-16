@@ -39,6 +39,14 @@ import (
 // nonzero" assertion could not tell the difference, since a launch that never
 // happened exits nonzero too.
 func TestRunIndexerKillsProcessGroup(t *testing.T) {
+	// The production grace is the same 10s as the return bound below, so on a
+	// host where the grandchild keeps the pipes the timer and WaitDelay tie
+	// and the timer wins. Shrink the grace. The bound stays the hang limit
+	// above that grace.
+	old := indexerWait
+	indexerWait = 200 * time.Millisecond
+	defer func() { indexerWait = old }()
+
 	dir := t.TempDir()
 
 	sleeper := filepath.Join(dir, "sleeper")

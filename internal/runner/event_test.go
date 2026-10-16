@@ -6,6 +6,7 @@ package runner
 import (
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -161,35 +162,47 @@ func TestBusConcurrentClose(t *testing.T) {
 // delivery must not hold the bus lock: a new subscriber still gets in, and
 // Close returns once the stalled subscriber has been read from.
 func TestAStalledSubscriberDoesNotLockTheBus(t *testing.T) {
-	bus := NewBus()
-	stalled := bus.Subscribe(0)
+	synctest.Test(t, func(t *testing.T) {
+		bus := NewBus()
+		stalled := bus.Subscribe(0)
+		// Close waits for the delivery in flight. Drain it first, or a failure
+		// before the body reads leaves Publish parked and Close parked behind it.
+		defer bus.Close()
+		defer func() {
+			select {
+			case <-stalled:
+			default:
+			}
+		}()
 
-	// review_end is not droppable, so this delivery waits for the reader.
-	published := make(chan struct{})
-	go func() {
-		bus.Publish(Event{Kind: EvReviewEnd, Review: "test"})
-		close(published)
-	}()
+		// review_end is not droppable, so this delivery waits for the reader.
+		published := make(chan struct{})
+		go func() {
+			bus.Publish(Event{Kind: EvReviewEnd, Review: "test"})
+			close(published)
+		}()
 
-	sub := make(chan struct{})
-	go func() { bus.Subscribe(1); close(sub) }()
-	select {
-	case <-sub:
-	case <-time.After(10 * time.Second):
-		t.Fatal("Subscribe blocked behind an in-flight delivery")
-	}
-	select {
-	case <-published:
-		t.Fatal("delivery to an unread subscriber did not block")
-	case <-time.After(500 * time.Millisecond):
-		// A delivery that returned immediately instead of parking on the
-		// stalled subscriber finishes inside this window, so a non-blocking
-		// Publish is caught here.
-	}
+		sub := make(chan struct{})
+		go func() { bus.Subscribe(1); close(sub) }()
+		// Both goroutines have finished or parked on a channel in this bubble.
+		// A Subscribe stuck on the bus lock is not parked on one, so Wait
+		// fails the test instead of passing, and a Publish that did not block
+		// has closed published.
+		synctest.Wait()
+		select {
+		case <-sub:
+		default:
+			t.Fatal("Subscribe blocked behind an in-flight delivery")
+		}
+		select {
+		case <-published:
+			t.Fatal("delivery to an unread subscriber did not block")
+		default:
+		}
 
-	if _, ok := <-stalled; !ok {
-		t.Fatal("review_end never reached the stalled subscriber")
-	}
-	<-published
-	bus.Close()
+		if _, ok := <-stalled; !ok {
+			t.Fatal("review_end never reached the stalled subscriber")
+		}
+		<-published
+	})
 }

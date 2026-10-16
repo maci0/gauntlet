@@ -28,6 +28,10 @@ import (
 // production always sees 30 minutes.
 var semcodeIndexTimeout = 30 * time.Minute
 
+// indexerWait is how long Run may outlive the indexer before its pipes are
+// closed. It is runx.WaitGrace; a var only so tests can shrink it.
+var indexerWait = runx.WaitGrace
+
 // semcodeIndexer is the helper --semcode builds the index with. Named once so
 // the check run() makes before taking the locks, the one buildSemcodeIndex
 // makes when it gets there, and the dry-run warning cannot each go looking for
@@ -93,7 +97,7 @@ func runIndexer(ctx context.Context, bin string, args []string, dir string) int 
 	// goroutines for stdout and stderr run concurrently.
 	stdout, stderr := normalize.NewDisplayWriter(os.Stdout), normalize.NewDisplayWriter(os.Stderr)
 	cmd.Stdout, cmd.Stderr = stdout, stderr
-	runx.Guard(cmd, runx.WaitGrace)
+	runx.Guard(cmd, indexerWait)
 	defer runx.KillGroup(cmd, syscall.SIGKILL)
 	err := cmd.Run()
 	// Run has joined both copy goroutines, so whatever each held is final.

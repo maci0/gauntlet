@@ -882,6 +882,14 @@ func TestRunDeadlineKillsTheProcessGroup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	// The production grace is 10s, longer than the bound below, so a grandchild
+	// that kept the pipes would fail this test while WaitDelay was still
+	// doing its job. Shrink it, as TestRunBoundedWhenGrandchildHoldsOutput
+	// does. The bound stays well above the shortened grace.
+	oldGrace := waitGrace
+	waitGrace = 200 * time.Millisecond
+	defer func() { waitGrace = oldGrace }()
+
 	// The hook blocks on its background sleeper, so git is alive when the
 	// cancel fires and the group kill has something to reach.
 	hooks := installHook(t, r,

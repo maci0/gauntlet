@@ -13,8 +13,9 @@ import (
 )
 
 // seedIndex points GAUNTLET_HOME at a fresh home whose index already holds
-// rows, the state both benchmarks below measure against.
-func seedIndex(b *testing.B, rows int) {
+// rows, the state both benchmarks below measure against. It returns the
+// index path so a benchmark can put the file back between iterations.
+func seedIndex(b *testing.B, rows int) string {
 	b.Helper()
 	home := b.TempDir()
 	b.Setenv("GAUNTLET_HOME", home)
@@ -24,36 +25,51 @@ func seedIndex(b *testing.B, rows int) {
 		buf.WriteString(strconv.Itoa(i))
 		buf.WriteString(`.jsonl","version":"0.1.0","dirs":["/w"],"agents":["claude:sonnet"],"start":"2026-08-25T13:00:00Z","end":"2026-08-25T13:10:00Z","loops":1,"reviews":6,"ok":5,"failed":1,"ins":40,"del":12,"lines_measured":true,"tokens":123456}` + "\n")
 	}
-	if err := os.WriteFile(filepath.Join(home, "index.jsonl"), []byte(buf.String()), 0o600); err != nil {
+	path := filepath.Join(home, "index.jsonl")
+	if err := os.WriteFile(path, []byte(buf.String()), 0o600); err != nil {
 		b.Fatal(err)
 	}
+	return path
 }
 
-// BenchmarkAppendIndexLocked measures what a finished run pays to append its
-// summary row, against an index holding runs already recorded.
+// BenchmarkAppendIndexLocked measures what a finished run pays to append one
+// summary row to an index that already holds rows. The row is removed
+// between iterations. Left in place, the file would grow with b.N and a
+// faster machine, running more iterations, would time a different scan than
+// a slower one.
 func BenchmarkAppendIndexLocked(b *testing.B) {
 	for _, rows := range []int{100, 1000, 10000} {
 		b.Run(label(rows), func(b *testing.B) {
-			seedIndex(b, rows)
+			path := seedIndex(b, rows)
+			snapshot, err := os.ReadFile(path)
+			if err != nil {
+				b.Fatal(err)
+			}
 			now := time.Date(2026, 8, 25, 13, 0, 0, 0, time.UTC)
+			row := Summary{
+				RunID:         "bench-row",
+				Path:          "/home/u/.gauntlet/runs/2026-08-25/new.jsonl",
+				Dirs:          []string{"/w"},
+				Start:         now,
+				End:           now.Add(10 * time.Minute),
+				Reviews:       6,
+				OK:            5,
+				Failed:        1,
+				Ins:           40,
+				Del:           12,
+				LinesMeasured: true,
+			}
 			b.ReportAllocs()
 			b.ResetTimer()
-			for i := 0; b.Loop(); i++ {
-				if err := appendIndexLocked(Summary{
-					RunID:         "new" + strconv.Itoa(i),
-					Path:          "/home/u/.gauntlet/runs/2026-08-25/new.jsonl",
-					Dirs:          []string{"/w"},
-					Start:         now,
-					End:           now.Add(10 * time.Minute),
-					Reviews:       6,
-					OK:            5,
-					Failed:        1,
-					Ins:           40,
-					Del:           12,
-					LinesMeasured: true,
-				}); err != nil {
+			for i := 0; i < b.N; i++ {
+				if err := appendIndexLocked(row); err != nil {
 					b.Fatal(err)
 				}
+				b.StopTimer()
+				if err := os.WriteFile(path, snapshot, 0o600); err != nil {
+					b.Fatal(err)
+				}
+				b.StartTimer()
 			}
 		})
 	}
