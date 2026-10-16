@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.41.1
+
 ### Fixed
 
 - Release builds take the Go toolchain's current rewrites. What the
