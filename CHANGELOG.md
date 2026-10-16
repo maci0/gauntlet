@@ -34,6 +34,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- Release builds take the Go toolchain's current rewrites. What the
+  commands print and which exits they use is unchanged from 1.41.0.
+  1.40.0 and 1.41.0 did not publish; this build is that tree, including
+  `gauntlet schema`, `gauntlet review`, `--output`, runs pagination, and
+  the confirmation and resume exit kinds.
+
 ## 1.41.0
 
 ### Fixed

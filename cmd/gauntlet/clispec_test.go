@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -172,7 +173,7 @@ func TestOutputSelectionAndEnvelopes(t *testing.T) {
 	}
 	noEnvelope(t, errOut)
 
-	code, out, errOut = runBoth(t, []string{"version"})
+	code, out, _ = runBoth(t, []string{"version"})
 	if code != exitOK || out != "gauntlet "+version+"\n" {
 		t.Fatalf("version auto: exit %d stdout %q", code, out)
 	}
@@ -360,7 +361,7 @@ func TestRunsJSONPagesAndSelectsFields(t *testing.T) {
 		t.Fatalf("empty page = %+v", page)
 	}
 
-	code, out, errOut = runBoth(t, []string{"runs", "--offset", "5"})
+	code, out, _ = runBoth(t, []string{"runs", "--offset", "5"})
 	if code != exitOK || !strings.Contains(out, "No runs in this page.") {
 		t.Fatalf("text page: exit %d\n%s", code, out)
 	}
@@ -891,12 +892,7 @@ func stringList(v any) []string {
 }
 
 func stringListHas(v any, want string) bool {
-	for _, s := range stringList(v) {
-		if s == want {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(stringList(v), want)
 }
 
 func asMap(t *testing.T, v any, what string) map[string]any {

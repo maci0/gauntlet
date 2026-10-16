@@ -186,10 +186,7 @@ func pageRuns(limit, offset int, st journal.Status) (entries []journal.Summary, 
 	}
 	n := limit
 	if offset > 0 {
-		n = offset + limit
-		if n > total {
-			n = total
-		}
+		n = min(offset+limit, total)
 	}
 	entries, err = journal.Recent(n)
 	if offset > 0 {

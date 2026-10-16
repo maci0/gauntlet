@@ -146,8 +146,7 @@ func reportUsage(o *options, err error) error {
 	fmt.Fprintln(os.Stderr, err)
 	printUsage(os.Stderr, report.Palette{On: report.ColorEnabled(os.Stderr) && !o.noColor}, o.width)
 	pe := parseError{err: err, kind: "usage"}
-	var flagged flaggedError
-	if errors.As(err, &flagged) {
+	if flagged, ok := errors.AsType[flaggedError](err); ok {
 		if flagged.kind != "" {
 			pe.kind = flagged.kind
 		}

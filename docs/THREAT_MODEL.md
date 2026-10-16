@@ -1157,7 +1157,7 @@ boundary and deliberately not ranked among these rows.
   gets executed: `state/checkpoints/<run-id>.json` holds the run's raw argv and
   working directory, because `gauntlet resume` changes to that directory and
   execs that command line (`writeCheckpoints`, `cmd/gauntlet/main.go:860-906`;
-  `cmdResume`, `cmd/gauntlet/checkpoint.go:178-232`). It gets the handoff's
+  `cmdResumeAt`, `cmd/gauntlet/checkpoint.go:174-224`). It gets the handoff's
   controls: a run-id-validated name, the working-directory fallback refused
   (`checkpointDir`, `checkpoint.go:54-60`), a 0700 directory and an atomic,
   synced write (`saveCheckpoint`, `checkpoint.go:75-95`), and a read that

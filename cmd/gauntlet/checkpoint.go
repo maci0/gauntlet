@@ -171,15 +171,10 @@ func busyDir(cp checkpoint) (string, error) {
 // successor in-process instead of replacing the test binary.
 var reexec = selfupdate.Reexec
 
-// cmdResume lists the runs a crash cut off, or continues one. Continuing is a
+// cmdResumeAt lists the runs a crash cut off, or continues one. Continuing is a
 // hot reload into this binary from the last checkpoint: the same run id,
 // schedule, seed, and carried results, in the directory the run started in,
-// with the command line it was started with.
-func cmdResume(out io.Writer, pal report.Palette, runID string) int {
-	return cmdResumeAt(out, pal, runID, false)
-}
-
-// cmdResumeAt lists interrupted runs, or continues one. With JSON and no id
+// with the command line it was started with. With JSON and no id
 // the list is one document. With JSON and an id, one object is written
 // before the process is replaced; a failed reexec leaves that object on
 // stdout and the error on stderr.

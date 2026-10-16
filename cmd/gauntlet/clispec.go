@@ -249,7 +249,7 @@ type schemaArg struct {
 	Short       string      `json:"short,omitempty"`
 	Type        string      `json:"type"`
 	Enum        []string    `json:"enum,omitempty"`
-	Default     schemaValue `json:"default,omitempty"`
+	Default     schemaValue `json:"default"`
 	Description string      `json:"description,omitempty"`
 	Required    bool        `json:"required,omitempty"`
 }

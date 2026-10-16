@@ -144,8 +144,7 @@ func run(argv []string) (code int) {
 		if jsonRequested(argv) {
 			exitState.json = true
 		}
-		var pe parseError
-		if errors.As(err, &pe) {
+		if pe, ok := errors.AsType[parseError](err); ok {
 			kind := pe.kind
 			if kind == "" {
 				kind = "usage"

@@ -222,6 +222,11 @@ func TestShowStillExitsZeroForHelpAndVersion(t *testing.T) {
 
 // captureParseStderr swaps os.Stderr for a pipe, runs parseFlags, and returns
 // what was written plus whether the error came back marked as reported.
+//
+// The read side drains while parseFlags runs, for the same reason as
+// captureFD: a pipe's buffer shrinks to one page once the per-user page limit
+// is reached, and the usage screen is already larger than that. Reading only
+// after parseFlags returns then blocks inside printUsage until the timeout.
 func captureParseStderr(t *testing.T, argv []string) (string, bool) {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -229,17 +234,25 @@ func captureParseStderr(t *testing.T, argv []string) (string, bool) {
 		t.Fatal(err)
 	}
 	defer r.Close()
+	var buf strings.Builder
+	done := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(&buf, r)
+		done <- err
+	}()
 	orig := os.Stderr
 	os.Stderr = w
+	defer func() { os.Stderr = orig }()
 	_, perr := parseFlags(argv)
-	w.Close()
 	os.Stderr = orig
-	out, err := io.ReadAll(r)
-	if err != nil {
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 	_, ok := errors.AsType[parseError](perr)
-	return string(out), ok
+	return buf.String(), ok
 }
 
 // Every rejection from parsing reports itself the same way the flag package
