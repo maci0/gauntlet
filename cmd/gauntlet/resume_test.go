@@ -358,4 +358,13 @@ func TestResumeRefusesARunWhoseDirectoryIsLocked(t *testing.T) {
 	if code != exitLocked || !strings.Contains(stderr, "a gauntlet is running in") {
 		t.Fatalf("exit %d, want %d:\n%s", code, exitLocked, stderr)
 	}
+	code, _, errOut := runBoth(t, []string{"resume", "--json", "20261001T015123Z-1a2b"})
+	if code != exitLocked {
+		t.Fatalf("json resume exit %d, want %d\n%s", code, exitLocked, errOut)
+	}
+	env := errorEnvelope(t, errOut)
+	msg, _ := env["message"].(string)
+	if env["kind"] != "locked" || !strings.Contains(msg, "a gauntlet is running in") {
+		t.Fatalf("envelope %#v\n%s", env, errOut)
+	}
 }

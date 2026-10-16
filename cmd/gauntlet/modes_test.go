@@ -65,7 +65,7 @@ func TestConfirmStackIsolationExplainsExcludedCheckout(t *testing.T) {
 	if ok, err := confirmStackIsolationWith(&out, reader("n\n"), true, &options{}, dirty); err != nil || ok {
 		t.Fatalf("interactive no = %v, %v", ok, err)
 	}
-	if ok, err := confirmStackIsolationWith(io.Discard, reader(""), false, &options{}, dirty); err == nil || ok || !strings.Contains(err.Error(), "--yes") {
+	if ok, err := confirmStackIsolationWith(io.Discard, reader(""), false, &options{}, dirty); !errors.Is(err, errStackConfirm) || ok {
 		t.Fatalf("unattended confirmation = %v, %v", ok, err)
 	}
 	if ok, err := confirmStackIsolationWith(io.Discard, reader(""), false, &options{yes: true}, dirty); err != nil || !ok {

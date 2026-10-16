@@ -43,8 +43,19 @@ func TestResumeRefusesWhenTheLockCannotBeRead(t *testing.T) {
 	t.Cleanup(func() { reexec = selfupdate.Reexec })
 
 	code, stderr := captureFD(t, &os.Stderr, func() int { return run([]string{"resume", "20261001T015123Z-1a2b"}) })
-	if code != exitLocked || !strings.Contains(stderr, "cannot tell whether") {
-		t.Fatalf("exit %d, want %d and a reason:\n%s", code, exitLocked, stderr)
+	if code != exitFail || !strings.Contains(stderr, "cannot tell whether") {
+		t.Fatalf("exit %d, want %d and a reason:\n%s", code, exitFail, stderr)
+	}
+	// Exit 1, not 75: a script that retries a held lock must not retry a
+	// lock it could not read. The envelope repeats that sentence.
+	code, _, errOut := runBoth(t, []string{"resume", "--json", "20261001T015123Z-1a2b"})
+	if code != exitFail {
+		t.Fatalf("json resume exit %d, want %d\n%s", code, exitFail, errOut)
+	}
+	env := errorEnvelope(t, errOut)
+	msg, _ := env["message"].(string)
+	if env["kind"] != "failed" || !strings.Contains(msg, "cannot tell whether") {
+		t.Fatalf("envelope %#v\n%s", env, errOut)
 	}
 
 	// The listing reports the same state rather than calling the run ready,

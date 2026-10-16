@@ -193,6 +193,7 @@ func run(argv []string) (code int) {
 		f, err := openLogFile(opts.logFile)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
+			noteExit("usage", err.Error(), "")
 			return exitUsage
 		}
 		defer func() {
@@ -405,7 +406,7 @@ func run(argv []string) (code int) {
 			}
 			if err != nil {
 				fmt.Fprintln(os.Stderr, err)
-				if strings.Contains(err.Error(), "--yes") {
+				if errors.Is(err, errStackConfirm) {
 					noteExit("confirmation_required", err.Error(), "Pass --yes or --yolo.")
 				} else {
 					noteExit("usage", err.Error(), "")
@@ -688,9 +689,15 @@ func run(argv []string) (code int) {
 			Generation: prior.Reloads, OnProgress: onProgress,
 		}
 		r, err := runner.New(ctx, cfg, bus)
-		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs &&
-			commitFirst(ctx, d.dir, agents, opts, stdout, pal, bus.Clock()) {
-			r, err = runner.New(ctx, cfg, bus)
+		if errors.Is(err, runner.ErrDirtyTree) && !opts.stackedPRs {
+			committed, refused := commitFirst(ctx, d.dir, agents, opts, stdout, pal, bus.Clock())
+			if committed {
+				r, err = runner.New(ctx, cfg, bus)
+			} else if refused {
+				noteExit("confirmation_required", err.Error(), "Pass --yes or --yolo.")
+			} else {
+				noteExit("usage", err.Error(), "")
+			}
 		}
 		if err != nil {
 			code := exitUsage
@@ -1190,7 +1197,7 @@ func needPlanning(runs []*dirRun, prior handoff, resumed bool) []*dirRun {
 // take on a guess. --yes and --yolo are that consent, and a run with no
 // terminal keeps the plain error rather than committing unattended.
 func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
-	opts *options, out io.Writer, pal report.Palette, now func() time.Time) bool {
+	opts *options, out io.Writer, pal report.Palette, now func() time.Time) (committed, refused bool) {
 
 	// The run's own agent, never --suggest-agent: that one was asked which
 	// reviews apply, which says nothing about who should write commits, and a
@@ -1199,7 +1206,7 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	fmt.Fprintf(out, "\n%s has uncommitted changes, and --jobs %d needs a clean tree.\n",
 		dir, opts.jobs)
 	if !confirmCommit(out, opts, spec) {
-		return false
+		return false, true
 	}
 	fmt.Fprintf(out, "Running the commit step with %s...\n", spec.Label())
 	err := runner.CommitNow(ctx, runner.CommitOpts{
@@ -1211,10 +1218,10 @@ func commitFirst(ctx context.Context, dir string, agents []agent.Spec,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
-		return false
+		return false, false
 	}
 	fmt.Fprintln(out, "Committed. Continuing.")
-	return true
+	return true, false
 }
 
 // assumeFlag names the flag that already answered a prompt on the run's

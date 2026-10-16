@@ -34,6 +34,22 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- A JSON failure to open `--log` repeats that failure in the error envelope
+  instead of a generic usage sentence. `runs --json --offset` past the end
+  still rebuilds a missing index, so `history` matches a page that listed
+  rows. `--fields` and `--offset` with `--restore` are usage errors. A
+  boolean spelling such as `--json=1` arms the envelope when parsing fails,
+  and a `--json` that is another flag's value does not. An unattended
+  refusal to commit a dirty tree, or to review one from a stacked base, is
+  `confirmation_required`. A different failure whose path contains `--yes`
+  stays `usage`. `resume` of a directory whose lock cannot be read exits 1
+  with kind `failed`; a lock another process holds stays exit 75 with kind
+  `locked`, and the envelope repeats that sentence. The last `--json` and
+  the last `--output` decide the envelope when parsing fails. One dash is
+  the same flag (`-output=json`, `-json=1`), and `-ojson` is `--output json`.
+
 ## 1.40.0
 
 ### Added

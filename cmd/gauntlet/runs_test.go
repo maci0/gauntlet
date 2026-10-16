@@ -1103,6 +1103,37 @@ func TestRunsJSONCountsARestoredTreeWithoutItsIndex(t *testing.T) {
 	if h.Agents != 0 {
 		t.Errorf("history reports %d agent definitions on a tree with no agents.json, want 0:\n%s", h.Agents, got)
 	}
+
+	// A page past the end never lists a row, and it used to skip the rebuild
+	// with it, so this same tree reported a disagreement the first page had
+	// already repaired. Put the index back to missing and ask for that page.
+	if err := os.Remove(filepath.Join(home, "index.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	code, got = captureFD(t, &os.Stdout, func() int {
+		return run([]string{"runs", "--json", "--offset", "5"})
+	})
+	if code != exitOK {
+		t.Fatalf("offset past the end exited %d on a restored tree", code)
+	}
+	var empty struct {
+		Runs    []journal.Summary `json:"runs"`
+		Total   int               `json:"total"`
+		History struct {
+			Journals  int `json:"journals"`
+			Rows      int `json:"rows"`
+			Disagreed int `json:"disagreed"`
+		} `json:"history"`
+	}
+	if err := json.Unmarshal([]byte(got), &empty); err != nil {
+		t.Fatalf("empty page is not one JSON document: %v\n%s", err, got)
+	}
+	if len(empty.Runs) != 0 || empty.Total != 1 {
+		t.Fatalf("empty page = %d runs, total %d, want 0 and 1:\n%s", len(empty.Runs), empty.Total, got)
+	}
+	if empty.History.Journals != 1 || empty.History.Rows != 1 || empty.History.Disagreed != 0 {
+		t.Errorf("empty page history = %+v, want one journal, one row, no disagreement", empty.History)
+	}
 	shard := filepath.Join(home, "runs", "2026-01-02")
 	entry, err := os.ReadDir(shard)
 	if err != nil {

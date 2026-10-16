@@ -80,6 +80,11 @@ func cleanupSnapshots(runs []*dirRun) {
 	}
 }
 
+// errStackConfirm is the unattended refusal to review a dirty checkout from
+// a fetched base. It is a sentinel so a path that happens to contain "--yes"
+// is not read as this refusal.
+var errStackConfirm = errors.New("stacked PRs need confirmation to exclude uncommitted changes; rerun with --yes")
+
 // confirmStackIsolationWith makes the omission boundary explicit. A stacked
 // run is safe beside a dirty checkout because it starts from a fetched remote
 // commit, but silently reviewing a different tree from the one on screen is
@@ -109,7 +114,7 @@ func confirmStackIsolationWith(out io.Writer, in *bufio.Reader, interactive bool
 		return true, nil
 	}
 	if !interactive {
-		return false, errors.New("stacked PRs need confirmation to exclude uncommitted changes; rerun with --yes")
+		return false, errStackConfirm
 	}
 	fmt.Fprint(out, "Continue? [y/N] ")
 	yes, ok := answeredYes(in, false)

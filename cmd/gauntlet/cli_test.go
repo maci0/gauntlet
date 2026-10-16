@@ -827,3 +827,133 @@ func TestFailedRunConstructionStillClosesTheJournal(t *testing.T) {
 		t.Errorf("a run that never started must not get an index row (stat err=%v)", err)
 	}
 }
+
+// runUnattended replaces stdin with a pipe. A confirmation then sees no
+// terminal, and the test cannot block on a prompt.
+func runUnattended(t *testing.T, argv []string) (code int, stdout, stderr string) {
+	t.Helper()
+	captureFD(t, &os.Stdin, func() int {
+		code, stdout, stderr = runBoth(t, argv)
+		return 0
+	})
+	return code, stdout, stderr
+}
+
+func stubClaude(t *testing.T) {
+	t.Helper()
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "claude"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func gitIn(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+	}
+}
+
+// A path that contains "--yes" used to be read as the stacked confirmation
+// refusal. The sentinel is the only confirmation, so this failure stays usage.
+func TestStackPathContainingYesStaysUsage(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	stubClaude(t)
+	dir := filepath.Join(t.TempDir(), "tree--yes")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	code, _, errOut := runBoth(t, []string{"--json", "--stacked-prs", "--agents", "claude", "--dirs", dir})
+	if code != exitUsage {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	env := errorEnvelope(t, errOut)
+	msg, _ := env["message"].(string)
+	if env["kind"] != "usage" || !strings.Contains(msg, "--yes") || !strings.Contains(msg, "at least one commit") {
+		t.Fatalf("envelope %#v\n%s", env, errOut)
+	}
+}
+
+// The unattended stacked refusal is confirmation_required, with the sentence
+// the sentinel carries, not whatever other error happened to mention --yes.
+func TestUnattendedStackRefusalIsConfirmationRequired(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	stubClaude(t)
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	gitIn(t, dir, "config", "user.email", "test@example.invalid")
+	gitIn(t, dir, "config", "user.name", "test")
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "init")
+	gitIn(t, dir, "remote", "add", "origin", "https://example.invalid/repo.git")
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("dirty\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, errOut := runUnattended(t, []string{"--json", "--stacked-prs", "--agents", "claude", "--dirs", dir})
+	if code != exitUsage {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, errOut)
+	}
+	env := errorEnvelope(t, errOut)
+	msg, _ := env["message"].(string)
+	if env["kind"] != "confirmation_required" || msg != errStackConfirm.Error() || env["hint"] != "Pass --yes or --yolo." {
+		t.Fatalf("envelope %#v\n%s", env, errOut)
+	}
+	if !strings.Contains(stdout, "UNCOMMITTED FILES") || !strings.Contains(errOut, errStackConfirm.Error()) {
+		t.Fatalf("the refusal prose is missing\nstdout:\n%s\nstderr:\n%s", stdout, errOut)
+	}
+}
+
+// --jobs > 1 on a dirty tracked tree asks before it commits. With no terminal
+// and no --yes, the envelope is confirmation_required and the tree stays dirty.
+func TestUnattendedDirtyTreeRefusalIsConfirmationRequired(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is required")
+	}
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	stubClaude(t)
+	dir := t.TempDir()
+	gitIn(t, dir, "init", "-q", "-b", "main")
+	gitIn(t, dir, "config", "user.email", "test@example.invalid")
+	gitIn(t, dir, "config", "user.name", "test")
+	tracked := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(tracked, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "add", "-A")
+	gitIn(t, dir, "commit", "-qm", "init")
+	if err := os.WriteFile(tracked, []byte("package main\n\nfunc main() { println(1) }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	code, stdout, errOut := runUnattended(t, []string{
+		"--json", "--jobs", "2", "--agents", "claude", "--reviews", "cli-review", "--dirs", dir,
+	})
+	if code != exitUsage {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, errOut)
+	}
+	env := errorEnvelope(t, errOut)
+	msg, _ := env["message"].(string)
+	if env["kind"] != "confirmation_required" || !strings.Contains(msg, "needs a clean working tree") || env["hint"] != "Pass --yes or --yolo." {
+		t.Fatalf("envelope %#v\n%s", env, errOut)
+	}
+	if !strings.Contains(errOut, "needs a clean working tree") {
+		t.Fatalf("the prose refusal is missing:\n%s", errOut)
+	}
+	if !strings.Contains(stdout, "uncommitted changes") {
+		t.Fatalf("the commit offer did not run:\n%s", stdout)
+	}
+}

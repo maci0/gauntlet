@@ -171,14 +171,18 @@ const listedQuarantined = 5
 // limit, which is the listing this command has always printed. A later page
 // reads only the rows it needs, and never more than the tree holds. total is
 // the journal count when the tree has journals, and the index row count
-// otherwise. An offset past that end is an empty page.
+// otherwise. An offset past that end is an empty page. Recent still runs,
+// and its row is discarded, so a missing index is rebuilt before the history
+// read the same way a page that returns rows rebuilds it. total stays the
+// count from before that rebuild.
 func pageRuns(limit, offset int, st journal.Status) (entries []journal.Summary, total int, err error) {
 	total = st.Journals
 	if total == 0 {
 		total = st.Rows
 	}
 	if offset > 0 && offset >= total {
-		return []journal.Summary{}, total, nil
+		_, err = journal.Recent(1)
+		return []journal.Summary{}, total, err
 	}
 	n := limit
 	if offset > 0 {

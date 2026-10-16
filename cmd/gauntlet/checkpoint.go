@@ -203,12 +203,18 @@ func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) i
 	}
 	switch dir, lerr := busyDir(cp); {
 	case lerr != nil:
-		fmt.Fprintf(os.Stderr, "run %s cannot resume: cannot tell whether %s is busy: %v\n",
+		msg := fmt.Sprintf("run %s cannot resume: cannot tell whether %s is busy: %v",
 			runID, normalize.Sanitize(normalize.RedactHome(dir)), lerr)
-		return exitLocked
+		fmt.Fprintln(os.Stderr, msg)
+		// The same Acquire failure is a failed command everywhere else. Exit
+		// 75 would tell a script that another instance holds the lock.
+		noteExit("failed", msg, "")
+		return exitFail
 	case dir != "":
-		fmt.Fprintf(os.Stderr, "run %s cannot resume: a gauntlet is running in %s\n", runID,
+		msg := fmt.Sprintf("run %s cannot resume: a gauntlet is running in %s", runID,
 			normalize.Sanitize(normalize.RedactHome(dir)))
+		fmt.Fprintln(os.Stderr, msg)
+		noteExit("locked", msg, "")
 		return exitLocked
 	}
 	if err := os.Chdir(cp.Cwd); err != nil {

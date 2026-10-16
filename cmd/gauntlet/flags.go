@@ -681,6 +681,17 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		if o.command == "runs" && raw.restore.n > 1 {
 			return nil, errors.New("--restore given more than once: want one run id")
 		}
+		// --restore replaces the listing, so a page or a field projection has
+		// nothing to apply to. Leaving them set would validate the names and
+		// then print the restore document as if the projection had happened.
+		if o.command == "runs" && isFlagSet(fs, "restore") {
+			if isFlagSet(fs, "fields") {
+				return nil, errors.New("--fields does not apply with --restore")
+			}
+			if isFlagSet(fs, "offset") {
+				return nil, errors.New("--offset does not apply with --restore")
+			}
+		}
 		if o.command == "runs" && isFlagSet(fs, "fields") {
 			if !o.wantsJSON() {
 				return nil, errors.New("--fields requires --json or --output json")

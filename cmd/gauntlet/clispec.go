@@ -59,23 +59,63 @@ func noteExit(kind, msg, hint string) {
 func (o *options) wantsJSON() bool { return o != nil && o.output == "json" }
 
 // jsonRequested reports whether argv asked for JSON even when parsing did
-// not finish. The envelope is owed whenever that request is visible.
+// not finish. The envelope is owed whenever that request is visible. One
+// dash and two are the same flag, the last --json and the last --output
+// win, and a token that belongs to another flag is that flag's value.
+// --output json still asks for JSON when a later --json=false only clears
+// the alias, which is how the parsed flags resolve.
 func jsonRequested(argv []string) bool {
+	fs, _ := buildFlagSet(&options{})
+	var jsonSet, jsonOn, outputSet bool
+	var output string
 	for i := 0; i < len(argv); i++ {
 		a := argv[i]
 		if a == "--" {
-			return false
+			break
 		}
-		switch a {
-		case "--json", "--json=true", "--output=json", "-ojson", "-o=json":
-			return true
-		case "--output", "-o":
-			if i+1 < len(argv) && argv[i+1] == "json" {
-				return true
+		if len(a) < 2 || a[0] != '-' {
+			continue
+		}
+		dashes := 1
+		if strings.HasPrefix(a, "--") {
+			dashes = 2
+		}
+		body := a[dashes:]
+		name, value, attached := strings.Cut(body, "=")
+		// -ojson is the short flag with its value glued on. The flag parser
+		// sees that form only after the attached value is split.
+		if !attached && dashes == 1 && len(name) > 1 {
+			if f := fs.Lookup(name[:1]); f != nil && !isBoolFlag(f) {
+				name, value, attached = name[:1], name[1:], true
 			}
 		}
+		switch name {
+		case "json":
+			jsonSet = true
+			if !attached {
+				jsonOn = true
+			} else if v, err := strconv.ParseBool(value); err == nil {
+				jsonOn = v
+			}
+		case "output", "o":
+			v := value
+			if !attached {
+				if i+1 >= len(argv) {
+					break
+				}
+				v = argv[i+1]
+			}
+			outputSet = true
+			output = v
+		}
+		if takesNextArg(fs, name, attached) && i+1 < len(argv) {
+			i++
+		}
 	}
-	return false
+	if outputSet && output == "json" {
+		return true
+	}
+	return jsonSet && jsonOn
 }
 
 func kindForCode(code int) string {

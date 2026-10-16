@@ -216,6 +216,108 @@ func TestOutputSelectionAndEnvelopes(t *testing.T) {
 		t.Fatalf("--json --output auto: exit %d\n%s", code, errOut)
 	}
 	errorEnvelope(t, errOut)
+
+	// The flag parser accepts every strconv.ParseBool spelling. A later parse
+	// failure still owes the envelope, because the request was visible.
+	code, _, errOut = runBoth(t, []string{"--json=1", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("--json=1 --not-a-flag exited %d\n%s", code, errOut)
+	}
+	if kind := errorEnvelope(t, errOut)["kind"]; kind != "usage" {
+		t.Fatalf("--json=1 kind %v\n%s", kind, errOut)
+	}
+
+	// --json=0 is a false value, and --json after --log is the log path.
+	code, _, errOut = runBoth(t, []string{"--json=0", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("--json=0 --not-a-flag exited %d\n%s", code, errOut)
+	}
+	noEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"--log", "--json", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("--log --json --not-a-flag exited %d\n%s", code, errOut)
+	}
+	noEnvelope(t, errOut)
+
+	// The last --json wins. A later false clears an earlier request, and a
+	// later --output json still asks when --json=false only clears the alias.
+	code, _, errOut = runBoth(t, []string{"--json", "--json=false", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("--json --json=false exited %d\n%s", code, errOut)
+	}
+	noEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"--output=json", "--json=false", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("--output=json --json=false exited %d\n%s", code, errOut)
+	}
+	if kind := errorEnvelope(t, errOut)["kind"]; kind != "usage" {
+		t.Fatalf("--output=json --json=false kind %v\n%s", kind, errOut)
+	}
+
+	// -json is -j with the value son. A single-letter flag that takes a
+	// value is split before the flag parser, so this is not the json flag.
+	// One dash with an equals sign is that flag: -json=1.
+	code, _, errOut = runBoth(t, []string{"-json", "--not-a-flag"})
+	if code != exitUsage || !strings.Contains(errOut, `invalid value "son"`) {
+		t.Fatalf("-json exited %d\n%s", code, errOut)
+	}
+	noEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"-json=1", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("-json=1 exited %d\n%s", code, errOut)
+	}
+	if kind := errorEnvelope(t, errOut)["kind"]; kind != "usage" {
+		t.Fatalf("-json=1 kind %v\n%s", kind, errOut)
+	}
+	code, _, errOut = runBoth(t, []string{"-output=json", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("-output=json exited %d\n%s", code, errOut)
+	}
+	errorEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"-ojson", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("-ojson exited %d\n%s", code, errOut)
+	}
+	errorEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"-json=false", "--not-a-flag"})
+	if code != exitUsage {
+		t.Fatalf("-json=false exited %d\n%s", code, errOut)
+	}
+	noEnvelope(t, errOut)
+}
+
+func TestRestoreRejectsAPageOrAProjection(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	code, _, errOut := runBoth(t, []string{"runs", "--json", "--fields", "run_id", "--restore", "20260102T150405Z-1"})
+	if code != exitUsage || !strings.Contains(errOut, "--fields does not apply with --restore") {
+		t.Fatalf("--fields --restore: exit %d\n%s", code, errOut)
+	}
+	errorEnvelope(t, errOut)
+	code, _, errOut = runBoth(t, []string{"runs", "--json", "--offset", "1", "--restore", "20260102T150405Z-1"})
+	if code != exitUsage || !strings.Contains(errOut, "--offset does not apply with --restore") {
+		t.Fatalf("--offset --restore: exit %d\n%s", code, errOut)
+	}
+	errorEnvelope(t, errOut)
+}
+
+func TestLogOpenFailureKeepsItsMessageInTheEnvelope(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write a directory mode 0555")
+	}
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	code, _, errOut := runBoth(t, []string{"version", "--output", "json", "--log", filepath.Join(dir, "run.log")})
+	if code != exitUsage {
+		t.Fatalf("exit %d\n%s", code, errOut)
+	}
+	msg, _ := errorEnvelope(t, errOut)["message"].(string)
+	if !strings.Contains(msg, "cannot write log file") || strings.Contains(msg, "usage error") {
+		t.Fatalf("envelope message %q\n%s", msg, errOut)
+	}
 }
 
 func TestRunsJSONPagesAndSelectsFields(t *testing.T) {
