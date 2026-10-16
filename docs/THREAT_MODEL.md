@@ -7,8 +7,16 @@ bypassed or auto-approved. This document is the systemic view; individual
 vulnerability findings belong to sec-review and are recorded here only as
 threats.
 
-Last reviewed: 2026-10-15 against commit 7ea1c59.
-This pass covers structured command output. `schema` prints a local
+Last reviewed: 2026-10-16 against commit 81f7ad4.
+This pass covers corrections to structured failures. A JSON error repeats
+the failure that caused it. A stacked confirmation is its sentinel, so a
+path that contains `--yes` is not that refusal. An unattended refusal to
+commit a dirty tree is `confirmation_required`. A resume whose lock cannot
+be read exits 1 with kind failed; a lock another process holds stays exit
+75 with kind locked. A runs page past the end still rebuilds a missing
+index. No new exit code was added.
+
+This pass also covers structured command output. `schema` prints a local
 description of the command and takes no network, no config, and no state
 root. `--output` is global; `auto` stays text, including when piped, and an
 explicit value wins. A JSON failure appends one error object as the last

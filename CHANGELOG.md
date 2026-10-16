@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.41.0
+
 ### Fixed
 
 - A JSON failure to open `--log` repeats that failure in the error envelope
