@@ -114,7 +114,7 @@ var helpGroups = []flagGroup{
 		{"q", "quiet", "", "discard agent output"},
 		{"", "raw", "", "echo agent output verbatim instead of normalizing it"},
 		{"", "stream", "", "machine-readable agent output where supported: live token counts and reasoning (default true; --stream=false to disable)"},
-		{"", "opencode-db", "", "read opencode's session database for its token counts; the driver ships in a default build, this flag opens the store"},
+		{"", "opencode-db", "", "read OpenCode 1's session database for token counts; OpenCode 2 ACP reports root-session usage after each prompt"},
 		{"", "log", "FILE", "also write all output to FILE"},
 		{"", "no-color", "", "disable color"},
 	}},
@@ -188,6 +188,11 @@ type helpEnvVar struct {
 // report.go's consts, so this table cannot drift from colorEnabled.
 var helpEnvVars = []helpEnvVar{
 	{"TMPDIR", "absolute temporary directory added to sandbox writable roots alongside /tmp; relative values and a directory that does not exist grant nothing (make test ignores exported TMPDIR)", false},
+	{"XDG_DATA_HOME", "absolute XDG data root; its opencode subdirectory is writable by OpenCode in the sandbox", false},
+	{"XDG_STATE_HOME", "absolute XDG state root; its opencode subdirectory is writable by OpenCode in the sandbox", false},
+	{"XDG_CACHE_HOME", "absolute XDG cache root; its opencode subdirectory is writable by OpenCode in the sandbox", false},
+	{"XDG_CONFIG_HOME", "OpenCode's config root; its opencode directory is prepared before sandboxing", false},
+	{"OPENCODE_CONFIG_DIR", "OpenCode config directory override; prepared before sandboxing", false},
 	{"GAUNTLET_HOME", "root of the state tree: journals, reload handoff, agents.json; ~ and $VAR expand, an empty value is the variable unset, and one naming something that is not a directory -- or a tilde left unexpanded -- is refused (default ~/.gauntlet)", false},
 	{"GAUNTLET_NO_ANIMATION", "stop the dashboard moving (reduced motion): the reasoning glyph holds one frame and the screen stops redrawing ten times a second; read first, so set to 0 or false it outranks the two below", false},
 	{"NO_MOTION", "same as GAUNTLET_NO_ANIMATION, unless that one is set to a false value", false},

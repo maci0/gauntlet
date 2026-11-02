@@ -140,6 +140,8 @@ func sandboxRoots(o procOpts) ([]string, error) {
 			"qwen": {".qwen"}, "grok": {".grok"}, "agy": {".gemini/antigravity-cli"},
 			"cursor-agent": {".cursor"}, "kimi": {".kimi-code"},
 			"microagent": {".microagent"}, "dsh": {".dsh"},
+			"copilot":  {".copilot"},
+			"omp":      {".omp/agent"},
 			"opencode": {".local/share/opencode", ".local/state/opencode", ".cache/opencode"},
 			"crush":    {".local/share/crush", ".local/state/crush", ".cache/crush"},
 		}
@@ -150,6 +152,36 @@ func sandboxRoots(o procOpts) ([]string, error) {
 			}
 			roots = append(roots, root)
 			optional = append(optional, false)
+		}
+	}
+	if o.Tool == "opencode" {
+		for _, key := range []string{"XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+			if base := os.Getenv(key); filepath.IsAbs(base) {
+				root := filepath.Join(base, "opencode")
+				if err := os.MkdirAll(root, 0700); err != nil {
+					return nil, fmt.Errorf("sandbox state directory: %w", err)
+				}
+				roots = append(roots, root)
+				optional = append(optional, false)
+			}
+		}
+		config := os.Getenv("OPENCODE_CONFIG_DIR")
+		if config == "" {
+			base := os.Getenv("XDG_CONFIG_HOME")
+			if base == "" && filepath.IsAbs(home) {
+				base = filepath.Join(home, ".config")
+			}
+			if base != "" {
+				config = filepath.Join(base, "opencode")
+			}
+		}
+		if config != "" {
+			if !filepath.IsAbs(config) {
+				config = filepath.Join(cwd, config)
+			}
+			if err := os.MkdirAll(config, 0700); err != nil {
+				return nil, fmt.Errorf("sandbox config directory: %w", err)
+			}
 		}
 	}
 	for _, raw := range o.SandboxWrite {

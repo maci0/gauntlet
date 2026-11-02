@@ -210,6 +210,7 @@ type Runner struct {
 	mu             sync.Mutex // guards sessionStarted, stackHead, stackPublished
 	seed           uint64     // effective seed: cfg.Seed, or clock-derived when zero
 	sessionStarted map[agent.Spec]bool
+	acpSessions    map[agent.Spec]string
 	// tools is where this machine's helper binaries resolved to, probed once
 	// at startup rather than per review; SplitTools treats an empty or
 	// absent entry as missing.
@@ -295,6 +296,7 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 		st:             NewStats(start, cfg.RunTokens),
 		repo:           repo,
 		sessionStarted: map[agent.Spec]bool{},
+		acpSessions:    map[agent.Spec]string{},
 		resume:         append([]string(nil), cfg.ResumeQueue...),
 		tools:          resolveTools(cfg.Reviews),
 	}

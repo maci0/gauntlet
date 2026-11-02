@@ -53,6 +53,9 @@ type Custom struct {
 	// Continue flags resume the agent's last session in this directory.
 	Continue []string `json:"continue,omitempty"`
 
+	// ACP is an optional stdio ACP server command for this agent.
+	ACP []string `json:"acp,omitempty"`
+
 	// OptIn keeps the agent out of auto-detection and "mixed": it runs only
 	// when named with --agents. Definitions whose invocation has not been
 	// verified against the real CLI should set this.
@@ -122,6 +125,9 @@ func (c Custom) validate(name string) error {
 		return err
 	}
 	if err := validateFixedArgs(name, "continue", c.Continue); err != nil {
+		return err
+	}
+	if err := validateFixedArgs(name, "acp", c.ACP); err != nil {
 		return err
 	}
 	if c.Usage != nil {
@@ -381,6 +387,17 @@ var builtinCustom = map[string]Custom{
 	},
 }
 
+// optionalCustom defaults remain overridable by an existing user definition.
+var optionalCustom = map[string]Custom{
+	"copilot": {
+		Argv:     []string{"copilot", "--allow-all", "-p", promptPlaceholder},
+		Model:    []string{"--model", modelPlaceholder},
+		Effort:   []string{"--reasoning-effort", effortPlaceholder},
+		Continue: []string{"--continue"},
+		OptIn:    true,
+	},
+}
+
 var (
 	customMu sync.RWMutex
 	custom   = func() map[string]Custom {
@@ -428,7 +445,8 @@ func CustomDef(name string) (Custom, bool) {
 	defer customMu.RUnlock()
 	key, ok := lookupCustom(fuzzy.NFC(name))
 	if !ok {
-		return Custom{}, false
+		def, exists := optionalCustom[foldName(name)]
+		return def, exists
 	}
 	return custom[key], true
 }
@@ -457,6 +475,11 @@ func CustomNames() []string {
 	out := make([]string, 0, len(custom))
 	for n := range custom {
 		out = append(out, n)
+	}
+	for n := range optionalCustom {
+		if _, exists := lookupCustom(n); !exists {
+			out = append(out, n)
+		}
 	}
 	fuzzy.Sort(out)
 	return out

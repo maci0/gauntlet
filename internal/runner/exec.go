@@ -28,6 +28,9 @@ import (
 // killGrace is how long a process group gets between SIGTERM and SIGKILL.
 const killGrace = 10 * time.Second
 
+// ACP servers should exit when their input closes, but some keep running.
+const acpExitGrace = time.Second
+
 // drainGrace is how long the output readers get to see EOF after the child
 // is gone before runProc returns and closes their descriptors out from under
 // them. A var only so tests can shrink it; production always sees the
@@ -92,6 +95,7 @@ func KillAgents() {
 
 // procResult is the outcome of one agent process.
 type procResult struct {
+	ACPSession string
 	// ExitCode is the agent's own status: 0 on success, its exit code on a
 	// normal failure, 128+signal when a signal ended it, and -1 only when no
 	// status is available (a launch failure, or a child left unreaped).
@@ -121,12 +125,25 @@ type procResult struct {
 
 // procOpts configures one agent launch.
 type procOpts struct {
-	Tool         string
-	NoSandbox    bool
-	SandboxWrite []string
-	Argv         []string
-	Dir          string
-	Timeout      time.Duration
+	Tool                    string
+	ACPPrompt               *string
+	ACPModel                string
+	ACPEffort               string
+	ACPResume               string
+	ACPMode                 string
+	ACPRequireResume        bool
+	ACPRejectKimiCode       bool
+	ACPPreflightErr         error
+	ACPEnv                  []string
+	ACPFallbackArgv         []string
+	ACPFallbackStream       bool
+	ACPFallbackAuth         bool
+	ACPFallbackInvalidModel bool
+	NoSandbox               bool
+	SandboxWrite            []string
+	Argv                    []string
+	Dir                     string
+	Timeout                 time.Duration
 	// Sink receives normalized output lines. nil discards output (still
 	// drained, so the agent never blocks on a full pipe).
 	Sink func(normalize.Line)
@@ -164,18 +181,38 @@ type procOpts struct {
 // anyone and the operator cannot stop the run. The kernel's own guard against
 // this (SIGTTOU stops a background process that touches termios) only
 // restrains polite programs: a runtime that ignores SIGTTOU, as Node-style
-// CLIs routinely do, sails straight through it. stdin stays /dev/null:
-// agents run headless and must never read input.
+// CLIs routinely do, sails straight through it. stdin is /dev/null except
+// for ACP, where it carries only the protocol messages from the runner.
 func runProc(ctx context.Context, o procOpts) procResult {
+	start := time.Now()
+	result := runProcOnce(ctx, o)
+	if (!errors.Is(result.StreamErr, errACPProtocolUnsupported) && !errors.Is(result.StreamErr, errACPAgentUnsupported) && !errors.Is(result.StreamErr, errACPConfigUnsupported) && !errors.Is(result.StreamErr, errACPResumeUnsupported) && !(o.ACPFallbackAuth && errors.Is(result.StreamErr, errACPAuthenticationRequired)) && !(o.ACPFallbackInvalidModel && errors.Is(result.StreamErr, errACPInvalidModel))) || len(o.ACPFallbackArgv) == 0 || result.TimedOut || result.Canceled || ctx.Err() != nil {
+		return result
+	}
+	if o.Timeout > 0 {
+		o.Timeout -= time.Since(start)
+		if o.Timeout <= 0 {
+			return result
+		}
+	}
+	o.Argv, o.Stream = o.ACPFallbackArgv, o.ACPFallbackStream
+	o.ACPPrompt, o.ACPEnv, o.ACPFallbackArgv = nil, nil, nil
+	return runProcOnce(ctx, o)
+}
+
+func runProcOnce(ctx context.Context, o procOpts) procResult {
 	if ctx.Err() != nil {
 		return procResult{ExitCode: -1, Canceled: true}
+	}
+	if o.ACPPreflightErr != nil {
+		return procResult{ExitCode: -1, Err: o.ACPPreflightErr}
 	}
 	if len(o.Argv) == 0 {
 		return procResult{ExitCode: -1, Err: errors.New("empty command")}
 	}
 	cmd := exec.Command(o.Argv[0], o.Argv[1:]...)
 	cmd.Dir = o.Dir
-	cmd.Env = runx.EnvIn(o.Dir)
+	cmd.Env = append(runx.EnvIn(o.Dir), o.ACPEnv...)
 	cmd.Stdin = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if !o.NoSandbox {
@@ -184,6 +221,17 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		if err != nil {
 			return procResult{ExitCode: -1, Err: err}
 		}
+	}
+	var acpIn *os.File
+	acpSessionID := ""
+	if o.ACPPrompt != nil {
+		read, write, err := os.Pipe()
+		if err != nil {
+			return procResult{ExitCode: -1, Err: err}
+		}
+		cmd.Stdin, acpIn = read, write
+		defer read.Close()
+		defer write.Close()
 	}
 
 	// Explicitly owned pipes, not cmd.StdoutPipe: Wait closes the pipes it
@@ -339,6 +387,27 @@ func runProc(ctx context.Context, o procOpts) procResult {
 		}
 		report(u)
 	}
+	// ACP reports this figure in the final prompt response. It counts toward
+	// the run budget, but the prompt has already completed and cannot be
+	// stopped as an in-flight over-budget review.
+	reportACPFinal := func(u agent.Usage) {
+		// OpenCode 2 reports visible output and reasoning separately.
+		if o.Tool == "opencode" && u.Thinking >= 0 {
+			u.Output = max(0, u.Output)
+			if u.Output > int(^uint(0)>>1)-u.Thinking {
+				u.Output = int(^uint(0) >> 1)
+			} else {
+				u.Output += u.Thinking
+			}
+		}
+		if !u.Known() {
+			return
+		}
+		usageMu.Lock()
+		reported = maxUsage(reported, u)
+		usageMu.Unlock()
+		report(u)
+	}
 
 	var sinkMu sync.Mutex
 	pump := func(name string, r io.Reader) {
@@ -428,7 +497,44 @@ func runProc(ctx context.Context, o procOpts) procResult {
 			emit(l)
 		}
 	}
-	wg.Go(func() { pump("stdout", outR) })
+	var acpDone <-chan error
+	if o.ACPPrompt != nil {
+		textR, textW := io.Pipe()
+		defer textR.Close()
+		finished := make(chan error, 1)
+		acpDone = finished
+		wg.Go(func() {
+			norm := normalize.New(normalize.Config{MaxLinesPerSec: o.MaxLinesPerSec, MaxWidth: streamLineCols, Now: o.Now})
+			progress := func(s string) {
+				if o.Raw || o.Sink == nil {
+					return
+				}
+				for _, line := range norm.Push(s) {
+					line.Kind = normalize.Tool
+					deliver(func() { sinkMu.Lock(); defer sinkMu.Unlock(); o.Sink(line) })
+				}
+			}
+			err := acpSession(outR, acpIn, o.Dir, *o.ACPPrompt, o.ACPModel, o.ACPEffort, o.ACPResume, o.ACPMode, true, o.ACPRequireResume, func(s string) { _, _ = io.WriteString(textW, s) }, progress, reportACPFinal, func(id string) { acpSessionID = id }, o.ACPRejectKimiCode)
+			for _, line := range norm.Flush() {
+				line.Kind = normalize.Tool
+				if o.Sink != nil && !o.Raw {
+					deliver(func() { sinkMu.Lock(); defer sinkMu.Unlock(); o.Sink(line) })
+				}
+			}
+			acpIn.Close()
+			textW.Close()
+			if err != nil {
+				recordStreamErr(fmt.Errorf("ACP session: %w", err))
+				if errors.Is(err, errACPProtocolUnsupported) || errors.Is(err, errACPAgentUnsupported) || errors.Is(err, errACPConfigUnsupported) || errors.Is(err, errACPInvalidModel) || errors.Is(err, errACPResumeUnsupported) || errors.Is(err, errACPAuthenticationRequired) {
+					runx.KillGroup(cmd, syscall.SIGKILL)
+				}
+			}
+			finished <- err
+		})
+		wg.Go(func() { pump("stdout", textR) })
+	} else {
+		wg.Go(func() { pump("stdout", outR) })
+	}
 	wg.Go(func() { pump("stderr", errR) })
 
 	waitErr := make(chan error, 1)
@@ -447,6 +553,34 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	select {
 	case err := <-waitErr:
 		res.ExitCode = exitCode(cmd, err)
+	case acpErr := <-acpDone:
+		grace := time.NewTimer(acpExitGrace)
+		defer grace.Stop()
+		select {
+		case err := <-waitErr:
+			res.ExitCode = exitCode(cmd, err)
+		case <-timeoutC:
+			res.ExitCode = terminate(cmd, waitErr)
+			if acpErr == nil && res.ExitCode != -1 {
+				res.ExitCode = 0
+			}
+		case <-ctx.Done():
+			res.Canceled = true
+			res.ExitCode = terminate(cmd, waitErr)
+		case <-grace.C:
+			runx.KillGroup(cmd, syscall.SIGKILL)
+			kill := time.NewTimer(killGrace)
+			defer kill.Stop()
+			select {
+			case err := <-waitErr:
+				res.ExitCode = exitCode(cmd, err)
+				if acpErr == nil {
+					res.ExitCode = 0
+				}
+			case <-kill.C:
+				res.ExitCode = -1
+			}
+		}
 	case <-timeoutC:
 		res.TimedOut = true
 		res.ExitCode = terminate(cmd, waitErr)
@@ -501,6 +635,7 @@ func runProc(ctx context.Context, o procOpts) procResult {
 	streamMu.Lock()
 	res.StreamErr = streamErr
 	streamMu.Unlock()
+	res.ACPSession = acpSessionID
 	return res
 }
 

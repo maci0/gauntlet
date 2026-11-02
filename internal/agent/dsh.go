@@ -209,6 +209,11 @@ func dshDefaultProvider(base []string, now func() time.Time) (string, error) {
 	return p.provider, p.err
 }
 
+// DshDefaultProvider returns the headless profile's provider using the shared probe.
+func DshDefaultProvider(binary string, now func() time.Time) (string, error) {
+	return dshDefaultProvider([]string{binary}, now)
+}
+
 // dshPatchKey names one overlay file. Every spelling two distinct
 // provider/model pairs could share is percent-encoded: "@" separates the two
 // halves, "/" and ":" are encoded so foo/bar cannot collide with foo_bar, and

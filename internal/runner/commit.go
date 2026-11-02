@@ -61,7 +61,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(o.Agent, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: o.Bin[o.Agent.Tool], Timeout: timeout, Dir: o.Dir, Now: o.Now})
+		agent.BuildOpts{Context: ctx, Binary: o.Bin[o.Agent.Tool], Timeout: timeout, Dir: o.Dir, Now: o.Now})
 	if err != nil {
 		return fmt.Errorf("cannot build the commit command for %s: %w", o.Agent.Label(), err)
 	}
@@ -88,11 +88,11 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 			o.Out(l.Text)
 		}
 	}
-	pr := runProc(ctx, procOpts{
+	pr := runProc(ctx, withACP(ctx, procOpts{
 		Tool: o.Agent.Tool, NoSandbox: o.NoSandbox, SandboxWrite: o.SandboxWrite,
 		Argv: argv, Dir: o.Dir, Timeout: timeout,
 		MaxLinesPerSec: outputRateLimit, Sink: sink,
-	})
+	}, o.Agent, prompt.CommitPrompt(), false, ""))
 	mu.Lock()
 	tailText := string(tail.Bytes())
 	mu.Unlock()
@@ -210,7 +210,7 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		timeout = commitTimeout
 	}
 	argv, err := agent.BuildCmd(spec, prompt.CommitPrompt(),
-		agent.BuildOpts{Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: r.cfg.Dir,
+		agent.BuildOpts{Context: ctx, Binary: r.cfg.Bin[spec.Tool], Timeout: timeout, Dir: r.cfg.Dir,
 			Now: r.bus.Clock()})
 	if err != nil {
 		r.log("Cannot build %s command for %s: %v", action, spec.Label(), err)
@@ -225,12 +225,12 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 
 	r.log("Running %s step with %s", action, spec.Label())
 	r.st.addCommitRun()
-	pr := runProc(ctx, procOpts{
+	pr := runProc(ctx, withACP(ctx, procOpts{
 		Tool: spec.Tool, NoSandbox: r.cfg.NoSandbox, SandboxWrite: r.cfg.SandboxWrite,
 		Argv: argv, Dir: r.cfg.Dir, Timeout: timeout,
 		Raw: r.cfg.Raw, MaxLinesPerSec: outputRateLimit, Now: r.now,
 		Sink: r.outputSink("commit", spec.Label()),
-	})
+	}, spec, prompt.CommitPrompt(), false, ""))
 
 	status := StatusOK
 	switch {

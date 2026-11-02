@@ -9,6 +9,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -241,9 +242,9 @@ func (r *Runner) mayRetry() bool {
 
 // shouldResume reports whether this launch may resume the spec's previous
 // session, and records that the spec has now started one.
-func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
+func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) (bool, bool) {
 	if !r.cfg.ContinueSessions || wt != nil {
-		return false
+		return false, false
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -255,7 +256,7 @@ func (r *Runner) shouldResume(spec agent.Spec, wt *gitx.Worktree) bool {
 	}
 	resume := r.sessionStarted[spec] && sameTool == 1
 	r.sessionStarted[spec] = true
-	return resume
+	return resume, sameTool == 1
 }
 
 // runReviewExcluding launches review, skipping the agents in exclude.
@@ -300,10 +301,11 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 	// directory, not a model id. Skip it when two models of one CLI are in the
 	// pool (their sessions would mix), and in worktree mode, where every
 	// review runs in a different directory anyway.
-	resume := r.shouldResume(spec, wt)
+	resume, mayResume := r.shouldResume(spec, wt)
 
 	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review), r.cfg.Paths)
 	argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
+		Context:  ctx,
 		Continue: resume,
 		Binary:   r.cfg.Bin[spec.Tool],
 		Stream:   r.cfg.Stream,
@@ -319,6 +321,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 		if retry, ok := r.retryWithDifferentAgent(ctx, review, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
+		interruptedOnCancel(ctx, &res)
 		r.publishReviewEnd(res, loopNo, promptSHA, lane, number)
 		return res
 	}
@@ -355,21 +358,28 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 	usage := r.watchUsage(reviewCtx, spec, dir, review, loopNo, start, cap.reading)
 	defer usage.halt()
 
-	pr := runProc(reviewCtx, procOpts{
+	acpResume := ""
+	if resume {
+		r.mu.Lock()
+		acpResume = r.acpSessions[spec]
+		r.mu.Unlock()
+	}
+	pr := runProc(reviewCtx, withACP(reviewCtx, procOpts{
 		Tool: spec.Tool, NoSandbox: r.cfg.NoSandbox, SandboxWrite: r.cfg.SandboxWrite,
-		Argv:           argv,
-		Dir:            dir,
-		Timeout:        r.cfg.Timeout,
-		Raw:            r.cfg.Raw,
-		MaxLinesPerSec: outputRateLimit,
-		Now:            r.now,
-		Sink:           r.outputSink(review, spec.Label()),
+		ACPRequireResume: mayResume,
+		Argv:             argv,
+		Dir:              dir,
+		Timeout:          r.cfg.Timeout,
+		Raw:              r.cfg.Raw,
+		MaxLinesPerSec:   outputRateLimit,
+		Now:              r.now,
+		Sink:             r.outputSink(review, spec.Label()),
 		// Cumulative for this review: the dashboard turns successive values
 		// into a rate, and a review that never reports usage sends nothing.
 		Usage:    func(u agent.Usage) { usage.report(u.Reported(), max(u.Thinking, 0)) },
 		Envelope: func(u agent.Usage) { cap.reading(u.Reported()) },
 		Stream:   r.cfg.Stream,
-	})
+	}, spec, text, resume, acpResume))
 	tokens, thinking := usage.settle()
 	res.Elapsed = max(r.now().Sub(start), 0)
 	res.ExitCode = pr.ExitCode
@@ -415,7 +425,11 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 		res.Status = StatusFail
 		res.Detail = pr.Err.Error()
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
+		note := pr.Note
+		if errors.Is(pr.Err, errArchivedKimi) {
+			note = pr.Err.Error()
+		}
+		if retry, ok := r.retry(ctx, review, note, errors.Is(pr.Err, errArchivedKimi), loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
@@ -431,7 +445,11 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 		res.Status = StatusFail
 		res.Detail = withNote("output stream ended early", pr.StreamErr.Error())
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
+		note := pr.Note
+		if errors.Is(pr.StreamErr, errACPPromptFailed) || errors.Is(pr.StreamErr, errACPAuthenticationRequired) {
+			note = lastNote([]byte(pr.StreamErr.Error()))
+		}
+		if retry, ok := r.retry(ctx, review, note, errors.Is(pr.StreamErr, errACPAuthenticationRequired), loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
@@ -441,12 +459,20 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 		res.Status = StatusFail
 		res.Detail = withNote(fmt.Sprintf("%s exited %d", spec.Label(), pr.ExitCode), pr.Note)
 		r.forgetSession(spec)
-		if retry, ok := r.retry(ctx, review, pr.Note, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
+		if retry, ok := r.retry(ctx, review, pr.Note, false, loopNo, laneIdx, wt, exclude, spec, firstAttempt, attempt); ok {
 			return retry
 		}
 		interruptedOnCancel(ctx, &res)
 	default:
 		res.Status = StatusOK
+		if pr.ACPSession != "" && r.cfg.ContinueSessions && wt == nil {
+			r.mu.Lock()
+			if r.acpSessions == nil {
+				r.acpSessions = make(map[agent.Spec]string)
+			}
+			r.acpSessions[spec] = pr.ACPSession
+			r.mu.Unlock()
+		}
 		r.logReview(loopNo, laneIdx, review, "Done: %s (%s) in %s%s", review, spec.Label(),
 			humanize.Duration(res.Elapsed), linesNote(res))
 	}
@@ -605,14 +631,14 @@ const maxBackoffDoublings = 32
 // account, and the same command spends its whole budget to hear it again. The
 // fallback to another agent still runs, because another CLI may hold another
 // account, and the operator's --usage-limit is the one that stops a run whose
-// agents share one window.
-func (r *Runner) retry(ctx context.Context, review, note string, loopNo, laneIdx int, wt *gitx.Worktree,
+// agents share one window. terminal marks a failure that retries cannot clear.
+func (r *Runner) retry(ctx context.Context, review, note string, terminal bool, loopNo, laneIdx int, wt *gitx.Worktree,
 	exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
 
 	if ctx.Err() != nil || r.budgetExhausted() != "" {
 		return Result{}, false
 	}
-	if attempt < r.cfg.Retries && terminalAgentFailure(note) {
+	if attempt < r.cfg.Retries && (terminal || terminalAgentFailure(note)) {
 		// Say it rather than skip silently: an operator reading the log has to
 		// be able to tell a decision from a bug.
 		r.logReview(loopNo, laneIdx, review, "Not retrying %s with %s: it stopped for a reason another attempt cannot clear (%s)",
@@ -658,7 +684,7 @@ func (r *Runner) retry(ctx context.Context, review, note string, loopNo, laneIdx
 // (a prompt over one CLI's argument limit is under another's).
 func (r *Runner) retryWithDifferentAgent(ctx context.Context, review string, loopNo, laneIdx int,
 	wt *gitx.Worktree, exclude map[agent.Spec]bool, failed agent.Spec, firstAttempt, attempt int) (Result, bool) {
-	return r.retry(ctx, review, "", loopNo, laneIdx, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
+	return r.retry(ctx, review, "", false, loopNo, laneIdx, wt, exclude, failed, firstAttempt, max(attempt, r.cfg.Retries))
 }
 
 // resetForRetry rewinds the checkout to what the first attempt saw before the
@@ -693,6 +719,7 @@ func (r *Runner) resetForRetry(ctx context.Context, review string, loopNo, laneI
 func (r *Runner) forgetSession(spec agent.Spec) {
 	r.mu.Lock()
 	delete(r.sessionStarted, spec)
+	delete(r.acpSessions, spec)
 	r.mu.Unlock()
 }
 

@@ -5,6 +5,7 @@ package agent
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -630,13 +631,92 @@ func TestBuildCmdEffortFlags(t *testing.T) {
 		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
 	}
 
-	argv, err = BuildCmd(Spec{Tool: "opencode", Effort: "minimal"}, "P", BuildOpts{})
+	bin := filepath.Join(t.TempDir(), "opencode")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho --variant\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	argv, err = BuildCmd(Spec{Tool: "opencode", Effort: "minimal"}, "P", BuildOpts{Binary: bin})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = "opencode run --auto --variant minimal P"
+	want = bin + " run --auto --variant minimal P"
 	if strings.Join(argv, " ") != want {
 		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+}
+
+func TestOpenCodeV2Variant(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "opencode")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'provider/model#variant'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := BuildCmd(Spec{Tool: "opencode", Model: "provider/model", Effort: "high"}, "P", BuildOpts{Binary: bin})
+	if err != nil || strings.Join(argv, " ") != bin+" run --auto --standalone -m provider/model#high P" {
+		t.Fatalf("argv = %v, err = %v", argv, err)
+	}
+	argv, err = BuildCmd(Spec{Tool: "opencode"}, "P", BuildOpts{Binary: bin})
+	if err != nil || strings.Join(argv, " ") != bin+" run --auto --standalone P" {
+		t.Fatalf("default argv = %v, err = %v", argv, err)
+	}
+	if _, err := BuildCmd(Spec{Tool: "opencode", Effort: "high"}, "P", BuildOpts{Binary: bin}); err == nil {
+		t.Fatal("variant without a model should fail")
+	}
+	if _, err := BuildCmd(Spec{Tool: "opencode", Model: "provider/model#low", Effort: "high"}, "P", BuildOpts{Binary: bin}); err == nil {
+		t.Fatal("two variants should fail instead of producing an invalid model")
+	}
+	for _, model := range []string{"model", "/model", "provider/", "provider/model#", "provider/model#a#b", "provider#x/model"} {
+		if _, err := BuildCmd(Spec{Tool: "opencode", Model: model}, "P", BuildOpts{Binary: bin}); err == nil {
+			t.Errorf("invalid OpenCode 2 model %q accepted", model)
+		}
+	}
+	if _, err := BuildCmd(Spec{Tool: "opencode", Model: "provider/model", Effort: "a#b"}, "P", BuildOpts{Binary: bin}); err == nil {
+		t.Fatal("variant containing # should fail")
+	}
+	if _, err := BuildCmd(Spec{Tool: "opencode", Model: "provider/nested/model#high"}, "P", BuildOpts{Binary: bin}); err != nil {
+		t.Fatalf("valid nested model and variant rejected: %v", err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho --variant\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	argv, err = BuildCmd(Spec{Tool: "opencode", Effort: "high"}, "P", BuildOpts{Binary: bin})
+	if err != nil || strings.Join(argv, " ") != bin+" run --auto --variant high P" {
+		t.Fatalf("legacy argv = %v, err = %v", argv, err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildCmd(Spec{Tool: "opencode", Effort: "high"}, "P", BuildOpts{Binary: bin}); err == nil {
+		t.Fatal("failed help probe should be reported")
+	}
+}
+
+func TestOpenCodeProbeStopsOnCancellation(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "opencode")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nsleep 30\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := BuildCmd(Spec{Tool: "opencode"}, "P", BuildOpts{Context: ctx, Binary: bin})
+	if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > 2*time.Second {
+		t.Fatalf("probe error = %v, elapsed = %s", err, time.Since(start))
+	}
+}
+
+func TestOpenCodeProbeReadsStderr(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), "opencode")
+	for _, tc := range []struct {
+		help string
+		v2   bool
+	}{{"provider/model#variant", true}, {"--variant", false}} {
+		if err := os.WriteFile(bin, []byte("#!/bin/sh\necho '"+tc.help+"' >&2\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		got, err := openCodeV2(context.Background(), bin, t.TempDir())
+		if err != nil || got != tc.v2 {
+			t.Errorf("help %q: v2=%v, error=%v", tc.help, got, err)
+		}
 	}
 }
 
@@ -663,11 +743,15 @@ func TestBuildCmdPlacesPromptLast(t *testing.T) {
 
 func TestBuildCmdContinueFlagPosition(t *testing.T) {
 	// A subcommand agent takes session flags after the subcommand.
-	argv, err := BuildCmd(Spec{Tool: "opencode"}, "P", BuildOpts{Continue: true})
+	bin := filepath.Join(t.TempDir(), "opencode")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho --variant\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	argv, err := BuildCmd(Spec{Tool: "opencode"}, "P", BuildOpts{Continue: true, Binary: bin})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if argv[0] != "opencode" || argv[1] != "run" || argv[2] != "-c" {
+	if argv[0] != bin || argv[1] != "run" || argv[2] != "-c" {
 		t.Fatalf("want [opencode run -c ...], got %v", argv)
 	}
 
@@ -1475,6 +1559,8 @@ func TestCustomAgentRejectsBadDefinitions(t *testing.T) {
 		"blank argument in effort":   {Argv: []string{"x", "{prompt}"}, Effort: []string{"--e", " ", "{effort}"}},
 		"blank argument in stream":   {Argv: []string{"x", "{prompt}"}, Stream: []string{" "}},
 		"blank argument in continue": {Argv: []string{"x", "{prompt}"}, Continue: []string{""}},
+		"blank argument in acp":      {Argv: []string{"x", "{prompt}"}, ACP: []string{""}},
+		"placeholder in acp":         {Argv: []string{"x", "{prompt}"}, ACP: []string{"x", "{prompt}"}},
 		"no prompt":                  {Argv: []string{"x", "--flag"}},
 		"multiple prompts":           {Argv: []string{"x", "{prompt}", "{prompt}"}},
 		"model without placeholder":  {Argv: []string{"x", "{prompt}"}, Model: []string{"--m"}},
@@ -1726,7 +1812,7 @@ func TestCustomAgentFileRoundTrip(t *testing.T) {
 	t.Cleanup(resetCustom(t))
 	dir := t.TempDir()
 	path := filepath.Join(dir, "agents.json")
-	body := `{"piclone":{"argv":["piclone","-p","{prompt}"],"stream":["--jsonl"],"note":"test"}}`
+	body := `{"piclone":{"argv":["piclone","-p","{prompt}"],"acp":["piclone","acp"],"stream":["--jsonl"],"note":"test"}}`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -1739,6 +1825,9 @@ func TestCustomAgentFileRoundTrip(t *testing.T) {
 	}
 	if !slices.Contains(argv, "--jsonl") {
 		t.Fatal("stream flags from the file were lost")
+	}
+	if def, ok := CustomDef("piclone"); !ok || !slices.Equal(def.ACP, []string{"piclone", "acp"}) {
+		t.Fatalf("ACP command from the file was lost: %+v", def)
 	}
 	// A missing file is normal, not an error.
 	if err := LoadCustomFile(filepath.Join(dir, "absent.json")); err != nil {
@@ -3154,6 +3243,34 @@ func TestAllNamesAndUnregister(t *testing.T) {
 	}
 	if !slices.Contains(afterUnregister, "zzz-agent") {
 		t.Fatal("Unregister removed unrelated zzz-agent")
+	}
+}
+
+func TestOptionalCopilotDefinitionAllowsUserOverride(t *testing.T) {
+	t.Cleanup(resetCustom(t))
+	def, ok := CustomDef("copilot")
+	if !ok || !def.OptIn || !slices.Contains(CustomNames(), "copilot") {
+		t.Fatalf("optional definition = %+v, %v", def, ok)
+	}
+	argv, err := BuildCmd(Spec{Tool: "copilot", Model: "pinned", Effort: "high"}, "review", BuildOpts{Continue: true})
+	if err != nil || !slices.Contains(argv, "--allow-all") || !slices.Contains(argv, "--continue") || !slices.Contains(argv, "--reasoning-effort") || !slices.Contains(argv, "pinned") {
+		t.Fatalf("copilot argv = %q, %v", argv, err)
+	}
+	path := filepath.Join(t.TempDir(), "agents.json")
+	if err := os.WriteFile(path, []byte(`{"copilot":{"argv":["my-copilot","{prompt}"]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := LoadCustomFile(path); err != nil {
+		t.Fatalf("user definition rejected: %v", err)
+	}
+	def, _ = CustomDef("copilot")
+	if len(def.Argv) == 0 || def.Argv[0] != "my-copilot" {
+		t.Fatalf("user definition not selected: %+v", def)
+	}
+	Unregister("copilot")
+	def, ok = CustomDef("copilot")
+	if !ok || def.Argv[0] != "copilot" {
+		t.Fatalf("default not restored: %+v, %v", def, ok)
 	}
 }
 

@@ -98,6 +98,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 			return nil, spec, ctx.Err()
 		}
 		argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
+			Context: ctx,
 			Binary:  cfg.Bin[spec.Tool],
 			Timeout: cfg.Timeout,
 			Dir:     cfg.Dir,
@@ -111,7 +112,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		logf("Asking %s which reviews apply here (timeout %s)", spec.Label(),
 			humanize.Duration(cfg.Timeout))
 
-		out, res := captureProc(ctx, procOpts{Argv: argv, Dir: cfg.Dir, Timeout: cfg.Timeout, Tool: spec.Tool, NoSandbox: cfg.NoSandbox, SandboxWrite: cfg.SandboxWrite})
+		out, res := captureProc(ctx, withACP(ctx, procOpts{Argv: argv, Dir: cfg.Dir, Timeout: cfg.Timeout, Tool: spec.Tool, NoSandbox: cfg.NoSandbox, SandboxWrite: cfg.SandboxWrite}, spec, text, false, ""))
 		switch {
 		case res.Err != nil:
 			lastErr = fmt.Errorf("cannot launch %s to suggest reviews: %w", spec.Label(), res.Err)

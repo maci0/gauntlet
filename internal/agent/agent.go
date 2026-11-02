@@ -6,6 +6,7 @@
 package agent
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/fuzzy"
@@ -482,8 +484,9 @@ func sortedValid() []string {
 
 // BuildOpts tunes one command line.
 type BuildOpts struct {
-	Continue bool   // resume this agent's most recent session in this directory
-	Binary   string // --bin override: same argv, different executable
+	Continue bool            // resume this agent's most recent session in this directory
+	Binary   string          // --bin override: same argv, different executable
+	Context  context.Context // cancellation for executable capability probes; nil uses Background
 	// Stream asks for machine-readable output where the agent has it. Agents
 	// without one are unaffected, so a caller can set this unconditionally.
 	Stream bool
@@ -654,10 +657,37 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		cmd = []string{"clanker", "run", prompt}
 	case "opencode":
 		cmd = []string{"opencode", "run", "--auto"}
-		if spec.Model != "" {
-			cmd = append(cmd, "-m", spec.Model)
+		model := spec.Model
+		v2, err := openCodeV2(opts.Context, opts.Binary, opts.Dir)
+		if err != nil {
+			return nil, err
 		}
-		if spec.Effort != "" {
+		if v2 {
+			cmd = append(cmd, "--standalone")
+			if model != "" {
+				provider, rest, ok := strings.Cut(model, "/")
+				id, variant, hasVariant := strings.Cut(rest, "#")
+				if !ok || provider == "" || strings.Contains(provider, "#") || id == "" || (hasVariant && (variant == "" || strings.Contains(variant, "#"))) {
+					return nil, errors.New("opencode 2 model must use provider/model[#variant]")
+				}
+			}
+		}
+		if v2 && spec.Effort != "" {
+			if model == "" {
+				return nil, errors.New("opencode 2 requires an explicit model when selecting a variant")
+			}
+			if strings.Contains(model, "#") {
+				return nil, errors.New("opencode 2 variant must be specified either in the model or as effort, not both")
+			}
+			if strings.Contains(spec.Effort, "#") {
+				return nil, errors.New("opencode 2 variant cannot contain #")
+			}
+			model += "#" + spec.Effort
+		}
+		if model != "" {
+			cmd = append(cmd, "-m", model)
+		}
+		if spec.Effort != "" && !v2 {
 			// opencode calls it a model variant; it is the same knob.
 			cmd = append(cmd, effortFlags["opencode"], spec.Effort)
 		}
@@ -699,6 +729,35 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 		return nil, fmt.Errorf("unknown tool: %s", spec.Tool)
 	}
 	return cmd, nil
+}
+
+// openCodeV2 detects the run command's model selector without assuming a
+// version string, which may identify a development or custom build.
+func openCodeV2(parent context.Context, binary, dir string) (bool, error) {
+	if binary == "" {
+		binary = "opencode"
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, binary, "run", "--help")
+	cmd.Dir = dir
+	cmd.Env = runx.EnvIn(dir)
+	out, errOut := runx.Bound(cmd, 64<<10, runx.WaitGrace)
+	defer runx.KillGroup(cmd, syscall.SIGKILL)
+	if err := runx.Outcome(ctx, cmd.Run()); err != nil {
+		return false, fmt.Errorf("cannot determine opencode variant syntax: %w: %s", err, runx.FirstLine(errOut.String()))
+	}
+	help := out.String() + "\n" + errOut.String()
+	if strings.Contains(help, "provider/model#variant") {
+		return true, nil
+	}
+	if strings.Contains(help, "--variant") {
+		return false, nil
+	}
+	return false, errors.New("cannot determine opencode variant syntax from run --help")
 }
 
 // flagInsertAt is where output and session flags go: directly after the

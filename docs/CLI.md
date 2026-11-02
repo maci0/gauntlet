@@ -120,10 +120,57 @@ before changing code.
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` means every installed agent. The model id and effort level are passed to the CLI verbatim: gauntlet cannot know which pairs a third-party CLI serves, so an unserved value fails at launch, by that CLI's own error. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only agents whose effort flag was verified accept one — currently `claude` (`--effort`), `opencode` (`--variant`), and `microagent` (`--reasoning-effort`) — plus defined agents with an `effort` list (or an `{effort}` placeholder); the rest refuse at startup. Repeatable. |
+| `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` means every installed agent. The model id and effort level are passed to the agent verbatim: gauntlet cannot know which pairs a third-party agent serves, so an unserved value fails at launch. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only `claude`, `opencode`, `microagent`, and defined agents with an `effort` list (or an `{effort}` placeholder) accept an effort; the rest refuse at startup. OpenCode 2 requires a model when an effort is specified. Repeatable. |
 | `--bin TOOL=PATH` | none | Run an agent from a specific executable. Repeatable. |
 | `--agent-cmd NAME=ARGV` | none | Define an agent gauntlet does not ship, e.g. `pi='pi -p {prompt}'`. Repeatable; `~/.gauntlet/agents.json` makes it permanent. |
 | `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Conflicts with `--jobs > 1` and `--stacked-prs`: each review is a fresh worktree, so there is no session to resume. |
+
+Gauntlet uses ACP for OpenCode 2, Kimi, Gemini, Qwen, Grok Build, Cursor, Copilot,
+and dsh model selections when the installed CLI supports the
+required entry point. If dsh's ACP catalog rejects the selected model, a new
+session falls back to headless before sending the prompt. Cursor's pinned models
+are passed on its command line.
+Copilot's `auto` model or explicit effort,
+Kimi's legacy ACP with a pinned model and most servers identifying as `Kimi Code
+CLI` use the ordinary CLI. Kimi Code has reported failed provider turns as
+successful ACP responses. Gauntlet permits the verified Python 1.49.0 through
+1.51.0 servers when they advertise their matching capabilities; otherwise it
+switches before sending a new prompt. A continued ACP session fails instead of
+switching. The archived Python `kimi-cli` 1.52.0 launcher is rejected because
+it prints a deprecation notice without running prompts.
+Copilot must be
+selected explicitly; an existing custom `copilot` definition takes precedence.
+Installed
+`codex-acp` and `claude-agent-acp` adapters are used for Codex and Claude;
+Claude's low, medium, high, and max efforts use ACP, while other effort levels
+use the ordinary CLI. The adapters are never
+downloaded by gauntlet. For Kimi, Gemini, Qwen, Grok, Cursor, Copilot,
+Codex, and Claude, `--bin` overrides retain the ordinary CLI invocation. ACP sessions
+run within the same sandbox, timeout, and process-group cleanup as other
+launches. Permission requests are approved once; a model or mode set through
+ACP that the agent does not confirm fails the launch. Older adapters can set
+advertised modes and models using ACP's legacy methods. Gemini, Qwen, and Grok
+receive pinned models through their CLI flags; Grok also confirms its selection
+through ACP. OpenCode 2 uses a private server instead of the background
+service, keeping its work in the supervised process tree.
+If an ACP server does not support the protocol version, initialization, or
+configuration, a new session falls back to the ordinary command before the
+prompt is sent. Continued sessions do not
+switch protocols. When `--continue-sessions` is set, an ACP server must
+advertise session resume or load; otherwise the ordinary command is used from
+the first review.
+If session creation requires authentication and the agent advertises a cached
+login without naming a different default, gauntlet requests it once and retries;
+it does not send credentials or initiate an interactive login.
+Cursor loads an existing login when its ACP server starts. Run
+`cursor-agent login` beforehand if its session creation reports authentication
+is required; gauntlet does not invoke Cursor's browser login.
+For a new Copilot session, an authentication-required response also falls back
+to its ordinary command before prompting, for older versions whose ACP mode
+cannot use a configured provider.
+When an ACP agent reports usage only in its prompt response, the token budget
+receives that count at the end of the prompt; live enforcement still depends
+on any session store the agent writes while it runs.
 
 **Execution**
 
@@ -171,7 +218,7 @@ before changing code.
 | `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
 | `--stream` | On by default: agents that have a machine-readable mode are asked for it, giving live token counts and the reasoning/output split shown separately in the feed (`--stream=false` launches them as before). |
 | `--no-color` | Disable color everywhere, the plain log and the dashboard/launcher both. The `NO_COLOR` environment variable does the same. |
-| `--opencode-db` | Read opencode's SQLite session store for its token counts. The driver ships in a default build; a build without it refuses the flag at startup rather than measuring nothing. |
+| `--opencode-db` | Read OpenCode's SQLite session store for token counts. The currently linked Toktop release reads the OpenCode 1 schema and default database path; it does not read OpenCode 2 sessions or honor `OPENCODE_DB`. OpenCode 2 ACP can still report root-session usage after a prompt finishes. A build without SQLite refuses the flag. |
 | `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` stops the run after two presses, and `esc` cancels that armed quit; `s` is the graceful finish. `r` asks whether to run this same command again: on a finished run `y` starts it over with the same arguments, on a run that is still going `y` stops it first, and `n` or `esc` declines. It needs a terminal on stdin and stdout, like `pick`: the dashboard reads keys, and a redirected stdin would hand it end-of-file and quit the run on the first tick. |
 | `-V, --version` | Print the version. |
 | `-h, --help` | Print the help screen, the flags below, and exit 0. `gauntlet help` is the same thing, and a command after it selects the topic: `gauntlet help runs` prints the same screen, whose SUBCOMMAND FLAGS section marks the flags `runs` reads. A word naming no command is a usage error (exit 2) rather than a plain `gauntlet help`, so a misspelling cannot exit 0 over a page of flags. A flag after the topic is a flag and not a topic word, so `gauntlet help runs --limit 5` prints the screen. |
@@ -221,6 +268,11 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | Variable | Effect |
 |---|---|
 | `TMPDIR` | An absolute temporary directory is added to sandbox writable roots alongside the platform's own temporary directory (`TMPDIR` when set, `/tmp` otherwise). A value naming a directory that does not exist grants nothing and is not an error, the same as the platform's own temporary directory; a relative value grants nothing. `make test` sets its own scratch directory and ignores an exported value; override it on the make command line. |
+| `XDG_DATA_HOME` | When absolute, OpenCode's `opencode` subdirectory is writable in the sandbox. |
+| `XDG_STATE_HOME` | When absolute, OpenCode's `opencode` subdirectory is writable in the sandbox. |
+| `XDG_CACHE_HOME` | When absolute, OpenCode's `opencode` subdirectory is writable in the sandbox. |
+| `XDG_CONFIG_HOME` | OpenCode's `opencode` configuration directory is prepared before sandboxing. |
+| `OPENCODE_CONFIG_DIR` | Overrides OpenCode's configuration directory, which is prepared before sandboxing. |
 | `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, crash checkpoints, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `~` expands only as `~/...`, and a value that is left a tilde — a bare `~`, or another account's `~user` — is refused rather than taken as a path: for the state root, unlike a file name, there is no directory it could be meant to be, and reading it literally put the whole state tree in a directory called `~` beside the repository under review. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard stops moving. The animated reasoning glyph holds one frame instead of cycling, and the screen stops repainting itself ten times a second: the frame changes when a review reports or a key is pressed, and otherwise every thirty seconds, so the clock and the timeout meters stay honest. The token count beside the glyph keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored, but `GAUNTLET_NO_ANIMATION` is read first: set to one of the five values above it turns the motion back on even when a desktop session exports `REDUCED_MOTION=1`. Left empty it defers to the other two. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
@@ -264,6 +316,7 @@ alone.
 
 ```json
 {"myagent": {"argv": ["myagent", "-p", "{prompt}"],
+             "acp": ["myagent", "acp"],
              "stream": ["--mode", "json"],
              "continue": ["--resume"],
              "usage": {"roots": ["~/.myagent/sessions"]}}}
@@ -273,8 +326,54 @@ alone.
 that asks the CLI for machine-readable output (`--stream`), `continue` is the
 argument list that resumes the agent's last session in this directory under
 `--continue-sessions`, and `usage` says where it keeps session transcripts,
-which is what gives a defined agent live token counts. Each `usage.roots` entry
-is expanded the way every other path here is: a leading `~` and any `$VAR`
+which is what gives a defined agent live token counts.
+
+`acp` is an optional executable and argument list for the agent's ACP stdio
+server; arguments are literal and cannot contain placeholders. Gauntlet sends
+the prompt over ACP and selects pinned models and efforts using config options
+named `model` and `effort`. A `--bin` override uses `argv` instead,
+because it names that executable rather than the separate ACP server.
+If the ACP executable is unavailable, a new session uses `argv`; an existing
+ACP session instead fails rather than continuing a different session.
+
+Google's [Antigravity ACP server](https://antigravity.google/docs/ide/extensions)
+is separate from `agy` and has its own session configuration. It can be used
+explicitly after installation and authentication. For example, on Linux:
+
+```json
+{"antigravity-acp": {"argv": ["agy", "--dangerously-skip-permissions", "-p", "{prompt}"],
+                     "acp": ["agy_acp_server.par", "--uid="],
+                     "opt_in": true}}
+```
+
+The ACP server's configuration and session history can differ from those of
+the CLI. Grant its state directory with `--sandbox-write` if it is outside the
+worktree and needs writes. The Linux argument above follows the
+[ACP registry](https://github.com/agentclientprotocol/registry/blob/main/antigravity-acp/agent.json);
+the macOS server does not need it.
+
+Feynman's `pi-acp` bridge and OMP's native ACP mode are not selected
+automatically: upstream versions can report a failed prompt as a successful
+`end_turn`. An explicitly configured ACP command can use an adapter whose
+error handling the operator has verified.
+
+For example, an installed [Pi ACP adapter](https://github.com/openma-ai/pi-acp)
+can be selected explicitly without replacing the shipped `pi` definition:
+
+```json
+{"pi-with-acp": {"argv": ["pi", "-p", "{prompt}"],
+                 "acp": ["openma-pi-acp"],
+                 "continue": ["-c"],
+                 "opt_in": true,
+                 "usage": {"roots": ["~/.pi/agent/sessions"],
+                           "header_cwd": true}}}
+```
+
+Run it with `-a pi-with-acp --sandbox-write ~/.pi` after installing and
+configuring Pi and the adapter. The adapter uses its own Pi SDK, so gauntlet
+does not select it automatically when the `pi` CLI is requested.
+
+Each `usage.roots` entry is expanded the way every other path here is: a leading `~` and any `$VAR`
 resolve, and a `$VAR` that is unset or empty is a usage error rather than an
 empty segment. The reader does not expand variables itself, so a root naming
 one is resolved before it is handed over; `{dir}` is the reader's own
@@ -328,6 +427,12 @@ Seatbelt on macOS (`/usr/bin/sandbox-exec`), including their shell commands and
 MCP children. A sandbox failure stops the launch; `--no-sandbox` explicitly
 disables it. It does not restrict reads or network access.
 
+Prime Agent can delegate execution to a previously running daemon. That daemon
+is not a child of the sandboxed launcher, so its work and lifetime are outside
+Gauntlet's sandbox and process-group controls. Its ACP mode also uses a daemon;
+Gauntlet does not select it automatically. Use an independently isolated
+environment when running Prime Agent against untrusted code.
+
 `gauntlet doctor` reports whether this host can confine a run, and which
 mechanism answered: the Landlock ABI on Linux, the Seatbelt launcher on macOS.
 The check is a capability probe rather than a platform name, so a kernel built
@@ -340,10 +445,18 @@ platform's temporary directory (an absolute `TMPDIR`, `/tmp` otherwise; it is
 skipped when the host has none), and the selected agent's usual state directories:
 `~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`, `~/.grok`,
 `~/.gemini/antigravity-cli` (agy),
-`~/.cursor`, `~/.kimi-code`, `~/.microagent`, or `~/.dsh`. For opencode
+`~/.cursor`, `~/.kimi-code`, `~/.microagent`, `~/.dsh`, `~/.copilot`, or `~/.omp/agent`. For opencode
 and crush, their own subdirectories under `~/.local/share`, `~/.local/state`,
 and `~/.cache` are writable. These state directories are created if missing;
 the rest of the home directory stays read-only.
+For OpenCode, absolute `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME`
+also grant their `opencode` subdirectories. If `OPENCODE_DB` names a database
+outside those directories, grant its parent with `--sandbox-write` so the
+agent can create the database and SQLite journal files.
+Relative XDG paths resolve from the worktree; those inside it are already
+writable, and paths outside it need an explicit grant.
+OpenCode's configuration directory is created before sandboxing; it needs an
+explicit grant if the agent must write configuration outside the worktree.
 
 Custom agents, nonstandard state paths, and external build caches need explicit
 grants, for example `--sandbox-write ~/.cache/go-build`. Grants must already

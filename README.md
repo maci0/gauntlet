@@ -134,8 +134,9 @@ with `--end-of-options`, which older git rejects outright.
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
 `cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, `microagent`,
-plus the pi family (`pi`, `prime-agent`, `feynman`, `omp`), which ships as
-editable definitions rather than code. At least one must be on `PATH`.
+plus the pi family (`pi`, `prime-agent`, `feynman`, `omp`) and GitHub Copilot
+(`copilot`). Copilot and OMP must be selected explicitly. At least one agent
+must be on `PATH`.
 
 Any other agent can be added without a new binary: `--agent-cmd` for one run,
 `~/.gauntlet/agents.json` to keep it. `gauntlet doctor` lists every agent it
@@ -290,7 +291,9 @@ Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
 ## Trust model
 
 Agents run with filesystem writes sandboxed by default (Landlock on Linux,
-Seatbelt on macOS); their permission prompts are disabled. Containment also
+Seatbelt on macOS); their permission prompts are disabled. Prime Agent may
+send work to a pre-existing daemon outside that sandbox; see
+[the sandbox documentation](docs/CLI.md#filesystem-write-sandbox). Containment also
 uses these controls: prompts are read with
 `O_NOFOLLOW` and size-capped, agent binaries resolve on a `PATH` without
 cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath=/dev/null`,
@@ -314,7 +317,9 @@ databases instead (crush, opencode), those. The build ships all of it;
 TAGS=` drops the database driver too. `gauntlet doctor` says which build you
 have. One of those sources is off unless you ask for it: opencode's store
 holds every project on the machine, so it is read only with
-`--opencode-db`. Per-agent coverage, and the public reading API, are in
+`--opencode-db`. The currently linked reader supports OpenCode 1 databases;
+OpenCode 2 ACP reports root-session usage after each prompt. Per-agent coverage,
+and the public reading API, are in
 [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
 
 ## Documentation

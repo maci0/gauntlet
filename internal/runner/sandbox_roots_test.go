@@ -10,6 +10,74 @@ import (
 	"testing"
 )
 
+func TestSandboxRootsIncludeOMPState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	roots, err := sandboxRoots(procOpts{Dir: t.TempDir(), Tool: "omp"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Join(home, ".omp", "agent"))
+	if err != nil || !slices.Contains(roots, want) {
+		t.Fatalf("OMP state root %q, err %v, roots %q", want, err, roots)
+	}
+}
+
+func TestSandboxRootsIncludeCopilotState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	roots, err := sandboxRoots(procOpts{Dir: t.TempDir(), Tool: "copilot"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(filepath.Join(home, ".copilot"))
+	if err != nil || !slices.Contains(roots, want) {
+		t.Fatalf("Copilot state root %q, err %v, roots %q", want, err, roots)
+	}
+}
+
+func TestSandboxRootsIncludeOpenCodeXDGState(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	configBase := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	for _, key := range []string{"XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		t.Setenv(key, t.TempDir())
+	}
+	roots, err := sandboxRoots(procOpts{Dir: t.TempDir(), Tool: "opencode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := filepath.EvalSymlinks(filepath.Join(configBase, "opencode"))
+	if err != nil || slices.Contains(roots, config) {
+		t.Fatalf("config directory %q, err %v, roots %q", config, err, roots)
+	}
+	for _, key := range []string{"XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
+		base, err := filepath.EvalSymlinks(os.Getenv(key))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(roots, filepath.Join(base, "opencode")) || slices.Contains(roots, base) {
+			t.Errorf("%s: roots %q should grant only the opencode subdirectory", key, roots)
+		}
+	}
+}
+
+func TestSandboxPreparesOpenCodeConfigOverride(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENCODE_CONFIG_DIR", "custom-config")
+	dir := t.TempDir()
+	roots, err := sandboxRoots(procOpts{Dir: dir, Tool: "opencode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := filepath.EvalSymlinks(filepath.Join(dir, "custom-config"))
+	if err != nil || slices.Contains(roots, config) {
+		t.Fatalf("config directory %q, err %v, roots %q", config, err, roots)
+	}
+}
+
 func TestSandboxRootsGrantThePlatformTempDir(t *testing.T) {
 	base := t.TempDir()
 	// A temp directory of its own, so the test discriminates on both claimed

@@ -90,9 +90,14 @@ var goldenEnvVars = []string{
 	"GITHUB_TOKEN",
 	"NO_COLOR",
 	"NO_MOTION",
+	"OPENCODE_CONFIG_DIR",
 	"REDUCED_MOTION",
 	"TERM",
 	"TMPDIR",
+	"XDG_CACHE_HOME",
+	"XDG_CONFIG_HOME",
+	"XDG_DATA_HOME",
+	"XDG_STATE_HOME",
 }
 
 func TestFlagNamesMatchTheContract(t *testing.T) {

@@ -34,6 +34,125 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- dsh falls back to its headless command before the prompt when its ACP model
+  catalog rejects a route configured for headless use.
+- dsh ACP now supports a model without an explicit provider by reusing the
+  provider resolved for the headless profile.
+- Grok ACP confirms an explicitly requested model instead of silently accepting
+  the server's fallback model.
+- Grok ACP can use its advertised default API-key authentication method,
+  without sending the key in the ACP request.
+- ACP authentication errors include login guidance supplied as a string as
+  well as guidance supplied in an object.
+- The archived Python Kimi 1.52.0 launcher is rejected instead of reporting a
+  successful review when it only prints its deprecation notice.
+- ACP provider and authentication errors now inform retry decisions, so a
+  spent quota, invalid model, or required login does not trigger another attempt
+  with the same agent.
+- ACP prompt failures include sanitized provider details when the agent puts
+  them in JSON-RPC error data.
+- ACP capability probes recognize successful help output on stderr as well as
+  stdout, so compatible agents are not missed.
+- OpenCode's version probe also recognizes help printed on stderr.
+- OpenCode 2 child-agent text no longer becomes part of the parent review's
+  response; child tool progress remains visible.
+- ACP authentication errors include the agent's login instruction when it
+  supplies one, including Cursor's instruction to sign in first.
+- OpenCode 2 ACP reasoning-only usage counts toward output and token budgets
+  even when the response omits its visible-output counter.
+- ACP errors and stop reasons remove terminal controls and redact secrets
+  before appearing in the run log.
+- OpenCode 2 rejects malformed model references and variants specified in both
+  the model and effort fields before launching.
+- An ACP agent's conflicting values for a requested mode, model, or effort
+  stop the launch before the review prompt is sent.
+- A new session falls back to the ordinary agent command if ACP initialization
+  or its protocol version is unsupported, before sending the review prompt.
+- An existing ACP session fails safely if its agent's ACP mode becomes
+  unavailable instead of continuing an unrelated native session.
+- Custom agents use their normal command for a new session when their
+  configured ACP server is unavailable, while continued ACP sessions fail
+  rather than resume a different session.
+- OpenCode 2 ACP output totals and token budgets include reasoning tokens,
+  matching its SQLite usage and other agents' output counters.
+- OpenCode's configuration directory is prepared before sandboxing, including
+  `XDG_CONFIG_HOME` and `OPENCODE_CONFIG_DIR` overrides, so first launch can
+  create its global directories without an extra writable grant.
+- OpenCode's own subdirectories under absolute `XDG_DATA_HOME`,
+  `XDG_STATE_HOME`, and `XDG_CACHE_HOME` paths are writable in the sandbox.
+- Cancelling a run also stops an ACP capability probe instead of waiting for
+  its independent timeout.
+- Cancelling during OpenCode version detection stops the probe and records an
+  interrupted review.
+- OpenCode 2 builds without an advertised ACP subcommand use their ordinary
+  command instead of failing when ACP is unavailable.
+- ACP configuration detects changes to a selected model, mode, or effort in
+  later configuration responses and session updates.
+- OpenCode 2 model selectors containing `#variant` retain that variant in ACP
+  sessions by sending it as the effort setting.
+- ACP session continuation stops before prompting if the agent explicitly
+  returns a different session ID.
+- ACP permission requests are approved only after a session has been created
+  and only when they name that session.
+- Copilot versions that reject a configured provider in ACP can fall back to
+  the normal CLI if authentication fails before a new session starts.
+- With session continuation enabled, an ACP agent that cannot resume falls
+  back to its normal command before the first prompt.
+- OMP can write its usual agent state and sessions within the sandbox.
+- ACP servers that stay open after a prompt ends are stopped after a brief
+  shutdown grace instead of consuming the review timeout.
+- Agents whose ACP server lacks the configuration method fall back to their
+  normal command before the prompt is sent, keeping pinned settings intact.
+- OpenCode 2 model variants use its model selector; selecting a variant now
+  requires an explicit model with that version.
+- OpenCode 2 runs use a private server within the supervised process group,
+  rather than connecting to a background server outside the sandbox.
+
+### Changed
+
+- Documented explicit use of Google's separate Antigravity ACP server.
+- Clarified that the linked Toktop release reads OpenCode 1 databases; OpenCode
+  2 ACP reports root-session usage after the prompt instead.
+- Documented that Prime Agent can delegate work to a pre-existing daemon
+  outside the launcher's sandbox and process group.
+- GitHub Copilot CLI can be selected explicitly and uses ACP when supported;
+  an existing custom `copilot` definition still takes precedence.
+- ACP adapters that advertise a legacy session mode can use it when they do
+  not implement the newer configuration method.
+- ACP adapters can also select an explicitly advertised model through the
+  legacy model method when the newer configuration method is unavailable.
+- OpenCode 2 review sessions use ACP for model selection, prompt delivery,
+  streamed text, per-request permission approval, and session continuation.
+- Kimi review sessions use ACP when available, including for pinned models.
+  Most servers identifying as `Kimi Code CLI` fall back before prompting because
+  the newer implementation can report failed turns as successful. The verified
+  Python 1.49.0 through 1.51.0 servers remain eligible; legacy ACP flags support
+  unpinned models.
+- Gemini and Qwen review sessions use ACP when their installed CLI advertises
+  the flag, including when a model is pinned.
+- Cursor uses its ACP subcommand when available, including with a pinned model.
+- Grok Build uses its local ACP server when it advertises the required flags,
+  including for pinned models.
+- An ACP agent that requests authentication can use its advertised cached
+  login once before session creation is retried.
+- Installed dsh versions with an ACP profile use it for explicit provider/model
+  selections; the selected route must be confirmed before prompting.
+- Custom agent definitions can provide an `acp` stdio command for ACP sessions.
+- The agent-definition guide includes an opt-in Pi ACP adapter example.
+- For Kimi, Gemini, Qwen, Cursor, and Grok, `--bin` overrides retain their
+  existing command invocation so wrappers are not run as capability probes.
+- The same ACP selection applies to suggestion, commit, and conflict steps.
+- ACP tool calls appear as sanitized, rate-limited progress in the dashboard
+  without entering the agent's result text.
+- ACP prompt responses that include token usage contribute to the review's
+  accounting and run budget; context occupancy is not treated as spend, and a
+  final count does not cancel a prompt that has already completed.
+- Codex and Claude use their installed ACP adapters, including with a pinned
+  model; the adapter is given the selected agent binary and must confirm its
+  mode and model. Claude's low, medium, high, and max efforts use ACP too.
+
 ## 1.41.1
 
 ### Fixed
