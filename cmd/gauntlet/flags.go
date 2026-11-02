@@ -56,11 +56,12 @@ type options struct {
 	// replacing it: what an agent picks and what a person named are one
 	// schedule, and a review named on both sides is scheduled twice, which is
 	// how this tool has always spelled "weight this more".
-	suggest        bool
-	exclude        string
-	suggestAgent   *agent.Spec
-	suggestTimeout time.Duration
-	promptDir      string
+	suggest           bool
+	exclude           string
+	suggestAgent      *agent.Spec
+	suggestTimeout    time.Duration
+	promptDir         string
+	appendInstruction string
 	// paths scopes review prompts to these files/dirs/globs, relative to the
 	// reviewed directory. Prompt-enforced: the agent keeps the whole tree.
 	paths []string
@@ -377,6 +378,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		"agent to run the suggest step, or 'gauntlet' to pick from file signals instead")
 	fs.Var(durationFlag{d: &o.suggestTimeout}, "suggest-timeout",
 		fmt.Sprintf("timeout for the suggest step (default %dm)", int(defaultTimeout/time.Minute)))
+	fs.StringVar(&o.appendInstruction, "append", "", "append an instruction to every review prompt")
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
 	alias("a", "agents", func(n string) {

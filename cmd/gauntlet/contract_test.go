@@ -34,7 +34,7 @@ import (
 // goldenFlagNames is every flag name (long and short) consumers can pass.
 var goldenFlagNames = []string{
 	"1", "C", "V",
-	"a", "agent-cmd", "agents", "auto-update",
+	"a", "agent-cmd", "agents", "append", "auto-update",
 	"bin",
 	"c", "check", "commit", "continue-sessions",
 	"dir", "dirs", "dry-run",

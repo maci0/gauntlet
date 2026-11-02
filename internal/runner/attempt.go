@@ -303,7 +303,7 @@ func (r *Runner) runReviewExcluding(ctx context.Context, review string, loopNo, 
 	// review runs in a different directory anyway.
 	resume, mayResume := r.shouldResume(spec, wt)
 
-	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review), r.cfg.Paths)
+	text := prompt.Compose(body, r.cfg.Timeout, review, r.cfg.Yolo, r.toolsFor(review), r.cfg.Paths, r.cfg.AppendInstruction)
 	argv, err := agent.BuildCmd(spec, text, agent.BuildOpts{
 		Context:  ctx,
 		Continue: resume,

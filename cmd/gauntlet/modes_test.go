@@ -165,7 +165,10 @@ func TestShowPromptFailsWhenOutputCannotBeWritten(t *testing.T) {
 // is a usage error naming what exists.
 func TestShowPromptPrintsTheExactAgentText(t *testing.T) {
 	set := promptPair(t)
-	opts := &options{showPrompt: "sec", timeout: 30 * time.Minute}
+	opts, err := parseFlags([]string{"--show-prompt", "sec", "--append", "Focus on I/O."})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var out bytes.Buffer
 	if code := cmdShowPrompt(&out, set, opts); code != exitOK {
@@ -174,6 +177,7 @@ func TestShowPromptPrintsTheExactAgentText(t *testing.T) {
 	got := out.String()
 	for _, want := range []string{
 		"Your goal is to test sec-review.",
+		"Focus on I/O.",
 		"Git is read-only for you",
 		"30m00s",
 	} {

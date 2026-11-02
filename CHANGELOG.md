@@ -34,6 +34,17 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.43.0
+
+### Added
+
+- `--append TEXT` adds a custom instruction to every review prompt.
+
+### Fixed
+
+- Updated the pinned staticcheck version to avoid export-data decoding errors
+  seen with some Go 1.27 toolchains.
+
 ## 1.42.1
 
 ### Changed

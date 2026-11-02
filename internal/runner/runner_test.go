@@ -189,6 +189,22 @@ func TestRunEndReportsCompletedLoops(t *testing.T) {
 	}
 }
 
+func TestReviewReceivesAppendedInstruction(t *testing.T) {
+	repo := testRepo(t)
+	set, _ := promptSet(t, "sec-review")
+	bin := fakeAgent(t, t.TempDir(), "claude", `
+case "$*" in
+  *"Focus on I/O."*) echo "RESULT: no-changes" ;;
+  *) echo "missing instruction" >&2; exit 1 ;;
+esac`)
+	cfg := baseConfig(t, repo, set, []string{"sec-review"}, bin)
+	cfg.AppendInstruction = "Focus on I/O."
+	r, _ := runRecorded(t, cfg)
+	if got := r.Stats().Counts(); got.OK != 1 || got.Failures() != 0 {
+		t.Fatalf("counts: %+v", got)
+	}
+}
+
 func TestSequentialRunEditsTreeAndCountsLines(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "sec-review", "doc-review")

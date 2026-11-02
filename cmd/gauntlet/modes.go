@@ -65,7 +65,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	// drive or spoof the terminal, and keeps the line breaks that make the
 	// prompt readable as the document it is.
 	if _, err := fmt.Fprintln(out, normalize.Document(
-		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths))); err != nil {
+		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths, opts.appendInstruction))); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot write the prompt: %v\n", err)
 		return exitFail
 	}

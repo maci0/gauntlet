@@ -80,7 +80,7 @@ GOVULNCHECK_VERSION ?= v1.7.0
 # also the Go release it was built against; bump it together with the
 # toolchain pin above, never alone, since an analyzer that cannot read this
 # compiler's export data fails every package rather than reporting findings.
-STATICCHECK_VERSION ?= v0.8.1
+STATICCHECK_VERSION ?= v0.8.2
 
 # Release artifacts must not depend on the build host's locale or timezone:
 # the shell orders glob expansion with strcoll, so checksums.txt would list

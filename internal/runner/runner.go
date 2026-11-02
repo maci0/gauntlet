@@ -129,8 +129,9 @@ type Config struct {
 	// and edits to. The agent still works from the whole tree; the scope is
 	// prompt-enforced, not mechanical. Empty means unscoped, and only review
 	// prompts carry it: suggest, commit, and conflict prompts are unchanged.
-	Paths []string
-	Raw   bool
+	Paths             []string
+	AppendInstruction string
+	Raw               bool
 	// Stream asks agents that support it for machine-readable output, which
 	// carries token usage and separates reasoning from visible text.
 	Stream           bool

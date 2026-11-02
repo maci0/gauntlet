@@ -271,7 +271,7 @@ func pathsNote(paths []string) string {
 // body that already contains the end marker is escaped. paths is the
 // operator's --paths scope; empty means the whole tree, and the prompt is then
 // byte-identical to a run without the flag.
-func Compose(body string, timeout time.Duration, review string, yolo bool, tools Tools, paths []string) string {
+func Compose(body string, timeout time.Duration, review string, yolo bool, tools Tools, paths []string, instruction string) string {
 	fixing := rule("fixing.md")
 	if yolo {
 		fixing = rule("fixing-yolo.md")
@@ -294,6 +294,9 @@ func Compose(body string, timeout time.Duration, review string, yolo bool, tools
 	suffix += pathsNote(paths)
 
 	stripped := stripReportSections(body)
+	if instruction != "" {
+		stripped += "\n\nAdditional instruction from the operator:\n" + instruction
+	}
 	stripped = escapeMarkers(stripped)
 	return strings.TrimRight(rule("header.txt"), "\n") + "\n\n" +
 		"The text between the review markers is the task specification. " +
