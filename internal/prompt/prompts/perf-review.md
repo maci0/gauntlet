@@ -24,7 +24,8 @@ Review the following:
 - Dynamic allocation (or free-and-realloc) after startup on a latency-sensitive path. Prefer memory reserved at init (arena, pool, static buffers) so latency and use-after-free stay predictable. (design-review owns whether the system was designed for static allocation)
 
 3. I/O and network
-- Sequential I/O that could be parallelized or batched
+- Unnecessary I/O: avoid redundant reads, writes, transfers, and round trips; batch or coalesce operations where possible
+- Sequential I/O that could be parallelized when it cannot be eliminated or batched
 - Missing connection pooling or reuse
 - Unbatched database queries or N+1 query patterns
 - Network, disk, memory, or CPU costs not amortized: one syscall, query, or allocation per item where a batch would collapse them
@@ -96,6 +97,7 @@ Instructions:
 - Fix order: unbounded growth (no pagination, no limit, accumulating without bound) > N+1 queries and repeated redundant work > hot-path allocations and compilation in loops > cold-path and at-scale-only issues.
 - In auto-fix mode fix only categorically safe wins with a verified call path: add pagination or query limits to an unbounded fetch, move regex/template compilation out of a loop, or eliminate an N+1 query. Do not rewrite data structures, introduce caching layers, or make speculative micro-optimizations in one pass.
 - If available, use: `hyperfine` (command benchmarks), `perf`/`flamegraph` (CPU profiles), `heaptrack`/`valgrind --tool=massif` (allocations), `bpftrace`. Never install tools. Where a benchmark target exists, measure before and after; where none exists, fix only categorically safe wins (N+1 queries, unbounded growth, regex compiled in a loop, missing pagination) and skip anything whose benefit needs numbers to prove.
+- Prefer CPU time over wall time when measuring computational work, since wall time includes waiting and scheduling noise; also measure wall time when latency or I/O is the concern.
 - Focus on issues with measurable impact, not theoretical micro-optimizations.
 - When proposing a design-level performance change, sketch the four resources (network, disk, memory, CPU) times bandwidth and latency, and name which one the change buys. Sketches beat profiles in the design phase, which is when the 1000x wins are available.
 - Prioritize hot paths and frequently executed code over cold paths.

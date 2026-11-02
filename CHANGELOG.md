@@ -34,6 +34,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.42.1
+
+### Changed
+
+- `perf-review` favors CPU time for measuring computational work and looks for
+  unnecessary I/O to eliminate or batch.
+
 ## 1.42.0
 
 ### Fixed
