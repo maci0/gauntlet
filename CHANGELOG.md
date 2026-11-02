@@ -34,8 +34,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.42.0
+
 ### Fixed
 
+- Updated the bundled Toktop reader to v0.26.1 for OpenCode 2 database usage and OPENCODE_DB support.
 - dsh falls back to its headless command before the prompt when its ACP model
   catalog rejects a route configured for headless use.
 - dsh ACP now supports a model without an explicit provider by reusing the

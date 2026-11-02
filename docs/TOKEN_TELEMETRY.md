@@ -175,7 +175,7 @@ from its own `--help`, transcript layouts from its own session files.
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
 | microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, plus a session log under `~/.microagent/sessions` read through toktop (`elapsed_ms` gives the rate over the model's own time) |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
-| opencode | OpenCode 1 with `--opencode-db` | OpenCode 1 with `--opencode-db` | The linked reader supports the OpenCode 1 database at `~/.local/share/opencode/opencode.db` (absolute `XDG_DATA_HOME` honored); OpenCode 2's schema and `OPENCODE_DB` override are not supported by this release. OpenCode 2 ACP provides root-session usage after a prompt finishes. |
+| opencode | OpenCode 1 and 2 with `--opencode-db` | OpenCode 1 and 2 with `--opencode-db` | The linked reader supports both database schemas and honors `OPENCODE_DB` and `XDG_DATA_HOME`. OpenCode 2 ACP also provides root-session usage after a prompt finishes. |
 | agy | yes | counted in output | transcript (`~/.gemini/antigravity-cli/brain/<id>/.../transcript.jsonl`, workspace from `history.jsonl` or `cache/last_conversations.json`), and `--stream`; a step naming no tokens contributes nothing |
 
 Every agent, including the last row, still contributes the always-available
