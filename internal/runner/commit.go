@@ -91,7 +91,7 @@ func CommitNow(ctx context.Context, o CommitOpts) error {
 	pr := runProc(ctx, withACP(ctx, procOpts{
 		Tool: o.Agent.Tool, NoSandbox: o.NoSandbox, SandboxWrite: o.SandboxWrite,
 		Argv: argv, Dir: o.Dir, Timeout: timeout,
-		MaxLinesPerSec: outputRateLimit, Sink: sink,
+		MaxLinesPerSec: outputRateLimit, Sink: sink, Now: o.Now,
 	}, o.Agent, prompt.CommitPrompt(), false, ""))
 	mu.Lock()
 	tailText := string(tail.Bytes())

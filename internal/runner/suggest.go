@@ -112,7 +112,7 @@ func Suggest(ctx context.Context, cfg SuggestConfig) ([]prompt.Suggestion, agent
 		logf("Asking %s which reviews apply here (timeout %s)", spec.Label(),
 			humanize.Duration(cfg.Timeout))
 
-		out, res := captureProc(ctx, withACP(ctx, procOpts{Argv: argv, Dir: cfg.Dir, Timeout: cfg.Timeout, Tool: spec.Tool, NoSandbox: cfg.NoSandbox, SandboxWrite: cfg.SandboxWrite}, spec, text, false, ""))
+		out, res := captureProc(ctx, withACP(ctx, procOpts{Argv: argv, Dir: cfg.Dir, Timeout: cfg.Timeout, Tool: spec.Tool, NoSandbox: cfg.NoSandbox, SandboxWrite: cfg.SandboxWrite, Now: cfg.Now}, spec, text, false, ""))
 		switch {
 		case res.Err != nil:
 			lastErr = fmt.Errorf("cannot launch %s to suggest reviews: %w", spec.Label(), res.Err)

@@ -184,13 +184,17 @@ type procOpts struct {
 // CLIs routinely do, sails straight through it. stdin is /dev/null except
 // for ACP, where it carries only the protocol messages from the runner.
 func runProc(ctx context.Context, o procOpts) procResult {
-	start := time.Now()
+	now := o.Now
+	if now == nil {
+		now = time.Now
+	}
+	start := now()
 	result := runProcOnce(ctx, o)
 	if (!errors.Is(result.StreamErr, errACPProtocolUnsupported) && !errors.Is(result.StreamErr, errACPAgentUnsupported) && !errors.Is(result.StreamErr, errACPConfigUnsupported) && !errors.Is(result.StreamErr, errACPResumeUnsupported) && !(o.ACPFallbackAuth && errors.Is(result.StreamErr, errACPAuthenticationRequired)) && !(o.ACPFallbackInvalidModel && errors.Is(result.StreamErr, errACPInvalidModel))) || len(o.ACPFallbackArgv) == 0 || result.TimedOut || result.Canceled || ctx.Err() != nil {
 		return result
 	}
 	if o.Timeout > 0 {
-		o.Timeout -= time.Since(start)
+		o.Timeout -= now().Sub(start)
 		if o.Timeout <= 0 {
 			return result
 		}
