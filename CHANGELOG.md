@@ -34,6 +34,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.45.0
+
+No changes since 1.44.0.
+
 ## 1.44.0
 
 ### Fixed
