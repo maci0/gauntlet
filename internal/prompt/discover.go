@@ -39,7 +39,7 @@ var skipDirs = map[string]bool{
 }
 
 // skipDir reports whether a directory name is one of skipDirs, folded.
-func skipDir(name string) bool { return skipDirs[strings.ToLower(name)] }
+func skipDir(name string) bool { return skipDirs[strings.ToLower(nfc(name))] }
 
 // Discover maps review name to prompt for one target tree.
 //
@@ -285,12 +285,15 @@ func gitProjectPrompts(ctx context.Context, root, absPromptDir string, abspath f
 // case-insensitive volumes (the macOS default), where one directory has as many
 // spellings as it has cases and no string form of its path can tell. An
 // EqualFold mismatch needs no stat: two spellings of one path always fold
-// equal, so a name that does not is a different directory.
+// equal, so a name that does not is a different directory. NFC first, because
+// a macOS volume hands out NFD spellings while the resolved path may be NFC:
+// EqualFold alone leaves decomposed and composed spellings of the same name
+// unequal, so the stat would never run and the prompt-dir exclusion would miss.
 func sameDir(path, resolved string) bool {
 	if path == resolved {
 		return true
 	}
-	if !strings.EqualFold(path, resolved) {
+	if !strings.EqualFold(nfc(path), nfc(resolved)) {
 		return false
 	}
 	a, err := os.Stat(path)

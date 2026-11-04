@@ -1714,6 +1714,13 @@ func TestSameDirOnThisVolume(t *testing.T) {
 			t.Errorf("sameDir(%q, %q) = %v, want %v on this volume", prompts, upper, !want, want)
 		}
 	}
+
+	// The normalization probe: an NFD spelling of the same directory must
+	// still be recognised as it, the way discovery normalises stems.
+	nfd := norm.NFD.String(prompts)
+	if nfd != prompts && !sameDir(nfd, prompts) {
+		t.Errorf("sameDir(NFD %q, NFC %q) = false for one directory in two spellings", nfd, prompts)
+	}
 }
 
 // A file name off the filesystem may hold bytes that are not UTF-8, which the

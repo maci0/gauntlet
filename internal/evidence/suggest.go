@@ -111,7 +111,7 @@ var skipDirs = map[string]bool{
 // skipDir applies equally to git listings and walks. Versioned MSVC installs
 // contain the compiler's headers and examples, not the application's source.
 func skipDir(name string) bool {
-	name = strings.ToLower(name)
+	name = strings.ToLower(norm.NFC.String(name))
 	if skipDirs[name] {
 		return true
 	}

@@ -34,6 +34,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- Prompt discovery and the suggester now match directory and path names across
+  NFC and NFD spellings, so a `--prompt-dir` or generated tree spelled in the
+  other normalization form is recognised instead of missed.
+
 ## 1.43.0
 
 ### Added
