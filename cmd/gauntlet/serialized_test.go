@@ -47,14 +47,13 @@ func TestSerializedKeepsLinesWholeUnderAMultiWriter(t *testing.T) {
 	dst := &splitWriter{}
 	out := &report.Serialized{W: io.MultiWriter(dst, &log)}
 
-	// A seeded source: the interleave yield must be reproducible run to run,
-	// so a failure bisects to the same schedule rather than a new random one.
-	rng := rand.New(rand.NewSource(42))
-
 	const writers, lines = 4, 250
 	var wg sync.WaitGroup
 	for w := range writers {
 		wg.Go(func() {
+			// A seeded source per writer: the interleave yield must be reproducible run
+			// to run, without sharing the unsynchronized generator across goroutines.
+			rng := rand.New(rand.NewSource(int64(42 + w)))
 			for i := range lines {
 				fmt.Fprintf(out, "[w%d] line %d padded to a real length\n", w, i)
 				// Yield between the two writes a single Fprintf may make, so
