@@ -34,6 +34,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Fixed
+
+- Corrected the `--opencode-db` documentation: the linked Toktop reader
+  supports both OpenCode 1 and OpenCode 2 database schemas and honors
+  `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.
+
 ## 1.45.0
 
 No changes since 1.44.0.

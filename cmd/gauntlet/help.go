@@ -115,7 +115,7 @@ var helpGroups = []flagGroup{
 		{"q", "quiet", "", "discard agent output"},
 		{"", "raw", "", "echo agent output verbatim instead of normalizing it"},
 		{"", "stream", "", "machine-readable agent output where supported: live token counts and reasoning (default true; --stream=false to disable)"},
-		{"", "opencode-db", "", "read OpenCode 1's session database for token counts; OpenCode 2 ACP reports root-session usage after each prompt"},
+		{"", "opencode-db", "", "read OpenCode's session database for token counts; reads both OpenCode 1 and 2 schemas and honors OPENCODE_DB and XDG_DATA_HOME"},
 		{"", "log", "FILE", "also write all output to FILE"},
 		{"", "no-color", "", "disable color"},
 	}},

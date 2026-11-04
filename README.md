@@ -317,8 +317,9 @@ databases instead (crush, opencode), those. The build ships all of it;
 TAGS=` drops the database driver too. `gauntlet doctor` says which build you
 have. One of those sources is off unless you ask for it: opencode's store
 holds every project on the machine, so it is read only with
-`--opencode-db`. The currently linked reader supports OpenCode 1 databases;
-OpenCode 2 ACP reports root-session usage after each prompt. Per-agent coverage,
+`--opencode-db`. The linked reader supports both OpenCode 1 and OpenCode 2
+database schemas and honors `OPENCODE_DB` and `XDG_DATA_HOME`; OpenCode 2 ACP
+also reports root-session usage after each prompt. Per-agent coverage,
 and the public reading API, are in
 [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
 
