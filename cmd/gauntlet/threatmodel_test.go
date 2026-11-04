@@ -87,17 +87,17 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 		file, want string
 		at         int
 	}{
-		{"release.yml", "git merge-base --is-ancestor HEAD origin/main", 114},
-		{"release.yml", "actions/attest-build-provenance@", 197},
-		{"release.yml", "dist/sbom.json", 231},
-		{"release.yml", "set -eu -o pipefail", 74},
-		{"release.yml", "make smoke VERSION=", 167},
-		{"ci.yml", "make smoke VERSION=ci", 205},
-		{"ci.yml", "make smoke VERSION=ci", 254},
+		{"release.yml", "git merge-base --is-ancestor HEAD origin/main", 117},
+		{"release.yml", "actions/attest-build-provenance@", 200},
+		{"release.yml", "dist/sbom.json", 234},
+		{"release.yml", "set -eu -o pipefail", 77},
+		{"release.yml", "make smoke VERSION=", 170},
+		{"ci.yml", "make smoke VERSION=ci", 211},
+		{"ci.yml", "make smoke VERSION=ci", 263},
 		{"ci.yml", "GITHUB_TOKEN", 49},
 		{"vulnscan.yml", "schedule:", 11},
 		{"vulnscan.yml", "GITHUB_TOKEN", 45},
-		{"vulnscan.yml", "run: make vuln", 36},
+		{"vulnscan.yml", "run: make vuln", 39},
 	}
 	dir := filepath.Join(root, ".github", "workflows")
 	covered := map[string]bool{}

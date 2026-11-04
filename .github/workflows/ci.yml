@@ -67,6 +67,9 @@ jobs:
           # copies for exactly this reason and gives each its own GOCACHE,
           # which this does not touch.
           cache: true
+          # The go.sum key is explicit: the action's default moved to go.mod
+          # in v6.3.0, and a go.mod key does not see a go.sum-only change.
+          cache-dependency-path: go.sum
       # check compiles all three tag configurations itself and every build
       # constraint in the tree is a tag constraint, never a GOOS one, so its
       # verdict is identical in all six cells: run it once per OS and let the
@@ -185,6 +188,9 @@ jobs:
           go-version: 1.27.1
           # The module cache, keyed on go.sum; see the test job's step.
           cache: true
+          # The go.sum key is explicit: the action's default moved to go.mod
+          # in v6.3.0, and a go.mod key does not see a go.sum-only change.
+          cache-dependency-path: go.sum
       # checksums.txt and sbom.json are what a consumer verifies a download
       # against, and they were written only by a tagged release, so nothing
       # tested them until one shipped. `make artifacts` builds them from the
@@ -246,6 +252,9 @@ jobs:
           go-version: 1.27.1
           # The module cache, keyed on go.sum; see the test job's step.
           cache: true
+          # The go.sum key is explicit: the action's default moved to go.mod
+          # in v6.3.0, and a go.mod key does not see a go.sum-only change.
+          cache-dependency-path: go.sum
       # The BSD branches of `artifacts` and `smoke`, on the only runner that
       # takes them. `artifacts` depends on `dist` and both are phony, so this
       # is the one build the job does and the four cross-compiles are not

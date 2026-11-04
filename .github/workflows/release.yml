@@ -61,6 +61,9 @@ jobs:
           # does not depend on what the cache held. The bytes themselves are
           # pinned by the toolchain above, not by what was downloaded.
           cache: true
+          # The go.sum key is explicit: the action's default moved to go.mod
+          # in v6.3.0, and a go.mod key does not see a go.sum-only change.
+          cache-dependency-path: go.sum
 
       # Release notes are this version's CHANGELOG section: consumers read the
       # changelog, not the commit log. A tag without that section is a mistake

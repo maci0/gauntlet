@@ -56,6 +56,9 @@ jobs:
           # The module cache, keyed on go.sum; the scanner resolves this
           # module's graph and govulncheck's own before either reports.
           cache: true
+          # The go.sum key is explicit: the action's default moved to go.mod
+          # in v6.3.0, and a go.mod key does not see a go.sum-only change.
+          cache-dependency-path: go.sum
       # The tool is pinned against upstream replacement or an incompatible
       # release; govulncheck still reads the current advisory database.
       - run: make vuln
