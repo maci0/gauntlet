@@ -1386,7 +1386,7 @@ func scrollHelp(scroll int, key string, lines []string, w, h int) int {
 		scroll = bound
 	case "pgup", "pageup", "b":
 		scroll -= max(viewport-1, 1)
-	case "pgdown", "pagedown", "space":
+	case "pgdown", "pagedown", " ", "space":
 		scroll += max(viewport-1, 1)
 	}
 	return clampi(scroll, 0, bound)

@@ -1613,8 +1613,10 @@ func TestPickFilterFooterNamesFilterKeys(t *testing.T) {
 
 func TestPickWarmupMatchesTheDashboard(t *testing.T) {
 	p := newPicker(PickConfig{})
-	if got := p.View(); !strings.Contains(got, "warming up") {
-		t.Fatalf("an unready launcher was blank: %q", got)
+	m := newModel(demoConfig())
+	want := stripANSI(m.View())
+	if got := stripANSI(p.View()); got != want {
+		t.Fatalf("the launcher's first frame %q does not match the dashboard's %q", got, want)
 	}
 }
 

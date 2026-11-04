@@ -45,6 +45,7 @@ the journaled event stream in `internal/runner/contract_test.go`.
   handling) is pinned by tests that stub the HTTP transport.
 - Corrected the bundled review count from 55 to 56 in the README, design
   document, and project site to match the 56 prompts shipped.
+- Spacebar now pages down in the help overlay as its legend says.
 
 ## 1.43.0
 

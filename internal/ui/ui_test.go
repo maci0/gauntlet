@@ -2284,6 +2284,11 @@ func TestFeedAndHelpPagingKeys(t *testing.T) {
 	if scrolled <= 0 {
 		t.Fatalf("space did not page down in help: got %d", scrolled)
 	}
+	// A real space keypress arrives as " ", not "space": the legend names it
+	// and the key must page down, or the documented key is dead.
+	if real := scrollHelp(0, " ", lines, 80, 20); real <= 0 {
+		t.Fatalf("a real space key did not page down in help: got %d", real)
+	}
 	paged := scrollHelp(0, "pagedown", lines, 80, 20)
 	if paged <= 0 {
 		t.Fatalf("pagedown did not page down in help: got %d", paged)

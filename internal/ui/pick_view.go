@@ -49,7 +49,7 @@ const (
 
 func (p *picker) View() string {
 	if !p.ready {
-		return "\n  gauntlet is warming up…"
+		return "\n  gauntlet is starting…"
 	}
 	if p.help {
 		return p.renderHelp()
