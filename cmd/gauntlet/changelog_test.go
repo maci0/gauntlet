@@ -31,7 +31,30 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 		seenGroup = map[string]int{}
 		prevVer   *changelogVersion
 		sawFirst  bool
+		// sections tracks whether the current version section carries at
+		// least one impact group and one bullet. A released section with
+		// neither is a version number the consumer cannot act on: 1.45.0
+		// shipped "No changes since 1.44.0." and the release workflow's
+		// non-empty-notes check accepted it because prose is content.
+		sections []changelogSection
 	)
+	flushSection := func() {
+		if len(sections) == 0 {
+			return
+		}
+		last := sections[len(sections)-1]
+		// 1.45.0 and 0.1.0 are the documented historical exceptions: 1.45.0
+		// shipped prose-only notes, 0.1.0 predates the ### group format and
+		// lists its content as prose. Rewriting either would put notes
+		// under a version nobody received, so they are named rather than
+		// left silent, the way 1.0.1/1.0.2 and 1.12.2 are.
+		if last.isVersion && last.title != "1.45.0" && last.title != "0.1.0" && !last.hasGroup && !last.hasBullet {
+			t.Errorf("CHANGELOG.md:%d: %s has no ### group and no bullet; a release with no changes must not consume a version number", last.line, last.title)
+		}
+		if last.isVersion && last.title != "1.45.0" && last.title != "0.1.0" && last.hasGroup && !last.hasBullet {
+			t.Errorf("CHANGELOG.md:%d: %s has a ### group but no bullet; a group with no entry ships as notes with a heading and nothing under it", last.line, last.title)
+		}
+	}
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
 		n := i + 1
@@ -53,9 +76,16 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 			t.Errorf("CHANGELOG.md:%d: %q starts a blockquote; a stray \">\" before a bullet makes the release notes render it as quoted text", n, line)
 		}
 		switch {
+		case strings.HasPrefix(line, "- "):
+			if len(sections) > 0 {
+				sections[len(sections)-1].hasBullet = true
+			}
 		case strings.HasPrefix(line, "### "):
 			if section == "" {
 				t.Fatalf("CHANGELOG.md:%d: %q before any ## version heading", n, line)
+			}
+			if len(sections) > 0 {
+				sections[len(sections)-1].hasGroup = true
 			}
 			group := strings.TrimPrefix(line, "### ")
 			if !isChangelogGroup(group) {
@@ -68,6 +98,7 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 			}
 			seenGroup[group] = n
 		case strings.HasPrefix(line, "## "):
+			flushSection()
 			title := strings.TrimPrefix(line, "## ")
 			if !sawFirst {
 				if title != "Unreleased" {
@@ -76,6 +107,7 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 				sawFirst = true
 				section = line
 				seenGroup = map[string]int{}
+				sections = append(sections, changelogSection{title: title, line: n})
 				continue
 			}
 			ver, ok := parseChangelogVersion(title)
@@ -90,11 +122,21 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 			prevVer = &ver
 			section = line
 			seenGroup = map[string]int{}
+			sections = append(sections, changelogSection{title: title, line: n, isVersion: true})
 		}
 	}
+	flushSection()
 	if !sawFirst {
 		t.Fatal("CHANGELOG.md has no ## Unreleased heading")
 	}
+}
+
+type changelogSection struct {
+	title     string
+	line      int
+	isVersion bool
+	hasGroup  bool
+	hasBullet bool
 }
 
 // The release workflow dumps a version section verbatim as the GitHub notes,
@@ -258,6 +300,27 @@ func TestValidateChangelogSemVerCases(t *testing.T) {
 				"## 1.12.0\n\n### Fixed\n- Bug fix\n",
 			wantErr: "",
 		},
+		{
+			name: "released section with no group and no bullet",
+			content: "## Unreleased\n\n" +
+				"## 1.23.0\n\nNo changes since 1.22.0.\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "1.23.0 has no",
+		},
+		{
+			name: "group with no bullet",
+			content: "## Unreleased\n\n" +
+				"## 1.23.0\n\n### Fixed\n\n" +
+				"## 1.22.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "1.23.0 has a",
+		},
+		{
+			name: "the 1.45.0 empty release is a documented exception",
+			content: "## Unreleased\n\n" +
+				"## 1.45.0\n\nNo changes since 1.44.0.\n\n" +
+				"## 1.44.0\n\n### Fixed\n- Bug fix\n",
+			wantErr: "",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -289,15 +352,23 @@ func validateChangelogSemVer(text string) []string {
 		prevVer    *changelogVersion
 		groups     []string
 		changed    []string
+		bullets    int
 		inChanged  bool
 		lineNum    int
 	)
-	check := func(ver *changelogVersion, groups []string, line int) {
+	check := func(ver *changelogVersion, groups []string, bullets int, line int) {
 		if ver == nil {
 			if slices.Contains(groups, "Removed") {
 				errs = append(errs, fmt.Sprintf("line %d: Unreleased section contains ### Removed; removals are breaking and require a major release", line))
 			}
 			return
+		}
+		if *ver != "1.45.0" && *ver != "0.1.0" {
+			if len(groups) == 0 && bullets == 0 {
+				errs = append(errs, fmt.Sprintf("line %d: %s has no ### group and no bullet; a release with no changes must not consume a version number", line, *ver))
+			} else if len(groups) > 0 && bullets == 0 {
+				errs = append(errs, fmt.Sprintf("line %d: %s has a ### group but no bullet; a group with no entry ships as notes with a heading and nothing under it", line, *ver))
+			}
 		}
 		// 1.0.1 and 1.0.2 are documented historical exceptions that shipped before contract guards.
 		if *ver == "1.0.1" || *ver == "1.0.2" {
@@ -344,6 +415,12 @@ func validateChangelogSemVer(text string) []string {
 	}
 	for i, line := range strings.Split(text, "\n") {
 		n := i + 1
+		if strings.HasPrefix(line, "- ") {
+			bullets++
+			if inChanged {
+				changed = append(changed, line)
+			}
+		}
 		switch {
 		case strings.HasPrefix(line, "### "):
 			group := strings.TrimPrefix(line, "### ")
@@ -353,11 +430,11 @@ func validateChangelogSemVer(text string) []string {
 			}
 		case strings.HasPrefix(line, "## "):
 			title := strings.TrimPrefix(line, "## ")
-			check(currentVer, groups, lineNum)
+			check(currentVer, groups, bullets, lineNum)
 			if inChanged {
 				errs = append(errs, toolchainRaiseErrors(lineNum, currentVer, changed)...)
 			}
-			groups, changed, inChanged = nil, nil, false
+			groups, changed, bullets, inChanged = nil, nil, 0, false
 			lineNum = n
 			if title == "Unreleased" {
 				currentVer = nil
@@ -369,11 +446,9 @@ func validateChangelogSemVer(text string) []string {
 			} else {
 				currentVer = nil
 			}
-		case inChanged && strings.HasPrefix(line, "- "):
-			changed = append(changed, line)
 		}
 	}
-	check(currentVer, groups, lineNum)
+	check(currentVer, groups, bullets, lineNum)
 	if inChanged {
 		errs = append(errs, toolchainRaiseErrors(lineNum, currentVer, changed)...)
 	}

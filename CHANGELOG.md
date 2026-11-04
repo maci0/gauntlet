@@ -39,6 +39,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.
+- The changelog guard now refuses a version section with no `###` group or no
+  bullet, so a release cannot ship with prose that the release workflow
+  accepts as notes but carries no change; 1.45.0 shipped that way and is the
+  exception the check names.
 
 ## 1.45.0
 
