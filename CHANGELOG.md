@@ -46,6 +46,9 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - Corrected the bundled review count from 55 to 56 in the README, design
   document, and project site to match the 56 prompts shipped.
 - Spacebar now pages down in the help overlay as its legend says.
+- The project site now serves cache headers: the HTML revalidates on every
+  load so deploys show without a hard refresh, and the images and logos are
+  cacheable for an hour.
 
 ## 1.43.0
 

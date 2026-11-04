@@ -9,3 +9,25 @@
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Strict-Transport-Security: max-age=31536000; includeSubDomains
+
+# The HTML revalidates on every load, so a deploy is visible without a
+# hard refresh; the images and logos are cacheable for an hour instead of
+# leaving the browser to guess from Last-Modified. No immutable: the
+# screenshot and the marks are overwritten in place under stable names,
+# so an immutable entry would serve a stale picture until the browser's
+# own expiry. Paths are named explicitly, so a new asset added to
+# site/public needs its own block rather than matching by extension.
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/dashboard.png
+  Cache-Control: public, max-age=3600
+
+/logo-dark.svg
+  Cache-Control: public, max-age=3600
+
+/logo-light.svg
+  Cache-Control: public, max-age=3600
+
+/mark.svg
+  Cache-Control: public, max-age=3600
