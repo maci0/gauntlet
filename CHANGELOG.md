@@ -43,6 +43,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
   outside `make`'s disk-backed scratch directory, and `Check`'s happy path
   (request line, headers, release parsing, non-200 and malformed-JSON
   handling) is pinned by tests that stub the HTTP transport.
+- Corrected the bundled review count from 55 to 56 in the README, design
+  document, and project site to match the 56 prompts shipped.
 
 ## 1.43.0
 

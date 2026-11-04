@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <em>Run your codebase through the gauntlet: 55 specialized review prompts,
+  <em>Run your codebase through the gauntlet: 56 specialized review prompts,
   dispatched to whichever AI coding agents you have installed, applying fixes
   directly to the working tree.</em>
 </p>
@@ -23,7 +23,7 @@
   <img src="assets/dashboard.png" alt="The gauntlet dashboard: an activity chart, one lane per agent with live token rates, the review grid, and a normalized feed" width="900">
 </p>
 
-One static binary loops 55 review prompts over your repository, hands each one
+One static binary loops 56 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
 - **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
