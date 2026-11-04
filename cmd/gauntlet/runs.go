@@ -606,7 +606,6 @@ func cmdShowAt(out io.Writer, runID string, asJSON bool) int {
 	// One event in memory at a time: a long run's journal can be far larger
 	// than the screen it is being replayed onto.
 	bw := bufio.NewWriter(out)
-	defer bw.Flush()
 	var werr error
 	events := 0
 	err := journal.Events(runID, func(ev map[string]any) {

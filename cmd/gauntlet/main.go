@@ -132,7 +132,9 @@ func run(argv []string) (code int) {
 	var feed *ndjsonText
 	defer func() {
 		if feed != nil {
-			_ = feed.Flush()
+			if err := feed.Flush(); err != nil {
+				fmt.Fprintf(os.Stderr, "cannot write JSON output: %v\n", err)
+			}
 		}
 	}()
 
