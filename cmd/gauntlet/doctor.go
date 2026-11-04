@@ -22,6 +22,24 @@ import (
 	"github.com/maci0/gauntlet/internal/runner"
 )
 
+func probeTools() (map[string]string, func(string) bool) {
+	custom := agent.CustomNames()
+	probeNames := append(agent.AllProbeNames(), custom...)
+	for _, n := range custom {
+		probeNames = append(probeNames, agent.Binary(n))
+	}
+	found := agent.ResolveMany(probeNames)
+	have := func(name string) bool {
+		for alt := range strings.SplitSeq(name, "|") {
+			if found[alt] != "" {
+				return true
+			}
+		}
+		return false
+	}
+	return found, have
+}
+
 // doctor reports which agent CLIs and helper tools are installed. It returns
 // the process exit code: 1 when no agent can be launched at all, or when the
 // state root cannot be written to.
@@ -37,20 +55,7 @@ func doctor(out io.Writer, pal report.Palette, overrides map[string]string, widt
 	// One parallel probe for every binary, instead of one blocking lookup per
 	// question. This is the difference between a snappy doctor and a second of
 	// stat calls on a cold cache.
-	custom := agent.CustomNames()
-	probeNames := append(agent.AllProbeNames(), custom...)
-	for _, n := range custom {
-		probeNames = append(probeNames, agent.Binary(n))
-	}
-	found := agent.ResolveMany(probeNames)
-	have := func(name string) bool {
-		for alt := range strings.SplitSeq(name, "|") {
-			if found[alt] != "" {
-				return true
-			}
-		}
-		return false
-	}
+	found, have := probeTools()
 	mark := func(ok bool, missing string) string {
 		if ok {
 			return pal.Green("✓")
@@ -80,55 +85,22 @@ func doctor(out io.Writer, pal report.Palette, overrides map[string]string, widt
 		pal.Dim("  (✓ installed, ✗ missing; at least one required)"))
 	installed, usable := 0, 0
 	for _, a := range agents {
-		bin := agent.Binary(a)
-		ok := found[a] != "" || found[bin] != ""
+		row := buildDoctorAgentRow(a, found, overrides)
 		note := ""
-		if def, defined := agent.CustomDef(a); defined {
-			// A definition names its own binary, which may not have been in
-			// the probe list.
-			if !ok && agent.Resolve(bin) != "" {
-				ok = true
-			}
-			extra := "defined"
-			if def.Note != "" {
-				extra += ": " + def.Note
-			}
-			note = pal.Dim("  " + extra)
-			// An executable the definition names through a variable the
-			// operator has not exported expands to nothing, and the launch
-			// path refuses it. The row says which variable, rather than
-			// showing a missing mark beside a definition that reads as
-			// complete.
-			if err := agent.BinaryError(a); err != nil {
-				note = pal.Red("  " + err.Error())
-			}
-		}
-		if path := overrides[a]; path != "" {
-			// An override names the executable directly, so it wins over what
-			// PATH has: cmd[0] becomes exactly this file, which is what a run
-			// would exec. "Usable" means it exists and could be executed; a
-			// broken override must not make doctor report a working setup
-			// (or exit 0) on an empty box.
-			if binRunnable(path) {
-				ok = true
-				note = pal.Dim("  --bin " + path)
+		if row.Note != "" {
+			if row.NoteKind == "red" {
+				note = pal.Red("  " + row.Note)
 			} else {
-				ok = false
-				note = pal.Red("  --bin " + path + " is not a runnable file")
+				note = pal.Dim("  " + row.Note)
 			}
-		} else if agent.IsOptIn(a) && note == "" {
-			note = pal.Dim("  opt-in: name it with --agents")
-		} else if a == "dsh" && !ok && found["bunx"] != "" {
-			ok = true // launchable, but only when named: bunx fetches on first use
-			note = pal.Dim("  via bunx (" + agent.DshNpmPackage + "); name it with --agents")
 		}
-		if ok {
+		if row.Installed {
 			installed++
-			if !agent.IsOptIn(a) && !(a == "dsh" && found["dsh"] == "") {
+			if row.Usable {
 				usable++
 			}
 		}
-		w.Printf("  %s %s%s\n", mark(ok, "dim"), a, note)
+		w.Printf("  %s %s%s\n", mark(row.Installed, "dim"), a, note)
 	}
 
 	w.Println()

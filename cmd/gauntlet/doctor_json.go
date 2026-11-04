@@ -99,20 +99,7 @@ func writeDoctorJSON(out io.Writer, overrides map[string]string) int {
 // The usable-agent rule and the state-root rule are the same ones the text
 // path returns on.
 func doctorDocument(overrides map[string]string) (doctorDoc, int) {
-	custom := agent.CustomNames()
-	probeNames := append(agent.AllProbeNames(), custom...)
-	for _, n := range custom {
-		probeNames = append(probeNames, agent.Binary(n))
-	}
-	found := agent.ResolveMany(probeNames)
-	have := func(name string) bool {
-		for alt := range strings.SplitSeq(name, "|") {
-			if found[alt] != "" {
-				return true
-			}
-		}
-		return false
-	}
+	found, have := probeTools()
 
 	doc := doctorDoc{
 		Agents:             []doctorAgent{},
@@ -123,14 +110,14 @@ func doctorDocument(overrides map[string]string) (doctorDoc, int) {
 	usable := 0
 	pinned := false
 	for _, a := range agent.AllNames() {
-		row := doctorAgentRow(a, found, overrides)
+		row := buildDoctorAgentRow(a, found, overrides)
 		if row.Usable {
 			usable++
 		}
 		if path := overrides[a]; path != "" && binRunnable(path) {
 			pinned = true
 		}
-		doc.Agents = append(doc.Agents, row)
+		doc.Agents = append(doc.Agents, doctorAgent{Name: row.Name, Installed: row.Installed, Usable: row.Usable, Note: row.Note})
 	}
 	for _, c := range agent.CoreTools {
 		doc.Core = append(doc.Core, doctorCore{Name: c.Name, Installed: have(c.Name), Purpose: c.Purpose})
@@ -181,11 +168,25 @@ func doctorDocument(overrides map[string]string) (doctorDoc, int) {
 	return doc, code
 }
 
-func doctorAgentRow(name string, found map[string]string, overrides map[string]string) doctorAgent {
+// doctorAgentRow builds one inventory row. Note is unstyled text; the text
+// printer applies the palette when it prints it.
+type doctorAgentRow struct {
+	Name      string
+	Installed bool
+	Usable    bool
+	Note      string
+	// NoteKind selects the text printer's styling for Note: "dim" for a
+	// dim note, "red" for a broken override or an unusable definition.
+	NoteKind string
+}
+
+func buildDoctorAgentRow(name string, found map[string]string, overrides map[string]string) doctorAgentRow {
 	bin := agent.Binary(name)
 	ok := found[name] != "" || found[bin] != ""
-	note := ""
+	note, kind := "", ""
 	if def, defined := agent.CustomDef(name); defined {
+		// A definition names its own binary, which may not have been in
+		// the probe list.
 		if !ok && agent.Resolve(bin) != "" {
 			ok = true
 		}
@@ -193,27 +194,32 @@ func doctorAgentRow(name string, found map[string]string, overrides map[string]s
 		if def.Note != "" {
 			extra += ": " + def.Note
 		}
-		note = extra
+		note, kind = extra, "dim"
+		// An executable the definition names through a variable the
+		// operator has not exported expands to nothing, and the launch
+		// path refuses it. The row says which variable, rather than
+		// showing a missing mark beside a definition that reads as
+		// complete.
 		if err := agent.BinaryError(name); err != nil {
-			note = err.Error()
+			note, kind = err.Error(), "red"
 		}
 	}
 	if path := overrides[name]; path != "" {
 		if binRunnable(path) {
 			ok = true
-			note = "--bin " + path
+			note, kind = "--bin "+path, "dim"
 		} else {
 			ok = false
-			note = "--bin " + path + " is not a runnable file"
+			note, kind = "--bin "+path+" is not a runnable file", "red"
 		}
 	} else if agent.IsOptIn(name) && note == "" {
-		note = "opt-in: name it with --agents"
+		note, kind = "opt-in: name it with --agents", "dim"
 	} else if name == "dsh" && !ok && found["bunx"] != "" {
-		ok = true
-		note = "via bunx (" + agent.DshNpmPackage + "); name it with --agents"
+		ok = true // launchable, but only when named: bunx fetches on first use
+		note, kind = "via bunx ("+agent.DshNpmPackage+"); name it with --agents", "dim"
 	}
 	usable := ok && !agent.IsOptIn(name) && !(name == "dsh" && found["dsh"] == "")
-	return doctorAgent{Name: name, Installed: ok, Usable: usable, Note: note}
+	return doctorAgentRow{Name: name, Installed: ok, Usable: usable, Note: note, NoteKind: kind}
 }
 
 func missingRecommended(have func(string) bool) []string {

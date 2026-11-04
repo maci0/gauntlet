@@ -318,30 +318,10 @@ func listCheckpointsAt(out io.Writer, pal report.Palette, asJSON bool) int {
 		return writeResumeList(out, items)
 	}
 	for _, cp := range cps {
-		left := 0
-		dirs := make([]string, 0, len(cp.Handoff.Dirs))
-		for d, dh := range cp.Handoff.Dirs {
-			left += len(dh.Pending)
-			dirs = append(dirs, normalize.RedactHome(d))
-		}
-		// Collation, not byte order: this list is printed, and the directory
-		// names come from the reviewed tree, so a checkout called "Ökonto"
-		// has to file under O where the operator looks for it rather than at
-		// the end of the list after every capital. This is the one ordering
-		// every other printed list of names in the tool uses; see
-		// internal/fuzzy for why.
-		fuzzy.Sort(dirs)
-		state := "ready"
-		switch dir, lerr := busyDir(cp); {
-		case lerr != nil:
-			state = "unknown: cannot read the lock in " +
-				normalize.Sanitize(normalize.RedactHome(dir))
-		case dir != "":
-			state = "busy: a gauntlet holds its directory"
-		}
-		fmt.Fprintf(out, "%s  %s  %s\n", pal.Bold(cp.Handoff.RunID), startCell(cp.Updated, time.Local), state)
+		sum := summarizeCheckpoint(cp)
+		fmt.Fprintf(out, "%s  %s  %s\n", pal.Bold(cp.Handoff.RunID), startCell(cp.Updated, time.Local), sum.state)
 		fmt.Fprintf(out, "  %s, %d unfinished in the current loop, %s done\n",
-			normalize.Sanitize(strings.Join(dirs, ", ")), left, humanize.Plural(cp.Handoff.Loops(), "loop", "loops"))
+			normalize.Sanitize(strings.Join(sum.dirs, ", ")), sum.pending, humanize.Plural(cp.Handoff.Loops(), "loop", "loops"))
 		fmt.Fprintf(out, "  gauntlet %s\n", normalize.Sanitize(strings.Join(journaledArgs(cp.Argv), " ")))
 	}
 	fmt.Fprintln(out, "\nContinue one with: gauntlet resume <run-id>")
@@ -360,13 +340,28 @@ type resumeItem struct {
 	Argv    []string  `json:"argv"`
 }
 
-func resumeItemFrom(cp checkpoint) resumeItem {
+// checkpointSummary is the shared shape of one checkpoint entry: pending
+// count, sorted redacted directory names, and the lock state string the
+// text and JSON listings both print.
+type checkpointSummary struct {
+	pending int
+	dirs    []string
+	state   string
+}
+
+func summarizeCheckpoint(cp checkpoint) checkpointSummary {
 	pending := 0
 	dirs := make([]string, 0, len(cp.Handoff.Dirs))
 	for d, dh := range cp.Handoff.Dirs {
 		pending += len(dh.Pending)
-		dirs = append(dirs, normalize.Sanitize(normalize.RedactHome(d)))
+		dirs = append(dirs, normalize.RedactHome(d))
 	}
+	// Collation, not byte order: this list is printed, and the directory
+	// names come from the reviewed tree, so a checkout called "Ökonto"
+	// has to file under O where the operator looks for it rather than at
+	// the end of the list after every capital. This is the one ordering
+	// every other printed list of names in the tool uses; see
+	// internal/fuzzy for why.
 	fuzzy.Sort(dirs)
 	state := "ready"
 	switch dir, lerr := busyDir(cp); {
@@ -375,6 +370,15 @@ func resumeItemFrom(cp checkpoint) resumeItem {
 			normalize.Sanitize(normalize.RedactHome(dir))
 	case dir != "":
 		state = "busy: a gauntlet holds its directory"
+	}
+	return checkpointSummary{pending: pending, dirs: dirs, state: state}
+}
+
+func resumeItemFrom(cp checkpoint) resumeItem {
+	sum := summarizeCheckpoint(cp)
+	pending, dirs, state := sum.pending, sum.dirs, sum.state
+	for i, d := range dirs {
+		dirs[i] = normalize.Sanitize(d)
 	}
 	argv := journaledArgs(cp.Argv)
 	for i, a := range argv {
