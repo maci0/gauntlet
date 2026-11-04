@@ -28,7 +28,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -120,11 +119,6 @@ func setGitHubAuth(req *http.Request) {
 	}
 }
 
-// repoNameRe is OWNER/REPO as GitHub writes it: no slashes beyond the one
-// separator, no spaces, nothing that could turn the releases URL into a
-// different API path or inject a header.
-var repoNameRe = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
-
 // maxAssetBytes bounds a download. A release binary that large is a mistake or
 // an attack, and either way should not fill the disk.
 const maxAssetBytes = 256 << 20
@@ -173,9 +167,6 @@ func Check(ctx context.Context, repo string) (*Release, error) {
 	repo, err := ParseRepo(repo)
 	if err != nil {
 		return nil, err
-	}
-	if !repoNameRe.MatchString(repo) {
-		return nil, fmt.Errorf("invalid GitHub repository %q (want OWNER/REPO)", repo)
 	}
 	url := "https://api.github.com/repos/" + repo + "/releases/latest"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

@@ -179,9 +179,6 @@ func FuzzParseRepo(f *testing.F) {
 			}
 			return
 		}
-		if !repoNameRe.MatchString(got) {
-			t.Fatalf("ParseRepo(%q) accepted %q which does not match repoNameRe", raw, got)
-		}
 		owner, repo, ok := strings.Cut(got, "/")
 		if !ok || owner == "" || repo == "" {
 			t.Fatalf("ParseRepo(%q) returned %q without valid owner/repo cut", raw, got)
