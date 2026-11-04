@@ -446,6 +446,11 @@ func parseEntry(entry string, add func(Spec)) error {
 	if hasModel && model == "" {
 		return fmt.Errorf("empty model after %q in %q", ":", entry)
 	}
+	if model != "" {
+		if err := validateModel(model); err != nil {
+			return fmt.Errorf("invalid model in %q: %w", entry, err)
+		}
+	}
 	if effort != "" {
 		if !takesEffort(tool) {
 			return fmt.Errorf("%s does not support specifying a reasoning effort: %q", tool, entry)
@@ -776,6 +781,21 @@ func splice(cmd []string, at int, flags []string) []string {
 	out = append(out, cmd[:at]...)
 	out = append(out, flags...)
 	return append(out, cmd[at:]...)
+}
+
+var modelRe = regexp.MustCompile(`^[A-Za-z0-9._/:@#!+-]+$`)
+
+func validateModel(model string) error {
+	if model == "" {
+		return errors.New("empty model")
+	}
+	if strings.HasPrefix(model, "-") {
+		return fmt.Errorf("invalid model %q: must not start with '-'", model)
+	}
+	if !modelRe.MatchString(model) {
+		return fmt.Errorf("invalid model %q: letters, digits, . _ / : @ # ! + - only", model)
+	}
+	return nil
 }
 
 func splitProvider(model string) (provider, name string) {
