@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.44.0
+
 ### Fixed
 
 - Prompt discovery and the suggester now match directory and path names across
@@ -49,6 +51,15 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - The project site now serves cache headers: the HTML revalidates on every
   load so deploys show without a hard refresh, and the images and logos are
   cacheable for an hour.
+- Surfaced journal replay and JSON feed flush errors instead of dropping them.
+- Routed process-elapsed accounting through the injected run clock.
+- Seeded the random source per writer in the serialized multi-writer test to
+  prevent concurrent generator data races.
+- Refreshed line citations in the threat model to match doctor and self-update
+  refactors.
+- Updated dependencies `golang.org/x/term` to 0.47.0 and `golang.org/x/text` to
+  0.43.0.
+- Updated `astral-sh/setup-uv` action in CI workflows to v10.3.0.
 
 ## 1.43.0
 
