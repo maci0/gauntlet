@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -289,6 +290,101 @@ func TestCheckRejectsMalformedRepo(t *testing.T) {
 		if _, err := Check(ctx, repo); err == nil {
 			t.Errorf("Check(%q) accepted a malformed repository", repo)
 		}
+	}
+}
+
+// stubTransport answers a Check request without network: Check builds its
+// request against api.github.com and the global client is the only seam, so a
+// stub Transport is how the happy path is pinned for a function whose request
+// line never leaves the process in a test.
+type stubTransport struct {
+	status  int
+	body    string
+	gotReq  *http.Request
+	handler func(*http.Request)
+}
+
+func (s *stubTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	s.gotReq = req.Clone(req.Context())
+	if s.handler != nil {
+		s.handler(req)
+	}
+	status := s.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return &http.Response{
+		StatusCode: status,
+		Status:     http.StatusText(status),
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(s.body)),
+		Request:    req,
+	}, nil
+}
+
+// stubCheckClient swaps the global client for one that answers with the canned
+// status and body, returning the transport so the request Check sent can be
+// asserted on.
+func stubCheckClient(t *testing.T, status int, body string) *stubTransport {
+	t.Helper()
+	tr := &stubTransport{status: status, body: body}
+	old := client
+	client = &http.Client{Transport: tr}
+	t.Cleanup(func() { client = old })
+	return tr
+}
+
+func TestCheckReturnsTheLatestRelease(t *testing.T) {
+	t.Setenv(envGHToken, "test-token")
+	tr := stubCheckClient(t, http.StatusOK, `{"tag_name":"v1.2.3","html_url":"https://github.com/o/r/releases/tag/v1.2.3","assets":[{"name":"gauntlet_1.2.3_linux_amd64","browser_download_url":"https://github.com/o/r/releases/download/v1.2.3/gauntlet"}]}`)
+
+	rel, err := Check(context.Background(), "o/r")
+	if err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if rel.TagName != "v1.2.3" || rel.Version() != "1.2.3" {
+		t.Fatalf("Check returned tag %q (version %q), want v1.2.3", rel.TagName, rel.Version())
+	}
+	if len(rel.Assets) != 1 || rel.Assets[0].Name != "gauntlet_1.2.3_linux_amd64" {
+		t.Fatalf("Check lost the assets: %+v", rel.Assets)
+	}
+	// What Check sends is part of the contract: the Accept header the API
+	// needs and the bearer token for a private or rate-limited repo.
+	if tr.gotReq == nil {
+		t.Fatal("Check made no request")
+	}
+	if got := tr.gotReq.URL.String(); got != "https://api.github.com/repos/o/r/releases/latest" {
+		t.Fatalf("Check requested %q, want the latest-release endpoint", got)
+	}
+	if got := tr.gotReq.Header.Get("Accept"); got != "application/vnd.github+json" {
+		t.Fatalf("Accept = %q, want application/vnd.github+json", got)
+	}
+	if got := tr.gotReq.Header.Get("Authorization"); got != "Bearer test-token" {
+		t.Fatalf("Authorization = %q, want the GH_TOKEN bearer", got)
+	}
+}
+
+func TestCheckRejectsANonOKStatus(t *testing.T) {
+	stubCheckClient(t, http.StatusNotFound, `{"message":"Not Found"}`)
+	_, err := Check(context.Background(), "o/r")
+	if err == nil || !strings.Contains(err.Error(), "Not Found") {
+		t.Fatalf("a 404 with a GitHub message must surface it, got: %v", err)
+	}
+}
+
+func TestCheckRejectsMalformedJSON(t *testing.T) {
+	stubCheckClient(t, http.StatusOK, `{not json`)
+	_, err := Check(context.Background(), "o/r")
+	if err == nil || !strings.Contains(err.Error(), "decode") {
+		t.Fatalf("malformed release JSON must fail the decode, got: %v", err)
+	}
+}
+
+func TestCheckRejectsAReleaseWithNoTag(t *testing.T) {
+	stubCheckClient(t, http.StatusOK, `{"tag_name":"","assets":[]}`)
+	_, err := Check(context.Background(), "o/r")
+	if err == nil || !strings.Contains(err.Error(), "no tag") {
+		t.Fatalf("a tagless release must be refused, got: %v", err)
 	}
 }
 

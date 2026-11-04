@@ -39,6 +39,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - Prompt discovery and the suggester now match directory and path names across
   NFC and NFD spellings, so a `--prompt-dir` or generated tree spelled in the
   other normalization form is recognised instead of missed.
+- `TestSandboxConfinesAgentAndChildren` skips instead of failing when run
+  outside `make`'s disk-backed scratch directory, and `Check`'s happy path
+  (request line, headers, release parsing, non-200 and malformed-JSON
+  handling) is pinned by tests that stub the HTTP transport.
 
 ## 1.43.0
 

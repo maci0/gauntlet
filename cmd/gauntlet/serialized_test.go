@@ -47,6 +47,10 @@ func TestSerializedKeepsLinesWholeUnderAMultiWriter(t *testing.T) {
 	dst := &splitWriter{}
 	out := &report.Serialized{W: io.MultiWriter(dst, &log)}
 
+	// A seeded source: the interleave yield must be reproducible run to run,
+	// so a failure bisects to the same schedule rather than a new random one.
+	rng := rand.New(rand.NewSource(42))
+
 	const writers, lines = 4, 250
 	var wg sync.WaitGroup
 	for w := range writers {
@@ -55,7 +59,7 @@ func TestSerializedKeepsLinesWholeUnderAMultiWriter(t *testing.T) {
 				fmt.Fprintf(out, "[w%d] line %d padded to a real length\n", w, i)
 				// Yield between the two writes a single Fprintf may make, so
 				// the interleave is reachable rather than merely possible.
-				if rand.Intn(4) == 0 {
+				if rng.Intn(4) == 0 {
 					fmt.Fprintf(out, "[w%d] interleave %d\n", w, i)
 				}
 			}
