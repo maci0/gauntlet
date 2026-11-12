@@ -272,6 +272,13 @@ type Journal struct {
 
 	closed  bool // the file is flushed and closed; a later Close only indexes
 	indexed bool // the summary row is written; further Closes add nothing
+
+	// syncFile records the journal. Nil means the file's own Sync, which is
+	// what every journal uses; a test sets its own to count the syncs a flush
+	// asked for and to make one fail. It is per journal rather than a package
+	// variable because the suite runs tests in parallel, and one test's stand-in
+	// would otherwise answer another test's flush.
+	syncFile func(*os.File) error
 }
 
 // Open creates the journal file for one run.
@@ -353,8 +360,9 @@ const journalBufferBytes = 32 << 10
 // mid-line while it is still writing, and doctor sends the operator to re-take
 // an archive that was never short.
 type lineBuffer struct {
-	f   *os.File
-	buf []byte
+	f     *os.File
+	buf   []byte
+	wrote bool
 }
 
 func newLineBuffer(f *os.File) *lineBuffer {
@@ -388,8 +396,28 @@ func (l *lineBuffer) writeThrough(n int) error {
 	if _, err := l.f.Write(l.buf[:n]); err != nil {
 		return err
 	}
+	l.wrote = true
 	l.buf = l.buf[:copy(l.buf, l.buf[n:])]
 	return nil
+}
+
+// sync records the journal file. A journal with no syncFile of its own uses the
+// file's Sync; the override exists so a test can observe the ask and refuse it.
+func (j *Journal) sync() error {
+	if j.syncFile != nil {
+		return j.syncFile(j.f)
+	}
+	return j.f.Sync()
+}
+
+// Wrote reports whether a write has reached the file since the last take.
+// Flush uses it to sync only a journal that changed: the flag is cleared as it
+// is read, so a boundary that flushed nothing does not sync, and the next one
+// that did write does.
+func (l *lineBuffer) Wrote() bool {
+	wrote := l.wrote
+	l.wrote = false
+	return wrote
 }
 
 // openNoFollow opens an existing file for writing, refusing a symlink in its
@@ -441,8 +469,18 @@ func (j *Journal) Write(v any) {
 	}
 }
 
-// Flush pushes buffered lines to disk. Called at loop boundaries so a killed
-// run still leaves a useful journal.
+// Flush pushes buffered lines to disk and records them there. Called at loop
+// and review boundaries so a killed run still leaves a useful journal.
+//
+// Writing the lines is not enough for the crash this exists for: the consumer
+// flushes on every finished review precisely because the process may be killed
+// without reaching Close, and a power cut is the same class of ending. A flush
+// that stops at the write leaves those events in the kernel's page cache, so
+// the journal a reboot finds ends where the previous close's fsync stopped and
+// the reviews finished since then are gone. The fsync is the one Close already
+// takes, taken here too, and only when this flush actually wrote: a boundary
+// with nothing new buffered has nothing to record, and paying a sync per quiet
+// boundary would stall every loop on a state root that did not change.
 func (j *Journal) Flush() {
 	if j == nil {
 		return
@@ -451,9 +489,16 @@ func (j *Journal) Flush() {
 	defer j.mu.Unlock()
 	// A full disk fails here, halfway through a run, and Close is what
 	// reports it: keep the first error rather than letting the journal go
-	// quiet and still look complete.
+	// quiet and still look complete. The sync follows the same rule, so a
+	// flush that wrote and could not record it is the failure the run ends
+	// with rather than one a later flush paints over.
 	if err := j.w.Flush(); err != nil && j.err == nil {
 		j.err = err
+	}
+	if j.w.Wrote() {
+		if err := j.sync(); err != nil && j.err == nil {
+			j.err = err
+		}
 	}
 }
 

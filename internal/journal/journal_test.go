@@ -122,6 +122,75 @@ func closedRun(t *testing.T, at time.Time, dir string, args ...string) string {
 	return id
 }
 
+// TestFlushRecordsTheLinesItWrote is the crash between a finished review and
+// Close. The consumer flushes the journal on every finished review exactly so a
+// process killed there keeps the work it finished, and a power cut is that same
+// ending: the lines have to be on the platter, not only in the kernel's page
+// cache. A flush that wrote and never synced would leave the file readable and
+// still lose every event since the last close the moment the machine loses
+// power, which is the outcome the flush exists to prevent.
+//
+// What is pinned is the contract, not the timing: a flush that wrote something
+// syncs the file, a flush that wrote nothing does not, and a sync the file
+// refuses fails the flush rather than being swallowed. The stand-in reports the
+// syncs it was asked for, because whether the kernel recorded the bytes is not
+// something a test can observe.
+func TestFlushRecordsTheLinesItWrote(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	id := NewRunID(time.Now())
+	j, err := Open(id, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer j.CloseQuiet()
+	// The recording step is counted here rather than trusted: the file reading
+	// back only shows the bytes were written, and a flush that never asked the
+	// kernel to store them reads back exactly the same until the power goes.
+	// The stand-in is this journal's alone, so a test running beside this one
+	// still syncs its own file for real.
+	var syncs int
+	var fail bool
+	j.syncFile = func(f *os.File) error {
+		syncs++
+		if fail {
+			return errors.New("cannot record the journal")
+		}
+		return f.Sync()
+	}
+
+	j.Flush()
+	if syncs != 0 {
+		t.Fatalf("a flush with nothing buffered synced the file %d times", syncs)
+	}
+
+	j.Write(map[string]any{"ev": "review_end", "review": "security", "status": "ok"})
+	j.Flush()
+	if syncs != 1 {
+		t.Fatalf("the flush that wrote the finished review synced the file %d times, want 1", syncs)
+	}
+	j.Flush()
+	if syncs != 1 {
+		t.Fatalf("a second flush with nothing new synced again: %d syncs", syncs)
+	}
+
+	got, err := os.ReadFile(j.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(got, []byte(`"review":"security"`)) {
+		t.Fatalf("the flushed review is not in the journal:\n%s", got)
+	}
+
+	// A sync the file refuses has to fail the flush. Close reports the first
+	// error a flush hit, so this is the failure the run ends with.
+	fail = true
+	j.Write(map[string]any{"ev": "review_end", "review": "docs", "status": "ok"})
+	j.Flush()
+	if err := j.Close(Summary{}); err == nil {
+		t.Fatal("a flush that wrote its lines and could not record them reported success")
+	}
+}
+
 // orphanRun writes the journal a process that died before Close leaves: the
 // file is on disk, flushed, and no index row names it, so a listing has to
 // rebuild the row from the events. It returns the run id.
