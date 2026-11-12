@@ -566,6 +566,47 @@ func TestSweepStaleTempsFollowsTheInjectedClock(t *testing.T) {
 	}
 }
 
+// NewTempFile is the one caller that both sweeps and creates, and it sweeps
+// the prefix it then creates under. A leftover older than the cutoff and
+// sharing that prefix has to be gone once the new file exists, and a file
+// under a different prefix has to survive: sweeping a wider prefix would
+// delete a temp that belongs to another caller.
+func TestNewTempFileSweepsItsOwnPrefixThenCreates(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
+	past := now.Add(-(StaleTempAge + time.Hour))
+	write := func(name string) {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, past, past); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".reload-old")
+	write(".other-old")
+
+	f, err := NewTempFile(dir, ".reload-", func() time.Time { return now })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+	if got := filepath.Dir(f.Name()); got != dir {
+		t.Fatalf("NewTempFile created %s, want it inside %s", f.Name(), dir)
+	}
+	if !strings.HasPrefix(filepath.Base(f.Name()), ".reload-") {
+		t.Fatalf("NewTempFile created %s, want the .reload- prefix", f.Name())
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".reload-old")); !os.IsNotExist(err) {
+		t.Errorf("the stale temp under the same prefix survived (stat err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".other-old")); err != nil {
+		t.Errorf("a stale temp under another prefix was swept: %v", err)
+	}
+}
+
 // The state root degrades to ".gauntlet" beside the working directory when
 // GAUNTLET_HOME names nothing usable and there is no usable HOME, which puts
 // it inside the reviewed tree. A repository that ships one of these as a

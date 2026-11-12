@@ -423,6 +423,33 @@ func keysOf(m map[int]bool) []int {
 	return out
 }
 
+// PadCellsLeft is what right-aligns a number column. The cell it pads can be
+// a directory name the reviewed tree chose, and a pad counted in runes is one
+// column short for every wide glyph, which is the amount the next column
+// drifts. A cell already wider than the column is left alone: cutting it
+// would drop a digit from the number the column exists to show.
+func TestPadCellsLeftCountsTerminalColumns(t *testing.T) {
+	cases := []struct {
+		in   string
+		w    int
+		want string
+	}{
+		{"42", 4, "  42"},
+		{"日本語", 8, "  日本語"}, // six columns, not three runes
+		{"too wide", 3, "too wide"},
+		{"", 0, ""},
+	}
+	for _, c := range cases {
+		got := PadCellsLeft(c.in, c.w)
+		if got != c.want {
+			t.Errorf("PadCellsLeft(%q, %d) = %q, want %q", c.in, c.w, got, c.want)
+		}
+		if c.w > 0 && Cells(got) < c.w && Cells(c.in) < c.w {
+			t.Errorf("PadCellsLeft(%q, %d) occupies %d columns, want %d", c.in, c.w, Cells(got), c.w)
+		}
+	}
+}
+
 func TestListReviewsMarksWeightsAndLegend(t *testing.T) {
 	dir := t.TempDir()
 	for _, n := range []string{"sec-review", "doc-review"} {
@@ -457,6 +484,40 @@ func TestListReviewsMarksWeightsAndLegend(t *testing.T) {
 	}
 	if strings.Contains(got, "○ sec-review") || strings.Contains(got, "○  doc-review") {
 		t.Errorf("a scheduled review was left unmarked:\n%s", got)
+	}
+}
+
+// ReviewMark is the glyph the listing leads a review with. A weight of one
+// and a weight above one have to stay apart, or a review named twice reads
+// as named once, and anything that was not scheduled, including a negative
+// weight, has to read as unscheduled rather than as a check.
+func TestReviewMarkNamesTheWeight(t *testing.T) {
+	cases := map[int]string{-1: "○", 0: "○", 1: "✓", 2: "x2", 12: "x12"}
+	for weight, want := range cases {
+		if got := ReviewMark(weight); got != want {
+			t.Errorf("ReviewMark(%d) = %q, want %q", weight, got, want)
+		}
+	}
+}
+
+// WrapIndent breaks a comma-separated set listing on a space once the next
+// word would pass the width, and the continuation starts at the indent. A
+// width that leaves under twenty columns of room returns the line whole,
+// because wrapping it there would put one word on every line.
+func TestWrapIndentBreaksOnSpacesAndGivesUpWhenNarrow(t *testing.T) {
+	got := WrapIndent("alpha, beta, gamma delta epsilon", 20, 0)
+	want := "alpha, beta, gamma\ndelta epsilon"
+	if got != want {
+		t.Errorf("WrapIndent wrapped as %q, want %q", got, want)
+	}
+	// 語 is two columns, so a byte count of the running column would keep
+	// the last word on the first line, one column past the width.
+	wide := WrapIndent("aaaaaaaaaaaaaaaa 語 cc", 20, 0)
+	if want := "aaaaaaaaaaaaaaaa 語\ncc"; wide != want {
+		t.Errorf("WrapIndent wide = %q, want %q", wide, want)
+	}
+	if got := WrapIndent("alpha beta", 24, 10); got != "alpha beta" {
+		t.Errorf("a narrow room wrapped anyway: %q", got)
 	}
 }
 

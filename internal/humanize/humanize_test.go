@@ -97,6 +97,29 @@ func TestClockSeparatesRepeatedWallClock(t *testing.T) {
 	}
 }
 
+// Plural is how a listing counts a thing, and the callers pass an irregular
+// plural rather than appending "s". One is the singular spelling with the
+// digit ungrouped; everything else, including zero and a negative, is the
+// grouped count Count already prints plus the plural spelling.
+func TestPlural(t *testing.T) {
+	cases := []struct {
+		n         int
+		one, many string
+		want      string
+	}{
+		{1, "journal", "journals", "1 journal"},
+		{0, "journal", "journals", "0 journals"},
+		{2, "entry was", "entries were", "2 entries were"},
+		{1200, "run", "runs", "1,200 runs"},
+		{-1, "file", "files", "-1 files"},
+	}
+	for _, c := range cases {
+		if got := Plural(c.n, c.one, c.many); got != c.want {
+			t.Errorf("Plural(%d, %q, %q) = %q, want %q", c.n, c.one, c.many, got, c.want)
+		}
+	}
+}
+
 func TestCount(t *testing.T) {
 	cases := map[int]string{0: "0", 999: "999", 1000: "1,000", 1234567: "1,234,567", -4321: "-4,321"}
 	for in, want := range cases {
