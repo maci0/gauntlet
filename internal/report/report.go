@@ -431,7 +431,7 @@ func Summary(out io.Writer, pal Palette, dirs []Dir, wall time.Duration) {
 			if tps := a.TokensPerSec(); tps > 0 {
 				rate = fmt.Sprintf(", ~%.0f tok/s", tps)
 			}
-			counts := ""
+			var counts strings.Builder
 			for _, part := range []struct {
 				key string
 				n   int
@@ -442,11 +442,11 @@ func Summary(out io.Writer, pal Palette, dirs []Dir, wall time.Duration) {
 				{"other", a.Counts.Other},
 			} {
 				if part.n > 0 {
-					counts += fmt.Sprintf(" %s=%d", part.key, part.n)
+					counts.WriteString(fmt.Sprintf(" %s=%d", part.key, part.n))
 				}
 			}
 			fmt.Fprintf(out, "  %s ok=%d fail=%d timeout=%d%s%s\n",
-				PadCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, counts, rate)
+				PadCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, counts.String(), rate)
 		}
 	}
 	if len(t.failures) > 0 {

@@ -73,7 +73,7 @@ func FuzzBelowFloor(f *testing.F) {
 		if !strings.Contains(line, ".") {
 			t.Fatalf("BelowFloor(%q) known=%v without a dotted pair", line, known)
 		}
-		if idx := strings.Index(line, "."); idx >= 0 {
+		if found := strings.Contains(line, "."); found {
 			// If either side of the first dot is not all digits up to a
 			// non-digit, the regex oracle should agree; strconv check guards
 			// overflowed components being silently accepted.

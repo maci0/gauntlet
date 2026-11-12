@@ -1898,7 +1898,7 @@ func TestMakefileHelpColumnFitsEveryDocumentedTarget(t *testing.T) {
 	}
 	const name = "check-workflow-shell"
 	line := ""
-	for _, raw := range strings.Split(string(out), "\n") {
+	for raw := range strings.SplitSeq(string(out), "\n") {
 		if strings.Contains(raw, name) {
 			line = raw
 			break

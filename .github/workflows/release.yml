@@ -91,7 +91,8 @@ jobs:
             group && /^[[:space:]]*- / { bullet = 1 }
             END { exit !(group && bullet) }
           ' dist/notes.md; then
-            echo "CHANGELOG.md section for $version has no change under an impact group; add release notes before tagging" >&2
+            echo "CHANGELOG.md section for $version has no change under an impact group;" \
+              "add release notes before tagging" >&2
             exit 1
           fi
 
