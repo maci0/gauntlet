@@ -43,6 +43,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The small-terminal dashboard now keeps the outcome tally on a terminal too
+  short for every row. A two-row terminal used to show the run state and the
+  keys and drop the pass, fail, and timeout counts, which is the reading a
+  reader in a terminal that small is looking at it for.
 - The state-tree backup recipe now records the directory that holds the
   archive after renaming it into place. The rename replaces the previous
   archive before that directory entry is durable, so a power cut used to lose

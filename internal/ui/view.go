@@ -1038,7 +1038,24 @@ func (m *model) renderMinimal() string {
 		// The key line is the last row and is the one that stays: a terminal
 		// three rows tall trimmed from the bottom is a tally and no way to
 		// leave, which is the dead end the fallback exists to avoid.
-		rows = append(rows[:max(m.h-1, 0):len(rows)-1], rows[len(rows)-1])
+		//
+		// What stays above it is the outcome, not the top of the list. The
+		// header is the first row, the tally the second, and trimming from
+		// the top kept the header and dropped the tally: a terminal two rows
+		// tall then showed the state and the keys with no reading of whether
+		// anything broke, which is the question the fallback exists to answer.
+		// The resize hint and the running-work rows are what a short terminal
+		// gives up first; the tally is the last of them to go.
+		keep := rows[:2]
+		rest := rows[2 : len(rows)-1]
+		room := max(m.h-2, 0)
+		if room < len(rest) {
+			rest = rest[len(rest)-room:]
+		}
+		rows = append(append(keep, rest...), rows[len(rows)-1])
+		if len(rows) > m.h {
+			rows = rows[len(rows)-m.h:]
+		}
 	}
 	for i, r := range rows {
 		rows[i] = clipEllipsis(r, m.w)
