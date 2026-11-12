@@ -409,6 +409,52 @@ echo ran > "$ACP_NATIVE_MARKER"
 	}
 }
 
+// TestACPFallbackTimeoutIgnoresWallClock pins the span the first attempt
+// costs the native fallback. A clock stepped an hour forward between the two
+// readings used to subtract that hour from the review's timeout and skip the
+// fallback; one stepped back handed the fallback the hour as extra time. The
+// span is a monotonic reading, so neither changes what the fallback gets.
+func TestACPFallbackTimeoutIgnoresWallClock(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "launches")
+	t.Setenv("GAUNTLET_TEST_ACP_LOG", logPath)
+	bin := fakeAgent(t, t.TempDir(), "opencode", `
+if [ "$1" = acp ] && [ "$2" = --help ]; then echo 'Agent Client Protocol'; exit 0; fi
+if [ "$1" = acp ]; then
+  echo acp >> "$GAUNTLET_TEST_ACP_LOG"
+  printf '%s\n' '{"id":1,"error":{"code":-32601,"message":"unsupported"}}'
+  exit 0
+fi
+echo native >> "$GAUNTLET_TEST_ACP_LOG"
+echo 'RESULT: changed=0'
+`)
+	// The run clock steps an hour forward between the reading taken before the
+	// ACP attempt and the one taken after it, which is what an NTP step during
+	// that attempt looks like. Charging the fallback against that step
+	// subtracts the hour from a 30s timeout and the native launch never starts.
+	reads := 0
+	start := time.Now()
+	base := procOpts{
+		Tool: "opencode", Argv: []string{bin, "run", "--standalone"},
+		Dir: dir, NoSandbox: true, Timeout: 30 * time.Second,
+		Now: func() time.Time {
+			reads++
+			return start.Add(time.Duration(reads) * time.Hour)
+		},
+	}
+	r := runProc(context.Background(), withACP(context.Background(), base, agent.Spec{Tool: "opencode"}, "review", false, ""))
+	if r.ExitCode != 0 || r.TimedOut {
+		t.Fatalf("fallback result = %+v, want the native launch", r)
+	}
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "acp\nnative\n" {
+		t.Fatalf("launches = %q, want the ACP attempt and then the native fallback", got)
+	}
+}
+
 func TestACPProcessTimeout(t *testing.T) {
 	bin := fakeAgent(t, t.TempDir(), "agent", "sleep 30")
 	prompt := "review"

@@ -1,7 +1,8 @@
 # What happens during a run
 
 A run is a loop over reviews. Each review is one agent invocation in one
-directory, with a per-review timeout and a per-run wall clock. This page
+directory, with a per-review timeout and a per-run elapsed-time budget
+measured on the monotonic clock. This page
 covers what surrounds that: isolation, the record it leaves, and how a running
 loop takes a new binary.
 

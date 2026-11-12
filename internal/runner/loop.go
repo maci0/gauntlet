@@ -257,10 +257,10 @@ func (r *Runner) now() time.Time { return r.bus.now() }
 func (r *Runner) sleep(ctx context.Context, d time.Duration) bool { return r.bus.sleep(ctx, d) }
 
 // budgetExhausted names the run budget that has run out, or "" while reviews
-// may still start. --runtime is the wall clock; --token-budget is the total
-// tokens recorded so far, a hot reload's predecessor included, so a ceiling
-// survives the exec that reloads the run. Both are checked at the same points:
-// before a loop, and before a review is taken.
+// may still start. --runtime is monotonic elapsed, so an NTP step cannot
+// exhaust or extend it; --token-budget is the total tokens recorded so far, a
+// hot reload's predecessor included, so a ceiling survives the exec that
+// reloads the run. Both are checked before a loop and before a review is taken.
 func (r *Runner) budgetExhausted() string {
 	if r.cfg.Runtime > 0 && r.now().Sub(r.st.Start) >= r.cfg.Runtime {
 		return "Runtime"

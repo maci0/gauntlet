@@ -1528,7 +1528,8 @@ privilege transition:
   but false low reading also permits continued scheduling. The probe is
   trusted telemetry, not an authenticated quota service.
 
-**B2, spend (the two budgets).** `--runtime` bounds wall clock and
+**B2, spend (the two budgets).** `--runtime` bounds elapsed time on the
+monotonic clock, so an NTP step cannot exhaust or extend it, and
 `--token-budget` bounds the tokens the run's reviews report
 (`budgetExhausted`, `internal/runner/loop.go:254-267`; `Stats.Tokens`,
 `internal/runner/stats.go:346-356`). Both are read before a loop and before a

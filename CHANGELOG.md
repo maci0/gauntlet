@@ -70,6 +70,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - A journal flushed at a finished review or loop is now synced, not only
   written, so a power cut keeps the reviews finished since the last close
   instead of losing them with the page cache.
+- An ACP session that falls back to the agent's native CLI now charges the
+  first attempt's duration against the review timeout from a monotonic
+  reading. Two readings of the run clock made an NTP step during the attempt
+  skip the fallback or hand it more time than the review was given.
+- `--runtime` is documented as an elapsed-time budget measured on the
+  monotonic clock. The help text, the CLI reference, and the threat model
+  called it a wall-clock budget, which is the measurement an NTP step would
+  exhaust or extend; the check itself already reads the monotonic clock.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.

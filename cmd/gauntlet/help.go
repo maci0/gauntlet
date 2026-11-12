@@ -85,7 +85,7 @@ var helpGroups = []flagGroup{
 		{"", "pr-base", "BRANCH", "remote base fetched for --stacked-prs (default: current branch name)"},
 		{"", "push-remote", "REMOTE", "remote receiving stacked PR branches (default: origin)"},
 		{"", "retries", "N", fmt.Sprintf("reruns of a failed review on the same agent from the same tree, waiting longer each time (default %d)", defaultRetries)},
-		{"", "runtime", "DUR", "wall-clock budget for the whole run (0 = unlimited)"},
+		{"", "runtime", "DUR", "elapsed-time budget for the whole run; an NTP step cannot exhaust or extend it (0 = unlimited)"},
 		{"", "token-budget", "N", "stop at N reported tokens for the run, and stop the review that reaches it (0 = unlimited)"},
 		{"", "usage-cmd", "CMD", "command printing the percent of the provider's usage window already spent; must resolve to an executable, and is used with --usage-limit or not at all"},
 		{"", "usage-limit", "PCT", "stop starting reviews at this percent of that window (0 = unlimited); needs --usage-cmd"},

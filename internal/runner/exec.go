@@ -183,18 +183,18 @@ type procOpts struct {
 // restrains polite programs: a runtime that ignores SIGTTOU, as Node-style
 // CLIs routinely do, sails straight through it. stdin is /dev/null except
 // for ACP, where it carries only the protocol messages from the runner.
+//
+// The span the first attempt costs the fallback is monotonic, not two
+// readings of o.Now: a pinned replay clock would charge nothing, and an NTP
+// step between two wall readings skips the fallback or extends it.
 func runProc(ctx context.Context, o procOpts) procResult {
-	now := o.Now
-	if now == nil {
-		now = time.Now
-	}
-	start := now()
+	started := time.Now()
 	result := runProcOnce(ctx, o)
 	if (!errors.Is(result.StreamErr, errACPProtocolUnsupported) && !errors.Is(result.StreamErr, errACPAgentUnsupported) && !errors.Is(result.StreamErr, errACPConfigUnsupported) && !errors.Is(result.StreamErr, errACPResumeUnsupported) && !(o.ACPFallbackAuth && errors.Is(result.StreamErr, errACPAuthenticationRequired)) && !(o.ACPFallbackInvalidModel && errors.Is(result.StreamErr, errACPInvalidModel))) || len(o.ACPFallbackArgv) == 0 || result.TimedOut || result.Canceled || ctx.Err() != nil {
 		return result
 	}
 	if o.Timeout > 0 {
-		o.Timeout -= now().Sub(start)
+		o.Timeout -= time.Since(started)
 		if o.Timeout <= 0 {
 			return result
 		}
