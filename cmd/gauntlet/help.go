@@ -59,7 +59,7 @@ var helpGroups = []flagGroup{
 	{"Reviews", []flagDoc{
 		{"r", "reviews", "LIST", "reviews and/or sets to run; the -review suffix is optional, repeats add weight, 'suggest' adds an agent's picks to the list (repeatable)"},
 		{"x", "exclude", "LIST", "reviews and/or sets to skip (repeatable)"},
-		{"", "append", "TEXT", "append an instruction to every review prompt"},
+		{"", "append", "TEXT", "append an instruction to every review prompt (4 KiB cap)"},
 		{"", "paths", "LIST", "scope reviews to these files, directories, or globs, relative to the reviewed directory; prompt-enforced, the agent keeps the whole tree (repeatable)"},
 		{"", "max-reviews", "N", "cap reviews per loop, cut after the seeded shuffle so --seed replays which N ran; a repeated review fills one slot per listing (0 = unlimited)"},
 		{"s", "suggest", "", "pick and weight reviews (1-3 passes); default: file signals; use --suggest-agent for a model; named reviews are scheduled as well"},

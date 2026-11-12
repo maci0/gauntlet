@@ -815,6 +815,15 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	o.paths = raw.paths
 
+	// --append is pasted into every review prompt, so an unbounded value is an
+	// unbounded prompt resent once per review. Refuse it here, where the
+	// operator can shorten it, rather than dispatching it.
+	if !prompt.AppendInstructionOK(o.appendInstruction) {
+		return nil, fmt.Errorf("--append is %d bytes, over the %d-byte cap: "+
+			"shorten it, or put a longer brief in a project prompt",
+			len(o.appendInstruction), prompt.AppendInstructionMax)
+	}
+
 	// "suggest" is a request, not a review name: it can arrive as --suggest or
 	// inside --reviews, and either way the rest of the list survives it.
 	o.suggest = suggest

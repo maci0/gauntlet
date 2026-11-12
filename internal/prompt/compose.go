@@ -214,6 +214,21 @@ func pathEntry(s string) string {
 	return strings.ReplaceAll(nfc(s), "`", "'")
 }
 
+// AppendInstructionMax bounds the operator's --append text. It is free text a
+// wrapper can build from a file rather than from a person typing it, and it is
+// pasted into every review prompt the run sends, so an uncapped value is a
+// prompt with no end and a token bill with no end. 4 KiB is a paragraph of
+// instruction, not a document: a longer brief belongs in a project prompt,
+// which has its own read cap.
+const AppendInstructionMax = 4 << 10
+
+// AppendInstructionOK reports whether an --append value fits the prompt it is
+// pasted into. Empty is fine: the flag was omitted. The bound is bytes, the
+// unit the argv cap and the token bill are measured in.
+func AppendInstructionOK(s string) bool {
+	return len(s) <= AppendInstructionMax
+}
+
 // PathsNamed is the subset of --paths entries the scope block names, in order,
 // dropping what pathEntry renders empty. What it drops, pathsNote counts in the
 // prompt, so the scope never reads narrower than the flag was without saying so.

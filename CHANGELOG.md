@@ -47,6 +47,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- `--append` is now refused past 4 KiB. The text is pasted into every review
+  prompt, so an unbounded value was an unbounded prompt resent once per review.
 - A conflict resolution whose marker scan cannot close the file it read is no
   longer treated as resolved. The close is the only signal that the bytes read
   were the whole file, and a scan that dropped it authorized the commit of a

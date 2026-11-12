@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maci0/gauntlet/internal/prompt"
 	"github.com/maci0/gauntlet/internal/report"
 	"github.com/maci0/gauntlet/internal/selfupdate"
 )
@@ -703,6 +704,23 @@ func TestParseFlagsPaths(t *testing.T) {
 	// Subcommands do not read it, so it must be refused, not swallowed.
 	if _, err := parseFlags([]string{"runs", "--paths", "x"}); err == nil {
 		t.Fatal("gauntlet runs --paths was not refused")
+	}
+}
+
+// --append is pasted into every review prompt, so a value with no end is a
+// prompt with no end, resent once per review. The cap is where the operator
+// sees it.
+func TestParseFlagsAppendBound(t *testing.T) {
+	o, err := parseFlags([]string{"--append", "Focus on I/O."})
+	if err != nil || o.appendInstruction != "Focus on I/O." {
+		t.Fatalf("short --append: %q %v", o.appendInstruction, err)
+	}
+	if _, err := parseFlags([]string{"--append", strings.Repeat("x", prompt.AppendInstructionMax+1)}); err == nil {
+		t.Fatal("--append past the cap was accepted")
+	}
+	at, err := parseFlags([]string{"--append", strings.Repeat("x", prompt.AppendInstructionMax)})
+	if err != nil || len(at.appendInstruction) != prompt.AppendInstructionMax {
+		t.Fatalf("--append at the cap: %d %v", len(at.appendInstruction), err)
 	}
 }
 
