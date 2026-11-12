@@ -19,8 +19,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"golang.org/x/text/unicode/norm"
-
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/safefile"
@@ -335,7 +333,7 @@ func openNoFollow(path string) (*os.File, error) {
 // file created on macOS carries an NFD stem (decomposed é) while a shell or
 // keyboard produces NFC, and without this one of the two would not match.
 func nfc(s string) string {
-	return norm.NFC.String(s)
+	return fuzzy.NFC(s)
 }
 
 // sanitize strips control and formatting characters from untrusted display
