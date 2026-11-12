@@ -34,6 +34,13 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+### Changed
+
+- ruff now checks `scripts/` with the `DJ` and `PD` categories as well. Both
+  pass, and neither was selected, so an import of Django or pandas would have
+  landed with no check on it. `pyproject.toml` records why `DOC` stays out:
+  it only exists under ruff's preview flag.
+
 ### Fixed
 
 - The state-tree backup recipe now records the directory that holds the

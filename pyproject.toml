@@ -31,7 +31,13 @@ src = ["scripts"]
 # tools an opinion about the same line. `T20` bans `print`, and printing is
 # what these two scripts are for. `NPY` and `AIR` cover the NumPy and Airflow
 # idioms, and nothing here imports either library, so the rules have no site
-# to fire on and would only add to the list.
+# to fire on and would only add to the list. `DOC` is the one category left
+# off without being named here: it only exists under ruff's preview flag, and
+# a stable check must not depend on rules the tool still marks unstable.
+#
+# `DJ` and `PD` stay even though nothing here imports Django or pandas. Both
+# pass today, and a rule with no site to fire on costs nothing while a later
+# import of either library would otherwise land with no check on it.
 select = [
     "A",
     "ANN",
@@ -43,6 +49,7 @@ select = [
     "C90",
     "CPY",
     "D",
+    "DJ",
     "DTZ",
     "E",
     "EM",
@@ -63,6 +70,7 @@ select = [
     "ISC",
     "LOG",
     "N",
+    "PD",
     "PERF",
     "PGH",
     "PIE",
