@@ -910,6 +910,13 @@ func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
 	if !strings.Contains(got, `"timeouts_known": true`) {
 		t.Errorf("the row does not say its timeout count is known:\n%s", got)
 	}
+	// The marker lives on the index, where a later listing re-reads it.
+	// Putting it in this document would let a consumer write the row back
+	// and make every old row claim a split it does not have, so the JSON
+	// form says the same fact as timeouts_known and leaves the marker out.
+	if strings.Contains(got, "timeouts_folded") {
+		t.Errorf("the JSON row carries the index marker:\n%s", got)
+	}
 	if doc.Pruned == nil {
 		t.Error("pruned should be an empty array, not null: a consumer reading it gets no list either way")
 	}
@@ -1045,6 +1052,40 @@ func TestRunsJSONOnAnEmptyHistoryIsAnEmptyList(t *testing.T) {
 	}
 	if !strings.Contains(got, `"runs": []`) {
 		t.Errorf("an empty list should serialize as an array:\n%s", got)
+	}
+}
+
+// A row written before timeouts was its own field counted deadlines inside
+// failed. The JSON form has to say that count is unknown and omit the zero,
+// rather than hand a consumer a timeouts of 0 beside a failed that already
+// holds the deadlines. The index marker stays out of the document: it is what
+// a later listing re-reads, and a rendered row written back would make every
+// old row claim the split.
+func TestRunsJSONOmitsTheTimeoutCountOnAFoldedRow(t *testing.T) {
+	folded := journal.Summary{RunID: "20260101T000000Z-abcd", Reviews: 2, OK: 1, Failed: 1, Folded: true}
+	got, err := presentSummaries([]journal.Summary{folded})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(got[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		t.Fatal(err)
+	}
+	if known, _ := obj["timeouts_known"].(bool); known {
+		t.Fatalf("a folded row claims its timeout count is known: %s", raw)
+	}
+	if _, present := obj["timeouts"]; present {
+		t.Fatalf("a folded row carries a timeouts count: %s", raw)
+	}
+	if _, present := obj["timeouts_folded"]; present {
+		t.Fatalf("a folded row carries the index marker: %s", raw)
+	}
+	if obj["failed"] != float64(1) {
+		t.Fatalf("failed = %v, want 1: %s", obj["failed"], raw)
 	}
 }
 

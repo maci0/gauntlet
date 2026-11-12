@@ -568,12 +568,13 @@ func TestReleaseRejectsEmptyNotes(t *testing.T) {
 		want      string
 	}{
 		{"valid", "## Unreleased\n\n## 1.2.3\n\n### Fixed\n\n- Preserve settings.\n\n## 1.2.2\n- Older fix.\n", "\n### Fixed\n\n- Preserve settings.\n\n"},
-		{"final section", "## 1.2.3\n- Preserve settings.\n", "- Preserve settings.\n"},
+		{"final section", "## 1.2.3\n\n### Fixed\n- Preserve settings.\n", "\n### Fixed\n- Preserve settings.\n"},
+		{"bullet without a group", "## 1.2.3\n- Preserve settings.\n", ""},
 		{"missing", "## 1.2.2\n- Older fix.\n", ""},
 		{"empty", "## 1.2.3\n", ""},
 		{"headings only", "## 1.2.3\n\n### Added\n\n### Fixed\n\n", ""},
 		{"indented heading", "## 1.2.3\n  ### Fixed\n", ""},
-		{"prose", "## 1.2.3\nPreserve settings.\n", "Preserve settings.\n"},
+		{"prose", "## 1.2.3\nNo changes since 1.2.2.\n", ""},
 		{"blank", "## 1.2.3\n\n\n", ""},
 		{"whitespace", "## 1.2.3\n \t \n\t\n", ""},
 		{"next section", "## 1.2.3\n\n## 1.2.2\n- Older fix.\n", ""},

@@ -34,8 +34,9 @@ func TestChangelogSectionsAreWellFormed(t *testing.T) {
 		// sections tracks whether the current version section carries at
 		// least one impact group and one bullet. A released section with
 		// neither is a version number the consumer cannot act on: 1.45.0
-		// shipped "No changes since 1.44.0." and the release workflow's
-		// non-empty-notes check accepted it because prose is content.
+		// shipped "No changes since 1.44.0." because the release workflow
+		// accepted any non-empty prose as notes. It now requires a bullet
+		// under an impact group, the same rule this check enforces.
 		sections []changelogSection
 	)
 	flushSection := func() {

@@ -390,9 +390,11 @@ func projectSummaries(entries []journal.Summary, fields []string) ([]any, error)
 // cannot say whether its timeout count is known: json drops a false bool, so a
 // row written before the field existed and a row this build wrote with no
 // timeouts encode the same, and a consumer that subtracted them would read a
-// deadline as an agent failure. timeouts_known says which of the two it is.
-// The marker stays off the index because the index is what a later listing
-// re-reads, and writing it back would make every old row claim the split.
+// deadline as an agent failure. timeouts_known says which of the two it is,
+// and a folded row drops its timeouts key so the zero is not read as a count.
+// The marker stays off this document because the index is what a later listing
+// re-reads, and writing the rendered row back would make every old row claim
+// the split.
 func presentSummaries(entries []journal.Summary) ([]any, error) {
 	out := make([]any, 0, len(entries))
 	for _, e := range entries {

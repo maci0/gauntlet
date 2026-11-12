@@ -75,9 +75,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   record the directory exits non-zero.
 - The run index now counts a review the per-review deadline stopped in its own
   `timeouts` field instead of folding it into `failed`. `gauntlet runs` and
-  `gauntlet runs --json` can tell a deadline from an agent failure, and a row
-  written before the field existed is marked `timeouts_folded` so its combined
-  `failed` count is not added to the new field and counted twice.
+  `gauntlet runs --json` can tell a deadline from an agent failure. A row
+  written before the field existed is marked `timeouts_folded` on the index,
+  so its combined `failed` count is not added to the new field and counted
+  twice. `gauntlet runs --json` does not copy that marker: it reports
+  `timeouts_known` per row and omits `timeouts` on a row that folded them,
+  because writing the marker back would make every old row claim the split.
 - The release publish step now stops when an asset upload fails, instead of
   publishing the release anyway over assets that never landed.
 - The threat model now matches the marker escaping and the model-id checks the
@@ -102,10 +105,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.
-- The changelog guard now refuses a version section with no `###` group or no
-  bullet, so a release cannot ship with prose that the release workflow
-  accepts as notes but carries no change; 1.45.0 shipped that way and is the
-  exception the check names.
+- The changelog guard and the release workflow now both refuse a version
+  section with no `###` group or no bullet. The workflow used to accept any
+  non-empty prose as notes, which is how 1.45.0 published "No changes since
+  1.44.0."; that section is the exception the guard names.
 
 ## 1.45.0
 
