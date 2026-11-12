@@ -36,6 +36,11 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- The state-tree backup recipe now records the directory that holds the
+  archive after renaming it into place. The rename replaces the previous
+  archive before that directory entry is durable, so a power cut used to lose
+  the copy the job had just checked and reported as written. A job that cannot
+  record the directory exits non-zero.
 - The run index now counts a review the per-review deadline stopped in its own
   `timeouts` field instead of folding it into `failed`. `gauntlet runs` and
   `gauntlet runs --json` can tell a deadline from an agent failure, and a row

@@ -279,6 +279,47 @@ func TestBackupRecipeKeepsTheLastGoodArchive(t *testing.T) {
 	}
 }
 
+// TestBackupRecipeRefusesAnUnrecordedArchive pins the record after the rename.
+// `mv` puts the new archive's name in the destination directory and returns,
+// and that directory entry is what a reboot reads: until it is synced, a power
+// cut loses the copy this job just checked and reports as written, with the
+// previous archive already replaced. The recipe records the directory and
+// treats a failed record as a failed job, which is what this stands in for.
+func TestBackupRecipeRefusesAnUnrecordedArchive(t *testing.T) {
+	dir := t.TempDir()
+	state := filepath.Join(dir, "state")
+	makeJournal(t, state, filepath.Join("runs", "2026-08-25", "20260825T131500Z-a91f.jsonl"))
+
+	cut := t.TempDir()
+	log := filepath.Join(dir, "sync.log")
+	if err := os.WriteFile(filepath.Join(cut, "sync"), []byte("#!/bin/sh\n"+
+		"# sync, standing in for the directory record: it notes that it was\n"+
+		"# asked, then fails, which is a directory a reboot will not remember.\n"+
+		"printf '%s\n' \"$*\" >>'"+log+"'\n"+
+		"exit 1\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	archive := filepath.Join(dir, "gauntlet-state.tgz")
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", backupRecipeFor(t, state, archive))
+	cmd.Env = append(without(os.Environ(), "PATH="), "GAUNTLET_HOME="+state, "PATH="+cut+":"+os.Getenv("PATH"))
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Fatalf("a job that could not record the archive reported success:\n%s", out)
+	}
+	asked, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatalf("the recipe never asked to record the archive: %v", err)
+	}
+	if !strings.Contains(string(asked), "-f "+dir) {
+		t.Errorf("the recipe recorded %q, want the directory holding the archive", asked)
+	}
+	if _, err := os.Stat(archive); err != nil {
+		t.Fatalf("the rename happened and the archive is not at the destination: %v", err)
+	}
+	if left := partialsBeside(t, archive); len(left) != 0 {
+		t.Errorf("the failed record left %v beside the archive", left)
+	}
+}
+
 // backupRecipeFor is the recipe as the page prints it with its placeholders
 // pointed at scratch: the block names its own output path, so nothing reaches
 // the path the documentation shows as one, and the placeholders a reader

@@ -681,7 +681,11 @@ if [ "$#" -gt 0 ]; then
   partial=$archive.$$.partial
   trap 'rm -f "$partial"' EXIT HUP INT TERM
   if tar -C "$state" -czf "$partial" "$@" && tar -tzf "$partial" >/dev/null; then
-    mv -f "$partial" "$archive"
+    mv -f "$partial" "$archive" || exit 1
+    # The rename is a directory entry. Until the directory that holds the
+    # archive records it, a power cut loses the copy this job just checked
+    # and reports as written, and the previous archive is already gone.
+    sync -f "$(dirname "$archive")" || exit 1
   else
     echo "gauntlet: archive not written, $archive left as it was" >&2
     exit 1
@@ -698,7 +702,13 @@ it into place only after it reads back means the destination holds either the
 previous archive or the new one, never half of one. The `mv` is a rename
 within one directory, so the archive appears whole; keep the temporary beside
 the archive rather than in `/tmp`, because a rename across filesystems is a
-copy and reintroduces the window this closes. The `$$` is the job's own
+copy and reintroduces the window this closes. The rename is not durable until
+the directory that holds the archive records it: `sync -f` on that directory
+is what makes the new name survive a power cut, and a job that cannot record
+it exits non-zero rather than reporting an archive a reboot may not find. A
+kernel that cannot sync a directory at all is the one case `sync -f` cannot
+cover, and there the file's own bytes, written by `tar` before the rename,
+are what a reboot still has. The `$$` is the job's own
 process id: two backup jobs that overlap on one schedule — a timer that fired
 late and the next one starting on time — would otherwise write through the
 same temporary, and the first to finish would rename away a file the second
