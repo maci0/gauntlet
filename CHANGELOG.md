@@ -41,6 +41,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `gauntlet runs --json` can tell a deadline from an agent failure, and a row
   written before the field existed is marked `timeouts_folded` so its combined
   `failed` count is not added to the new field and counted twice.
+- The release publish step now stops when an asset upload fails, instead of
+  publishing the release anyway over assets that never landed.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.

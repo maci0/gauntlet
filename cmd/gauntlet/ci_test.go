@@ -341,6 +341,12 @@ func TestReleasePublicationClassification(t *testing.T) {
 	if !ok {
 		t.Fatal("Publish step has no shell body")
 	}
+	// The other release shells set this; Publish is the one that uploads.
+	// Without it a failed `gh release upload` falls through and the next
+	// command publishes the release anyway, over assets that never landed.
+	if !strings.HasPrefix(body, "          set -eu -o pipefail\n") {
+		t.Fatal("Publish must start with `set -eu -o pipefail`; a failed upload otherwise publishes anyway")
+	}
 	var script strings.Builder
 	script.WriteString(`gh() {
   printf '%s\n' "$*" >> gh.log
