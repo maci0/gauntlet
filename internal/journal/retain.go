@@ -86,8 +86,15 @@ func journalIdle(path string) (bool, error) {
 		}
 		return false, err
 	}
-	defer f.Close()
-	return syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil, nil
+	held := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) == nil
+	// The close releases the lock this probe just took. A close that fails
+	// leaves the answer untrustworthy: the probe cannot say the journal was
+	// idle and then fail to put it back, and treating that as idle is how a
+	// live run's journal gets moved out from under its writer.
+	if cerr := f.Close(); cerr != nil {
+		return false, fmt.Errorf("cannot release %s after checking it: %w", path, cerr)
+	}
+	return held, nil
 }
 
 // pruneLocked does the work under the index lock, so a concurrent Close cannot

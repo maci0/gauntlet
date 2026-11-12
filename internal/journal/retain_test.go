@@ -268,6 +268,56 @@ func TestJournalUnopenableIsNotIdle(t *testing.T) {
 	}
 }
 
+// The probe takes an exclusive lock and the close is what releases it. A close
+// that fails leaves the probe unable to say the journal was free, and calling
+// it idle then is how a live run's journal gets renamed out from under the
+// process still appending to it. The failure has to keep the journal and be
+// reported, the same as a journal that could not be opened.
+func TestJournalWhoseCloseFailsIsNotIdle(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GAUNTLET_HOME", home)
+	base := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+
+	j, err := Open("20260825T090000Z-0003", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Write(map[string]string{"ev": "run_start"})
+	j.Flush()
+	if err := j.Close(Summary{Version: "test", Start: base, End: base}); err != nil {
+		t.Fatal(err)
+	}
+	path := journalPath("20260825T090000Z-0003")
+
+	// Filling the descriptor table makes the close the one syscall that fails:
+	// the open and the lock both succeed, which is the shape a probe that
+	// drops its close error would call idle.
+	var held []*os.File
+	t.Cleanup(func() {
+		for _, f := range held {
+			f.Close()
+		}
+	})
+	for {
+		f, err := os.Open(path)
+		if err != nil {
+			break
+		}
+		held = append(held, f)
+	}
+	if len(held) == 0 {
+		t.Fatal("the descriptor table never filled")
+	}
+
+	idle, err := journalIdle(path)
+	if err == nil {
+		t.Fatal("a probe that cannot release the journal reports nothing")
+	}
+	if idle {
+		t.Error("a journal whose probe could not close it reads as idle")
+	}
+}
+
 // Prune fires unattended at the end of every run, so the second execution of
 // the same keep is the normal case, not a retry: a run whose keep the history
 // already satisfies must leave the tree exactly as it found it, and a run that

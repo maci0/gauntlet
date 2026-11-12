@@ -1635,6 +1635,58 @@ func TestRebuildKeepsRowsForJournalsItCannotRead(t *testing.T) {
 	}
 }
 
+// A journal the rebuild cannot read, and that the index has no row for, is a
+// run the rewritten index simply does not contain. The rows that did read are
+// still written, and the error names the run that is missing from them: a
+// rebuild that returns only the count reads as complete.
+func TestRebuildReportsAJournalItCannotReadAndHasNoRowFor(t *testing.T) {
+	t.Setenv("GAUNTLET_HOME", t.TempDir())
+	now := time.Date(2026, 8, 25, 9, 0, 0, 0, time.UTC)
+	kept := runIDFor(now, 1)
+	lost := runIDFor(now.Add(time.Minute), 2)
+	for _, id := range []string{kept, lost} {
+		j, err := Open(id, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		j.Write(map[string]any{"ev": "run_start", "ts": now, "version": "test"})
+		if err := j.Close(Summary{
+			Version: "test", Start: now, End: now.Add(time.Minute),
+			ExitCode: new(int), Reviews: 1, OK: 1,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(indexPath()); err != nil {
+		t.Fatal(err)
+	}
+	broken := journalPath(lost)
+	if err := os.Remove(broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(Home(), "gone"), broken); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := rebuildIndex()
+	if err == nil {
+		t.Fatal("rebuildIndex reported success with a journal it could not read")
+	}
+	if !strings.Contains(err.Error(), lost) {
+		t.Errorf("rebuildIndex error %v does not name the unread run", err)
+	}
+	if n != 1 {
+		t.Errorf("rebuildIndex wrote %d rows, want the one journal it could read", n)
+	}
+	rows, err := readAllIndex()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].RunID != kept {
+		t.Fatalf("index holds %+v, want only %s", rows, kept)
+	}
+}
+
 // Close writes Args onto the index only. Rebuilding a healthy index would
 // drop them, so Recent must leave a matching index alone.
 func TestRecentPreservesSummariesWhenRunsCloseOutOfOrder(t *testing.T) {

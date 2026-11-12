@@ -43,6 +43,19 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ### Fixed
 
+- A conflict resolution whose marker scan cannot close the file it read is no
+  longer treated as resolved. The close is the only signal that the bytes read
+  were the whole file, and a scan that dropped it authorized the commit of a
+  file it had not finished reading.
+- Pruning the run history no longer treats a journal as idle when the probe
+  that checked it cannot close it. The close is what releases the lock the
+  probe took, and a journal it cannot put back is kept and reported rather than
+  moved out from under a run that may still be writing it.
+- Rebuilding or listing the run index now reports a journal it cannot read
+  instead of omitting that run. A rebuild that already holds a row for the run
+  keeps the row, as before; one that has none writes the rows it could read
+  and names the run missing from them, and `gauntlet runs` prints the same
+  failure beside the listing.
 - The small-terminal dashboard now keeps the outcome tally on a terminal too
   short for every row. A two-row terminal used to show the run state and the
   keys and drop the pass, fail, and timeout counts, which is the reading a

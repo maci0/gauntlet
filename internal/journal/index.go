@@ -496,6 +496,12 @@ func Recent(n int) ([]Summary, error) {
 		}
 		s, err := summarizeFile(j.id, j.path)
 		if err != nil {
+			// A journal the index does not name and that cannot be read is a
+			// run the listing would otherwise omit with no error at all: the
+			// file is there, the walk found it, and the row is simply absent.
+			// The rest of the listing still comes back, and the error says
+			// which run is missing from it.
+			note(fmt.Errorf("cannot read run %s: %w", j.id, err))
 			continue
 		}
 		lookup[j.id] = s
@@ -923,6 +929,7 @@ func rebuildIndex() (int, error) {
 			byID[s.RunID] = s
 		}
 	}
+	var unread []error
 	rows := make([]Summary, 0, len(journals))
 	for _, journal := range slices.Backward(journals) {
 		s, err := summarizeFile(journal.id, journal.path)
@@ -930,18 +937,24 @@ func rebuildIndex() (int, error) {
 			if prev, ok := byID[journal.id]; ok {
 				prev.Path = journal.path
 				rows = append(rows, prev)
+				continue
 			}
+			// No row to keep and a journal that will not read: the run is
+			// absent from the index this rebuild just rewrote, and returning
+			// the count alone would say the rebuild was complete. The rows
+			// that did read are still written, so one bad journal does not
+			// throw the rest of the history away.
+			unread = append(unread, fmt.Errorf("cannot read run %s: %w", journal.id, err))
 			continue
 		}
 		rows = append(rows, s)
 	}
-	if len(rows) == 0 {
-		return 0, nil
+	if len(rows) > 0 {
+		if err := writeIndex(rows); err != nil {
+			return 0, errors.Join(append([]error{err}, unread...)...)
+		}
 	}
-	if err := writeIndex(rows); err != nil {
-		return 0, err
-	}
-	return len(rows), nil
+	return len(rows), errors.Join(unread...)
 }
 
 // writeIndex replaces index.jsonl. The caller holds the index lock.

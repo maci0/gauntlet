@@ -478,6 +478,58 @@ func TestUnresolvedFailsOnAnUnreadablePath(t *testing.T) {
 	}
 }
 
+// A file the kernel read and then failed to close is not a file the scan
+// finished. The body it did return can be the prefix of a file whose marker
+// sits past the bytes that arrived, so the close error has to fail the scan
+// the way an unreadable path does, or the resolution is committed.
+func TestUnresolvedFailsWhenTheScanCannotClose(t *testing.T) {
+	r := newRepo(t)
+	ctx := context.Background()
+	base, err := r.Tip(ctx, "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wt, err := r.AddWorktree(ctx, "a-review", "t1", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = wt.Remove(context.WithoutCancel(ctx)) }()
+
+	path := filepath.Join(wt.Dir, "notes.md")
+	if err := os.WriteFile(path, []byte("resolved\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Exhausting the descriptor table makes the close the one syscall that
+	// fails: the open and the read both succeed, which is the shape a scan
+	// that drops its close error would call clean.
+	var held []*os.File
+	defer func() {
+		for _, f := range held {
+			f.Close()
+		}
+	}()
+	for {
+		f, err := os.Open(path)
+		if err != nil {
+			break
+		}
+		held = append(held, f)
+	}
+	if len(held) == 0 {
+		t.Fatal("the descriptor table never filled")
+	}
+	left, err := wt.Unresolved(ctx, []string{"notes.md"})
+	if err == nil {
+		t.Fatal("Unresolved reported the file resolved though its close failed")
+	}
+	if len(left) != 0 {
+		t.Fatalf("Unresolved = %q along with the error; want nothing claimed either way", left)
+	}
+	if !strings.Contains(err.Error(), "notes.md") {
+		t.Fatalf("Unresolved error %v does not name the file", err)
+	}
+}
+
 func TestSquashInReportsAMergeNobodyCanResolve(t *testing.T) {
 	r := newRepo(t)
 	ctx := context.Background()

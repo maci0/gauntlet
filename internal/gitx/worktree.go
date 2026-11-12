@@ -735,16 +735,25 @@ const maxExcludeBytes = 1 << 20
 // was asked to resolve it can leave anything at that name. safefile.OpenRead,
 // not os.Open: a symlink planted there, or tracked in the checkout, would
 // otherwise be read out of the tree, up to the scan limit.
-func readScanFile(name string) ([]byte, error) {
+func readScanFile(name string) (body []byte, err error) {
 	f, fi, err := safefile.OpenRead(name)
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	// The close is part of the read. A marker sits at the end of a file the
+	// kernel never delivered, and a close that reports that is the only signal
+	// of it: dropping the error reads the short body as the whole file, which
+	// is "no markers", and Unresolved then authorizes the commit.
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
 	if fi.Size() > maxScanBytes {
 		return nil, fmt.Errorf("file is %d bytes, over the %d-byte scan limit", fi.Size(), maxScanBytes)
 	}
-	return io.ReadAll(io.LimitReader(f, maxScanBytes))
+	body, err = io.ReadAll(io.LimitReader(f, maxScanBytes))
+	return body, err
 }
 
 // Unresolved lists which of the given paths still carry conflict markers. It
