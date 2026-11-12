@@ -130,7 +130,7 @@ help: ## show available targets
 # duplication with "repetition-operator operand invalid". `## ` appears at
 # most once per documented target line, so greedy matches the same split.
 	@grep -E '^[a-zA-Z_-]+:.*## .*$$' $(MAKEFILE_LIST) | \
-		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+		awk 'BEGIN {FS = ":.*## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # The tree has no cgo sources, and dist/repro pin CGO_ENABLED=0; building the
 # host binary without the pin would let an ambient C toolchain flip net and

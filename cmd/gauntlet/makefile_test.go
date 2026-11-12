@@ -1878,3 +1878,36 @@ func TestWritableTestScratchDirectoryStillPasses(t *testing.T) {
 		t.Fatalf("make test-tmpdir with a writable TMPDIR: %v\n%s", err, out)
 	}
 }
+
+// The help listing is the only index of the targets a contributor runs, and
+// its column was 14 wide: check-workflow-shell, the longest documented name,
+// overran it and ate the gap before its description, so the one target a
+// reader looks up there was the one they could not read.
+func TestMakefileHelpColumnFitsEveryDocumentedTarget(t *testing.T) {
+	text := makefileText(t)
+	if !strings.Contains(text, `%-22s`) {
+		t.Fatal("make help must pad the target column wide enough for the longest documented name")
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "make", "--no-print-directory", "help")
+	cmd.Dir = moduleRoot(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("make help: %v\n%s", err, out)
+	}
+	const name = "check-workflow-shell"
+	line := ""
+	for _, raw := range strings.Split(string(out), "\n") {
+		if strings.Contains(raw, name) {
+			line = raw
+			break
+		}
+	}
+	if line == "" {
+		t.Fatalf("make help does not list %s:\n%s", name, out)
+	}
+	if !strings.Contains(line, name+" ") {
+		t.Fatalf("make help runs the description of %s into its name:\n%s", name, line)
+	}
+}
