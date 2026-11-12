@@ -34,6 +34,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
 
 ## Unreleased
 
+## 1.46.0
+
 ### Changed
 
 - ruff now checks `scripts/` with the `DJ` and `PD` categories as well. Both
@@ -44,8 +46,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   unrecognized outcomes, each only when that agent has one, the same way the
   run summary's own rows do. The row previously printed only ok, fail, and
   timeout, so an agent that never passed could still read as clean.
+- Updated the bundled Toktop reader to v0.27.0.
 
 ### Fixed
+
+- Corrected threat model line references to release workflow steps and internal packages.
+- Wrapped the release workflow changelog guard notice under the 120-character line limit.
 
 - `--append` is now refused past 4 KiB. The text is pasted into every review
   prompt, so an unbounded value was an unbounded prompt resent once per review.
