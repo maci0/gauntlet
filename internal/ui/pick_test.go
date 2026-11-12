@@ -131,6 +131,38 @@ func TestNarrowLauncherDoesNotNameDeadArrowKeys(t *testing.T) {
 	}
 }
 
+// The narrow fallback draws no review pane, so a kept filter has nothing on
+// screen to say what it kept. The count is that reading: without it, / changes
+// the command and the reader cannot tell a match of one from a match of all.
+func TestNarrowLauncherCountsWhatTheFilterKept(t *testing.T) {
+	p := demoPicker()
+	p.w, p.h = 40, 10
+	p.filter = "sec"
+	got := stripANSI(p.renderNarrow())
+	if !strings.Contains(got, `filter "sec": 1 of 4 reviews`) {
+		t.Fatalf("the narrow fallback does not say what the filter kept:\n%s", got)
+	}
+
+	p.filter = "zzz"
+	got = stripANSI(p.renderNarrow())
+	if !strings.Contains(got, "no reviews match") {
+		t.Fatalf("a filter that kept nothing reads as a quiet one:\n%s", got)
+	}
+
+	p.filter = ""
+	if got := stripANSI(p.renderNarrow()); strings.Contains(got, " of ") {
+		t.Fatalf("an unfiltered fallback invented a filter reading:\n%s", got)
+	}
+
+	// Two rows hold the command and the keys. The count needs a third, and a
+	// terminal that short drops it rather than pushing the keys off the pane.
+	p.filter = "sec"
+	p.h = 2
+	if got := stripANSI(p.renderNarrow()); strings.Contains(got, "1 of 4") {
+		t.Fatalf("a two-row terminal kept the count over the keys:\n%s", got)
+	}
+}
+
 // The narrow fallback is a screen the reader reached by having too little
 // room, so it has to name the way out. Resizing draws the panes on the next
 // frame, and only a reader told the size the panes need can act on that.
@@ -1511,7 +1543,7 @@ func TestNarrowLauncherShowsActiveFilterAndClear(t *testing.T) {
 	p.w, p.h, p.ready = 40, 10, true
 	p.filter = "ux"
 	view := stripANSI(p.View())
-	if !strings.Contains(view, "filter: /ux") {
+	if !strings.Contains(view, `filter "ux"`) {
 		t.Fatalf("narrow view lost active filter label:\n%s", view)
 	}
 	if !strings.Contains(view, "esc clear") {

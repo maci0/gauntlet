@@ -175,6 +175,30 @@ func (p *picker) renderCommand() string {
 	return clipEllipsis(styleDim.Render(prompt)+styleValue.Render("gauntlet "+strings.Join(argv, " ")), p.w)
 }
 
+// filterSummary says how much of the catalog a kept filter still covers,
+// which is the reading the review pane would have given and this view has
+// nowhere else to put. A filter that matched nothing says so in the same
+// words the wide view warns with, so the two screens agree on the miss.
+func (p *picker) filterSummary() string {
+	n := len(p.visibleReviews())
+	// While the reader is still typing, the line is the field they are editing,
+	// so it carries the cursor the wide view's filter line does.
+	if p.typing {
+		tail := fmt.Sprintf("%d of %d", n, len(p.knownReviews))
+		if n == 0 {
+			tail = "no reviews match"
+			if c := fuzzy.Closest(p.filter, p.knownReviews); c != "" {
+				tail = "did you mean " + c + "?"
+			}
+		}
+		return fmt.Sprintf("filter: %s▏  (%s)", p.filter, tail)
+	}
+	if n == 0 {
+		return p.filterMissedMessage()
+	}
+	return fmt.Sprintf("filter %q: %d of %d reviews", p.filter, n, len(p.knownReviews))
+}
+
 // filterMissedMessage is filterMissedMsgFor over this run's reviews, so the
 // block line, the reviews pane, and the status line all name the same review
 // for the same filter.
@@ -530,6 +554,12 @@ func (p *picker) renderNarrow() string {
 	} else if why := p.blocked(); why != "" {
 		rows = append(rows, styleWarn.Render("⚠ "+why))
 	}
+	// The panes are what show which reviews a filter kept, and this view
+	// draws none of them. Without a count, / changes the command and the
+	// reader cannot tell whether it matched one review or all of them.
+	if p.filter != "" {
+		rows = append(rows, styleInfo.Render(p.filterSummary()))
+	}
 	// The filter key is named here, and not dropped with the panes: without the
 	// panels the composed command is the whole screen, and / is the only key
 	// that can still change it. It therefore sits ahead of help, the one
@@ -537,14 +567,12 @@ func (p *picker) renderNarrow() string {
 	// because the panes are there to make it unnecessary.
 	keys := []string{"⏎ run", "/ filter", "q cancel", "? help"}
 	if p.typing {
-		rows = append(rows, styleInfo.Render("filter: "+p.filter+"▏"))
 		// No arrow keys here: this view draws no pane, so the cursor they
 		// move is one nothing on screen points at. A key named here that
 		// cannot be seen to do anything is a key a keyboard user cannot tell
 		// from a broken one (WCAG 3.3.2).
 		keys = []string{"⏎ keep", "esc clear"}
 	} else if p.filter != "" {
-		rows = append(rows, styleInfo.Render("filter: /"+p.filter))
 		keys = []string{"⏎ run", "/ filter", "esc clear", "q cancel", "? help"}
 	}
 	rows = append(rows, styleDim.Render(fitSegments(keys, "  ", p.w)))
@@ -560,8 +588,15 @@ func (p *picker) renderNarrow() string {
 		if p.h == 1 {
 			rows = []string{keys}
 		} else {
-			rows = append(rows[:max(p.h-2, 0):len(rows)-1],
-				command, keys)
+			keep := []string{command, keys}
+			// The count is what says whether the filter matched, and it is
+			// the one row this view has for it. It stays while there is a
+			// row to spare, ahead of the wordmark the trim throws away. The
+			// prefix already holds it once the trim keeps three rows or more.
+			if p.filter != "" && p.h == 3 {
+				keep = []string{command, styleInfo.Render(p.filterSummary()), keys}
+			}
+			rows = append(rows[:max(p.h-len(keep), 0):len(rows)-1], keep...)
 		}
 	}
 	for i, r := range rows {

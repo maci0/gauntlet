@@ -728,6 +728,13 @@ func (m *model) feedTitle(w int) string {
 		segs = append(segs, styleWarn.Render("paused"))
 	}
 	if l := m.filter.label(); l != "" {
+		// The label names what is shown and not how much was taken away, so a
+		// feed that looks short reads as a quiet run. The count is the lines
+		// the filter is holding back, which is the reading the empty state
+		// below can only give once nothing at all survived.
+		if hidden := len(m.feed) - len(m.visibleFeed()); hidden > 0 {
+			l = fmt.Sprintf("%s, %d hidden", l, hidden)
+		}
 		segs = append(segs, styleInfo.Render(l))
 	}
 	if n := len(m.conflicts); n > 0 {

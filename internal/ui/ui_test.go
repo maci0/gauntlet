@@ -2350,6 +2350,27 @@ func TestFeedFilterLabelNamesWhatItKeeps(t *testing.T) {
 	}
 }
 
+// A narrowed feed that looks short reads as a quiet run. The title counts the
+// lines the filter is holding back, so the reader can see there is more.
+func TestFeedTitleCountsWhatTheFilterHides(t *testing.T) {
+	m := newModel(demoConfig())
+	m.w, m.h, m.ready = 120, 40, true
+	m.apply(runner.Event{Kind: runner.EvOutput, Agent: "claude",
+		Text: "narrating", LineKind: normalize.Plain})
+	m.apply(runner.Event{Kind: runner.EvOutput, Agent: "claude",
+		Text: "broke", LineKind: normalize.Error})
+	m.filter = feedSignal
+	m.feedDirty = true
+	got := stripANSI(m.feedTitle(titleRoom))
+	if !strings.Contains(got, "1 hidden") {
+		t.Fatalf("the narrowed title does not count the line it dropped:\n%s", got)
+	}
+	m.filter = feedAll
+	if got := stripANSI(m.feedTitle(titleRoom)); strings.Contains(got, "hidden") {
+		t.Fatalf("the full feed counts lines it is not hiding:\n%s", got)
+	}
+}
+
 // Lanes and the feed spell a review the way the grid already did: without the
 // -review suffix that is the same on every name.
 func TestDashboardSpellsReviewNamesWithoutTheSuffix(t *testing.T) {
@@ -2595,7 +2616,12 @@ func TestNarrowPaneDropsWholeTitleSegments(t *testing.T) {
 	}
 	m.paused = true
 	m.filter = feedSignal
+	// Signal lines, so the filter keeps them and the hidden count stays out
+	// of a title this test is reading for its other segments.
 	m.feed = make([]feedLine, 40)
+	for i := range m.feed {
+		m.feed[i].kind = normalize.Error
+	}
 	m.scroll = 3
 	got := stripANSI(m.feedTitle(30))
 	if !strings.Contains(got, "paused") || !strings.HasSuffix(got, "…") {
