@@ -49,6 +49,8 @@ the journaled event stream in `internal/runner/contract_test.go`.
   a pinned model id is refused for every agent when it starts with a dash or
   carries a character outside its allowed set, and the published site's
   per-path cache policy and the `go.sum` module-cache key are named.
+- The memo of dsh provider probes is now capped, so a run resolving many
+  distinct launchers no longer grows it for the life of the process.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.

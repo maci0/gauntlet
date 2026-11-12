@@ -134,6 +134,14 @@ type dshProviderProbe struct {
 // per launcher per window, on a path that runs once per dsh launch.
 const dshProbeRetry = 30 * time.Second
 
+// dshProbeMapMax bounds the memo. The key is the whole launcher argv, and
+// that argv is what a reviewed repository's agent definition names, so a run
+// that kept resolving a fresh launcher would otherwise grow the table for the
+// life of the process. Past the cap the table is dropped whole, the way the
+// overlay memo beside it is: an entry costs one probe to rebuild, and no
+// entry is worth an eviction policy.
+const dshProbeMapMax = 256
+
 // dumpDshConfig runs the launcher's config dump and returns the provider the
 // headless profile's agent-default-model entry names. A var because the call
 // leaves the process: a test supplies a listing, or the failure a missing
@@ -205,6 +213,9 @@ func dshDefaultProvider(base []string, now func() time.Time) (string, error) {
 	}
 	p = dshProviderProbe{at: now()}
 	p.provider, p.err = dumpDshConfig(base)
+	if len(dshProbes.byBase) >= dshProbeMapMax {
+		clear(dshProbes.byBase)
+	}
 	dshProbes.byBase[key] = p
 	return p.provider, p.err
 }

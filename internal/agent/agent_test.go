@@ -2993,6 +2993,45 @@ func TestWriteDshPatchCleansStaleTemps(t *testing.T) {
 	}
 }
 
+// The probe memo's key is the whole launcher argv, and a reviewed
+// repository's agent definition names that argv, so a run that kept
+// resolving a fresh launcher would otherwise grow the table for the life of
+// the process. It is dropped whole past the cap rather than trimmed: an
+// entry costs one probe to rebuild, and no entry is worth a policy.
+func TestDshProbeMapIsBounded(t *testing.T) {
+	probed := 0
+	probeDshConfig(t, func(base []string) (string, error) {
+		probed++
+		return "prov", nil
+	})
+	// Past the cap by two: the drop happens on the probe that would cross
+	// it, and one more probe has to fit inside the cap too.
+	for i := range dshProbeMapMax + 2 {
+		base := []string{"dsh-" + strconv.Itoa(i)}
+		if _, err := dshDefaultProvider(base, nil); err != nil {
+			t.Fatal(err)
+		}
+		dshProbes.Lock()
+		n := len(dshProbes.byBase)
+		dshProbes.Unlock()
+		if n > dshProbeMapMax {
+			t.Fatalf("the table holds %d entries after %d probes, over the cap of %d",
+				n, i+1, dshProbeMapMax)
+		}
+	}
+	if probed != dshProbeMapMax+2 {
+		t.Fatalf("probed %d times, want one probe per launcher", probed)
+	}
+	// What the drop threw away is rebuilt on the next ask, not lost.
+	if p, err := dshDefaultProvider([]string{"dsh-0"}, nil); err != nil || p != "prov" {
+		t.Fatalf("a dropped launcher was not re-probed: %q, %v", p, err)
+	}
+	if probed != dshProbeMapMax+3 {
+		t.Fatalf("the dropped launcher was not re-probed: probed %d times, want %d",
+			probed, dshProbeMapMax+3)
+	}
+}
+
 // The overlay directory is shared by every run and nothing ever removed a
 // file from it, so a run that kept trying models grew it for good. An overlay
 // past the age goes, and a fresh one stays.
