@@ -43,6 +43,12 @@ the journaled event stream in `internal/runner/contract_test.go`.
   `failed` count is not added to the new field and counted twice.
 - The release publish step now stops when an asset upload fails, instead of
   publishing the release anyway over assets that never landed.
+- The threat model now matches the marker escaping and the model-id checks the
+  code actually performs. The marker rewrite is bounded and delivers a body
+  that keeps re-forming a marker rather than stopping only when none is left,
+  a pinned model id is refused for every agent when it starts with a dash or
+  carries a character outside its allowed set, and the published site's
+  per-path cache policy and the `go.sum` module-cache key are named.
 - Corrected the `--opencode-db` documentation: the linked Toktop reader
   supports both OpenCode 1 and OpenCode 2 database schemas and honors
   `OPENCODE_DB` and `XDG_DATA_HOME`, not OpenCode 1 alone.
