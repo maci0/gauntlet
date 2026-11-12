@@ -43,8 +43,7 @@ const semcodeIndexer = "semcode-index"
 func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 	idx := agent.Resolve(semcodeIndexer)
 	if idx == "" {
-		fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", semcodeIndexer)
-		return exitUsage
+		return failExit("usage", fmt.Sprintf("Required tool not found in PATH: %s", semcodeIndexer))
 	}
 	for _, d := range runs {
 		fmt.Fprintf(out, "Building semcode index in %s\n", d.dir)
@@ -62,16 +61,16 @@ func buildSemcodeIndex(ctx context.Context, out io.Writer, runs []*dirRun) int {
 		if ctx.Err() != nil {
 			return exitInterrupted
 		}
+		var msg string
 		switch {
 		case timedOut:
-			fmt.Fprintf(os.Stderr, "semcode-index timed out after %v in %s\n",
-				semcodeIndexTimeout, d.dir)
+			msg = fmt.Sprintf("semcode-index timed out after %v in %s", semcodeIndexTimeout, d.dir)
 		case code < 0:
-			fmt.Fprintf(os.Stderr, "semcode-index failed in %s (interrupted or killed)\n", d.dir)
+			msg = fmt.Sprintf("semcode-index failed in %s (interrupted or killed)", d.dir)
 		default:
-			fmt.Fprintf(os.Stderr, "semcode-index failed in %s with exit code %d\n", d.dir, code)
+			msg = fmt.Sprintf("semcode-index failed in %s with exit code %d", d.dir, code)
 		}
-		return exitFail
+		return failExit("failed", msg)
 	}
 	return exitOK
 }

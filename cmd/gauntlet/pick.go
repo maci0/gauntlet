@@ -30,9 +30,8 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 	// the rest of the list without a word, and the run the user composed would
 	// cover a different set of trees than the one they named.
 	if len(opts.resolvedDirs) > 1 {
-		fmt.Fprintf(os.Stderr, "pick reviews one directory; --dirs named %d. "+
-			"Run gauntlet once per directory instead.\n", len(opts.resolvedDirs))
-		return exitUsage
+		return failExit("usage", fmt.Sprintf("pick reviews one directory; --dirs named %d. "+
+			"Run gauntlet once per directory instead.", len(opts.resolvedDirs)))
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
 		fmt.Fprintln(os.Stderr, "pick needs a terminal on stdin and stdout")
@@ -47,8 +46,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		if interrupted(ctx, err) {
 			return exitInterrupted
 		}
-		fmt.Fprintln(os.Stderr, err)
-		return exitUsage
+		return failExit("usage", err.Error())
 	}
 	// A dropped project prompt is a review the launcher will not offer and the
 	// run will not schedule, and a conflicting duplicate is one of two files
@@ -60,8 +58,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 	}
 	if set.Len() == 0 {
-		fmt.Fprintf(os.Stderr, "No reviews found for %s\n", dir)
-		return exitUsage
+		return failExit("usage", fmt.Sprintf("No reviews found for %s", dir))
 	}
 
 	branch, targets, dirty, err := treeState(ctx, dir)
@@ -72,8 +69,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		// merge into and nothing uncommitted, when the truth is that git never
 		// answered. Saying so costs one line and keeps the composed run from
 		// being chosen against a repository state nobody could read.
-		fmt.Fprintf(os.Stderr, "cannot read the repository state of %s: %v\n", dir, err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read the repository state of %s: %v", dir, err))
 	}
 	argv, ok, err := ui.Pick(ui.PickConfig{
 		Dir:         dir,
@@ -92,8 +88,7 @@ func cmdPick(ctx context.Context, out io.Writer, opts *options) int {
 		if interrupted(ctx, err) {
 			return exitInterrupted
 		}
-		fmt.Fprintln(os.Stderr, err)
-		return exitFail
+		return failExit("failed", err.Error())
 	}
 	if !ok {
 		if ctx.Err() != nil {

@@ -47,6 +47,14 @@ the journaled event stream in `internal/runner/contract_test.go`.
   short for every row. A two-row terminal used to show the run state and the
   keys and drop the pass, fail, and timeout counts, which is the reading a
   reader in a terminal that small is looking at it for.
+- `gauntlet schema` now names a write failure as `failed` in the description it
+  prints. The command already exits 1 and, with `--json`, appends that error
+  object; the document listed only `usage`.
+- A JSON failure now repeats the sentence already printed on stderr in the
+  error object. `runs`, `show`, `resume`, `update`, `doctor`, `pick`, and a
+  review that stops before its first agent used to append a generic
+  "command failed" or "usage error" that named a different problem than the
+  line above it.
 - The state-tree backup recipe now records the directory that holds the
   archive after renaming it into place. The rename replaces the previous
   archive before that directory entry is durable, so a power cut used to lose

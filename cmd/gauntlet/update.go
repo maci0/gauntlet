@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/maci0/gauntlet/internal/report"
@@ -72,8 +71,7 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		if interrupted(ctx, err) {
 			return exitInterrupted
 		}
-		fmt.Fprintf(os.Stderr, "cannot check for updates: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot check for updates: %v", err))
 	}
 	if !rel.NewerThan(version) {
 		if opts.wantsJSON() {
@@ -90,9 +88,7 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 			if interrupted(ctx, err) {
 				return exitInterrupted
 			}
-			fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
-			noteExit("failed", err.Error(), "")
-			return exitFail
+			return failExit("failed", fmt.Sprintf("update failed: %v", err))
 		}
 		return writeUpdateJSON(out, version, rel.TagName, true, rel.HTMLURL, path)
 	}
@@ -107,8 +103,7 @@ func cmdUpdate(ctx context.Context, out io.Writer, pal report.Palette, opts *opt
 		if interrupted(ctx, err) {
 			return exitInterrupted
 		}
-		fmt.Fprintf(os.Stderr, "update failed: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("update failed: %v", err))
 	}
 	return writeStatus(out, "Installed %s to %s\n", rel.TagName, path)
 }
@@ -127,9 +122,7 @@ func writeUpdateJSON(out io.Writer, current, latest string, changed bool, url, i
 		URL         string `json:"url"`
 		InstalledTo string `json:"installed_to"`
 	}{current, latest, changed, url, installedTo}); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
-		noteExit("failed", "cannot write update status", "")
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write update status: %v", err))
 	}
 	return exitOK
 }
@@ -140,8 +133,7 @@ func writeUpdateJSON(out io.Writer, current, latest string, changed bool, url, i
 // failure reads the same whichever branch it came from.
 func writeStatus(out io.Writer, format string, args ...any) int {
 	if _, err := fmt.Fprintf(out, format, args...); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write update status: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write update status: %v", err))
 	}
 	return exitOK
 }

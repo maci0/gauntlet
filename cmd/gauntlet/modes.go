@@ -43,16 +43,14 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 			if c := fuzzy.Closest(opts.showPrompt, candidates); c != "" {
 				hint = fmt.Sprintf(" (did you mean %q?)", c)
 			}
-			fmt.Fprintf(os.Stderr, "Unknown review: %s%s\nReviews: %s\n",
-				opts.showPrompt, hint, strings.Join(set.Names, ", "))
-			return exitUsage
+			return failExit("usage", fmt.Sprintf("Unknown review: %s%s\nReviews: %s",
+				opts.showPrompt, hint, strings.Join(set.Names, ", ")))
 		}
 	}
 	name := rev.Name
 	body, err := rev.Body()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot read prompt for %s: %v\n", name, err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read prompt for %s: %v", name, err))
 	}
 	// The point of --show-prompt is the exact text, and part of that text is
 	// what this machine has: probe the same way a run would.
@@ -66,8 +64,7 @@ func cmdShowPrompt(out io.Writer, set prompt.Set, opts *options) int {
 	// prompt readable as the document it is.
 	if _, err := fmt.Fprintln(out, normalize.Document(
 		prompt.Compose(body, opts.timeout, name, opts.yolo, toolsFor(name), opts.paths, opts.appendInstruction))); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write the prompt: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write the prompt: %v", err))
 	}
 	return exitOK
 }

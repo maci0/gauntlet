@@ -47,8 +47,7 @@ func doctor(out io.Writer, pal report.Palette, overrides map[string]string, widt
 	w := report.ErrWriter{Out: out}
 	defer func() {
 		if w.Err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", w.Err)
-			code = exitFail
+			code = failExit("failed", fmt.Sprintf("cannot write doctor report: %v", w.Err))
 		}
 	}()
 

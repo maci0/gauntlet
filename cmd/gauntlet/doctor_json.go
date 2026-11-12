@@ -88,9 +88,7 @@ func writeDoctorJSON(out io.Writer, overrides map[string]string) int {
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(doc); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write doctor report: %v\n", err)
-		noteExit("failed", "cannot write doctor report", "")
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write doctor report: %v", err))
 	}
 	return code
 }

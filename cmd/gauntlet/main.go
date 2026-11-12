@@ -253,9 +253,7 @@ func run(argv []string) (code int) {
 			return writeVersionJSON(stdout)
 		}
 		if _, err := fmt.Fprintf(stdout, "gauntlet %s\n", version); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the version: %v\n", err)
-			noteExit("failed", "cannot write the version", "")
-			return exitFail
+			return failExit("failed", fmt.Sprintf("cannot write the version: %v", err))
 		}
 		return exitOK
 	}
@@ -270,8 +268,7 @@ func run(argv []string) (code int) {
 	var prior handoff
 	resumed, err := selfupdate.LoadState(&prior)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Cannot resume the interrupted run: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("Cannot resume the interrupted run: %v", err))
 	}
 	if prior.Dirs == nil {
 		prior.Dirs = map[string]dirHandoff{}
@@ -288,13 +285,11 @@ func run(argv []string) (code int) {
 	}
 	if opts.needsAgents() {
 		if len(agents) == 0 {
-			fmt.Fprintf(os.Stderr, "No auto-detectable agents found in PATH. Install one of: %s, "+
-				"or name an agent explicitly with --agents.\n", strings.Join(agent.Valid, ", "))
-			return exitUsage
+			return failExit("usage", fmt.Sprintf("No auto-detectable agents found in PATH. Install one of: %s, "+
+				"or name an agent explicitly with --agents.", strings.Join(agent.Valid, ", ")))
 		}
 		if missing := missingAgentTool(agents, opts.bin); missing != "" {
-			fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s\n", missing)
-			return exitUsage
+			return failExit("usage", fmt.Sprintf("Required tool not found in PATH: %s", missing))
 		}
 	}
 	// The indexer --semcode needs is checked here, beside the agent CLIs and
@@ -303,9 +298,8 @@ func run(argv []string) (code int) {
 	// is the same one buildSemcodeIndex makes, kept beside the flag so the
 	// two cannot disagree about which binary is meant.
 	if opts.semcode && !opts.list && !opts.dryRun && !resumed && agent.Resolve(semcodeIndexer) == "" {
-		fmt.Fprintf(os.Stderr, "Required tool not found in PATH: %s "+
-			"(named by --semcode; `gauntlet doctor` reports it)\n", semcodeIndexer)
-		return exitUsage
+		return failExit("usage", fmt.Sprintf("Required tool not found in PATH: %s "+
+			"(named by --semcode; `gauntlet doctor` reports it)", semcodeIndexer))
 	}
 
 	runs := make([]*dirRun, 0, len(dirs))
@@ -429,15 +423,13 @@ func run(argv []string) (code int) {
 			if opts.promptDir != "" {
 				err = fmt.Errorf("--prompt-dir %s: %w", opts.promptDir, err)
 			}
-			fmt.Fprintln(os.Stderr, err)
-			return exitUsage
+			return failExit("usage", err.Error())
 		}
 		for _, w := range warnings {
 			fmt.Fprintf(os.Stderr, "Warning: %s\n", w)
 		}
 		if set.Len() == 0 {
-			fmt.Fprintf(os.Stderr, "No reviews found for %s\n", d.dir)
-			return exitUsage
+			return failExit("usage", fmt.Sprintf("No reviews found for %s", d.dir))
 		}
 		d.set = set
 	}
@@ -463,11 +455,10 @@ func run(argv []string) (code int) {
 		if interrupted(ctx, err) {
 			return exitInterrupted
 		}
-		fmt.Fprintln(os.Stderr, err)
 		if errors.Is(err, errAgentFailed) {
-			return exitFail
+			return failExit("failed", err.Error())
 		}
-		return exitUsage
+		return failExit("usage", err.Error())
 	}
 
 	if opts.list {
@@ -479,16 +470,14 @@ func run(argv []string) (code int) {
 				fmt.Fprintln(stdout, pal.Bold(d.dir))
 			}
 			if err := report.ListReviews(stdout, pal, d.set, d.reviews, opts.width); err != nil {
-				fmt.Fprintf(os.Stderr, "cannot write review listing: %v\n", err)
-				return exitFail
+				return failExit("failed", fmt.Sprintf("cannot write review listing: %v", err))
 			}
 		}
 		return exitOK
 	}
 	if opts.dryRun {
 		if err := dryRun(stdout, pal, runs, agents, opts); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write dry run: %v\n", err)
-			return exitFail
+			return failExit("failed", fmt.Sprintf("cannot write dry run: %v", err))
 		}
 		// A dry run prints what a real run would do, so a flag on it that
 		// this machine cannot honor is said once, beside the schedule it
@@ -706,6 +695,9 @@ func run(argv []string) (code int) {
 				code = exitInterrupted
 			} else {
 				fmt.Fprintln(os.Stderr, err)
+				if exitState.kind == "" {
+					noteExit("usage", err.Error(), "")
+				}
 			}
 			bus.Close()
 			consumers.Wait()

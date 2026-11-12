@@ -81,6 +81,40 @@ func TestSchemaFilterKeepsTheTopLevel(t *testing.T) {
 	noEnvelope(t, errOut)
 }
 
+// A schema that cannot be written is failed, and --json still appends that
+// kind. The document lists the same kind, so a consumer reading the
+// description and one reading stderr agree on the write failure.
+func TestSchemaReportsAWriteFailure(t *testing.T) {
+	for _, argv := range [][]string{{"schema"}, {"schema", "-o", "json"}} {
+		t.Run(strings.Join(argv, " "), func(t *testing.T) {
+			t.Setenv("GAUNTLET_HOME", t.TempDir())
+			out, err := os.Open(os.DevNull)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer out.Close()
+			original := os.Stdout
+			os.Stdout = out
+			defer func() { os.Stdout = original }()
+			code, diagnostic := captureStderrFor(t, func() int {
+				return run(argv)
+			})
+			if code != exitFail || !strings.Contains(diagnostic.String(), "cannot write the schema:") {
+				t.Fatalf("exit %d, stderr %q", code, diagnostic.String())
+			}
+			if argv[len(argv)-1] == "json" {
+				env := errorEnvelope(t, diagnostic.String())
+				msg, _ := env["message"].(string)
+				if env["kind"] != "failed" || !strings.Contains(msg, "cannot write the schema") {
+					t.Fatalf("envelope = %#v", env)
+				}
+			} else {
+				noEnvelope(t, diagnostic.String())
+			}
+		})
+	}
+}
+
 func TestSchemaRejectsAnUnknownCommand(t *testing.T) {
 	code, _, errOut := runBoth(t, []string{"schema", "no-such"})
 	if code != exitUsage {
@@ -773,6 +807,9 @@ func checkClispec(t *testing.T, raw []byte) {
 		t.Errorf("resume stdout_schema = %#v, want {}", seen["resume"]["stdout_schema"])
 	}
 	assertCommand(t, seen["schema"], "read_only", "opaque")
+	if !stringListHas(seen["schema"]["errors"], "failed") {
+		t.Error("schema does not declare failed, which a write error returns")
+	}
 	if seen["schema"]["media_type"] != "application/json" {
 		t.Errorf("schema media_type = %v", seen["schema"]["media_type"])
 	}

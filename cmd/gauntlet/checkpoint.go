@@ -184,17 +184,14 @@ func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) i
 	}
 	path, err := checkpointPath(runID)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return exitUsage
+		return failExit("usage", err.Error())
 	}
 	cp, err := readCheckpoint(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintf(os.Stderr, "run %s has no checkpoint: it ended on its own, or never recorded a result (see: gauntlet resume)\n", runID)
-		return exitUsage
+		return failExit("usage", fmt.Sprintf("run %s has no checkpoint: it ended on its own, or never recorded a result (see: gauntlet resume)", runID))
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return exitFail
+		return failExit("failed", err.Error())
 	}
 	switch dir, lerr := busyDir(cp); {
 	case lerr != nil:
@@ -213,15 +210,13 @@ func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) i
 		return exitLocked
 	}
 	if err := os.Chdir(cp.Cwd); err != nil {
-		fmt.Fprintf(os.Stderr, "run %s cannot resume: %v\n", runID, err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("run %s cannot resume: %v", runID, err))
 	}
 	h := cp.Handoff
 	h.Reloads++
 	statePath, err := saveHandoff(runID, h)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "run %s cannot resume: cannot save the handoff: %v\n", runID, err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("run %s cannot resume: cannot save the handoff: %v", runID, err))
 	}
 	exe, err := os.Executable()
 	if err == nil {
@@ -248,9 +243,7 @@ func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) i
 				Changed: true,
 			})
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "run %s cannot resume: %v\n", runID, err)
-				noteExit("failed", "cannot write the resume", "")
-				return exitFail
+				return failExit("failed", fmt.Sprintf("run %s cannot resume: %v", runID, err))
 			}
 			err = reexec(exe, statePath, cp.Argv)
 		} else {
@@ -263,11 +256,11 @@ func cmdResumeAt(out io.Writer, pal report.Palette, runID string, asJSON bool) i
 	if err != nil {
 		// No successor will read the handoff, and one left behind would be
 		// swept as stale anyway; the checkpoint stays for the next attempt.
-		fmt.Fprintf(os.Stderr, "run %s cannot resume: %v\n", runID, err)
+		msg := fmt.Sprintf("run %s cannot resume: %v", runID, err)
 		if derr := selfupdate.DropState(statePath); derr != nil {
-			fmt.Fprintln(os.Stderr, derr)
+			msg = fmt.Sprintf("%s\n%s", msg, derr)
 		}
-		return exitFail
+		return failExit("failed", msg)
 	}
 	return exitOK
 }
@@ -281,13 +274,11 @@ func listCheckpoints(out io.Writer, pal report.Palette) int {
 func listCheckpointsAt(out io.Writer, pal report.Palette, asJSON bool) int {
 	dir, err := checkpointDir()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return exitFail
+		return failExit("failed", err.Error())
 	}
 	entries, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		fmt.Fprintln(os.Stderr, err)
-		return exitFail
+		return failExit("failed", err.Error())
 	}
 	var cps []checkpoint
 	for _, e := range entries {

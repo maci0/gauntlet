@@ -43,8 +43,7 @@ func cmdRunsAt(out io.Writer, pal report.Palette, limit, offset int, fields []st
 	// whether the history is complete.
 	st, stErr := journal.Inspect()
 	if stErr != nil {
-		fmt.Fprintf(os.Stderr, "cannot read the run history: %v\n", stErr)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read the run history: %v", stErr))
 	}
 	entries, total, listErr := pageRuns(limit, offset, st)
 	if again, err := journal.Inspect(); err != nil {
@@ -68,8 +67,7 @@ func cmdRunsAt(out io.Writer, pal report.Palette, limit, offset int, fields []st
 			w.Err = err
 		}
 		if w.Err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", w.Err)
-			code = exitFail
+			code = failExit("failed", fmt.Sprintf("cannot write the run listing: %v", w.Err))
 		}
 	}()
 	if len(entries) == 0 {
@@ -112,8 +110,7 @@ func cmdRunsAt(out io.Writer, pal report.Palette, limit, offset int, fields []st
 		// The JSON form reports this, so the table does too: a pruned list that
 		// could not be read would otherwise read as a claim that nothing is
 		// recoverable.
-		fmt.Fprintf(os.Stderr, "cannot read the pruned run list: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read the pruned run list: %v", err))
 	}
 	if len(held) > 0 {
 		shown := held
@@ -263,8 +260,7 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status, 
 	// could not be read would read as a claim that nothing is recoverable.
 	pruned, err := journal.Quarantined()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cannot read the pruned run list: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read the pruned run list: %v", err))
 	}
 	if pruned == nil {
 		pruned = []string{}
@@ -292,20 +288,17 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status, 
 	// cannot be read, and the two need opposite responses.
 	definitions, defErr := agent.DefinitionsOnDisk(filepath.Join(journal.Home(), "agents.json"))
 	if defErr != nil {
-		fmt.Fprintf(os.Stderr, "cannot read the agent definitions: %v\n", defErr)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot read the agent definitions: %v", defErr))
 	}
 	rows := redactSummaryPaths(entries)
 	records, rerr := presentSummaries(rows)
 	if rerr != nil {
-		fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", rerr)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write the run listing: %v", rerr))
 	}
 	if len(fields) > 0 {
 		projected, perr := projectSummaries(rows, fields)
 		if perr != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", perr)
-			return exitFail
+			return failExit("failed", fmt.Sprintf("cannot write the run listing: %v", perr))
 		}
 		records = projected
 	}
@@ -331,8 +324,7 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status, 
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(doc); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", err)
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write the run listing: %v", err))
 	}
 	return exitOK
 }
@@ -432,11 +424,9 @@ func restoreRun(out io.Writer, pal report.Palette, runID string, asJSON bool) in
 		case errors.Is(err, journal.ErrNotPruned),
 			errors.Is(err, journal.ErrAlreadyListed),
 			errors.Is(err, journal.ErrInvalidRunID):
-			fmt.Fprintf(os.Stderr, "%v\n", err)
-			return exitUsage
+			return failExit("usage", err.Error())
 		default:
-			fmt.Fprintf(os.Stderr, "cannot restore run %s: %v\n", runID, err)
-			return exitFail
+			return failExit("failed", fmt.Sprintf("cannot restore run %s: %v", runID, err))
 		}
 	}
 	if asJSON {
@@ -448,8 +438,7 @@ func restoreRun(out io.Writer, pal report.Palette, runID string, asJSON bool) in
 		if err := enc.Encode(struct {
 			Restored string `json:"restored"`
 		}{runID}); err != nil {
-			fmt.Fprintf(os.Stderr, "cannot write the restore result: %v\n", err)
-			return exitFail
+			return failExit("failed", fmt.Sprintf("cannot write the restore result: %v", err))
 		}
 		return exitOK
 	}
@@ -698,14 +687,11 @@ func cmdShowAt(out io.Writer, runID string, asJSON bool) int {
 			// gauntlet runs shows the id only under the quarantine note, with
 			// the command that brings it back unsaid. Name it instead.
 			if journal.Pruned(runID) {
-				fmt.Fprintf(os.Stderr, "%v (restore it with: gauntlet runs --restore %s)\n", err, runID)
-			} else {
-				fmt.Fprintf(os.Stderr, "%v (see: gauntlet runs)\n", err)
+				return failExit("usage", fmt.Sprintf("%v (restore it with: gauntlet runs --restore %s)", err, runID))
 			}
-			return exitUsage
+			return failExit("usage", fmt.Sprintf("%v (see: gauntlet runs)", err))
 		}
-		fmt.Fprintln(os.Stderr, err)
-		return exitFail
+		return failExit("failed", err.Error())
 	}
 	// A run that started and recorded nothing has a journal, so this is not a
 	// miss, and silence reads as a successful replay of an empty run. It says

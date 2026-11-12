@@ -56,6 +56,25 @@ func noteExit(kind, msg, hint string) {
 	exitState.hint = hint
 }
 
+// failExit prints msg to stderr and records it as the JSON error of kind.
+// Text mode still ends in the prose; JSON appends the same sentence as the
+// last line of stderr instead of a generic "command failed" that names a
+// different failure than the line above it.
+func failExit(kind, msg string) int {
+	fmt.Fprintln(os.Stderr, msg)
+	noteExit(kind, msg, "")
+	switch kind {
+	case "usage", "tty_required", "confirmation_required":
+		return exitUsage
+	case "locked":
+		return exitLocked
+	case "interrupted":
+		return exitInterrupted
+	default:
+		return exitFail
+	}
+}
+
 func (o *options) wantsJSON() bool { return o != nil && o.output == "json" }
 
 // jsonRequested reports whether argv asked for JSON even when parsing did
@@ -382,8 +401,8 @@ func buildSchema() schemaDoc {
 			},
 			{
 				Name: "schema", Effects: "read_only", OutputKind: "opaque", MediaType: "application/json",
-				Description: "Print this clispec document. The format flag does not re-encode a successful print. An optional command path narrows commands and keeps the top-level fields.",
-				Errors:      []string{"usage"},
+				Description: "Print this clispec document. The format flag does not re-encode a successful print. An optional command path narrows commands and keeps the top-level fields. A write that fails is failed, the same way version reports a write it cannot finish.",
+				Errors:      []string{"usage", "failed"},
 			},
 			{
 				Name: "version", Effects: "read_only", OutputKind: "data", Cardinality: "single",
@@ -622,9 +641,7 @@ func cmdSchema(out io.Writer, filter []string) int {
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(doc); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write the schema: %v\n", err)
-		noteExit("failed", "cannot write the schema", "")
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write the schema: %v", err))
 	}
 	return exitOK
 }
@@ -637,9 +654,7 @@ func writeVersionJSON(out io.Writer) int {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	}{"gauntlet", version}); err != nil {
-		fmt.Fprintf(os.Stderr, "cannot write the version: %v\n", err)
-		noteExit("failed", "cannot write the version", "")
-		return exitFail
+		return failExit("failed", fmt.Sprintf("cannot write the version: %v", err))
 	}
 	return exitOK
 }
