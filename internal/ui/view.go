@@ -101,12 +101,16 @@ func (m *model) sectionHeights() (act, lanes, grid, feed int) {
 	act = clampi(free/5, 3, 8)
 	cols := max(m.gridCols(), 1)
 	gridRows := (len(m.order) + cols - 1) / cols
-	// A "+N more" row is a row: it stands in for cells the panel could not
-	// draw, so it is measured with the names and its own slot is taken out of
-	// the budget. Without it the panel was one row short of the names it
-	// holds, and the run's last review went missing with the count that said
-	// so left off the pane.
-	grid = clampi(gridRows+boolInt(len(m.order) > 0), 1, max(free-act-lanes-3, 1))
+	// The grid asks for the rows the reviews fill, and no more when they fit:
+	// a panel with room for every name draws no "+N more" cell, and reserving
+	// one anyway spends a row the feed could have used. The spare slot is
+	// needed only once the budget below is smaller than those rows. Without
+	// it the panel is one cell short of the names it holds, and the run's
+	// last review goes missing with the count that said so left off the pane.
+	grid = clampi(gridRows, 1, max(free-act-lanes-3, 1))
+	if len(m.order) > cols*grid {
+		grid = clampi(grid+1, 1, max(free-act-lanes-3, 1))
+	}
 	feed = free - act - lanes - grid
 	if feed < 3 {
 		take := 3 - feed
@@ -1467,14 +1471,6 @@ func trim(s string, w int) string {
 
 func clampi(v, lo, hi int) int {
 	return min(max(v, lo), hi)
-}
-
-// boolInt is a bool as a count, for the section budgets above.
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 // conflictTotal is every branch the run left for a human, the bounded list

@@ -482,8 +482,12 @@ func joinKeys(keys []keyHint, gap, fold string, w int, tight bool) (string, bool
 	if lipgloss.Width(full) <= w {
 		return full, true
 	}
+	// The gap is measured in cells, like the segments: a gap wider than its
+	// byte length (a middle dot, a wide space) would otherwise push a segment
+	// that fits over the line and drop it.
+	gapW := lipgloss.Width(gap)
 	for i, seg := range segs {
-		if i > 0 && lipgloss.Width(strings.Join(segs[:i], gap))+len(gap)+lipgloss.Width(seg) > w {
+		if i > 0 && lipgloss.Width(strings.Join(segs[:i], gap))+gapW+lipgloss.Width(seg) > w {
 			return strings.Join(segs[:i], gap), false
 		}
 	}

@@ -590,9 +590,6 @@ const panelChrome = 3
 func (p *picker) paneHeight(which pane) int {
 	free := max(4, p.h-viewChrome)
 	tree := len(p.rows())
-	if p.filterMissed(p.rows()) {
-		tree++ // the fruitless-filter notice needs its own row
-	}
 	// The right column splits what is left between its two panes, and what is
 	// left is what the tree does not use: the agent list takes what it needs
 	// up to half of the column, the run pane keeps the rest, so a long option
@@ -610,7 +607,16 @@ func (p *picker) paneHeight(which pane) int {
 	run := clampi(len(p.opts), 1, max(column-agents, 1))
 	switch which {
 	case paneReviews:
-		return min(tree, max(free-agents-run-2*panelChrome, 1))
+		// The fruitless-filter notice is a row of the tree, but only when the
+		// budget has a row to spare: a terminal already down to one row clips
+		// the notice out of the panel, and counting it before the budget is
+		// known shrinks the right column by a row the tree never draws.
+		budget := max(free-agents-run-2*panelChrome, 1)
+		h := min(tree, budget)
+		if p.filterMissed(p.rows()) && h < budget {
+			h++
+		}
+		return h
 	case paneAgents:
 		return agents
 	case paneOptions:
