@@ -781,8 +781,39 @@ func TestFastSuggestMatchesSignalsAcrossNormalizationForms(t *testing.T) {
 	}
 }
 
-// A review that has finished here several times without changing a line is a
-// bad pick for this directory, whatever the files say.
+// The decomposed capital I a macOS filesystem hands out and the composed "İ"
+// an author types are one letter. Lowercasing the decomposed form leaves a
+// combining dot that no composition removes, so a key folded from one spelling
+// used to miss a signal declared with the other, and one directory was stored
+// as two.
+func TestFoldKeyEquatesDecomposedCapitalI(t *testing.T) {
+	nfd := "I\u0307\u015f" // "İş": capital I plus combining dot, then s-cedilla
+	nfc := norm.NFC.String(nfd)
+	if nfc == nfd {
+		t.Fatal("fixture is not decomposed; it proves nothing")
+	}
+	if got, want := foldKey(nfd), foldKey(nfc); got != want {
+		t.Fatalf("foldKey(%q) = %q, foldKey(%q) = %q; one letter stored as two keys", nfd, got, nfc, want)
+	}
+
+	dir := tree(t, nfd+"/main.go\x00package main\n")
+	promptDir := t.TempDir()
+	body := "Signals: path:" + nfc + "\n\nYour goal is to review the İş directory.\n"
+	if err := os.WriteFile(filepath.Join(promptDir, "is-review.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	set := discover(t, promptDir)
+
+	var reason string
+	for _, s := range reviews(t, dir, []string{"is-review"}, set) {
+		if s.Name == "is-review" {
+			reason = s.Reason
+		}
+	}
+	if reason == "" {
+		t.Fatal("a directory named with a decomposed capital I never matched the composed path signal")
+	}
+}
 func TestFastSuggestLearnsFromPastRunsInThisDirectory(t *testing.T) {
 	dir := tree(t, "main.go", "main_test.go")
 	home := t.TempDir()

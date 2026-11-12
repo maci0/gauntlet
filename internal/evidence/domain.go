@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // Domain evidence must come from implementation, not README vocabulary,
@@ -28,14 +26,14 @@ var domainArrow = regexp.MustCompile(`^=\s*(?:async\s+)?(?:\([^{};\n]*\)|[A-Za-z
 // behavior. Explicit tactical building blocks stand on their own. Operations
 // on recognizable business concepts can establish a domain without DDD names.
 func domainSignals(s *signals, rel string, head []byte) {
-	ext := strings.ToLower(norm.NFC.String(filepath.Ext(rel)))
+	ext := foldKey(filepath.Ext(rel))
 	base := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 	if !sourceExts[ext] || ext == ".sql" || ext == ".sh" || ext == ".bash" || ext == ".zsh" ||
 		isTestFile(filepath.Base(rel)) || strings.HasSuffix(base, "Test") || strings.HasSuffix(base, "Tests") ||
 		strings.HasSuffix(base, "Spec") || strings.HasSuffix(base, "Specs") {
 		return
 	}
-	for part := range strings.SplitSeq(strings.ToLower(norm.NFC.String(filepath.ToSlash(rel))), "/") {
+	for part := range strings.SplitSeq(foldKey(filepath.ToSlash(rel)), "/") {
 		switch part {
 		case "test", "tests", "spec", "__tests__", "testdata", "fixtures", "examples":
 			return
@@ -87,7 +85,7 @@ func domainSignals(s *signals, rel string, head []byte) {
 		state = state || name == "state" || name == "status"
 		rejection = rejection || name == "raise" || name == "throw" || name == "assert" || strings.HasPrefix(raw, "Err")
 	}
-	lowerPath := strings.ToLower(norm.NFC.String(filepath.ToSlash(rel)))
+	lowerPath := foldKey(filepath.ToSlash(rel))
 	if model && (tactical || tacticalPath.MatchString(lowerPath) || aggregate && (business || domainPath.MatchString(lowerPath))) {
 		s.mark["ddd_model"] = 1
 	}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // A repository whose history is in its own script has to get the same branch
@@ -93,6 +95,18 @@ func TestTopicSlugLowercasesInEveryScript(t *testing.T) {
 		if got := TopicSlug(subject); got != want {
 			t.Errorf("TopicSlug(%q) = %q, want %q", subject, got, want)
 		}
+	}
+
+	// The decomposed capital I a macOS history hands out and the composed "İ"
+	// an author types are one letter, so they name one branch. Lowercasing the
+	// decomposed form leaves a combining dot no composition removes, and a
+	// slug cut from that spelling used to differ from the composed one.
+	nfd := "fix: I\u0307\u015flem" // "İşlem", capital I plus combining dot
+	if norm.NFC.String(nfd) == nfd {
+		t.Fatal("fixture is not decomposed; it proves nothing")
+	}
+	if got, want := TopicSlug(nfd), TopicSlug(norm.NFC.String(nfd)); got != want {
+		t.Errorf("TopicSlug of the two spellings of İşlem: %q and %q; one subject named two branches", got, want)
 	}
 }
 

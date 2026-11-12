@@ -8,8 +8,6 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 // TDD needs a runner already present in the project, not a dependency name or
@@ -59,7 +57,7 @@ func testConfig(name string) bool {
 }
 
 func testFixture(rel string) bool {
-	for part := range strings.SplitSeq(strings.ToLower(norm.NFC.String(filepath.ToSlash(rel))), "/") {
+	for part := range strings.SplitSeq(foldKey(filepath.ToSlash(rel)), "/") {
 		if part == "testdata" || part == "fixtures" || part == "examples" {
 			return true
 		}
@@ -74,7 +72,7 @@ func testSignals(s *signals, rel string, head []byte) {
 	if testFixture(rel) {
 		return
 	}
-	name := strings.ToLower(norm.NFC.String(filepath.Base(rel)))
+	name := foldKey(filepath.Base(rel))
 	if name == "deno.json" {
 		var config struct{ Tasks map[string]string }
 		if json.Unmarshal(head, &config) == nil && testCommand(config.Tasks["test"]) {
@@ -92,7 +90,7 @@ func testSignals(s *signals, rel string, head []byte) {
 		}
 		return
 	}
-	ext := strings.ToLower(norm.NFC.String(filepath.Ext(rel)))
+	ext := foldKey(filepath.Ext(rel))
 	if !sourceExts[ext] || ext == ".sql" || ext == ".h" || ext == ".hpp" || strings.HasSuffix(name, ".d.ts") {
 		return
 	}
@@ -103,7 +101,7 @@ func testSignals(s *signals, rel string, head []byte) {
 	test := isTestFile(name)
 	base := strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel))
 	test = test || strings.HasSuffix(base, "Test") || strings.HasSuffix(base, "Tests") || strings.HasSuffix(base, "Spec") || strings.HasSuffix(base, "Specs")
-	for part := range strings.SplitSeq(strings.ToLower(norm.NFC.String(filepath.ToSlash(rel))), "/") {
+	for part := range strings.SplitSeq(foldKey(filepath.ToSlash(rel)), "/") {
 		switch part {
 		case "test", "tests", "spec", "specs", "__tests__":
 			test = true

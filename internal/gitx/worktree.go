@@ -1210,13 +1210,19 @@ const topicSlugMax = 40
 // the "wip" one the recovery pass is meant to rename away. ToLower is
 // Unicode's, not bytes.ToLower's, so it is the real lowercase of a Greek,
 // Cyrillic, or Turkish letter.
+//
+// The second NFC is what makes the lowercase reproducible. Lowercasing the
+// decomposed capital I a macOS history hands out ("I" plus a combining dot,
+// the NFD of "İ") yields a lowercase i plus a combining dot that no
+// composition takes back, so the same subject spelled composed and
+// decomposed named two branches. Composing after the fold lands both on one.
 func TopicSlug(subject string) string {
 	if head, rest, ok := strings.Cut(subject, ":"); ok && isConventionalType(head) {
 		subject = rest
 	}
 	var b strings.Builder
 	pending := false // a hyphen is owed only between words
-	for _, r := range strings.ToLower(norm.NFC.String(subject)) {
+	for _, r := range norm.NFC.String(strings.ToLower(norm.NFC.String(subject))) {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', unicode.IsLetter(r), unicode.IsDigit(r):
 			// The budget is on the bytes of the ref fragment, so a rune is

@@ -30,8 +30,6 @@ import (
 	"syscall"
 	"time"
 
-	"golang.org/x/text/unicode/norm"
-
 	"github.com/maci0/gauntlet/internal/fuzzy"
 	"github.com/maci0/gauntlet/internal/gitx"
 	"github.com/maci0/gauntlet/internal/journal"
@@ -111,7 +109,7 @@ var skipDirs = map[string]bool{
 // skipDir applies equally to git listings and walks. Versioned MSVC installs
 // contain the compiler's headers and examples, not the application's source.
 func skipDir(name string) bool {
-	name = strings.ToLower(norm.NFC.String(name))
+	name = foldKey(name)
 	if skipDirs[name] {
 		return true
 	}
@@ -806,7 +804,7 @@ func scan(dir string, declared []string, now func() time.Time) (signals, error) 
 	case len(changed) > 0:
 		s.churn = true
 		for _, rel := range changed {
-			s.hot[strings.ToLower(filepath.Ext(nfcPath(rel)))]++
+			s.hot[foldKey(filepath.Ext(nfcPath(rel)))]++
 		}
 	}
 	return s, errors.Join(err, peekErr, churnErr)
@@ -824,6 +822,18 @@ func nfcPath(p string) string {
 	return fuzzy.NFC(filepath.ToSlash(p))
 }
 
+// foldKey is the one spelling a case-insensitive key is stored and looked up
+// under: NFC, then lowercase, then NFC again. The second composition is the
+// whole of the function. Lowercasing the decomposed capital I a macOS
+// filesystem hands out ("I" plus a combining dot, the NFD of "İ") yields a
+// lowercase i plus a combining dot that no composition takes back, so a key
+// folded from that spelling never equals the "iş" the composed spelling of
+// the same name folds to, and one directory becomes two. Composing after the
+// fold closes it: both spellings land on the same bytes.
+func foldKey(s string) string {
+	return fuzzy.NFC(strings.ToLower(fuzzy.NFC(s)))
+}
+
 // record files one path into the signal sets.
 //
 // nfcPath first: a tree's filenames arrive in whatever bytes the filesystem
@@ -832,7 +842,7 @@ func nfcPath(p string) string {
 // the two forms meet byte-exactly when matchDeclared compares them.
 func record(s *signals, rel string) {
 	rel = nfcPath(rel)
-	lower := strings.ToLower(rel)
+	lower := foldKey(rel)
 	base := path.Base(lower)
 	if !testFixture(rel) {
 		s.goTests = s.goTests || base == "go.mod"
@@ -847,7 +857,7 @@ func record(s *signals, rel string) {
 		s.path[dir] = true
 		s.path[path.Base(dir)] = true
 	}
-	if ext := strings.ToLower(path.Ext(base)); ext != "" {
+	if ext := foldKey(path.Ext(base)); ext != "" {
 		s.ext[ext]++
 		if sourceExts[ext] {
 			s.source++
@@ -941,9 +951,9 @@ func peek(root string, paths []string, s *signals, declared []string) error {
 		if read >= peekMaxFiles {
 			return nil
 		}
-		name := strings.ToLower(filepath.Base(rel))
+		name := foldKey(filepath.Base(rel))
 		config := testConfig(name)
-		legacy := sourceExts[strings.ToLower(filepath.Ext(rel))] || manifestNames[name]
+		legacy := sourceExts[foldKey(filepath.Ext(rel))] || manifestNames[name]
 		if !legacy && !config {
 			continue
 		}
@@ -992,11 +1002,12 @@ func markFound(s *signals, wanted []markEntry, head []byte) {
 		if m.needle != nil {
 			hit = containsMark(head, m)
 		} else {
-			// Non-ASCII needles are stored NFC+ToLower by Signals; a macOS
-			// file may hold the NFD spelling, and a capital É survives
-			// asciiFold. Fold the haystack the same way so the two forms meet.
+			// Non-ASCII needles are stored by Signals the way foldKey stores a
+			// path: NFC, then lowercased, then NFC again. A macOS file may
+			// hold the NFD spelling, and a capital É survives asciiFold. Fold
+			// the haystack the same way so the two forms meet.
 			if !hasFolded {
-				folded = strings.ToLower(norm.NFC.String(string(head)))
+				folded = foldKey(string(head))
 				hasFolded = true
 			}
 			hit = strings.Contains(folded, m.text)

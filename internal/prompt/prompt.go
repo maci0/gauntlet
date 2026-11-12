@@ -219,9 +219,14 @@ func (r Review) Signals() []string {
 			// Values name files a tree carries, and macOS hands out NFD
 			// spellings while an author types NFC into the Signals: line;
 			// normalizing here mirrors what discovery does to prompt stems
-			// (see nfc) so the two forms meet byte-exactly.
-			kind = strings.ToLower(strings.TrimSpace(nfc(kind)))
-			value = strings.ToLower(strings.TrimSpace(nfc(value)))
+			// (see nfc) so the two forms meet byte-exactly. The composition
+			// after the lowercase is what evidence.foldKey does on the path
+			// it stores: lowercasing the decomposed capital I ("I" plus a
+			// combining dot, the NFD of "İ") leaves a combining dot that no
+			// later composition removes, so a signal declared one way would
+			// never match a file named the other way.
+			kind = fuzzy.NFC(strings.ToLower(strings.TrimSpace(nfc(kind))))
+			value = fuzzy.NFC(strings.ToLower(strings.TrimSpace(nfc(value))))
 			switch {
 			case !ok, !signalKinds[kind], value == "":
 			case utf8.RuneCountInString(value) > signalValMax:
