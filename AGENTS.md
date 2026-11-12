@@ -25,8 +25,7 @@ but drops the sqlite driver.
 - `make ci`: `make check` across all three tag sets, then `make test` for
   the selected `TAGS` (default `sqlite`). `.github/workflows/ci.yml` is
   wider: all three tag sets on Linux and macOS, plus the scripts lint,
-  coverage, dist, and reproducibility. `CONTRIBUTING.md` has the per-target
-  detail.
+  coverage, dist, and reproducibility.
 - `make verify`: `make check`, `make check-scripts`, then the suite under all
   three tag sets, the whole pull-request gate in one command.
 - `make check-scripts`: ruff and mypy `--strict` (with `rich` installed for its
@@ -36,9 +35,8 @@ but drops the sqlite driver.
   `make check-workflow-shell` is that second half on its own, and
   `check-scripts` depends on it; a body is a `run: |` block written out under
   `TMPDIR`, so a workflow that grows one needs no Makefile change, and an
-  extraction that finds none fails rather than linting an empty glob. Rule
-  selection is
-  `pyproject.toml` for the Python tools and `.yamllint` for the YAML. shellcheck
+  extraction that finds none fails rather than linting an empty glob. Rules
+  are `pyproject.toml` for the Python tools and `.yamllint` for the YAML. shellcheck
   is the one tool CI cannot install a pinned copy of, so its pin is a warning
   on drift rather than a lock. Run `make fmt-scripts` to rewrite scripts with
   ruff format.
@@ -125,7 +123,6 @@ the finished block to paste back, so no cell is transcribed by hand.
   the journal under `GAUNTLET_HOME` (`~/.gauntlet/runs` by default).
 - **Never fake data in the dashboard.** Missing is missing (`n/a`, `~`), an
   unlit meter shows its remainder, and no series is smoothed or interpolated.
-  See `docs/DESIGN.md`.
 - **Containment is prompt text plus process discipline.** Changing the rule
   files in `internal/prompt/rules/` changes what agents are allowed to do:
   treat those files as security-relevant.
@@ -135,7 +132,7 @@ the finished block to paste back, so no cell is transcribed by hand.
 - **Nothing git-visible names this tool.** Commit subjects, merge messages, and
   PR titles and bodies say what changed, never "gauntlet", the review pass, or
   the automation behind it. Write "the CLI", "the dashboard", or the package.
-  `internal/prompt/rules/commit.md` states the rule for agents,
+  `internal/prompt/rules/commit.md` states it for agents,
   `internal/runner/subject.go` drops an agent subject that credits a model
   and writes one from the changed files instead,
   `internal/runner/subject_test.go` pins that, and it holds for commits
