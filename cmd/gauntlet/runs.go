@@ -85,7 +85,7 @@ func cmdRunsAt(out io.Writer, pal report.Palette, limit, offset int, fields []st
 		// it first appears, or a run that only skipped reviews reads as broken.
 		// It has to name every bucket, including the one that catches a terminal
 		// status a newer journal wrote and this build cannot read.
-		w.Println(pal.Dim("FAILED counts timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
+		w.Println(pal.Dim("FAILED counts failures, timeouts, skipped reviews, merge conflicts, and statuses this build does not recognize"))
 		for i := range entries {
 			w.Println(cols.row(i, pal))
 		}
@@ -296,7 +296,11 @@ func writeRunsJSON(out io.Writer, entries []journal.Summary, st journal.Status, 
 		return exitFail
 	}
 	rows := redactSummaryPaths(entries)
-	var records any = rows
+	records, rerr := presentSummaries(rows)
+	if rerr != nil {
+		fmt.Fprintf(os.Stderr, "cannot write the run listing: %v\n", rerr)
+		return exitFail
+	}
 	if len(fields) > 0 {
 		projected, perr := projectSummaries(rows, fields)
 		if perr != nil {
@@ -369,6 +373,35 @@ func projectSummaries(entries []journal.Summary, fields []string) ([]any, error)
 	for _, f := range fields {
 		want[f] = true
 	}
+	rendered, err := presentSummaries(entries)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]any, 0, len(rendered))
+	for _, row := range rendered {
+		obj, ok := row.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("rendered row is %T, want an object", row)
+		}
+		kept := map[string]any{}
+		for k, v := range obj {
+			if want[k] {
+				kept[k] = v
+			}
+		}
+		out = append(out, kept)
+	}
+	return out, nil
+}
+
+// presentSummaries renders index rows for a consumer. The row's own encoding
+// cannot say whether its timeout count is known: json drops a false bool, so a
+// row written before the field existed and a row this build wrote with no
+// timeouts encode the same, and a consumer that subtracted them would read a
+// deadline as an agent failure. timeouts_known says which of the two it is.
+// The marker stays off the index because the index is what a later listing
+// re-reads, and writing it back would make every old row claim the split.
+func presentSummaries(entries []journal.Summary) ([]any, error) {
 	out := make([]any, 0, len(entries))
 	for _, e := range entries {
 		raw, err := json.Marshal(e)
@@ -379,13 +412,14 @@ func projectSummaries(entries []journal.Summary, fields []string) ([]any, error)
 		if err := json.Unmarshal(raw, &obj); err != nil {
 			return nil, err
 		}
-		kept := map[string]any{}
-		for k, v := range obj {
-			if want[k] {
-				kept[k] = v
-			}
+		if _, known := e.TimeoutsCounted(); known {
+			obj["timeouts_known"] = true
+		} else {
+			obj["timeouts_known"] = false
+			delete(obj, "timeouts")
 		}
-		out = append(out, kept)
+		delete(obj, "timeouts_folded")
+		out = append(out, obj)
 	}
 	return out, nil
 }
@@ -510,7 +544,7 @@ func newRunsColumns(entries []journal.Summary) runsColumns {
 		for _, d := range e.Dirs {
 			dirs = append(dirs, normalize.Sanitize(filepath.Base(d)))
 		}
-		bad := e.Failed + e.Skipped + e.Conflicts + e.Other
+		bad := e.Failed + e.Timeouts + e.Skipped + e.Conflicts + e.Other
 		// A run that reported no tokens says so, rather than showing zero.
 		tokens := "n/a"
 		if e.Tokens > 0 {

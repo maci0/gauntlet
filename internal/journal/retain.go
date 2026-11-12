@@ -11,7 +11,6 @@ package journal
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -233,8 +232,8 @@ func readAllIndex() ([]Summary, error) {
 		if len(sc.Bytes()) == 0 {
 			continue
 		}
-		var s Summary
-		if err := json.Unmarshal(sc.Bytes(), &s); err != nil {
+		s, ok := decodeSummary(sc.Bytes())
+		if !ok {
 			continue
 		}
 		rows = append(rows, s)

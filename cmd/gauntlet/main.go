@@ -1139,7 +1139,8 @@ func writeSummary(j *journal.Journal, start, end time.Time, elapsed time.Duratio
 		s.Loops += d.loops
 		s.Reviews += c.Total()
 		s.OK += c.OK
-		s.Failed += c.Fail + c.Timeout
+		s.Failed += c.Fail
+		s.Timeouts += c.Timeout
 		s.Skipped += c.Skipped
 		s.Conflicts += c.Conflict
 		s.Interrupted += c.Interrupted

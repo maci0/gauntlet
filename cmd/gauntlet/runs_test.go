@@ -214,6 +214,7 @@ func TestWriteSummaryPreservesInterruptedCount(t *testing.T) {
 	defer j.CloseQuiet()
 	stats := &runner.Stats{}
 	stats.Add(runner.Result{Status: runner.StatusOK})
+	stats.Add(runner.Result{Status: runner.StatusTimeout})
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
 	stats.Add(runner.Result{Status: runner.StatusInterrupted})
 	writeSummary(j, start, start.Add(time.Minute), time.Minute, []string{"/project"}, nil,
@@ -226,8 +227,15 @@ func TestWriteSummaryPreservesInterruptedCount(t *testing.T) {
 	if err := json.Unmarshal(data, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if string(fields["interrupted"]) != "2" || string(fields["reviews"]) != "3" || string(fields["ok"]) != "1" || string(fields["failed"]) != "0" {
+	if string(fields["interrupted"]) != "2" || string(fields["reviews"]) != "4" || string(fields["ok"]) != "1" || string(fields["failed"]) != "0" {
 		t.Fatalf("unexpected report.Summary counts: %s", data)
+	}
+	// A deadline is not an agent failure, so it does not ride inside failed.
+	// The key is present even at zero: its absence is what an older row uses
+	// to say it folded the two together.
+	_, folded := fields["timeouts_folded"]
+	if string(fields["timeouts"]) != "1" || folded {
+		t.Fatalf("a deadline was folded into failed: %s", data)
 	}
 }
 
@@ -854,12 +862,12 @@ func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := j.Close(journal.Summary{
-		Start: start, End: start.Add(90 * time.Second), Dirs: []string{"/tmp/proj"},
-		Loops: 2, Reviews: 3, OK: 3,
-	}); err != nil {
-		t.Fatal(err)
-	}
+	stats := &runner.Stats{}
+	stats.Add(runner.Result{Status: runner.StatusOK})
+	stats.Add(runner.Result{Status: runner.StatusOK})
+	stats.Add(runner.Result{Status: runner.StatusOK})
+	writeSummary(j, start, start.Add(90*time.Second), 90*time.Second, []string{"/tmp/proj"}, nil,
+		[]*dirRun{{loops: 2, stats: stats}}, 0, defaultKeepRuns)
 
 	code, got := captureFD(t, &os.Stdout, func() int {
 		return run([]string{"runs", "--json"})
@@ -896,11 +904,17 @@ func TestRunsJSONIsOneDocumentOnStdout(t *testing.T) {
 	if doc.Runs[0].OK != 3 || doc.Runs[0].Reviews != 3 || doc.Runs[0].Loops != 2 {
 		t.Errorf("counts did not survive: %+v", doc.Runs[0])
 	}
+	// The rendered row says whether its timeout count is known. The index
+	// row cannot: json drops a false bool, so the two shapes encode the same
+	// there and a consumer has nothing else to go on.
+	if !strings.Contains(got, `"timeouts_known": true`) {
+		t.Errorf("the row does not say its timeout count is known:\n%s", got)
+	}
 	if doc.Pruned == nil {
 		t.Error("pruned should be an empty array, not null: a consumer reading it gets no list either way")
 	}
 	// The table's own text is what a parser would trip over first.
-	for _, human := range []string{"RUN ", "STARTED", "FAILED counts timeouts", "No runs recorded"} {
+	for _, human := range []string{"RUN ", "STARTED", "FAILED counts failures, timeouts", "No runs recorded"} {
 		if strings.Contains(got, human) {
 			t.Errorf("stdout carries the human listing (%q):\n%s", human, got)
 		}

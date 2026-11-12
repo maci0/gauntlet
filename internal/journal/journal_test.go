@@ -777,8 +777,8 @@ func FuzzParseTail(f *testing.F) {
 		}
 		var want []Summary
 		for i := first; i < len(lines); i++ {
-			var s Summary
-			if err := json.Unmarshal([]byte(strings.TrimSpace(lines[i])), &s); err != nil {
+			s, ok := decodeSummary([]byte(strings.TrimSpace(lines[i])))
+			if !ok {
 				continue
 			}
 			want = append(want, s)
@@ -2101,8 +2101,11 @@ func TestSummarizeFileTalliesReviewStatuses(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Reviews != 7 || s.OK != 1 || s.Failed != 2 || s.Skipped != 1 || s.Conflicts != 1 {
+	if s.Reviews != 7 || s.OK != 1 || s.Failed != 1 || s.Timeouts != 1 || s.Skipped != 1 || s.Conflicts != 1 {
 		t.Fatalf("status tally wrong: %+v", s)
+	}
+	if s.Folded {
+		t.Fatal("a row rebuilt from a journal folded timeouts into failed")
 	}
 	if s.Other != 1 {
 		t.Fatalf("a status-less ending was not counted as unrecognized: %+v", s)
@@ -2161,7 +2164,7 @@ func TestSummarizeFileDoesNotCountAMissingStatusAsAPass(t *testing.T) {
 	}
 	// The invariant the whole switch exists to keep: every review the row
 	// counts sits in exactly one bucket, so FAILED explains the exit code.
-	if s.Reviews != s.OK+s.Failed+s.Skipped+s.Conflicts+s.Interrupted+s.Other {
+	if s.Reviews != s.OK+s.Failed+s.Timeouts+s.Skipped+s.Conflicts+s.Interrupted+s.Other {
 		t.Fatalf("the row does not reconcile against its own buckets: %+v", s)
 	}
 }
@@ -2707,7 +2710,7 @@ func TestReconstructedRowBucketsUnknownStatus(t *testing.T) {
 		t.Errorf("unknown status bucketed as ok=%d failed=%d other=%d, want 0/0/1",
 			got.OK, got.Failed, got.Other)
 	}
-	if got.Reviews != got.OK+got.Failed+got.Skipped+got.Conflicts+got.Interrupted+got.Other {
+	if got.Reviews != got.OK+got.Failed+got.Timeouts+got.Skipped+got.Conflicts+got.Interrupted+got.Other {
 		t.Errorf("reviews = %d, buckets do not account for it", got.Reviews)
 	}
 }
@@ -2755,7 +2758,7 @@ func FuzzDecodeEvents(f *testing.F) {
 		// Every review_end lands in one status bucket, so the buckets can
 		// never account for more reviews than ran. A status from a newer
 		// journal counts a review and no bucket, which is the other bound.
-		if bucketed := s.OK + s.Failed + s.Skipped + s.Conflicts + s.Interrupted; bucketed > s.Reviews {
+		if bucketed := s.OK + s.Failed + s.Timeouts + s.Skipped + s.Conflicts + s.Interrupted; bucketed > s.Reviews {
 			t.Fatalf("buckets %d exceed reviews %d: %+v", bucketed, s.Reviews, s)
 		}
 		seen := map[string]bool{}

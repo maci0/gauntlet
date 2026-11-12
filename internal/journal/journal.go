@@ -153,22 +153,37 @@ func hexPID(tail string) (uint64, bool) {
 
 // Summary is the one-line record of a finished run, appended to index.jsonl.
 type Summary struct {
-	RunID       string    `json:"run_id"`
-	Path        string    `json:"path"`
-	Version     string    `json:"version"`
-	Dirs        []string  `json:"dirs"`
-	Agents      []string  `json:"agents,omitempty"`
-	Args        []string  `json:"args,omitempty"`
-	Start       time.Time `json:"start"`
-	End         time.Time `json:"end"`
-	Elapsed     float64   `json:"elapsed_s,omitempty"` // monotonic seconds; Duration
-	Loops       int       `json:"loops"`
-	Reviews     int       `json:"reviews"`
-	OK          int       `json:"ok"`
-	Failed      int       `json:"failed"`
-	Skipped     int       `json:"skipped,omitempty"`
-	Conflicts   int       `json:"conflicts,omitempty"`
-	Interrupted int       `json:"interrupted,omitempty"`
+	RunID   string    `json:"run_id"`
+	Path    string    `json:"path"`
+	Version string    `json:"version"`
+	Dirs    []string  `json:"dirs"`
+	Agents  []string  `json:"agents,omitempty"`
+	Args    []string  `json:"args,omitempty"`
+	Start   time.Time `json:"start"`
+	End     time.Time `json:"end"`
+	Elapsed float64   `json:"elapsed_s,omitempty"` // monotonic seconds; Duration
+	Loops   int       `json:"loops"`
+	Reviews int       `json:"reviews"`
+	OK      int       `json:"ok"`
+	Failed  int       `json:"failed"`
+	// Timeouts counts reviews the per-review deadline stopped. It is its own
+	// field because a timeout is not a review the agent failed: the live tally,
+	// the dashboard, and the end-of-run report all keep the two apart, and a
+	// row that folded them together made every reader of the index guess.
+	//
+	// Folded is set only for a row this build read, never one it wrote: an
+	// index written before the field existed counted timeouts inside failed,
+	// and a reader that added the new field on top of that would count each
+	// one twice. Close and the journal rebuild both name the count, so a row
+	// they produce leaves Folded false.
+	// No omitempty: a zero is a count, and a missing key is how a row from
+	// before this field says it folded deadlines into failed. Dropping the
+	// zero would make a clean run indistinguishable from that old row.
+	Timeouts    int  `json:"timeouts"`
+	Folded      bool `json:"timeouts_folded,omitempty"`
+	Skipped     int  `json:"skipped,omitempty"`
+	Conflicts   int  `json:"conflicts,omitempty"`
+	Interrupted int  `json:"interrupted,omitempty"`
 	// Other counts reviews whose terminal status this build does not
 	// recognize. It exists so a journal written by a newer version still
 	// reconciles: every review counted is in exactly one bucket.
@@ -204,6 +219,38 @@ func (s Summary) Duration() (time.Duration, bool) {
 		return 0, false
 	}
 	return s.End.Sub(s.Start), true
+}
+
+// TimeoutsCounted is how many reviews the per-review deadline stopped, and
+// whether that number is known on its own.
+//
+// A row written by this build carries it in Timeouts. A row written before
+// the field existed counted those reviews inside Failed and says so with
+// Folded: the number is then not recoverable, and a caller that printed
+// Failed beside a zero Timeouts would report a deadline as an agent failure.
+// Callers that only need the combined count read Failed + Timeouts either
+// way, which is the same number the old row stored in Failed alone.
+func (s Summary) TimeoutsCounted() (int, bool) {
+	if s.Folded {
+		return 0, false
+	}
+	return s.Timeouts, true
+}
+
+// decodeSummary reads one index line and marks a row that predates the
+// timeouts field. json omits a false bool, so a row this build wrote cannot
+// be told from one that never had the field by the value alone: the key's
+// absence is what says the row folded deadlines into failed. A line that
+// does not decode is skipped, the same way both callers skipped it before.
+func decodeSummary(line []byte) (Summary, bool) {
+	var s Summary
+	if err := json.Unmarshal(line, &s); err != nil {
+		return Summary{}, false
+	}
+	if !bytes.Contains(line, []byte(`"timeouts"`)) {
+		s.Folded = true
+	}
+	return s, true
 }
 
 // Journal is the append-only event log of one run. It is safe for concurrent

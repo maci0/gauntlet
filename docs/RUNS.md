@@ -507,10 +507,19 @@ repeat as a replay, which under-counts a run rather than inflating it.
 reviews whose ending carries no status at all: an ending cut short, or one
 written before the outcome was named. It exists so a journal written by a
 newer version still reconciles: every review the row counts sits in exactly one
-of `ok`, `failed`, `skipped`, `conflicts`, `interrupted`, or `other`, so the
-FAILED column keeps explaining the run's exit code. An ending with no status is
-never a pass — reading it as one put a review in `ok` that the run never
-recorded passing.
+of `ok`, `failed`, `timeouts`, `skipped`, `conflicts`, `interrupted`, or
+`other`, so the FAILED column keeps explaining the run's exit code. An ending
+with no status is never a pass — reading it as one put a review in `ok` that
+the run never recorded passing.
+
+`timeouts` is its own count because a review the per-review deadline stopped is
+not a review the agent failed, and the live tally already kept the two apart. A
+row written before the field existed counted those reviews inside `failed` and
+carries `timeouts_folded`, so a reader does not add a zero `timeouts` on top of
+a `failed` that already holds them and count each deadline twice. A row this build writes, and one rebuilt from a journal, names the count
+and leaves the marker off. `gauntlet runs --json` reports that fact as
+`timeouts_known` per row and omits the marker, since the index is re-read and
+storing the marker would make every old row claim a split it does not have.
 
 What this tree holds, and what a lost `GAUNTLET_HOME` actually costs:
 

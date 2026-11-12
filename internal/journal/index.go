@@ -1206,8 +1206,13 @@ func summarizeFile(runID, path string) (Summary, error) {
 			switch e.Status {
 			case "ok":
 				s.OK++
-			case "fail", "timeout":
+			case "fail":
 				s.Failed++
+			case "timeout":
+				// A deadline is not an agent failure. The row this rebuild writes
+				// is what a later listing reads, so folding the two here would put
+				// the loss back into every index this build repairs.
+				s.Timeouts++
 			case "skipped":
 				s.Skipped++
 			case "conflict":
@@ -1303,8 +1308,8 @@ func parseTail(data []byte, dropFirst bool, n int) (out []Summary, enough bool) 
 		if !(dropFirst && start == 0) {
 			line := bytes.TrimSpace(data[start:end])
 			if len(line) > 0 {
-				var s Summary
-				if err := json.Unmarshal(line, &s); err == nil {
+				s, ok := decodeSummary(line)
+				if ok {
 					out = append(out, s)
 					if len(out) == n {
 						return out, true
