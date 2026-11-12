@@ -40,6 +40,10 @@ the journaled event stream in `internal/runner/contract_test.go`.
   pass, and neither was selected, so an import of Django or pandas would have
   landed with no check on it. `pyproject.toml` records why `DOC` stays out:
   it only exists under ruff's preview flag.
+- The end-of-run per-agent stats now count skipped, interrupted, conflict, and
+  unrecognized outcomes, each only when that agent has one, the same way the
+  run summary's own rows do. The row previously printed only ok, fail, and
+  timeout, so an agent that never passed could still read as clean.
 
 ### Fixed
 

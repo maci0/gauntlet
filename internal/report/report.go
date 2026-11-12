@@ -431,8 +431,22 @@ func Summary(out io.Writer, pal Palette, dirs []Dir, wall time.Duration) {
 			if tps := a.TokensPerSec(); tps > 0 {
 				rate = fmt.Sprintf(", ~%.0f tok/s", tps)
 			}
-			fmt.Fprintf(out, "  %s ok=%d fail=%d timeout=%d%s\n",
-				PadCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, rate)
+			counts := ""
+			for _, part := range []struct {
+				key string
+				n   int
+			}{
+				{"skipped", a.Counts.Skipped},
+				{"interrupted", a.Counts.Interrupted},
+				{"conflict", a.Counts.Conflict},
+				{"other", a.Counts.Other},
+			} {
+				if part.n > 0 {
+					counts += fmt.Sprintf(" %s=%d", part.key, part.n)
+				}
+			}
+			fmt.Fprintf(out, "  %s ok=%d fail=%d timeout=%d%s%s\n",
+				PadCells(a.Label, 20), a.Counts.OK, a.Counts.Fail, a.Counts.Timeout, counts, rate)
 		}
 	}
 	if len(t.failures) > 0 {
