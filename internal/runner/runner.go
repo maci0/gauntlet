@@ -457,7 +457,7 @@ func (r *Runner) Pending() []string {
 }
 
 // Unfinished is what a crash at this moment would leave undone in the current
-// loop: the reviews running now, whose agents die with the process, then the
+// loop: the reviews running now, whose agents may survive a crash, then the
 // ones not started, in scheduled order. A review whose result is recorded is
 // never in it. Read it before the stats when the two must agree: a review
 // that finishes between the two reads then shows in both and runs again on

@@ -3,17 +3,16 @@
 The Go implementation of gauntlet: run 56 specialized review prompts through installed
 AI coding agents, which apply fixes directly to the working tree.
 
-The Python original is a single 2700-line sequential script. This port keeps
-the original's prompt semantics, and changes five things: reviews can run
-in parallel with git-level isolation, agent output is normalized into
-structured events instead of raw bytes, every run is journaled, and the binary
-can replace and reload itself while a loop is running; an ordered pass can
-also publish its changes as a linear, unmerged PR stack.
+Reviews run sequentially in place, in parallel lane worktrees with serialized
+merges, or in an isolated worktree that publishes a linear PR stack. Structured
+events drive the dashboard, plain reporter, and run journal. Self-update and
+hot reload let a long-running loop adopt a new binary at a review boundary.
+See [CLI.md](CLI.md) for flags and [RUNS.md](RUNS.md) for operating guidance.
 
 ## Goals
 
-1. Same review semantics as the Python original: same prompts, same injected
-   rules, same containment, same exit codes.
+1. Consistent review semantics across execution modes: composed prompts,
+   injected rules, containment, and exit codes.
 2. Parallel where it is safe: across directories always, and inside one
    directory only with isolated lane worktrees and a merge step.
 3. A dashboard that reads like an instrument, not a log tail.
@@ -32,85 +31,59 @@ also publish its changes as a linear, unmerged PR stack.
 
 | Package | Responsibility |
 |---|---|
-| `cmd/gauntlet` | flag parsing, mode dispatch, exit codes, the help screen (`help.go` and its `help_*` build-tag half), and the per-run preflight steps |
-| `cmd/sbom` | the release-time command `make release` runs to write the CycloneDX inventory of the built binaries |
-| `site/public` | not a package and not part of the build: the one-page project site, a condensed README rendered in a browser. Static HTML with an inline stylesheet and no script, deployed from `site/wrangler.jsonc`, with Cloudflare's `_headers` carrying the security policy. Nothing in `internal/` reads it, so `cmd/gauntlet/site_test.go` is what holds its color tokens and markup invariants to WCAG 2.2 AA |
-| `internal/agent` | agent specs, the installed-tool inventory doctor and auto-detection read through `runx`'s resolver, command construction, custom definitions from `agents.json` in the state root read through `safefile`, the usage-counter patterns in `usage.go`, and the display truncation it shares with `internal/normalize` |
-| `internal/prompt` | embedded prompts, project prompt discovery, sets, composition |
-| `internal/evidence` | the file-signal suggester: the reviews a tree's own files, changelog, and past runs justify, read off disk with no agent and no tokens |
-| `internal/normalize` | agent output noise reduction and line classification, and in `display.go` the sanitize, home redaction, and clipping every untrusted string shown to a reader goes through |
-| `internal/gitx` | the repo handle and its baseline (`gitx.go`), hardened git invocation and the safe config overlay (`exec.go`), worktree line stats (`stats.go`), status and diff porcelain parsing (`status.go`), the tree listing (`list.go`), the git version floor every call with a ref depends on (`version.go`), and the commit-trailer cleanup (`trailers.go`); worktrees, branches, and snapshots in `worktree.go`, `branch.go`, and `snapshot.go` |
-| `internal/ghx` | bounded, argv-only GitHub PR discovery and creation through `gh` |
-| `internal/runx` | how every child is launched and read: process-group kill, WaitDelay (`WaitGrace`, the one bound every child is given rather than a number each caller spells), capped stdout/stderr, the first line of a child's output with credentials stripped, and the one rule for finding a binary on a `PATH` no chdir can change meaning under (`AbsPATH`, `AbsPATHEnv`, `LookPath`), which is what makes an agent and the git it drives resolve the same way |
-| `internal/runner` | scheduler, lanes, worktrees, timeouts, lock, commit step, and events (`runner.go`, `loop.go`, `attempt.go`, `exec.go`, `lock.go`, `commit.go`, `event.go`); the isolated stacked-PR pass (`stack.go`, `prbody.go`), the filesystem sandbox (`sandbox*.go`), the agent-written commit subject and the trailers cleanup beside it (`subject.go`), the untrusted-text pass over agent output (`sanitize.go`), the suggest step (`suggest.go`), the per-loop cap (`reviewcap.go`), the provider-usage ceiling (`usagelimit.go`), and transcript usage in `usage.go`, with the reader picked by `usage_toktop.go` / `usage_off.go` under `-tags notoktop` |
-| `internal/journal` | the JSONL run log under `~/.gauntlet`: the journals, the index rebuilt from them, the `pruned/` quarantine, and the read-only `Inspect` doctor reads |
-| `internal/gauntlethome` | the one resolver of the state root (`GAUNTLET_HOME`, else `~/.gauntlet`) and of the `state/` subdirectory the reload handoffs live in, shared by the journal, the agent definitions, and the reload handoff, plus `ExpandPath` for the `~` and `$VAR` forms of a configured root, and the durable-write helpers (`WriteFileAtomic`, `SyncDir`, `SweepStaleTemps`, `NewTempFile`) every temp-file writer needs. `SweepStaleTemps` takes the clock its age cutoff is measured against, so the same state swept at two times is swept the same way, and `NewTempFile` takes the one prefix a writer used to spell twice, once to sweep under and once to create under |
-| `internal/streamjson` | envelope-agnostic parser for agents' machine-readable output |
-| `internal/ui` | bubbletea dashboard, and the `pick` launcher in `pick.go` |
-| `internal/report` | the plain (non-TUI) reporter, the counterpart to `internal/ui`: the `Reporter` that turns the event bus into lines on stdout, the end-of-run `Summary`, the `--list` and `--dry-run` column kit (`Cells`, `PadCells`, `TrimCells`, `WrapIndent`, `ReviewNameColumn`), the `Palette` and the `ColorEnabled` decision behind it, and the writers the plain run serializes its output through. It takes a run's contribution as a `Dir` value rather than the CLI's own per-directory record, so it depends on `internal/runner` for the event and result types and on nothing else about a run |
-| `internal/selfupdate` | release check, verified download, atomic replace, re-exec, and the reload handoff read through `safefile` |
-| `internal/sbom` | the CycloneDX inventory of a release, read out of the built binaries' build info |
-| `internal/humanize` | one reader and formatter for durations and counts, shared by all of them |
-| `internal/envx` | one reader for the boolean environment variables, so the documented list of values that mean off is written once |
-| `internal/fuzzy` | the one place a name is put in comparable form (NFC, case folding, the ASCII fast path), the typo-tolerant match behind every "did you mean" hint, and the collation every printed list of names is ordered by |
-| `internal/safefile` | the one guarded open for a path a repository's contents can plant: `O_NOFOLLOW` plus a regular-file check and a cleared `O_NONBLOCK`, for reading a project prompt, a run journal, the operator's `agents.json`, a shared exclude, a conflicted path the resolving agent could have replaced, and the `.git/index` a snapshot copies, plus the line-count and diff reads of planted names, and for appending to the exclude. Three copies of it had drifted (one dropped the path from its errors, one ignored a failed clear), and the append had no `O_NONBLOCK`, so a FIFO planted where the exclude goes blocked the untracked walk until a writer appeared. `agents.json` joined them because its contents are exec'd as argv and `GAUNTLET_HOME` may point inside the reviewed tree, and because the loader ran before any bound or refusal the other reads had. The reload handoff and the crash checkpoint joined them for the same reason, both having decided to be safe by checking the type with `os.Lstat` and then opening the name: that is two syscalls, and the reviewed repository can lose the race between them, so a symlink swapped into either name was read out of the tree. `internal/selfupdate` declares the edge; `cmd/gauntlet`, the composition root, needs no entry to read the checkpoint the same way |
+| `cmd/gauntlet` | flags, mode dispatch, preflights, help, and exit codes; the composition root |
+| `cmd/sbom` | release-time CycloneDX inventory command |
+| `internal/agent` | built-in and custom agent definitions, executable inventory, command construction, usage counters, and output protocol |
+| `internal/prompt` | embedded prompts, project discovery, sets, composition, and fingerprints |
+| `internal/evidence` | file-signal review suggestions from the tree, changelog, and run history |
+| `internal/normalize` | output classification, deduplication, sanitization, home redaction, and clipping |
+| `internal/gitx` | hardened git invocation, snapshots, status, line stats, branches, worktrees, and trailer cleanup |
+| `internal/ghx` | bounded, argv-only GitHub PR lookup and creation through `gh` |
+| `internal/runx` | child process groups, cancellation, bounded output and pipe waits, and absolute-only PATH resolution |
+| `internal/runner` | scheduling, attempts, lanes, stacking, locks, commits, conflicts, sandboxing, events, and usage limits |
+| `internal/journal` | JSONL journals, derived index, retention quarantine, restore, and history inspection |
+| `internal/gauntlethome` | state-root resolution, path expansion, atomic writes, directory sync, and stale-temp cleanup |
+| `internal/streamjson` | envelope-agnostic parsing of machine-readable agent output |
+| `internal/ui` | dashboard and `pick` launcher |
+| `internal/report` | plain event reporter, summaries, catalog columns, and terminal color policy |
+| `internal/selfupdate` | release checks, verified download, atomic replacement, reload detection, and handoff |
+| `internal/sbom` | release inventory from binary build info and module licenses |
+| `internal/humanize` | duration and count parsing and formatting |
+| `internal/envx` | shared interpretation of boolean environment variables |
+| `internal/fuzzy` | NFC normalization, case folding, name suggestions, and collation |
+| `internal/safefile` | guarded reads and appends: `O_NOFOLLOW`, regular-file checks, and nonblocking open to reject planted FIFOs |
 
-Dependency direction is strictly downward: `runner` imports `agent`,
-`gauntlethome`, `evidence`, `prompt`, `normalize`, `gitx`, `ghx`, `runx`,
-`streamjson`, and `humanize`; `evidence` imports `fuzzy`, `gitx`, `journal`, and `prompt`, so the
-file-signal suggester reaches the tree, the run history, and the catalog
-without any of them reaching back;
-`gitx`, `ghx`, `agent`, and `sbom` import `runx` for the shared child
-kill, output cap, and binary resolution, so the one `PATH` rule behind "a
-review target cannot plant an executable by name" is stated once; `ui` imports
-`runner`'s event types plus the shared `normalize` line kinds, `humanize`
-formatters, the `envx` boolean reader, which the motion-off variables go
-through for the same reason `cmd/gauntlet` does, and the `fuzzy` fold and
-collation behind the picker's filter and the grid's review order, and nothing
-else. The picker takes the file-signal suggester name from `PickConfig`
-rather than importing `evidence` for it. `cmd/gauntlet` and `ui` import `envx`,
-the one reader of the boolean environment variables, so the one list of
-values that mean off, which `docs/CLI.md` states once for all five variables,
-is written once: the plain reporter and the dashboard ask the same package
-rather than each keeping a copy of the rule. `prompt` imports `gitx`, so project
-discovery's listing (`ls-files` for `*-review.md`) and ignore check use the
-same hardened resolver and safe config as every other git invocation,
-`normalize` so catalog and summary clips use the same rune-bounded ellipsis,
-and `humanize` so composed prompts spell timeouts the same way the rest of
-the binary does. `agent`
-and `prompt` import `fuzzy`, so a
-mistyped review or agent name gets the same suggestion everywhere, and every
-list of names those two print (the agent names an error offers, the review
-and set names the picker, the dry run, and `doctor` show) is ordered by the
-same collation rather than by code point, so a name outside ASCII sorts where
-a reader looks for it; the CLI
-uses it for unknown commands and flags too. `runner` imports it for the same
-reason: the run's own result list, failure list, and per-tool breakdown are
-keyed by a review name and a `tool:model` label, both of which the reviewed
-tree and the operator's own configuration name, and `fuzzy.Comparator` is what
-orders records by such a field the way `fuzzy.Sort` orders a bare list. The
-resume listing's directory names are the same case: a reviewed tree names its
-checkouts, and one called "Ökonto" has to print where the operator reads it.
-`journal` imports `humanize`, so
-the one reader of the persisted `elapsed_s` field is the one that renders it,
-and the run listing, the headless reporter, and the dashboard cannot disagree
-about what a run's duration is.
-`agent`, `journal`, `selfupdate`, and `cmd/gauntlet` import `gauntlethome`: the
-first two for the one resolver of the state root, the CLI for the same resolver
-and the `state/` subdirectory it hands a reload off through, the last for the
-durable-write helpers
-that keep an atomic replace, a stale-temp sweep, or the reload handoff from
-tearing, the same durable directory flush the journal's own rename-based
-writes need. `selfupdate` hands a run off through a file in that root and
-fsyncs the directory with the same helper. `gauntlethome` imports nothing, so
-the direction stays downward. Nothing inside `internal/` imports `ui`, so the
-loop runs headless with zero TUI cost. `cmd/gauntlet` pins this graph.
+`site/public` is a static project site, outside the Go build. Its inline CSS
+shares the dashboard palette; `_headers` supplies its security policy and
+`site/wrangler.jsonc` its deployment configuration. `cmd/gauntlet/site_test.go`
+checks markup and color contrast.
+
+The dependency graph is acyclic. `cmd/gauntlet` may compose any internal
+package; no internal package imports `ui`. `TestInternalImportGraph` in
+`cmd/gauntlet/layout_test.go` pins the following edges, including test imports:
+
+| Package | Internal dependencies |
+|---|---|
+| `agent` | `fuzzy`, `gauntlethome`, `normalize`, `runx`, `safefile` |
+| `evidence` | `fuzzy`, `gitx`, `journal`, `prompt` |
+| `ghx` | `runx` |
+| `gitx` | `runx`, `safefile` |
+| `journal` | `gauntlethome`, `humanize`, `safefile` |
+| `prompt` | `fuzzy`, `gitx`, `humanize`, `normalize`, `safefile` |
+| `report` | `agent`, `envx`, `fuzzy`, `humanize`, `normalize`, `prompt`, `runner` |
+| `runner` | `agent`, `evidence`, `fuzzy`, `gauntlethome`, `ghx`, `gitx`, `humanize`, `normalize`, `prompt`, `runx`, `streamjson` |
+| `selfupdate` | `gauntlethome`, `safefile` |
+| `sbom` | `runx` |
+| `ui` | `envx`, `fuzzy`, `humanize`, `normalize`, `runner` |
+
+The remaining packages have no internal dependencies. Shared process, display,
+path, and file-open helpers keep their safety rules consistent across callers.
+The picker receives the built-in suggester name through `PickConfig` rather
+than importing `evidence`.
 
 ## External dependencies
 
-Eight direct modules, plus the modules they pull in. The default is no
-new dependency: each row earns its place by doing something the standard
-library cannot, and each was kept small on purpose.
+Eight direct modules, with import sites constrained by tests:
 
 | Module | Why it exists | Contained by |
 |---|---|---|
@@ -214,9 +187,8 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   bumps, the scan owns advisories. Dependabot groups minor and patch bumps
   into one pull request and leaves a major version in its own, for the
   modules and for the actions alike, so neither pass is ever riding along
-  with a routine bump. The tool versions the workflows name inside a `run:`
-  step are not dependabot's to track, and each is pinned in the Makefile and
-  in the workflow that runs it, with a test holding the two equal.
+  with a routine bump. Tool versions inside `run:` steps are maintained separately. The Makefile
+  owns their pins; workflow steps that repeat a pin are checked against it.
 - Licenses of every linked module are MIT or BSD-3-Clause, compatible with
   this repo's AGPL-3.0-or-later. `TestLinkedModuleLicenses` reads the grant
   of every module a shipped build links, transitive ones included, so a
@@ -236,10 +208,8 @@ Supply-chain posture, and what any new dependency inherits as obligations:
   `SQLITE_VERSION` constant in its `lib/sqlite.go`. Gauntlet only runs
   self-constructed queries against agent-owned database files, never SQL
   from untrusted input.
-- Major versions of the Charm stack (bubbletea/lipgloss v2, February 2026)
-  are adopted through a dedicated migration pass, never a drive-by bump:
-  the v2 View API changes wholesale, and the v1 line continues to receive
-  fixes in the meantime.
+- Major-version dependency upgrades require a dedicated migration and checks
+  against the APIs this tree uses.
 
 ## Concurrency model
 
@@ -257,9 +227,9 @@ the unit of safe parallelism is **the directory**, not the agent.
 
 - One worker per target directory, each with its own `.gauntlet.lock`, git
   baseline, review queue, and lane of the event stream. This is where the
-  parallelism lives, and it is always safe: distinct trees, distinct agents.
-- Inside one directory, reviews run **one at a time** by default, exactly as
-  the Python original does, editing the working tree in place.
+  parallelism lives; runs targeting the same tree are refused by the lock.
+- Inside one directory, reviews run **one at a time** by default, editing the
+  working tree in place.
 - `--jobs N` (N > 1) turns on **isolated parallel reviews**, described below.
 - `--stacked-prs` turns on an **isolated sequential stack**, described below.
 - A review that fails to launch or exits non-zero is retried on the same
@@ -273,76 +243,33 @@ the unit of safe parallelism is **the directory**, not the agent.
   The runtime budget is checked before retry or fallback and again after
   backoff, before restoring the tree for another attempt.
 - Cancellation is a `context.Context` per review, plus process-group kill
-  (SIGTERM, then SIGKILL after 10s) exactly as the original.
+  (SIGTERM, then SIGKILL after 10s).
 - One event bus fans out to a buffered channel per subscriber: the logger,
   the journal, and the TUI. Output and live usage ticks may be dropped when a
   subscriber's buffer is full; all other events block until delivered, so
   subscribers must keep draining until the bus closes.
-- The event bus carries an injectable clock (`Bus.Now`). Event timestamps,
-  review and loop elapsed times, the `--runtime` budget, and a zero `--seed`
-  all read it, so a test that pins the clock also pins those. The run's
-  effective seed is resolved once, where the run's start instant is read
-  (`runner.SeedOrClock`), and that one number is what the suggest step's
-  agent order and the schedule's shuffles both draw from: a derived seed
-  read twice would hand the two consumers different numbers, and the seed
-  the journal prints would replay only the schedule. A hot reload carries
-  the seed in its handoff, so a successor finishes the run from the seed the
-  journal already recorded rather than a fresh one. Stochastic
-  choices (shuffle, agent pick, backoff jitter) are keyed draws from the
-  seed, not a shared random stream, so a recorded seed replays them even
-  when `--jobs` interleaves lanes.
-  What the lanes publish to each other is not replayable, and cannot be: they
-  publish concurrently, so which lane's event arrives first is the OS
-  scheduler's choice. Every event a lane publishes while running a review
-  therefore carries that review and its 1-based lane number, so a journal
-  reader has a key to put a line back in the same place when it sorts two
-  recordings of one seed. Run-scope narration names no review, because it
-  is about the run rather than one lane's work. The line-sample debounce reads the same
-  clock through `gitx.Repo.Now`, wired from the bus, because it decides
-  whether a sample is a fresh walk or a cached value and therefore which
-  review a diff is attributed to. The clock reaches the display side the
-  same way (`ui.Config.Now`, `reporter.now`, both handed `bus.Clock()`), so
-  the dashboard's first reading, its end-of-run stamp, and a log line the
-  bus could not stamp are the run's clock and not a second wall clock
-  beside it. The same covers what a run hands to its successor: the crash
-  checkpoint's stamp and elapsed, and the handoff's elapsed on a hot reload,
-  are read from that one handle, so the run's own clock does not reappear as a
-  second reading of the process's monotonic source at the end of the run.
-  Production sets that clock once, at the bus, from the run's
-  start instant and the monotonic reading, so every reader inside the run
-  shares one handle and an NTP step cannot expire or extend `--runtime`;
-  a caller that replays a run replaces the handle instead of each reader
-  reaching for the wall clock. The suggester's churn window is the one place
-  a time decision crosses into an external process, so it is passed the
-  clock rather than left to git's own: a cutoff git resolved for itself
-  would let the date a run happened on decide which reviews it proposed.
-  The argv an agent is launched with carries the same clock
-  (`agent.BuildOpts.Now`, handed the bus clock), because two of the decisions
-  that argv makes are timed: whether a failed dsh provider probe is retried,
-  and which overlay files the cache sweep removes. On the wall clock those
-  turn how long a review took into a difference in what the next one is
-  launched with.
-  The one wait on the review path, the pause
-  between two attempts of a failed review, is the matching seam
-  (`Bus.Sleep`): its length is already a keyed draw from the seed, so with
-  the wait injected a replay spends simulated time rather than the backoff
-  the seed chose. Results are reported in review-name
-  order, not lane completion order, so a replayed seed prints the same
-  report. Every git invocation runs with `LC_ALL=C`, because git translates
-  its own output and that output reaches the journal and the error a failed
-  review reports: without it a machine set to a translated locale records
-  different bytes for the same run than a CI machine does.
-  `internal/runner/seed_test.go` replays a whole seeded run against itself
-  and diffs every event field, which is what the seed is worth; a field that
-  differs names the source that leaked.
+- The event bus carries an injectable clock (`Bus.Now`) and backoff wait
+  (`Bus.Sleep`). Production derives elapsed time from a monotonic source, so
+  wall-clock corrections cannot extend or expire `--runtime`. Event stamps,
+  scheduling, stats sampling, display, checkpoints, reload handoffs, agent
+  probes, cache sweeps, and the suggester's absolute churn cutoff use that
+  clock. Tests can replace it and the wait without sleeping in real time.
+  The effective seed is resolved once by `runner.SeedOrClock`, shared by
+  suggestion and scheduling, recorded in the journal, and carried on reload.
+  Shuffles, agent choices, and backoff jitter use keyed draws rather than a
+  shared random stream. Lane assignment is deterministic; concurrent event
+  arrival and merge completion order are not. Review events carry the review
+  and 1-based lane number, and results print in review-name order. Git runs
+  with `LC_ALL=C` to keep its diagnostics independent of the operator's locale.
+  `internal/runner/seed_test.go` checks seeded replay.
 
 ### Isolated parallel reviews (`--jobs N`)
 
 Concurrent agents in one working tree corrupt each other, so the runner does
 not allow it. Parallelism inside a directory is granted only with isolation:
-N persistent lane worktrees share one queue, split across the lanes up front.
+N persistent lane worktrees receive fixed portions of the schedule up front.
 Each review still gets its own branch; the lane directory stays put so later
-reviews in that lane reuse the agent's prompt cache (see below).
+reviews in that lane can reuse the agent's prompt cache (see below).
 
 ```
 baseline commit
@@ -352,7 +279,7 @@ baseline commit
          N agents run concurrently, each in a stable checkout
          scheduled review i runs in lane i%N
    ↓
-   one commit per review (runner-authored, no AI attribution)
+   one runner-authored commit per review
    ↓
    serialized merge --squash back into the original branch
    ↓
@@ -421,8 +348,9 @@ sequential, execution is isolated from the original checkout, and publication
 opens PRs instead of merging branches. One worktree advances through the
 selected review order for a pass. A changed review contributes exactly one
 commit and becomes the base of the next changed review. `--max-loops` (default
-1; 0 is unlimited) starts each later pass in a fresh worktree cut from the
-previous pass's last published tip, so already-applied fixes stay in the tree.
+1; 0 is unlimited) continues each later pass from the last pushed tip, reusing
+a retained checkout or creating a new worktree after a fully published pass.
+Already-applied fixes stay in the tree.
 In stack mode an explicit `-n 0` asks for unlimited passes.
 
 ```mermaid
@@ -508,60 +436,17 @@ The invariants are:
 
 ### API-level cache reuse across reviews
 
-Agents backed by the Anthropic API (Claude) cache the rendered prompt prefix
-server-side: tools, system prompt, and the leading message history. A second
-request whose prefix is byte-identical reads the cached tokens at roughly a
-tenth of the input price. The cache entry lives for five minutes from the last
-read, so sequential requests that share a prefix keep it warm indefinitely.
+Agent CLIs may include the working directory and project instructions in
+provider requests. Changing directories between reviews can therefore change a
+cacheable prefix. Persistent lanes keep each lane's path stable for the loop;
+in-place runs keep the original path, and stacked runs reuse one checkout
+through the pass.
 
-**Sequential mode (`--jobs 1`) gets this for free.** Every review launches in
-the same directory. Claude Code builds the same system prompt (same CLAUDE.md,
-same `Primary working directory:` path, same tool list), so review 1 warms the
-cache and reviews 2-N read it. The review-specific text is the user message,
-which sits after the cached system prefix and does not invalidate it.
-
-**Parallel mode (`--jobs N`) mitigates it with persistent lanes.** Instead of
-creating a throwaway worktree per review, parallel mode creates N stable lane
-worktrees at loop start (branch slug `lane-0`, `lane-1`, ..., checked out under
-`.gauntlet/worktrees/<run-id>-l<loop>-lane-<N>`) and splits the loop's
-schedule across them. Within a lane, reviews run sequentially in the same directory, so
-reviews 2..M in lane K all hit the cache that review 1 warmed. Across lanes,
-the N worktrees still have N distinct paths, so each lane pays one cold start.
-Cache cold starts scale with the lane count (N), not the review count.
-
-For a 15-review run with `--jobs 3`: 3 cold starts and 12 cache hits, compared
-to 15 cold starts and 0 hits with per-review worktrees.
-
-Stacked-PR mode already uses a single worktree advanced through the review
-order, so it gets the same cache reuse as `--jobs 1`.
-
-The remaining cost is N cold starts (one per lane) rather than zero. Fewer
-lanes means more cache reuse at the expense of wall-clock time. `--jobs 1`
-is the degenerate case: one lane, maximum reuse, zero parallelism.
-
-This is not Claude-specific. Every built-in agent but one embeds the working
-directory in its system prompt, so worktree mode defeats API-level caching
-universally. A user-defined agent (`--agent-cmd`, `agents.json`) is whatever
-CLI it wraps, so it inherits that CLI's row:
-
-| Agent | Provider caching | CWD in system prompt | Worktree impact |
-|---|---|---|---|
-| Claude | Automatic prefix match, 5-min TTL, 90% discount on reads | `Primary working directory: /path/…` | Full miss per worktree |
-| Gemini | Implicit on 2.5+/3, 90% discount, min 1024-2048 tokens | GEMINI.md resolved relative to CWD | Full miss per worktree |
-| Codex | Automatic prefix caching (OpenAI) | Sandbox/directory config from CWD, AGENTS.md aggregated | Full miss per worktree |
-| Grok | Automatic, routing-dependent (`x-grok-conv-id` header) | Working directory context embedded | Full miss per worktree; routing makes sequential hits unreliable too |
-| Qwen | Anthropic-style `cache_control` markers, 5-min TTL | QWEN.md resolved relative to CWD (forked from Gemini CLI) | Full miss per worktree |
-| Kimi | Automatic, ~10-20% of input cost on hit | Project context resolved from CWD | Full miss per worktree |
-| Cursor Agent | Inherits provider caching (GPT, Claude, etc.) | `.cursor/rules` and workspace root from CWD | Full miss per worktree |
-| OpenCode | Anthropic-style `cache_control` when using Claude | Project context from CWD | Full miss per worktree |
-| dsh | Undocumented (DeepSeek API) | YAML config and profile from CWD | Likely same |
-| agy, crush, clanker | Undocumented | Likely embed CWD | Likely same |
-| microagent | Inherits the provider's caching (OpenAI-compatible) | None: the system prompt is a fixed string, and the tools take the process CWD | No miss per worktree: no request it sends names the working tree |
-
-Gauntlet does not call any API directly, so it cannot place cache-control
-breakpoints or send warmup requests. What it controls is launch ordering and
-directory layout, which is what determines whether the agent's own caching
-can engage.
+This layout permits cache reuse but does not guarantee it. Agent configuration,
+changed project instructions, provider policy, and time between requests all
+affect cache hits. More lanes mean more distinct directory contexts. The runner
+controls directory layout and launch ordering; it does not call model APIs,
+set cache-control breakpoints, or send warmup requests.
 
 ## Speed
 
@@ -740,16 +625,10 @@ rewrites `state/checkpoints/<run-id>.json` (`writeCheckpoints` in
 running counted unfinished (`runner.Unfinished`), plus the argv and working
 directory. Results are recorded before a review leaves the in-flight list and
 the checkpoint reads that list before the results, so a review is never in
-neither. Both numbers the checkpoint carries, the stamp that answers whether
-the recorded process is still alive and the handoff elapsed a successor folds
-into its own `startedAt` where `--runtime` reads it, come from the run clock
-above, taken as one reading. They used to be read from the process's
-monotonic source here instead, which left the checkpoint the one artifact of a
-run that no replay of the seed could reproduce: two runs under one frozen run
-clock wrote identical journals and two different checkpoints. `gauntlet resume`
-<run-id>` refuses a directory whose lock is held, changes to the recorded
-directory, saves the handoff with its process count raised, and execs this
-binary. The count becomes the runner's `Generation`, which names lane and
+neither. The checkpoint stamp and carried elapsed time use one reading of
+the run clock. `gauntlet resume <run-id>` refuses a directory whose lock is
+held, changes to the recorded directory, saves the handoff with its process
+count raised, and execs this binary. The count becomes the runner's `Generation`, which names lane and
 review branches `<run-id>-g<N>-l<loop>` so a successor never reuses a branch
 its killed predecessor left. A `--jobs` successor deletes those leftovers that HEAD
 already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
@@ -880,8 +759,8 @@ existing scores and thresholds. The preview, additive manual repeats and
   a line is demoted; one that keeps landing changes is promoted. It is the only
   signal that improves with use.
 - **What a prompt declares.** A `Signals:` line in a project's own review makes
-  it reachable at all (see RUNS.md); the built-in rules only know built-in
-  names.
+  it reachable at all (see [project review metadata](RUNS.md#project-review-metadata));
+  the built-in rules only know built-in names.
 
 Each rule contributes weight rather than a yes, the reviews are ranked by the
 total, and what does not clear the floor is not proposed. The tree is listed by
@@ -908,93 +787,52 @@ state/<run-id>.json              hot-reload handoff, removed after pickup
 state/checkpoints/<run-id>.json  crash checkpoint, removed when the run ends on its own
 ```
 
-Design points:
+The journal subscribes to the same event bus as the dashboard. It omits agent
+output and live usage ticks, retaining outcomes and narration. An open failure
+warns and leaves the review running; journaling is not a prerequisite for edits.
+A reload or resume appends to the same stream, and its final process writes the
+summary for the whole logical run.
 
-- The journal is **another subscriber to the same event bus** the dashboard
-  reads. No separate instrumentation path exists to drift out of sync.
-- The retention bound **moves** what it drops into `pruned/` rather than
-  unlinking it, and the quarantine is bounded by the same `--keep-runs`. The
-  prune fires unattended at the end of every run from a flag, so a run stays
-  recoverable until the same number of newer runs has replaced it;
-  `gauntlet runs --restore` moves one back. A quarantine bound by nothing would
-  be a second unbounded history beside the one the bound exists to cap.
-- A journal a run still has open is never moved, whatever the keep window says
-  or whatever order its id gives it: the writer holds a shared `flock` on the
-  stream it appends to and the prune takes an exclusive one, which fails while
-  the run is writing, and the process records the streams it holds so the
-  answer is the same on both platforms: a `flock` belongs to the open file
-  description on Linux, so the prune's own descriptor conflicts, and to the
-  process on macOS, where it would convert this process's own shared lock and
-  call a live stream idle. Two gauntlet runs on the same state tree overlap easily,
-  and the second one's prune would otherwise move the first one's live event
-  stream into `pruned/`, leaving the row its `Close` appends naming a file the
-  listing no longer holds. The skipped run keeps its index row in the same
-  pass, so it still lists when it finishes.
-- `Inspect` reads the tree for `gauntlet doctor`: journals on disk, index
-  rows, runs the two copies tell apart, pruned runs, and journals cut
-  mid-line. A restore is checked against that rather than against the exit
-  code of the run that wrote it. A cut journal is its own count because the
-  counts of runs cannot show it: the half-line is not JSON, so the run lists
-  and replays as a shorter run that looks whole, which is what an archive job
-  that copies the tree with a run still writing produces.
-- Date sharding keeps one directory listing small; the flat index makes "what
-  did I run last week" a tail rather than a tree walk. A generated run id
-  encodes that date, so looking one up is a stat of one file, not a probe of
-  every shard. The listing, the keep bound, and the quarantine all order runs
-  by that id, across the whole tree rather than by the shard a journal happens
-  to sit in, and one id is one run: the same journal filed a second time is
-  listed once, the copy in the shard the id names winning, so a duplicate
-  cannot spend a slot of the keep window or print a run twice. A run id in no
-  generated form is listed and pruned like any other, wherever it is filed.
-  The order is not the text order: the fixed-width instant
-  leads, and the process id after it is compared as the number it is, because
-  the id writes it in unpadded hex (`1f4` for 500, `1f400` for 128000) and two
-  runs started in the same second would otherwise order by pid width. The
-  journals are the source of truth: a missing or empty index
-  is rebuilt from them, and a stale one has every newer unindexed journal
-  appended, so a crash that flushed the event stream still lists, and two
-  such crashes in a row do not hide the older one. A crash behind a later
-  Close is filled from its journal for that listing; appending it would
-  make it the newest index row and hide the later Close's `args`.
-  Reconstructed rows omit `args`, `exit_code`, and `elapsed_s`, which only
-  `Close` records, so `exit_code` is a pointer: a plain zero would have told
-  a listing that a run killed mid-review exited cleanly. The same reasoning
-  gives `ins`/`del` a `lines_measured` flag, and the listing prints `n/a`
-  rather than `+0/-0` for a run whose lines could not be attributed. An
-  unrecognized terminal status, and a terminal status that is missing
-  altogether, reconcile into `other`, so every review a row counts lands in
-  exactly one bucket and FAILED still explains the exit code. Index rebuilds and Close serialize on a sibling lock so
-  a listing cannot overwrite a just-written summary. That lock is polled
-  against a caller-supplied clock and pause (`lockIndex`), so a contended
-  acquisition gives up after a fixed number of retries rather than after
-  however long the real clock took. The listing prefers
-  `elapsed_s` (monotonic) over End−Start so an NTP step cannot rewrite how
-  long a run lasted.
-- Agent output (`output` events) and the live usage ticks (`usage` events)
-  are **not** journaled. They are large, they are reconstructible from the
-  agents' own logs, and the results are what anyone reads later. Everything
-  else is.
-- Journaling is never load-bearing for a run in progress: a journal that
-  cannot be opened degrades to a warning. A nil journal is a working no-op,
-  so no caller branches on it.
-- A hot reload or a resume appends to the same file and writes **one** index
-  row, from the successor, covering the whole run.
-- A closed run is **fsync'd**, and so is the directory that holds the index
-  after a rebuild renames it into place. Flushing a buffer protects a run from
-  a killed process; it does not protect the source of truth from a power cut,
-  and syncing only the derived index would leave a listing that outlives the
-  journal it is reconstructed from. The cost is one sync per run, not per
-  event.
-- The history is **bounded**: at the end of a run, `--keep-runs` (200 by
-  default) drops the journals and index rows past the newest N, and a day
-  directory left empty is removed. The index is compacted before the journals
-  go, so a listing never names a run whose file is gone, and the run that just
-  finished is the newest one and can never be the one dropped. A run in
-  progress sorts above every run the prune can reach. `0` keeps everything.
+The journals are authoritative; `index.jsonl` is a derived listing cache.
+Missing or empty indexes are rebuilt, newer unindexed journals are appended,
+and holes behind a later closed run are reconstructed for the listing without
+reordering persisted summary rows. Reconstructed rows omit `args`, `exit_code`,
+and `elapsed_s`, which only a clean close records. Missing exit codes are not
+successes, missing line measurements display `n/a`, and unknown or missing
+terminal statuses count as `other`. Recorded monotonic `elapsed_s` takes
+precedence over the difference between wall-clock timestamps.
+
+Date shards bound individual directory listings. Generated ids encode UTC
+start time and PID; ordering compares the PID numerically, not lexically.
+Duplicate ids count once, preferring the shard encoded in the id. Index
+rebuilds, appends, retention, and restore serialize through `.index.lock`.
+`lockIndex` accepts a clock and pause for bounded, testable contention handling.
+
+At close, the journal is fsync'd before the summary is written. Index renames
+and creation also sync the containing directory. A buffer flush protects
+against process death; durable writes are needed for power loss.
+
+Retention moves runs beyond `--keep-runs` (default 200) into `pruned/`, with
+an equally bounded quarantine. `0` keeps everything. `gauntlet runs --restore`
+moves a quarantined run back; eviction from quarantine unlinks it and is
+reported. The index is compacted before journals move. Ordering uses start
+time, so a long run can fall outside the newest N when it closes.
+
+Open journals are protected regardless of age: writers hold shared `flock`s,
+and pruning requires an exclusive lock. A process-local registry also protects
+streams on macOS, where another descriptor in the same process could convert
+its own lock. A protected journal keeps its index row in the same retention
+pass. A failed idle check keeps the journal and reports the error.
+
+`Inspect`, used by doctor and structured history output, compares journals and
+index rows and counts quarantined runs and truncated JSONL tails. A partial
+last line needs its own count because a replay can otherwise look complete
+while silently missing events. Backup, restore, event fields, and retention
+operations are documented in [RUNS.md](RUNS.md#run-journal).
 
 ## Dashboard
 
-Follows the TMOG dashboard rules: a cockpit, not a report.
+The dashboard presents measured state on one screen.
 
 - The whole state fits one screen: lanes, review grid, throughput, feed.
 - Live data is bright; grid, borders, panel names, and chrome stay dim.

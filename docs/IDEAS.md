@@ -25,11 +25,12 @@ default set), which agent is fastest per review kind (bias the lane
 assignment), which reviews time out repeatedly (raise their budget). All of it
 is offline analysis over files that already exist; none of it needs a service.
 
-The file-signal suggester already demotes a review that has finished in this
-directory three times without landing a change, and promotes one that keeps
-finding work (see [DESIGN.md](DESIGN.md#choosing-reviews-without-an-agent)).
-What has not shipped is using that history to change the default set, the lane
-assignment, or per-review timeouts.
+The file-signal suggester already halves the score of a review that has
+finished in this directory three times without landing a change, and raises
+one that lands a change on at least half its runs
+(`historyWeight`, `internal/evidence/suggest.go`). An unproductive review is
+also held to one repeat. What has not shipped is using that history to change
+the default set, the lane assignment, or per-review timeouts.
 
 ## Per-review timeout budgets
 
@@ -131,17 +132,15 @@ own workflow, and the race suite carries a coverage floor that ratchets
 upward.
 
 What is not wired in is `golangci-lint`, which would carry staticcheck plus
-the linters this tree does not run (`errcheck`, `ineffassign`, `gocritic`,
-the security groups) behind one command and one config.
+other linters behind one command and one config.
 
-**Why.** staticcheck already runs, at a pinned version, fetched through `go
-run` the way `make vuln` fetches govulncheck, so nothing has to be installed
-to get it. golangci-lint would replace that with a binary a contributor
-installs and a version a runner has to keep, and the two `gosec` and
-`errcheck` it would add are the only rules this tree does not already have
-somewhere: the security checks worth having sit in the bundled sec-review
-prompt and in the coverage ratchet, and this tree has no ignored error for
-`errcheck` to find.
+**Why.** staticcheck already runs with `-checks=all`, at a pinned version,
+fetched through `go run` the way `make vuln` fetches govulncheck, so nothing
+has to be installed to get it. golangci-lint would replace that with a binary
+a contributor installs and a version a runner has to keep. The security
+checks worth having sit in the bundled sec-review prompt and in the coverage
+ratchet. `gosec` and `errcheck` are named for agents to run against a reviewed
+tree when those binaries are present. They are not part of `make check`.
 
 **What would need deciding.** Whether a second config file next to
 `pyproject.toml` and `.yamllint` is worth the rules it adds, and which

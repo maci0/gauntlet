@@ -21,8 +21,8 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 # `override`, not `+=`: an exported GOFLAGS is a build input like any other,
 # and a `go env -w GOFLAGS=-tags=notoktop` or an inherited GOFLAGS carrying
 # -tags, -gcflags, or -ldflags would compile a different program under the same
-# name, which is what -mod=readonly is here to rule out. A command line still
-# wins, so `make test GOFLAGS=-v` is the escape hatch it has always been.
+# name, which is what -mod=readonly is here to rule out. GOFLAGS is fixed
+# even on the command line; use TESTFLAGS to customize test invocations.
 override GOFLAGS := -mod=readonly
 export GOFLAGS
 export GOWORK := off

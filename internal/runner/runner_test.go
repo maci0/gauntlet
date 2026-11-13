@@ -1459,11 +1459,8 @@ func TestRetriesOffMeansOneAttempt(t *testing.T) {
 	}
 }
 
-// In worktree mode the lane a review lands in is a race between goroutines
-// pulling from the shared queue, so the seed alone cannot say which directory
-// an agent saw. The review branch is that record: every review_start and
-// review_end in a --jobs > 1 run names the gauntlet/... branch of the lane
-// that ran it, which is what lets a replay diff a divergent run.
+// Each review_start and review_end in a --jobs > 1 run names its review branch,
+// so a replay can identify the checkout's work even when lane events interleave.
 func TestReviewEventsCarryTheLaneBranch(t *testing.T) {
 	repo := testRepo(t)
 	set, _ := promptSet(t, "a-review", "b-review")

@@ -32,9 +32,9 @@ const outputRateLimit = 200
 
 // runLane takes the reviews the schedule assigned to this lane and runs them
 // sequentially in one persistent worktree. The directory path stays constant
-// across reviews, so the agent's system prompt prefix is byte-identical and
-// the provider's prompt cache hits after the first review in this lane. Which
-// reviews those are is fixed by the seed, not by the order the lanes finish.
+// across reviews, allowing a shared working-directory prefix for prompt caches.
+// Cache reuse depends on the agent and provider. The assigned reviews are fixed
+// by the seed, not by the order the lanes finish.
 func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx int) {
 	for reviewIdx := 0; ; reviewIdx++ {
 		if ctx.Err() != nil || r.soft.Load() || r.finish.Load() {
@@ -757,16 +757,16 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 // outputSink forwards normalized agent lines onto the bus. --quiet drops them
 // at the source, so a chatty agent costs nothing.
 //
-// Credentials are stripped on the way out. An agent prints what it read: a
-// provider that rejects a key says so by naming it, a shell that expands an
-// environment variable prints the value, and a line the model assembled from
-// the tree can carry either. normalize.Display keeps the visible characters and
-// drops the escape sequences, so a line that reached the bus was safe to show
-// but not necessarily safe to keep, and every subscriber of EvOutput keeps it:
-// the run journal writes it to disk, where it outlives the run, and the TUI
-// scrollback outlives the screen. The subject, the file notes, and every error
-// string already pass through runx.RedactSecrets for the same reason, and this
-// is the one place they are not: the bulk of what the agent said.
+// Strip recognized credentials before publishing, because agent output can
+// quote provider errors, environment values, or repository files. Display
+// sanitization removes terminal controls but does not conceal credentials.
+// The same redaction protects subjects, file notes, and child-process errors.
+// EvOutput feeds the terminal, dashboard scrollback, and optional --log file;
+// the run journal excludes output events. Redaction covers known credential
+// assignments, flags, Authorization headers, and fixed token prefixes.
+// An unlabelled value or an unknown token shape can still be displayed.
+// It is not a source-code or confidentiality filter: quoted repository
+// content and values the redactor cannot recognize remain visible.
 func (r *Runner) outputSink(review, agentLabel string) func(normalize.Line) {
 	if r.cfg.Quiet {
 		return nil

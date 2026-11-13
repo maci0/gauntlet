@@ -37,11 +37,11 @@ const usageProbeTimeout = 10 * time.Second
 const usageProbeWait = 5 * time.Second
 
 // checkUsageLimit asks the configured probe how much of the provider's usage
-// window is gone and, at or above the limit, converts that into the graceful
-// quit the runner already has: the review in flight finishes, its branch is
-// pushed and its PR opened, the commit and merge steps still run, and nothing
-// new starts. It is deliberately the same mechanism as an operator's finish
-// request rather than a second kind of stop.
+// window is gone. At or above the limit it requests a graceful stop:
+// running reviews finish, then configured commit, push, publication, and
+// merge steps complete before exit. No new review starts.
+// It uses the same mechanism as an operator's finish request rather than
+// introducing a second kind of stop.
 //
 // Called before each attempt a run starts, including a retry relaunch and an
 // agent-pool fallback, and never on the way out, so the cost is one

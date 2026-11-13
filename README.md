@@ -27,9 +27,9 @@ One static binary loops 56 review prompts over your repository, hands each one
 to an agent CLI you already have installed, and applies what it finds.
 
 - **Isolation when it runs in parallel.** `--jobs N` gives N persistent lane
-  worktrees that pull reviews from a shared queue, each review on its own
-  branch, merged back one at a time. Concurrent agents never share a working
-  tree.
+  worktrees, each assigned its share of the loop's reviews up front, each
+  review on its own branch, merged back one at a time. Concurrent agents never
+  share a working tree.
 - **Unmerged review stacks.** `--stacked-prs` runs reviews in one isolated
   worktree and opens each changed review as a child PR of the previous one.
   The branch in your editor is never changed.
@@ -63,8 +63,6 @@ Run one isolated, unmerged PR stack from `main`:
 ```sh
 gauntlet -r quick --stacked-prs --pr-base main
 ```
-
-Everything below is detail: installation, execution modes, and references.
 
 ## Install
 
@@ -116,32 +114,27 @@ gauntlet doctor
 gauntlet update
 ```
 
-`doctor` probes the machine rather than the platform name: it reports the git
-version against the floor every review needs, and whether this host can confine
-an agent's filesystem writes (Landlock on Linux, Seatbelt on macOS). A kernel
-without Landlock, or a macOS without its launcher, is named there instead of by
-an agent that never launched; such a host runs with `--no-sandbox`.
+`doctor` probes the machine rather than the platform name: the git version,
+and whether this host can confine an agent's filesystem writes (Landlock on
+Linux, Seatbelt on macOS). A host that cannot runs with `--no-sandbox`.
 
-Upgrading from the Python version: the flags are the same, `--target-dirs` is
-still accepted, and `pip`/`uv` are no longer involved. Uninstall the old one
-with `uv tool uninstall gauntlet-review` (or `pipx uninstall gauntlet-review`).
+Coming from the Python `gauntlet-review` package: the flags are the same.
+Remove it with `uv tool uninstall gauntlet-review` (or `pipx uninstall
+gauntlet-review`).
 
-Linux and macOS. The runner leans on POSIX semantics that Windows has no
-equivalent for: process groups to kill an agent's whole tree on timeout,
-`flock` for the directory lock, `O_NOFOLLOW` for prompt reads, and `execve`
-for hot reload. Git 2.24 or newer: branch and revision arguments are separated
-with `--end-of-options`, which older git rejects outright.
+Linux and macOS only: the runner needs process groups, `flock`, `O_NOFOLLOW`,
+and `execve`, which Windows has no equivalent for.
+Git 2.24 or newer: branch and revision arguments are separated with
+`--end-of-options`, which older git rejects.
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
 `cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, `microagent`,
-plus the pi family (`pi`, `prime-agent`, `feynman`, `omp`) and GitHub Copilot
-(`copilot`). Copilot and OMP must be selected explicitly. At least one agent
-must be on `PATH`.
-
-Any other agent can be added without a new binary: `--agent-cmd` for one run,
-`~/.gauntlet/agents.json` to keep it. `gauntlet doctor` lists every agent it
-knows, defined ones included. See
-[docs/CLI.md](docs/CLI.md#defining-an-agent-gauntlet-does-not-ship).
+the pi family (`pi`, `prime-agent`, `feynman`, `omp`), and GitHub Copilot
+(`copilot`). `clanker`, `omp`, and `copilot` run only when named with
+`--agents`. At least one agent must be on `PATH`. Any other agent is added
+without a new binary: `--agent-cmd` for one run, `~/.gauntlet/agents.json` to
+keep it (see
+[docs/CLI.md](docs/CLI.md#defining-an-agent-gauntlet-does-not-ship)).
 
 ## The reviews
 
@@ -215,22 +208,24 @@ list you like. `gauntlet --list` prints this table with what is scheduled.
 
 Reviews run one at a time against your working tree, forever, until you stop
 them. `--jobs N` buys parallelism with isolation instead: N persistent lane
-worktrees pull reviews from a shared queue, each review on its own branch,
-and the runner (never the agent) commits each one and merges them back one
-at a time.
+worktrees split each loop's reviews round-robin when the loop starts, each
+review on its own branch. The runner commits each one and merges them back
+one at a time.
 
 Stack mode is sequential for a different reason: every review must see the
 commits below it. From base `main`, changed reviews produce `review/01-… → main`,
-then `review/02-… → review/01-…`, and so on. The PRs stay open; gauntlet removes only
-the scratch checkout. It fetches the remote base without moving your local
-branch. If the original checkout has uncommitted files, gauntlet names them
+then `review/02-… → review/01-…`, and so on. The PRs stay open. The scratch
+checkout is removed after the pass pushes at least one layer and every changed
+layer has a confirmed PR; otherwise it is kept and its path is logged. The
+remote base is fetched without moving your local branch. If the original
+checkout has uncommitted files, gauntlet names them
 and asks before leaving them out of the review. See
 [stacked pull requests](docs/RUNS.md#stacked-pull-requests) for the branch
 lifecycle and recovery rules.
 
 ```mermaid
 flowchart LR
-    T[your branch<br/>clean tree] --> S[shared queue]
+    T[your branch<br/>clean tree] --> S[loop schedule<br/>review i to lane i mod N]
     S --> L0[lane-0]
     S --> L1[lane-1]
     S --> L2[lane-2]
@@ -271,38 +266,23 @@ you do:
   <img src="assets/launcher.png" alt="The gauntlet launcher: review sets with descriptions, the installed agents, concurrency against the CPU count, and the composed command line" width="900">
 </p>
 
-| Key | Action |
-|---|---|
-| `q` | press twice to stop the run, killing what is running; the first press arms it, and any other key disarms |
-| `esc` | cancel an armed `q`; otherwise unpause the feed, scroll to the newest entry, and close the screen once the run is done |
-| `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
-| `enter`, `q`, `esc` | close the dashboard once the run has finished (`q` arms a stop while running) |
-| `space` | pause the feed; output keeps collecting and reviews keep running |
-| `j` / `k` | scroll the feed |
-| `pgup` / `pgdn`, `space` in help | page the feed and the help overlay |
-| `r` | ask whether to run this same command again; on a finished run `y` starts it over, on a run still going `y` stops it first, and `n` or `esc` declines |
-| `f` | narrow the feed to results, errors, and diffs, and back |
-| `g` / `G`, `home` / `end` | jump to oldest / newest |
-| `?` | help (`q` / `esc` / `ctrl+c` close it), and the list of unmerged branches |
-
-Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
-`⑂` merge conflict, `–` skipped, `␘` interrupted.
+`?` on either screen lists its keys; both key tables and the review glyphs
+are in [docs/CLI.md](docs/CLI.md#dashboard-keys).
 
 ## Trust model
 
 Agents run with filesystem writes sandboxed by default (Landlock on Linux,
 Seatbelt on macOS); their permission prompts are disabled. Prime Agent may
 send work to a pre-existing daemon outside that sandbox; see
-[the sandbox documentation](docs/CLI.md#filesystem-write-sandbox). Containment also
-uses these controls: prompts are read with
-`O_NOFOLLOW` and size-capped, agent binaries resolve on a `PATH` without
-cwd-relative entries, git runs with `core.fsmonitor`, `core.hooksPath=/dev/null`,
-`diff.external`, `core.pager=cat`, and a reviewed repository's own signing
-program blanked, untrusted text is stripped of control and bidi characters
-before display, and a `flock` on `.gauntlet.lock` plus a per-process registry
-of the locks this run holds keeps two runs out of one directory. The registry
-is what makes that true on macOS, where a `flock` belongs to the process and a
-second acquisition of a lock already held converts it rather than failing.
+[the sandbox documentation](docs/CLI.md#filesystem-write-sandbox). The other
+controls: prompts are read with `O_NOFOLLOW` and size-capped; agent binaries
+resolve on a `PATH` without cwd-relative entries; git runs with
+`core.fsmonitor` and `diff.external` blanked, `core.hooksPath=/dev/null`,
+`core.pager=cat`, and the reviewed repository's own signing program ignored;
+untrusted text is stripped of control and bidi characters before display;
+and a `flock` on `.gauntlet.lock`, plus an in-process registry of held locks
+(macOS converts a second `flock` instead of failing it), keeps two runs out of
+one directory.
 
 Reviewing a repository you do not trust still means running it in a container.
 The boundaries are drawn one by one in
@@ -312,16 +292,12 @@ The boundaries are drawn one by one in
 
 Counts come from what the agent prints, its machine-readable mode
 (`--stream`), its own session transcript, and, for the two agents that keep
-databases instead (crush, opencode), those. The build ships all of it;
-`make build TAGS=notoktop` drops transcript reading and `make build
-TAGS=` drops the database driver too. `gauntlet doctor` says which build you
-have. One of those sources is off unless you ask for it: opencode's store
-holds every project on the machine, so it is read only with
-`--opencode-db`. The linked reader supports both OpenCode 1 and OpenCode 2
-database schemas and honors `OPENCODE_DB` and `XDG_DATA_HOME`; OpenCode 2 ACP
-also reports root-session usage after each prompt. Per-agent coverage,
-and the public reading API, are in
-[docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
+databases instead (crush, opencode), those. The release build reads all of
+them; `make build TAGS=` drops the SQLite driver, and `make build
+TAGS=notoktop` drops transcript reading as well. `gauntlet doctor` says which
+build you have. opencode's store holds every project on the machine, so it is
+read only with `--opencode-db`. Per-agent coverage and the public reading API
+are in [docs/TOKEN_TELEMETRY.md](docs/TOKEN_TELEMETRY.md).
 
 ## Documentation
 
@@ -334,11 +310,6 @@ and the public reading API, are in
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | trust boundaries, what is validated where, and what is out of scope |
 | [docs/IDEAS.md](docs/IDEAS.md) | things deliberately not built yet, and why |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | building, testing, and the checks a pull request runs |
-
-`site/public/` holds the one-page project site (a condensed version of this
-README, deployed from `site/wrangler.jsonc`). It is static HTML with no build
-step and nothing in the Go tree reads it; `cmd/gauntlet/site_test.go` is what
-keeps its color tokens and markup invariants at WCAG 2.2 AA.
 
 ## License
 

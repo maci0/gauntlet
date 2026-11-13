@@ -13,53 +13,44 @@ installed.
 | `gauntlet pick` | compose a run on screen, then run it |
 | `gauntlet doctor` | report which agent CLIs and helper tools are installed, the git version against the floor every review needs, whether this host can confine an agent's filesystem writes, whether the state root is usable, what the run history holds: journals on disk, whether the index matches them, journals cut mid-line, and pruned runs still recoverable, and which local `gauntlet/` branches hold a review whose merge did not land |
 | `gauntlet update [--check]` | replace this binary with the latest verified release |
-| `gauntlet runs [--limit N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`, A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
+| `gauntlet runs [--limit N] [--offset N] [--restore RUN-ID] [--json]` | list recent runs recorded under `~/.gauntlet`. A listing rebuilds a missing `index.jsonl` from the journal files, appends every newer unindexed journal when the listing is stale, and fills a crashed run that sits behind a later Close from its journal. The journal path and the note naming pruned runs still recoverable are printed even when the listing itself is empty. |
 | `gauntlet show <run-id>` | replay one run's journal |
 | `gauntlet resume [<run-id>]` | with no id, list the runs a crash cut off (an OOM kill, a crashed session, a power cut) and whether each can continue; with one, continue that run where it stopped. See [Resuming after a crash](RUNS.md#resuming-after-a-crash). |
 | `gauntlet schema [command]` | print the clispec description of this command. No network, no config, and no state root. A command path keeps that command and the top-level fields. The description follows [the CLI Spec](https://clispec.dev) v0.3, which is a candidate and not a conformance badge. |
 | `gauntlet version` / `help` | print the version / this help |
 
 Each subcommand reads only the flags that mean something to it: `pick` takes
-`-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`, `doctor` takes `--bin` and
-`--agent-cmd`, `update` takes `--check` and `--update-repo`, `runs` takes
-`--limit`, `--offset`, `--restore`, and `--fields`, and `show`, `resume`,
-`schema`, `version`, and `help` take none of their own. `review` takes the
-same flags as a bare `gauntlet`. `--output`, `--json`, `--log`, and
-`--no-color` work on every command, and may precede the subcommand, so
-`gauntlet --no-color doctor` is the same as `gauntlet doctor --no-color` and
-`gauntlet --json runs` is `runs` with JSON. `schema` takes a command path and
-no flags of its own.
-`show` and `resume` take their run id anywhere among the flags: `gauntlet show --no-color RUN`
-and `gauntlet show RUN --no-color` are the same. Any other flag is refused with
-a usage error (exit 2) rather than parsed and silently dropped, so
-`gauntlet runs --jobs 4` fails loudly instead of printing a table that ignores
-the concurrency it was given. (The `-V` flag form of version is the one
-exception: it means "print the version and exit" and wins over scoping, like
-help does.) `--check` belongs to `update`. `--limit`, `--offset`, `--restore`,
-and `--fields` belong to `runs`. A bare `gauntlet` has no use for those and
-says so rather than starting a run that ignores them.
+`-C/--dir`, `--dirs` (and its `--target-dirs` alias), and `--prompt-dir`;
+`doctor` takes `--bin` and `--agent-cmd`; `update` takes `--check` and
+`--update-repo`; `runs` takes `--limit`, `--offset`, `--restore`, and
+`--fields`; `show`, `resume`, `schema`, `version`, and `help` take none of
+their own. `review` takes the same flags as a bare `gauntlet`, which in turn
+refuses `--check` and the `runs` flags rather than starting a run that ignores
+them. `--output`, `--json`, `--log`, and `--no-color` work on every command and
+may precede the subcommand: `gauntlet --json runs` is `runs` with JSON.
+`schema` takes a command path; `show` and `resume` take their run id anywhere
+among the flags.
+
+Any other flag is a usage error (exit 2) rather than parsed and silently
+dropped, so `gauntlet runs --jobs 4` fails instead of printing a table that
+ignores the concurrency it was given. The error offers a "did you mean" drawn
+only from the flags that command takes. The one exception is `-V`: it prints
+the version and exits, like `--help`, whatever else is on the line.
 
 A subcommand is only read as one when it is the first word, or after the
 global flags above. A flag that is not global ends the search: `gauntlet --limit 3 runs`
 leaves `runs` as a stray argument and says so, rather than starting the default run.
-A flag name the command does not take is reported with a "did you mean" drawn from the flags
-that command does take, so a typo on a subcommand is never pointed at a flag
-the next invocation would refuse.
 
-`pick` opens a launcher drawn like the dashboard: reviews as collapsible sets
-with a fill meter each and a one-line description beside every name, `suggest` as the first choice in that list (an agent
-proposes the reviews, and the run pane names which agent does it), the agents
-this machine has in the colors they will keep during the run, concurrency
-metered against the CPU count, and the run switches (including stacked PRs).
-The composed command line is on screen the whole time, and `enter` runs exactly
-that, so the flags are learned rather than hidden. Picking nothing is not an empty run: it is every
-review, which is what the composed command says by saying nothing. A run the
-tree cannot support is refused with its reason on screen rather than composed
-and failed on launch (concurrency above 1 needs no uncommitted changes to tracked files). It needs a
-terminal on stdin and stdout, and takes `-C/--dir`, `--dirs`, and `--prompt-dir` to say
-what it should offer. The launcher composes one run for one tree: `--dirs` with
-several paths is a usage error (exit 2) rather than a run over the first of
-them, so the run never covers a different set of trees than the ones named.
+`pick` shows review sets and descriptions, installed agents, concurrency, and
+run switches, including stacked PRs. `suggest` appears first: it uses the
+file-signal suggester by default, or an explicitly selected agent. The run pane
+names the suggester and displays the exact command that `enter` will run.
+Selecting no reviews means every review. Unsupported settings are refused on
+screen; concurrency above 1 requires no uncommitted tracked changes.
+
+The launcher needs a terminal on stdin and stdout. It takes `-C/--dir`,
+`--dirs`, and `--prompt-dir`; multiple `--dirs` paths are a usage error (exit 2)
+because the launcher composes a run for one tree.
 
 | Key | Action |
 |---|---|
@@ -75,15 +66,37 @@ them, so the run never covers a different set of trees than the ones named.
 | `?` | toggle a help overlay; `q` / `esc` / `ctrl+c` close it. When the terminal is too short for the whole overlay it scrolls: `j` / `k` or the arrow keys page it, `pgup` / `pgdn` jump, and `home` / `end` reach the ends. |
 | `enter` / `q` / `esc` | run the composed command / leave without running. `q` and `esc` both ask first: a second press of the same key discards the run, the other one keeps it, and any other key takes the ask back. `esc` gets there through its own depths first, cancelling an armed quit, then clearing the filter. |
 
+## Dashboard keys
+
+The keys `--tui` reads while a run is on screen:
+
+| Key | Action |
+|---|---|
+| `q` | press twice to stop the run, killing what is running; the first press arms it, and any other key disarms. Once the run has finished or is finishing, one press closes the screen. |
+| `esc` | cancel an armed `q`; otherwise unpause the feed and scroll to the newest entry, and close the screen once the run has finished or is finishing |
+| `enter` | close the screen once the run has finished |
+| `s` | finish: no new reviews, then commit, publish or merge as configured, and exit |
+| `ctrl+c` | the first press finishes like `s`; the second closes the screen, which stops the run |
+| `space` | pause the feed; output keeps collecting and reviews keep running |
+| `j` / `k`, `down` / `up` | scroll the feed |
+| `pgup` / `pgdn` | page the feed and the help overlay (`space` also pages the overlay) |
+| `g` / `G`, `home` / `end` | jump to oldest / newest |
+| `f` | narrow the feed to results, errors, and diffs, and back |
+| `r` | ask whether to run this same command again: on a finished run `y` starts it over, on a run still going `y` stops it first, and `n` or `esc` declines |
+| `?`, `h` | help, with the list of unmerged branches; `q` / `esc` / `ctrl+c` close it |
+
+Review glyphs: `·` pending, `▸` running, `✓` ok, `✗` fail, `⧖` timeout,
+`⑂` merge conflict, `–` skipped, `␘` interrupted.
+
 ## Options
 
 Path values (`--dir`, `--dirs`, `--log`, `--prompt-dir`, and the path half of
 `--bin TOOL=PATH`) expand `$VARIABLES` and a leading `~` before use. A `$VAR`
-that is unset or empty is a usage error rather than expanding to nothing. A
-path that is not there, or is there and is not a directory, is a usage error
-(exit 2) reported while parsing, named by the flag it came from and followed by
-the help screen, the same as any other bad flag value. An
-explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
+that is unset or empty is a usage error rather than expanding to nothing.
+Directory flags require an existing directory. `--log` may create a file
+in an existing parent directory, but refuses symlinks and non-regular files.
+Directory and log path errors exit 2, with the flag name and help screen.
+An explicit empty `--prompt-dir`, `--log`, `--paths`, `--show-prompt`, `--merge-into`,
 `--pr-base`, `--push-remote`, `--update-repo`, `--suggest-agent`, `--exclude`,
 `--agents`, or `--dirs` is refused the same way `--dir` is.
 An empty `--reviews` is refused too, and by the run rather than by the parser, so
@@ -93,14 +106,14 @@ message names the flag.
 A shorthand takes its value glued on, spaced, or with an equals sign: `-j3`,
 `-j 3`, and `-j=3` are the same flag.
 
-**Choosing reviews**
+### Choosing reviews
 
 | Flag | Default | Purpose |
 |---|---|---|
 | `-r, --reviews LIST` | all | Reviews and/or set names to run. The `-review` suffix is optional (`sec` means `sec-review`). Naming one twice runs it twice per loop. Repeatable. |
 | `-x, --exclude LIST` | none | Reviews and/or sets to skip. |
 | `--append TEXT` | none | Append a custom instruction to every review prompt. It remains subject to the ground rules and containment. Capped at 4 KiB: the text is pasted into every review prompt, so a longer value is refused rather than dispatched. Also shown by `--show-prompt`. |
-| `--paths LIST` | whole tree | Scope every review to these paths, relative to the reviewed directory. An entry may be a single file (`scripts/bolide.py`), a directory (everything under it), or a glob; comma-separated and repeatable. The agent still works from the full repository for context — the scope is prompt-enforced, not mechanical — but is told to report findings on and modify only the listed paths. An explicit empty `--paths` is refused, as is an entry carrying a line break, a backtick, or more than 200 characters: the entries are pasted into the prompt as instructions, so one that is not a path is refused where the operator can see it. |
+| `--paths LIST` | whole tree | Scope every review to these paths, relative to the reviewed directory. An entry may be a single file (`scripts/bolide.py`), a directory (everything under it), or a glob; comma-separated and repeatable. The agent still works from the full repository for context (the scope is prompt-enforced, not mechanical) but is told to report findings on and modify only the listed paths. An explicit empty `--paths` is refused, as is an entry carrying a line break, a backtick, or more than 200 characters: the entries are pasted into the prompt as instructions, so one that is not a path is refused where the operator can see it. |
 | `--max-reviews N` | unlimited | Cap on reviews per loop. The cut happens after the seeded per-loop shuffle, so `--seed` replays exactly which N ran and different loops of one run sample different reviews. A review scheduled twice (weighting) fills two of the N slots when the shuffle places both inside the cut. With `--stacked-prs` each ordered pass is truncated to its first N entries, so at most N PRs per loop. A value at or above the schedule length changes nothing. |
 | `-s, --suggest` | off | The built-in file-signal suggester picks relevant reviews and assigns 1–3 passes from accumulated evidence and review history. Read failures and repeatedly unproductive reviews retain one pass. An explicit `--suggest-agent AGENT` uses that agent to inspect the repo and assign each a weight of 1–3 passes per loop according to expected review value. Weight 0 skips a review. The preview shows repeats as `(x2)` or `(x3)`. Anything named with `--reviews` is also scheduled: naming a review once adds one pass to its suggested weight. `--reviews suggest,sec` says the same thing. Older agent output without weights schedules one pass per pick. The step runs before the schedule exists, so it runs under `--list` and `--dry-run` too. `--max-reviews` caps the resulting schedule, including repeats. |
 | `--suggest-agent AGENT` | `gauntlet` | Agent to run the suggest step, or `gauntlet` to choose from file signals without a model: it costs no tokens and answers in milliseconds. It ranks reviews using source languages, import declarations, capability markers, typed package fields and build metadata, changes in the last 90 days, and past review outcomes. Each specialized review needs its own evidence: agent rules do not imply skills or prompts, a CLI does not imply a visual UI, and a Dockerfile does not imply Kubernetes. DDD selection recognizes model building blocks, guarded domain operations, and constrained value construction in implementation code; a `domain` directory or repository class alone is insufficient, and comments, quoted text, and test fixtures do not establish this subject. Missing documentation or source-tree tests can justify documentation and test-coverage reviews; missing CI does not imply release contracts. Dependency, build, scratch, and bundled compiler trees are excluded from both git listings and walks. It still cannot judge the consequences of a defect as an agent can. |
@@ -117,63 +130,69 @@ configuration or commands can establish the runner; dependency names and
 placeholder scripts cannot. The review verifies that the runner actually works
 before changing code.
 
-**Choosing agents**
+### Choosing agents
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` means every installed agent. The model id and effort level are passed to the agent verbatim: gauntlet cannot know which pairs a third-party agent serves, so an unserved value fails at launch. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only `claude`, `opencode`, `microagent`, and defined agents with an `effort` list (or an `{effort}` placeholder) accept an effort; the rest refuse at startup. OpenCode 2 requires a model when an effort is specified. Repeatable. |
+| `-a, --agents LIST` | auto-detect | `tool`, `tool:model`, or `tool:model@effort` entries (`claude:opus-5@xhigh`, `claude@max`); `mixed` (also `all` or `random`) means every installed agent eligible for auto-detection; opt-in agents must be named explicitly. The model id and effort level are passed to the agent verbatim: gauntlet cannot know which pairs a third-party agent serves, so an unserved value fails at launch. The part after the **last** `@` is the effort, since `:` and `/` occur inside model ids; a model id that itself ends in `@something` therefore cannot be written without an effort. Only `claude`, `opencode`, `microagent`, and defined agents with an `effort` list (or an `{effort}` placeholder) accept an effort; the rest refuse at startup. OpenCode 2 requires a model when an effort is specified. Repeatable. |
 | `--bin TOOL=PATH` | none | Run an agent from a specific executable. Repeatable. |
 | `--agent-cmd NAME=ARGV` | none | Define an agent gauntlet does not ship, e.g. `pi='pi -p {prompt}'`. Repeatable; `~/.gauntlet/agents.json` makes it permanent. |
-| `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Conflicts with `--jobs > 1` and `--stacked-prs`: each review is a fresh worktree, so there is no session to resume. |
+| `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Conflicts with `--jobs > 1` and `--stacked-prs`, which require fresh agent sessions for isolated reviews. |
 
-Gauntlet uses ACP for OpenCode 2, Kimi, Gemini, Qwen, Grok Build, Cursor, Copilot,
-and dsh model selections when the installed CLI supports the
-required entry point. If dsh's ACP catalog rejects the selected model, a new
-session falls back to headless before sending the prompt. Cursor's pinned models
-are passed on its command line.
-Copilot's `auto` model or explicit effort,
-Kimi's legacy ACP with a pinned model and most servers identifying as `Kimi Code
-CLI` use the ordinary CLI. Kimi Code has reported failed provider turns as
-successful ACP responses. Gauntlet permits the verified Python 1.49.0 through
-1.51.0 servers when they advertise their matching capabilities; otherwise it
-switches before sending a new prompt. A continued ACP session fails instead of
-switching. The archived Python `kimi-cli` 1.52.0 launcher is rejected because
-it prints a deprecation notice without running prompts.
-Copilot must be
-selected explicitly; an existing custom `copilot` definition takes precedence.
-Installed
-`codex-acp` and `claude-agent-acp` adapters are used for Codex and Claude;
-Claude's low, medium, high, and max efforts use ACP, while other effort levels
-use the ordinary CLI. The adapters are never
-downloaded by gauntlet. For Kimi, Gemini, Qwen, Grok, Cursor, Copilot,
-Codex, and Claude, `--bin` overrides retain the ordinary CLI invocation. ACP sessions
-run within the same sandbox, timeout, and process-group cleanup as other
-launches. Permission requests are approved once; a model or mode set through
-ACP that the agent does not confirm fails the launch. Older adapters can set
-advertised modes and models using ACP's legacy methods. Gemini, Qwen, and Grok
-receive pinned models through their CLI flags; Grok also confirms its selection
-through ACP. OpenCode 2 uses a private server instead of the background
-service, keeping its work in the supervised process tree.
-If an ACP server does not support the protocol version, initialization, or
-configuration, a new session falls back to the ordinary command before the
-prompt is sent. Continued sessions do not
-switch protocols. When `--continue-sessions` is set, an ACP server must
-advertise session resume or load; otherwise the ordinary command is used from
-the first review.
+### ACP sessions
+
+These agents are driven over the Agent Client Protocol (ACP) when the
+installed CLI has the entry point: OpenCode 2, Kimi, Gemini, Qwen, Grok Build,
+Cursor, Copilot, and dsh, plus Codex and Claude through installed `codex-acp`
+and `claude-agent-acp` adapters, which gauntlet never downloads. The ordinary
+CLI is used instead for:
+
+- any `--bin` override of Kimi, Gemini, Qwen, Grok, Cursor, Copilot, Codex, or
+  Claude;
+- Claude efforts other than low, medium, high, and max;
+- Copilot's `auto` model or an explicit Copilot effort;
+- Kimi's legacy ACP with a pinned model, and most servers identifying as `Kimi
+  Code CLI`, which have reported failed provider turns as successful ACP
+  responses. The verified Python 1.49.0 through 1.51.0 servers are allowed
+  when they advertise their matching capabilities. The archived Python
+  `kimi-cli` 1.52.0 launcher is rejected: it prints a deprecation notice
+  without running prompts.
+
+Copilot must be selected explicitly; an existing custom `copilot` definition
+takes precedence.
+
+Cursor's pinned models are passed on its command line, and Gemini, Qwen, and
+Grok take theirs through CLI flags; Grok also confirms its selection through
+ACP. A model or mode set through ACP that the agent does not confirm fails the
+launch. Older adapters can set advertised modes and models through ACP's
+legacy methods.
+
+A new session falls back to the ordinary command before the prompt is sent
+when the server does not support the protocol version, initialization, or
+configuration, when dsh's ACP catalog rejects the selected model, or when a
+Kimi server is not one of the verified versions. A continued session never
+switches protocols: it fails instead. Under `--continue-sessions` an ACP
+server must advertise session resume or load, or the ordinary command is used
+from the first review.
+
 If session creation requires authentication and the agent advertises a cached
-login without naming a different default, gauntlet requests it once and retries;
-it does not send credentials or initiate an interactive login.
-Cursor loads an existing login when its ACP server starts. Run
-`cursor-agent login` beforehand if its session creation reports authentication
-is required; gauntlet does not invoke Cursor's browser login.
-For a new Copilot session, an authentication-required response also falls back
-to its ordinary command before prompting, for older versions whose ACP mode
-cannot use a configured provider.
-When an ACP agent reports usage only in its prompt response, the token budget
-receives that count at the end of the prompt; live enforcement still depends
-on any session store the agent writes while it runs.
+login without naming a different default, gauntlet requests it once and
+retries; it never sends credentials or starts an interactive login. Cursor
+loads an existing login when its ACP server starts, so run `cursor-agent
+login` beforehand if session creation reports authentication is required. A
+new Copilot session that reports authentication required falls back to the
+ordinary command before prompting, for older versions whose ACP mode cannot
+use a configured provider.
 
-**Execution**
+ACP sessions run under the same sandbox, timeout, and process-group cleanup as
+other launches, and permission requests are approved once. OpenCode 2 uses a
+private server rather than its background service, so its work stays in the
+supervised process tree. When an ACP agent reports usage only in its prompt
+response, the token budget receives that count when the prompt ends; live
+enforcement still depends on any session store the agent writes while it
+runs.
+
+### Execution
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -183,16 +202,16 @@ on any session store the agent writes while it runs.
 | `-j, --jobs N` | 1 | Parallel lanes **per directory**; >1 uses N persistent worktrees and merges back. With `--dirs`, the agents running at once are `jobs x directories`. Above 1 the run needs a repository with at least one commit and no uncommitted changes to tracked files, which it refuses to start without: commit or stash first. Untracked files are fine, and stay out of the review. |
 | `-t, --timeout DUR` | `30m` | Per-review timeout (`90s`, `30m`, `1h`, `2d`). |
 | `--runtime DUR` | unlimited | Elapsed-time budget for the whole run, measured on the monotonic clock so an NTP step or a manual clock change cannot exhaust or extend it. |
-| `--token-budget N` | unlimited | Stop starting reviews once the run's agents have reported N tokens in total, across every loop, lane, agent, and directory, and stop the review that reaches N on its own. Wall clock bounds a slow machine, not the bill: an agent that stalls can spend a whole timeout's tokens in seconds, and one launch is not a step the schedule reaches. Counted from the tokens the reviews report, so a review that reports none costs nothing against the ceiling. The review in flight finishes unless it is the one that reached the ceiling, in which case it is stopped, logged as `OVER BUDGET`, and not retried. The figure that stops work is the provider's own, from the machine-readable usage envelope or the session transcript, so a number the model printed cannot end its own review; the commit and conflict steps launch agents whose tokens are not counted, and an agent in `--stream=false` mode reports no such figure. The commit and merge steps still run. |
+| `--token-budget N` | unlimited | Stop starting reviews once reported tokens total N across all loops, lanes, agents, and directories. A review reaching N on its own is stopped as `OVER BUDGET` and not retried; other in-flight reviews finish. Final commit and merge steps still run. The live cap trusts machine-readable usage or transcript counters, not numbers in prose. `--stream=false` can still use transcript counts where available. Commit and conflict agent usage is excluded, and missing counters can undercount, so this is not a hard provider spend quota. |
 | `--usage-cmd CMD` | none | Command whose stdout is the percentage of the provider's usage window already spent. Split on whitespace and executed directly, so no shell parses it; a value that splits into nothing is a usage error, and so is a first word that does not resolve to an executable on the absolute-only `PATH`. Used only with `--usage-limit`. A probe that fails once the run is under way is reported and ignored, since a ceiling that ends a run on a transient error is worse than none. The probe runs under the ambient locale, and its answer is read in the host's number format: a comma decimal point (`85,5`), grouped thousands (`1.234,5`), and a percent sign after a space all parse. |
-| `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The two are used together or not at all: either alone is a usage error. The review in flight finishes, its branch is pushed and its PR opened, the commit and merge steps still run, then the run ends. |
+| `--usage-limit PCT` | unlimited | Stop starting reviews once `--usage-cmd` reports this percentage or more. The two are used together or not at all: either alone is a usage error. Running reviews finish, then the configured commit, push, publication, and merge steps complete before exit. |
 | `-1, --once` | off | One loop, then stop. Conflicts with `--max-loops`. |
-| `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each a fresh worktree from the previous tip. |
+| `-n, --max-loops N` | unlimited (1 with `--stacked-prs`) | Stop after N loops. With `--stacked-prs`, omitting the flag is one pass; an explicit `0` is unlimited passes, each continuing from the previous pass's last pushed tip. |
 | `--seed N` | random | RNG seed for review order and agent picks, recorded in the journal so a rerun can replay it. Accepts a nonnegative decimal value or a `0x…` hex literal, with `_` allowed between digits; a leading zero is decimal, not octal, so `--seed 010` is ten. `0` derives one from the clock. A headless run prints the effective seed as its first event line, just under the run banner, so a run started without `--seed` reports the one that replays it, but only an explicit value replays on its own: a derived seed differs every run. One seed drives the whole run, the suggest step's agent order included, and a hot reload carries it across the exec. |
-| `-c, --commit` / `-p, --push` | off | After each review, an agent writes a commit message (no AI attribution) and commits on the branch you are on, optionally pushing it. Neither merges anywhere. |
+| `-c, --commit` / `-p, --push` | off | In sequential mode, an agent commits after each review on the current branch, optionally pushing it. In parallel mode, the runner commits and merges each review; the optional agent commit step runs after the lanes drain. Neither flag merges into another branch. |
 | `--resolve-conflicts` | on | When a review's branch will not merge, an agent resolves it in a scratch checkout and the result is merged. A resolution the agent finished but the merge then refused is kept on its own branch, named in the log with the command to land it, because that commit is the only copy of the resolver's work. Off (`--resolve-conflicts=false`) keeps the branch unmerged for a human, which is the older behavior. |
 | `--merge-into BRANCH` | none | After each loop, merge this branch's committed work into BRANCH, in a scratch checkout so your own is never switched. Needs `--commit` or `--push`, since only committed work merges. Untracked files do not block it, matching `--jobs`. A dirty tree, or one whose git status cannot be read, is refused rather than reported as merged. A conflict aborts, leaves both branches untouched, and makes the run exit nonzero. |
-| `--stacked-prs` | off | Run the selected reviews in their configured order, using one isolated worktree per loop. Every changed review is committed, pushed, and opened as a PR against the preceding changed review. Nothing is merged and the original checkout is untouched. This mode owns commits and pushes, forces `--jobs 1`, and conflicts with `--commit`, `--push`, and `--merge-into`. Default is one loop. `-n N` (or `-n 0` for unlimited) starts each later loop in a fresh worktree cut from the previous loop's last published tip, so already-applied fixes are in the tree and later passes no-op instead of reopening them. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch names; later loops insert the loop number. |
+| `--stacked-prs` | off | Run the selected reviews in their configured order, using one isolated worktree at a time. Every changed review is committed, pushed, and opened as a PR against the preceding changed review. Nothing is merged and the original checkout is untouched. This mode owns commits and pushes, forces `--jobs 1`, and conflicts with `--commit`, `--push`, and `--merge-into`. Default is one loop. `-n N` (or `-n 0` for unlimited) continues each later loop from the last pushed tip, reusing a retained checkout or creating a new worktree after a fully published pass. Already-applied fixes remain in the tree. Loop 1 keeps the historical `review/<NN>-<review>-<topic>` branch names; later loops insert the loop number. |
 | `--pr-base BRANCH` | current branch name | Remote base for `--stacked-prs`. Gauntlet fetches `REMOTE/BRANCH` and starts the isolated worktree at that commit; the local branch and checkout do not move or need to match it. Requires `--stacked-prs`. |
 | `--push-remote REMOTE` | `origin` | Remote receiving stack branches and identifying the GitHub PR repository. Gauntlet verifies a dry-run new-branch push before launching an agent. Requires `--stacked-prs`. |
 | `--no-sandbox` | off | Disable the default kernel filesystem write sandbox for trusted runs. Independent of `--yolo`. |
@@ -200,15 +219,15 @@ on any session store the agent writes while it runs.
 | `--yolo` | off | Drop the caution rules: no fix count or diff-size limit, public APIs may change. Containment is unaffected. It commits nothing on its own; it does answer yes to confirmation prompts. |
 | `-y, --yes` | off | Answer yes to confirmation prompts, including excluding the original checkout's uncommitted files from a stacked run. |
 | `--semcode` | off | Build a semcode index before the loop, with the `semcode-index` helper; `gauntlet doctor` reports whether this machine has it. Without it a run stops with a usage error before it takes the locks, and `--dry-run` says so beside the schedule. |
-| `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` leave the listing, along with the day directories they emptied. The index row is dropped with the journal, so the listing never names a run whose journal is gone. The journal itself is moved to `pruned/`, not deleted, and the quarantine is bounded by the same `N`, so a run stays recoverable until `N` newer runs have replaced it: see [Backing up and restoring the state tree](RUNS.md#backup-and-restore). A journal a run still has open is never pruned, so a run sharing `GAUNTLET_HOME` with a longer one is not moved out of the listing while it is writing. `0` keeps every run. |
+| `--keep-runs N` | 200 | How many run journals to keep under `GAUNTLET_HOME`. A run files a journal and an index row, and at the end of every run the ones past the newest `N` start instants leave the listing, along with the day directories they emptied. The index row is dropped with the journal, so the listing never names a run whose journal is gone. The journal itself is moved to `pruned/`, not deleted, and the quarantine is bounded by the same `N`, so a run stays recoverable until `N` newer runs have replaced it: see [Backing up and restoring the state tree](RUNS.md#backup-and-restore). A journal a run still has open is never pruned, so a run sharing `GAUNTLET_HOME` with a longer one is not moved out of the listing while it is writing. A closed long run can already be outside the window when it finishes. `0` keeps every run. |
 
-**Format**
+### Format
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `-o, --output FORMAT` | `auto` | Select `auto`, `text`, or `json`. `auto` stays text on a terminal and when piped, so an existing script that reads the human listing keeps doing so. An explicit value wins, and `--json` is that flag's `json` value on every command. JSON on a failure appends one error object as the last line of stderr. Text mode stays the human prose. The description `gauntlet schema` prints follows [the CLI Spec](https://clispec.dev) v0.3, a candidate, and is not a conformance badge. |
+| `-o, --output FORMAT` | `auto` | Select `auto`, `text`, or `json`. `auto` stays text on a terminal and when piped, so an existing script that reads the human listing keeps doing so. An explicit value wins, and `--json` is that flag's `json` value on every command. JSON on a failure appends one error object as the last line of stderr. Text mode stays the human prose. |
 
-**Output and modes**
+### Output and modes
 
 | Flag or subcommand | Purpose |
 |---|---|
@@ -216,15 +235,15 @@ on any session store the agent writes while it runs.
 | `-l, --list` / `--dry-run` | Show reviews and sets / the planned schedule, then exit. `--list` does not need an agent CLI on PATH; `--dry-run` does, because it names the agents a real run would launch. Neither launches a review, but both print the schedule that `--suggest` produces, so with `--suggest` the built-in file-signal step runs first, for free. Naming an external `--suggest-agent AGENT` calls that agent and spends its tokens. |
 | `--show-prompt REVIEW` | Print the exact composed prompt an agent would receive. Does not need an agent CLI on PATH. |
 | `--log FILE` | Also write all output to FILE. The file is created if it is not there; a symlink, a directory, a non-regular file, or a parent directory that is missing or is not a directory is a usage error (exit 2). |
-| `-q, --quiet` / `--raw` | Discard agent output / echo it verbatim instead of normalizing. |
+| `-q, --quiet` / `--raw` | Discard agent output / bypass normal output processing, while retaining display sanitization, line-length limits, and secret redaction. |
 | `--stream` | On by default: agents that have a machine-readable mode are asked for it, giving live token counts and the reasoning/output split shown separately in the feed (`--stream=false` launches them as before). |
 | `--no-color` | Disable color everywhere, the plain log and the dashboard/launcher both. The `NO_COLOR` environment variable does the same. |
 | `--opencode-db` | Read OpenCode's SQLite session store for token counts. The linked Toktop reader supports both the OpenCode 1 and OpenCode 2 schemas and honors `OPENCODE_DB` and `XDG_DATA_HOME`. OpenCode 2 ACP also reports root-session usage after a prompt finishes. A build without SQLite refuses the flag. |
-| `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. `q` stops the run after two presses, and `esc` cancels that armed quit; `s` is the graceful finish. `r` asks whether to run this same command again: on a finished run `y` starts it over with the same arguments, on a run that is still going `y` stops it first, and `n` or `esc` declines. It needs a terminal on stdin and stdout, like `pick`: the dashboard reads keys, and a redirected stdin would hand it end-of-file and quit the run on the first tick. |
+| `--tui` | Live dashboard on the alt screen, redrawing several times a second. It is off by default: plain scrolling output stays in the scrollback and reads linearly, which is the path for screen readers and copied transcripts. Keys are in [Dashboard keys](#dashboard-keys). It needs a terminal on stdin and stdout, like `pick`: the dashboard reads keys, and a redirected stdin would hand it end-of-file and quit the run on the first tick. |
 | `-V, --version` | Print the version. |
 | `-h, --help` | Print the help screen, the flags below, and exit 0. `gauntlet help` is the same thing, and a command after it selects the topic: `gauntlet help runs` prints the same screen, whose SUBCOMMAND FLAGS section marks the flags `runs` reads. A word naming no command is a usage error (exit 2) rather than a plain `gauntlet help`, so a misspelling cannot exit 0 over a page of flags. A flag after the topic is a flag and not a topic word, so `gauntlet help runs --limit 5` prints the screen. |
 
-**Updating**
+### Updating
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -233,26 +252,25 @@ on any session store the agent writes while it runs.
 | `--update-repo REPO` | `maci0/gauntlet` | GitHub repository `gauntlet update` and `--auto-update` fetch releases from, as `owner/repo`. A URL or extra path segment is a usage error. |
 | `--check` | off | Report the latest release without installing. |
 
-Only the latest release is supported. `gauntlet update` resolves
-`releases/latest` rather than a version list, so an older tag is what a user
-keeps until they update, and a fix (a security one included) ships as a new
-patch release rather than as a second release on an old one. Older tags stay
-downloadable: the journal a run left is read with the version that wrote it.
+Only the latest release is supported, and `gauntlet update` resolves
+`releases/latest`; see [Supported versions](../CONTRIBUTING.md#supported-versions).
 
 An update keeps the binary it replaced beside the new one, as
 `<binary>.previous`, so an install that succeeds and then misbehaves is
-rolled back by renaming that copy back over it:
+rolled back by copying the current binary aside, then moving the previous
+copy into place. A failed copy stops the replacement:
 
 ```sh
-mv "$(command -v gauntlet)" "$(command -v gauntlet).broken"
-mv "$(command -v gauntlet).previous" "$(command -v gauntlet)"
+binary_path=$(command -v gauntlet) &&
+  cp -p "$binary_path" "$binary_path.broken" &&
+  mv "$binary_path.previous" "$binary_path"
 ```
 
 A run in flight hands over to the restored binary at its next safe point, the
 same way it hands over to a new one. The copy is replaced by the next update,
 so it is the version before the last one and no further back.
 
-**History**
+### History
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -274,7 +292,7 @@ None is required; unset, everything lives under `~/.gauntlet`.
 | `XDG_CACHE_HOME` | When absolute, OpenCode's `opencode` subdirectory is writable in the sandbox. |
 | `XDG_CONFIG_HOME` | OpenCode's `opencode` configuration directory is prepared before sandboxing. |
 | `OPENCODE_CONFIG_DIR` | Overrides OpenCode's configuration directory, which is prepared before sandboxing. |
-| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, crash checkpoints, and `agents.json`. A leading `~` and any `$VAR` expand, a value that is empty is the variable unset, and a relative path is resolved against the working directory once, so every later read of the root agrees wherever in the process it happens. Two values are refused at startup rather than read from: one whose `$VAR` is unset or empty, and one naming something that is not a directory. `~` expands only as `~/...`, and a value that is left a tilde — a bare `~`, or another account's `~user` — is refused rather than taken as a path: for the state root, unlike a file name, there is no directory it could be meant to be, and reading it literally put the whole state tree in a directory called `~` beside the repository under review. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to, so a mistyped value is visible without reading the journal. A root that is neither absent nor a directory (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses rather than write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
+| `GAUNTLET_HOME` | Root of the state tree instead of `~/.gauntlet`: the run journal, hot-reload handoff files, crash checkpoints, and `agents.json`. A leading `~/` and any `$VAR` expand, an empty value counts as unset, and a relative path is resolved against the working directory once at startup. Refused at startup: a value whose `$VAR` is unset or empty, one naming something that is not a directory, and one still left a tilde (a bare `~`, or another account's `~user`), which would otherwise put the state tree in a directory called `~` beside the repository under review. `gauntlet doctor` prints the root in use, where it came from, and whether it can be written to. A root that cannot be checked (behind a file, a symlink loop, or a permission this process lacks) is not usable: the journal falls back to `.gauntlet` in the working directory, and a hot reload refuses to write its handoff there, so the run finishes in this process and the new binary is picked up at the next start. |
 | `GAUNTLET_NO_ANIMATION` | Anything but empty, `0`, `false`, `no`, or `off`: the dashboard stops moving. The animated reasoning glyph holds one frame instead of cycling, and the screen stops repainting itself ten times a second: the frame changes when a review reports or a key is pressed, and otherwise every thirty seconds, so the clock and the timeout meters stay honest. The token count beside the glyph keeps updating, so an active agent still reads as one. Standard `NO_MOTION` and `REDUCED_MOTION` are also honored, but `GAUNTLET_NO_ANIMATION` is read first: set to one of the five values above it turns the motion back on even when a desktop session exports `REDUCED_MOTION=1`. Left empty it defers to the other two. |
 | `GITHUB_TOKEN` | Optional. Sent only to GitHub by `gauntlet update` and `--auto-update`, for a higher API rate limit and for private release assets. |
 | `GH_TOKEN` | Same as `GITHUB_TOKEN`, and wins when both carry a token. An empty value is ignored rather than counted as set, so `GH_TOKEN=` exported to clear a token does not mask a `GITHUB_TOKEN` the same environment also carries. |
@@ -290,8 +308,8 @@ resume`: it names the handoff file passed across the exec.)
 
 | Signal | Effect |
 |---|---|
-| `SIGQUIT` (`Ctrl-\`) | Finish gracefully: no new review starts, the ones running end and land their work, then the run exits normally. `s` on the dashboard does the same. |
-| `SIGINT` (`Ctrl-C`) | Staged. The first finishes gracefully, exactly like `SIGQUIT` — the review in flight lands its work, commit, push and PR included. The second terminates the running reviews and exits 130. The third force-kills. A `Ctrl-C` after any finish request skips straight to terminating. |
+| `SIGQUIT` (`Ctrl-\`) | Finish gracefully: no new review starts, running reviews finish and complete the configured commit, push, publication, and merge steps, then the run exits normally. `s` on the dashboard does the same. |
+| `SIGINT` (`Ctrl-C`) | Staged. The first finishes gracefully, exactly like `SIGQUIT`: running reviews finish and complete the configured commit, push, publication, and merge steps. The second terminates the running reviews and exits 130. The third force-kills. A `Ctrl-C` after any finish request skips straight to terminating. |
 | `SIGTERM` | Terminate the running reviews and exit 130. A second one force-kills. Not staged: a supervisor's `SIGTERM` means stop now. |
 
 ## Exit codes
@@ -299,17 +317,16 @@ resume`: it names the handoff file passed across the exec.)
 | Code | Meaning |
 |---|---|
 | 0 | the command did what it was asked: every review ran and passed, or the listing, replay, or report was printed |
-| 1 | a review failed, timed out, was skipped, or would not merge; a commit step failed; `doctor` found no agent to launch; `update` failed; the run listing could not be read in full |
+| 1 | a review failed, timed out, was skipped, or would not merge; a commit step failed; `doctor` found no agent to launch or an unusable state root; `update` failed; the run listing could not be read in full |
 | 2 | usage error |
 | 75 | another instance holds the lock for that directory |
 | 130 | interrupted |
 
-`usage`, `tty_required`, and `confirmation_required` share exit 2. `failed` and
-`internal` share exit 1. `locked` is 75 and may be retried. `interrupted` is
-130. Two kinds may share a code. A code is not both an error and a successful
-outcome. When the output is JSON, a failure appends `{"error":{"kind","message"}}`
-as the last line of stderr, after the human prose. Text mode prints the prose
-alone.
+With JSON output, a failure appends `{"error":{"kind","message"}}` as the last
+line of stderr, after the human prose; text mode prints the prose alone.
+`usage`, `tty_required`, and `confirmation_required` are exit 2; `failed` and
+`internal` are exit 1; `locked` is 75 and may be retried; `interrupted` is 130.
+No code is both an error and a success.
 
 ## Defining an agent gauntlet does not ship
 
@@ -391,8 +408,8 @@ effort; without an `effort` list (or an `{effort}` placeholder in `argv`),
 the `{model}` placeholder, and `effort` must contain `{effort}`; neither `model`,
 `effort`, `stream`, nor `continue` may contain `{prompt}`; `model` cannot be
 specified when `argv` contains `{model}`, and `effort` cannot be specified when
-`argv` contains `{effort}`; `argv[0]`, `usage.roots`, and `usage.suffix` cannot
-contain placeholders. `opt_in` (boolean)
+`argv` contains `{effort}`; `argv[0]`, `usage.roots`, and `usage.suffix` cannot contain `{prompt}`,
+`{model}`, or `{effort}`. `usage.roots` may contain `{dir}`. `opt_in` (boolean)
 keeps the agent out of auto-detection and `mixed`: it runs only when named
 explicitly with `--agents`. `note` is an optional explanatory string shown in
 `gauntlet doctor`. Every placeholder in an `argv` entry is expanded, so one
@@ -446,10 +463,11 @@ platform's temporary directory (an absolute `TMPDIR`, `/tmp` otherwise; it is
 skipped when the host has none), and the selected agent's usual state directories:
 `~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`, `~/.grok`,
 `~/.gemini/antigravity-cli` (agy),
-`~/.cursor`, `~/.kimi-code`, `~/.microagent`, `~/.dsh`, `~/.copilot`, or `~/.omp/agent`. For opencode
-and crush, their own subdirectories under `~/.local/share`, `~/.local/state`,
-and `~/.cache` are writable. These state directories are created if missing;
-the rest of the home directory stays read-only.
+`~/.cursor`, `~/.kimi-code`, `~/.microagent`, `~/.dsh`, `~/.copilot`, or
+`~/.omp/agent`. For opencode and crush, their own subdirectories under
+`~/.local/share`, `~/.local/state`, and `~/.cache` are writable. These state
+directories are created if missing; the rest of the home directory stays
+read-only.
 For OpenCode, absolute `XDG_DATA_HOME`, `XDG_STATE_HOME`, and `XDG_CACHE_HOME`
 also grant their `opencode` subdirectories. If `OPENCODE_DB` names a database
 outside those directories, grant its parent with `--sandbox-write` so the

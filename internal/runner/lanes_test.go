@@ -9,18 +9,10 @@ import (
 	"testing"
 )
 
-// TestConcurrentLanesRunEveryReviewOnce drives the parallel loop, where every
-// lane is a goroutine taking reviews off one shared queue and adding its
-// result to one shared tally while the others do the same. Nothing here
-// checks what a review found: the assertion is that a fan-out of N lanes over
-// a queue of M reviews runs each of them exactly once, and that what the
-// shared state reports afterwards accounts for all of them. A lane that lost
-// the queue, a result the ring dropped, or a publish that raced the run's
-// ending shows up as a missing or doubled name.
-//
-// The fake agent sleeps, so the lanes overlap instead of finishing in turn,
-// which is what makes the queue, the pending mutex, the stats ring, and the
-// event bus contended rather than merely concurrent. Run under -race.
+// TestConcurrentLanesRunEveryReviewOnce checks that the reviews assigned across
+// N lanes run exactly once and are all represented in the shared results and
+// events. The fake agent sleeps so pending-state, stats, and event-bus access
+// overlap. Run under -race.
 func TestConcurrentLanesRunEveryReviewOnce(t *testing.T) {
 	repo := testRepo(t)
 	reviews := []string{

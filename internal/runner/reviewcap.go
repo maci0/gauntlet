@@ -26,8 +26,8 @@ import (
 // would otherwise be able to stop its own review and end the run. So the two
 // sources are kept apart here: the machine-readable usage envelope and the
 // session transcript, both written by the provider rather than by the model.
-// An agent in prose mode reports no such figure, and a run in prose mode is
-// bounded by its timeout, exactly as it was before.
+// Prose supplies no trusted figure, but an available transcript still can.
+// Without either source, the review is bounded by its timeout instead.
 type reviewCap struct {
 	limit int
 	stop  context.CancelFunc

@@ -1,38 +1,34 @@
 # Changelog
 
-Notable changes per release. Versions follow SemVer against this consumer
-contract: review names (`*-review.md` stems consumed by `--reviews`), set
-names (`quick`, `standard`, ...), CLI flags and their documented behavior,
-the documented environment variables, exit codes, and the event stream under
-`~/.gauntlet/runs`, which `docs/RUNS.md` tells operators to read with `jq`
-or their own tools. Removing or renaming any of these is breaking and waits
-for a major version; new flags and other additions may land in a minor. While
-the project was 0.x, other behavior changes could land in a minor instead and
-were listed under Changed.
+Versions follow SemVer for review names (`*-review.md` stems), set names,
+commands, CLI flags and their documented behavior, environment variables,
+exit codes, and the journal event stream documented in [docs/RUNS.md](docs/RUNS.md).
+Removing or renaming a contract item requires a major version; additions may
+ship in a minor. Before 1.0, other behavior changes could also ship in a minor
+under Changed.
 
-One `Changed` entry is an addition rather than a behavior change and so
-belongs in a minor even though it is not one: raising the Go a source build
-needs. A consumer who installed a binary is unaffected, but a consumer who
-builds from source loses a build that worked, on a machine they installed
-nothing on, with the failure coming from the toolchain rather than from this
-tool. 1.12.2 shipped such an entry in a patch and is the documented exception
-the check names.
+Raising the minimum Go version for source builds requires a minor release,
+even though it appears under Changed: existing source builds stop working.
+Version 1.12.2 shipped this in a patch and remains a documented exception.
 
-There is no Go API in this contract, because no other program can import
-anything in this module: every package is under `internal/`, and the ones
-outside it, `cmd/gauntlet` and `cmd/sbom`, are `package main`. Signatures under `internal/`
-are refactored freely: they change without a major bump, and each change
-lands in Changed for anyone vendoring the tree rather than going unrecorded.
-`TestNoAccidentalPublicPackages` in `cmd/gauntlet` fails the build if that
-stops being true, which is the moment a major version would be owed.
+There is no importable Go API: packages are either `internal/` or commands
+(`cmd/gauntlet` and `cmd/sbom`). Internal signatures may change without a major
+bump. Record those changes under Changed when they affect consumers vendoring
+the tree. `TestNoAccidentalPublicPackages` guards this boundary.
 
-Each part of the contract has a snapshot that fails the suite when it moves,
-so a breaking change cannot reach a tag unnoticed: flags, commands, exit
-codes, and environment variables in `cmd/gauntlet/contract_test.go`, review
-and set names in `internal/prompt/contract_test.go`, and the `ev` values of
-the journaled event stream in `internal/runner/contract_test.go`.
+Contract snapshots live in `cmd/gauntlet/contract_test.go` (CLI),
+`internal/prompt/contract_test.go` (reviews and sets), and
+`internal/runner/contract_test.go` (journal `ev` values).
 
 ## Unreleased
+
+### Fixed
+
+- Source citation checks now cover parenthesized and qualified Go symbols.
+- Updated documentation and CLI help to match current behavior and consolidated
+  repeated instructions.
+- Corrected the local rollback recipe to resolve the executable path once and
+  keep the installed binary in place until its replacement is ready.
 
 ## 1.46.0
 

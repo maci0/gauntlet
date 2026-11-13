@@ -1,10 +1,10 @@
 # What happens during a run
 
-A run is a loop over reviews. Each review is one agent invocation in one
-directory, with a per-review timeout and a per-run elapsed-time budget
-measured on the monotonic clock. This page
-covers what surrounds that: isolation, the record it leaves, and how a running
-loop takes a new binary.
+A run loops over reviews, each with a per-review timeout and optional retries
+or agent fallback. The run's elapsed-time budget uses a monotonic clock. This
+page covers isolation, commits and publication, stopping and recovery, the run
+journal, and binary updates. See [CLI.md](CLI.md) for the flag reference and
+[DESIGN.md](DESIGN.md) for implementation details.
 
 ## Parallel reviews
 
@@ -25,13 +25,14 @@ gauntlet -j 4 -a mixed --once
   nobody's way, and the run says once that they are not reviewed.
 - `--jobs N` creates **N persistent lane worktrees** under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
-  Reviews pull from a shared queue: the schedule is split up front, so a lane
-  that finishes one starts the next assigned to it.
+  The schedule is split up front: review `i` goes to lane `i % N`. A lane
+  runs its assigned reviews in order and cannot take work from another lane.
   Each review still gets its own branch; the lane directory stays put so later
-  reviews in that lane reuse the agent's prompt cache.
+  reviews in that lane can reuse the agent's prompt cache.
 - The runner (never the agent) commits each review, then lands the branches
   on your branch one at a time, squashed: one commit per review, no merge
-  nodes. The commit is authored by you, with your git identity, and its
+  nodes. The commit uses the identity Git resolves for the repository (local
+  `user.name`/`user.email`, then global configuration), and its
   subject is the one the review printed for its own change (`SUBJECT: fix: …`
   in the output protocol), so the history reads like the project's, not like a
   tool's. A review that prints none gets a subject naming the files it
@@ -98,12 +99,14 @@ comparison contains only that review's commit.
 
 Each loop is one ordered, sequential pass; it does not shuffle reviews or use
 extra `--jobs` lanes. Default is one loop. `-n N` (or `-n 0` for unlimited)
-starts each later loop in a fresh worktree cut from the previous loop's last
-published tip, so agents see already-applied fixes and a no-op review opens
-no second PR. One checkout lives under `.gauntlet/worktrees/` for the current
-loop, then is removed. Local and remote review branches survive because open
-PRs need them. The branch checked out in the original directory never moves
-and no stack branch is merged automatically.
+starts each later loop from the previous loop's last pushed tip, so agents
+see already-applied fixes and a no-op review opens no second PR. One checkout
+lives under `.gauntlet/worktrees/` for the current loop. It is removed only
+when the pass has pushed at least one layer and every changed layer has a
+confirmed PR. Otherwise it is kept, its path is logged, and a later loop
+reuses it. Local and remote review
+branches survive because open PRs need them. The branch checked out in the
+original directory never moves and no stack branch is merged automatically.
 
 ### How a branch is named
 
@@ -186,8 +189,14 @@ push URL), the PR heads are qualified with the push-side owner.
 A review with no file changes leaves no branch or PR; the next review stays on
 the last changed layer. A failed agent is reset to its layer's base before a
 retry, and an exhausted failure is discarded before the next review starts.
-A commit, push, or PR failure is different: publication stops the stack, keeps
-any committed branch, and starts no later review.
+A push failure keeps the commit on its branch and later reviews start from
+the last successfully pushed layer. If the push succeeds but PR creation or
+confirmation fails, later reviews stack on that pushed commit. Both failures
+mark the layer failed and keep the checkout. A commit failure discards the
+failed layer and lets later reviews run if the reset succeeds. An unreadable
+pushed tip or a failed reset stops the pass because the next base cannot be
+established safely. A URL printed by `gh pr create` is insufficient: a
+head/base lookup must confirm the PR.
 
 Branch names are deterministic from the initial base commit, schedule
 position, and review name. That base commit is fetched once per logical run
@@ -204,6 +213,15 @@ invocation instead of rerunning its agent.
 `--dirs a,b,c` (also `--target-dirs`) reviews each tree in its own goroutine,
 with its own lock, its own baseline, and its own `--jobs` pool, so the agents
 running at once are `jobs x directories`.
+
+Review discovery is per directory too: a tree carrying its own `*-review.md`
+files has a different set from its neighbor. `--suggest` follows from that, so
+the suggest step runs once per directory, and those steps run together rather
+than in sequence: their log lines carry the directory they belong to, the
+proposals are printed in directory order, and one confirmation covers all of
+them.
+
+## Project review metadata
 
 A review a project carries can say what it keys on, which is what makes it
 reachable by `--suggest-agent gauntlet`: the built-in rules only know built-in
@@ -232,13 +250,6 @@ its `Your goal` sentence, which those places then have to cut mid-clause. The
 line is display text from the reviewed tree, so it is sanitized and cut to 60
 characters.
 
-Review discovery is per directory too: a tree carrying its own `*-review.md`
-files has a different set from its neighbor. `--suggest` follows from that, so
-the suggest step runs once per directory, and those steps run together rather
-than in sequence: their log lines carry the directory they belong to, the
-proposals are printed in directory order, and one confirmation covers all of
-them.
-
 ## Committing, and where the work lands
 
 Reviews edit a checkout. What happens to those edits is four separate
@@ -247,7 +258,7 @@ choices:
 - `--commit` has an agent write a message and commit **on the branch you are
   on**. `--push` does that and pushes it. Neither creates a branch, and
   neither merges anything.
-- `--jobs N` is the only thing that branches: each review works on a
+- `--jobs N` (N > 1) creates isolated review branches: each review works on a
   branch under `gauntlet/`, and the runner merges those back into **the
   branch you are on**, one at a time, squashed. Nothing here targets `main`
   by name; if you are on `feature-x`, the work lands on `feature-x`.
@@ -280,10 +291,10 @@ Several ways, and they mean different things:
 |---|---|
 | `s` on the dashboard, `SIGQUIT` (`Ctrl-\`), or the first `Ctrl-C` | Graceful: no new review starts, the ones running finish, and their work is committed, pushed, published as a PR, or merged as the mode asks. The run then exits normally and reviews not yet started are dropped. |
 | A second `Ctrl-C`, or `SIGTERM` | Stops now: running agents are killed by process group, and the run exits 130. One more force-kills. |
-| `q` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q AGAIN TO STOP`); any other key disarms, and `esc` cancels an armed one. `q` on the help overlay closes help and does not arm the stop. Before this, a single `q` killed the run immediately. |
+| `q` twice on the dashboard | Hard stop: the dashboard closes and the run is cancelled, the same outcome as `SIGTERM`. The first press only arms it (the header reads `q AGAIN TO STOP`); any other key disarms, and `esc` cancels an armed one. `q` on the help overlay closes help and does not arm the stop. |
 | `--once`, `--max-loops N`, `--runtime DUR`, `--token-budget N` | Planned endings, decided before the run starts. |
 | `--usage-limit PCT` with `--usage-cmd CMD` | The graceful stop, triggered by a provider's usage window rather than by hand. |
-| `SIGKILL`, an OOM kill, a crashed desktop session, a power cut | Nothing runs on the way out: the agents die with the process, nothing is committed, and the run gets no index row. Its last checkpoint stays, and `gauntlet resume` continues it (see [Resuming after a crash](#resuming-after-a-crash)). |
+| `SIGKILL`, an OOM kill, a crashed desktop session, a power cut | No cleanup runs. Agents may survive a process-only kill, and the run gets no closing index row. Its last checkpoint stays, and `gauntlet resume` continues it (see [Resuming after a crash](#resuming-after-a-crash)). |
 
 The graceful stop is the one to reach for when a loop is halfway through and
 the tree should not be left with uncommitted agent edits: it is the only stop
@@ -349,8 +360,10 @@ credential, which is not something this tool does.
 ## Resuming after a crash
 
 A process killed without a word (an OOM kill, a crashed desktop session, a
-power cut) runs none of the stops above. Its agents die with it and its last
-reviews leave no result. What survives is the run's checkpoint:
+power cut) runs none of the stops above. Its last reviews may leave no
+recorded result. Killing the parent process alone does not guarantee that its
+agent processes exit: check for surviving agents and stop them before resuming
+against the same checkout. What survives is the run's checkpoint:
 
 ```sh
 gauntlet resume              # list the runs a crash cut off
@@ -378,8 +391,8 @@ Continue one with: gauntlet resume <run-id>
   with, and the loop budget less the loops already finished. The journal and
   the one index row continue the same run. The line it prints and the listing
   both redact a credential the run was started with, so a command shown as
-  `gauntlet --agent-cmd 'agent=cli --api-key [redacted]'` is what the resume
-  will actually execute.
+  `gauntlet --agent-cmd 'agent=cli --api-key [redacted]'` is a display copy;
+  the resumed command uses the original credential from the checkpoint.
 - **What runs again.** The reviews whose agents were running at the kill,
   then the ones not started. A review with a recorded result never runs
   twice; one that finished in the instant before the kill may, because the
@@ -463,10 +476,8 @@ restarting at 1. An attempt that failed and was retried therefore has a start
 with no end, and an end whose `attempt` is above 1 says how many tries came
 before it; only the end counts the review, since the earlier attempts have no
 outcome of their own. An end with no `prompt_sha256` is a review that never
-launched: skipped, or interrupted before it started. Before `attempt` existed
-a retry read as a review that restarted and a fallback to another agent read
-as a first attempt. Agent output and the live token ticks are not journaled:
-they are large and reconstructible, and the results are what matter later.
+launched: skipped, or interrupted before it started. Agent output and live
+token ticks are not journaled; the journal records outcomes and narration.
 
 The journals under `runs/` are the durable copy. `index.jsonl` is derived:
 `gauntlet runs` and the file-signal suggester rebuild it when the file is
@@ -486,8 +497,8 @@ rewritten.
 
 `ins` and `del` carry the same rule through `lines_measured`. Line counts are
 skipped where they cannot be attributed, and a run with no counts is listed
-`n/a`, not `+0/-0`: git may have been missing, or concurrent reviews sharing
-one tree make no per-review split honest. A run whose journal carries no `ins`
+`n/a`, not `+0/-0`: git may have been missing or unable to supply an
+attributable diff. A run whose journal carries no `ins`
 field on any event is unmeasured for the same reason. A `merge` or
 `pull_request` event repeated in one stream counts once: the rows are summed
 over layers, keyed on the branch the work landed on, so a layer a hot-reload
@@ -548,8 +559,11 @@ replicated off the machine: `GAUNTLET_HOME` is a directory, and backups of it
 are yours.
 
 The history is bounded. `--keep-runs` (200 by default, `0` keeps every run)
-prunes at the end of a run: the index rows past the newest N go, the journals
-move to `pruned/`, and a day directory left empty under `runs/` goes with them.
+prunes at the end of a run by the run id's start instant: rows past the newest
+N go, the journals
+move to `pruned/`, and empty day directories under `runs/` are removed.
+Open journals are kept; a closed long run can already be outside the window
+when it finishes.
 The first run after an upgrade therefore moves the runs past the newest 200 out
 of the listing, and `gauntlet show` cannot reach a run that is not in the
 listing. Raise the bound or set it to `0` before the first run on an install you
@@ -594,11 +608,9 @@ incident runbook.
 
 Back up the reviewed repository's git as well, or at least its refs. A copy of
 `GAUNTLET_HOME` is a copy of the record, not of the work: a review that landed
-is in the repository's history, and a review left on an unmerged branch (a
-merge that failed, a conflict the agent did not resolve, an in-place run
-interrupted before it merged) exists nowhere else. The journal names that
-branch and nothing about its contents, so recovering the work means fetching
-it back into a repository, not reading a file. `git bundle create` over the
+is in the repository's history. An unmerged review branch exists nowhere else;
+an in-place review may leave only uncommitted files, which require a working-tree
+backup as well. The journal names branches but does not hold their contents. `git bundle create` over the
 refs the run named, or a `git clone --mirror` of the repository, keeps them
 while the machine is gone. The first command is the one a scheduled job runs;
 the two after it are the restore:
@@ -612,48 +624,18 @@ git -C /path/to/restored-repo fetch origin \
   'refs/heads/review/*:refs/heads/review/*'
 ```
 
-`git clone` is not the last step. It materializes every ref it fetched under
-`refs/remotes/origin/`, and a review the runner reads back is read from a local
-`refs/heads/gauntlet/` branch (`gitx.LaneBranches`, which is what `gauntlet
-doctor` prints). Left as the clone writes them, a restored review sits at
-`refs/remotes/origin/gauntlet/...`: the commits are in the repository and no
-local branch names them, so doctor cannot list them and the next run's merge
-step cannot find them. The `fetch` writes both namespaces the runner creates
-back onto local branches, which is what turns a recovered commit into work a
-run can pick up. It is safe to repeat, and it is a fast-forward-only mapping,
-so it never rewrites a branch that has moved on.
+The bundle includes all refs (`--all`), including unmerged reviews. Cloning
+normally leaves those review branches under `refs/remotes/origin/`; the fetch
+restores them as local branches, where `gauntlet doctor` can find the
+`gauntlet/` namespace. The mappings are fast-forward-only and safe to repeat.
+Use a new clone destination for each drill: cloning into a nonempty directory
+fails. Bundle creation replaces the existing bundle atomically.
 
-`--all` is what makes the bundle hold those refs at all: it expands to the
-local heads and tags, which on a repository with no remote is exactly the
-`gauntlet/` and `review/` branches above. Naming the branches instead
-(`git bundle create <file> refs/heads/gauntlet/...`) also works and copies
-less.
+`cmd/gauntlet/bundlerecipe_test.go` executes this block, checks the restored
+local branches and their content, and repeats the backup to the same path.
 
-`git clone` is the one command in the block that cannot run twice over the
-same path: it refuses a destination that exists and is not empty, so a second
-drill fails on a condition with nothing to do with the bundle. Point
-`/path/to/restored-repo` at a new directory each time, as the state-tree
-restore below does, rather than reading the refusal as a broken backup. The
-`bundle create` beside it overwrites the bundle it names, so the destination
-holds the previous bundle or the new one and a failed run leaves the last good
-copy in place; that is git's own temp-and-rename, not something the block adds.
-
-The block is executed rather than illustrated, against a repository holding an
-unlanded review: `TestBundleRecipeRestoresUnlandedReviewsAsLocalBranches`
-(`cmd/gauntlet/bundlerecipe_test.go`) reads it out of this page, runs it, and
-fails unless the restored repository holds the review on a local branch at the
-commit it was taken from, with its content intact — the shape the next run
-needs, which a clone alone does not produce.
-`TestBundleRecipeRunsTwiceOverTheSamePaths` runs the whole block a second time,
-so a recipe that only works once fails the suite rather than the first
-scheduled copy after it.
-
-A repository whose objects were already packed elsewhere, or whose reviews all
-landed, needs none of this. What it cannot be is assumed: `gauntlet doctor`
-names the branches under `gauntlet/` still on disk, which are the reviews whose
-merge did not land and which no copy of `GAUNTLET_HOME` holds. Branch names
-for older runs, and the `review/` layers a stacked run publishes, are read
-directly:
+List branches that need preserving directly; `gauntlet doctor` also lists
+leftovers under `gauntlet/`:
 
 ```sh
 git -C /path/to/repo for-each-ref refs/heads/gauntlet refs/heads/review
@@ -694,46 +676,16 @@ if [ "$#" -gt 0 ]; then
 fi
 ```
 
-`tar -czf "$archive"` writes the archive it is about to replace, so a run cut
-by a full disk, a crash, or a `kill` leaves a truncated `.tgz` where the last
-good copy was and the copy that read back five minutes ago is gone. `tar` has
-no output to verify until the output exists, so the `tar -tzf` below cannot
-save the copy it is checking. Building into `$archive.$$.partial` and moving
-it into place only after it reads back means the destination holds either the
-previous archive or the new one, never half of one. The `mv` is a rename
-within one directory, so the archive appears whole; keep the temporary beside
-the archive rather than in `/tmp`, because a rename across filesystems is a
-copy and reintroduces the window this closes. The rename is not durable until
-the directory that holds the archive records it: `sync -f` on that directory
-is what makes the new name survive a power cut, and a job that cannot record
-it exits non-zero rather than reporting an archive a reboot may not find. A
-kernel that cannot sync a directory at all is the one case `sync -f` cannot
-cover, and there the file's own bytes, written by `tar` before the rename,
-are what a reboot still has. The `$$` is the job's own
-process id: two backup jobs that overlap on one schedule — a timer that fired
-late and the next one starting on time — would otherwise write through the
-same temporary, and the first to finish would rename away a file the second
-was still appending to.
+The recipe builds and verifies a temporary archive beside the destination,
+then renames it into place. A failed write leaves the previous archive intact;
+keeping both paths on one filesystem preserves atomic rename. The PID suffix
+separates overlapping jobs, and the trap removes a failed job's temporary.
+`sync -f` makes the rename durable on systems that support that option; failure
+is reported rather than claiming a durable backup. Check this command on your
+backup host before scheduling it.
 
-The guards before `set --` matter, and the `if` with them: a member that does
-not exist makes `tar` exit non-zero without writing an archive, and `tar`
-refuses to create an empty one, so a recipe naming `runs` unconditionally
-fails a backup job on a fresh machine, and an unguarded empty archive fails on
-every machine whose state root holds nothing yet. The first copy of such a
-machine's history would be the one that never happens, and the failure is a
-message in a log nobody reads before the disk it was meant to protect is gone.
-A state tree with nothing in it has nothing to lose, so nothing is written.
-
-The `&&` is the check the archive needs before anyone believes it: a job that
-reports its exit code is enough for `tar`, which exits non-zero on a full disk
-or a truncated write. The listing goes to `/dev/null` because what a restore
-reads is the content, not the table of contents; an archive cut short by a full
-disk otherwise reports success and hands the next operator a file that opens and
-stops. It runs against the temporary because the temporary is the only copy
-still discardable, and the `mv` is what turns a verified archive into the one
-the next restore reads. The `trap` keeps a failed job from leaving its
-temporary behind, which a later operator would otherwise read as a second copy
-worth restoring.
+Only existing members are added. An empty state tree writes nothing, preserving
+any previous archive.
 
 Protect the destination with credentials and deletion controls independent of
 the machine holding `GAUNTLET_HOME`; another directory on the same disk does
@@ -754,95 +706,45 @@ GAUNTLET_HOME="$restore" gauntlet show "$run"
 GAUNTLET_HOME="$restore" gauntlet runs --json
 ```
 
-The `set -e` is what makes the block a drill rather than a list. Without it a
-shell runs every command and reports the last one's status, so an extraction
-into a directory that could not be created, or a listing that failed, is
-followed by two more commands and then a success: the operator reads an exit
-code of zero over a restore that did not happen. With it, the first failure
-stops the block and the drill is recorded as failed.
+`set -e` stops at the first failed command. `mkdir -p` lets the drill repeat
+over its own scratch directory; use a fresh directory to check that the archive
+is complete without files from an earlier restore.
 
-The `mkdir -p` matters for the same reason: a plain `mkdir` fails on the second
-drill into the same path, and a restore that stops for a reason that has
-nothing to do with the archive teaches an operator to ignore the stop. Point
-it at a new directory each time, or keep the `-p` and read the counts below
-instead of trusting that the directory was empty when you started.
-
-The first command proves the derived index can be rebuilt; the second proves a
-journal can be read end to end. The third answers "is what survived complete",
-on its `history` object:
+The three CLI commands rebuild the index, replay a journal, and report the
+restored tree's `history` counts:
 
 ```json
 "history": { "journals": 41, "rows": 41, "disagreed": 0, "pruned": 12, "truncated": 0, "agents": 2 }
 ```
 
-`journals` is the irreplaceable count, the event streams the index is derived
-from; `rows` is what the index answered with; `disagreed` is the runs the two
-copies tell apart, which a listing repairs and which is therefore 0 on a tree
-that survived whole and non-zero on one that lost journals. Compare the numbers
-against the machine the copy came from: the same journals, the same pruned runs,
-no disagreement, the same `agents`. A tree that cannot be read exits non-zero
-rather than printing zeros, so a failed read is never read as an empty history.
-`gauntlet doctor` prints every count but `rows` on its `Run history` line, and
-its exit code is about the agent inventory: it exits 1 on a fresh machine with
-no agent CLI installed, and that says nothing about the restore.
+Compare `history` with the source tree:
 
-`agents` is how many custom agent definitions the tree holds, and it is the one
-archived member the counts above say nothing about. Every other member of the
-archive is journals, so a copy that lost them is a hole the numbers report; a
-copy that lost `agents.json` is a tree that runs, lists its history, replays
-its runs, and reviews with the built-in agents from the next run on, with
-nothing anywhere saying a definition is gone. Compare it across the two trees
-for the same reason as the rest. Zero is the ordinary answer and is what a
-fresh install reports.
+| Field | Check |
+|---|---|
+| `journals` | same number of event streams |
+| `rows` | persisted summaries; matches journals after rebuilding the absent index in a fresh restore |
+| `disagreed` | zero after that fresh rebuild; an index row cannot replace a lost journal |
+| `pruned` | same number of quarantined runs |
+| `truncated` | zero; a journal ending mid-line may list and replay while missing events |
+| `agents` | same number of custom definitions; losing `agents.json` need not affect journal counts |
 
-`disagreed` covers two directions and only one of them is a repair. A journal
-the index does not name is a run that died before its summary row, and the next
-listing appends one from the event stream. A row whose journal is gone names a
-run no copy of the tree holds, which is what an archive restored without its
-`runs/` looks like, and no listing brings it back. Doctor says which of the two
-it found, so a half-restored tree is not sent to a command that cannot fix it.
+An existing index can retain older crash holes even when a listing reconstructs
+those rows for display. Use a fresh restore directory to check the rebuilt
+index rather than expecting every listing to repair the persisted cache.
 
-`truncated` is how many journals end mid-line, a file cut by a power cut or by a
-copy taken while a run was still writing. Nothing else reports such a file: the
-half-line is not JSON, so the run lists, replays, and summarizes as a complete
-run that is missing its last events, and the counts above are all the ones a
-whole archive and a short one share. An empty journal is not truncated, it is a
-run that has recorded nothing yet. Any non-zero `truncated` means the archive is
-short: re-take it with no run in flight, and read the counts of the copy you
-take again.
+An unreadable tree exits nonzero rather than printing zero counts. Doctor shows
+these counts except `rows`, but its exit code also reflects installed agents,
+so a nonzero doctor result alone does not establish a failed restore. If
+`truncated` is nonzero, retake the archive with no run writing and check again.
 
-Only after those three succeed should the restored directory replace the lost
-`GAUNTLET_HOME`. The tree half of the drill runs in the suite:
-`TestRestoredTreeListsWhatSurvived` (`internal/journal/journal_test.go`) writes
-runs, prunes one, copies `runs/`, `pruned/`, and `agents.json` into an empty
-`GAUNTLET_HOME` with no derived index beside them, and then lists, inspects, and
-restores from the copy. It proves the archive holds everything the history
-needs; the commands above prove an archive taken by your job does too.
-`TestRunsJSONCountsARestoredTreeWithoutItsIndex` (`cmd/gauntlet/runs_test.go`)
-is the same tree one level up: the same journals and quarantine with no derived
-index, read through `gauntlet runs --json`, where the counts above are what a
-script checks. The block above itself is executed rather than illustrated:
-`TestBackupRecipeArchivesEveryShapeOfStateTree`
-(`cmd/gauntlet/backuprecipe_test.go`) reads it out of this page and runs it
-against a state tree with nothing in it, one with a listed run, one whose
-history is only in the quarantine, and one with all three members, then reads
-the archive back to check it holds what the tree held. So a change to this
-recipe that would leave a machine unarchived fails the suite instead of the
-first restore.
+Only after those commands succeed and the counts agree should the restored
+directory replace the lost `GAUNTLET_HOME`.
 
-The restore block is executed rather than illustrated too, and against an
-archive the block above wrote rather than one this repository built:
-`TestRestoreRecipeReadsBackAnArchiveTheBackupRecipeWrote`
-(`cmd/gauntlet/restorerecipe_test.go`) takes a state tree with a listed run and a
-quarantined one, archives it with the recipe printed above, extracts the result
-with the commands printed here, and then runs the binary the package under test
-is built from against the extracted tree for each of the three commands. It
-compares the restored tree's `history` counts against the tree the copy was
-taken from, so a restore that extracted a file and lost the history in it fails
-even though every command exited zero, and it runs the whole block a second
-time into the same directory, so a restore that only works once fails here
-rather than during an incident. So a change to either block that leaves a
-restore impossible fails the suite rather than at the first restore.
+Existing tests execute the backup and restore blocks, including empty and
+quarantine-only state, failed writes, overlapping backups, and a repeated
+restore. `TestRestoredTreeListsWhatSurvived` in `internal/journal` also checks
+history and quarantine restoration without an index; the CLI checks the JSON
+counts in `TestRunsJSONCountsARestoredTreeWithoutItsIndex`.
 
 Run the commands after changing the archive job or upgrading across versions,
 and periodically with the largest archive, because a backup that has only been
@@ -859,13 +761,14 @@ gauntlet --auto-update    # check periodically during a long run
 The download is verified against the release's `checksums.txt` before it
 replaces anything; a mismatch leaves the running binary untouched. The binary
 an update replaces is kept beside it as `<binary>.previous`, so a release that
-installs and then misbehaves is rolled back by renaming that copy back, with
-no build and no second download. A run in flight hands over to the restored
+installs and then misbehaves can be rolled back without a build or download.
+The [rollback recipe](CLI.md#updating) copies the current binary aside before
+moving the previous copy into place; a failed copy aborts the replacement. A run in flight hands over to the restored
 binary at its next safe point, like any other hot reload.
 
 Hot reload is on by default (`--hot-reload=false` disables it). When the
-executable on disk changes, by `gauntlet update`, `make install`, or a fresh
-`go build`, the swap costs the run nothing:
+executable is replaced atomically, for example by `gauntlet update` or
+`make install`, the process drains its running reviews and hands over:
 
 - **No agent is killed.** Reviews already running finish normally, including
   their commit, publication, and merge work. Only then does the process hand over.
@@ -878,5 +781,7 @@ executable on disk changes, by `gauntlet update`, `make install`, or a fresh
   instead of starting a new run: repeating finished reviews under a new id is
   worse than stopping.
 
-The cost is latency, not correctness: the swap waits for the reviews in flight,
-which can take up to `--timeout`.
+The swap waits for running reviews and their publication or merge steps.
+The watcher checks every five seconds and requires two matching readings;
+that does not prove an in-place write is complete. Build a replacement to a
+separate path and rename it over the executable atomically.

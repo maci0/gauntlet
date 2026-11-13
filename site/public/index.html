@@ -147,7 +147,7 @@ footer {
 <h2>What it does</h2>
 <p>One static binary loops 56 review prompts over your repository, hands each one to an agent CLI you already have installed, and applies what it finds.</p>
 <ul>
-  <li><strong>Isolation in parallel.</strong> <code>--jobs N</code> gives N lane worktrees pulling from a shared queue, each review on its own branch, merged back one at a time.</li>
+  <li><strong>Isolation in parallel.</strong> <code>--jobs N</code> assigns reviews across N persistent lane worktrees. Each review has its own branch, merged back one at a time.</li>
   <li><strong>Unmerged review stacks.</strong> <code>--stacked-prs</code> opens each changed review as a child PR of the previous one. The branch in your editor never changes.</li>
   <li><strong>A dashboard.</strong> <code>--tui</code> puts lanes, throughput, the review grid, and a normalized feed on one screen.</li>
   <li><strong>Measured, never guessed.</strong> Token counts come from what the agent reports; an agent that reports nothing shows no rate.</li>

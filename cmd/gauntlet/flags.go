@@ -382,7 +382,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&o.promptDir, "prompt-dir", "", "directory of *-review.md files (default: the bundled set)")
 
 	alias("a", "agents", func(n string) {
-		fs.Var(&raw.agents, n, "agent CLIs, optionally agent:model@effort; 'mixed' means every installed agent")
+		fs.Var(&raw.agents, n, "agent CLIs, optionally agent:model@effort; 'mixed' (also 'all' or 'random') means installed agents eligible for auto-detection")
 	})
 	fs.Var(&raw.bins, "bin", "run an agent from a specific executable, TOOL=PATH (repeatable)")
 	fs.Var(&raw.agentCmds, "agent-cmd", "define an agent: NAME=ARGV with a {prompt} placeholder (repeatable)")
@@ -396,7 +396,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		fs.Var(durationFlag{d: &o.timeout}, n,
 			fmt.Sprintf("per-review timeout (default %dm)", int(defaultTimeout/time.Minute)))
 	})
-	fs.Var(durationFlag{d: &o.runtime, allowZero: true}, "runtime", "wall-clock budget for the whole run (0 = unlimited)")
+	fs.Var(durationFlag{d: &o.runtime, allowZero: true}, "runtime", "elapsed-time budget for the whole run (0 = unlimited)")
 	fs.IntVar(&o.tokenBudget, "token-budget", 0,
 		"stop starting reviews once the run's agents have reported this many tokens in total (0 = unlimited)")
 	fs.StringVar(&o.usageCmd, "usage-cmd", "",
@@ -419,8 +419,12 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 		return nil
 	})
 	alias("1", "once", func(n string) { fs.BoolVar(&raw.once, n, false, "run a single loop and exit") })
-	alias("c", "commit", func(n string) { fs.BoolVar(&o.commit, n, false, "commit after each review") })
-	alias("p", "push", func(n string) { fs.BoolVar(&o.push, n, false, "commit and push after each review") })
+	alias("c", "commit", func(n string) {
+		fs.BoolVar(&o.commit, n, false, "commit after each sequential review or after parallel lanes drain")
+	})
+	alias("p", "push", func(n string) {
+		fs.BoolVar(&o.push, n, false, "commit and push after each sequential review or after parallel lanes drain")
+	})
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
 	fs.BoolVar(&o.stackedPRs, "stacked-prs", false,
@@ -452,7 +456,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	fs.StringVar(&o.showPrompt, "show-prompt", "", "print the composed prompt for one review, then exit")
 	fs.StringVar(&o.logFile, "log", "", "also write all output to FILE")
 	alias("q", "quiet", func(n string) { fs.BoolVar(&o.quiet, n, false, "discard agent output") })
-	fs.BoolVar(&o.raw, "raw", false, "echo agent output verbatim instead of normalizing it")
+	fs.BoolVar(&o.raw, "raw", false, "echo agent output without normalization; keep sanitization, truncation, and secret redaction")
 	fs.BoolVar(&o.openCodeDB, "opencode-db", false, "read opencode's SQLite session store for its token counts (the driver is in a default build)")
 	fs.BoolVar(&o.stream, "stream", true, "ask agents for machine-readable output where supported: live token counts and reasoning (--stream=false to disable)")
 	fs.BoolVar(&o.tui, "tui", false, "live dashboard")
@@ -870,7 +874,7 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 		return nil, errors.New("--retries must be >= 0")
 	}
 	if o.continueSessions && (o.jobs > 1 || o.stackedPRs) {
-		return nil, errors.New("--continue-sessions cannot be used with --jobs > 1 or --stacked-prs: each review is a fresh worktree")
+		return nil, errors.New("--continue-sessions cannot be used with --jobs > 1 or --stacked-prs: isolated reviews require fresh agent sessions")
 	}
 	if err := trimFlag(fs, &o.dir, "dir", "C"); err != nil {
 		return nil, err
@@ -906,9 +910,9 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 			return nil, errors.New("--stacked-prs creates unmerged PRs and conflicts with --merge-into")
 		}
 		o.jobs = 1
-		// Default stacked is one pass, matching the original. An explicit
-		// --max-loops (including 0 = unlimited) is further isolated stacks,
-		// each a fresh worktree cut from the previous pass's last tip.
+		// Default stacked is one pass. An explicit --max-loops (0 = unlimited)
+		// continues from the last pushed tip, reusing a retained checkout or
+		// cutting a new worktree after a fully published pass.
 		if !isFlagSet(fs, "max-loops", "n") && !once {
 			o.maxLoops = 1
 		}

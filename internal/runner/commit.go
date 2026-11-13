@@ -185,8 +185,8 @@ func (r *Runner) runCommitStep(ctx context.Context) {
 		r.log("Warning: could not check git status before the commit step: %v", err)
 	}
 
-	// The commit step is one launch per loop, not tied to a review, so it
-	// samples under a stable pseudo-name of its own.
+	// Commit launches follow each sequential review or wait for parallel lanes
+	// to drain. A stable pseudo-name separates their selection from review names.
 	spec := r.pickAgent("commit", nil)
 	action := "commit"
 	if r.cfg.Push {

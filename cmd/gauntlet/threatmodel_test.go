@@ -164,11 +164,20 @@ func TestThreatModelWorkflowPointersNameTheStep(t *testing.T) {
 var goDeclaration = regexp.MustCompile(`^(?:func (?:\([^)]*\) )?|type |var |const )(\w+)`)
 
 // goSymbolPointer is a citation that names the Go identifier it points at: a
-// backticked symbol immediately followed by a backticked Go path and line span
-// (`journaledArgs`, `cmd/gauntlet/main.go:997-1003`). Every one of them is
-// checked against where that symbol is declared, which is the claim the
-// pointer makes and the one a line range alone cannot hold.
-var goSymbolPointer = regexp.MustCompile("`(\\w+)`,?\\s*`([\\w./-]+\\.go):([\\d,-]+)`")
+// backticked symbol immediately followed by a backticked Go path and line span,
+// with or without a comma or an opening parenthesis between them
+// (`journaledArgs`, `cmd/gauntlet/main.go:997-1003`; `Worktree.CommitScope`
+// (`internal/gitx/worktree.go:703-716`)). Every one of them is checked against
+// where that symbol is declared, which is the claim the pointer makes and the
+// one a line range alone cannot hold.
+var goSymbolPointer = regexp.MustCompile("`(\\w+(?:\\.\\w+)*)`,?\\s*\\(?`([\\w./-]+\\.go):([\\d,-]+)`")
+
+// citedIdentifier is the identifier a citation's symbol is declared as: the
+// last segment of a qualified name, so `Worktree.CommitScope` is looked up as
+// the method CommitScope and `runx.KillGroup` as KillGroup.
+func citedIdentifier(symbol string) string {
+	return symbol[strings.LastIndexByte(symbol, '.')+1:]
+}
 
 // A pointer that fits the file is a range, not the right one. Adding a
 // function above the one a citation names leaves every number in bounds, so
@@ -183,19 +192,14 @@ func TestThreatModelGoPointersNameTheSymbol(t *testing.T) {
 	root := moduleRoot(t)
 	lines := fileLines(t, filepath.Join(root, "docs", "THREAT_MODEL.md"))
 	qualified := qualifiedPointers(lines)
+	targets := pointerTargets(t, root)
 	checked := 0
 	for i, text := range lines {
 		for _, m := range goSymbolPointer.FindAllStringSubmatch(text, -1) {
-			symbol, path, span := m[1], m[2], m[3]
-			full := path
-			if filepath.Dir(path) == "." {
-				p, ok := qualified[filepath.Base(path)]
-				if !ok {
-					t.Fatalf("docs/THREAT_MODEL.md:%d: %s is ambiguous and ambiguousNames does not say which", i+1, path)
-				}
-				full = p
-			}
-			src := fileLines(t, filepath.Join(root, full))
+			symbol, span := citedIdentifier(m[1]), m[3]
+			path := resolvePointer(t, root, m[2], qualified, targets)
+			full := path[len(root)+1:]
+			src := fileLines(t, path)
 			var declared []int
 			for n, line := range src {
 				if d := goDeclaration.FindStringSubmatch(line); d != nil && d[1] == symbol {
@@ -219,6 +223,31 @@ func TestThreatModelGoPointersNameTheSymbol(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no Go symbol pointer was found in docs/THREAT_MODEL.md; the walk is broken, not the document")
+	}
+}
+
+// The document writes most citations in parentheses and many with a
+// qualified name, and a pattern that matched neither form left those
+// citations unchecked while their declarations moved.
+func TestGoSymbolPointerForms(t *testing.T) {
+	cases := []struct {
+		text, ident, path, span string
+	}{
+		{"`journaledArgs`, `cmd/gauntlet/main.go:997-1003`", "journaledArgs", "cmd/gauntlet/main.go", "997-1003"},
+		{"`fetch` `selfupdate.go:574`", "fetch", "selfupdate.go", "574"},
+		{"`ParseAgentCmd` (`internal/agent/custom.go:502-520`)", "ParseAgentCmd", "internal/agent/custom.go", "502-520"},
+		{"`Worktree.CommitScope` (`internal/gitx/worktree.go:703,707`)", "CommitScope", "internal/gitx/worktree.go", "703,707"},
+		{"`runx.KillGroup`, `dsh.go:81`", "KillGroup", "dsh.go", "81"},
+	}
+	for _, tc := range cases {
+		m := goSymbolPointer.FindStringSubmatch(tc.text)
+		if m == nil {
+			t.Errorf("goSymbolPointer does not match %s", tc.text)
+			continue
+		}
+		if got := citedIdentifier(m[1]); got != tc.ident || m[2] != tc.path || m[3] != tc.span {
+			t.Errorf("%s parsed as (%s, %s, %s), want (%s, %s, %s)", tc.text, got, m[2], m[3], tc.ident, tc.path, tc.span)
+		}
 	}
 }
 

@@ -89,8 +89,8 @@ approximately right:
    are read from their current end, so a session reused by
    `--continue-sessions` contributes only what it adds from now on.
 2. **Only this review's session.** A transcript whose recorded working
-   directory is not the review's is skipped. In `--jobs` mode every review has
-   its own worktree path, so this separates concurrent reviews exactly.
+   directory is not the review's is skipped. In `--jobs` mode concurrent lanes
+   have distinct worktree paths; sequential reviews reuse their lane's path.
 3. **Cheaply.** The store is walked at most once a second (these directories
    hold thousands of old sessions), and a file whose mtime has not moved is not
    reopened.
@@ -169,8 +169,9 @@ from its own `--help`, transcript layouts from its own session files.
 | gemini | yes | with `--stream` (`usageMetadata` counts thoughts as output) | transcript (`~/.gemini/tmp`, the project named by `.project_root`), and `--stream` |
 | kimi | yes | no | transcript (`~/.kimi-code/sessions`, one directory per project derived from the working directory's hash and confirmed by its recorded cwd), and `--stream` |
 | cursor-agent | yes | if reported | transcript (`~/.cursor/projects/<project>/agent-transcripts`), and `--stream` |
-| grok | yes | yes (`reasoning_delta`) | transcript (`~/.grok/sessions/<encoded cwd>/<id>/updates.jsonl`, the `turn_completed` record, whose duration is the span the rate is taken over), and `--stream` |
-| omp | with `--stream` | if reported | definition unverified (the installed copy would not run) |
+| grok | yes | yes (`reasoning_delta`, and `reasoningTokens` on the transcript's `turn_completed` record) | transcript (`~/.grok/sessions/<percent-encoded cwd>/<id>/updates.jsonl`; the rate uses `apiDurationMs`, then `elapsed_ms`), and `--stream` |
+| omp | with `--stream` (`--mode json`, opt-in) | if the JSON reports it | definition unverified: the flags follow `pi` and the installed copy would not run, so it is excluded from auto-detection |
+| copilot | from the transcript | if the transcript reports it | transcript (`~/.copilot/session-state/<session>/events.jsonl`; `session.start` carries the cwd, `assistant.message` carries the usage). Opt-in, and there is no `--stream` flag |
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
 | microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, plus a session log under `~/.microagent/sessions` read through toktop (`elapsed_ms` gives the rate over the model's own time) |
@@ -250,9 +251,12 @@ and `cached_tokens`; cursor-agent emits an Anthropic-shaped stream with a
 final `result` record carrying `usage`. Both are handled by the generic
 parser, and both shapes are pinned as tests.
 
-grok also keeps `~/.grok/sessions/<url-encoded-cwd>/<id>/updates.jsonl`, but
-its records carry only a cumulative `totalTokens` (the context size), not
-output, so a rate computed from it would be a lie. The stream is used instead.
+grok also keeps `~/.grok/sessions/<percent-encoded-cwd>/<id>/updates.jsonl`.
+A completed turn's record carries `inputTokens`, `outputTokens`,
+`reasoningTokens`, and `apiDurationMs`, which is the span the transcript rate
+uses. `usage.json` beside it is the same totals rewritten in place and is not
+read, because counting both would bill the turn twice. `totalTokens` alone is
+not treated as output.
 
 One operational note for pi: its non-interactive modes skip the trust prompt
 and fall back to `defaultProjectTrust`, so a review that must edit files needs
@@ -279,9 +283,9 @@ for _, p := range agentusage.Discover() {
 }
 ```
 
-`Discover` walks `/proc` on Linux and asks `ps` and `lsof` on macOS; on
-Windows it returns nothing, which callers treat as "cannot tell". `Watch` and `Rate`
-work wherever the transcripts do.
+`Discover` walks `/proc` on Linux and asks `ps` and `lsof` on macOS. On
+Windows, and on any platform with neither, it returns nothing, which callers
+treat as "cannot tell". `Watch` and `Rate` work wherever the transcripts do.
 
 `Rate` refuses to answer without two readings and a positive span, which is the
 same rule the dashboard follows: no span, no rate, rather than a zero.
