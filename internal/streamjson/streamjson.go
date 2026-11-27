@@ -31,6 +31,9 @@ type Event struct {
 	Text string
 	// Thinking is reasoning output, which agents mark separately.
 	Thinking string
+	// Fragment says Text is one piece of a longer run of output, not whole
+	// lines.
+	Fragment bool
 	// Usage is any token counters found on the line. A counter the line did
 	// not carry stays at zero, which is also what a zero counter reports:
 	// "none found" and "found, and it was nothing" are the same answer here,
@@ -161,7 +164,7 @@ type objField struct {
 func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder, depth int, inThinking bool) error {
 	var fieldsArr [8]objField
 	fields := fieldsArr[:0]
-	var typeStr, role string
+	var typeStr, kindStr, role string
 	var local Event
 	for dec.More() {
 		keyTok, err := dec.Token()
@@ -183,6 +186,7 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			if err := extractFrom(dec, delim, &nested, &nText, &nThink, depth+1, inThinking); err != nil {
 				return err
 			}
+			ev.Fragment = ev.Fragment || nested.Fragment
 			if nText.Len() > 0 || nThink.Len() > 0 {
 				fields = append(fields, objField{
 					key: lower, nested: true,
@@ -198,6 +202,11 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 		case string:
 			if lower == "type" {
 				typeStr = strings.ToLower(v)
+			}
+			// A delta stream says what each delta is in a kind field, which
+			// is read the way a block's type is.
+			if lower == "kind" {
+				kindStr = strings.ToLower(v)
 			}
 			if lower == "role" {
 				role = strings.ToLower(v)
@@ -216,14 +225,14 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 	}
 
 	if role == "tool" || role == "user" || typeStr == "user" ||
-		typeStr == "tool_use" || typeStr == "tool_result" {
+		typeStr == "tool_use" || typeStr == "tool_result" || isStatusRecord(typeStr, kindStr) {
 		return nil
 	}
 	ev.Usage.Output = max(ev.Usage.Output, local.Usage.Output)
 	ev.Usage.Thinking = max(ev.Usage.Thinking, local.Usage.Thinking)
 	ev.Usage.Total = max(ev.Usage.Total, local.Usage.Total)
 
-	thinkingHere := inThinking || typeIsThinking(typeStr)
+	thinkingHere := inThinking || typeIsThinking(typeStr) || typeIsThinking(kindStr)
 	for _, f := range fields {
 		switch {
 		case f.hasStr && thinkingTextKeys[f.key]:
@@ -235,6 +244,7 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 				appendText(thinking, f.str)
 			} else {
 				appendText(text, f.str)
+				ev.Fragment = ev.Fragment || strings.HasSuffix(kindStr, "_delta")
 			}
 		case f.nested:
 			if thinkingHere && !inThinking {
@@ -245,12 +255,28 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 			appendText(thinking, f.thinking)
 		}
 	}
+	if thinkingHere {
+		// All this object contributed is reasoning, so none of it is a piece
+		// of a visible line, whatever a nested object called itself.
+		ev.Fragment = false
+	}
 	return nil
 }
 
 func typeIsThinking(t string) bool {
 	t = strings.ToLower(t)
 	return strings.Contains(t, "thinking") || strings.Contains(t, "reasoning")
+}
+
+// isStatusRecord names the records of a delta stream that report what
+// happened rather than repeat what the model said: a tool call and its result
+// (a kind starting with tool_, and the tool update that re-sends the call's
+// input or the tool's output, both carrying file contents under an ordinary
+// text key), and the session update that summarizes a step by repeating the
+// text the deltas already delivered. Like a tool or user block, none of them
+// contributes text or usage.
+func isStatusRecord(typeStr, kindStr string) bool {
+	return strings.HasPrefix(kindStr, "tool_") || typeStr == "tool.updated" || typeStr == "session.updated"
 }
 
 // skipValue consumes one value without extracting, counting delimiters
@@ -340,4 +366,67 @@ func asInt(v any) (int, bool) {
 		return 0, false
 	}
 	return int(n), true
+}
+
+// Decoder reads a stream one record at a time and hands back whole lines.
+//
+// A stream may deliver its text a few tokens per record, with one line of the
+// answer spanning several, and the readers of that text anchor on line
+// starts. A fragment is held until a line break completes a line, or until the
+// run of fragments ends: the next record that is not a fragment, or Flush.
+// Records that are not fragments pass through unchanged. The zero value is
+// ready to use, and one Decoder belongs to one stream.
+type Decoder struct {
+	pending strings.Builder
+}
+
+// Parse reads one record. ok is false when the line is not JSON at all, which
+// is how a caller knows to treat it as plain text.
+func (d *Decoder) Parse(line []byte) (Event, bool) {
+	ev, ok := Parse(line)
+	if !ok {
+		return Event{}, false
+	}
+	if ev.Fragment {
+		d.pending.WriteString(ev.Text)
+		ev.Text = d.lines()
+		return ev, true
+	}
+	if d.pending.Len() > 0 {
+		// What was held is a whole line now, and it comes first.
+		ev.Text = joinLines(d.pending.String(), ev.Text)
+		d.pending.Reset()
+	}
+	return ev, true
+}
+
+// Flush hands over the line a stream left unfinished at its end. A second
+// Flush hands over nothing.
+func (d *Decoder) Flush() Event {
+	ev := Event{Text: d.pending.String()}
+	d.pending.Reset()
+	return ev
+}
+
+// lines returns the lines held that end in a line break, without the break,
+// and keeps an unfinished line in place.
+func (d *Decoder) lines() string {
+	s := d.pending.String()
+	i := strings.LastIndexByte(s, '\n')
+	if i < 0 {
+		return ""
+	}
+	d.pending.Reset()
+	d.pending.WriteString(s[i+1:])
+	return s[:i]
+}
+
+func joinLines(head, tail string) string {
+	switch {
+	case head == "":
+		return tail
+	case tail == "":
+		return head
+	}
+	return head + "\n" + tail
 }

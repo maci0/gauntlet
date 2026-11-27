@@ -129,8 +129,8 @@ Git 2.24 or newer: branch and revision arguments are separated with
 
 Supported agents: `claude`, `codex`, `gemini`, `qwen`, `grok`, `agy`,
 `cursor-agent`, `kimi`, `opencode`, `crush`, `clanker`, `dsh`, `microagent`,
-the pi family (`pi`, `prime-agent`, `feynman`, `omp`), and GitHub Copilot
-(`copilot`). `clanker`, `omp`, and `copilot` run only when named with
+`zcode`, the pi family (`pi`, `prime-agent`, `feynman`, `omp`), and GitHub
+Copilot (`copilot`). `clanker`, `omp`, and `copilot` run only when named with
 `--agents`. At least one agent must be on `PATH`. Any other agent is added
 without a new binary: `--agent-cmd` for one run, `~/.gauntlet/agents.json` to
 keep it (see

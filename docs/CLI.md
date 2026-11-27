@@ -139,6 +139,86 @@ before changing code.
 | `--agent-cmd NAME=ARGV` | none | Define an agent gauntlet does not ship, e.g. `pi='pi -p {prompt}'`. Repeatable; `~/.gauntlet/agents.json` makes it permanent. |
 | `--continue-sessions` | off | Resume each agent's session between reviews (reuses context, bleeds context). Conflicts with `--jobs > 1` and `--stacked-prs`, which require fresh agent sessions for isolated reviews. |
 
+#### Selecting the model for `zcode`
+
+`zcode` is the ZCode CLI, run as `zcode --mode yolo -p PROMPT`. It has no flag
+for a model or a reasoning effort and exits on an unknown flag, so
+`zcode:MODEL` and `zcode@EFFORT` are refused at startup: a review runs on
+whatever model ZCode itself starts a new session with. That default is chosen
+in ZCode, and there is no per-run override.
+
+- **Pick the model in ZCode.** The default ZCode saves is
+  `config.defaultModelSelection` in `~/.zcode/v2/provider_config.json`, the
+  field `zcode login zai` (or `bigmodel`) writes, for example
+  `{"providerId": "account:zai-individual-coding-plan", "modelId": "GLM-5.3", "options": {"reasoningLevel": "high"}}`.
+  The reasoning level has to be one the model offers. Otherwise ZCode ignores
+  the entry without a word and takes the first model of the first provider in
+  its own registry, which is also what a run gets when no default is saved.
+- **Sign in for an account plan.** A coding plan is offered to a terminal
+  session only when the credential store ZCode shares with the desktop app
+  carries a terminal sign-in for it: an `account-provider:<plan>:identity`
+  entry and an `…:auth-source`. `zcode login zai` (or `bigmodel`) writes them
+  through a browser sign-in — and also refreshes the OAuth session the desktop
+  app is holding, since both sides read one store. An API key touches no OAuth
+  entry: in a build that ships the TUI it is `/login zai-coding-plan-api-key
+  <key>`. The desktop app's bundle ships no TUI — `zcode tui` fails because
+  the `@zcode/tui` package exists only in ZCode's single-executable packaging,
+  which no release asset provides — so with that bundle the equivalent is
+  writing the three entries the CLI reads: `identity` = `key-` plus the first
+  24 hex of SHA-256(key), `auth-source` = `manual`, and the plan's
+  `…:account:<identity>:api-key`, sealed with the store's own cipher. The
+  terminal then bills the key while the desktop keeps its OAuth session.
+- **Swap the executable for one run.** `--bin zcode=PATH` keeps the argv and
+  runs another program in its place.
+
+ZCode ships its CLI inside the desktop app and installs no `zcode` command, so
+put a launcher on `PATH` for gauntlet to find. From a plain terminal the
+bundle cannot locate its provider catalog, which the desktop app passes to its
+own child processes, and it cannot load the Keychain addon that decrypts
+saved credentials: the addon is imported by name, Node resolves that from the
+bundle's own location, and the app's copy sits out of reach of it. The
+launcher supplies the catalog path and a short preload that points the addon
+at its copy inside the app. It runs on the app's embedded Node, so no Node
+install is needed. The preload, `zcode-keyring.cjs`, beside the launcher:
+
+```js
+const { registerHooks } = require("node:module");
+const { pathToFileURL } = require("node:url");
+const loader = "/Applications/ZCode.app/Contents/Resources/app.asar/node_modules/@napi-rs/keyring/index.js";
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    return specifier === "@napi-rs/keyring"
+      ? { url: pathToFileURL(loader).href, format: "commonjs", shortCircuit: true }
+      : nextResolve(specifier, context);
+  },
+});
+```
+
+The launcher:
+
+```sh
+#!/bin/sh
+APP=/Applications/ZCode.app
+RES="$APP/Contents/Resources"
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+case "${1-}" in
+  ""|tui)
+    echo "zcode: the TUI is not shipped in the desktop app's bundle" >&2
+    exit 1 ;;
+esac
+export ELECTRON_RUN_AS_NODE=1
+export ZCODE_BUILTIN_PROVIDER_CONFIG_FILE="${ZCODE_BUILTIN_PROVIDER_CONFIG_FILE:-$RES/config/provider/zcode-builtin.json}"
+exec "$APP/Contents/MacOS/ZCode" --require "$HERE/zcode-keyring.cjs" "$RES/glm/zcode.cjs" "$@"
+```
+
+Without the preload the CLI still runs for a provider whose key sits in its
+config file, but `zcode login` stops at `System credential storage is
+unavailable` and no account plan is offered. The sandbox does not get in the
+way of the Keychain: a read from inside it was verified.
+
+ZCode keeps its session store, settings, and credentials under `~/.zcode`,
+which the sandbox grants, and every review leaves a session in its history.
+
 ### ACP sessions
 
 These agents are driven over the Agent Client Protocol (ACP) when the
@@ -463,7 +543,7 @@ platform's temporary directory (an absolute `TMPDIR`, `/tmp` otherwise; it is
 skipped when the host has none), and the selected agent's usual state directories:
 `~/.claude`, `~/.codex`, `~/.gemini`, `~/.qwen`, `~/.grok`,
 `~/.gemini/antigravity-cli` (agy),
-`~/.cursor`, `~/.kimi-code`, `~/.microagent`, `~/.dsh`, `~/.copilot`, or
+`~/.cursor`, `~/.kimi-code`, `~/.microagent`, `~/.dsh`, `~/.zcode`, `~/.copilot`, or
 `~/.omp/agent`. For opencode and crush, their own subdirectories under
 `~/.local/share`, `~/.local/state`, and `~/.cache` are writable. These state
 directories are created if missing; the rest of the home directory stays

@@ -436,22 +436,24 @@ func runProcOnce(ctx context.Context, o procOpts) procResult {
 			sinkMu.Unlock()
 			callbacks.Done()
 		}
+		// Tail is a fixed ring in memory: it drops the oldest bytes rather than
+		// failing, and returns error only to satisfy io.Writer.
+		keep := func(s string) {
+			tailMu.Lock()
+			_, _ = tail.WriteString(s)
+			_, _ = tail.WriteString("\n")
+			tailMu.Unlock()
+		}
+		// A stream may deliver its text as fragments, so each pump keeps the
+		// decoder that joins them into lines for its own stream.
+		var dec streamjson.Decoder
 		handle := func(line string) {
-			// Tail is a fixed ring in memory: it drops the oldest bytes
-			// rather than failing, and returns error only to satisfy io.Writer.
-			keep := func(s string) {
-				tailMu.Lock()
-				_, _ = tail.WriteString(s)
-				_, _ = tail.WriteString("\n")
-				tailMu.Unlock()
-			}
-
 			// In stream mode the agent emits JSON events, which carry usage and
 			// separate reasoning from visible output. A line that is not JSON
 			// (a warning, a crash) still goes through text normalization, so
 			// nothing is swallowed.
 			if o.Stream && !o.Raw {
-				if ev, ok := streamjson.Parse([]byte(line)); ok {
+				if ev, ok := dec.Parse([]byte(line)); ok {
 					// The tail feeds the report-line parsers (SUBJECT:, PATH:),
 					// which anchor on line starts. What the tail keeps is the
 					// event's decoded visible text: inside the JSON envelope
@@ -496,6 +498,11 @@ func runProcOnce(ctx context.Context, o procOpts) procResult {
 		}
 		if err := scanLines(r, handle); err != nil {
 			recordStreamErr(fmt.Errorf("reading %s of %s: %w", name, o.Argv[0], err))
+		}
+		// A fragmented stream can end on a piece with no line break after it.
+		if ev := dec.Flush(); ev.Text != "" {
+			keep(ev.Text)
+			emitStream(ev, norm, emit)
 		}
 		for _, l := range norm.Flush() {
 			emit(l)

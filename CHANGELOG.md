@@ -22,6 +22,11 @@ Contract snapshots live in `cmd/gauntlet/contract_test.go` (CLI),
 
 ## Unreleased
 
+### Added
+
+- `zcode` is a supported agent, invoked `zcode [-c] [--output-format stream-json] --mode yolo -p PROMPT`. It takes no model and no reasoning effort on its command line and exits on an unknown flag, so `zcode:MODEL` and `zcode@EFFORT` are refused at startup: a review runs on the model ZCode itself starts a session with, which is chosen in ZCode (see "Selecting the model for `zcode`" in [docs/CLI.md](docs/CLI.md)). `--mode yolo` pins the permission mode the CLI documents as the default for `-p`, so a changed default cannot pause a review on an approval nothing can answer. Its state directory `~/.zcode` is writable under the sandbox, and `--continue-sessions` resumes with `-c`. The CLI ships inside the ZCode desktop app and installs no command, so a launcher has to be on `PATH`: the app's embedded Node, the provider catalog path, and a preload that points the CLI at its Keychain addon, without which a terminal session cannot read saved credentials; [docs/CLI.md](docs/CLI.md) has both files.
+- Streams that deliver text as fragments are joined into whole lines. `zcode --output-format stream-json` prints one record every few tokens, each labelled in a `kind` field, so one `SUBJECT:` or `PATH:` line spans several records; kept per record, the tail held the pieces and the commit subject and file notes were cut short. A `kind` naming reasoning now goes to the reasoning lane, and status records contribute no text: a `kind` starting `tool_`, the `tool.updated` record, and the per-step `session.updated` summary (a tool call's input and a tool's output carry file contents under an ordinary text key, and the summary repeats the step's answer, which showed every answer twice). Text fragments are joined into whole lines, and a stream that ends mid-line keeps its last line. Other agents' streams are unchanged.
+
 ### Fixed
 
 - Source citation checks now cover parenthesized and qualified Go symbols.
