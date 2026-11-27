@@ -441,7 +441,13 @@ func laneStats(m *model, l *laneState, hue lipgloss.AdaptiveColor, w int) (strin
 	segs := []string{
 		styleValue.Render(fmt.Sprint(l.done)) + styleDim.Render(" done"),
 		failStyle(l.failed).Render(fmt.Sprint(l.failed)) + styleDim.Render(" fail"),
-		styleDim.Render(humanize.Count(l.tokens+l.liveTokens)) + styleDim.Render(" tok"),
+	}
+	// A count is shown once one was reported, by the finished reviews or by
+	// the running one. An agent that reports only at the end of a turn has
+	// reported nothing until then, and a zero read mid-run is taken for a
+	// measurement of nothing.
+	if l.tokens > 0 || l.liveReported {
+		segs = append(segs, styleDim.Render(humanize.Count(l.tokens+l.liveTokens))+styleDim.Render(" tok"))
 	}
 	if l.tokenRate > 0 {
 		segs = append(segs, styled(hue, fmtRate(l.tokenRate)+"/s"))

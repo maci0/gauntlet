@@ -141,9 +141,11 @@ whole answer again. The reader sends a `kind` that names reasoning to the
 reasoning lane and reads no model text out of status records: tool traffic (a
 call's input and a tool's output both carry file contents under ordinary text
 keys) and the per-step summary, which repeats the step's text under `content`
-and would show every answer twice. Text fragments are joined into whole lines
-before the report parsers see them, because one `PATH:` line can span several
-records. The answer repeated in the turn record is not read a second time, so
+and would show every answer twice. Text and reasoning fragments are each joined
+into whole lines before they are shown or parsed: one `PATH:` line can span
+several records, and a model can stream its reasoning one token per record.
+The turn's counters arrive only in that end-of-turn record, so a lane shows
+no token count until the turn ends. The answer repeated in the turn record is not read a second time, so
 nothing is shown or counted twice.
 
 `--stream` is on by default: agents in the pool that have a machine-readable

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -698,5 +699,43 @@ func TestRunProcCanceledDuringExecution(t *testing.T) {
 	res := runProc(ctx, opts)
 	if !res.Canceled {
 		t.Fatalf("expected res.Canceled to be true, got %+v", res)
+	}
+}
+
+// A model can stream its reasoning one token per record: a short prompt
+// produced 727 of them. Emitted per record, the feed shows a single word on
+// every line. Reasoning fragments are joined into lines the way text ones are,
+// and a fragment that carries no line break joins the next one.
+func TestStreamFeedJoinsReasoningFragmentsIntoLines(t *testing.T) {
+	// delta is JSON source, so a line break is written as its escape.
+	record := func(kind, delta string) string {
+		return `{"type":"model.streaming","payload":{"kind":"` + kind + `","delta":"` + delta + `"}}`
+	}
+	quoted := make([]string, 0, 8)
+	for _, l := range []string{
+		record("reasoning_start", ""),
+		record("reasoning_delta", "The"),
+		record("reasoning_delta", " user"),
+		record("reasoning_delta", " asks"),
+		record("reasoning_delta", ` me.\nNow`),
+		record("reasoning_delta", " I"),
+		record("reasoning_delta", " check."),
+		record("reasoning_end", ""),
+	} {
+		quoted = append(quoted, "'"+l+"'")
+	}
+	got, res := runFakeProc(t, `printf '%s\n' `+strings.Join(quoted, " "),
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	var thinking []string
+	for _, l := range got {
+		if l.Kind == normalize.Thinking {
+			thinking = append(thinking, l.Text)
+		}
+	}
+	if want := []string{"The user asks me.", "Now I check."}; !slices.Equal(thinking, want) {
+		t.Fatalf("thinking lines = %q, want %q", thinking, want)
 	}
 }

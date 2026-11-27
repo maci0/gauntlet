@@ -34,6 +34,8 @@ type Event struct {
 	// Fragment says Text is one piece of a longer run of output, not whole
 	// lines.
 	Fragment bool
+	// FragmentThinking says the same of Thinking.
+	FragmentThinking bool
 	// Usage is any token counters found on the line. A counter the line did
 	// not carry stays at zero, which is also what a zero counter reports:
 	// "none found" and "found, and it was nothing" are the same answer here,
@@ -187,6 +189,7 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 				return err
 			}
 			ev.Fragment = ev.Fragment || nested.Fragment
+			ev.FragmentThinking = ev.FragmentThinking || nested.FragmentThinking
 			if nText.Len() > 0 || nThink.Len() > 0 {
 				fields = append(fields, objField{
 					key: lower, nested: true,
@@ -242,6 +245,7 @@ func extractObject(dec *json.Decoder, ev *Event, text, thinking *strings.Builder
 		case f.hasStr && textKeys[f.key]:
 			if thinkingHere {
 				appendText(thinking, f.str)
+				ev.FragmentThinking = ev.FragmentThinking || strings.HasSuffix(kindStr, "_delta")
 			} else {
 				appendText(text, f.str)
 				ev.Fragment = ev.Fragment || strings.HasSuffix(kindStr, "_delta")
@@ -370,55 +374,42 @@ func asInt(v any) (int, bool) {
 
 // Decoder reads a stream one record at a time and hands back whole lines.
 //
-// A stream may deliver its text a few tokens per record, with one line of the
-// answer spanning several, and the readers of that text anchor on line
-// starts. A fragment is held until a line break completes a line, or until the
-// run of fragments ends: the next record that is not a fragment, or Flush.
+// A stream may deliver its text or its reasoning a few tokens per record, with
+// one line spanning several: a short prompt has produced 727 reasoning
+// records. Emitted per record, the feed shows a single word on every line,
+// and the readers of the answer's text anchor on line starts. A fragment is
+// held until a line break completes a line, or until the run of fragments of
+// its kind ends: the next record that is not a fragment of it, or Flush. The
+// two kinds are held apart, since reasoning and text alternate within a turn.
 // Records that are not fragments pass through unchanged. The zero value is
 // ready to use, and one Decoder belongs to one stream.
 type Decoder struct {
+	text, thinking held
+}
+
+// held is the unfinished line of one kind of output.
+type held struct {
 	pending strings.Builder
 }
 
-// Parse reads one record. ok is false when the line is not JSON at all, which
-// is how a caller knows to treat it as plain text.
-func (d *Decoder) Parse(line []byte) (Event, bool) {
-	ev, ok := Parse(line)
-	if !ok {
-		return Event{}, false
-	}
-	if ev.Fragment {
-		d.pending.WriteString(ev.Text)
-		ev.Text = d.lines()
-		return ev, true
-	}
-	if d.pending.Len() > 0 {
-		// What was held is a whole line now, and it comes first.
-		ev.Text = joinLines(d.pending.String(), ev.Text)
-		d.pending.Reset()
-	}
-	return ev, true
-}
-
-// Flush hands over the line a stream left unfinished at its end. A second
-// Flush hands over nothing.
-func (d *Decoder) Flush() Event {
-	ev := Event{Text: d.pending.String()}
-	d.pending.Reset()
-	return ev
-}
-
-// lines returns the lines held that end in a line break, without the break,
-// and keeps an unfinished line in place.
-func (d *Decoder) lines() string {
-	s := d.pending.String()
+// take hands back the lines held that end in a line break, without the
+// breaks, and keeps an unfinished line in place.
+func (h *held) take() string {
+	s := h.pending.String()
 	i := strings.LastIndexByte(s, '\n')
 	if i < 0 {
 		return ""
 	}
-	d.pending.Reset()
-	d.pending.WriteString(s[i+1:])
+	h.pending.Reset()
+	h.pending.WriteString(s[i+1:])
 	return s[:i]
+}
+
+// rest hands over the unfinished line and holds nothing after.
+func (h *held) rest() string {
+	s := h.pending.String()
+	h.pending.Reset()
+	return s
 }
 
 func joinLines(head, tail string) string {
@@ -429,4 +420,35 @@ func joinLines(head, tail string) string {
 		return head
 	}
 	return head + "\n" + tail
+}
+
+// Parse reads one record. ok is false when the line is not JSON at all, which
+// is how a caller knows to treat it as plain text.
+func (d *Decoder) Parse(line []byte) (Event, bool) {
+	ev, ok := Parse(line)
+	if !ok {
+		return Event{}, false
+	}
+	// A fragment is one piece of its own kind. The other kind, if held, is a
+	// whole line now: the two never share a line.
+	switch {
+	case ev.Fragment:
+		d.text.pending.WriteString(ev.Text)
+		ev.Text = d.text.take()
+		ev.Thinking = joinLines(d.thinking.rest(), ev.Thinking)
+	case ev.FragmentThinking:
+		d.thinking.pending.WriteString(ev.Thinking)
+		ev.Thinking = d.thinking.take()
+		ev.Text = joinLines(d.text.rest(), ev.Text)
+	default:
+		ev.Text = joinLines(d.text.rest(), ev.Text)
+		ev.Thinking = joinLines(d.thinking.rest(), ev.Thinking)
+	}
+	return ev, true
+}
+
+// Flush hands over the lines a stream left unfinished at its end. A second
+// Flush hands over nothing.
+func (d *Decoder) Flush() Event {
+	return Event{Text: d.text.rest(), Thinking: d.thinking.rest()}
 }

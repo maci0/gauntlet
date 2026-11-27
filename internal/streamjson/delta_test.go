@@ -39,7 +39,7 @@ func TestStreamKindSeparatesReasoningTextAndToolTraffic(t *testing.T) {
 		{"text", streamDelta("text_delta", "RESULT: mock review fini"),
 			Event{Text: "RESULT: mock review fini", Fragment: true}},
 		{"reasoning", streamDelta("reasoning_delta", "check the file first"),
-			Event{Thinking: "check the file first"}},
+			Event{Thinking: "check the file first", FragmentThinking: true}},
 		{"tool input", streamDelta("tool_input_delta", `{"file_path":"a.go","content":"file body"}`), Event{}},
 		{"tool call", streamRecord("model.streaming", map[string]any{
 			"delta": "", "kind": "tool_call", "toolCallId": "c1", "toolName": "Write",
@@ -154,6 +154,43 @@ func TestDecoderJoinsTextDeltasIntoLines(t *testing.T) {
 	want := Event{Usage: Usage{Output: 96, Thinking: 30, Total: 2196}}
 	if ev := feed(completed); ev != want {
 		t.Fatalf("turn.completed = %+v, want %+v", ev, want)
+	}
+}
+
+// Reasoning arrives a few tokens per record too, and a short prompt has
+// produced 727 of them. The decoder joins it into lines the way it joins
+// text, and holds the two apart because they alternate within a turn.
+func TestDecoderJoinsReasoningDeltasIntoLines(t *testing.T) {
+	var d Decoder
+	feed := func(line string) Event {
+		t.Helper()
+		ev, ok := d.Parse([]byte(line))
+		if !ok {
+			t.Fatalf("not an event: %s", line)
+		}
+		return ev
+	}
+	for _, c := range []struct{ delta, want string }{
+		{"The", ""},
+		{" user", ""},
+		{" asks", ""},
+		{" me.\nNow", "The user asks me."},
+		{" I", ""},
+		{" check.", ""},
+	} {
+		if ev := feed(streamDelta("reasoning_delta", c.delta)); ev.Thinking != c.want || ev.Text != "" {
+			t.Fatalf("after delta %q: thinking %q, want %q", c.delta, ev.Thinking, c.want)
+		}
+	}
+	// Reasoning ends and the answer begins: what was held is a whole line
+	// now. The answer's first text is a fragment of its own, so it is held
+	// until the stream ends rather than joined onto the reasoning.
+	first := feed(streamDelta("text_delta", "The file compiles."))
+	if want := (Event{Fragment: true, Thinking: "Now I check."}); first != want {
+		t.Fatalf("first text record = %+v, want %+v", first, want)
+	}
+	if ev := d.Flush(); ev != (Event{Text: "The file compiles."}) {
+		t.Fatalf("Flush = %+v, want the answer's unfinished line", ev)
 	}
 }
 
