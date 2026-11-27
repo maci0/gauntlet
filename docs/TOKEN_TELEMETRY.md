@@ -124,6 +124,7 @@ makes an agent exit instead of run:
 | agy | `--output-format stream-json` |
 | grok | `--output-format streaming-messages-json` |
 | clanker | `--stream` |
+| zcode | `--output-format stream-json`, read off the installed CLI (0.18.0): its parser takes the flag, but its `--help` does not list it |
 
 `microagent` is absent from that table because it needs no flag: its stdout
 always carries one `{"type":"usage","usage":{...}}` line per response, next to
@@ -132,6 +133,20 @@ same line is decoded as an event, so its counters and reasoning share arrive
 live either way. It also keeps a session log per run under
 `~/.microagent/sessions`, one record per response with the model's own time
 beside the counters, which Source 2 reads through toktop.
+
+`zcode` is a delta stream: one record every few tokens, each saying in a
+`kind` field whether it carries reasoning, text, or the input of a tool call,
+and one record at the end of each turn carrying the turn's counters and the
+whole answer again. The reader sends a `kind` that names reasoning to the
+reasoning lane and reads no model text out of status records: tool traffic (a
+call's input and a tool's output both carry file contents under ordinary text
+keys) and the per-step summary, which repeats the step's text under `content`
+and would show every answer twice. Text and reasoning fragments are each joined
+into whole lines before they are shown or parsed: one `PATH:` line can span
+several records, and a model can stream its reasoning one token per record.
+The turn's counters arrive only in that end-of-turn record, so a lane shows
+no token count until the turn ends. The answer repeated in the turn record is not read a second time, so
+nothing is shown or counted twice.
 
 `--stream` is on by default: agents in the pool that have a machine-readable
 mode are asked for it; the rest are launched exactly as before. `--stream=false`
@@ -175,6 +190,7 @@ from its own `--help`, transcript layouts from its own session files.
 | clanker | yes | no | its own `state/token_stats.jsonl`, inside the repository it runs in, and `--stream` |
 | dsh | yes | yes | transcript (`~/.dsh/sessions`, default `session.jsonl.zstd`; uncompressed `.jsonl` too) |
 | microagent | yes | yes | its own `{"type":"usage"}` line on stdout, one per response, plus a session log under `~/.microagent/sessions` read through toktop (`elapsed_ms` gives the rate over the model's own time) |
+| zcode | yes | yes | `--output-format stream-json`: reasoning and text as they stream, and a record at the end of each turn carrying `outputTokens`, `reasoningTokens`, and `totalTokens`; no transcript source, because it keeps sessions in a SQLite database under `~/.zcode` |
 | crush | yes | no | records per-session `prompt_tokens`/`completion_tokens` in `.crush/crush.db` (SQLite) at the project root it resolves; the only JSONL it writes is `.crush/logs/crush.log`, which carries no counters. Read by toktop's `agentusage` with `-tags sqlite`, no flag needed: the database is inside the tree being reviewed, not an operator-wide store like opencode's |
 | opencode | OpenCode 1 and 2 with `--opencode-db` | OpenCode 1 and 2 with `--opencode-db` | The linked reader supports both database schemas and honors `OPENCODE_DB` and `XDG_DATA_HOME`. OpenCode 2 ACP also provides root-session usage after a prompt finishes. |
 | agy | yes | counted in output | transcript (`~/.gemini/antigravity-cli/brain/<id>/.../transcript.jsonl`, workspace from `history.jsonl` or `cache/last_conversations.json`), and `--stream`; a step naming no tokens contributes nothing |

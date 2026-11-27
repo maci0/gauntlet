@@ -800,6 +800,49 @@ func TestBuildCmdMicroagent(t *testing.T) {
 	}
 }
 
+// zcode runs one prompt with -p, which is non-interactive, and reads its
+// machine-readable mode and its session resume off its own --help. The yolo
+// permission mode is its documented default for -p and is pinned anyway: a
+// later default that paused for an approval would park every review on a
+// prompt that closed stdin can never answer.
+func TestBuildCmdZcode(t *testing.T) {
+	argv, err := BuildCmd(Spec{Tool: "zcode"}, "P", BuildOpts{Stream: true, Continue: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "zcode -c --output-format stream-json --mode yolo -p P"
+	if strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+
+	argv, err = BuildCmd(Spec{Tool: "zcode"}, "P", BuildOpts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "zcode --mode yolo -p P"; strings.Join(argv, " ") != want {
+		t.Fatalf("argv:\n got %v\nwant %s", argv, want)
+	}
+}
+
+// zcode has no --model and no effort flag, and its parser exits on an unknown
+// one, so neither can be pinned from the command line.
+func TestParseSpecsZcodeTakesNoModelOrEffort(t *testing.T) {
+	for _, in := range []string{"zcode:GLM-5.3", "zcode@high", "zcode:GLM-5.3@high"} {
+		_, err := ParseSpecs(in)
+		if err == nil {
+			t.Errorf("%q should be rejected", in)
+			continue
+		}
+		if strings.Contains(err.Error(), "unknown tool") {
+			t.Errorf("%q: zcode should be a known tool, got %v", in, err)
+		}
+	}
+	got, err := ParseSpecs("zcode")
+	if err != nil || len(got) != 1 || got[0] != (Spec{Tool: "zcode"}) {
+		t.Fatalf(`ParseSpecs("zcode") = %+v, %v; want one bare spec`, got, err)
+	}
+}
+
 func TestBuildCmdBinaryOverride(t *testing.T) {
 	argv, err := BuildCmd(Spec{Tool: "claude"}, "P", BuildOpts{Binary: "/opt/claude"})
 	if err != nil {

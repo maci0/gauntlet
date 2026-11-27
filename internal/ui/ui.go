@@ -163,6 +163,7 @@ type laneState struct {
 	// only report usage when they exit: no rate is shown rather than a
 	// made-up one.
 	liveTokens   int
+	liveReported bool // the running review has reported usage; until then a count is not a reading
 	liveThinking int
 	thinkTokens  int // finished reviews' reasoning share
 	lastTokens   int
@@ -679,6 +680,7 @@ func (m *model) apply(ev runner.Event) {
 			// The tick that last refreshed m.now bounds the error at one redraw.
 			l.review, l.start, l.attempt = ev.Review, m.now, ev.Attempt
 			l.liveTokens, l.liveThinking, l.lastTokens, l.tokenRate = 0, 0, 0, 0
+			l.liveReported = false
 			l.lastAt, l.lastThinkAt = ev.Time, time.Time{}
 			m.liveRate = m.aggregateRate()
 		}
@@ -690,6 +692,7 @@ func (m *model) apply(ev runner.Event) {
 				l.lastThinkAt = ev.Time
 			}
 			l.liveTokens = ev.Tokens
+			l.liveReported = true
 			l.sampleRate(ev.Tokens, ev.Time)
 			m.liveRate = m.aggregateRate()
 		}
@@ -716,6 +719,7 @@ func (m *model) apply(ev runner.Event) {
 			l.tokens += ev.Tokens
 			l.thinkTokens += ev.Thinking
 			l.liveTokens, l.liveThinking, l.tokenRate = 0, 0, 0
+			l.liveReported = false
 			if ev.Status.Failed() {
 				l.failed++
 			}

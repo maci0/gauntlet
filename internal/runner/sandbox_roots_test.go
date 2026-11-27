@@ -36,6 +36,21 @@ func TestSandboxRootsIncludeCopilotState(t *testing.T) {
 	}
 }
 
+func TestSandboxRootsIncludeZcodeState(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	roots, err := sandboxRoots(procOpts{Dir: t.TempDir(), Tool: "zcode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// zcode keeps its session store, its settings, and its login under one
+	// directory; a run that cannot write there cannot start a turn.
+	want, err := filepath.EvalSymlinks(filepath.Join(home, ".zcode"))
+	if err != nil || !slices.Contains(roots, want) {
+		t.Fatalf("zcode state root %q, err %v, roots %q", want, err, roots)
+	}
+}
+
 func TestSandboxRootsIncludeOpenCodeXDGState(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("OPENCODE_CONFIG_DIR", "")

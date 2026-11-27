@@ -3010,3 +3010,21 @@ func TestBrailleSuffixMatchesLitSubRows(t *testing.T) {
 		}
 	}
 }
+
+// A lane whose running review has reported no usage yet shows no token count,
+// the way the footer does: an agent can report only at the end of a turn, and
+// a "0 tok" read mid-run is taken for a measurement of nothing. Once it has
+// reported, the figure is shown, zero included, because then it is a reading.
+func TestLaneShowsNoTokenCountUntilUsageIsReported(t *testing.T) {
+	m := newModel(Config{Agents: []string{"zcode"}})
+	m.lane("zcode")
+	row := stripANSI(firstLine(m.renderLanes(120, 8)))
+	if strings.Contains(row, "tok") {
+		t.Fatalf("an unreported lane drew a token count: %q", row)
+	}
+	m.apply(runner.Event{Kind: runner.EvUsage, Agent: "zcode", Tokens: 0})
+	row = stripANSI(firstLine(m.renderLanes(120, 8)))
+	if !strings.Contains(row, "0 tok") {
+		t.Fatalf("a lane that reported zero hid it: %q", row)
+	}
+}

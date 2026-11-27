@@ -140,6 +140,7 @@ func sandboxRoots(o procOpts) ([]string, error) {
 			"qwen": {".qwen"}, "grok": {".grok"}, "agy": {".gemini/antigravity-cli"},
 			"cursor-agent": {".cursor"}, "kimi": {".kimi-code"},
 			"microagent": {".microagent"}, "dsh": {".dsh"},
+			"zcode":    {".zcode"},
 			"copilot":  {".copilot"},
 			"omp":      {".omp/agent"},
 			"opencode": {".local/share/opencode", ".local/state/opencode", ".cache/opencode"},

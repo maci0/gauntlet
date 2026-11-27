@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -19,6 +20,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/maci0/gauntlet/internal/agent"
 	"github.com/maci0/gauntlet/internal/normalize"
 	"github.com/maci0/gauntlet/internal/prompt"
 )
@@ -492,6 +494,80 @@ func TestStreamTailKeepsDecodedTextForReportParsers(t *testing.T) {
 	}
 }
 
+// A delta stream delivers its answer a few tokens per record, so one report
+// line spans several records. Kept per record, the tail holds the fragments
+// and the SUBJECT: and PATH: parsers read a cut-off line. The tool traffic in
+// the same stream carries file contents under a text key and has to stay out
+// of the tail. The records are the captured run's.
+func TestStreamTailJoinsDeltaFragmentsIntoLines(t *testing.T) {
+	stream := func(kind, delta string) string {
+		return `{"type":"model.streaming","payload":{"kind":"` + kind + `","delta":"` + delta + `"}}`
+	}
+	lines := []string{
+		stream("text_start", ""),
+		stream("text_delta", `RESULT: mock review fini`),
+		stream("text_delta", `shed\nSUBJECT: mock: exer`),
+		stream("text_delta", `cise the stream\nPATH: /t`),
+		stream("text_delta", `mp/zcode-probe/run/hello`),
+		stream("text_delta", `.txt: created by the moc`),
+		stream("text_delta", `k`),
+		stream("text_end", ""),
+		`{"type":"session.updated","payload":{"cacheHit":{"totalInputTokens":3300},` +
+			`"content":"RESULT: mock review finished\nSUBJECT: mock: exercise the stream",` +
+			`"usage":{"outputTokens":96,"reasoningTokens":30,"totalTokens":2196}}}`,
+		`{"type":"tool.updated","payload":{"kind":"result","result":{"success":true,` +
+			`"content":"1\tPATH: trap.go: tool output"}}}`,
+		`{"type":"turn.completed","payload":{"response":"RESULT: mock review finished",` +
+			`"usage":{"outputTokens":96,"reasoningTokens":30,"totalTokens":2196}}}`,
+		`{"type":"result","response":"PATH: trap.go: the answer, delivered again",` +
+			`"usage":{"outputTokens":96,"reasoningTokens":30,"totalTokens":2196},` +
+			`"projection":{"totalTokenCount":2196}}`,
+	}
+	quoted := make([]string, len(lines))
+	for i, l := range lines {
+		quoted[i] = "'" + l + "'"
+	}
+	got, res := runFakeProc(t, `printf '%s\n' `+strings.Join(quoted, " "),
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	if want := "mock: exercise the stream"; res.Subject != want {
+		t.Fatalf("subject = %q, want %q", res.Subject, want)
+	}
+	wantNote := agent.FileNote{Path: "/tmp/zcode-probe/run/hello.txt", Note: "created by the mock"}
+	if len(res.FileNotes) != 1 || res.FileNotes[0] != wantNote {
+		t.Fatalf("file notes = %+v, want [%+v]", res.FileNotes, wantNote)
+	}
+	if res.Usage != (agent.Usage{Output: 96, Thinking: 30, Total: 2196}) {
+		t.Fatalf("usage = %+v", res.Usage)
+	}
+	var text []string
+	for _, l := range got {
+		text = append(text, l.Text)
+	}
+	for _, want := range []string{
+		"RESULT: mock review finished",
+		"SUBJECT: mock: exercise the stream",
+		"PATH: " + wantNote.Path + ": " + wantNote.Note,
+	} {
+		n := 0
+		for _, line := range text {
+			if line == want {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("%d feed lines read %q, want 1: %q", n, want, text)
+		}
+	}
+	for _, line := range text {
+		if strings.Contains(line, "trap.go") {
+			t.Errorf("tool traffic reached the feed: %q", line)
+		}
+	}
+}
+
 // A stream that ends cleanly is not an error. A stream that breaks part way
 // through is, because everything the caller parses out of the tail afterwards
 // is then short and reads as complete.
@@ -623,5 +699,43 @@ func TestRunProcCanceledDuringExecution(t *testing.T) {
 	res := runProc(ctx, opts)
 	if !res.Canceled {
 		t.Fatalf("expected res.Canceled to be true, got %+v", res)
+	}
+}
+
+// A model can stream its reasoning one token per record: a short prompt
+// produced 727 of them. Emitted per record, the feed shows a single word on
+// every line. Reasoning fragments are joined into lines the way text ones are,
+// and a fragment that carries no line break joins the next one.
+func TestStreamFeedJoinsReasoningFragmentsIntoLines(t *testing.T) {
+	// delta is JSON source, so a line break is written as its escape.
+	record := func(kind, delta string) string {
+		return `{"type":"model.streaming","payload":{"kind":"` + kind + `","delta":"` + delta + `"}}`
+	}
+	quoted := make([]string, 0, 8)
+	for _, l := range []string{
+		record("reasoning_start", ""),
+		record("reasoning_delta", "The"),
+		record("reasoning_delta", " user"),
+		record("reasoning_delta", " asks"),
+		record("reasoning_delta", ` me.\nNow`),
+		record("reasoning_delta", " I"),
+		record("reasoning_delta", " check."),
+		record("reasoning_end", ""),
+	} {
+		quoted = append(quoted, "'"+l+"'")
+	}
+	got, res := runFakeProc(t, `printf '%s\n' `+strings.Join(quoted, " "),
+		func(o *procOpts) { o.Stream = true })
+	if res.Err != nil || res.ExitCode != 0 {
+		t.Fatalf("run failed: %+v", res)
+	}
+	var thinking []string
+	for _, l := range got {
+		if l.Kind == normalize.Thinking {
+			thinking = append(thinking, l.Text)
+		}
+	}
+	if want := []string{"The user asks me.", "Now I check."}; !slices.Equal(thinking, want) {
+		t.Fatalf("thinking lines = %q, want %q", thinking, want)
 	}
 }

@@ -57,11 +57,13 @@ func Labels(specs []Spec) []string {
 // through agents.json or --agent-cmd are the rest; AllNames has the full set.
 var Valid = []string{
 	"claude", "gemini", "qwen", "codex", "grok", "agy", "cursor-agent",
-	"kimi", "opencode", "crush", "clanker", "dsh", "microagent",
+	"kimi", "opencode", "crush", "clanker", "dsh", "microagent", "zcode",
 }
 
 // noModel agents pick their model from their own config, not the command line.
-var noModel = map[string]bool{"agy": true, "clanker": true}
+// zcode has no model flag at all and exits on an unknown one: the model is the
+// default saved in its own provider config.
+var noModel = map[string]bool{"agy": true, "clanker": true, "zcode": true}
 
 // optIn agents are usable, but only under conditions the runner cannot check,
 // so auto-detection and "mixed" skip them. clanker loads its config from the
@@ -84,6 +86,7 @@ var continueFlags = map[string][]string{
 	"opencode": {"-c"},
 	"crush":    {"-C"},
 	"gemini":   {"--resume", "latest"},
+	"zcode":    {"-c"},
 }
 
 // streamFlags turn on an agent's machine-readable output. Every entry was read
@@ -103,6 +106,10 @@ var streamFlags = map[string][]string{
 	// clanker gained --stream for exactly this: one JSON usage line per model
 	// response, printed alongside its ordinary prose.
 	"clanker": {"--stream"},
+	// zcode's stream is one JSON object per line, ending in a result record
+	// that carries the usage. The flag is accepted by its parser but missing
+	// from its --help; it was read off the installed CLI (0.18.0).
+	"zcode": {"--output-format", "stream-json"},
 }
 
 // foldName is the one spelling an agent name is keyed on, at every site that
@@ -730,6 +737,12 @@ func buildBuiltin(spec Spec, prompt string, opts BuildOpts) ([]string, error) {
 			cmd = append(cmd, effortFlags["microagent"], spec.Effort)
 		}
 		cmd = append(cmd, "-p", prompt)
+	case "zcode":
+		// -p is the one-shot prompt mode, which never opens the TUI. Its
+		// documented permission default is yolo; pinning it keeps a changed
+		// default from pausing on an approval that closed stdin cannot give.
+		// No model flag exists: the model is the default zcode saves itself.
+		cmd = []string{"zcode", "--mode", "yolo", "-p", prompt}
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", spec.Tool)
 	}
