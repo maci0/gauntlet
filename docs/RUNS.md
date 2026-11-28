@@ -19,10 +19,9 @@ gauntlet -j 4 -a mixed --once
 
 (The fan-out and merge-back are drawn in the [README](../README.md#how-a-run-works).)
 
-- Requires git and no **uncommitted changes to tracked files** (a branch is cut
-  from a commit, so that work would be invisible to every review and then
-  collide with its merge). Untracked files do not block the run: they are in
-  nobody's way, and the run says once that they are not reviewed.
+- Requires Git. By default, tracked files must be clean so pending edits
+  cannot collide with a merge. Untracked files are left out of the review.
+  With `--jobs-target`, the launch checkout may be dirty.
 - `--jobs N` creates **N persistent lane worktrees** under
   `.gauntlet/worktrees/`, excluded from git status via `.git/info/exclude`.
   The schedule is split up front: review `i` goes to lane `i % N`. A lane
@@ -30,7 +29,7 @@ gauntlet -j 4 -a mixed --once
   Each review still gets its own branch; the lane directory stays put so later
   reviews in that lane can reuse the agent's prompt cache.
 - The runner (never the agent) commits each review, then lands the branches
-  on your branch one at a time, squashed: one commit per review, no merge
+  on your branch or the branch pinned by `--jobs-target`, one at a time, squashed: one commit per review, no merge
   nodes. The commit uses the identity Git resolves for the repository (local
   `user.name`/`user.email`, then global configuration), and its
   subject is the one the review printed for its own change (`SUBJECT: fix: …`
@@ -262,6 +261,19 @@ choices:
   branch under `gauntlet/`, and the runner merges those back into **the
   branch you are on**, one at a time, squashed. Nothing here targets `main`
   by name; if you are on `feature-x`, the work lands on `feature-x`.
+- `--jobs-target BRANCH` pins every review's landing branch, for example
+  `gauntlet -j 4 --jobs-target main --push`. Use
+  `gauntlet -j 4 --jobs-target HEAD` to pin the branch checked out at startup.
+  The lanes start from the target's tip and squash merges run in a detached
+  checkout. Switching branches or editing files in the launch checkout does
+  not retarget the merge or the push, and does not get its branch, HEAD,
+  index, or files changed. While that checkout is on the target branch, the
+  branch ref itself stays put (moving it would move HEAD) and the commits
+  wait on `refs/gauntlet/jobs-target/<branch>`. The runner checks whether it
+  can fast-forward the branch after each landing and at run exit. If you switch
+  away after the run exits, the next run targeting that branch can attach the
+  parked commits. `--push` publishes each landing to the target's configured
+  upstream, including when the remote branch has a different name.
 - `--merge-into BRANCH` is the step after that: once a loop's work is
   committed, the branch you are on is merged into BRANCH. It runs in a scratch
   checkout of BRANCH under `.gauntlet/worktrees/`, so the branch the reviews
@@ -398,16 +410,17 @@ Continue one with: gauntlet resume <run-id>
   twice; one that finished in the instant before the kill may, because the
   checkpoint counts it unfinished until its result is on disk.
 - **What it will not do.** A directory a gauntlet still holds is refused
-  (exit 75): the listing says `busy`. A `--jobs` run still needs a clean tree,
-  and a tree a kill left mid-merge gets the same commit offer a fresh run
-  does.
+  (exit 75): the listing says `busy`. A `--jobs` run without a pinned
+  target still needs a clean tree and offers to commit pending changes
+  as it would on a fresh run.
 - **Branches.** A resumed run starts its lane and review branch names with
   `gauntlet/<run-id>-g<N>-l<loop>`, `N` counting the processes before it,
-  so it never collides with what the killed one left. A `--jobs` resume then
-  deletes the leftovers HEAD already contains (a review the kill cut off
-  before anything was committed) and keeps any with a commit HEAD lacks (one
-  between its commit and its merge), which `gauntlet doctor` lists. A hot
-  reload's successor uses the same naming.
+  so it never collides with what the killed one left. Without a pinned
+  target, a `--jobs` resume deletes leftovers HEAD already contains and
+  keeps any with a commit HEAD lacks. With `--jobs-target`, the checkpoint
+  carries the resolved branch name and the successor keeps the previous
+  process's leftover branches. `gauntlet doctor` lists those branches. Hot
+  reload uses the same naming and handoff.
 
 ## Run journal
 

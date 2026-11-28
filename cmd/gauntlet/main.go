@@ -7,6 +7,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -669,6 +670,7 @@ func run(argv []string) (code int) {
 			ResumeStackHeadTip:   carried.StackHeadTip,
 			ResumeStackPublished: carried.StackPublished,
 			MergeInto:            opts.mergeInto,
+			JobsTarget:           cmp.Or(carried.JobsTarget, opts.jobsTarget),
 			ResolveConflicts:     opts.resolveConflicts,
 			Seed:                 opts.seed,
 			// The dashboard renders the feed from these events, so --tui must

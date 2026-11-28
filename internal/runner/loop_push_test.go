@@ -6,6 +6,7 @@ package runner
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -156,5 +157,155 @@ func writeIn(t *testing.T, dir, name, body string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestJobsTargetSurvivesLaunchBranchSwitch(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		target string
+		push   bool
+		stay   bool
+		loops  int
+	}{
+		{name: "HEAD", target: "HEAD", push: true, loops: 2},
+		{name: "main", target: "main", loops: 2},
+		{name: "stay_on_main", target: "main", push: true, stay: true, loops: 2},
+		{name: "switch_after_last_landing", target: "HEAD", push: true, loops: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			git := func(dir string, args ...string) string {
+				t.Helper()
+				return strings.TrimRight(runGit(t, dir, args...), "\r\n")
+			}
+			dir := testRepo(t)
+			initial := git(dir, "rev-parse", "refs/heads/main")
+			origin, upstream := t.TempDir(), t.TempDir()
+			for _, remote := range []string{origin, upstream} {
+				git(remote, "init", "--bare", "-q")
+			}
+			git(dir, "remote", "add", "origin", origin)
+			git(dir, "remote", "add", "upstream", upstream)
+			git(dir, "push", "-u", "upstream", "main:release")
+			git(dir, "branch", "side")
+			git(dir, "push", "-u", "origin", "side")
+			git(dir, "tag", "main")
+			if tc.target == "main" && !tc.stay {
+				git(dir, "switch", "-c", "launch")
+			}
+
+			set, _ := promptSet(t, "a-review")
+			bin := fakeAgent(t, t.TempDir(), "claude", `
+if [ -f first.txt ]; then
+    echo second > second.txt
+else
+    echo first > first.txt
+fi
+echo "RESULT: changed=1"`)
+			cfg := baseConfig(t, dir, set, []string{"a-review"}, bin)
+			cfg.Jobs, cfg.MaxLoops, cfg.JobsTarget, cfg.Push = 2, tc.loops, tc.target, tc.push
+			before := git(dir, "branch", "--show-current")
+			bus := NewBus()
+			t.Cleanup(bus.Close)
+			events := bus.Subscribe(256)
+			var r *Runner
+			var sideTip, sideStatus string
+			dirtyLaunch := func() string {
+				writeIn(t, dir, "operator.txt", "staged\n")
+				git(dir, "add", "operator.txt")
+				writeIn(t, dir, "operator.txt", "working copy\n")
+				return git(dir, "status", "--porcelain")
+			}
+			if tc.stay {
+				sideStatus = dirtyLaunch()
+			}
+			cfg.OnProgress = func() {
+				if r.Loops() != 1 || sideTip != "" {
+					return
+				}
+				if got := git(dir, "branch", "--show-current"); got != before {
+					t.Errorf("launch branch after first merge = %q, want %q", got, before)
+				}
+				if got := git(dir, "rev-parse", "HEAD"); got != initial {
+					t.Errorf("pinned merge moved launch HEAD to %s, want %s", got, initial)
+				}
+				if tc.push {
+					parked := git(dir, "rev-parse", "refs/gauntlet/jobs-target/main")
+					if got := git(upstream, "rev-parse", "refs/heads/release"); got != parked {
+						t.Errorf("upstream after first landing = %q, want parked tip %q", got, parked)
+					}
+				}
+				if got := git(dir, "ls-files", "first.txt"); got != "" {
+					t.Errorf("first merge changed launch index: %q", got)
+				}
+				if _, err := os.Stat(filepath.Join(dir, "first.txt")); !os.IsNotExist(err) {
+					t.Errorf("first merge touched launch files: %v", err)
+				}
+				if tc.stay {
+					return
+				}
+				git(dir, "switch", "side")
+				writeIn(t, dir, "operator.txt", "committed\n")
+				git(dir, "add", "operator.txt")
+				git(dir, "commit", "-qm", "operator change")
+				sideTip = git(dir, "rev-parse", "HEAD")
+				sideStatus = dirtyLaunch()
+			}
+			var err error
+			r, err = New(t.Context(), cfg, bus)
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Run(t.Context())
+			bus.Close()
+			var recorded []Event
+			for ev := range events {
+				recorded = append(recorded, ev)
+			}
+
+			if r.Loops() != tc.loops || r.Stats().Counts().OK != tc.loops || r.Stats().CommitFails() != 0 {
+				t.Fatalf("want %d successful reviews and loops:\n%s", tc.loops, logText(recorded))
+			}
+			landedRef, wantBranch, wantHead := "refs/heads/main", "side", sideTip
+			if tc.stay {
+				landedRef, wantBranch, wantHead = "refs/gauntlet/jobs-target/main", "main", initial
+			} else if got := git(dir, "for-each-ref", "--format=%(refname)", "refs/gauntlet/jobs-target/main"); got != "" {
+				t.Errorf("landing left a parked ref after attaching: %q", got)
+			}
+			if got := git(dir, "rev-list", "--count", initial+".."+landedRef); got != strconv.Itoa(tc.loops) {
+				t.Fatalf("%s advanced by %s commits, want %d", landedRef, got, tc.loops)
+			}
+			for _, name := range []string{"first.txt", "second.txt"}[:tc.loops] {
+				git(dir, "cat-file", "-e", landedRef+":"+name)
+				if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					t.Errorf("merge touched launch file %s: %v", name, err)
+				}
+			}
+			if got := git(dir, "branch", "--show-current"); got != wantBranch {
+				t.Errorf("launch branch = %q, want %q", got, wantBranch)
+			}
+			if got := git(dir, "rev-parse", "HEAD"); got != wantHead {
+				t.Errorf("launch HEAD = %q, want %q", got, wantHead)
+			}
+			if got := git(dir, "status", "--porcelain"); got != sideStatus {
+				t.Errorf("launch status = %q, want %q", got, sideStatus)
+			}
+			if got := git(dir, "show", ":operator.txt"); got != "staged" {
+				t.Errorf("launch index content = %q", got)
+			}
+			if got, err := os.ReadFile(filepath.Join(dir, "operator.txt")); err != nil || string(got) != "working copy\n" {
+				t.Errorf("launch working file = %q, %v", got, err)
+			}
+			wantRelease := initial
+			if tc.push {
+				wantRelease = git(dir, "rev-parse", landedRef)
+			}
+			if got := git(upstream, "rev-parse", "refs/heads/release"); got != wantRelease {
+				t.Errorf("upstream release = %q, want %q", got, wantRelease)
+			}
+			if got := git(origin, "for-each-ref", "--format=%(objectname) %(refname)", "refs/heads"); got != initial+" refs/heads/side" {
+				t.Errorf("origin refs changed: %q", got)
+			}
+		})
 	}
 }

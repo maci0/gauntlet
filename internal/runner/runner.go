@@ -117,7 +117,8 @@ type Config struct {
 	// MergeInto is a branch this run's work is merged into after each loop,
 	// once the commit step has left the tree clean. Empty leaves the work
 	// where the reviews put it, on the branch that was checked out.
-	MergeInto string
+	MergeInto  string
+	JobsTarget string // Local landing branch, or HEAD to resolve at startup.
 	// ResolveConflicts hands a review branch that will not merge to an agent,
 	// which resolves it in a scratch checkout so the work lands. Off leaves
 	// the branch for a human, which is what a run does when the tree it
@@ -186,6 +187,9 @@ type Runner struct {
 	cfg Config
 	bus *Bus
 	st  *Stats
+
+	jobsPushRemote string
+	jobsPushRef    string
 
 	repo *gitx.Repo
 	gh   ghx.Client
@@ -347,6 +351,9 @@ func New(ctx context.Context, cfg Config, bus *Bus) (*Runner, error) {
 // own and the main tree's line counts are not attributable to a review.
 func (r *Runner) isolated() bool { return r.cfg.StackedPRs || r.cfg.Jobs > 1 }
 
+// JobsTarget returns the resolved landing branch for a run handoff.
+func (r *Runner) JobsTarget() string { return r.cfg.JobsTarget }
+
 // Run executes loops until the context is canceled or a limit is reached.
 func (r *Runner) Run(ctx context.Context) {
 	r.bus.Publish(Event{
@@ -359,6 +366,14 @@ func (r *Runner) Run(ctx context.Context) {
 	}()
 	if r.isolated() {
 		defer r.repo.CleanWorktreeRoot()
+	}
+	if r.cfg.JobsTarget != "" {
+		defer func() {
+			if err := r.repo.AttachJobsTarget(context.WithoutCancel(ctx), r.cfg.JobsTarget); err != nil {
+				r.log("Cannot finish landing on %s: %v", r.cfg.JobsTarget, err)
+				r.st.addCommitFail()
+			}
+		}()
 	}
 
 	for {

@@ -22,6 +22,14 @@ Contract snapshots live in `cmd/gauntlet/contract_test.go` (CLI),
 
 ## Unreleased
 
+### Added
+
+- `--jobs-target BRANCH` lands parallel reviews on a fixed local branch from
+  a detached checkout. Use `HEAD` to pin the starting branch. The launch
+  checkout keeps its branch, HEAD, and files, including while it is on the
+  target branch. With `--push`, each landed review goes to the pinned
+  branch's configured upstream.
+
 ### Fixed
 
 - Source citation checks now cover parenthesized and qualified Go symbols.

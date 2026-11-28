@@ -63,8 +63,8 @@ func (r *Runner) runLane(ctx context.Context, wt *gitx.Worktree, loopNo, laneIdx
 }
 
 // runLaneReview runs one review in a persistent lane worktree, commits the
-// result, and merges it into the main tree. Between reviews the lane advances
-// to the current HEAD so the next review sees all prior work.
+// result, and merges it into the landing branch. Between reviews the lane
+// advances to the landing tip so the next review sees all prior work.
 func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review string,
 	loopNo, laneIdx, reviewIdx int) Result {
 
@@ -77,11 +77,11 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	cleanCtx := context.WithoutCancel(ctx)
 	tag := fmt.Sprintf("%s-lane%d-%02d", r.laneTag(loopNo), laneIdx, reviewIdx)
 
-	// Start from the latest HEAD so the review sees work merged by other
+	// Start from the latest landing tip so the review sees work merged by other
 	// lanes, not the stale tip from when the loop (or the last review) began.
 	base := wt.Base()
-	if tip, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
-		r.logReview(loopNo, laneIdx, review, "Cannot read HEAD before %s, using the lane's previous base: %v", review, err)
+	if tip, err := r.repo.Tip(cleanCtx, r.jobsBase(cleanCtx)); err != nil {
+		r.logReview(loopNo, laneIdx, review, "Cannot read %s before %s, using the lane's previous base: %v", r.jobsBase(cleanCtx), review, err)
 	} else if tip != "" {
 		base = tip
 	}
@@ -102,15 +102,15 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		}
 	}
 
-	// advance resets the lane to the current HEAD so it is ready for the next
+	// advance resets the lane to the landing tip so it is ready for the next
 	// review. Called on every exit path after the review branch is no longer
 	// needed in the worktree (merged, discarded, or conflict-kept).
 	advance := func(deleteBranch bool) {
 		branchToDelete := wt.Branch
 		tip := base
-		if t, err := r.repo.Tip(cleanCtx, "HEAD"); err != nil {
-			r.logReview(loopNo, laneIdx, review, "Cannot read HEAD after %s, advancing lane %d to its previous base: %v",
-				review, laneIdx, err)
+		if t, err := r.repo.Tip(cleanCtx, r.jobsBase(cleanCtx)); err != nil {
+			r.logReview(loopNo, laneIdx, review, "Cannot read %s after %s, advancing lane %d to its previous base: %v",
+				r.jobsBase(cleanCtx), review, laneIdx, err)
 		} else if t != "" {
 			tip = t
 		}
@@ -162,7 +162,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 	}
 
 	r.mergeMu.Lock()
-	mr := r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, msg)
+	mr := r.mergeReview(context.WithoutCancel(ctx), wt.Branch, msg)
 	resolved := false
 	// A log line is a blocking publish on the event bus, and every lane merges
 	// here, so the lines the merge step produces are held back and published
@@ -176,8 +176,13 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		}
 		held = append(held, notes...)
 	}
-	if mr.Merged && r.cfg.Push {
-		held = append(held, r.pushLanded(ctx, review))
+	if mr.Merged {
+		if mr.Detail != "" {
+			held = append(held, mr.Detail)
+		}
+		if r.cfg.Push {
+			held = append(held, r.pushLanded(ctx, review))
+		}
 	}
 	r.mergeMu.Unlock()
 	for _, line := range held {
@@ -206,7 +211,7 @@ func (r *Runner) runLaneReview(ctx context.Context, wt *gitx.Worktree, review st
 		if mr.Conflict {
 			res.Status = StatusConflict
 			r.logReview(loopNo, laneIdx, review, "MERGE CONFLICT: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)
-			r.logReview(loopNo, laneIdx, review, "To land it after resolving: %s", conflictHint(wt.Branch, msg))
+			r.logReview(loopNo, laneIdx, review, "To land it after resolving: %s", r.landingHint(wt.Branch, msg))
 		} else {
 			res.Status = StatusFail
 			r.logReview(loopNo, laneIdx, review, "MERGE FAILED: %s kept on branch %s (%s)", review, wt.Branch, mr.Detail)

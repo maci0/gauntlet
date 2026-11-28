@@ -281,7 +281,7 @@ baseline commit
    ↓
    one runner-authored commit per review
    ↓
-   serialized merge --squash back into the original branch
+   serialized merge --squash into the landing branch
    ↓
    the lane advances to the new tip and starts the next review
 ```
@@ -292,7 +292,8 @@ Rules the runner enforces:
    commit, so uncommitted edits to files git knows about would be invisible
    to every review and then collide with the merges. Untracked files do not
    block the run. The runner returns `ErrDirtyTree`; the CLI may offer to
-   commit first rather than only naming the error.
+   commit first rather than only naming the error. With `--jobs-target`,
+   the target's commits supply the baseline and the launch tree may be dirty.
 2. **N persistent lane worktrees**, under `.gauntlet/worktrees/`, added to
    `.git/info/exclude` so the checkouts never appear as untracked files.
    The loop's schedule is split across the lanes when it is built: review `i`
@@ -306,7 +307,14 @@ Rules the runner enforces:
 3. **The runner commits, not the agent.** Agents remain forbidden to run git
    (unchanged containment). After a review, the runner stages and commits its
    worktree in one commit. Nothing to commit means nothing merged.
-4. **Merges are serialized** on the main tree, in completion order. A
+4. **Merges are serialized** in completion order. By default they land in
+   the launch checkout. With `--jobs-target`, Git squashes in a detached
+   scratch checkout of the target tip and records the result on
+   `refs/gauntlet/jobs-target/<branch>`. The local branch moves to that tip
+   only when the launch checkout is not on it and the branch is still an
+   ancestor of the landed commit. A checkout that is on the branch keeps
+   its HEAD, index, and files. A concurrent ref change that the landed
+   commit does not contain leaves the local branch unmoved. A
    conflicting merge goes to the conflict step (below) and, if that does not
    land it, is aborted with its branch kept, named after the review, so the
    work can be inspected or merged by hand. Conflicts are reported as their
@@ -324,7 +332,9 @@ Rules the runner enforces:
    exact under parallelism (unlike a shared-tree diff, which cannot be
    attributed).
 7. `--commit`/`--push` still forces a quiescent point: all lanes drain and
-   merge before the commit step runs.
+   merge before the commit step runs. Pinned runs skip that launch-checkout
+   step. With `--push` they publish the target ref to its configured upstream
+   using an explicit refspec after each landing.
 8. **Each review's branch is cut from the current tip**, not from the loop's
    starting commit: after a merge the lane advances to that tip, and a stale
    base would turn every later merge in a loop into a conflict.
@@ -630,10 +640,12 @@ the run clock. `gauntlet resume <run-id>` refuses a directory whose lock is
 held, changes to the recorded directory, saves the handoff with its process
 count raised, and execs this binary. The count becomes the runner's `Generation`, which names lane and
 review branches `<run-id>-g<N>-l<loop>` so a successor never reuses a branch
-its killed predecessor left. A `--jobs` successor deletes those leftovers that HEAD
-already contains (`DeleteMergedBranchesMatching`, `git branch -d`) and keeps
-any with a commit HEAD lacks. Checkpoints sit in their own directory because
-the handoff writer sweeps every day-old file in `state/`.
+its killed predecessor left. A `--jobs` successor without a pinned target
+deletes leftovers that HEAD already contains (`DeleteMergedBranchesMatching`,
+`git branch -d`) and keeps any with a commit HEAD lacks. With
+`--jobs-target`, the handoff carries the resolved branch and leaves old
+branches available for inspection. Checkpoints sit in their own directory
+because the handoff writer sweeps every day-old file in `state/`.
 
 ## The optional semantic index
 

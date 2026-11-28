@@ -396,12 +396,16 @@ func worktreeListed(porcelain, dir string) bool {
 // from the user's checkout: an uncommitted or local-only *-review.md must not
 // steer a run that publishes only remote-based work.
 func (r *Repo) AddSnapshotWorktree(ctx context.Context, tag, base string) (*Worktree, error) {
-	if err := r.beginWorktreeAdd("git is required for a snapshot checkout"); err != nil {
+	return r.addDetachedWorktree(ctx, "base-"+BranchSlug(tag), base)
+}
+
+func (r *Repo) addDetachedWorktree(ctx context.Context, name, base string) (*Worktree, error) {
+	if err := r.beginWorktreeAdd("git is required for a detached checkout"); err != nil {
 		return nil, err
 	}
 	defer r.wtMu.Unlock()
 
-	dir := r.worktreeDir("base-" + BranchSlug(tag))
+	dir := r.worktreeDir(name)
 	// A leftover snapshot from a killed run sits at this same deterministic
 	// path; it is gauntlet's own and carries nothing, so it is replaced.
 	if err := r.prepareWorktreeDir(ctx, dir); err != nil {

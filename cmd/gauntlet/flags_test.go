@@ -340,6 +340,16 @@ func TestParseFlagsShorthandsAndConflicts(t *testing.T) {
 				t.Fatalf("seed = %d, want 16", o.seed)
 			}
 		}},
+		{"jobs target", []string{"-j", "2", "--jobs-target", "HEAD"}, "", func(t *testing.T, o *options) {
+			t.Helper()
+			if o.jobsTarget != "HEAD" {
+				t.Fatalf("jobsTarget = %q, want HEAD", o.jobsTarget)
+			}
+		}},
+		{"jobs target without lanes", []string{"--jobs-target", "main"}, "requires --jobs > 1", nil},
+		{"jobs target with stacking", []string{"-j", "2", "--jobs-target", "main", "--stacked-prs"}, "without --stacked-prs", nil},
+		{"jobs target with loop merge", []string{"-j", "2", "--jobs-target", "main", "--merge-into", "other"}, "conflicts with --merge-into", nil},
+		{"empty jobs target", []string{"-j", "2", "--jobs-target", ""}, "--jobs-target is empty", nil},
 		{"zero jobs", []string{"-j", "0"}, "must be >= 1", nil},
 		{"stack owns commits", []string{"--stacked-prs", "--commit"}, "owns its commits", nil},
 		{"stack owns pushes", []string{"--stacked-prs", "--push"}, "owns its commits", nil},

@@ -86,7 +86,8 @@ func (h handoff) Dir(dir string) dirHandoff { return h.Dirs[handoffKey(dir)] }
 
 // dirHandoff is one directory's progress at the moment of the swap.
 type dirHandoff struct {
-	Loops int `json:"loops"`
+	JobsTarget string `json:"jobs_target,omitempty"`
+	Loops      int    `json:"loops"`
 	// Pending is what the interrupted loop had not started yet, so the
 	// successor finishes that loop instead of starting it over.
 	Pending []string `json:"pending,omitempty"`
@@ -243,6 +244,7 @@ func buildHandoff(runID string, start time.Time, elapsed time.Duration, seed uin
 			dh.StackBase, dh.StackBaseTip = d.prep.Base, d.prep.BaseTip
 		}
 		if d.r != nil {
+			dh.JobsTarget = d.r.JobsTarget()
 			dh.StackHead, dh.StackHeadTip = d.r.StackHead()
 			dh.StackPublished = d.r.StackPublished()
 		}

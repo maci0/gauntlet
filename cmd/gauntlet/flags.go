@@ -87,6 +87,7 @@ type options struct {
 	jobs             int
 	retries          int
 	mergeInto        string
+	jobsTarget       string
 	resolveConflicts bool
 	maxLoops         int
 	maxReviews       int
@@ -425,6 +426,7 @@ func buildFlagSet(o *options) (*flag.FlagSet, *rawFlags) {
 	alias("p", "push", func(n string) {
 		fs.BoolVar(&o.push, n, false, "commit and push after each sequential review or after parallel lanes drain")
 	})
+	fs.StringVar(&o.jobsTarget, "jobs-target", "", "land parallel reviews on BRANCH (HEAD pins the starting branch)")
 	fs.StringVar(&o.mergeInto, "merge-into", "",
 		"after each loop, merge this branch's committed work into BRANCH")
 	fs.BoolVar(&o.stackedPRs, "stacked-prs", false,
@@ -901,6 +903,17 @@ func finishFlags(o *options, fs *flag.FlagSet, raw *rawFlags) (*options, error) 
 	}
 	if err := trimFlag(fs, &o.showPrompt, "show-prompt"); err != nil {
 		return nil, err
+	}
+	if err := trimFlag(fs, &o.jobsTarget, "jobs-target"); err != nil {
+		return nil, err
+	}
+	if o.jobsTarget != "" {
+		if o.jobs <= 1 || o.stackedPRs {
+			return nil, errors.New("--jobs-target requires --jobs > 1 without --stacked-prs")
+		}
+		if o.mergeInto != "" {
+			return nil, errors.New("--jobs-target conflicts with --merge-into")
+		}
 	}
 	if o.stackedPRs {
 		if o.commit || o.push {

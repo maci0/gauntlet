@@ -49,7 +49,7 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 	if ctx.Err() != nil {
 		return mr, notes
 	}
-	tip, err := r.repo.Tip(ctx, "HEAD")
+	tip, err := r.repo.Tip(ctx, r.jobsBase(ctx))
 	if err != nil {
 		note("Cannot resolve the %s conflict: %v", review, err)
 		return mr, notes
@@ -113,13 +113,13 @@ func (r *Runner) resolveConflict(ctx context.Context, review, branch, tag, messa
 	// it, and a run that dies between the commit and the merge must not lose
 	// the resolution with it.
 	keepBranch = true
-	mr = r.repo.Merge(context.WithoutCancel(ctx), wt.Branch, message)
+	mr = r.mergeReview(context.WithoutCancel(ctx), wt.Branch, message)
 	if mr.Merged {
 		keepBranch = false
 		return mr, notes
 	}
 	note("Keeping the %s resolution on branch %s (%s)", review, wt.Branch, mr.Detail)
-	note("To land it after resolving: %s", conflictHint(wt.Branch, message))
+	note("To land it after resolving: %s", r.landingHint(wt.Branch, message))
 	return mr, notes
 }
 
@@ -221,6 +221,14 @@ func (r *Runner) runConflictAgent(ctx context.Context, review string, paths []st
 		return false
 	}
 	return true
+}
+
+func (r *Runner) landingHint(branch, message string) string {
+	hint := conflictHint(branch, message)
+	if r.cfg.JobsTarget != "" {
+		return fmt.Sprintf("from branch %q, run %s", r.cfg.JobsTarget, hint)
+	}
+	return hint
 }
 
 // conflictHint is what a person runs to land a branch this run could not.

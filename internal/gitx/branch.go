@@ -44,14 +44,14 @@ func refNames(out []byte) []string {
 // does not manage is ErrNotRepository so a caller can tell that from a query
 // that failed on a tree it does.
 func (r *Repo) CurrentBranch(ctx context.Context) (string, error) {
-	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "--short", "HEAD")
+	out, err := r.run(ctx, gitQuick, "symbolic-ref", "--quiet", "HEAD")
 	if err != nil {
 		if exitsWith(err, 1) {
 			return "", nil
 		}
 		return "", classifyNotRepo(err)
 	}
-	return trimLineEnd(string(out)), nil
+	return strings.TrimPrefix(trimLineEnd(string(out)), "refs/heads/"), nil
 }
 
 // LaneBranchPrefix namespaces the branches a run's lane work runs on, and
@@ -624,4 +624,134 @@ func (r *Repo) ParentTip(ctx context.Context, ref string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// JobsTargetRef holds commits for a pinned branch while the launch checkout
+// still has that branch checked out. Updating refs/heads/<branch> then would
+// move that checkout's HEAD.
+func JobsTargetRef(branch string) string {
+	return "refs/gauntlet/jobs-target/" + branch
+}
+
+// MergePinned squashes a review in a detached checkout. The commits land on
+// JobsTargetRef. refs/heads/<branch> moves only when this checkout is not on
+// it and the branch is still an ancestor of the landed tip.
+func (r *Repo) MergePinned(ctx context.Context, branch, reviewBranch, message string) (mr MergeResult) {
+	baseRef := "refs/heads/" + branch
+	if _, err := r.Tip(ctx, JobsTargetRef(branch)); err == nil {
+		baseRef = JobsTargetRef(branch)
+	}
+	base, err := r.Tip(ctx, baseRef)
+	if err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
+	wt, err := r.addDetachedWorktree(ctx, "landing", base)
+	if err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
+	defer func() {
+		if err := wt.Remove(context.WithoutCancel(ctx)); err != nil {
+			mr.Detail = strings.TrimSpace(mr.Detail + fmt.Sprintf(" cannot remove landing checkout: %v", err))
+		}
+	}()
+	if mr = wt.sub.Merge(ctx, "refs/heads/"+reviewBranch, message); !mr.Merged {
+		return mr
+	}
+	tip, err := wt.sub.Tip(ctx, "HEAD")
+	if err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
+	if err := r.advanceJobsTarget(ctx, branch, baseRef, base, tip); err != nil {
+		return MergeResult{Detail: err.Error()}
+	}
+	if err := r.AttachJobsTarget(ctx, branch); err != nil && mr.Detail == "" {
+		mr.Detail = err.Error()
+	}
+	return mr
+}
+
+// advanceJobsTarget records tip on the side ref. The expected old value is
+// the squash base when that ref already existed, and the all-zero id when
+// this commit creates it.
+func (r *Repo) advanceJobsTarget(ctx context.Context, branch, baseRef, base, tip string) error {
+	old := ""
+	if baseRef == JobsTargetRef(branch) {
+		old = base
+	}
+	out, err := r.run(ctx, gitNormal, "update-ref", "--no-deref", JobsTargetRef(branch), tip, old)
+	if err != nil {
+		return withDetail(fmt.Errorf("cannot record %s: %w", JobsTargetRef(branch), err), out)
+	}
+	return nil
+}
+
+// AttachJobsTarget points the local branch at the parked tip once this
+// checkout is no longer on it, then drops the side ref. A checkout that is
+// still on the branch is left untouched.
+func (r *Repo) AttachJobsTarget(ctx context.Context, branch string) error {
+	tip, err := r.Tip(ctx, JobsTargetRef(branch))
+	if err != nil {
+		return nil
+	}
+	cur, err := r.CurrentBranch(ctx)
+	if err != nil {
+		return err
+	}
+	if cur == branch {
+		return nil
+	}
+	if err := r.fastForwardRef(ctx, "refs/heads/"+branch, tip); err != nil {
+		return err
+	}
+	out, err := r.run(context.WithoutCancel(ctx), gitNormal, "update-ref", "--no-deref", "-d", JobsTargetRef(branch), tip)
+	if err != nil {
+		return withDetail(fmt.Errorf("cannot clear %s: %w", JobsTargetRef(branch), err), out)
+	}
+	return nil
+}
+
+// fastForwardRef moves ref to tip when ref's current tip is an ancestor of
+// tip. The compare-and-swap refuses a ref that moved after the check.
+func (r *Repo) fastForwardRef(ctx context.Context, ref, tip string) error {
+	old, err := r.Tip(ctx, ref)
+	if err != nil {
+		return err
+	}
+	if old == tip {
+		return nil
+	}
+	if _, err := r.run(ctx, gitQuick, "merge-base", "--is-ancestor", "--", old, tip); err != nil {
+		return fmt.Errorf("%s has commits the landing does not contain", ref)
+	}
+	out, err := r.run(ctx, gitNormal, "update-ref", "--no-deref", ref, tip, old)
+	if err != nil {
+		return withDetail(fmt.Errorf("cannot advance %s: %w", ref, err), out)
+	}
+	return nil
+}
+
+// BranchUpstream returns the remote name and its full destination ref.
+func (r *Repo) BranchUpstream(ctx context.Context, branch string) (remote, ref string, err error) {
+	target := "refs/heads/" + branch
+	out, err := r.run(ctx, gitQuick, "for-each-ref",
+		"--format=%(refname)%09%(upstream:remotename)%09%(upstream:remoteref)", "--", target)
+	if err != nil {
+		return "", "", err
+	}
+	for _, line := range refNames(out) {
+		fields := strings.Split(line, "\t")
+		if len(fields) == 3 && fields[0] == target && fields[1] != "" && fields[1] != "." && strings.HasPrefix(fields[2], "refs/heads/") {
+			return fields[1], fields[2], nil
+		}
+	}
+	return "", "", fmt.Errorf("branch %q needs an upstream branch on a remote", branch)
+}
+
+// PushRef publishes one explicit ref without force or upstream changes.
+func (r *Repo) PushRef(ctx context.Context, remote, source, target string) error {
+	out, err := r.run(ctx, gitPush, "push", "--no-follow-tags", "--recurse-submodules=no", "--", remote, source+":"+target)
+	if err != nil {
+		return withDetail(err, out)
+	}
+	return nil
 }

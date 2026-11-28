@@ -21,17 +21,92 @@ import (
 	"github.com/maci0/gauntlet/internal/prompt"
 )
 
-// prepareWorktreeMode enforces what isolated parallel reviews require: a git
-// repository and a clean tree. Concurrent agents in one working tree corrupt
-// each other, and a worktree is cut from a commit, so uncommitted work would
-// be invisible to every review and then collide with the merges.
+// prepareWorktreeMode checks that lanes can start from a commit and that
+// their landing checkout is ready. In-place landing requires a clean launch
+// tree. Pinned landing only requires the target branch.
 func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	if !gitx.Available() {
 		return errors.New("--jobs > 1 needs git: each review runs in its own worktree")
 	}
-	if !r.repo.HasBaseline() {
+	if r.cfg.JobsTarget == "" && !r.repo.HasBaseline() {
 		return fmt.Errorf("--jobs > 1 needs a git repository with at least one commit: %s", r.cfg.Dir)
 	}
+	if r.cfg.JobsTarget != "" {
+		if err := r.pinJobsTarget(ctx); err != nil {
+			return err
+		}
+	} else if err := r.checkLaunchTree(ctx); err != nil {
+		return err
+	}
+	// The run lock on this directory is held, so nothing under the worktree
+	// root belongs to a live run: whatever is in it is scratch a previous
+	// process was killed before it could remove, and each entry is a full
+	// copy of the tree. What the sweep could not remove is named: a copy of
+	// a private tree left on disk with nothing saying so is the failure this
+	// sweep exists to prevent, and the run that swept it is the only one that
+	// can still see it.
+	if err := r.repo.SweepWorktreeRoot(ctx); err != nil {
+		r.log("Warning: %v", err)
+	}
+	if r.cfg.Generation > 0 && r.cfg.JobsTarget == "" {
+		// An earlier process of this run may have been killed between cutting
+		// a review branch and landing it. Its branches that HEAD already
+		// contains carry nothing; one with a commit HEAD lacks is work, and
+		// stays for `gauntlet doctor` to name.
+		n, err := r.repo.DeleteMergedBranchesMatching(ctx, gitx.LaneBranchPrefix+r.cfg.RunID+"-*")
+		switch {
+		case err != nil:
+			r.log("Cannot sweep the branches an earlier process of this run left: %v", err)
+		case n > 0:
+			r.log("Deleted %d branch(es) an earlier process of this run left with nothing on them", n)
+		}
+	}
+	return nil
+}
+
+func (r *Runner) pinJobsTarget(ctx context.Context) error {
+	branch := r.cfg.JobsTarget
+	if branch == "HEAD" {
+		var err error
+		branch, err = r.repo.CurrentBranch(ctx)
+		if err != nil {
+			return fmt.Errorf("--jobs-target HEAD: %w", err)
+		}
+		if branch == "" {
+			return errors.New("--jobs-target HEAD requires a checked-out branch")
+		}
+	}
+	if err := r.repo.ValidateBranchName(ctx, branch); err != nil {
+		return fmt.Errorf("--jobs-target: %w", err)
+	}
+	r.cfg.JobsTarget = branch
+	if _, err := r.repo.Tip(ctx, "refs/heads/"+branch); err != nil {
+		return fmt.Errorf("--jobs-target: cannot read local branch %q: %w", branch, err)
+	}
+	if r.cfg.Push {
+		remote, ref, err := r.repo.BranchUpstream(ctx, branch)
+		if err != nil {
+			return fmt.Errorf("--jobs-target with --push: %w", err)
+		}
+		r.jobsPushRemote, r.jobsPushRef = remote, ref
+	}
+	if cur, err := r.repo.CurrentBranch(ctx); err == nil && cur == branch {
+		r.log("%s stays checked out here, so this checkout's HEAD and files stay put; reviews land beside it until it leaves %s", branch, branch)
+	}
+	return nil
+}
+
+func (r *Runner) jobsBase(ctx context.Context) string {
+	if r.cfg.JobsTarget == "" {
+		return "HEAD"
+	}
+	if _, err := r.repo.Tip(ctx, gitx.JobsTargetRef(r.cfg.JobsTarget)); err == nil {
+		return gitx.JobsTargetRef(r.cfg.JobsTarget)
+	}
+	return "refs/heads/" + r.cfg.JobsTarget
+}
+
+func (r *Runner) checkLaunchTree(ctx context.Context) error {
 	// Only tracked modifications block: a review works from a commit, so
 	// uncommitted edits to files git knows about would be invisible to it and
 	// then collide with its merge. An untracked file is in nobody's way; it is
@@ -51,29 +126,6 @@ func (r *Runner) prepareWorktreeMode(ctx context.Context) error {
 	if n := len(changes.Untracked); n > 0 {
 		r.log("%d untracked file(s) stay put and are not reviewed: %s",
 			n, safePathList(changes.Untracked, pathListLimit))
-	}
-	// The run lock on this directory is held, so nothing under the worktree
-	// root belongs to a live run: whatever is in it is scratch a previous
-	// process was killed before it could remove, and each entry is a full
-	// copy of the tree. What the sweep could not remove is named: a copy of
-	// a private tree left on disk with nothing saying so is the failure this
-	// sweep exists to prevent, and the run that swept it is the only one that
-	// can still see it.
-	if err := r.repo.SweepWorktreeRoot(ctx); err != nil {
-		r.log("Warning: %v", err)
-	}
-	if r.cfg.Generation > 0 {
-		// An earlier process of this run may have been killed between cutting
-		// a review branch and landing it. Its branches that HEAD already
-		// contains carry nothing; one with a commit HEAD lacks is work, and
-		// stays for `gauntlet doctor` to name.
-		n, err := r.repo.DeleteMergedBranchesMatching(ctx, gitx.LaneBranchPrefix+r.cfg.RunID+"-*")
-		switch {
-		case err != nil:
-			r.log("Cannot sweep the branches an earlier process of this run left: %v", err)
-		case n > 0:
-			r.log("Deleted %d branch(es) an earlier process of this run left with nothing on them", n)
-		}
 	}
 	return nil
 }
@@ -350,19 +402,26 @@ func (r *Runner) runLoopSequential(ctx context.Context, loopNo int) bool {
 // system prompts (which embed the working directory) share a prefix and hit
 // the provider's prompt cache after the first review in each lane.
 func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
-	base, err := r.repo.Tip(ctx, "HEAD")
+	base, err := r.repo.Tip(ctx, r.jobsBase(ctx))
 	if err != nil {
+		if r.cfg.JobsTarget != "" {
+			r.log("Cannot read %s: %v", r.jobsBase(ctx), err)
+			r.st.addCommitFail()
+			return false
+		}
 		r.log("Cannot read HEAD, falling back to sequential: %v", err)
 		return r.runLoopSequential(ctx, loopNo)
 	}
-	branch, err := r.repo.CurrentBranch(ctx)
-	if err != nil {
-		r.log("Cannot read the current branch, falling back to sequential: %v", err)
-		return r.runLoopSequential(ctx, loopNo)
-	}
-	if branch == "" {
-		r.log("Detached HEAD: merges would be lost, falling back to sequential")
-		return r.runLoopSequential(ctx, loopNo)
+	if r.cfg.JobsTarget == "" {
+		branch, err := r.repo.CurrentBranch(ctx)
+		if err != nil {
+			r.log("Cannot read the current branch, falling back to sequential: %v", err)
+			return r.runLoopSequential(ctx, loopNo)
+		}
+		if branch == "" {
+			r.log("Detached HEAD: merges would be lost, falling back to sequential")
+			return r.runLoopSequential(ctx, loopNo)
+		}
 	}
 
 	tag := r.laneTag(loopNo)
@@ -372,6 +431,10 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 		if err != nil {
 			r.log("Cannot create lane %d: %v", i, err)
 			r.removeLanes(ctx, lanes[:i])
+			if r.cfg.JobsTarget != "" {
+				r.st.addCommitFail()
+				return false
+			}
 			return r.runLoopSequential(ctx, loopNo)
 		}
 		lanes[i] = wt
@@ -420,10 +483,12 @@ func (r *Runner) runLoopParallel(ctx context.Context, loopNo int) bool {
 	if r.finish.Load() || r.budgetStop.Load() {
 		r.dropPending()
 	}
-	if r.cfg.Commit || r.cfg.Push {
-		r.runCommitStep(ctx)
+	if r.cfg.JobsTarget == "" {
+		if r.cfg.Commit || r.cfg.Push {
+			r.runCommitStep(ctx)
+		}
+		r.runMergeStep(ctx, loopNo)
 	}
-	r.runMergeStep(ctx, loopNo)
 	return ctx.Err() == nil
 }
 
@@ -470,13 +535,27 @@ func (r *Runner) interrupted(review string) Result {
 		ExitCode: -1, Status: StatusInterrupted}
 }
 
+func (r *Runner) mergeReview(ctx context.Context, branch, message string) gitx.MergeResult {
+	if r.cfg.JobsTarget != "" {
+		return r.repo.MergePinned(ctx, r.cfg.JobsTarget, branch, message)
+	}
+	return r.repo.Merge(ctx, branch, message)
+}
+
 // pushLanded pushes what just landed on this branch and returns the line to
 // publish, "" when there is nothing to say. A failure is counted, never fatal:
 // the work is committed, and the next review's push (or the commit step)
 // carries it. It runs under the merge lock, so the caller publishes the line
 // once that lock is free.
 func (r *Runner) pushLanded(ctx context.Context, review string) string {
-	if err := r.repo.Push(context.WithoutCancel(ctx)); err != nil {
+	ctx = context.WithoutCancel(ctx)
+	var err error
+	if r.cfg.JobsTarget != "" {
+		err = r.repo.PushRef(ctx, r.jobsPushRemote, r.jobsBase(ctx), r.jobsPushRef)
+	} else {
+		err = r.repo.Push(ctx)
+	}
+	if err != nil {
 		r.st.addCommitFail()
 		return fmt.Sprintf("Push after %s failed: %v", review, err)
 	}

@@ -41,7 +41,7 @@ var goldenFlagNames = []string{
 	"exclude",
 	"fields",
 	"h", "help", "hot-reload",
-	"j", "jobs", "json", "keep-runs",
+	"j", "jobs", "jobs-target", "json", "keep-runs",
 	"l", "limit", "list", "log",
 	"max-loops", "max-reviews", "merge-into",
 	"n", "no-color", "no-sandbox",

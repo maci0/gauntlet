@@ -394,6 +394,7 @@ func TestPushBranchCanPushBranchAndFetchBranch(t *testing.T) {
 }
 
 func TestPush(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	origin := newRepo(t)
 	gitIn(t, origin.Dir, "config", "receive.denyCurrentBranch", "ignore")
 	cloneDir := t.TempDir()

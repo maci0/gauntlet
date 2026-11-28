@@ -78,6 +78,7 @@ var helpGroups = []flagGroup{
 		{"", "dirs", "LIST", "review several directories in parallel, each with its own --jobs pool; globs are expanded (repeatable)"},
 		{"", "target-dirs", "LIST", "alias of --dirs, kept for scripts from the Python tool; takes a comma-separated list"},
 		{"j", "jobs", "N", "parallel lanes per directory; above 1, each runs in its own worktree and is merged back"},
+		{"", "jobs-target", "BRANCH", "land parallel reviews on BRANCH (HEAD pins the starting branch)"},
 		{"t", "timeout", "DUR", fmt.Sprintf("per-review timeout: 90s, 30m, 1h, 2d (default %dm)", int(defaultTimeout/time.Minute))},
 		{"", "merge-into", "BRANCH", "after each loop, merge this branch's committed work into BRANCH"},
 		{"", "resolve-conflicts", "", "have an agent resolve a review branch that will not merge (default true; --resolve-conflicts=false to disable)"},
